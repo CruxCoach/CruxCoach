@@ -10,6 +10,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,9 +42,63 @@ import com.cruxcoach.domain.board.IntensityZones
 fun BoardListDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+    onNavigateToPlaybackPlan: (Long) -> Unit,
+    onPlayed: () -> Unit,
     viewModel: BoardListDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val bleConnectionViewModel: BleConnectionViewModel = hiltViewModel()
+    var menuExpanded by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val queueTitle = stringResource(R.string.board_queue_title)
+    val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+    fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    val startPlaylist = {
+        requestNotificationPermissionIfNeeded()
+        // 0.2.2 playlists are private and local. One tap starts the visible
+        // list in its saved order; there is no source, advance or visibility
+        // decision in between the list and its player.
+        bleConnectionViewModel.reconnectRememberedBoard()
+        viewModel.startPlayback(queueTitle, onPlayed)
+    }
+
+    if (state.showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissRenameDialog,
+            title = { Text(stringResource(R.string.board_lists_list_name), fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = state.renameValue,
+                    onValueChange = viewModel::updateRenameValue,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::confirmRename,
+                    enabled = state.renameValue.isNotBlank(),
+                ) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissRenameDialog) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
 
     // Refresh entries on return so an edit/delete/publish done on a climb's
     // detail reflects instantly (the ViewModel is retained across back-nav).
@@ -61,13 +120,70 @@ fun BoardListDetailScreen(
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
-                    }
+                    },
+                    actions = {
+                        if (!state.isIgnored && state.totalCount > 0) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.preparePlaybackPlan {
+                                        onNavigateToPlaybackPlan(state.listId)
+                                    }
+                                },
+                                modifier = Modifier.testTag("list_edit_training_plan"),
+                            ) {
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = stringResource(R.string.list_playback_edit_plan),
+                                )
+                            }
+                        }
+                        if (!state.isBuiltin) {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.action_more_options),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.playlist_rename)) },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.showRenameDialog()
+                                    },
+                                )
+                            }
+                        }
+                    },
                 )
                 RestTimerBannerSlot()
                 SyncStatusBannerSlot()
                 BleStatusArea()
             }
-        }
+        },
+        floatingActionButton = {
+            if (!state.isIgnored && state.totalCount > 0) {
+                ExtendedFloatingActionButton(
+                    onClick = startPlaylist,
+                    containerColor = OrangeAccent,
+                    icon = {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)
+                    },
+                    text = {
+                        Text(
+                            stringResource(R.string.list_playback_start),
+                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    },
+                    modifier = Modifier.testTag("list_play_fab"),
+                )
+            }
+        },
     ) { padding ->
         when {
             state.isLoading -> {
@@ -131,6 +247,20 @@ fun BoardListDetailScreen(
                         )
                     }
 
+                    state.playbackStartError?.let { error ->
+                        PlaybackInfoBox(
+                            text = stringResource(
+                                when (error) {
+                                    PlaybackStartError.EMPTY -> R.string.list_playback_error_empty
+                                    PlaybackStartError.MULTIPLE_BOARDS ->
+                                        R.string.list_playback_error_multiple_boards
+                                }
+                            ),
+                            isError = true,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+
                     // FEAT-023: a list is the user's selection, shown in FULL
                     // (every board) — each card's BoardBrandBadge labels its own
                     // board. When the list spans >1 board, offer a MULTI-SELECT
@@ -147,7 +277,12 @@ fun BoardListDetailScreen(
 
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(16.dp),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 16.dp,
+                            end = 16.dp,
+                            bottom = 96.dp,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(state.entries, key = { it.climb.uuid }) { entry ->
@@ -168,6 +303,39 @@ fun BoardListDetailScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackInfoBox(
+    text: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    isError: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (isError) MaterialTheme.colorScheme.error else InfoBlue
+    Surface(
+        color = color.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Info, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = color,
+                modifier = Modifier.weight(1f),
+            )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) { Text(actionLabel) }
             }
         }
     }
@@ -277,33 +445,17 @@ private fun ListEntryCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Per-entry board type, analogous to the logbook badge.
-                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
-                    climb.setterUsername?.let {
-                        Text(
-                            stringResource(R.string.board_climb_by_setter, it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (climb.isRoute) {
-                        Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                ClimbMetaLine(
+                    setter = climb.setterUsername,
+                    isRoute = climb.isRoute,
+                    framesCount = climb.framesCount,
+                    moveCount = moveCount,
+                    spacing = 8.dp,
+                    leading = {
+                        // Per-entry board type, analogous to the logbook badge.
+                        BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
+                    },
+                )
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -328,4 +480,3 @@ private fun ListEntryCard(
         }
     }
 }
-

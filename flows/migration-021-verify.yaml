@@ -1,0 +1,40 @@
+appId: com.cruxcoach.android
+name: migration-021-verify
+tags:
+  - extended
+  - upgrade
+  - manual-prereq
+  - mutates-state
+---
+# Host precondition: matching-signer 0.2.2 was installed in place over the
+# completed migration-021-setup state. This transition is non-replayable.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: "whatsnew_022_dialog"
+    timeout: 15000
+- assertVisible: "Neu in 0.2.2"
+- assertNotVisible: "Neu in 0.2.1"
+- pressKey: Back
+- assertVisible:
+    id: "whatsnew_022_dialog"
+- tapOn:
+    point: "3%,50%"
+- assertVisible:
+    id: "whatsnew_022_dialog"
+- tapOn:
+    id: "whatsnew_022_confirm"
+- assertVisible:
+    id: "board_filter_toggle"
+- assertNotVisible: "Willkommen bei CruxCoach"
+# Explicit dismissal is durable after process death.
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertNotVisible:
+    id: "whatsnew_022_dialog"
+- assertVisible:
+    id: "board_filter_toggle"
+- runFlow: subflows/verify-and-clean-migration-markers.yaml

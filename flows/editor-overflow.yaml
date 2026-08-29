@@ -1,21 +1,24 @@
 appId: com.cruxcoach.android
 name: editor-overflow
 tags:
+  - release-gate
   - smoke
 ---
 # Verify the editor's ⋮ overflow menu has the expected items. Covers
 # commit 90ee6e7 which moved Drafts + Heatmap from direct TopBar
 # icons into the menu.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-- tapOn: "Neuen Climb erstellen"
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_create_fab"
 - assertVisible: "Neuer Climb"
-- tapOn: "Weitere Optionen"
-- assertVisible: "Entwürfe öffnen"
-- assertVisible: "Heatmap (häufige Griffe) ein/aus"
+- tapOn:
+    id: "climb_creator_more"
+- assertVisible:
+    id: "climb_creator_open_drafts"
+- assertVisible:
+    id: "climb_creator_heatmap_toggle"
 - pressKey: Back
 - assertVisible: "Neuer Climb"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

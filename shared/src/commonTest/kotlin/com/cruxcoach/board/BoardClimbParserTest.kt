@@ -5,6 +5,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BoardClimbParserTest {
@@ -34,6 +35,43 @@ class BoardClimbParserTest {
         val holds = BoardClimbParser.parseFrames("p100r12")
         assertEquals(1, holds.size)
         assertEquals(BoardHold(100, 12), holds[0])
+    }
+
+    @Test
+    fun strictSingleFrameRejectsAnyUnparsedOrMultiFrameContent() {
+        assertEquals(
+            listOf(BoardHold(100, 12), BoardHold(200, 14)),
+            BoardClimbParser.parseSingleFrameStrict("p100r12p200r14"),
+        )
+        assertEquals(
+            listOf(BoardHold(100, 12)),
+            BoardClimbParser.parseSingleFrameStrict("h100p12"),
+        )
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12BROKEN"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("BROKENp100r12"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12p"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12r13"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p100r12,p200r14"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict("p999999999999999999999r12"))
+        assertNull(BoardClimbParser.parseSingleFrameStrict(""))
+    }
+
+    @Test
+    fun strictSingleFrameAcceptsQuantumXlCatalogueFrames() {
+        val frames = "p1006021r12p1006036r12p1001018r13p1001021r13p1001026r13" +
+            "p1004031r13p1005018r13p1005021r13p1005041r13p1005051r13" +
+            "p1005057r13p1005069r13p1004084r14p1005082r14"
+
+        assertEquals(14, BoardClimbParser.parseSingleFrameStrict(frames)?.size)
+    }
+
+    @Test
+    fun strictSingleFrameAcceptsTheBoardQuantumXlCatalogueFrame() {
+        val frames = "p1006017r12p1006023r12p1001012r13p1001016r13p1003033r13" +
+            "p1003044r13p1003052r13p1006042r13p1006064r13p1006072r13" +
+            "p1006089r13p1006110r13p1006131r13p1006142r14"
+
+        assertEquals(14, BoardClimbParser.parseSingleFrameStrict(frames)?.size)
     }
 
     @Test

@@ -40,6 +40,7 @@ fun SessionDetailScreen(
     viewModel: SessionDetailViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val sessionBugReportTitle = stringResource(R.string.error_bug_report_session_title)
 
     Scaffold(
         topBar = {
@@ -100,13 +101,12 @@ fun SessionDetailScreen(
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
                     com.cruxcoach.android.ui.common.ErrorCard(
                         error = state.error ?: stringResource(R.string.plan_error),
                         onDismiss = { viewModel.clearError() },
                         onReportBug = {
                             onNavigateToBugReport(
-                                context.getString(R.string.error_bug_report_session_title),
+                                sessionBugReportTitle,
                                 state.error ?: ""
                             )
                             viewModel.clearError()

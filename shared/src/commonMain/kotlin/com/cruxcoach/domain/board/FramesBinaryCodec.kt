@@ -13,7 +13,10 @@ package com.cruxcoach.domain.board
  *   → `[0xFF][frameCount][len_lo][len_hi][entries...][len_lo][len_hi][entries...]...`
  *   Removal entries (`x{id}`) use `0xFE` as the third byte.
  *
- * Magic byte `0xFF` distinguishes multi-frame (max placementId ~16000 → high byte ≤ 0x3E).
+ * Magic byte `0xFF` distinguishes multi-frame for placement IDs that fit the
+ * legacy unsigned 16-bit representation. Boards such as Quantum use larger
+ * placement IDs; those strings are stored as UTF-8 text BLOBs so no bits are
+ * discarded. [decode] already accepts that backwards-compatible shape.
  * Removal marker `0xFE` is outside valid roleId range (12-15, 42-45).
  */
 object FramesBinaryCodec {
@@ -36,6 +39,19 @@ object FramesBinaryCodec {
         if (framesText.isEmpty()) return ByteArray(0)
 
         val frames = framesText.split(",")
+        // The compact legacy shape only allocates two bytes to placement IDs.
+        // Falling back to the already-supported text BLOB representation is
+        // essential for Quantum IDs (currently in the tens of millions):
+        // masking those IDs into two bytes silently changes the selected hold.
+        if (frames.any { frame ->
+                parseEntries(frame).any { entry ->
+                    entry.id !in 0..0xFFFF ||
+                        (entry.type != 'x' && entry.role !in 0 until (REMOVAL_MARKER.toInt() and 0xFF))
+                }
+            }
+        ) {
+            return framesText.encodeToByteArray()
+        }
         if (frames.size == 1) {
             return encodeSingleFrame(frames[0])
         }
@@ -45,29 +61,55 @@ object FramesBinaryCodec {
     fun decode(blob: ByteArray): String {
         if (blob.isEmpty()) return ""
 
-        if (blob[0] == MULTI_FRAME_MAGIC) {
+        if (blob[0] == MULTI_FRAME_MAGIC && isWellFormedMultiFrame(blob)) {
             return decodeMultiFrame(blob)
         }
         // Detect raw UTF-8 text BLOBs (from CAST migration, not yet binary-encoded).
-        // Text format chars: p, x, r, 0-9, comma. Binary format always has roleId
-        // bytes (12-15, 42-45, 254) by position 2 which are outside this set.
-        if (looksLikeText(blob)) {
-            return blob.decodeToString()
+        // Android's SQLite Cursor.getBlob() appends a C-string NUL when the
+        // storage class is TEXT even if the declared column is BLOB. Quantum
+        // was imported through SQL group_concat(), so existing catalogues have
+        // exactly that representation. Strip terminal NUL bytes at this codec
+        // boundary; internal NULs and every other foreign byte remain invalid.
+        textPayloadLength(blob)?.let { textLength ->
+            return blob.decodeToString(0, textLength)
         }
         return decodeSingleFrame(blob)
     }
 
-    private fun looksLikeText(blob: ByteArray): Boolean {
-        if (blob.size < 4) return false
-        val checkLen = minOf(20, blob.size)
-        for (i in 0 until checkLen) {
+    /**
+     * A single-frame placement may also start with 0xFF when its ID's low byte
+     * is 255. Treat the marker as a multi-frame header only when every declared
+     * frame has a complete, three-byte-aligned body and consumes the full BLOB.
+     */
+    private fun isWellFormedMultiFrame(blob: ByteArray): Boolean {
+        if (blob.size < 8) return false // two frames need header + at least one entry each
+        val frameCount = blob[1].toInt() and 0xFF
+        if (frameCount < 2) return false
+
+        var pos = 2
+        repeat(frameCount) {
+            if (pos + 2 > blob.size) return false
+            val frameLen =
+                (blob[pos].toInt() and 0xFF) or ((blob[pos + 1].toInt() and 0xFF) shl 8)
+            pos += 2
+            if (frameLen % BYTES_PER_ENTRY != 0 || pos + frameLen > blob.size) return false
+            pos += frameLen
+        }
+        return pos == blob.size
+    }
+
+    private fun textPayloadLength(blob: ByteArray): Int? {
+        var end = blob.size
+        while (end > 0 && blob[end - 1] == 0.toByte()) end--
+        if (end < 4) return null
+        for (i in 0 until end) {
             val b = blob[i].toInt() and 0xFF
             // Valid text chars: p, x, r, comma, digits (delta) + h (range climbConcat)
             if (b != 0x70 && b != 0x78 && b != 0x72 && b != 0x68 && b != 0x2C &&
                 !(b in 0x30..0x39)
-            ) return false
+            ) return null
         }
-        return true
+        return end
     }
 
     // ── Single-frame encoding ─────────────────────────────────────

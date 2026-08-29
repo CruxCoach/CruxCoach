@@ -42,8 +42,8 @@ fun ActiveWorkoutScreen(
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     viewModel: ActiveWorkoutViewModel = hiltViewModel()
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val workoutBugReportTitle = stringResource(R.string.error_bug_report_workout_title)
 
     if (state.isFinished) {
         onFinish(
@@ -108,7 +108,7 @@ fun ActiveWorkoutScreen(
                         onDismiss = { viewModel.clearError() },
                         onReportBug = {
                             onNavigateToBugReport(
-                                context.getString(R.string.error_bug_report_workout_title),
+                                workoutBugReportTitle,
                                 state.error ?: ""
                             )
                             viewModel.clearError()
@@ -156,13 +156,15 @@ fun ActiveWorkoutScreen(
                         AnimatedContent(
                             targetState = state.currentExerciseIndex,
                             label = "exercise"
-                        ) { _ ->
-                            CurrentExerciseCard(
-                                exercise = current.exercise,
-                                currentSet = state.currentSet,
-                                completedSets = current.completedSets,
-                                totalSets = current.exercise.sets
-                            )
+                        ) { exerciseIndex ->
+                            state.exerciseProgress.getOrNull(exerciseIndex)?.let { animatedExercise ->
+                                CurrentExerciseCard(
+                                    exercise = animatedExercise.exercise,
+                                    currentSet = state.currentSet,
+                                    completedSets = animatedExercise.completedSets,
+                                    totalSets = animatedExercise.exercise.sets
+                                )
+                            }
                         }
                     }
 

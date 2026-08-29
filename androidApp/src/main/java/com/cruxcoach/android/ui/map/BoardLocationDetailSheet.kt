@@ -210,7 +210,7 @@ private fun BoardCard(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                board.boardTitle(),
+                board.boardTitle(stringResource(R.string.map_marker_moonboard_variant_unknown)),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -299,10 +299,10 @@ private fun BoardLocation.contactScore(): Int =
 
 /** Human label for one board within a venue card. MoonBoard → variant name;
  *  foreign info-layer brands → brand name; Kilter → layout + size. */
-private fun BoardLocation.boardTitle(): String = when (boardBrand) {
+private fun BoardLocation.boardTitle(unknownMoonVariant: String): String = when (boardBrand) {
     BoardBrand.MOONBOARD ->
         layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it)?.displayName }
-            ?: layoutName ?: BoardBrand.MOONBOARD.displayName
+            ?: layoutName ?: unknownMoonVariant
     // Kilter is the only family whose location feed carries layout + size
     // geometry, so it gets the richer "Kilter — <layout> (<size>)" label.
     BoardBrand.KILTER -> {

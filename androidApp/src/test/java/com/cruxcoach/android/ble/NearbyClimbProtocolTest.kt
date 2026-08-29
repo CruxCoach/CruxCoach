@@ -2,6 +2,7 @@ package com.cruxcoach.android.ble
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -103,6 +104,39 @@ class NearbyClimbProtocolTest {
         assertEquals(55, decoded.angle)
     }
 
+    @Test
+    fun `volatile UUID climb round-trips without claiming disconnect retention`() {
+        val uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            uuid,
+            40,
+            projectionSurvivesDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertEquals(uuid, decoded.climbUuid)
+        assertFalse(decoded.projectionSurvivesDisconnect)
+        assertEquals(0x01, encoded[4].toInt()) // legacy ClimbData type remains discoverable
+        assertEquals(23, encoded.size) // 22-byte legacy payload + one extension flag
+    }
+
+    @Test
+    fun `volatile string last climb round-trips as resend metadata`() {
+        val encoded = NearbyClimbProtocol.encodeLastClimb(
+            "99887766",
+            40,
+            projectionSurvivesDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.LastClimb>(decoded)
+        assertEquals("99887766", decoded.climbUuid)
+        assertFalse(decoded.projectionSurvivesDisconnect)
+        assertEquals(0x07, encoded[4].toInt()) // legacy LastClimb type remains discoverable
+        assertEquals(8, encoded[6].toInt() and 0x7F)
+    }
+
     // ── DisconnectRequest ────────────────────────────────────────
 
     @Test
@@ -127,6 +161,95 @@ class NearbyClimbProtocolTest {
         val decoded = NearbyClimbProtocol.decode(encoded)
 
         assertIs<NearbyPayload.BoardConnected>(decoded)
+    }
+
+    @Test
+    fun `board connected explicitly encodes disconnect rejection`() {
+        val encoded = NearbyClimbProtocol.encodeBoardConnected(
+            acceptsDisconnect = false,
+            supportsConcurrentConnections = true,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertEquals(0x02, encoded[5].toInt() and 0x02)
+        assertIs<NearbyPayload.BoardConnected>(decoded)
+        assertFalse(decoded.acceptsDisconnect)
+        assertTrue(decoded.supportsConcurrentConnections)
+    }
+
+    @Test
+    fun `board connected sender token round-trips while legacy payload stays compatible`() {
+        val token = 0x78563412
+        val encoded = NearbyClimbProtocol.encodeBoardConnected(senderToken = token)
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertEquals(10, encoded.size)
+        assertIs<NearbyPayload.BoardConnected>(decoded)
+        assertEquals(token, decoded.senderToken)
+
+        val legacy = NearbyClimbProtocol.decode(encoded.copyOf(6))
+        assertIs<NearbyPayload.BoardConnected>(legacy)
+        assertNull(legacy.senderToken)
+    }
+
+    @Test
+    fun `UUID climb carries disconnect rejection without changing its identity`() {
+        val uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            uuid,
+            angle = 40,
+            acceptsDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertEquals(uuid, decoded.climbUuid)
+        assertFalse(decoded.acceptsDisconnect)
+        assertTrue(decoded.projectionSurvivesDisconnect)
+    }
+
+    @Test
+    fun `string climb carries disconnect rejection without changing its identity`() {
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            "123456",
+            angle = 30,
+            acceptsDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertEquals("123456", decoded.climbUuid)
+        assertFalse(decoded.acceptsDisconnect)
+    }
+
+    @Test
+    fun `UUID climb carries multi-connect capability`() {
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            angle = 40,
+            acceptsDisconnect = false,
+            supportsConcurrentConnections = true,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertTrue(decoded.supportsConcurrentConnections)
+        assertFalse(decoded.acceptsDisconnect)
+    }
+
+    @Test
+    fun `string climb carries multi-connect capability`() {
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            "123456",
+            angle = 30,
+            acceptsDisconnect = false,
+            supportsConcurrentConnections = true,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertEquals("123456", decoded.climbUuid)
+        assertTrue(decoded.supportsConcurrentConnections)
     }
 
     // ── Gone ─────────────────────────────────────────────────────

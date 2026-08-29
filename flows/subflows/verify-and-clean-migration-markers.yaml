@@ -1,0 +1,37 @@
+appId: com.cruxcoach.android
+name: subflow-verify-and-clean-migration-markers
+---
+# The run-scoped ascent and its favorite entity both crossed the upgrade.
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+    timeout: 15000
+- assertVisible: "Top · 3 Versuche"
+- assertVisible: "4★"
+- tapOn: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_favorite_button"
+    timeout: 15000
+- assertVisible: "Von Favoriten entfernen"
+# Exact UI cleanup of both markers before the host's final package clear.
+- tapOn:
+    id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- tapOn:
+    id: "logbook_ascent_select_.*"
+    index: 0
+- tapOn:
+    id: "logbook_delete_selected"
+- assertVisible:
+    id: "logbook_delete_dialog"
+- tapOn:
+    id: "logbook_delete_confirm"
+- extendedWaitUntil:
+    notVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+    timeout: 10000
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

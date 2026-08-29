@@ -4,12 +4,18 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
+import com.cruxcoach.android.ble.QuantumControllerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.community.OwnKilterClimbPublisher
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.BoardSendMode
+import com.cruxcoach.android.data.CruxRelayManager
+import com.cruxcoach.android.data.CruxRelayState
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.LedHoldColors
@@ -55,9 +61,11 @@ class BoardClimbDetailOwnPublishTest {
     private val personalBoardRepo = mockk<PersonalBoardRepository>(relaxed = true)
     private val userPreferences = mockk<UserPreferences>(relaxed = true)
     private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
+    private val boardLayerManager = mockk<BoardLayerManager>(relaxed = true)
     private val sessionManager = mockk<BoardSessionManager>(relaxed = true)
     private val zoneManager = mockk<IntensityZoneManager>(relaxed = true)
     private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+    private val cruxRelayManager = mockk<CruxRelayManager>(relaxed = true)
     private val bleShareManager = mockk<BleShareManager>(relaxed = true)
     private val ownClimbPublisher = mockk<OwnKilterClimbPublisher>(relaxed = true)
     private val context = mockk<Context>(relaxed = true)
@@ -86,10 +94,18 @@ class BoardClimbDetailOwnPublishTest {
 
         every { bleConnection.connectionState } returns
             MutableStateFlow(ConnectionState.DISCONNECTED)
+        every { bleConnection.connectedBoardDescriptor } returns MutableStateFlow(null)
+        every { bleConnection.quantumControllerState } returns MutableStateFlow(QuantumControllerState())
+        every { boardLayerManager.state } returns MutableStateFlow(BoardLayerState())
         every { sessionManager.restTimer } returns MutableStateFlow(RestTimerState())
         every { bleShareManager.uiState } returns MutableStateFlow(BleShareUiState())
+        every { cruxRelayManager.state } returns MutableStateFlow(CruxRelayState())
         every { userPreferences.gradeScale } returns flowOf(GradeScale.V_SCALE)
         every { userPreferences.ledHoldColors } returns flowOf(LedHoldColors())
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
         every { zoneManager.zones } returns
             MutableStateFlow(IntensityZones(warmUpCeiling = 10.0, optimalCeiling = 20.0, isPersonalized = false))
         // Flow surfaces the found-climb load path reads.
@@ -125,10 +141,12 @@ class BoardClimbDetailOwnPublishTest {
             personalBoardRepo = personalBoardRepo,
             userPreferences = userPreferences,
             bleConnection = bleConnection,
+            boardLayerManager = boardLayerManager,
             sessionManager = sessionManager,
             zoneManager = zoneManager,
             climbAdvertiser = climbAdvertiser,
             sessionQueueManager = mockk(relaxed = true),
+            cruxRelayManager = cruxRelayManager,
             bleShareManager = bleShareManager,
             kilterSyncEngine = mockk(relaxed = true),
             nostrSigner = mockk(relaxed = true),

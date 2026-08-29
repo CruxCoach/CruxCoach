@@ -12,27 +12,90 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Verifies the elapsedRealtime-based throttle in [UpdateChecker] (§6.12).
+ * Verifies the elapsedRealtime-based throttle in [UpdateChecker] (§6.12) and
+ * the FEAT-050 source-traversal rules.
  *
  * Uses a captured wall-time provider so tests can advance simulated
  * boot-time without touching the real clock. The UpdaterPreferences,
- * CodebergReleaseClient, and InstallSourceGate collaborators are mocked
- * — this test is strictly about the skip/throttle/allow decision tree.
+ * source list and InstallSourceGate collaborators are mocked — this test is
+ * strictly about the skip/throttle/allow decision tree and about which
+ * source gets asked next.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdateCheckerThrottleTest {
 
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
     private val preferences: UpdaterPreferences = mockk(relaxed = true)
-    private val client: CodebergReleaseClient = mockk(relaxed = true)
+    private val registry: UpdateSourceRegistry = mockk(relaxed = true)
+    private val sourceFactory: ReleaseSourceFactory = mockk(relaxed = true)
 
     private var simulatedRealtimeMs: Long = 10_000L
 
-    private fun checker(): UpdateChecker = UpdateChecker(
+    private val forgeSource = UpdateSource(
+        id = "forge",
+        kind = UpdateSource.Kind.FORGE,
+        url = "https://codeberg.org/api/v1",
+        owner = "CruxCoach",
+        repo = "CruxCoach",
+    )
+    private val nostrSource = UpdateSource(
+        id = "zapstore",
+        kind = UpdateSource.Kind.NOSTR,
+        url = "wss://relay.zapstore.dev",
+        cdn = "https://cdn.zapstore.dev",
+    )
+    private val manifestSource = UpdateSource(
+        id = "website",
+        kind = UpdateSource.Kind.MANIFEST,
+        url = "https://cruxcoach.org/apk-target.json",
+    )
+
+    private fun checker(
+        deviceSupportGate: DeviceSupportGate = DeviceSupportGate(sdkInt = 99, minSdkNextRelease = 28),
+    ): UpdateChecker = UpdateChecker(
         preferences = preferences,
-        client = client,
+        sourceFactory = sourceFactory,
         installSourceGate = installSourceGate,
+        registry = registry,
+        deviceSupportGate = deviceSupportGate,
         elapsedRealtimeProvider = { simulatedRealtimeMs },
+    )
+
+    /**
+     * Wires an ordered source list, each with a canned answer. Also records
+     * which sources were actually asked, so tests can assert that traversal
+     * stopped where it should.
+     */
+    private val asked = mutableListOf<String>()
+
+    private fun stubSources(vararg entries: Pair<UpdateSource, ReleaseSource.Result>) {
+        coEvery { registry.discoverySources() } returns entries.map { it.first }
+        entries.forEach { (source, result) ->
+            val releaseSource: ReleaseSource = mockk(relaxed = true)
+            every { releaseSource.source } returns source
+            every { releaseSource.id } returns source.id
+            coEvery { releaseSource.fetchNewerThan(any(), any()) } coAnswers {
+                asked += source.id
+                result
+            }
+            every { sourceFactory.create(source) } returns releaseSource
+        }
+        // Default: derive nothing extra, so downloadUrls is just the primary.
+        coEvery { registry.downloadUrlsFor(any(), any(), any()) } coAnswers {
+            listOfNotNull(thirdArg<String?>())
+        }
+    }
+
+    private fun release(version: String, apkUrl: String = "https://x/$version.apk") = DiscoveredRelease(
+        tagName = "v$version",
+        version = SemVer.parseOrNull(version)!!,
+        apkUrl = apkUrl,
+        apkSha256 = "a".repeat(64),
+        apkSha256Url = "https://x/$version.apk.sha256",
+        apkSizeBytes = 1000,
+        releaseNotesMarkdown = "notes",
+        releasePageUrl = "https://cruxcoach.org/#download",
+        publishedAtEpochSeconds = 0,
     )
 
     private fun stubGateAllowed() {
@@ -73,7 +136,7 @@ class UpdateCheckerThrottleTest {
     fun `manual trigger bypasses the auto-check-disabled guard`() = runTest {
         stubGateAllowed()
         stubPrefsSnapshot(UpdaterState(autoCheckEnabled = false))
-        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+        stubSources(forgeSource to ReleaseSource.Result.NotModified)
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
 
@@ -110,7 +173,7 @@ class UpdateCheckerThrottleTest {
                 lastCheckBootRealtime = 100L,
             ),
         )
-        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+        stubSources(forgeSource to ReleaseSource.Result.NotModified)
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
 
@@ -130,7 +193,7 @@ class UpdateCheckerThrottleTest {
                 lastCheckBootRealtime = 100L,
             ),
         )
-        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+        stubSources(forgeSource to ReleaseSource.Result.NotModified)
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
@@ -147,28 +210,18 @@ class UpdateCheckerThrottleTest {
                 lastCheckBootRealtime = 0L,
             ),
         )
-        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+        stubSources(forgeSource to ReleaseSource.Result.NotModified)
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
         assertTrue(outcome is UpdateChecker.CheckOutcome.NotModified)
     }
 
-    private fun releaseWithApk(tag: String): CodebergRelease = CodebergRelease(
-        id = 1,
-        tagName = tag,
-        htmlUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/$tag",
-        assets = listOf(
-            CodebergAsset(name = "CruxCoach-$tag.apk", browserDownloadUrl = "https://x/$tag.apk", size = 1000),
-            CodebergAsset(name = "CruxCoach-$tag.apk.sha256", browserDownloadUrl = "https://x/$tag.apk.sha256", size = 64),
-        ),
-    )
-
     @Test
     fun `a newer pending version clears the prior version's dismiss and re-arm state`() = runTest {
         stubGateAllowed()
         simulatedRealtimeMs = 10_000L
-        // Installed = BuildConfig.VERSION_NAME (0.2.1 in the test build). The user
+        // Installed = BuildConfig.VERSION_NAME (0.2.x in the test build). The user
         // was already notified about an older pending 0.2.5 and swiped it away;
         // now a newer 9.9.9 is available. The dismiss/re-arm state must NOT carry
         // over, else 9.9.9 could never be re-surfaced.
@@ -182,9 +235,7 @@ class UpdateCheckerThrottleTest {
         coEvery { preferences.snapshot() } returns seed
         val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
         coEvery { preferences.update(capture(captured)) } just Runs
-        coEvery { client.fetchReleases(any(), any()) } returns
-            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
-        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9"), "etag-b"))
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
@@ -209,15 +260,59 @@ class UpdateCheckerThrottleTest {
         coEvery { preferences.snapshot() } returns seed
         val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
         coEvery { preferences.update(capture(captured)) } just Runs
-        coEvery { client.fetchReleases(any(), any()) } returns
-            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
-        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9"), "etag-b"))
 
         checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
         val finalState = captured.fold(seed) { s, f -> f(s) }
         assertEquals(123L, finalState.notifDismissedAtEpochMs)
         assertEquals(3, finalState.notifReArmCount)
+    }
+
+    @Test
+    fun `re-detecting the same version preserves an active pipeline stage`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(
+            autoCheckEnabled = true,
+            pendingVersionName = "9.9.9",
+            pipelineStage = PipelineStage.READY_TO_INSTALL,
+            pendingDownloadSourceIndex = 1,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9"), "etag-b"))
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        val finalState = captured.fold(seed) { state, transform -> transform(state) }
+        assertEquals(PipelineStage.READY_TO_INSTALL, finalState.pipelineStage)
+        assertEquals(1, finalState.pendingDownloadSourceIndex)
+    }
+
+    @Test
+    fun `new release does not replace an in-flight PackageInstaller session`() = runTest {
+        stubGateAllowed()
+        val seed = UpdaterState(
+            lastCheckEtags = mapOf("forge" to "installing-etag"),
+            pendingTagName = "v0.2.5",
+            pendingVersionName = "0.2.5",
+            pendingDownloadUrls = listOf("https://old.example/app.apk"),
+            pipelineStage = PipelineStage.INSTALLING,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9"), "new-etag"))
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
+
+        assertTrue(outcome is UpdateChecker.CheckOutcome.Update)
+        val finalState = captured.fold(seed) { state, transform -> transform(state) }
+        assertEquals(PipelineStage.INSTALLING, finalState.pipelineStage)
+        assertEquals("0.2.5", finalState.pendingVersionName)
+        assertEquals(mapOf("forge" to "installing-etag"), finalState.lastCheckEtags)
     }
 
     @Test
@@ -235,13 +330,343 @@ class UpdateCheckerThrottleTest {
                 lastCheckBootRealtime = 3_600_000L,
             ),
         )
-        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+        stubSources(forgeSource to ReleaseSource.Result.NotModified)
 
         val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
         assertTrue(
             "a post-reboot check must not be throttled, was $outcome",
             outcome is UpdateChecker.CheckOutcome.NotModified,
+        )
+    }
+
+    // ---------------------------------------------------------------- FEAT-050
+
+    @Test
+    fun `forge outage falls through to the signed Nostr source`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        val cdnUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}"
+        stubSources(
+            forgeSource to ReleaseSource.Result.Error("HTTP 503"),
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9", cdnUrl)),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected update from Nostr, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        assertEquals(cdnUrl, (outcome as UpdateChecker.CheckOutcome.Update).info.apkUrl)
+        assertEquals(listOf("forge", "zapstore"), asked)
+    }
+
+    @Test
+    fun `traversal continues past every failing source and reports the last error`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.Error("HTTP 503"),
+            nostrSource to ReleaseSource.Result.Error("relay_unavailable"),
+            manifestSource to ReleaseSource.Result.Error("HTTP 404"),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals("HTTP 404", (outcome as UpdateChecker.CheckOutcome.Error).message)
+        assertEquals(listOf("forge", "zapstore", "website"), asked)
+    }
+
+    @Test
+    fun `all sources failing does not stamp the throttle, keeping the retry open`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(autoCheckEnabled = true, lastCheckBootRealtime = 0L)
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        stubSources(forgeSource to ReleaseSource.Result.Error("HTTP 503"))
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        val finalState = captured.fold(seed) { s, f -> f(s) }
+        assertEquals(
+            "a failed round must leave lastCheckBootRealtime alone so " +
+                "NETWORK_AVAILABLE can retry immediately",
+            0L,
+            finalState.lastCheckBootRealtime,
+        )
+        assertEquals(CheckResult.ERROR, finalState.lastCheckResult)
+    }
+
+    @Test
+    fun `every source is asked even after one already reported an update`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.Success(release("9.9.9")),
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9")),
+        )
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(listOf("forge", "zapstore"), asked)
+    }
+
+    @Test
+    fun `a lower-priority source's update is found even when the primary has none`() = runTest {
+        // The freeze hazard this design exists to remove: the primary is
+        // reachable and simply has nothing newer (an archived repo still
+        // serving its final release list). It must not hide the source that
+        // does have the release.
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        val cdnUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}"
+        stubSources(
+            forgeSource to ReleaseSource.Result.Success(release = null, etag = "e1"),
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9", cdnUrl)),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected the Nostr update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        assertEquals("9.9.9", (outcome as UpdateChecker.CheckOutcome.Update).info.versionName)
+        assertEquals(listOf("forge", "zapstore"), asked)
+    }
+
+    @Test
+    fun `a NotModified primary does not hide a newer release elsewhere`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.NotModified,
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9")),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected an update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+    }
+
+    @Test
+    fun `the highest version across all sources wins`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.Success(release("9.9.9")),
+            nostrSource to ReleaseSource.Result.Success(release("10.0.0")),
+            manifestSource to ReleaseSource.Result.Success(release("9.9.10")),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(
+            "10.0.0",
+            (outcome as UpdateChecker.CheckOutcome.Update).info.versionName,
+        )
+    }
+
+    @Test
+    fun `on a version tie the higher-priority source keeps the first download slot`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        val forgeUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/download/v9.9.9/x.apk"
+        val cdnUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}"
+        stubSources(
+            forgeSource to ReleaseSource.Result.Success(release("9.9.9", forgeUrl)),
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9", cdnUrl)),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(
+            forgeUrl,
+            (outcome as UpdateChecker.CheckOutcome.Update).info.apkUrl,
+        )
+    }
+
+    @Test
+    fun `all sources reporting no update yields NoUpdate, not an error`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.Success(release = null, etag = "e1"),
+            nostrSource to ReleaseSource.Result.Success(release = null),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue(outcome is UpdateChecker.CheckOutcome.NoUpdate)
+        assertEquals(listOf("forge", "zapstore"), asked)
+    }
+
+    @Test
+    fun `a failing source does not stop the sweep from finding an update`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(
+            forgeSource to ReleaseSource.Result.Error("HTTP 503"),
+            nostrSource to ReleaseSource.Result.Success(release = null),
+            manifestSource to ReleaseSource.Result.Success(release("9.9.9")),
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected an update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        assertEquals(listOf("forge", "zapstore", "website"), asked)
+    }
+
+    @Test
+    fun `each source gets its own ETag, never another source's`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seenEtags = mutableMapOf<String, String?>()
+        stubPrefsSnapshot(
+            UpdaterState(
+                autoCheckEnabled = true,
+                lastCheckEtags = mapOf("forge" to "etag-forge", "zapstore" to "etag-zapstore"),
+            ),
+        )
+        coEvery { registry.discoverySources() } returns listOf(forgeSource, nostrSource)
+        coEvery { registry.downloadUrlsFor(any(), any(), any()) } returns listOf("https://x/a.apk")
+        listOf(
+            forgeSource to ReleaseSource.Result.Error("boom"),
+            nostrSource to ReleaseSource.Result.Success(release("9.9.9")),
+        ).forEach { (source, result) ->
+            val rs: ReleaseSource = mockk(relaxed = true)
+            every { rs.source } returns source
+            every { rs.id } returns source.id
+            coEvery { rs.fetchNewerThan(any(), any()) } coAnswers {
+                seenEtags[source.id] = secondArg()
+                result
+            }
+            every { sourceFactory.create(source) } returns rs
+        }
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals("etag-forge", seenEtags["forge"])
+        assertEquals("etag-zapstore", seenEtags["zapstore"])
+    }
+
+    @Test
+    fun `a discovered release nobody can serve is treated as a source failure`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        coEvery { registry.discoverySources() } returns listOf(forgeSource, nostrSource)
+        // No configured source can produce a URL for these bytes.
+        coEvery { registry.downloadUrlsFor(any(), any(), any()) } returns emptyList()
+        listOf(
+            forgeSource to ReleaseSource.Result.Success(release("9.9.9")),
+            nostrSource to ReleaseSource.Result.Error("relay_unavailable"),
+        ).forEach { (source, result) ->
+            val rs: ReleaseSource = mockk(relaxed = true)
+            every { rs.source } returns source
+            every { rs.id } returns source.id
+            coEvery { rs.fetchNewerThan(any(), any()) } coAnswers {
+                asked += source.id
+                result
+            }
+            every { sourceFactory.create(source) } returns rs
+        }
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        // A newer version exists but nothing can serve it. Reporting NoUpdate
+        // would hide a broken release, so this must surface as an error.
+        assertEquals(
+            "no_download_urls",
+            (outcome as UpdateChecker.CheckOutcome.Error).message,
+        )
+        assertEquals(listOf("forge", "zapstore"), asked)
+    }
+
+    @Test
+    fun `a throwing source is contained and the walk continues`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        coEvery { registry.discoverySources() } returns listOf(forgeSource, nostrSource)
+        coEvery { registry.downloadUrlsFor(any(), any(), any()) } returns listOf("https://x/a.apk")
+
+        val throwing: ReleaseSource = mockk(relaxed = true)
+        every { throwing.source } returns forgeSource
+        every { throwing.id } returns forgeSource.id
+        coEvery { throwing.fetchNewerThan(any(), any()) } throws IllegalStateException("kaboom")
+        every { sourceFactory.create(forgeSource) } returns throwing
+
+        val healthy: ReleaseSource = mockk(relaxed = true)
+        every { healthy.source } returns nostrSource
+        every { healthy.id } returns nostrSource.id
+        coEvery { healthy.fetchNewerThan(any(), any()) } returns
+            ReleaseSource.Result.Success(release("9.9.9"))
+        every { sourceFactory.create(nostrSource) } returns healthy
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue(
+            "a source throwing must not abort the whole check, was $outcome",
+            outcome is UpdateChecker.CheckOutcome.Update,
+        )
+    }
+
+    @Test
+    fun `a device past its last release stops before any network call`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9")))
+
+        val outcome = checker(
+            deviceSupportGate = DeviceSupportGate(sdkInt = 27, minSdkNextRelease = 28),
+        ).maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(
+            UpdateChecker.REASON_END_OF_SUPPORT,
+            (outcome as UpdateChecker.CheckOutcome.Skipped).reason,
+        )
+        assertEquals(
+            "an update this device can never install must not be fetched, " +
+                "let alone offered",
+            emptyList<String>(),
+            asked,
+        )
+    }
+
+    @Test
+    fun `a device on the boundary still checks normally`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        stubSources(forgeSource to ReleaseSource.Result.Success(release("9.9.9")))
+
+        val outcome = checker(
+            deviceSupportGate = DeviceSupportGate(sdkInt = 28, minSdkNextRelease = 28),
+        ).maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected a normal update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+    }
+
+    @Test
+    fun `an empty source list errors instead of silently never checking`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        coEvery { registry.discoverySources() } returns emptyList()
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(
+            "no_discovery_sources",
+            (outcome as UpdateChecker.CheckOutcome.Error).message,
         )
     }
 }

@@ -2,13 +2,19 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardLedMode
+import io.mockk.coEvery
 import io.mockk.coVerify
+import kotlinx.coroutines.flow.flowOf
+import com.cruxcoach.android.data.BoardSendMode
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,7 +47,16 @@ class SessionQueueManagerTest {
     private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
     private val climbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
-    private val userPreferences = mockk<UserPreferences>(relaxed = true)
+    private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+    // These two decide whether an advance sends at all. A relaxed mock gives
+    // back nothing usable, and the resolution then falls back — which would
+    // make these tests pass without exercising the path they are about.
+    private val userPreferences = mockk<UserPreferences>(relaxed = true).also {
+        every { it.singleConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
+        every { it.multiConnectionBoardSendMode } returns flowOf(BoardSendMode.AUTOMATIC)
+        every { it.moonBoardLedMode } returns flowOf(MoonBoardLedMode.BELOW)
+        every { it.nearbyClimbSharing } returns flowOf(true)
+    }
 
     @Before
     fun setup() {
@@ -49,7 +64,12 @@ class SessionQueueManagerTest {
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
         queueManager = SessionQueueManager(
-            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
+            bleConnection,
+            boardRepository,
+            climbNameResolver,
+            userPreferences,
+            managerScope,
+            climbAdvertiser = climbAdvertiser,
         )
     }
 
@@ -71,6 +91,7 @@ class SessionQueueManagerTest {
         queueManager.onQueueChanged = { }
         queueManager.onCurrentClimbChanged = { }
         queueManager.onParticipantsChanged = { }
+        queueManager.onSessionInfoChanged = { }
         queueManager.remoteAddClimb = { _, _ -> }
 
         queueManager.endQueue()
@@ -78,6 +99,7 @@ class SessionQueueManagerTest {
         assertNull("onQueueChanged must be null after endQueue", queueManager.onQueueChanged)
         assertNull("onCurrentClimbChanged must be null after endQueue", queueManager.onCurrentClimbChanged)
         assertNull("onParticipantsChanged must be null after endQueue", queueManager.onParticipantsChanged)
+        assertNull("onSessionInfoChanged must be null after endQueue", queueManager.onSessionInfoChanged)
         assertNull("remoteAddClimb must be null after endQueue", queueManager.remoteAddClimb)
     }
 
@@ -94,6 +116,49 @@ class SessionQueueManagerTest {
         assertEquals(0, state.participantCount)
         assertEquals(-1, state.currentIndex)
         assertFalse(state.isActive)
+    }
+
+    @Test
+    fun `visibility is per session and resets when the queue ends`() {
+        queueManager.startQueue("Local host")
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+
+        queueManager.endQueue()
+        queueManager.startQueue("Published host", SessionVisibility.JOINABLE)
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+
+        queueManager.endQueue()
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+
+        queueManager.setParticipantRole(0, "Remote host")
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+    }
+
+    @Test
+    fun `promoted host stays local until one explicit visibility decision`() {
+        queueManager.setParticipantRole(77, "Old host")
+        queueManager.applyRemoteState(
+            currentIndex = 0,
+            items = listOf(QueueItem("kept", 40)),
+        )
+
+        queueManager.promoteToHost("New host")
+
+        val promoted = queueManager.state.value
+        assertEquals(SessionRole.HOST, promoted.role)
+        assertEquals(listOf("kept"), promoted.queue.map { it.climbUuid })
+        assertEquals(SessionVisibility.LOCAL_ONLY, promoted.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, promoted.visibilityRequested)
+        assertTrue(promoted.pendingHostVisibilityDecision)
+
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+        assertFalse(queueManager.state.value.pendingHostVisibilityDecision)
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibilityRequested)
+        assertEquals(
+            "request alone must not claim that publication is already active",
+            SessionVisibility.LOCAL_ONLY,
+            queueManager.state.value.visibility,
+        )
     }
 
     // ===== Participant count consistency =====
@@ -215,6 +280,22 @@ class SessionQueueManagerTest {
     }
 
     @Test
+    fun `participant never resolves or writes current climb to physical board`() {
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(
+            currentIndex = 0,
+            items = listOf(QueueItem("remote-climb", 40)),
+        )
+
+        queueManager.sendCurrentClimbToBoard()
+
+        verify(exactly = 0) { boardRepository.getClimbByUuid(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+    }
+
+    @Test
     fun `addClimb as host adds to local queue`() {
         queueManager.startQueue("Host")
 
@@ -266,19 +347,19 @@ class SessionQueueManagerTest {
     // ===== Migration invariants =====
 
     /**
-     * Regression guard: the participant's local sessionId is always 0 because
-     * SessionGattBridge.joinSession() calls setParticipantRole(0, "").
+     * The participant's session id is the HOST's, read from the advertisement
+     * at join time. It used to be a hardcoded 0, which meant a participant had
+     * no way to recognise their own session.
      *
-     * If someone were to "fix" this by passing the real ID, migration code in
-     * SessionGattBridge would also need updating — the test documents the contract.
+     * Migration does not read this field — it keeps its own copy captured at
+     * join — so the two remain independent.
      */
     @Test
-    fun `setParticipantRole with id 0 yields sessionId 0 — migration must not use it as stale filter`() {
-        queueManager.setParticipantRole(0, "Host")
+    fun `setParticipantRole carries the host session id into the state`() {
+        queueManager.setParticipantRole(4711, "Host")
         assertEquals(
-            "Participant sessionId is 0 by design; SessionGattBridge reads the real host session " +
-                "ID from NearbyClimbScanner.nearbySessions instead",
-            0,
+            "the participant must be able to identify their own session",
+            4711,
             queueManager.state.value.sessionId
         )
     }
@@ -546,11 +627,13 @@ class SessionQueueManagerTest {
     )
 
     private fun setupConnectedSendScenario(connectedBrand: BoardBrand?) {
+        val uuid = "305ecf35-4ab5-4c9c-afd5-91af0848004b"
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
         every { bleConnection.connectedBoardBrand } returns MutableStateFlow(connectedBrand)
-        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("uuid-mb")
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb(uuid)
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
         queueManager.startQueue("Host")
-        queueManager.addClimb("uuid-mb", 40)
+        queueManager.addClimb(uuid, 40)
     }
 
     @Test
@@ -561,7 +644,7 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
         coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
     }
 
@@ -571,7 +654,7 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
     }
 
     @Test
@@ -582,7 +665,70 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
-        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+    }
+
+    @Test
+    fun `remote resend respects explicit mode while local lamp remains authorized`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+
+        // Adding the first climb and a peer resend both lack the host user's
+        // explicit wall-write authority.
+        queueManager.requestRemoteResend()
+
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
+
+        // The host's own lamp action is explicit and force-bypasses dedup.
+        queueManager.resendCurrentClimb()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `remote resend force-writes the same climb only in automatic mode`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+
+        // The first item was projected automatically. A peer resend is still
+        // a real resend in AUTOMATIC mode, despite the matching dedup key.
+        queueManager.requestRemoteResend()
+
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `single-connect host keeps automatic mode when participants join`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.addParticipant("AA:BB:CC:DD:EE:01", "Participant")
+        queueManager.addClimb("second", 40)
+
+        queueManager.nextClimb()
+
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `participant applies host explicit-send state`() {
+        queueManager.setParticipantRole(0, "Host")
+
+        queueManager.updateSessionInfo(
+            hostName = "Host",
+            participantCount = 2,
+            awaitingExplicitSend = true,
+        )
+
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
     }
 
     @Test
@@ -600,6 +746,305 @@ class SessionQueueManagerTest {
         assertEquals(1, queueManager.state.value.currentIndex)
 
         queueManager.applyRemoteCurrentIndex(-1) // invalid
+        assertEquals(1, queueManager.state.value.currentIndex)
+    }
+
+    // ===== Playlist playback (loadPlaylist + rest arming) =====
+
+    @Test
+    fun `loadPlaylist starts a host queue and marks it as playlist`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("a", 40), QueueItem("b", 40)),
+        )
+
+        val s = queueManager.state.value
+        assertEquals(SessionRole.HOST, s.role)
+        assertEquals(2, s.queue.size)
+        assertEquals(0, s.currentIndex)
+        assertTrue("playlist flag must be set", queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `selecting a playlist climb projects it immediately in automatic mode`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("resolved")
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("first", 40), QueueItem("second", 40)),
+        )
+
+        queueManager.setCurrentClimb(1)
+
+        assertEquals(1, queueManager.state.value.currentIndex)
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        verify(exactly = 2) {
+            climbAdvertiser.advertiseClimb(any(), any(), true, any())
+        }
+        assertFalse(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `selecting a playlist climb waits for light in explicit mode`() {
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.EXPLICIT)
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("resolved")
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("first", 40), QueueItem("second", 40)),
+        )
+
+        queueManager.setCurrentClimb(1)
+
+        assertEquals(1, queueManager.state.value.currentIndex)
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+        verify(exactly = 1) {
+            climbAdvertiser.advertiseClimb(any(), any(), true, any())
+        }
+        assertTrue(queueManager.state.value.awaitingExplicitSend)
+    }
+
+    @Test
+    fun `loadPlaylist always starts local only even when joinable is requested`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("a", 40)),
+            SessionVisibility.JOINABLE,
+        )
+
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+    }
+
+    @Test
+    fun `saved playlist rejects later attempts to become joinable`() {
+        queueManager.loadPlaylist(
+            "Private",
+            listOf(QueueItem("a", 40)),
+        )
+
+        queueManager.setVisibility(SessionVisibility.JOINABLE)
+        queueManager.setVisibilityRequested(SessionVisibility.JOINABLE)
+
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibility)
+        assertEquals(SessionVisibility.LOCAL_ONLY, queueManager.state.value.visibilityRequested)
+        assertTrue(queueManager.state.value.isPlaylist)
+    }
+
+    @Test
+    fun `loadPlaylist cannot repurpose an active joinable session`() {
+        queueManager.startQueue("Shared host", SessionVisibility.JOINABLE)
+        queueManager.addClimb("shared", 40)
+
+        queueManager.loadPlaylist("Private", listOf(QueueItem("private", 30)))
+
+        assertEquals(SessionVisibility.JOINABLE, queueManager.state.value.visibility)
+        assertEquals(listOf("shared"), queueManager.state.value.queue.map { it.climbUuid })
+        assertFalse(queueManager.state.value.isPlaylist)
+        assertFalse(queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `loadPlaylist replaces an existing ad-hoc queue`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("old", 40)
+
+        queueManager.loadPlaylist("Host", listOf(QueueItem("new", 45)))
+
+        val s = queueManager.state.value
+        assertEquals(listOf("new"), s.queue.map { it.climbUuid })
+        assertEquals(0, s.currentIndex)
+    }
+
+    @Test
+    fun `loadPlaylist with empty items is a no-op`() {
+        queueManager.loadPlaylist("Host", emptyList())
+        assertFalse(queueManager.state.value.isActive)
+        assertFalse(queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `nextClimb arms the rest timer for the climb it leaves`() {
+        val rests = mutableListOf<Int>()
+        queueManager.onRestRequested = { rests.add(it) }
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 270),
+                QueueItem("b", 40),
+                QueueItem("c", 40, restAfterSeconds = 60),
+            ),
+        )
+        // Hook is set AFTER loadPlaylist in production (play() sets it before);
+        // re-set here because loadPlaylist doesn't clear it.
+        queueManager.onRestRequested = { rests.add(it) }
+
+        queueManager.nextClimb() // leave a (rest 270)
+        queueManager.nextClimb() // leave b (no rest)
+        queueManager.nextClimb() // at end — no-op
+
+        assertEquals(listOf(270), rests)
+        assertEquals(2, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `setCurrentClimb jump does not arm the rest timer`() {
+        val rests = mutableListOf<Int>()
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 300),
+                QueueItem("b", 40),
+                QueueItem("c", 40),
+            ),
+        )
+        queueManager.onRestRequested = { rests.add(it) }
+
+        queueManager.setCurrentClimb(2) // manual jump skips pacing
+
+        assertTrue("jumping must not start a rest", rests.isEmpty())
+    }
+
+    @Test
+    fun `rest metadata follows the item through reorder`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 100),
+                QueueItem("b", 40),
+            ),
+        )
+
+        queueManager.moveClimb(0, 1)
+
+        val s = queueManager.state.value
+        assertEquals(listOf("b", "a"), s.queue.map { it.climbUuid })
+        assertEquals(100, s.queue[1].restAfterSeconds)
+    }
+
+    @Test
+    fun `endQueue clears playlist flag and rest hook`() {
+        queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
+        queueManager.onRestRequested = { }
+
+        queueManager.endQueue()
+
+        assertFalse(queueManager.isPlaylistQueue)
+        assertNull(queueManager.onRestRequested)
+    }
+
+    @Test
+    fun `addClimb during playlist keeps playlist flag`() {
+        // Participants/host may append extra climbs mid-session; the queue
+        // stays a "playlist queue" (nearby auto-import remains suppressed).
+        queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
+        queueManager.addClimb("extra", 40)
+        assertTrue(queueManager.isPlaylistQueue)
+        assertEquals(2, queueManager.state.value.queue.size)
+    }
+
+    // ===== External board-app override =====
+
+    @Test
+    fun `empty queue is not mistaken for an external board override`() {
+        queueManager.startQueue("Host")
+
+        val encoded = queueManager.encodeCurrentClimb()
+
+        assertEquals(0xFF, encoded[0].toInt() and 0xFF)
+        assertFalse(SessionQueueManager.isExternalBoardOverride(encoded))
+    }
+
+    @Test
+    fun `host external write is broadcast as a dedicated current-climb sentinel`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        var currentChanged = 0
+        queueManager.onCurrentClimbChanged = { currentChanged++ }
+
+        queueManager.markExternalBoardWrite()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+        val encoded = queueManager.encodeCurrentClimb()
+        assertEquals(0xFF, encoded[0].toInt() and 0xFF)
+        assertTrue(SessionQueueManager.isExternalBoardOverride(encoded))
+        assertEquals(1, currentChanged)
+    }
+
+    @Test
+    fun `identified external write becomes projected climb without entering host queue`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("playlist-climb", 40)
+
+        queueManager.markExternalBoardWrite("external-climb", 35)
+
+        val state = queueManager.state.value
+        assertTrue(state.externalBoardOverride)
+        assertEquals(1, state.queue.size)
+        assertEquals("playlist-climb", state.currentClimb?.climbUuid)
+        assertEquals("external-climb", state.projectedClimb?.climbUuid)
+        assertEquals(35, state.projectedClimb?.angle)
+        assertTrue(SessionQueueManager.isExternalBoardOverride(queueManager.encodeCurrentClimb()))
+    }
+
+    @Test
+    fun `participant applies external override without writing the physical board`() {
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(0, listOf(QueueItem("remote-climb", 40)))
+
+        queueManager.applyRemoteExternalBoardWrite()
+        queueManager.sendCurrentClimbToBoard()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+        coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any(), any()) }
+    }
+
+    @Test
+    fun `successful host resend restores queue projection and clears external override`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.markExternalBoardWrite()
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns true
+
+        queueManager.sendCurrentClimbToBoard()
+
+        assertFalse(queueManager.state.value.externalBoardOverride)
+        assertEquals(0, queueManager.encodeCurrentClimb()[0].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `failed host resend keeps external override honest`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.markExternalBoardWrite()
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any(), any()) } returns false
+
+        queueManager.sendCurrentClimbToBoard()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+    }
+
+    @Test
+    fun `valid remote queue index clears external override`() {
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(0, listOf(QueueItem("a", 40), QueueItem("b", 40)))
+        queueManager.applyRemoteExternalBoardWrite()
+
+        queueManager.applyRemoteCurrentIndex(1)
+
+        assertFalse(queueManager.state.value.externalBoardOverride)
+        assertNull(queueManager.state.value.externalBoardClimb)
         assertEquals(1, queueManager.state.value.currentIndex)
     }
 }

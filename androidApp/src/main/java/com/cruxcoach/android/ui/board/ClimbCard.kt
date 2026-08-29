@@ -1,11 +1,13 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -14,6 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,13 +32,20 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.IntensityZones
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ClimbCard(
     climb: ClimbWithStats,
     gradeScale: GradeScale = GradeScale.V_SCALE,
     zones: IntensityZones? = null,
     onNavigateToSetter: ((pubkey: String) -> Unit)? = null,
-    onClimbClick: (String) -> Unit
+    onClimbClick: (String) -> Unit,
+    /** Long-press: add-to-list/playlist shortcut (browser context). */
+    onClimbLongClick: ((String) -> Unit)? = null,
+    /** One-tap append action, present only while a local playlist is running. */
+    onAddToBoardPlaylist: (() -> Unit)? = null,
+    /** Number of occurrences already queued at this angle. */
+    boardPlaylistCount: Int = 0,
 ) {
     // Cache computed values — estimateMoveCount() parses the frames string (expensive),
     // and formatDifficulty() does a lookup + String.format. Both are stable across
@@ -46,8 +59,15 @@ internal fun ClimbCard(
     }
 
     Card(
-        onClick = { onClimbClick(climb.uuid) },
-        modifier = Modifier.fillMaxWidth().testTag("board_climb_card"),
+        modifier = Modifier
+            .fillMaxWidth()
+            // combinedClickable instead of Card(onClick): long-press opens
+            // the add-to-list dialog straight from the browse list.
+            .combinedClickable(
+                onClick = { onClimbClick(climb.uuid) },
+                onLongClick = onClimbLongClick?.let { cb -> { cb(climb.uuid) } },
+            )
+            .testTag("board_climb_card"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
@@ -88,21 +108,16 @@ internal fun ClimbCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    // "Entwurf" badge: source='local' is a NECESSARY condition
-                    // (the row was authored here) but not SUFFICIENT — once
-                    // the climb has been Nostr-published, sync_status flips
-                    // to 'published_nostr' (or 'published_kilter'/'..._both')
-                    // and the badge becomes misleading. Pre-fix the badge
-                    // also showed for already-published own climbs because
-                    // markClimbPublishedNostr only updates sync_status, not
-                    // source. Treat 'draft' / 'failed' / NULL as still-a-draft.
+                    // "Entwurf" (draft) badge: a community/own climb is a
+                    // draft until it has a live Nostr publication. FEAT-024:
+                    // nostr_event_id is the SINGLE canonical publish signal —
+                    // the climb detail screen keys off the same column, so the
+                    // browser and detail can never disagree. source=='local'
+                    // scopes the badge to climbs authored on this device;
+                    // sync_status is intentionally NOT consulted (it can drift
+                    // from the real publish state).
                     val showDraftBadge = climb.source == "local" &&
-                        (climb.syncStatus == null ||
-                         climb.syncStatus == "draft" ||
-                         climb.syncStatus == "failed")
-                    if (climb.name.startsWith("TEST-")) {
-                        android.util.Log.d("ClimbCard", "badge-eval name=${climb.name} source=${climb.source} sync_status=${climb.syncStatus} kilter_status=${climb.kilterStatus} → showDraft=$showDraftBadge")
-                    }
+                        climb.nostrEventId.isNullOrBlank()
                     if (showDraftBadge) {
                         Surface(
                             color = OrangeAccent.copy(alpha = 0.18f),
@@ -118,53 +133,80 @@ internal fun ClimbCard(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Setter line: prefer the Kind-0/setter_username already
-                    // resolved into the row; else fall back to a short
-                    // `npub:<…>` stub for cruxcoach/local rows so own drafts
-                    // and own published climbs always show *something* even
-                    // when the local Kind-0 profile hasn't been published
-                    // yet (cache miss → setter_username column is NULL).
-                    // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
-                    val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
-                        ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
-                            climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                                ?.let { "npub:${it.take(16)}" }
-                        } else null
-                    setterDisplay?.let { setter ->
-                        // Click behaviour mirrors BoardClimbDetailScreen:
-                        // only cruxcoach-origin rows with a known pubkey
-                        // navigate to the setter's profile. Native Kilter
-                        // rows render as plain unclickable text — no search-
-                        // bar trigger, no link affordance.
-                        val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                        val isClickable = climb.origin == "cruxcoach"
-                            && setterPubkey != null
-                            && onNavigateToSetter != null
-                        Text(
-                            stringResource(R.string.board_climb_by_setter, setter),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isClickable) OrangeAccent
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = if (isClickable) {
-                                Modifier.clickable { onNavigateToSetter!!(setterPubkey!!) }
-                            } else Modifier
+                // Setter line: prefer the Kind-0/setter_username already
+                // resolved into the row; else fall back to a short
+                // `npub:<…>` stub for cruxcoach/local rows so own drafts
+                // and own published climbs always show *something* even
+                // when the local Kind-0 profile hasn't been published
+                // yet (cache miss → setter_username column is NULL).
+                // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
+                val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
+                    ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
+                        climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                            ?.let { "npub:${it.take(16)}" }
+                    } else null
+                // Click behaviour mirrors BoardClimbDetailScreen: only
+                // cruxcoach-origin rows with a known pubkey navigate to the
+                // setter's profile. Native Kilter rows render as plain
+                // unclickable text — no search-bar trigger, no link
+                // affordance.
+                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                val navigateToSetter = onNavigateToSetter
+                val onSetterClick: (() -> Unit)? =
+                    if (climb.origin == "cruxcoach" && setterPubkey != null && navigateToSetter != null) {
+                        { navigateToSetter(setterPubkey) }
+                    } else null
+                ClimbMetaLine(
+                    setter = setterDisplay,
+                    isRoute = climb.isRoute,
+                    framesCount = climb.framesCount,
+                    moveCount = moveCount,
+                    onSetterClick = onSetterClick,
+                )
+            }
+
+            if (onAddToBoardPlaylist != null) {
+                val queuedDescription = if (boardPlaylistCount > 0) {
+                    pluralStringResource(
+                        R.plurals.board_playlist_already_queued,
+                        boardPlaylistCount,
+                        boardPlaylistCount,
+                    )
+                } else null
+                Box(contentAlignment = Alignment.TopEnd) {
+                    IconButton(
+                        onClick = onAddToBoardPlaylist,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics {
+                                queuedDescription?.let { stateDescription = it }
+                            }
+                            .testTag("board_climb_add_to_playlist"),
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.board_playlist_add),
+                            tint = OrangeAccent,
+                            modifier = Modifier.size(30.dp),
                         )
                     }
-                    if (climb.isRoute) {
-                        Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (boardPlaylistCount > 0) {
+                        Surface(
+                            color = OrangeAccent,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { },
+                        ) {
+                            Text(
+                                "$boardPlaylistCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkBackground,
+                                modifier = Modifier.padding(horizontal = 5.dp),
+                            )
+                        }
                     }
                 }
+                Spacer(modifier = Modifier.width(2.dp))
             }
 
             Column(horizontalAlignment = Alignment.End) {
@@ -239,7 +281,13 @@ internal fun NoBoardDataCard(onSyncClick: () -> Unit) {
     }
 }
 
-/** Compact match/no-match icon for climb cards. */
+/**
+ * Compact match/no-match icon for climb cards.
+ *
+ * Gate any call site on `ClimbWithStats.isMatchStateKnown` — for community and
+ * BoardSesh climbs the stored flag is a placeholder, and a green "Matching"
+ * icon there would be invented information.
+ */
 @Composable
 internal fun MatchIndicator(isNomatch: Boolean) {
     val color = if (isNomatch) ErrorRed else SuccessGreen

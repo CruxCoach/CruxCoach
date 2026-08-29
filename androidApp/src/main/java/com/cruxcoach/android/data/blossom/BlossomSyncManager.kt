@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrConfig
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
@@ -13,6 +14,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -59,6 +62,8 @@ class BlossomSyncManager(
      * incremental-sync state across the upgrade.
      */
     prefsName: String = DEFAULT_PREFS_NAME,
+    /** Injectable wall clock for future-skew trust-boundary tests. */
+    private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000L },
 ) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
@@ -69,35 +74,18 @@ class BlossomSyncManager(
      * Fetches the manifest from Nostr relays. Uses dedicated short-lived
      * WebSockets to avoid coupling with the app's relay pool lifecycle.
      *
-     * Queries all relays in parallel and returns the manifest with the highest
-     * `created_at`. Kind 30078 is a parameterized-replaceable event, so
+     * Queries all relays in parallel and returns the NIP-01-preferred manifest:
+     * highest event `created_at`, then lowest event id on an exact timestamp
+     * tie. Kind 30078 is a parameterized-replaceable event, so
      * different relays may serve different versions (e.g. a relay that was
      * offline during the last publish still holds yesterday's manifest).
      * Picking first-success would deterministically pin us to the slowest-
      * updating relay and defeat every fresh publish.
      */
     suspend fun fetchManifest(): BlossomManifest = withContext(Dispatchers.IO) {
-        val relayUrls = NostrConfig.MANIFEST_RELAYS
-
-        val manifests = coroutineScope {
-            relayUrls.map { relayUrl ->
-                async {
-                    try {
-                        fetchManifestFromRelay(relayUrl)?.also {
-                            Log.d(TAG, "Manifest from $relayUrl: createdAt=${it.createdAt} chunks=${it.chunks.size}")
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Manifest fetch from $relayUrl failed", e)
-                        null
-                    }
-                }
-            }.awaitAll()
-        }.filterNotNull()
-
-        manifests.maxByOrNull { it.createdAt }
-            ?.also { Log.d(TAG, "Selected manifest: createdAt=${it.createdAt} chunks=${it.chunks.size}") }
-            ?: throw BlossomSyncException("Failed to fetch manifest from any relay")
+        fetchManifestWithRetry(manifestDTag) { relayUrl -> fetchManifestFromRelay(relayUrl) }
     }
+
 
     private suspend fun fetchManifestFromRelay(relayUrl: String): BlossomManifest? {
         return withTimeout(RELAY_TIMEOUT_MS) {
@@ -153,7 +141,19 @@ class BlossomSyncManager(
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)
-                                    result = Companion.validateManifest(parsed)
+                                    val candidate = Companion.validateManifest(parsed).copy(
+                                        eventCreatedAt = event.createdAt,
+                                        eventId = event.id,
+                                    )
+                                    if (!Companion.hasAcceptableTimestamps(candidate, nowSeconds())) {
+                                        Log.w(
+                                            TAG,
+                                            "Manifest timestamp too far in the future from $relayUrl: " +
+                                                "event=${candidate.eventCreatedAt} content=${candidate.createdAt}",
+                                        )
+                                        return
+                                    }
+                                    result = candidate
                                 }
                                 "EOSE" -> {
                                     ws.close(1000, "done")
@@ -196,12 +196,102 @@ class BlossomSyncManager(
     /**
      * Returns chunk names that have changed compared to stored hashes.
      * On first run, all chunks are returned.
+     *
+     * A stale signed manifest is a normal no-update result: keep the verified
+     * catalogue already on disk and do not expose any of its rollback hashes
+     * to callers. Callers also check [canApplyManifest] before auxiliary
+     * side-effects, but this guard keeps a future call site fail-safe.
      */
     fun getChangedChunks(manifest: BlossomManifest): List<BlossomChunk> {
+        if (!canApplyManifest(manifest)) return emptyList()
         return manifest.chunks.filter { chunk ->
             val storedHash = prefs.getString("chunk_sha256_${chunk.name}", null)
             storedHash != chunk.sha256
         }
+    }
+
+    /**
+     * Returns whether [manifest] is at least as new as the last manifest this
+     * per-board sync track completely applied. Equal timestamps remain valid so
+     * an interrupted import can resume from the same signed event.
+     */
+    fun canApplyManifest(manifest: BlossomManifest): Boolean {
+        val lastAccepted = lastAcceptedManifestTimestamp()
+        val currentTime = nowSeconds()
+        val acceptable = isManifestAcceptable(manifest, lastAccepted, currentTime)
+        if (!acceptable) {
+            if (!hasAcceptableTimestamps(manifest, currentTime)) {
+                Log.w(
+                    TAG,
+                    "[$manifestDTag] rejected future-dated manifest: " +
+                        "event=${manifest.eventCreatedAt} content=${manifest.createdAt}",
+                )
+            } else {
+                Log.w(
+                    TAG,
+                    "[$manifestDTag] rejected stale manifest: " +
+                        "${effectiveTimestamp(manifest)} < accepted $lastAccepted",
+                )
+            }
+        }
+        return acceptable
+    }
+
+    /**
+     * Advances this track's rollback watermark after a complete successful
+     * application (or after confirming that every chunk already matches).
+     * Never lowers an existing mark, even if a caller accidentally presents a
+     * stale manifest after the fail-safe check.
+     */
+    fun saveAcceptedManifestTimestamp(manifest: BlossomManifest) {
+        saveCompletedManifest(manifest, emptyList())
+    }
+
+    /**
+     * Atomically persists every successfully imported chunk hash together with
+     * the completed manifest watermark. Call this only after the importer has
+     * applied every changed chunk; partial Kilter runs intentionally continue
+     * to use [saveChunkHash] without advancing the watermark.
+     */
+    fun saveCompletedManifest(
+        manifest: BlossomManifest,
+        importedChunks: Iterable<BlossomChunk>,
+    ) {
+        val incoming = effectiveTimestamp(manifest)
+        val lastAccepted = lastAcceptedManifestTimestamp()
+        if (!hasAcceptableTimestamps(manifest, nowSeconds())) {
+            Log.w(
+                TAG,
+                "[$manifestDTag] refused future-dated completed manifest: " +
+                    "event=${manifest.eventCreatedAt} content=${manifest.createdAt}",
+            )
+        } else if (lastAccepted == null || incoming >= lastAccepted) {
+            val editor = prefs.edit()
+            importedChunks.forEach { chunk ->
+                editor.putString("chunk_sha256_${chunk.name}", chunk.sha256)
+            }
+            editor.putLong(KEY_LAST_MANIFEST_CREATED_AT, incoming).apply()
+        } else {
+            Log.w(
+                TAG,
+                "[$manifestDTag] refused to lower manifest watermark: " +
+                    "$incoming < accepted $lastAccepted"
+            )
+        }
+    }
+
+    internal fun lastAcceptedManifestTimestamp(): Long? {
+        if (!prefs.contains(KEY_LAST_MANIFEST_CREATED_AT)) return null
+        val stored = prefs.getLong(KEY_LAST_MANIFEST_CREATED_AT, 0L)
+        if (NostrEventPolicy.isCreatedAtAcceptable(stored, nowSeconds())) return stored
+
+        // Upgrade repair for clients that accepted an unbounded future
+        // envelope before 0.2.2. Remove only the poisoned ordering floor;
+        // retained chunk hashes still prevent unnecessary downloads, and the
+        // next safe signed manifest can establish a corrected watermark.
+        Log.w(TAG, "[$manifestDTag] removing implausibly future stored manifest watermark: $stored")
+        prefs.edit().remove(KEY_LAST_MANIFEST_CREATED_AT).apply()
+        return null
     }
 
     /**
@@ -366,7 +456,10 @@ class BlossomSyncManager(
         prefs.edit().putString("chunk_sha256_$chunkName", sha256).apply()
     }
 
-    /** Clears all stored chunk hashes, forcing a full re-download on next sync. */
+    /**
+     * Clears chunk hashes and the coupled manifest watermark, forcing a full
+     * re-download and deliberately re-arming first-run manifest acceptance.
+     */
     fun clearStoredHashes() {
         prefs.edit().clear().apply()
     }
@@ -377,6 +470,117 @@ class BlossomSyncManager(
     }
 
     companion object {
+
+        /** One relay's answer to a manifest query: a hit, a miss, or a failure. */
+        private data class RelayOutcome(
+            val relayUrl: String,
+            val manifest: BlossomManifest?,
+            val error: Throwable?,
+        )
+
+        /**
+         * Queries the relay set with bounded retries and returns the freshest
+         * manifest found.
+         *
+         * A single pass was not enough in practice. A fresh install syncs seven
+         * catalogues back to back, each doing its own manifest query, and a
+         * catalogue whose one query happened to land in a bad window failed for
+         * the whole run while its siblings succeeded — the "some boards fail on
+         * first download" report. Two things make that window likelier than it
+         * looks: public relays return transient 503s and connect timeouts (both
+         * observed on relay.damus.io and nostr-pub.wellorder.net), and a publish
+         * that only reached 2 of 3 relays leaves the third legitimately empty, so
+         * a single failure among the remaining two is already enough.
+         *
+         * The chunk-download path has retried across mirrors since day one
+         * ([DOWNLOAD_PASSES]); this closes the same gap on the metadata path.
+         *
+         * Split out from [fetchManifest] and parameterised so the retry behaviour
+         * is unit-testable without a live relay.
+         */
+        internal suspend fun fetchManifestWithRetry(
+            dTag: String,
+            relayUrls: List<String> = NostrConfig.MANIFEST_RELAYS,
+            passes: Int = MANIFEST_FETCH_PASSES,
+            fetchOne: suspend (String) -> BlossomManifest?,
+        ): BlossomManifest {
+            var lastError: Throwable? = null
+
+            for (pass in 0 until passes) {
+                val outcomes = coroutineScope {
+                    relayUrls.map { relayUrl ->
+                        async {
+                            try {
+                                RelayOutcome(relayUrl, fetchOne(relayUrl), null)
+                            } catch (e: TimeoutCancellationException) {
+                                // withTimeout's own signal — this relay was slow,
+                                // not the whole sync being cancelled.
+                                RelayOutcome(relayUrl, null, e)
+                            } catch (e: CancellationException) {
+                                // Real cancellation (user left the screen) must
+                                // propagate; swallowing it would keep the sync
+                                // running after its scope is gone.
+                                throw e
+                            } catch (e: Exception) {
+                                RelayOutcome(relayUrl, null, e)
+                            }
+                        }
+                    }.awaitAll()
+                }
+
+                // Log hit / miss / error separately: a relay that answers with no
+                // event is a replication gap, one that throws is an availability
+                // problem. Collapsing both into "failed" made field reports
+                // impossible to tell apart.
+                for (outcome in outcomes) {
+                    when {
+                        outcome.error != null -> {
+                            lastError = outcome.error
+                            Log.w(
+                                TAG,
+                                "[$dTag] relay ${outcome.relayUrl} failed " +
+                                    "(pass ${pass + 1}/$passes): ${outcome.error.message}"
+                            )
+                        }
+                        outcome.manifest == null ->
+                            Log.d(TAG, "[$dTag] relay ${outcome.relayUrl} has no manifest event")
+                        else ->
+                            Log.d(
+                                TAG,
+                                "[$dTag] relay ${outcome.relayUrl}: " +
+                                    "createdAt=${outcome.manifest.createdAt} chunks=${outcome.manifest.chunks.size}"
+                            )
+                    }
+                }
+
+                val newest = selectPreferredManifest(outcomes.mapNotNull { it.manifest })
+                if (newest != null) {
+                    Log.d(
+                        TAG,
+                        "[$dTag] selected manifest: eventCreatedAt=${newest.eventCreatedAt} " +
+                            "eventId=${newest.eventId.take(12)} createdAt=${newest.createdAt} " +
+                            "chunks=${newest.chunks.size} (pass ${pass + 1}/$passes)"
+                    )
+                    return newest
+                }
+
+                if (pass < passes - 1) {
+                    // Escalating linear backoff with jitter. Jitter matters here
+                    // beyond the usual reason: the catalogues sync one after
+                    // another, so without it every board would retry on the same
+                    // cadence and hit the same rate-limit window together.
+                    val backoffMs = MANIFEST_BACKOFF_BASE_MS * (pass + 1) +
+                        Random.nextLong(MANIFEST_BACKOFF_JITTER_MS)
+                    delay(backoffMs)
+                }
+            }
+
+            throw BlossomSyncException(
+                "Failed to fetch manifest '$dTag' from any of " +
+                    "${relayUrls.size} relay(s) after $passes pass(es)",
+                lastError
+            )
+        }
         private const val TAG = "BlossomSyncManager"
         private const val RELAY_TIMEOUT_MS = 15_000L
         // Slack above the manifest-declared chunk size for HTTP/zstd framing
@@ -397,10 +601,21 @@ class BlossomSyncManager(
         private const val PROGRESS_THROTTLE_MS = 200L
         // Number of full passes through the mirror list before giving up.
         private const val DOWNLOAD_PASSES = 2
+
+        /**
+         * Full passes over the relay set before a manifest fetch is declared
+         * failed. Three attempts cost at most ~2s of added backoff on a run
+         * that is going to fail anyway, and rescue the far more common case
+         * where one pass was simply unlucky.
+         */
+        internal const val MANIFEST_FETCH_PASSES = 3
+        private const val MANIFEST_BACKOFF_BASE_MS = 500L
+        private const val MANIFEST_BACKOFF_JITTER_MS = 500L
         // Backoff between retry passes. Linear + jitter is sufficient for
         // the typical "transient 5xx clears within a second" failure mode.
         private const val DOWNLOAD_BACKOFF_BASE_MS = 750L
         private const val DOWNLOAD_BACKOFF_JITTER_MS = 500L
+        private const val KEY_LAST_MANIFEST_CREATED_AT = "last_manifest_created_at"
         // Chunk names are joined into filesystem paths; restrict to a strict
         // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
         private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
@@ -409,11 +624,58 @@ class BlossomSyncManager(
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
         const val MANIFEST_D_TAG = "cruxcoach/board-db"
         const val MOONBOARD_D_TAG = "cruxcoach/moonboard-db"
+        const val QUANTUM_D_TAG = "cruxcoach/quantum-db"
         // Per-board SharedPreferences files for chunk-hash state. Kilter
         // keeps the historical "blossom_sync" name so existing installs
         // do not lose their incremental-sync state on upgrade.
         const val DEFAULT_PREFS_NAME = "blossom_sync"
         const val MOONBOARD_PREFS_NAME = "blossom_sync_moonboard"
+
+        /**
+         * Applies the NIP-01 ordering rule for parameterized-replaceable events.
+         * `eventCreatedAt == 0` is retained as a test/backward-compatible
+         * fallback for manifests constructed without an envelope.
+         */
+        internal fun selectPreferredManifest(
+            manifests: Iterable<BlossomManifest>,
+        ): BlossomManifest? = manifests.reduceOrNull { selected, candidate ->
+            val selectedAt = effectiveTimestamp(selected)
+            val candidateAt = effectiveTimestamp(candidate)
+            val candidateWins = candidateAt > selectedAt ||
+                (candidateAt == selectedAt && candidate.eventId.isNotBlank() &&
+                    (selected.eventId.isBlank() || candidate.eventId < selected.eventId))
+            if (candidateWins) candidate else selected
+        }
+
+        /** Timestamp semantics shared by relay selection and rollback defence. */
+        internal fun effectiveTimestamp(manifest: BlossomManifest): Long =
+            manifest.eventCreatedAt.takeIf { it > 0 } ?: manifest.createdAt
+
+        /** Pure rollback decision seam; `null` means this track has never synced. */
+        internal fun isManifestAcceptable(
+            manifest: BlossomManifest,
+            lastAcceptedCreatedAt: Long?,
+            nowSeconds: Long,
+        ): Boolean = hasAcceptableTimestamps(manifest, nowSeconds) &&
+            (lastAcceptedCreatedAt == null ||
+                effectiveTimestamp(manifest) >= lastAcceptedCreatedAt)
+
+        /**
+         * Both timestamps cross persistence trust boundaries: the signed-event
+         * time orders rollback watermarks, while the manifest-content time
+         * seeds the community-climb cursor. A publisher clock mistake must not
+         * permanently pin either monotonic value in the future.
+         */
+        internal fun hasAcceptableTimestamps(
+            manifest: BlossomManifest,
+            nowSeconds: Long,
+        ): Boolean = NostrEventPolicy.isCreatedAtAcceptable(
+            effectiveTimestamp(manifest),
+            nowSeconds,
+        ) && NostrEventPolicy.isCreatedAtAcceptable(
+            manifest.createdAt,
+            nowSeconds,
+        )
 
         /**
          * Validates chunk names and URL schemes after the manifest is parsed.

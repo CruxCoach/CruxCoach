@@ -68,6 +68,7 @@ class BleShareManagerTest {
     }
     private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true) {
         every { hasActiveClimb() } returns false
+        every { localPresenceToken } returns 1234
     }
     private val sessionQueueManager = mockk<SessionQueueManager>(relaxed = true) {
         every { state } returns queueStateFlow
@@ -106,9 +107,15 @@ class BleShareManagerTest {
 
     private fun nearbyClimb(
         uuid: String = UUID_A, angle: Int = 40, rssi: Int = -50,
-        connectedOnly: Boolean = false, isLastClimb: Boolean = false
+        connectedOnly: Boolean = false, isLastClimb: Boolean = false,
+        acceptsDisconnectRequests: Boolean = true,
+        projectionSurvivesDisconnect: Boolean = true,
+        senderToken: Int? = null,
     ) = NearbyClimb(uuid, angle, rssi, System.currentTimeMillis(), "AA:BB:CC:DD:EE:FF",
-        connectedOnly, isLastClimb)
+        connectedOnly, isLastClimb,
+        acceptsDisconnectRequests = acceptsDisconnectRequests,
+        projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+        senderToken = senderToken)
 
     private fun session(
         sessionId: Int = 12345, hostName: String = "TestHost",
@@ -140,6 +147,20 @@ class BleShareManagerTest {
         val state = manager.uiState.value
         assertEquals(OnBoardSource.REMOTE_LAST, state.onBoardClimb?.source)
         assertEquals(UUID_A, state.onBoardClimb?.climbUuid)
+    }
+
+    @Test
+    fun `resolve - volatile REMOTE_LAST is labelled as not projected`() = runTest {
+        nearbyClimbsFlow.value = listOf(nearbyClimb(
+            UUID_A,
+            isLastClimb = true,
+            projectionSurvivesDisconnect = false,
+        ))
+        advanceUntilIdle()
+
+        val state = manager.uiState.value
+        assertEquals(OnBoardSource.REMOTE_LAST, state.onBoardClimb?.source)
+        assertFalse(state.onBoardClimb?.isStillProjected ?: true)
     }
 
     @Test
@@ -398,6 +419,18 @@ class BleShareManagerTest {
         assertEquals(2, manager.uiState.value.boardOccupiedCount)
     }
 
+    @Test
+    fun `boardOccupiedCount excludes own connected advertisement`() = runTest {
+        nearbyClimbsFlow.value = listOf(
+            nearbyClimb("", connectedOnly = true, senderToken = 1234),
+            nearbyClimb("", connectedOnly = true, senderToken = 5678),
+            nearbyClimb("", connectedOnly = true),
+        )
+        advanceUntilIdle()
+
+        assertEquals(2, manager.uiState.value.boardOccupiedCount)
+    }
+
     // ===== Session mapping =====
 
     @Test
@@ -492,6 +525,17 @@ class BleShareManagerTest {
         assertFalse(manager.uiState.value.canRequestDisconnect)
     }
 
+    @Test
+    fun `canRequestDisconnect false when active sender rejects handover`() = runTest {
+        sharingEnabledFlow.value = true
+        nearbyClimbsFlow.value = listOf(
+            nearbyClimb(UUID_A, acceptsDisconnectRequests = false),
+        )
+        advanceUntilIdle()
+
+        assertFalse(manager.uiState.value.canRequestDisconnect)
+    }
+
     // ===== Name resolution =====
 
     @Test
@@ -513,6 +557,32 @@ class BleShareManagerTest {
     }
 
     // ===== Session climb updates (FEAT-035 core scenario) =====
+
+    @Test
+    fun `a participant without a known session id still sees the host climb`() = runTest {
+        // Joining without a scan entry leaves the id at 0. Treating that as
+        // "no match" would hide the host's climb — worse than the bug it
+        // guards against, and the case that made an earlier version of this
+        // filter wrong in production while its test passed.
+        queueStateFlow.value = SessionQueueState(role = SessionRole.PARTICIPANT, sessionId = 0)
+        nearbySessionsFlow.value = listOf(session(sessionId = 777, currentClimbUuid = UUID_A))
+        advanceUntilIdle()
+
+        assertEquals(UUID_A, manager.uiState.value.onBoardClimb?.climbUuid)
+    }
+
+    @Test
+    fun `a stranger's session climb is not shown to a host`() = runTest {
+        // Own queue empty, so stages 3 and 4 pass. Before the session-id check
+        // the first foreign advertisement won stage 5 and was labelled
+        // "session climb" beside the member's own queue banner.
+        queueStateFlow.value =
+            SessionQueueState(role = SessionRole.HOST, sessionId = 12345)
+        nearbySessionsFlow.value = listOf(session(sessionId = 999, currentClimbUuid = UUID_C))
+        advanceUntilIdle()
+
+        assertNull(manager.uiState.value.onBoardClimb?.climbUuid)
+    }
 
     @Test
     fun `session climb updates when host navigates queue`() = runTest {

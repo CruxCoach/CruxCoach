@@ -60,17 +60,13 @@ enum class OnboardingStep {
  *    exist). The button navigates to [com.cruxcoach.android.ui.settings.KeyImportScreen]
  *    after persisting a restore-intent marker. On the next cold start
  *    (after the KeyImport-driven app restart) onboarding lands back on
- *    [OnboardingStep.PRIVACY] and only *then* triggers
+ *    the existing-data screen and only *then* triggers
  *    [BackupRepository.checkForBackup] against the imported key.
  */
 enum class BackupChoice { FRESH, RESTORE }
 
 data class OnboardingState(
     val currentStep: OnboardingStep = OnboardingStep.BOARD_SETUP,
-
-    // Privacy preferences
-    val bleSharing: Boolean = true,
-    val communityFeatures: Boolean = true,
 
     // Kilter login (inline in kilter step)
     val kilterEmail: String = "",
@@ -190,8 +186,10 @@ class OnboardingViewModel @Inject constructor(
             ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
                 .distinctUntilChanged()
                 .collect { (brand, layoutId, sizeId) ->
-                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId.toLong())
                     val parsed = BoardBrand.fromWire(brand)
+                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromBoardSelection(
+                        layoutId.toLong(), parsed,
+                    )
                     val name = when {
                         parsed == BoardBrand.MOONBOARD -> variant?.displayName ?: ""
                         parsed.usesAuroraProtocol && parsed != BoardBrand.KILTER -> parsed.displayName
@@ -233,7 +231,7 @@ class OnboardingViewModel @Inject constructor(
             if (backupPreferences.isBackupRestoreIntent()) {
                 _state.update {
                     it.copy(
-                        currentStep = OnboardingStep.PRIVACY,
+                        currentStep = OnboardingStep.KILTER,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                         hasNostrKey = keyStore.hasKey(),
@@ -262,7 +260,7 @@ class OnboardingViewModel @Inject constructor(
 
     fun nextStep() {
         val next = when (_state.value.currentStep) {
-            OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY
+            OnboardingStep.BOARD_SETUP -> OnboardingStep.KILTER
             OnboardingStep.PRIVACY -> OnboardingStep.KILTER
             OnboardingStep.KILTER -> return
         }
@@ -273,18 +271,9 @@ class OnboardingViewModel @Inject constructor(
         val prev = when (_state.value.currentStep) {
             OnboardingStep.BOARD_SETUP -> return
             OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
-            OnboardingStep.KILTER -> OnboardingStep.PRIVACY
+            OnboardingStep.KILTER -> OnboardingStep.BOARD_SETUP
         }
         _state.update { it.copy(currentStep = prev) }
-    }
-
-    // Privacy toggles
-    fun updateBleSharing(enabled: Boolean) {
-        _state.update { it.copy(bleSharing = enabled) }
-    }
-
-    fun updateCommunityFeatures(enabled: Boolean) {
-        _state.update { it.copy(communityFeatures = enabled) }
     }
 
     // Kilter login
@@ -561,8 +550,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
             boardSyncWatcher.cancel()
-            val imported = result.getOrNull()
-            if (imported != null) {
+            val restored = result.getOrNull()
+            if (restored != null) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
@@ -571,8 +560,8 @@ class OnboardingViewModel @Inject constructor(
                         restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
-                        restoredAscents = imported.boardAscents,
-                        restoredLists = imported.climbLists,
+                        restoredAscents = restored.logbookEntriesInBackup,
+                        restoredLists = restored.listsInBackup,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                     )
@@ -621,10 +610,10 @@ class OnboardingViewModel @Inject constructor(
                     runCatching { kilterApiClient.revokeRefreshToken() }
                     kilterTokenStore.clear()
                 }
-                userPreferences.setNearbyClimbSharing(s.bleSharing)
-                userPreferences.setAllowRemoteDisconnect(s.bleSharing)
-                userPreferences.setCrashReportOptIn(s.communityFeatures)
-                userPreferences.setAnnouncementsEnabled(s.communityFeatures)
+                // Nearby/community/privacy preferences are deliberately not
+                // onboarding decisions. Preserve their app defaults (and any
+                // value restored from an existing backup) instead of silently
+                // writing the old, now-hidden switches here.
                 // FEAT-002: persist backup opt-in + schedule worker. RESTORE
                 // path has already set backupEnabled=true via confirmRestore,
                 // so the check here is the user's explicit toggle state.
@@ -656,7 +645,7 @@ class OnboardingViewModel @Inject constructor(
                 } else {
                     userPreferences.setBoardLayoutId(s.boardLayoutId)
                     userPreferences.setBoardProductSizeId(s.boardProductSizeId)
-                    userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
+                    userPreferences.setBoardBrand(BoardBrand.fromWire(s.boardBrand).wireValue)
                 }
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user

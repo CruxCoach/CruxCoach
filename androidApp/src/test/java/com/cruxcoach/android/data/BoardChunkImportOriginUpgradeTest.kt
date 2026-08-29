@@ -234,4 +234,98 @@ class BoardChunkImportOriginUpgradeTest {
             )
         }
     }
+
+    // ── FEAT-041 item 1: chunk-only delete convergence ──────────────
+    // A device that consumes ONLY the daily chunk (never the live Kind-5
+    // tombstone) must still arm the L3 stale-resurrection guard when the
+    // chunk delists a community climb. The chunk conveys deletion as
+    // is_listed=0; the importer flips is_deleted=1 too for origin='cruxcoach'
+    // (a community delist IS a deletion) but NOT for origin='kilter' (a
+    // catalogue delist is not a deletion).
+
+    private data class DeleteState(val isListed: Int, val isDeleted: Int)
+
+    private fun queryDeleteState(db: SQLiteDatabase, uuid: String): DeleteState =
+        db.rawQuery(
+            "SELECT is_listed, is_deleted FROM climbs WHERE LOWER(REPLACE(uuid,'-','')) = ? LIMIT 1",
+            arrayOf(uuid.lowercase().replace("-", "")),
+        ).use { c ->
+            c.moveToFirst()
+            DeleteState(c.getInt(0), c.getInt(1))
+        }
+
+    private fun seedListedRow(db: SQLiteDatabase, uuid: String, name: String, origin: String, pubkey: String?) {
+        db.execSQL(
+            """
+            INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                frames_count, is_listed, created_at, description, is_nomatch,
+                frames_pace, hsm, move_count, origin,
+                board_brand, created_by_pubkey)
+            VALUES (?, 1, 'setter', ?, 'p1100r12p1200r14', 1, 1,
+                '2026-01-01 00:00:00', '', 0, 0, 0, 1, ?,
+                'kilter', ?)
+            """.trimIndent(),
+            arrayOf<Any?>(uuid, name, origin, pubkey),
+        )
+    }
+
+    private fun insertDelistedChunkRow(db: SQLiteDatabase, uuid: String, name: String, origin: String, pubkey: String?) {
+        db.execSQL(
+            """
+            INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top,
+                created_at, description, is_nomatch, frames_pace, hsm,
+                move_count, origin, created_by_pubkey)
+            VALUES (?, 1, 'setter', ?, 'p1100r12p1200r14', 1, 0,
+                NULL, NULL, NULL, NULL, '2026-02-02 00:00:00', '', 0, 0, 0,
+                1, ?, ?)
+            """.trimIndent(),
+            arrayOf<Any?>(uuid, name, origin, pubkey),
+        )
+    }
+
+    @Test
+    fun chunkDelist_tombstonesCommunityRow_butNotKilterRow() {
+        val communityUuid = "33333333-aaaa-bbbb-cccc-000000000003"
+        val curatedUuid = "44444444-aaaa-bbbb-cccc-000000000004"
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM climbs")
+            seedListedRow(db, communityUuid, "Community Climb", origin = "cruxcoach", pubkey = authorPubkey)
+            seedListedRow(db, curatedUuid, "Curated Climb", origin = "kilter", pubkey = null)
+        }
+        val delistChunk = Files.createTempDirectory("cruxcoach-delist-").resolve("climbs.db").toFile()
+        SQLiteDatabase.openOrCreateDatabase(delistChunk, null).use { chunk ->
+            chunk.execSQL(
+                """
+                CREATE TABLE climbs (
+                    uuid TEXT, layout_id INTEGER, setter_username TEXT, name TEXT,
+                    frames TEXT, frames_count INTEGER, is_listed INTEGER,
+                    edge_left INTEGER, edge_right INTEGER, edge_bottom INTEGER,
+                    edge_top INTEGER, created_at TEXT, description TEXT,
+                    is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
+                    move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                )
+                """.trimIndent()
+            )
+            insertDelistedChunkRow(chunk, communityUuid, "Community Climb", "cruxcoach", authorPubkey)
+            insertDelistedChunkRow(chunk, curatedUuid, "Curated Climb", "kilter", null)
+        }
+        try {
+            importer.importFromChunks(
+                metaDbFiles = emptyList(),
+                climbsDbFiles = listOf(delistChunk),
+                statsDbFiles = emptyList(),
+            )
+            openTarget().use { db ->
+                val community = queryDeleteState(db, communityUuid)
+                assertEquals("community row delisted", 0, community.isListed)
+                assertEquals("community delist arms L3 (is_deleted=1)", 1, community.isDeleted)
+                val curated = queryDeleteState(db, curatedUuid)
+                assertEquals("kilter row delisted", 0, curated.isListed)
+                assertEquals("kilter delist is NOT a deletion", 0, curated.isDeleted)
+            }
+        } finally {
+            runCatching { delistChunk.delete() }
+        }
+    }
 }

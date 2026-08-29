@@ -21,6 +21,7 @@ data class NostrProfileData(
     val bannerUrl: String? = null,
     val nip05: String? = null,
     val website: String? = null,
+    val about: String? = null,
 )
 
 enum class PaymentChannel {

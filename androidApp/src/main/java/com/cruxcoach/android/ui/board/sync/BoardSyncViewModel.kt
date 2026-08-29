@@ -73,26 +73,30 @@ class BoardSyncViewModel @Inject constructor(
     fun loadBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 
     fun checkNetwork() = syncManager.checkNetwork()
+    fun refreshAutoSyncHealth() = syncManager.refreshAutoSyncHealth()
     fun dismissMeteredConfirm() = syncManager.dismissMeteredConfirm()
     fun confirmMeteredSync() = syncManager.confirmMeteredSync()
     fun dismissNetworkDialog() = syncManager.dismissNetworkDialog()
     fun startApiSync() = syncManager.startApiSync()
 
-    /** Onboarding-only auto-trigger. Fires startApiSync only when no
-     *  board data exists yet and no sync is already in flight; safe to
-     *  call repeatedly. Without this, a fresh-install user would have
-     *  to scroll past the title + intro text inside the BOARD_SETUP
-     *  onboarding step to find the "Jetzt laden" button before the
-     *  sync would even start — an extra friction step that defeats the
-     *  point of having the inline card embedded in the step at all. */
-    fun startApiSyncIfNeeded() {
+    /** Onboarding-only auto-trigger. It first looks for the local sender from
+     *  which a newly installed APK was downloaded, then falls back to the
+     *  ordinary online sync when no share manifest is present. */
+    fun startInitialSyncIfNeeded() {
         val s = state.value
         if (s.alreadyImported || s.isSyncing) return
-        syncManager.startApiSync()
+        syncManager.startInitialSyncIfNeeded()
     }
+    fun startInitialSync() = syncManager.startInitialSyncIfNeeded()
     fun clearError() = syncManager.clearError()
     fun confirmLocalImport() = syncManager.confirmLocalImport()
     fun dismissLocalImport() = syncManager.dismissLocalImport()
+    fun confirmOfflineShare(invitation: com.cruxcoach.android.util.LocalShareProtocol.Invitation) =
+        syncManager.confirmOfflineShare(invitation)
+    fun dismissOfflineShare() = syncManager.dismissOfflineShare()
+    fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
+    fun dismissDiscoveredShare() = syncManager.dismissDiscoveredShare()
+    fun dismissLocalShareUpdate() = syncManager.dismissLocalShareUpdate()
 
     /**
      * Check if the user needs to select a board model after first sync.

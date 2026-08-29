@@ -1,0 +1,128 @@
+appId: com.cruxcoach.android
+name: release-fresh-onboarding
+tags:
+  - release-gate
+  - extended
+  - destructive
+  - network
+  - mutates-state
+---
+# Preconditions are deliberate: launchApp(clearState) makes this a genuine
+# first-user path and is authorized only on the disposable release device.
+- launchApp:
+    clearState: true
+    stopApp: true
+- runFlow:
+    when:
+      visible: "Zulassen"
+    commands:
+      - tapOn: "Zulassen"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding_board_setup"
+    timeout: 15000
+- assertVisible: "Wähle dein Board"
+# The shared board picker is the source of truth for every supported catalogue.
+- scrollUntilVisible:
+    element:
+      id: "settings_board_change"
+    direction: DOWN
+- tapOn:
+    id: "settings_board_change"
+- assertVisible:
+    id: "board_picker_dialog"
+- tapOn:
+    id: "board_picker_brand"
+- assertVisible: "Kilter Original"
+- assertVisible: "Kilter Homewall"
+- assertVisible: "MoonBoard"
+- assertVisible: "Tension"
+- scrollUntilVisible:
+    element:
+      text: "Grasshopper"
+    direction: DOWN
+- assertVisible: "Grasshopper"
+- scrollUntilVisible:
+    element:
+      text: "Decoy"
+    direction: DOWN
+- assertVisible: "Decoy"
+- scrollUntilVisible:
+    element:
+      text: "So iLL"
+    direction: DOWN
+- assertVisible: "So iLL"
+- scrollUntilVisible:
+    element:
+      text: "Touchstone"
+    direction: DOWN
+- assertVisible: "Touchstone"
+- pressKey: Back
+- tapOn:
+    id: "board_picker_cancel"
+# Offline preparation stays compact and never blocks board selection.
+- assertVisible:
+    id: "onboarding_offline_preparation"
+- tapOn:
+    id: "onboarding_next_button"
+- assertVisible:
+    id: "onboarding_import"
+- assertVisible: "Hast du bereits Kletterdaten?"
+- assertVisible:
+    id: "onboarding_import_source_cruxcoach"
+- assertVisible:
+    id: "onboarding_import_source_kilter"
+- assertVisible:
+    id: "onboarding_import_source_moonboard"
+- tapOn:
+    id: "onboarding_import_source_cruxcoach"
+- assertVisible:
+    id: "onboarding_cruxcoach_restore"
+- assertVisible:
+    id: "onboarding_cruxcoach_file_import"
+- tapOn:
+    id: "onboarding_import_source_kilter"
+- assertVisible: "Kilter Logbook importieren"
+- scrollUntilVisible:
+    element:
+      id: "kilter_data_info_button"
+    direction: DOWN
+- tapOn:
+    id: "kilter_data_info_button"
+- assertVisible:
+    id: "kilter_data_info_dialog"
+- scrollUntilVisible:
+    element:
+      text: "Einmalig importieren"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Dauerhaft synchronisieren"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "standardmäßig aus"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "DEINEN eigenen Kilter-Account"
+    direction: DOWN
+- tapOn:
+    id: "kilter_data_info_close"
+- tapOn:
+    id: "onboarding_finish_button"
+- extendedWaitUntil:
+    visible:
+      id: "board_filter_toggle"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 300000
+- assertNotVisible:
+    id: "onboarding_finish_button"
+# Prove that completion survives a real process restart and still lands on a
+# populated browser rather than merely navigating there in the same process.
+- runFlow: subflows/launch-browser.yaml
+- assertNotVisible:
+    id: "onboarding_board_setup"

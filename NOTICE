@@ -22,14 +22,14 @@ Kilter Board layout images — Property of Kilter Grips, LLC (formerly Aurora
     see androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
-MoonBoard board images — The bundled image files
-    (androidApp/src/main/assets/board_images/moonboard_*.webp) are CruxCoach's
-    own original work, created in-house — not extracted from the official
-    MoonBoard app. The MoonBoard product, its hardware hold layouts, and the
-    MoonBoard name are the property of Moon Climbing Ltd; the images depict
-    that layout and are bundled solely as referential offline board
-    visualization. No affiliation, sponsorship, or endorsement is claimed.
-    Moon Climbing Ltd may request removal at any time — see
+MoonBoard board images — The WebP renders for the 2016, Masters 2017/2019,
+    Mini 2020 and 2024 configurations are CruxCoach's original work. The PNG
+    plate/hold layers for MoonBoard 2010 and Mini MoonBoard 2025 were extracted
+    unchanged from the official MoonBoard Android app. The latter files and
+    all underlying hardware layouts are property of Moon Climbing Ltd and are
+    bundled solely for referential offline visualization and interoperability.
+    No affiliation, sponsorship, or endorsement is claimed. Moon Climbing Ltd
+    may request removal at any time — see
     androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
@@ -44,6 +44,14 @@ Aurora-family board layout images — The bundled images under
     removal at any time — see
     androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
+
+BoardSesh — MoonBoard hold-set cell map (which grid cell belongs to which
+    hold set, plus the set ids and product names) transcribed into
+    shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt
+    from MOONBOARD_CELL_SETS / MOONBOARD_SETS in
+    https://github.com/boardsesh/boardsesh. Licensed under the Apache License
+    2.0 (https://www.apache.org/licenses/LICENSE-2.0). See
+    THIRD_PARTY_LICENSES.md for the full attribution.
 
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/

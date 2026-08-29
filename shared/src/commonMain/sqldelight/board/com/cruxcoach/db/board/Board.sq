@@ -27,6 +27,11 @@ CREATE TABLE climbs (
     created_at TEXT,
     description TEXT NOT NULL DEFAULT '',
     is_nomatch INTEGER NOT NULL DEFAULT 0,
+    -- MoonBoard problem method: 'method_footless',
+    -- 'method_footless_kickboard', 'method_no_kickboard'. NULL is the default
+    -- ("feet follow hands") and keeps the column sparse — 4.2% of MoonBoard
+    -- problems carry one. Aurora boards never do.
+    method TEXT,
     frames_pace INTEGER NOT NULL DEFAULT 0,
     hsm INTEGER NOT NULL DEFAULT 0,
     frames BLOB AS kotlin.String NOT NULL,
@@ -84,6 +89,69 @@ CREATE TABLE climb_stats (
     layout_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (climb_uuid, angle)
 );
+
+-- Local identity bridge for the dedicated Quantum v1 catalogue. app_uuid is
+-- deterministic UUIDv5(route_uuid + model), while route_uuid is the vendor
+-- UUID required on the BLE wire. Added for upgrades by 26.sqm.
+CREATE TABLE quantum_route_refs (
+    app_uuid TEXT NOT NULL PRIMARY KEY,
+    route_uuid TEXT NOT NULL,
+    model TEXT NOT NULL,
+    UNIQUE(route_uuid, model)
+);
+
+CREATE INDEX idx_quantum_route_refs_external
+    ON quantum_route_refs(route_uuid, model);
+
+-- Lossless Quantum-only vendor metadata. Kept out of the generic climbs table
+-- so established board schemas and browse semantics stay unchanged. Boolean
+-- columns are positive facts from the eWalls payload; absence is not inferred
+-- as a negative rule. Added for upgrades by 27.sqm.
+CREATE TABLE quantum_route_metadata (
+    app_uuid TEXT NOT NULL PRIMARY KEY,
+    source_grade TEXT NOT NULL DEFAULT '',
+    campusing INTEGER NOT NULL DEFAULT 0,
+    edge INTEGER NOT NULL DEFAULT 0,
+    kickplate INTEGER NOT NULL DEFAULT 0,
+    matching INTEGER NOT NULL DEFAULT 0,
+    standard INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT ''
+);
+
+deleteAllQuantumRouteMetadata:
+DELETE FROM quantum_route_metadata;
+
+getQuantumExternalRouteUuid:
+SELECT route_uuid FROM quantum_route_refs WHERE app_uuid = ?;
+
+-- Reverse bridge used by the live Quantum controller state. The board reports
+-- vendor route UUIDs, while every app-facing query uses the deterministic
+-- model-specific app UUID. Keep the model predicate: one vendor route can be
+-- projected onto more than one Quantum size with different placement ids.
+getQuantumAppUuidByExternalRoute:
+SELECT app_uuid FROM quantum_route_refs
+WHERE LOWER(route_uuid) = LOWER(:routeUuid)
+  AND LOWER(model) = LOWER(:model)
+LIMIT 1;
+
+-- An installation-owned Quantum player can already use the app/vendor UUID
+-- directly (for example an imported pre-bridge database). The repository
+-- exposes this query only after the caller proves the controller user id is
+-- one of this installation's derived identities. A foreign player's UUID is
+-- publisher-controlled community data and must use the official bridge.
+-- Keep the remaining fallback narrow: connected model layout, Quantum brand,
+-- single frame and non-deleted must all agree.
+getQuantumDirectAppUuidByExternalRoute:
+SELECT uuid FROM climbs
+WHERE LOWER(uuid) = LOWER(:routeUuid)
+  AND board_brand = 'quantum'
+  AND layout_id = :layoutId
+  AND frames_count = 1
+  AND is_deleted = 0
+LIMIT 1;
+
+deleteAllQuantumRouteRefs:
+DELETE FROM quantum_route_refs;
 
 CREATE TABLE board_hold_positions (
     board_brand TEXT NOT NULL DEFAULT 'kilter',
@@ -213,6 +281,11 @@ CREATE INDEX idx_climbs_origin ON climbs(origin);
 CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
 CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
 CREATE INDEX idx_climbs_board_brand ON climbs(board_brand);
+-- Moon logbook screen imports resolve a bounded set of names repeatedly.
+-- Match the query's case-insensitive predicate so SQLite can seek directly
+-- instead of scanning the six-figure Moon catalogue for every training day.
+CREATE INDEX idx_climbs_brand_deleted_name_nocase
+ON climbs(board_brand, is_deleted, name COLLATE NOCASE);
 
 -- FEAT-006 Kilter publish per-attempt audit trail. Augments the
 -- single-value `climbs.kilter_*` columns (which carry latest-status only)
@@ -254,8 +327,9 @@ SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
     c.board_brand,
     COALESCE(c.description, '') AS description,
-    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.is_nomatch, c.method, c.frames_pace, c.hsm, c.move_count,
     c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.nostr_event_id,
     c.created_at,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
@@ -620,6 +694,21 @@ WHERE layout_id = :layoutId
   AND origin = 'boardsesh'
   AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))));
 
+-- Quantum's official vendor catalogue. Kept as a dedicated whole-set query
+-- so the visible official-origin chip has an exact count and cannot lose rows
+-- behind post-pagination filtering once community Quantum climbs exist.
+browseQuantumOfficialOnly:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND board_brand = 'quantum'
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff)
+       OR (:showUngraded = 1 AND difficulty_average IS NULL))
+  AND COALESCE(ascensionist_count, 0) >= :minAsc
+  AND origin IN ('quantum', 'kilter') AND source != 'local'
+  AND (hsm & :hsmExcludedMask) = 0;
+
 -- Angle-AGNOSTIC variants of the two community-provenance browses (Req-1): a
 -- created/community climb is authored at ONE setter angle but is climbable at
 -- EVERY angle of its board, so the provenance filters must surface it whatever
@@ -854,6 +943,35 @@ FROM climbs c
 LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE c.uuid = ?;
 
+-- FEAT-044: identify a climb an official Aurora app lit through CruxRelay.
+-- Its BLE packets carry LED positions only, so the climb is recovered by
+-- matching the decoded hold set against stored frames. Candidates are cut down
+-- by frame-string length (derivable from the decoded holds) plus up to two
+-- placement anchors; the exact set comparison happens in Kotlin, since the
+-- frame order is not guaranteed. Without idx_climbs_relay_lookup this scans
+-- the whole catalogue (~5 s at 660k rows), which is why the caller creates
+-- that index before the first lookup.
+-- Duplicates are common in the catalogue (one hold set, five names), and the
+-- wire data cannot tell them apart — so hand back the listed and most-climbed
+-- one first, which is what the sender was most likely looking at.
+selectClimbCandidatesByFrameLength:
+SELECT c.uuid, c.frames,
+       COALESCE((SELECT MAX(cs.ascensionist_count) FROM climb_stats cs
+                 WHERE cs.climb_uuid = c.uuid), 0) AS popularity
+FROM climbs c
+WHERE c.board_brand = :boardBrand
+  AND c.layout_id = :layoutId
+  -- Two comparisons, not BETWEEN: SQLDelight types the second BETWEEN
+  -- operand as a Boolean.
+  AND length(c.frames) >= :minLength
+  AND length(c.frames) <= :maxLength
+  AND c.frames_count = 1
+  AND c.is_deleted = 0
+  AND (:anchor1 IS NULL OR c.frames LIKE :anchor1)
+  AND (:anchor2 IS NULL OR c.frames LIKE :anchor2)
+ORDER BY c.is_listed DESC, popularity DESC
+LIMIT 500;
+
 -- Defensive fallback for getClimbByUuid: the board DB mixes uuid formats
 -- (legacy rows are nodash-UPPERCASE, ~640 new-world rows are dashed-lowercase).
 -- A Kilter logbook-imported uuid may not match any stored row by exact case/
@@ -917,6 +1035,35 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? LIMIT 1);
 
+-- Presence gate for the MoonBoard hold-set filter (FEAT-049): has a
+-- CATALOGUE with a POPULATED hsm arrived yet? The column is computed in the
+-- catalogue build pipeline, so until that ships every MoonBoard catalogue row
+-- carries 0 and the filter is inert. A user who deselects sets and sees an
+-- unchanged list is worse off than one who sees the picker greyed out with a
+-- reason, so the selection is made visibly unavailable rather than silently
+-- ineffective.
+--
+-- source = 'kilter' is load-bearing, not decoration. It is the catalogue
+-- provenance marker — the column default every importer leaves in place, for
+-- the MoonBoard / Aurora-family snapshots too, and the same predicate the
+-- targeted catalogue delete above uses. Without it a SINGLE self-authored or
+-- peer-received MoonBoard route (source='local' / 'nostr'), whose hsm IS
+-- computed on insert from the on-device cell map (§6.6), would open the gate
+-- while every catalogue row still carries 0 and sails through every mask —
+-- the visible-but-ineffective state this gate exists to prevent.
+--
+-- Not O(1) in the FALSE case: idx_climbs_board_brand narrows to MoonBoard,
+-- but proving that NO row is non-zero walks all of them. That is the state
+-- before the pipeline half lands, and it is why this is evaluated once per
+-- catalogue revision (on Dispatchers.IO, alongside the mask) and never per
+-- query. Once the data arrives the first row already answers it.
+hasMoonBoardHoldSetMask:
+SELECT EXISTS(
+    SELECT 1 FROM climbs
+    WHERE board_brand = 'moonboard' AND source = 'kilter' AND hsm != 0
+    LIMIT 1
+);
+
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
 FROM climb_stats cs
@@ -945,11 +1092,29 @@ ORDER BY cs.angle;
 -- Decoy Dots), so an unscoped DISTINCT would union another brand's angle
 -- range into the picker.
 getSupportedAnglesForLayout:
-SELECT DISTINCT cs.angle
-FROM climb_stats cs
-INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE cs.layout_id = ? AND c.board_brand = ?
-ORDER BY cs.angle;
+WITH layout_angles AS (
+    -- Read the tiny angle domain as a streaming DISTINCT from the
+    -- (layout_id, angle, ...) index. Joining every stats row to climbs first
+    -- made this query walk the complete Kilter catalogue on every detail open.
+    SELECT DISTINCT angle
+    FROM climb_stats
+    WHERE layout_id = :layoutId
+)
+SELECT la.angle
+FROM layout_angles la
+WHERE EXISTS (
+    -- Brand-check once per possible angle and stop at the first matching
+    -- climb. Layout ids overlap between board families, so the brand guard
+    -- remains mandatory even though the expensive full join is gone.
+    SELECT 1
+    FROM climbs c
+    INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+    WHERE c.board_brand = :boardBrand
+      AND cs.layout_id = :layoutId
+      AND cs.angle = la.angle
+    LIMIT 1
+)
+ORDER BY la.angle;
 
 -- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
 -- and filter doesn't need frames_count check (boulder default: frames_count=1).
@@ -1020,6 +1185,13 @@ WHERE cs.layout_id = ?
 
 -- ═══ Hold-based search + heatmap queries (query climbs directly) ═══
 
+-- Hydrate geometry omitted from the lightweight climb_browse VIEW. Callers
+-- chunk UUID collections so this stays below SQLite's bind-variable limit.
+getClimbFramesByUuids:
+SELECT uuid, frames
+FROM climbs
+WHERE uuid IN :uuids;
+
 -- Get (uuid, frames) for heatmap computation (Kotlin-side processing).
 getAllFramesForFilter:
 SELECT c.uuid, c.frames
@@ -1034,6 +1206,7 @@ WHERE cs.layout_id = :layoutId
   AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
   AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
   AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+  AND (c.hsm & :hsmExcludedMask) = 0
   AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
 
 -- Any-angle variant of getAllFramesForFilter for the logbook stats heatmap:
@@ -1271,24 +1444,84 @@ SELECT COUNT(*) FROM climb_stats;
 countNomatchClimbs:
 SELECT COUNT(*) FROM climbs WHERE is_nomatch = 1;
 
--- Bulk delete: public board data (re-downloadable via sync)
-deleteAllClimbs:
-DELETE FROM climbs;
-
-deleteAllClimbStats:
-DELETE FROM climb_stats;
+-- Bulk delete: public board data (re-downloadable via sync).
+-- There is deliberately NO blanket `DELETE FROM climbs` here: every
+-- deletion path must keep locally-authored / community climbs
+-- (source='local'/'nostr') — those are NOT re-downloadable. Catalogue
+-- rows are source='kilter' for the legacy catalogues and source='quantum'
+-- only for board_brand='quantum'. Community/local sources are never removed.
 
 -- Targeted bulk delete used by [BoardSyncManager.handlePostMigrationResync]
--- to wipe ONLY the cron-blob-derived catalog rows (source='kilter')
--- before a force-resync. Cruxcoach-authored climbs (source='local' /
--- 'nostr', origin='cruxcoach') stay untouched. Run stats first since
--- there's no FK cascade in SQLite without explicit constraints.
+-- and the all-boards "Delete board data" path: wipes ONLY the
+-- cron-blob-derived catalog rows (source='kilter', plus the isolated official
+-- Quantum source). CruxCoach-authored
+-- climbs (source='local' / 'nostr', origin='cruxcoach') stay untouched.
+-- Run stats first since there's no FK cascade in SQLite without
+-- explicit constraints.
 deleteKilterSourceClimbStats:
 DELETE FROM climb_stats
-WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter');
+WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
 
 deleteKilterSourceClimbs:
-DELETE FROM climbs WHERE source = 'kilter';
+DELETE FROM climbs WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum');
+
+-- Per-brand variants (Settings → "Delete board data" multiselect):
+-- the same source='kilter' protection, scoped to one board family.
+-- climb_stats and beta_links carry no brand column → resolve through
+-- the climbs about to be deleted, so both MUST run before
+-- deleteCatalogueClimbsForBrand empties the subselect.
+deleteCatalogueClimbStatsForBrand:
+DELETE FROM climb_stats
+WHERE climb_uuid IN (
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
+);
+
+deleteCatalogueBetaLinksForBrand:
+DELETE FROM beta_links
+WHERE climb_uuid IN (
+    SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
+);
+
+deleteCatalogueClimbsForBrand:
+DELETE FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
+
+deletePlacementsForBrand:
+DELETE FROM placements WHERE board_brand = :boardBrand;
+
+deleteProductSizesForBrand:
+DELETE FROM product_sizes WHERE board_brand = :boardBrand;
+
+deleteBoardImagesForBrand:
+DELETE FROM board_images WHERE board_brand = :boardBrand;
+
+deleteLedsForBrand:
+DELETE FROM leds WHERE board_brand = :boardBrand;
+
+deleteHolesForBrand:
+DELETE FROM holes WHERE board_brand = :boardBrand;
+
+deleteHoldPositionsForBrand:
+DELETE FROM board_hold_positions WHERE board_brand = :boardBrand;
+
+-- sync_states is Kilter-owned except the in-app updater's version
+-- marker: the chunk pipeline copies the blob's shared_syncs rows in
+-- here (arbitrary table names, unknowable at compile time) and the
+-- import/backfill markers (metadata_v7, move_count_backfill_v2, the
+-- *_force_resync flags) all describe the Kilter catalogue. MoonBoard +
+-- Aurora-family syncs keep their freshness in SharedPreferences
+-- instead, so a deletion that does not include Kilter must not touch
+-- this table at all — and a Kilter-scoped one resets everything but
+-- the updater's key.
+deleteKilterOwnedSyncStates:
+DELETE FROM sync_states WHERE table_name != 'apk_version_code';
+
+-- Resolve climb uuids → board family, for scoping data that lives in
+-- the encrypted SecureDB (climb-list entries) where no cross-DB JOIN
+-- can reach `climbs`. Exact-match on the canonical stored uuid — the
+-- same resolution the list screens use, so deletion coverage equals
+-- display coverage.
+getClimbBrandsForUuids:
+SELECT uuid, board_brand FROM climbs WHERE uuid IN :uuids;
 
 deleteAllPlacements:
 DELETE FROM placements;
@@ -1359,7 +1592,7 @@ insertLocalDraft {
         source, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
     VALUES (:uuid, :layout_id, :setter_username, :name, :frames,
         1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-        :description, 0, 0, 0, :move_count,
+        :description, 0, 0, :hsm, :move_count,
         'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach', :board_brand);
     UPDATE climbs SET
         layout_id = :layout_id,
@@ -1376,7 +1609,7 @@ insertLocalDraft {
         description = :description,
         is_nomatch = 0,
         frames_pace = 0,
-        hsm = 0,
+        hsm = :hsm,
         move_count = :move_count,
         source = 'local',
         created_by_pubkey = :created_by_pubkey,
@@ -1494,6 +1727,43 @@ SELECT 1 FROM climbs
 WHERE uuid = :uuid AND is_deleted = 1
 LIMIT 1;
 
+-- A pre-emptive Kind-5 deletion is represented as a minimal shell so it can
+-- absorb a late original event. Because uuid is the table PK, a hostile author
+-- could otherwise squat a victim's public uuid with a shell under the
+-- attacker's d-tag. These predicates identify only synthetic shells (never a
+-- real deleted climb) and let the genuine, differently-authored event reclaim
+-- the slot. Same-author shells remain durable and continue to absorb replays.
+isForeignTombstoneShell:
+SELECT 1 FROM climbs
+WHERE uuid = :uuid
+  AND is_deleted = 1
+  AND is_listed = 0
+  AND layout_id = 0
+  AND setter_username IS NULL
+  AND name = ''
+  AND nostr_event_id IS NULL
+  AND source = 'nostr'
+  AND sync_status = 'deleted'
+  AND origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != :incoming_pubkey
+LIMIT 1;
+
+deleteForeignTombstoneShell:
+DELETE FROM climbs
+WHERE uuid = :uuid
+  AND is_deleted = 1
+  AND is_listed = 0
+  AND layout_id = 0
+  AND setter_username IS NULL
+  AND name = ''
+  AND nostr_event_id IS NULL
+  AND source = 'nostr'
+  AND sync_status = 'deleted'
+  AND origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != :incoming_pubkey;
+
 -- Cross-device defence: when a Kind-5 deletion (or Kind-30078 tombstone-
 -- replacement) lands on a device that *never* had the original climb,
 -- there's no row to flip and L3's is_deleted=1 absorption fires nowhere.
@@ -1553,7 +1823,7 @@ INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
 VALUES (?, ?, ?, ?, ?,
     1, 1, ?, ?, ?, ?, ?,
-    ?, 0, 0, 0, ?,
+    ?, 0, 0, ?, ?,
     'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach', ?);
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
@@ -2000,7 +2270,7 @@ WHERE frames_hash = ? AND layout_id = ? AND board_brand = ?;
 -- tripped through backups.
 getOwnClimbsForBackup:
 SELECT uuid, layout_id, setter_username, name, frames,
-       edge_left, edge_right, edge_bottom, edge_top, created_at, description,
+       is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at, description,
        move_count, source, sync_status, created_by_pubkey, frames_hash,
        nostr_event_id, nostr_d_tag, nostr_publish_via,
        kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
@@ -2062,7 +2332,7 @@ SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
 --     in the WHERE is belt-and-suspenders against a malformed backup
 --     trying to flip Kilter-blob rows.
 --
--- Bookkeeping defaults on the INSERT branch: is_listed=1, is_nomatch=0,
+-- Bookkeeping defaults on the INSERT branch: is_nomatch=0,
 -- frames_pace=0, hsm=0, is_deleted=0, frames_count=1 (boulders only —
 -- multi-frame routes are FEAT-012 / 0.2.0+). `origin='cruxcoach'` is
 -- hardcoded on the INSERT; the export side filters by it so any row
@@ -2091,8 +2361,8 @@ INSERT OR IGNORE INTO climbs(
     board_brand, kilter_author_uuid)
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
-    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-    :description, 0, 0, 0, :move_count, 0,
+    1, :is_listed, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, :hsm, :move_count, 0,
     :source, 'cruxcoach', :sync_status,
     :created_by_pubkey, :frames_hash,
     :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
@@ -2109,7 +2379,16 @@ VALUES (
 -- the (possibly older) backup snapshot.
 restoreOwnClimbCoalesceFill:
 UPDATE climbs SET
-    sync_status         = COALESCE(sync_status,         :sync_status),
+    -- A signed CruxCoach catalogue can arrive before the owner's private
+    -- backup. Such a row has the importer defaults source='kilter' and
+    -- sync_status='synced', even though its origin and author identify it as
+    -- the same own climb. Only for that exact catalogue-first shape, promote
+    -- the backup's private lifecycle and visibility. Existing local/nostr
+    -- state remains authoritative and the ownership WHERE guard below keeps
+    -- unrelated UUID collisions untouched.
+    source              = CASE WHEN source = 'kilter' THEN :source ELSE source END,
+    sync_status         = CASE WHEN source = 'kilter' THEN :sync_status ELSE sync_status END,
+    is_listed           = CASE WHEN source = 'kilter' THEN :is_listed ELSE is_listed END,
     created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
     frames_hash         = COALESCE(frames_hash,         :frames_hash),
     nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),
@@ -2120,7 +2399,9 @@ UPDATE climbs SET
     kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
     kilter_error        = COALESCE(kilter_error,        :kilter_error),
     kilter_author_uuid  = COALESCE(kilter_author_uuid,  :kilter_author_uuid)
-WHERE uuid = :uuid AND origin = 'cruxcoach';
+WHERE uuid = :uuid AND origin = 'cruxcoach'
+  AND (created_by_pubkey = :created_by_pubkey
+       OR (created_by_pubkey IS NULL AND source = 'local'));
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
 -- difficulty + quality not yet aggregated — sets sentinels). layout_id is
@@ -2250,6 +2531,33 @@ WHERE LOWER(c.name) LIKE :pattern
   AND c.source = 'kilter'
   AND c.board_brand = :boardBrand
 LIMIT 5;
+
+-- Official MoonBoard exports carry only the numeric ProblemId. Catalogue
+-- snapshots encode that id as one of three deterministic UUIDv5 aliases;
+-- the importer computes the small candidate set and resolves it locally.
+lookupMoonCsvCandidates:
+SELECT c.uuid, c.layout_id, c.name, c.frames, c.frames_count,
+       cs.angle, cs.difficulty_average
+FROM climbs c
+INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.uuid IN :uuids
+  AND c.board_brand = 'moonboard'
+  AND c.is_deleted = 0;
+
+-- Accessibility migration fallback. The official app exposes no ProblemId,
+-- but does expose exact problem name, setter and angle in its semantic tree.
+--
+-- Resolve one bounded batch of names through
+-- idx_climbs_brand_deleted_name_nocase. COLLATE NOCASE is only a prefilter;
+-- the importer still matches Unicode-correctly in Kotlin afterwards.
+lookupMoonScreenByNames:
+SELECT c.uuid, c.layout_id, c.name, c.setter_username, cs.angle
+FROM climbs c INDEXED BY idx_climbs_brand_deleted_name_nocase
+INNER JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.board_brand = 'moonboard'
+  AND c.is_deleted = 0
+  AND cs.angle IN :angles
+  AND c.name COLLATE NOCASE IN :names;
 
 
 -- ─── Community-Climb Dead-Letter Queue ────────────────────────────

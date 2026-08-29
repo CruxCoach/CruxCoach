@@ -21,6 +21,12 @@ class CruxCoachBackupValidationTest {
     }
 
     @Test
+    fun rejects_envelope_from_another_app() {
+        val json = """{"app":"OtherApp","exportedAt":"2026-04-21T00:00:00Z"}"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
     fun rejects_unsupported_version() {
         val json = """{"version":99,"exportedAt":"2026-04-21"}"""
         assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
@@ -88,8 +94,39 @@ class CruxCoachBackupValidationTest {
     @Test
     fun rejects_ascent_with_out_of_range_layout_id() {
         assertFailsWith<IllegalArgumentException> {
-            CruxCoachBackup.preview(ascent(layoutId = 9_999))
+            CruxCoachBackup.preview(ascent(layoutId = 100_001))
         }
+    }
+
+    @Test
+    fun accepts_ascent_with_quantum_board_context() {
+        val preview = CruxCoachBackup.preview(ascent(boardBrand = "quantum", layoutId = 9_101))
+        assertEquals(1, preview.boardAscents)
+    }
+
+    @Test
+    fun rejects_ascent_that_claims_quantum_with_another_boards_layout() {
+        assertFailsWith<IllegalArgumentException> {
+            CruxCoachBackup.preview(ascent(boardBrand = "quantum", layoutId = 1))
+        }
+    }
+
+    @Test
+    fun rejects_quantum_bid_without_a_quantum_layout() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-25",
+            "boardBids":[{
+                "uuid":"11111111-2222-4333-8444-555555555555",
+                "climbUuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "angle":40,
+                "bidCount":1,
+                "climbedAt":"2026-08-25T12:00:00Z",
+                "boardBrand":"quantum"
+            }]
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
     }
 
     @Test
@@ -199,6 +236,100 @@ class CruxCoachBackupValidationTest {
             "exportedAt":"2026-04-21",
             "bodyStats":[{"date":"2026-04-21","statName":"$name","value":70.0,"unit":"kg"}]
         }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    // ── Private climb notes ──────────────────────────────────────
+
+    @Test
+    fun accepts_climb_note() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"beta","updatedAt":"2026-04-21T10:00:00Z"}]
+        }"""
+        assertEquals(1, CruxCoachBackup.preview(json).climbNotes)
+    }
+
+    /** Kilter-logbook-imported climbs carry no-dash uuids; a note on one of
+     *  them must not fail the whole restore. */
+    @Test
+    fun accepts_climb_note_on_a_plain_hex_uuid() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE","note":"beta","updatedAt":"2026-04-21"}]
+        }"""
+        assertEquals(1, CruxCoachBackup.preview(json).climbNotes)
+    }
+
+    @Test
+    fun rejects_climb_note_with_non_uuid_climb() {
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"../../etc/passwd","note":"beta","updatedAt":"2026-04-21"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_overlong_climb_note() {
+        val note = "x".repeat(9_000)
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"$note","updatedAt":"2026-04-21"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_climb_note_with_overlong_timestamp() {
+        val stamp = "2".repeat(200)
+        val json = """{
+            "exportedAt":"2026-04-21",
+            "climbNotes":[{"climbUuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","note":"beta","updatedAt":"$stamp"}]
+        }"""
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    /** Notes are additive inside version 3, so an older envelope that never
+     *  carried the field must still preview cleanly. */
+    @Test
+    fun accepts_version_3_envelope_without_climb_notes() {
+        val json = """{"version":3,"exportedAt":"2026-04-21"}"""
+        assertEquals(0, CruxCoachBackup.preview(json).climbNotes)
+    }
+
+    @Test
+    fun rejects_own_climb_stats_without_their_own_climb() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-24",
+            "boardClimbStats":[{
+                "climbUuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "angle":40,
+                "ascensionistCount":1
+            }]
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
+    }
+
+    @Test
+    fun rejects_own_climb_that_claims_quantum_with_another_boards_layout() {
+        val json = """{
+            "version":3,
+            "exportedAt":"2026-08-25",
+            "boardClimbs":[{
+                "uuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                "layoutId":1,
+                "name":"Invalid Quantum geometry",
+                "frames":"p100r15",
+                "source":"local",
+                "origin":"cruxcoach",
+                "syncStatus":"draft",
+                "boardBrand":"quantum"
+            }]
+        }"""
+
         assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
     }
 }

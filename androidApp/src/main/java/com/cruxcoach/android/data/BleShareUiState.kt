@@ -8,8 +8,20 @@ import com.cruxcoach.android.ble.QueueItem
  * Produced by [BleShareManager], consumed by BleStatusArea composable.
  */
 data class BleShareUiState(
-    /** Currently on the physical board (max 1 — the board has one set of LEDs). */
+    /** Current physical projection or the most recent climb available for resend. */
     val onBoardClimb: OnBoardClimbEntry? = null,
+
+    /**
+     * What the wall shows, when that is *not* the climb the queue expects.
+     *
+     * Null while the two agree, which is almost always — and then the queue line
+     * already says what is on the board, so repeating it in a second banner is
+     * noise, and was where the two names drifted apart. Only a disagreement is
+     * worth its own words: someone overwrote the board, a send was lost, a host
+     * changed. Kept beside [onBoardClimb] rather than replacing it so the queue
+     * line can say it in one added line instead of the screen growing a card.
+     */
+    val boardShowsInstead: BoardMismatch? = null,
 
     /** Number of users connected to the board without an active climb. */
     val boardOccupiedCount: Int = 0,
@@ -18,7 +30,7 @@ data class BleShareUiState(
     val nearbySessions: List<NearbySessionEntry> = emptyList(),
 
     /** Whether sharing is enabled in user preferences. */
-    val sharingEnabled: Boolean = false,
+    val sharingEnabled: Boolean = true,
 
     /** Own session state (null when no session active). */
     val ownSession: OwnSessionState? = null,
@@ -42,7 +54,9 @@ data class BleShareUiState(
                 append(" ${climb.angle}°")
                 when (climb.source) {
                     OnBoardSource.REMOTE_ACTIVE -> append(" · klettert gerade")
-                    OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(" · noch sichtbar")
+                    OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> {
+                        append(if (climb.isStillProjected) " · noch sichtbar" else " · letzter Boulder")
+                    }
                     OnBoardSource.LOCAL_ACTIVE -> append(" · dein Climb")
                     OnBoardSource.SESSION_REMOTE -> append(" · Session-Climb")
                 }
@@ -64,7 +78,9 @@ data class OnBoardClimbEntry(
     val name: String?,
     val grade: String? = null,
     val source: OnBoardSource,
-    val rssi: Int? = null
+    val rssi: Int? = null,
+    /** False when only resend metadata remains and the LEDs have gone out. */
+    val isStillProjected: Boolean = true,
 )
 
 enum class OnBoardSource {
@@ -72,9 +88,9 @@ enum class OnBoardSource {
     LOCAL_ACTIVE,
     /** Another user is connected and climbing. */
     REMOTE_ACTIVE,
-    /** Another user disconnected, LEDs still on. */
+    /** Another user's last projection; [OnBoardClimbEntry.isStillProjected] is authoritative. */
     REMOTE_LAST,
-    /** Own manager value (disconnected, no remote signal). */
+    /** Own saved last projection (disconnected, no remote signal). */
     LOCAL_MANAGER,
     /** Climb from a nearby session's current queue item. */
     SESSION_REMOTE
@@ -94,11 +110,20 @@ data class NearbySessionEntry(
 /** State of the user's own session (host or participant). */
 data class OwnSessionState(
     val isHost: Boolean,
+    val visibility: SessionVisibility,
     val participantCount: Int,
     val queue: List<QueueItem>,
     val currentIndex: Int,
     val currentClimbName: String?,
     val currentClimbGrade: String? = null,
+    val externalBoardOverride: Boolean = false,
     val isPaused: Boolean,
     val elapsedSeconds: Int
+)
+
+/** The climb actually projected on the wall while the queue expects another. */
+data class BoardMismatch(
+    val climbUuid: String,
+    val name: String?,
+    val grade: String?,
 )

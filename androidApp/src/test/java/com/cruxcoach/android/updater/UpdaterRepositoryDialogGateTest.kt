@@ -1,6 +1,11 @@
 package com.cruxcoach.android.updater
 
 import android.content.Context
+import android.content.Intent
+import com.cruxcoach.android.BuildConfig
+import io.mockk.every
+import io.mockk.slot
+import io.mockk.verify
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +20,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * Guards the state-gate added to [UpdaterRepository.requestDownloadDialog]
@@ -29,6 +36,8 @@ import org.junit.Test
  * resulting value of [UpdaterRepository.downloadDialogRequested].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(application = android.app.Application::class)
 class UpdaterRepositoryDialogGateTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
@@ -41,6 +50,7 @@ class UpdaterRepositoryDialogGateTest {
     private val installer: ApkInstaller = mockk(relaxed = true)
     private val notifier: UpdateNotifier = mockk(relaxed = true)
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
+    private val registry: UpdateSourceRegistry = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -61,6 +71,7 @@ class UpdaterRepositoryDialogGateTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        registry = registry,
         // Inject the test dispatcher so requestDownloadDialog's internal
         // `scope.launch { ... }` completes synchronously before the
         // following assertion reads `downloadDialogRequested.value`.
@@ -179,5 +190,30 @@ class UpdaterRepositoryDialogGateTest {
                 repo.downloadDialogRequested.value,
             )
         }
+    }
+
+    @Test
+    fun `release-page handoff ignores network supplied URL`() {
+        val launched = slot<Intent>()
+        every { context.startActivity(capture(launched)) } returns Unit
+        val hostile = UpdateInfo(
+            tagName = "v9.9.9",
+            versionName = "9.9.9",
+            version = SemVer.parseOrNull("v9.9.9")!!,
+            downloadUrls = listOf("https://downloads.example/app.apk"),
+            apkSha256Url = "https://downloads.example/app.apk.sha256",
+            apkSizeBytes = 42,
+            apkSha256 = "a".repeat(64),
+            releaseNotesMarkdown = "",
+            releasePageUrl = "https://attacker.invalid/release",
+            publishedAtEpochSeconds = 0,
+        )
+
+        repository().openReleasePage(hostile)
+
+        verify(exactly = 1) { context.startActivity(any()) }
+        assertEquals(Intent.ACTION_VIEW, launched.captured.action)
+        assertEquals(BuildConfig.UPDATER_RELEASE_PAGE_URL, launched.captured.dataString)
+        assertTrue(launched.captured.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
     }
 }

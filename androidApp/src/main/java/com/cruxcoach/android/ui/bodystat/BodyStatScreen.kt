@@ -202,7 +202,7 @@ private fun RecentEntryCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = StatRegistry.labelDe(statName),
+                        text = statLabel(statName),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,7 +252,7 @@ internal fun StatCategoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = category.labelDe,
+                    text = stringResource(BodyStatLabels.category(category)),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = categoryColor(category)
@@ -282,7 +282,7 @@ internal fun StatCategoryCard(
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("bodystat_${def.key}_input"),
-                                label = { Text(def.labelDe) },
+                                label = { Text(statLabel(def.key)) },
                                 suffix = { Text(def.unit) },
                                 placeholder = { Text(stringResource(R.string.bodystat_tap_to_record)) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -310,3 +310,8 @@ private fun categoryColor(category: StatCategory) = when (category) {
     StatCategory.CLIMBING_SPECIFIC -> OrangeAccent
     StatCategory.MOBILITY -> SuccessGreen
 }
+
+/** Localized label for a stat key; unknown keys show the raw key, as before. */
+@Composable
+private fun statLabel(key: String): String =
+    BodyStatLabels.label(key)?.let { stringResource(it) } ?: key

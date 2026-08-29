@@ -1,0 +1,26 @@
+-- Private, per-user notes attached to catalogue/community climbs. These live
+-- in the encrypted SecureDatabase, not in the shared board catalogue.
+
+CREATE TABLE climb_notes (
+    climb_uuid TEXT NOT NULL PRIMARY KEY,
+    note TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+selectByClimbUuid:
+SELECT note FROM climb_notes WHERE climb_uuid = :climbUuid;
+
+-- Backup export. Ordered so two exports of the same database produce the same
+-- bytes, which keeps a re-export diff readable.
+selectAllForBackup:
+SELECT climb_uuid, note, updated_at FROM climb_notes ORDER BY climb_uuid;
+
+upsert:
+INSERT OR REPLACE INTO climb_notes(climb_uuid, note, updated_at)
+VALUES (:climbUuid, :note, :updatedAt);
+
+deleteByClimbUuid:
+DELETE FROM climb_notes WHERE climb_uuid = :climbUuid;
+
+deleteAll:
+DELETE FROM climb_notes;

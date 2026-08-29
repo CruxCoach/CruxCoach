@@ -1,6 +1,7 @@
 appId: com.cruxcoach.android
 name: detail-favorite-toggle
 tags:
+  - release-gate
   - smoke
   - mutates-state
 ---
@@ -8,18 +9,22 @@ tags:
 # content-desc flips. Untoggle so the flow leaves no state behind.
 # Combined with detail-favorite-toggle.expects (PERF NAV markers
 # proving climb-detail navigation, not setter-detail).
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
+- runFlow: subflows/open-first-climb.yaml
+# A failed earlier run cannot invert this flow: establish favorite-off first.
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
 - tapOn:
-    text: "[0-9]+ Züge"
-    index: 0
-- assertVisible: "Zurück"
-- tapOn: "Zu Favoriten hinzufügen"
+    id: "boarddetail_favorite_button"
 - assertVisible: "Von Favoriten entfernen"
 # Idempotency cleanup.
-- tapOn: "Von Favoriten entfernen"
+- tapOn:
+    id: "boarddetail_favorite_button"
 - assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

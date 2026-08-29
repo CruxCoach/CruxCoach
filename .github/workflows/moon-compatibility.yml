@@ -1,0 +1,120 @@
+name: Moon importer compatibility
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: moon-importer-compatibility
+  cancel-in-progress: false
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # apkeep is used only as a downloader. Its release binary is pinned and
+      # hash-verified before it sees the network; the downloaded APK is never
+      # executed and is never uploaded as a workflow artifact.
+      - name: Install pinned APK downloader
+        env:
+          APKKEEP_URL: https://github.com/EFForg/apkeep/releases/download/1.0.0/apkeep-x86_64-unknown-linux-gnu
+          APKKEEP_SHA256: a23579a3ba366d25a6d69848189b983d65662f4ecf4b9e11e16510811659de4e
+        run: |
+          curl --fail --location --silent --show-error --max-time 120 \
+            --output "$RUNNER_TEMP/apkeep" "$APKKEEP_URL"
+          echo "$APKKEEP_SHA256  $RUNNER_TEMP/apkeep" | sha256sum --check --strict
+          chmod 700 "$RUNNER_TEMP/apkeep"
+
+      - name: Check latest Moon version
+        id: version
+        run: |
+          "$RUNNER_TEMP/apkeep" \
+            --list-versions \
+            --app com.trainingboard.moon \
+            --download-source apk-pure \
+            > "$RUNNER_TEMP/moon-versions.txt"
+          python3 scripts/moon_latest_version.py \
+            --listing "$RUNNER_TEMP/moon-versions.txt" \
+            --baseline scripts/moon_apk_contract_baseline.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Download new Moon XAPK
+        if: steps.version.outputs.new_version == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/moon-download"
+          "$RUNNER_TEMP/apkeep" \
+            --app "com.trainingboard.moon@${{ steps.version.outputs.latest_version }}" \
+            --download-source apk-pure \
+            --options 'download=xapk,arch=arm64-v8a' \
+            "$RUNNER_TEMP/moon-download"
+
+      - name: Verify identity and importer contract
+        if: steps.version.outputs.new_version == 'true'
+        id: contract
+        run: |
+          artifact="$(find "$RUNNER_TEMP/moon-download" -maxdepth 1 -type f -name '*.xapk' -print -quit)"
+          test -n "$artifact"
+          python3 scripts/moon_apk_contract.py \
+            --artifact "$artifact" \
+            --baseline scripts/moon_apk_contract_baseline.json \
+            --json "$RUNNER_TEMP/moon-contract.json" \
+            --markdown "$RUNNER_TEMP/moon-contract.md" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload compatibility evidence
+        if: steps.version.outputs.new_version == 'true' && steps.contract.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: moon-contract-${{ steps.contract.outputs.version_code }}
+          path: |
+            ${{ runner.temp }}/moon-contract.json
+            ${{ runner.temp }}/moon-contract.md
+          retention-days: 30
+
+      - name: Open one review issue for a new or incompatible version
+        if: steps.contract.outcome == 'success' && steps.contract.outputs.should_alert == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ steps.contract.outputs.version_code }}
+          VERSION_NAME: ${{ steps.contract.outputs.version_name }}
+          VERDICT: ${{ steps.contract.outputs.verdict }}
+          REPORT_PATH: ${{ runner.temp }}/moon-contract.md
+        run: |
+          existing="$(gh issue list --state all \
+            --search "Moon versionCode $VERSION_CODE in:title" \
+            --json number --jq 'length')"
+          if [ "$existing" = 0 ]; then
+            gh issue create \
+              --title "Moon versionCode $VERSION_CODE ($VERSION_NAME): $VERDICT" \
+              --body-file "$REPORT_PATH"
+          fi
+
+      - name: Report checker infrastructure failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing="$(gh issue list --state open \
+            --search 'Moon compatibility checker failed in:title' \
+            --json number --jq 'length')"
+          if [ "$existing" = 0 ]; then
+            gh issue create \
+              --title 'Moon compatibility checker failed' \
+              --body "The daily checker could not produce a trusted result. Inspect: $RUN_URL"
+          fi

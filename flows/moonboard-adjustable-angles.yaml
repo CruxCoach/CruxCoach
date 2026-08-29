@@ -1,0 +1,175 @@
+appId: com.cruxcoach.android
+name: moonboard-adjustable-angles
+tags:
+  - release-gate
+  - mutates-state
+---
+# Regression for 0.2.1's widened official MoonBoard catalogues. Both full-size
+# adjustable variants must expose 25/40 on browse, detail, and creator. The
+# flow restores Kilter Original at 40 degrees before it exits.
+- runFlow: subflows/launch-browser.yaml
+
+# MoonBoard 2016 starts at the deterministic 40-degree selection written by
+# setMoonBoardSelection.
+- tapOn:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_filter_board_link"
+- tapOn:
+    id: "board_picker_brand"
+- tapOn: "MoonBoard"
+- scrollUntilVisible:
+    element:
+      text: "MoonBoard 2016"
+    direction: DOWN
+- tapOn: "MoonBoard 2016"
+- tapOn:
+    id: "board_picker_confirm"
+- extendedWaitUntil:
+    visible: "MoonBoard 2016"
+    timeout: 15000
+- assertVisible:
+    id: "board_angle_25"
+    checked: false
+- assertVisible:
+    id: "board_angle_40"
+    checked: true
+- tapOn:
+    id: "board_angle_25"
+- assertVisible:
+    id: "board_angle_25"
+    checked: true
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_angle"
+    timeout: 15000
+- tapOn:
+    id: "boarddetail_angle"
+- assertVisible:
+    id: "boarddetail_angle_25"
+- assertVisible:
+    id: "boarddetail_angle_40"
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_create_fab"
+- scrollUntilVisible:
+    element:
+      id: "climb_creator_angle"
+    direction: DOWN
+- assertVisible:
+    id: "climb_creator_angle"
+    text: "25°"
+- tapOn:
+    id: "climb_creator_angle"
+- assertVisible: "25°"
+- assertVisible: "40°"
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Repeat the same three-surface contract for MoonBoard 2024.
+- tapOn:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_filter_board_link"
+- tapOn:
+    id: "board_picker_brand"
+- tapOn: "MoonBoard"
+- scrollUntilVisible:
+    element:
+      text: "MoonBoard 2024"
+    direction: DOWN
+- tapOn: "MoonBoard 2024"
+- tapOn:
+    id: "board_picker_confirm"
+- extendedWaitUntil:
+    visible: "MoonBoard 2024"
+    timeout: 15000
+- assertVisible:
+    id: "board_angle_25"
+    checked: false
+- assertVisible:
+    id: "board_angle_40"
+    checked: true
+- tapOn:
+    id: "board_angle_25"
+- assertVisible:
+    id: "board_angle_25"
+    checked: true
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+- tapOn:
+    id: "board_climb_card"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "boarddetail_angle"
+    timeout: 15000
+- tapOn:
+    id: "boarddetail_angle"
+- assertVisible:
+    id: "boarddetail_angle_25"
+- assertVisible:
+    id: "boarddetail_angle_40"
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_create_fab"
+- scrollUntilVisible:
+    element:
+      id: "climb_creator_angle"
+    direction: DOWN
+- assertVisible:
+    id: "climb_creator_angle"
+    text: "25°"
+- tapOn:
+    id: "climb_creator_angle"
+- assertVisible: "25°"
+- assertVisible: "40°"
+- pressKey: Back
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+
+# Leave shared device state at the release baseline: 40-degree Kilter Original.
+- tapOn:
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_angle_40"
+- assertVisible:
+    id: "board_angle_40"
+    checked: true
+- tapOn:
+    id: "board_filter_board_link"
+- tapOn:
+    id: "board_picker_brand"
+- tapOn: "Kilter Original"
+- tapOn:
+    id: "board_picker_confirm"
+- extendedWaitUntil:
+    visible: "Winkel: 40°"
+    timeout: 15000
+- pressKey: Back
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+- assertVisible:
+    id: "board_active_configuration"

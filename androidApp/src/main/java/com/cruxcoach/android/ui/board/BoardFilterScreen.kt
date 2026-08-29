@@ -58,12 +58,15 @@ import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.WarningYellow
+import com.cruxcoach.domain.board.QuantumOverlapFilter
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.util.GradeConverter
+import kotlin.math.roundToInt
 
 /** A board's angle set renders as discrete chips up to this many angles
  *  (MoonBoard variants, near-fixed boards like Touchstone 35/40); above it a
@@ -77,6 +80,7 @@ fun BoardFilterScreen(
     onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val activeBrand = BoardBrand.fromWire(state.filter.boardBrand)
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
     var showTermInfo by remember { mutableStateOf(false) }
@@ -201,10 +205,10 @@ fun BoardFilterScreen(
                 // same brand-aware logic as the Settings board section). Kilter
                 // and the Aurora family keep the product-size label.
                 val brand = BoardBrand.fromWire(state.filter.boardBrand)
-                val boardLabel = when {
+                val boardDetail = when {
                     brand == BoardBrand.MOONBOARD ->
                         MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())?.displayName
-                            ?: stringResource(R.string.settings_board_model_not_configured)
+                            .orEmpty()
                     // Aurora family: name WHICH board (Tension / Grasshopper / …),
                     // with the variant where one exists (Tension TB2 Mirror/Spray),
                     // then the product size — same as the Settings board section.
@@ -219,8 +223,13 @@ fun BoardFilterScreen(
                     else ->
                         state.boardSize
                             ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
-                            ?: stringResource(R.string.settings_board_model_not_configured)
+                            .orEmpty()
                 }
+                val boardLabel = com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                    brand = brand,
+                    layoutId = state.filter.layoutId,
+                    detail = boardDetail,
+                )
                 Column {
                     Text(
                         stringResource(R.string.board_filter_selected_board),
@@ -280,18 +289,21 @@ fun BoardFilterScreen(
                         }
                     }
                     angleChips.size > MAX_ANGLE_CHIPS -> {
-                        // Board-specific slider: range = the board's real angle
-                        // extent, stops at each supported angle. Snap to the
-                        // nearest supported angle (handles negatives; the set is
-                        // contiguous 5° steps in practice) and apply exact so the
-                        // toward-zero 5° rounding never mangles a negative value.
+                        // Slide over catalogue INDICES, not degree values. Real
+                        // boards can have gaps (Quantum has 15→25); evenly spaced
+                        // degree stops would make valid values such as 40°
+                        // unreachable. Every stop now maps one-to-one to a real
+                        // catalogue angle, including negative values.
+                        val selectedIndex = BoardAnglePicker.sliderIndex(angleChips, state.filter.angle)
                         Slider(
-                            value = state.filter.angle.toFloat(),
+                            value = selectedIndex.toFloat(),
                             onValueChange = {
-                                viewModel.setAngleExact(angleChips.minBy { c -> kotlin.math.abs(c - it.toInt()) })
+                                viewModel.setAngleExact(
+                                    BoardAnglePicker.angleAtSliderIndex(angleChips, it.roundToInt())
+                                )
                             },
                             onValueChangeFinished = { viewModel.commitFilterChange() },
-                            valueRange = angleChips.first().toFloat()..angleChips.last().toFloat(),
+                            valueRange = 0f..angleChips.lastIndex.toFloat(),
                             steps = (angleChips.size - 2).coerceAtLeast(0),
                             modifier = Modifier.testTag("board_angle_slider"),
                             colors = SliderDefaults.colors(
@@ -405,32 +417,34 @@ fun BoardFilterScreen(
                     )
                 )
 
-                Text(
-                    stringResource(R.string.board_filter_type),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
-                    val typeOptions = listOf(
-                        ClimbTypeFilter.BOULDER to stringResource(R.string.board_filter_type_boulder),
-                        ClimbTypeFilter.ROUTE to stringResource(R.string.board_filter_type_routes),
-                        ClimbTypeFilter.ALL to stringResource(R.string.board_filter_all)
+                if (activeBrand.supportsClimbTypeFilter) {
+                    Text(
+                        stringResource(R.string.board_filter_type),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    typeOptions.forEach { (filter, label) ->
-                        FilterChip(
-                            selected = state.filter.climbTypeFilter == filter,
-                            onClick = { viewModel.updateClimbTypeFilter(filter) },
-                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                selectedLabelColor = OrangeAccent
-                            ),
-                            modifier = Modifier.height(32.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        val typeOptions = listOf(
+                            ClimbTypeFilter.BOULDER to stringResource(R.string.board_filter_type_boulder),
+                            ClimbTypeFilter.ROUTE to stringResource(R.string.board_filter_type_routes),
+                            ClimbTypeFilter.ALL to stringResource(R.string.board_filter_all)
                         )
+                        typeOptions.forEach { (filter, label) ->
+                            FilterChip(
+                                selected = state.filter.climbTypeFilter == filter,
+                                onClick = { viewModel.updateClimbTypeFilter(filter) },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent
+                                ),
+                                modifier = Modifier.height(32.dp)
+                            )
+                        }
                     }
                 }
 
@@ -488,30 +502,32 @@ fun BoardFilterScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
-                    FilterChip(
-                        selected = state.filter.benchmarkOnly,
-                        onClick = { viewModel.updateBenchmarkFilter(!state.filter.benchmarkOnly) },
-                        label = {
-                            Text(
-                                stringResource(R.string.board_filter_benchmarks_only),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
-                        leadingIcon = if (state.filter.benchmarkOnly) {
-                            {
-                                Icon(
-                                    Icons.Default.Verified,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                    if (activeBrand.supportsBenchmarkFilter) {
+                        FilterChip(
+                            selected = state.filter.benchmarkOnly,
+                            onClick = { viewModel.updateBenchmarkFilter(!state.filter.benchmarkOnly) },
+                            label = {
+                                Text(
+                                    stringResource(R.string.board_filter_benchmarks_only),
+                                    style = MaterialTheme.typography.labelSmall
                                 )
-                            }
-                        } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
-                        ),
-                        modifier = Modifier.height(32.dp)
-                    )
+                            },
+                            leadingIcon = if (state.filter.benchmarkOnly) {
+                                {
+                                    Icon(
+                                        Icons.Default.Verified,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            } else null,
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                selectedLabelColor = OrangeAccent
+                            ),
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
 
                     // My-climbs toggle: drafts + published, all angles, all
                     // grades. Bypasses the regular paginated browse path so
@@ -542,6 +558,94 @@ fun BoardFilterScreen(
                     )
                 }
 
+                if (activeBrand == BoardBrand.QUANTUM) {
+                    Text(
+                        stringResource(R.string.board_filter_quantum_rules),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        val ruleOptions = listOf(
+                            QuantumRuleFilter.STANDARD to stringResource(R.string.board_filter_quantum_standard),
+                            QuantumRuleFilter.CAMPUSING to stringResource(R.string.board_filter_quantum_campusing),
+                            QuantumRuleFilter.EDGE to stringResource(R.string.board_filter_quantum_edge),
+                            QuantumRuleFilter.KICKPLATE to stringResource(R.string.board_filter_quantum_kickplate),
+                            QuantumRuleFilter.MATCHING to stringResource(R.string.board_filter_quantum_matching),
+                        )
+                        ruleOptions.forEach { (rule, label) ->
+                            FilterChip(
+                                selected = (state.filter.quantumRuleMask and rule.bit) != 0L,
+                                onClick = { viewModel.toggleQuantumRuleFilter(rule) },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent
+                                ),
+                                modifier = Modifier.height(32.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        stringResource(R.string.board_filter_quantum_overlap_title),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    ) {
+                        val overlapOptions = listOf(
+                            QuantumOverlapFilter.OFF to
+                                stringResource(R.string.board_filter_quantum_overlap_off),
+                            QuantumOverlapFilter.NONE to
+                                stringResource(R.string.board_filter_quantum_overlap_none),
+                            QuantumOverlapFilter.AT_MOST_ONE to
+                                stringResource(R.string.board_filter_quantum_overlap_one),
+                        )
+                        overlapOptions.forEach { (option, label) ->
+                            FilterChip(
+                                selected = state.filter.quantumOverlapFilter == option,
+                                onClick = { viewModel.setQuantumOverlapFilter(option) },
+                                enabled = option == QuantumOverlapFilter.OFF ||
+                                    state.quantumLayers.available,
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent,
+                                ),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .testTag("board_filter_quantum_overlap_${option.name}"),
+                            )
+                        }
+                    }
+                    Text(
+                        when {
+                            state.quantumLayers.occupied && !state.quantumLayers.complete ->
+                                stringResource(R.string.board_filter_quantum_overlap_incomplete)
+                            !state.quantumLayers.occupied ->
+                                stringResource(R.string.board_filter_quantum_overlap_inert)
+                            state.filter.quantumOverlapFilter.active &&
+                                state.quantumLayers.matchCount >= 0 -> stringResource(
+                                R.string.board_filter_quantum_overlap_count,
+                                state.quantumLayers.matchCount.toInt(),
+                            )
+                            else -> stringResource(R.string.board_filter_quantum_overlap_hint)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (!state.quantumLayers.complete &&
+                            state.quantumLayers.occupied
+                        ) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("board_filter_quantum_overlap_hint"),
+                    )
+                }
+
                 // Provenance filter — schema column `origin`. CruxCoach
                 // climbs are the ones authored via this app's editor;
                 // Kilter climbs come from the official Kilter app and
@@ -556,12 +660,23 @@ fun BoardFilterScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
-                    val originOptions = listOf(
+                    val officialLabel = if (activeBrand == BoardBrand.QUANTUM) {
+                        stringResource(R.string.board_filter_origin_quantum)
+                    } else {
+                        stringResource(R.string.board_filter_origin_kilter)
+                    }
+                    val originOptions = buildList {
+                        add(
                         OriginFilter.ALL to stringResource(R.string.board_filter_all),
+                        )
+                        add(
                         OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach),
-                        OriginFilter.KILTER to stringResource(R.string.board_filter_origin_kilter),
-                        OriginFilter.BOARDSESH to stringResource(R.string.board_filter_origin_boardsesh),
-                    )
+                        )
+                        add(OriginFilter.KILTER to officialLabel)
+                        if (activeBrand.supportsBoardSeshOrigin) {
+                            add(OriginFilter.BOARDSESH to stringResource(R.string.board_filter_origin_boardsesh))
+                        }
+                    }
                     originOptions.forEach { (filter, label) ->
                         FilterChip(
                             selected = state.filter.originFilter == filter,

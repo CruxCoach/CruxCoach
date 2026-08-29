@@ -4,7 +4,241 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.1] - Unreleased
+## [0.2.2] - 2026-08-29
+
+Training playlists you can actually play — climb by climb, with rests,
+one-tap logging and a summary at the end — either from a list of your own
+or generated from your logbook. Bring that logbook across directly from the
+installed Moon app or its CSV export. Quantum Boards join CruxCoach with
+authoritative live layers and overlap-aware browsing, while CruxRelay keeps
+compatible board apps on one connected wall. Two more MoonBoards, clearer
+board selection and sending, per-board data deletion, and app updates that
+no longer depend on one download server round out the release.
+
+### Added
+- **Import your MoonBoard logbook** — bring the ascents and attempts you
+  already logged in the official MoonBoard app across, either from its CSV
+  export or, if you have no export, through a one-shot on-device transfer
+  you switch on yourself and switch off again afterwards. Entries land on
+  the right MoonBoard problem, at the right angle, on the day you climbed
+  them, and re-running a day updates it instead of duplicating it.
+- **Quantum Board support** — connect to Quantum controllers, browse their
+  catalogues and keep the layer rack synchronized with the controller's
+  authoritative readback, including climbs sent by other apps. The browser
+  can restrict results to no occupied-layer overlaps or allow at most one.
+- **Training playlists** — a playlist is a session you can play. One climb
+  at a time on a full-screen player, sent to the wall as it comes up, a
+  rest countdown that already shows what's next, *Sent it* / *Attempt*
+  logging without leaving the screen, and a closing summary with total,
+  active and rest time. You can add a climb to a running session from
+  anywhere in the app, connect to your board straight from the plan
+  screen, and share a playlist by link the way you share a climb.
+- **Let CruxCoach build the session** — choose a training type (pyramid,
+  power endurance, volume, max strength, or working your open projects), a
+  duration, an angle, and where you are in your session (not warmed up,
+  warmed up, end of training). The generator picks the climbs and the
+  rests. Grades come from your own logbook — the grade you repeat reliably
+  and the one you flash — not from a fixed table, and at the end of a
+  session it deliberately backs off from max-effort climbing. It shows you
+  what it based the plan on, and says so when your logbook is still too
+  thin to judge.
+- **Or say what you want yourself** — a manual session takes a grade range,
+  how many climbs, how many tries each and the two rest lengths, and builds
+  exactly that. The range is a limit, not a suggestion: nothing harder or
+  easier is substituted in, and if your board hasn't got enough in range
+  the session comes up short and says by how many.
+- **The session shapes are adjustable** — a pyramid runs from three to six
+  tiers, and an interval set is any number of sets of any number of climbs,
+  rather than 4x4 being the only shape on offer.
+- **Play any list you've saved** — Favourites and your own lists included:
+  in list order or shuffled, with a rest between climbs, continuing either
+  manually, after a send, or after every logged attempt. A list can also
+  keep a training plan of its own — the same climbs, but with your order,
+  your repeats and your rest times — without changing the list itself.
+- **Two more MoonBoards** — the original **MoonBoard 2010** and the **Mini
+  MoonBoard 2025** join the five variants already supported, each on its
+  own measured board photo, with its hold sets drawn on it. Browse, send
+  and create on them the same way as on the others.
+- **MoonBoard: how a problem is meant to be climbed** — problems now carry
+  *Footless*, *Footless + kickboard* or *No kickboard* where the setter
+  said so, and any other instruction the setter wrote appears as its own
+  line.
+- **MoonBoard: your climb stays on the wall** — a MoonBoard controller
+  clears its LEDs the moment the last app lets go of it, which is why a
+  problem you were still working kept going dark. CruxCoach now holds the
+  connection open for as long as the climb is meant to be lit, and tells
+  you when the board is ready for you to send it again.
+- **MoonBoard LED position** — choose on every MoonBoard whether the existing
+  LEDs below the holds, above them, or both should light. Finish holds and
+  positions without an upper LED safely stay lit below. Existing installs keep
+  the previous below-only behaviour.
+- **CruxRelay — compatible board apps can use the connected wall** — most
+  board controllers only talk to one app at a time, so CruxCoach stands in
+  for the board and forwards their climbs. Sharing follows the host's direct
+  board connection and stays available even with no guest connected; a host
+  disconnect or explicit stop ends it. CruxCoach names a relayed climb when
+  it can resolve it, shows a notification throughout, and restores the
+  phone's Bluetooth name when sharing ends.
+- **Tap your last board to reconnect** — the board you used last is
+  remembered and offered as a card in the connect sheet. Tapping it
+  connects straight away instead of scanning the room again.
+- **Decide when a climb goes to the wall** — *Immediately* when you open a
+  climb, or *Tap to send*. CruxCoach now finds out on connecting whether
+  your controller takes one app or several, tells you which it found, and
+  keeps a separate setting for each case — so a board you share with
+  others doesn't have to behave like the one at home.
+- **Auto-disconnect can be switched off** — the board connection stays
+  open until you disconnect it yourself.
+- **Keep a session to yourself** — when you start one you choose whether
+  nearby CruxCoach users can see and join it, or whether it stays on your
+  phone.
+- **Delete the data of one board instead of all of them** — both *delete
+  board data* and *delete logbook data* now let you pick which boards they
+  apply to. Your own climbs and community climbs are always kept.
+- **Update sources are now a list, not a pair** — CruxCoach asks every
+  known source for the newest version and takes whichever has it, so a
+  single unreachable — or simply out-of-date — server can no longer hold
+  updates back. Zapstore is one of those sources. The APK itself may come
+  from any of them; it is installed only after its checksum and signature
+  match, exactly as before. The list is fetched at runtime, which means a
+  download server can be added or retired without anyone having to install
+  a new version first.
+- **Choose what happens when an update is found** — just notify (unchanged
+  default), or let CruxCoach download and verify it automatically before
+  asking Android to install it. Android always leaves the final confirmation
+  or rejection to you; CruxCoach does not install updates silently.
+- **Android 8.0 and 8.1: this is the last version** — 0.2.3 will require
+  Android 9. CruxCoach now says so on affected devices instead of letting
+  them wait for updates that can never arrive. Nothing breaks: the app
+  keeps working and your data stays where it is — there just will not be
+  further updates. This notice is why the change is announced here, one
+  release before it takes effect.
+- **A count of verified updates — and a switch to turn it off** — once an
+  update has been downloaded and verified, CruxCoach may report that one
+  fact: which version, and which source it came from. Nothing identifies
+  you, your device or your installation, it happens at most once per
+  version, and it never affects whether you get an update. It is on by
+  default and can be switched off under Settings → Updates. Builds other
+  than the official ones have no counter at all.
+- **CruxCoach speaks up when board updates stop arriving** — a background
+  catalogue sync that quietly fails looked exactly like a successful one.
+  After three missed cycles the sync card now says so, with a tap to sync
+  right away.
+- **Spreadsheet-friendly data exchange** — save or share the user-facing
+  logbook, bundled private climb notes, lists/playlists and own climbs as JSON,
+  a CSV ZIP or an Excel workbook. CSV and Excel add readable Font and V grades
+  alongside the underlying values. JSON and CSV are round-trip formats; Excel
+  is deliberately export-only and says so in the UI.
+
+### Changed
+- **Playlists are called playlists** — Kilter and Aurora call them that in
+  their own apps, while CruxCoach still said "circuits" during import.
+  Every visible label now says playlist.
+- **A calmer climb browser** — the bar above the list echoing your active
+  board, layout, size and angle is gone. It repeated what settings already
+  shows and cost a row of screen on every scroll. The header now carries
+  the CruxCoach mark instead of a title that wrapped onto two lines.
+- **The draft badge agrees with itself** — a climb you have published
+  counts as published in the browser *and* in its detail screen; the two
+  could disagree before.
+- **The first browse of a newly added board is quick** — importing a single
+  board on its own used to leave that board's first browse noticeably slow.
+- **Releases carry a v3 signature** — this is groundwork rather than a
+  feature: it is what allows the signing key to be replaced later without
+  every installed copy refusing the update. Nothing changes for you now;
+  the key is unchanged and updates behave exactly as before.
+
+### Fixed
+- **Manual exchange no longer over-promises hidden data** — JSON and CSV
+  round-trip the user-facing logbook, bundled private climb notes,
+  lists/playlists and own climbs, and older CruxCoach JSON backups remain
+  importable. The separate encrypted cloud backup continues to use the full
+  recovery codec, including internal profile and training data.
+- **Playlist selection now has one source of truth** — choosing a climb from
+  the playlist's list view updates the existing player instead of opening a
+  second, non-functional playlist screen. Detail-screen light actions continue
+  to work while playback is active, automatic mode sends the selected climb,
+  and Nearby advertises that same current climb.
+- **Quantum overlap filters now affect the browser rows as well as the count** —
+  controller-reported layers are hydrated to their climb geometry before the
+  zero-overlap and at-most-one-overlap predicates are applied.
+- **Quantum controllers that do not answer the optional live-state read stay
+  usable** — CruxCoach now falls back to the controller's explicit route-list
+  command on the same connection instead of dropping an otherwise healthy
+  link before a climb can be sent or live layers can be resolved.
+- **No "matching allowed" badge where nobody was ever asked** — that is a
+  Kilter setting. On MoonBoard problems and on community climbs CruxCoach
+  was showing an answer to a question the setter never got, so the badge
+  now appears only where the answer is real.
+- **Some boards failed on the very first download** — a fresh install pulls
+  seven catalogues one after another, and each got a single attempt at
+  finding its files. One unlucky moment lost a whole board while its
+  siblings came through. Each catalogue now retries before giving up.
+- **Board catalogues no longer settle on an outdated copy** — the list of
+  files to download is published to several relays, and one that was
+  offline during the last update still holds an older version. Choosing
+  between the answers went by the wrong timestamp, and where two of them
+  matched, by whichever relay replied first. Two phones could end up on
+  different catalogues, and one phone could change its mind between syncs.
+  The newest list now wins, and every device agrees on which one that is.
+- **Hold and zone filters reset when you switch boards** — a filter drawn on
+  one board stayed active on the next, where those holds mean nothing: an
+  empty list under a filter banner that looked correct.
+- **Nobody is told to climb during a shared rest** — in a session you had
+  joined, your phone showed the next climb ready to go while the host was
+  still counting down a rest and the wall was showing something else.
+  Rests now reach everyone in the session, including anyone who joins
+  while one is already running, and pressing *next* on a joined phone
+  skips the rest rather than skipping a climb nobody had tried.
+- **"Immediately" is honoured in a shared session too** — hosting a shared
+  board forced the manual send button even when you had chosen to send
+  immediately.
+- **Turning Bluetooth on from the connect sheet no longer closes the app** —
+  tapping the Bluetooth icon with Bluetooth off, before CruxCoach had ever
+  asked for permission, crashed it outright.
+- **No more downloading an update that cannot be installed** — after an
+  update was interrupted, CruxCoach could keep fetching and verifying an
+  older version on every check, only for Android to refuse it at the last
+  step. That is a 34 MB download for a guaranteed failure, repeated
+  forever and paid for on mobile data. It now notices that the version it
+  is holding is not newer than the one you are running, and drops it.
+- **Sharing CruxCoach handed out an old app** — the QR code under *share
+  CruxCoach* was built from the sharing phone's own version, so a phone on
+  an older build pointed everyone it met at that older build, and the link
+  broke whenever the download host changed. The QR now opens a download
+  page that always resolves to the current release, and falls back to
+  another host if the first does not answer.
+- **A re-download you asked for is never dropped in silence** — if Android
+  is holding the sync back or CruxCoach is missing network permission, it
+  now tells you which, instead of appearing to do nothing.
+- **Swiping between climbs no longer rolls back the send button** — a climb
+  page prepared in the background could come back with the send settings it
+  had at the time, hiding the send button until you touched the setting
+  again.
+- **The angle picker opens instantly** — opening a climb walked the entire
+  catalogue just to find out which angles that board offers.
+- **A generated session no longer ignores an imported logbook** — grades
+  from a logbook that came in from Kilter were not reaching the generator,
+  so it planned as though you had no history at all.
+- **A session that comes up short says so** — when the board has too little
+  in the grade range you asked for, the generator now tells you how many
+  slots it could not fill instead of handing you a shorter session with no
+  explanation.
+- **Footless survives being shared** — a MoonBoard problem sent to you by
+  another climber arrived without the setter's *footless* instruction.
+- **No ascent logging for a climb that is not in your catalogue** — the
+  logging buttons were offered where there was nothing to log against.
+- **The session summary counts flashes and grades like the rest of the
+  app** — a first-try repeat of an old project was counted as a flash there
+  but nowhere else, and Font grades could land in the neighbouring bucket.
+- **The what's-new dialog can be scrolled** — on a small screen, or with a
+  large system font, everything below the fold was simply unreachable,
+  and the dialog cannot be dismissed by tapping outside it.
+- **Deleted community climbs stay deleted** — a phone that only picks up the
+  daily catalogue, never the live take-down, now also remembers that a climb
+  was delisted, so a stray relay can't put it back in your browser.
+
+## [0.2.1] - 2026-07-11
 
 Zone search on the board photo, Kilter circuits arriving as lists,
 share links for every climb and lists that span all your boards — plus

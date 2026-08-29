@@ -4,10 +4,15 @@ import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.data.repository.Climb_lists
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
+import com.cruxcoach.data.repository.ListPlaybackStepRow
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
 import com.cruxcoach.data.repository.RawClimbListEntry
+import com.cruxcoach.data.repository.RawListPlaybackStep
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -19,6 +24,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     val sentUuids = mutableSetOf<String>()
     val attemptedUuids = mutableSetOf<String>()
     val ignoredUuids = mutableSetOf<String>()
+    val climbNotes = mutableMapOf<String, String>()
     /** Log uuids (ascent + bid PKs) recorded by inserts, so dedup-counting in
      *  the Kilter import can be exercised. */
     val insertedLogUuids = mutableSetOf<String>()
@@ -72,6 +78,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     ) { insertedLogUuids.add(uuid) }
 
     override fun deleteBid(uuid: String) {}
+    override fun promoteQuickBidToSend(send: com.cruxcoach.data.repository.QuickLogSendInput) {}
+    override fun restoreQuickBidFromSend(bid: com.cruxcoach.data.repository.QuickLogBidInput) {}
     override fun getUserBidDifficulties(since: String): List<Double> = emptyList()
     override fun getUnsyncedBids(): List<RawBid> = emptyList()
     override fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean = true
@@ -91,10 +99,18 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun ensureFavoritesListExists(): Long = 1L
     override fun getAllClimbLists(): List<Climb_lists> = emptyList()
     override fun getClimbListById(id: Long): Climb_lists? = null
-    override fun createClimbList(name: String): Long = 1L
+    override fun createClimbList(name: String, generatorParams: String?): Long {
+        val id = nextListId++
+        playbackSteps[id] = mutableListOf()
+        listMeta[id] = name to generatorParams
+        return id
+    }
     override fun renameClimbList(id: Long, name: String) {}
     override fun deleteClimbList(id: Long) {}
     override fun addClimbToList(listId: Long, climbUuid: String) {}
+    override fun addClimbToListAndExtendPlayback(listId: Long, climbUuid: String, angle: Long?) {
+        addClimbToList(listId, climbUuid)
+    }
     override fun removeClimbFromList(listId: Long, climbUuid: String) {}
     override fun getClimbListEntryUuids(listId: Long, limit: Int, offset: Int): List<Pair<String, String>> = emptyList()
     override fun countClimbListEntries(listId: Long): Long = 0L
@@ -108,12 +124,122 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         else { ignoredUuids.add(climbUuid); true }
     }
     override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
+    override fun getClimbNote(climbUuid: String): String? = climbNotes[climbUuid]
+    override fun saveClimbNote(climbUuid: String, note: String) {
+        val normalized = note.trim()
+        if (normalized.isEmpty()) climbNotes.remove(climbUuid)
+        else climbNotes[climbUuid] = normalized
+    }
+    override fun getClimbNotesForBackup(): List<com.cruxcoach.data.repository.ClimbNoteBackupRow> =
+        climbNotes.entries.sortedBy { it.key }.map {
+            com.cruxcoach.data.repository.ClimbNoteBackupRow(it.key, it.value, "2026-01-01T00:00:00Z")
+        }
+    override fun restoreClimbNote(row: com.cruxcoach.data.repository.ClimbNoteBackupRow) {
+        val normalized = row.note.trim()
+        if (normalized.isNotEmpty()) climbNotes[row.climbUuid] = normalized
+    }
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
+    override fun getListPlaybackStepsRaw(): List<RawListPlaybackStep> = emptyList()
     override fun getClimbListsForBackup(): List<com.cruxcoach.data.repository.ClimbListBackupRow> = emptyList()
     override fun restoreClimbList(
         name: String, createdAt: String,
         description: String?, color: String?, externalId: String?,
     ): Long = 1L
+
+    // -- Optional training plans (functional in-memory implementation) --
+
+    val playbackSteps = mutableMapOf<Long, MutableList<ListPlaybackStepRow>>()
+    val listMeta = mutableMapOf<Long, Pair<String, String?>>()
+    private var nextListId = 100L
+    private var nextEntryId = 1L
+
+    override fun updateGeneratorParams(listId: Long, generatorParams: String?) {
+        listMeta[listId] = (listMeta[listId]?.first ?: "") to generatorParams
+    }
+
+    override fun updatePlaybackSettings(
+        listId: Long,
+        order: ListPlaybackOrder,
+        advance: ListPlaybackAdvance,
+        restSeconds: Long,
+    ) = Unit
+
+    override fun addPlaybackClimb(listId: Long, climbUuid: String, angle: Long?): Long {
+        val entries = playbackSteps.getOrPut(listId) { mutableListOf() }
+        val id = nextEntryId++
+        entries.add(ListPlaybackStepRow(id, listId, entries.size.toLong(), "climb", climbUuid, null, angle))
+        return id
+    }
+
+    override fun addPlaybackRest(listId: Long, restSeconds: Long): Long {
+        val entries = playbackSteps.getOrPut(listId) { mutableListOf() }
+        val id = nextEntryId++
+        entries.add(ListPlaybackStepRow(id, listId, entries.size.toLong(), "rest", null, restSeconds, null))
+        return id
+    }
+
+    override fun getPlaybackSteps(listId: Long): List<ListPlaybackStepRow> =
+        playbackSteps[listId]?.toList() ?: emptyList()
+
+    override fun removePlaybackStep(stepId: Long) {
+        playbackSteps.values.forEach { it.removeAll { e -> e.id == stepId } }
+    }
+
+    override fun removePlaybackSteps(stepIds: Collection<Long>) {
+        stepIds.toSet().forEach(::removePlaybackStep)
+    }
+
+    override fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long) {
+        playbackSteps.values.forEach { entries ->
+            val i = entries.indexOfFirst { it.id == stepId }
+            if (i >= 0) entries[i] = entries[i].copy(restSeconds = restSeconds)
+        }
+    }
+
+    override fun updatePlaybackRestSeconds(stepIds: Collection<Long>, restSeconds: Long) {
+        stepIds.toSet().forEach { updatePlaybackRestSeconds(it, restSeconds) }
+    }
+
+    override fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int) {
+        val entries = playbackSteps[listId] ?: return
+        if (fromIndex !in entries.indices || toIndex !in entries.indices) return
+        val moved = entries.removeAt(fromIndex)
+        entries.add(toIndex, moved)
+        for (i in entries.indices) entries[i] = entries[i].copy(position = i.toLong())
+    }
+
+    override fun reorderPlaybackSteps(listId: Long, orderedStepIds: List<Long>): Boolean {
+        val entries = playbackSteps[listId] ?: return orderedStepIds.isEmpty()
+        if (
+            orderedStepIds.toSet().size != orderedStepIds.size ||
+            orderedStepIds.toSet() != entries.map { it.id }.toSet()
+        ) {
+            return false
+        }
+        val byId = entries.associateBy { it.id }
+        entries.clear()
+        entries.addAll(
+            orderedStepIds.mapIndexed { index, id ->
+                requireNotNull(byId[id]).copy(position = index.toLong())
+            }
+        )
+        return true
+    }
+
+    override fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>) {
+        val target = playbackSteps.getOrPut(listId) { mutableListOf() }
+        target.clear()
+        steps.forEachIndexed { index, e ->
+            val id = nextEntryId++
+            target.add(
+                ListPlaybackStepRow(
+                    id, listId, index.toLong(),
+                    if (e.climbUuid != null) "climb" else "rest",
+                    e.climbUuid, e.restSeconds, e.angle,
+                )
+            )
+        }
+    }
 
     // -- Denormalization --
 
@@ -134,5 +260,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     // -- Bulk operations --
 
     override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear(); ignoredUuids.clear() }
+    override fun getAllListEntryClimbUuids(): Set<String> = emptySet()
+    override fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>) {}
     override fun runInTransaction(block: () -> Unit) { block() }
 }

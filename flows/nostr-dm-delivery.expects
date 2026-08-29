@@ -1,0 +1,4 @@
+# Exactly one relay acceptance for the single prefixed DM in this root.
+1::MessageDeliveryCoord.*Message .* delivered to relay
+!OfflineQueueManager.*Queue drain: sent
+

@@ -33,14 +33,32 @@ class BoardStateManager @Inject constructor(
         val uuid: String,
         val angle: Int,
         val name: String?,
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
+        /** Whether the physical controller retains this projection without GATT. */
+        val projectionSurvivesDisconnect: Boolean = true,
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var staleJob: Job? = null
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _lastClimb = MutableStateFlow<LastBoardClimb?>(null)
-    /** The last climb, or null if it's older than [STALE_THRESHOLD_MS]. */
+
+    /**
+     * The last climb on the physical board, cleared once it goes stale.
+     *
+     * The clearing is done by [scheduleStaleCleanup], and only by it. An
+     * earlier attempt to make that a guarantee rather than a promise filtered
+     * the flow on the age as well — but a `map` runs when a value is emitted,
+     * `stateIn` does not re-evaluate it per read, and every emitted value
+     * carries a just-taken timestamp. The predicate could therefore never be
+     * true, and the filter read as a safety net while catching nothing.
+     *
+     * What actually holds the guarantee: both setters call
+     * [scheduleStaleCleanup] before returning, [clearLastClimb] cancels the
+     * job *and* nulls the value, and [restore] refuses a persisted climb that
+     * is already too old. A new mutation path has to keep that up — there is
+     * no read-time backstop underneath it.
+     */
     val lastClimb: StateFlow<LastBoardClimb?> = _lastClimb.asStateFlow()
 
     /**
@@ -48,9 +66,16 @@ class BoardStateManager @Inject constructor(
      * Deduplicates: if uuid + angle match current value, no update.
      * Persists to DataStore for app-restart survival.
      */
-    suspend fun setLastClimb(uuid: String, angle: Int) {
+    suspend fun setLastClimb(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         val current = _lastClimb.value
-        if (current != null && current.uuid == uuid && current.angle == angle && current.name != null) {
+        if (current != null && current.uuid == uuid && current.angle == angle &&
+            current.name != null &&
+            current.projectionSurvivesDisconnect == projectionSurvivesDisconnect
+        ) {
             Log.d(TAG, "SKIP dedup uuid=${uuid.take(8)} angle=$angle (unchanged)")
             return
         }
@@ -59,8 +84,15 @@ class BoardStateManager @Inject constructor(
             climbNameResolver.resolveName(uuid, angle)
         }
 
-        _lastClimb.update { LastBoardClimb(uuid, angle, name) }
-        userPreferences.setLastClimb(uuid, angle)
+        _lastClimb.update {
+            LastBoardClimb(
+                uuid = uuid,
+                angle = angle,
+                name = name,
+                projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+            )
+        }
+        userPreferences.setLastClimb(uuid, angle, projectionSurvivesDisconnect)
         scheduleStaleCleanup()
         Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle name=${name ?: "unknown"}")
     }
@@ -75,13 +107,15 @@ class BoardStateManager @Inject constructor(
         if (uuid != null) {
             val angle = userPreferences.lastClimbAngle.first()
             val persistedAt = userPreferences.lastClimbTimestamp.first()
+            val projectionSurvivesDisconnect =
+                userPreferences.lastClimbProjectionSurvivesDisconnect.first()
             val age = System.currentTimeMillis() - persistedAt
             if (persistedAt > 0 && age > STALE_THRESHOLD_MS) {
                 Log.d(TAG, "RESTORE skipped — stale (${age / 60_000}min old)")
                 return
             }
             Log.d(TAG, "RESTORE uuid=${uuid.take(8)} angle=$angle")
-            setLastClimb(uuid, angle)
+            setLastClimb(uuid, angle, projectionSurvivesDisconnect)
         }
     }
 
@@ -90,14 +124,34 @@ class BoardStateManager @Inject constructor(
      * Call before endQueue() to prevent stale data flashing in the combine flow.
      * Always follow up with the full [setLastClimb] for persistence + name resolution.
      */
-    fun setLastClimbQuick(uuid: String, angle: Int) {
+    fun setLastClimbQuick(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         val current = _lastClimb.value
-        if (current != null && current.uuid == uuid && current.angle == angle) return
+        if (current != null && current.uuid == uuid && current.angle == angle &&
+            current.projectionSurvivesDisconnect == projectionSurvivesDisconnect
+        ) return
         // Keep existing name if same UUID (just angle changed), otherwise null
         val existingName = current?.name?.takeIf { current.uuid == uuid }
-        _lastClimb.value = LastBoardClimb(uuid, angle, existingName)
+        _lastClimb.value = LastBoardClimb(
+            uuid = uuid,
+            angle = angle,
+            name = existingName,
+            projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+        )
         scheduleStaleCleanup()
         Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle name=${existingName ?: "pending"}")
+    }
+
+    /** Clears state when the board was overwritten by a frame without a CruxCoach climb ID. */
+    suspend fun clearLastClimb() {
+        staleJob?.cancel()
+        staleJob = null
+        _lastClimb.value = null
+        userPreferences.clearLastClimb()
+        Log.d(TAG, "CLEAR external board write")
     }
 
     /**

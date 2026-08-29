@@ -56,12 +56,20 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.util.GradeConverter
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.PerfLogger
@@ -86,27 +94,11 @@ fun BoardBrowserScreen(
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
+    var showMismatchPicker by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
-
-    // Notification permission request (Android 13+)
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ -> /* Result doesn't matter -- timer works regardless via vibration */ }
-
-    // Request notification permission once when session starts
     val context = LocalContext.current
-    fun requestNotificationPermissionIfNeeded() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                context, android.Manifest.permission.POST_NOTIFICATIONS
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
 
     // Safety guard: end orphaned BoardSessionManager if queue is not active.
     // This can happen when a session ends via BLE (host migration, disconnect) and
@@ -123,6 +115,7 @@ fun BoardBrowserScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                PerfLogger.navEnd("BoardBrowser resumed")
                 viewModel.refreshBoardData()
             }
         }
@@ -219,9 +212,20 @@ fun BoardBrowserScreen(
                 viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.BROWSER
                 onNavigateToClimb(uuid, angle)
             },
-            autoStartScan = true,
-            sessionRole = queueState.role
         )
+    }
+    if (showMismatchPicker) {
+        queueState.boardMismatch?.let { mismatch ->
+            BoardPickerDialog(
+                onDismiss = { showMismatchPicker = false },
+                onSelected = {
+                    showMismatchPicker = false
+                    queueManager.clearBoardMismatch()
+                },
+                prefill = mismatch.prefill,
+                mismatch = mismatch,
+            )
+        } ?: run { showMismatchPicker = false }
     }
 
     // Hold search sheet — pure hold-filter UI now (heatmaps moved to logbook stats)
@@ -265,9 +269,7 @@ fun BoardBrowserScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.stopQueueSharing()
-                        lastEndedSession = viewModel.endSession()
-                        queueManager.endQueue()
+                        lastEndedSession = viewModel.endSharedSession()
                         showEndSessionDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
@@ -299,7 +301,41 @@ fun BoardBrowserScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text(stringResource(R.string.board_browser_title)) },
+            // The title wrapped to two lines on a narrow screen and pushed the
+            // whole row of actions down with it. The logo says the same thing
+            // in a quarter of the width, and it is the natural place to hang a
+            // drawer off later.
+            title = {},
+            navigationIcon = {
+                // The same two layers the splash screen uses (see ic_splash.xml):
+                // a black disc, then the launcher foreground on top. The logo's
+                // centre is transparent, so without the disc the X would sit on
+                // whatever is behind and the ring would read as a broken shape.
+                //
+                // Not R.mipmap.ic_launcher_round — that is an <adaptive-icon>,
+                // which Compose cannot load at all and which took the whole
+                // browser down on open. Not the monochrome vector either: that
+                // is the flat themed-icon variant and loses the gradient.
+                //
+                // Placed in a plain Box rather than an IconButton so it can sit
+                // close to the edge and fill the bar; a drawer click target can
+                // be added here later without moving it.
+                Box(
+                    modifier = Modifier
+                        .padding(start = 10.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black)
+                        .testTag("board_browser_home"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
+                        contentDescription = stringResource(R.string.board_browser_title),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            },
             actions = {
                 IconButton(
                     onClick = { showBleSheet = true },
@@ -389,29 +425,46 @@ fun BoardBrowserScreen(
                 BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
             }
         } else {
-            // 2-button action bar (Session + Zufall) — only visible when no session is active
+            // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
-                val queueLabel = stringResource(R.string.board_queue_title)
                 SessionTimerBar(
-                    onStart = {
-                        requestNotificationPermissionIfNeeded()
-                        viewModel.startSession()
-                        queueManager.startQueue(queueLabel)
-                        viewModel.startQueueSharing()
-                    },
                     onRandomClimb = { viewModel.pickRandomClimb() }
                 )
             }
 
-            // Unified BLE status area — nearby climbs, sessions, board status
+            // Universal BLE/playlist status area.
             BleStatusArea(
                 onClimbTapped = { uuid, angle ->
                     viewModel.climbNavState.climbUuids = listOf(uuid)
                     viewModel.climbNavState.angle = angle
                     onNavigateToClimb(uuid, angle)
                 },
-                onRandomToQueue = { viewModel.addRandomClimbToQueue() }
+                onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
+
+            queueState.boardMismatch?.let {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.board_mismatch_title),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        BoardMismatchFixAction(
+                            mismatch = it,
+                            onOpenPicker = { showMismatchPicker = true },
+                        )
+                    }
+                }
+            }
 
             // Connecting indicator while GATT connection is being established
             if (queueState.isConnecting) {
@@ -506,9 +559,6 @@ fun BoardBrowserScreen(
                             )
                         }
                     }
-                    // FEAT-006: discover Kilter Boards on a map. Lives next
-                    // to hold-search as a peer "find climbs by another
-                    // dimension" action.
                     IconButton(
                         onClick = onNavigateToMap,
                         modifier = Modifier
@@ -644,6 +694,23 @@ fun BoardBrowserScreen(
                         onNavigateToClimb(uuid, s.filter.angle)
                     }
                 }
+                // Long-press on a row: add to list/playlist (incl. the
+                // running playlist) without opening the detail screen.
+                var addToListClimbUuid by remember { mutableStateOf<String?>(null) }
+                val runningPlaylistCounts = remember(queueState.queue, state.filter.angle) {
+                    queueState.queue
+                        .filter { it.angle == state.filter.angle }
+                        .groupingBy { it.climbUuid.lowercase() }
+                        .eachCount()
+                }
+                val canAppendToRunningPlaylist = queueState.isActive && queueState.isPlaylist
+                addToListClimbUuid?.let { uuid ->
+                    AddToListDialogHost(
+                        climbUuid = uuid,
+                        angle = state.filter.angle,
+                        onDismiss = { addToListClimbUuid = null },
+                    )
+                }
 
                 LazyColumn(
                     state = listState,
@@ -660,7 +727,13 @@ fun BoardBrowserScreen(
                             gradeScale = gradeScale,
                             zones = zones,
                             onNavigateToSetter = onSetterClickFromCard,
-                            onClimbClick = onClimbClick
+                            onClimbClick = onClimbClick,
+                            onClimbLongClick = { addToListClimbUuid = it },
+                            onAddToBoardPlaylist = if (canAppendToRunningPlaylist) {
+                                { queueManager.addClimb(climb.uuid, state.filter.angle) }
+                            } else null,
+                            boardPlaylistCount =
+                                runningPlaylistCounts[climb.uuid.lowercase()] ?: 0,
                         )
                     }
 
@@ -725,4 +798,3 @@ fun BoardBrowserScreen(
         }
     }
 }
-

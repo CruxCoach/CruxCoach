@@ -12,9 +12,8 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- FEAT-004 in-app updater: hand off APK to PackageInstaller. Every
-         install goes through the system consent dialog (§6.8); we do NOT
-         request UPDATE_PACKAGES_WITHOUT_USER_ACTION. -->
+    <!-- FEAT-004 in-app updater. APK installs always retain Android's final
+         user-confirmation step. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- FEAT-004 in-app updater: DownloadManager.setNotificationVisibility(
          VISIBILITY_HIDDEN) requires this permission — we post our own
@@ -24,6 +23,8 @@
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -45,10 +46,14 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- BLE scanning requires location on Android 11 and below only.
-         On Android 12+ BLUETOOTH_SCAN with neverForLocation is sufficient. -->
+    <!-- Wi-Fi Direct requires fine location through Android 12; Android 12
+         additionally requires coarse+fine to be requested as a pair. BLE
+         uses these declarations on older releases too. Android 13+ uses the
+         nearby-device permissions above instead. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
@@ -57,6 +62,9 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <queries>
+        <!-- Optional local MoonBoard migration. Used only after the user taps
+             the migration action; no Moon credentials are requested. -->
+        <package android:name="com.trainingboard.moon" />
         <package android:name="com.greenart7c3.nostrsigner" />
         <package android:name="dev.zapstore.app" />
         <package android:name="org.fdroid.fdroid" />
@@ -105,6 +113,15 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cruxcoach" android:host="import-board-db" />
             </intent-filter>
+            <!-- Local-share hand-off. Legacy QR invitations may carry the
+                 ephemeral hotspot credentials; sender landing pages emit only
+                 a credential-free local origin for an already-connected Wi-Fi. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cruxcoach" android:host="offline-share" />
+            </intent-filter>
             <!-- Android App Link: https://${appLinkHost}/c/<naddr> opens the
                  climb directly in the app when installed (verified via
                  https://${appLinkHost}/.well-known/assetlinks.json).
@@ -120,6 +137,11 @@
                 <data android:scheme="https"
                       android:host="${appLinkHost}"
                       android:pathPrefix="/c/" />
+                <!-- /l/<payload>: shared playlist import (base64url-packed
+                     name + (angle, climb-uuid) sequence). -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/l/" />
             </intent-filter>
         </activity>
 
@@ -129,6 +151,22 @@
             android:enabled="false"
             android:exported="false">
             <meta-data android:name="autoStoreLocales" android:value="true" />
+        </service>
+
+        <!-- User-enabled, one-shot MoonBoard logbook migration. Events are
+             package-filtered to the official Moon app; the driver also rejects
+             foreign roots and expires an unused or rebound idle lease. -->
+        <service
+            android:name=".moonboard.MoonBoardAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="@string/moon_device_service_label">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/moonboard_accessibility_service" />
         </service>
 
         <!-- FileProvider for APK sharing -->
@@ -148,6 +186,20 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- FEAT-044 CruxRelay: keeps BLE advertising alive while sharing the
+             board + hosts the persistent sharing notification. -->
+        <service
+            android:name=".data.CruxRelayService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Keeps the sender-side Wi-Fi hotspot and local HTTP server alive
+             while the share screen is backgrounded. -->
+        <service
+            android:name=".util.LocalShareService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <!-- Rest timer alarm receiver (fires in Doze mode) -->
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
@@ -162,6 +214,15 @@
                 <action android:name="com.cruxcoach.android.updater.ACTION_DOWNLOAD" />
                 <action android:name="com.cruxcoach.android.updater.ACTION_INSTALL" />
                 <action android:name="com.cruxcoach.android.updater.ACTION_DISMISS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Continue verification/install even if DownloadManager outlives the app process. -->
+        <receiver
+            android:name=".updater.ApkDownloadCompleteReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
 
@@ -185,10 +246,6 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
     </application>
 
 </manifest>

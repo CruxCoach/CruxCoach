@@ -48,6 +48,10 @@ data class BackupSettingsState(
     val signerMode: SignerMode = SignerMode.LOCAL,
     val isRunningOneShot: Boolean = false,
     val isCheckingForBackup: Boolean = false,
+    /** True after the user confirmed a restore until the authenticated
+     *  payload has been applied. Kept separate from the relay/Blossom lookup
+     *  so the UI can say what is actually happening. */
+    val isRestoring: Boolean = false,
     /** True while the board catalogue is still importing on a fresh install
      *  (or during any active board-sync). The restore button is disabled
      *  meanwhile: restoring against a half-imported board DB raced the
@@ -76,9 +80,10 @@ data class BackupSettingsState(
          */
         data object BlobUnreachable : Snackbar
         data object RestoreFailed : Snackbar
-        /** Restore completed — carries the imported counts so a successful
-         *  restore is never silent (and a 0/0 result is visible too). */
-        data class RestoreSucceeded(val ascents: Int, val lists: Int) : Snackbar
+        /** Restore completed — carries authenticated payload counts rather
+         *  than only newly inserted rows. UUID-deduplicated local rows are
+         *  therefore reported as present, not misleadingly as missing. */
+        data class RestoreSucceeded(val logbookEntries: Int, val lists: Int) : Snackbar
         data object BackupSucceeded : Snackbar
         /**
          * [reason] is the structured BackupException reason — the UI
@@ -263,7 +268,7 @@ class BackupSettingsViewModel @Inject constructor(
 
     fun triggerManualRestore() {
         val existing = _state.value
-        if (existing.isCheckingForBackup) return
+        if (existing.isCheckingForBackup || existing.isRestoring || existing.boardImportInProgress) return
         viewModelScope.launch {
             _state.update { it.copy(isCheckingForBackup = true) }
             val outcome = runCatching { backupRepository.checkForBackup() }
@@ -290,9 +295,10 @@ class BackupSettingsViewModel @Inject constructor(
     }
 
     fun confirmRestore() {
+        if (_state.value.boardImportInProgress || _state.value.isRestoring) return
         val info = _state.value.pendingRestore ?: return
         viewModelScope.launch {
-            _state.update { it.copy(pendingRestore = null) }
+            _state.update { it.copy(pendingRestore = null, isRestoring = true) }
             val outcome = runCatching { backupRepository.restore(info) }
             val result = outcome.getOrNull()
             if (result != null) {
@@ -302,16 +308,20 @@ class BackupSettingsViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         backupEnabled = true,
+                        isRestoring = false,
                         lastBackupIso = lastSyncEpoch?.toLocalizedDateTime(),
                         snackbar = BackupSettingsState.Snackbar.RestoreSucceeded(
-                            ascents = result.boardAscents,
-                            lists = result.climbLists,
+                            logbookEntries = result.logbookEntriesInBackup,
+                            lists = result.listsInBackup,
                         ),
                     )
                 }
             } else {
                 _state.update {
-                    it.copy(snackbar = BackupSettingsState.Snackbar.RestoreFailed)
+                    it.copy(
+                        isRestoring = false,
+                        snackbar = BackupSettingsState.Snackbar.RestoreFailed,
+                    )
                 }
             }
         }

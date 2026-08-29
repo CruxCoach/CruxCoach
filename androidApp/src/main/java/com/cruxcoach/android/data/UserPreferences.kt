@@ -15,6 +15,9 @@ import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardLedMode
+import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -75,6 +78,7 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
     // it as the `since` filter so we don't re-process the historical tail.
@@ -108,6 +112,25 @@ object KeyScopedKeys {
 enum class GradeScale(val label: String) {
     V_SCALE("V-Scale"),
     FRENCH("Fontainebleau")
+}
+
+/** Controls whether opening a climb immediately updates a connected board. */
+enum class BoardSendMode {
+    AUTOMATIC,
+    EXPLICIT;
+
+    companion object {
+        /**
+         * Unknown or absent reads as [EXPLICIT].
+         *
+         * Sending is manual by default on every board, single- or
+         * multi-connection: the wall changing is a thing somebody asked for,
+         * not a side effect of looking at a climb. AUTOMATIC is an opt-in and
+         * only reacts to explicit shared board/playlist events.
+         */
+        fun fromWire(value: String?): BoardSendMode =
+            entries.firstOrNull { it.name == value } ?: EXPLICIT
+    }
 }
 
 enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
@@ -246,8 +269,32 @@ data class LedHoldColors(
     }
 }
 
+/**
+ * Stable descriptor for reconnecting to a controller without discovering it again.
+ * RSSI and runtime capacity-probe results are deliberately excluded because they
+ * only describe the scan/connection in which the controller was observed.
+ */
+data class RememberedBoardController(
+    val displayName: String,
+    val serial: String,
+    val apiLevel: Int,
+    val address: String,
+    val boardBrand: BoardBrand,
+    /**
+     * True once this controller was observed advertising while connected.
+     * Null means "never established" — not "single client". Lets a reconnect
+     * report a verified connection capacity without running a scan.
+     */
+    val advertisesWhileConnected: Boolean? = null,
+)
+
 /** Shared preference keys — device-level settings, same across all Nostr identities. */
 object PreferenceKeys {
+    // FEAT-044 CruxRelay: one-time board-sharing disclosure (global Bluetooth
+    // name change + non-affiliation). App-scoped ON PURPOSE — the disclosure
+    // is about the device, not the Nostr identity.
+    val RELAY_DISCLOSURE_SEEN = booleanPreferencesKey("relay_disclosure_seen")
+    val RELAY_MANUAL_START = booleanPreferencesKey("relay_manual_start_v022")
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
@@ -255,6 +302,10 @@ object PreferenceKeys {
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
+    /** SHA-256 of the last peer snapshot successfully imported. Cleared by
+     * every other catalogue mutation so it is safe as a no-download gate. */
+    val LAST_LOCAL_SHARE_SNAPSHOT_SHA256 =
+        stringPreferencesKey("last_local_share_snapshot_sha256")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
     val LED_COLOR_START = intPreferencesKey("led_color_start")
     val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
@@ -265,11 +316,71 @@ object PreferenceKeys {
     // so a later user who deliberately recreates an old default tuple is not
     // disturbed. Never read by UI.
     val LED_DEFAULTS_MIGRATED = booleanPreferencesKey("led_defaults_migrated_v020")
+
+    // One-time guard for the manual-send default (0.2.1 had no per-capacity
+    // distinction, so every install that predates it has to be moved across
+    // exactly once — see migrateToManualSendDefaultIfNeeded).
+    val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
+
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
     // older minutes key on first read if the new key is absent.
     val BLE_AUTO_DISCONNECT_SECONDS = intPreferencesKey("ble_auto_disconnect_seconds")
+    // Legacy global key retained as a read-only migration fallback for the two
+    // capacity-specific modes below.
+    val BOARD_SEND_MODE = stringPreferencesKey("board_send_mode")
+    val SINGLE_CONNECTION_BOARD_SEND_MODE =
+        stringPreferencesKey("single_connection_board_send_mode")
+    val MULTI_CONNECTION_BOARD_SEND_MODE =
+        stringPreferencesKey("multi_connection_board_send_mode")
+    /** Legacy boolean used by development builds before the three-way mode. */
+    val MOONBOARD_LEDS_ABOVE_HOLDS = booleanPreferencesKey("moonboard_leds_above_holds")
+    /** MoonBoard LED placement. Absent preserves the historic mode below holds. */
+    val MOONBOARD_LED_MODE = stringPreferencesKey("moonboard_led_mode")
+    fun lastUsedBoardAddress(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_address_${brand.wireValue}")
+    fun lastUsedBoardDisplayName(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_display_name_${brand.wireValue}")
+    fun lastUsedBoardSerial(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_serial_${brand.wireValue}")
+    fun lastUsedBoardApiLevel(brand: BoardBrand) =
+        intPreferencesKey("last_used_board_api_level_${brand.wireValue}")
+
+    /**
+     * Which MoonBoard hold sets the user has actually mounted, as a CSV of set
+     * ids (FEAT-049). Keyed PER LAYOUT — someone may own a Masters 2019 and
+     * meet a 2017 at a gym, and the id spaces are disjoint per layout, so one
+     * board's selection can never be read as another's.
+     *
+     * Absent means "every set", not "no sets". That keeps the filter off for
+     * everyone who never opens the picker, which is the pre-FEAT-049
+     * behaviour, and it makes the upgrade a no-op.
+     */
+    fun moonBoardHoldSets(layoutId: Long) =
+        stringPreferencesKey("moonboard_hold_sets_$layoutId")
+
+    /**
+     * Set once a controller has been *observed* to keep advertising while
+     * connected, i.e. proven to accept more than one client.
+     *
+     * Absent while nothing has been observed, true once a controller was seen
+     * advertising, false once a completed scan saw none.
+     *
+     * It used to be write-once-true, on the reasoning that absence of an
+     * advertisement can be a missed window while its presence is proof. That
+     * holds for a scan that could not run — but the probe already distinguishes
+     * NOT_OBSERVED ("scanned, saw nothing") from INCONCLUSIVE ("could not
+     * measure"), and only the second is silence. Treating both as silence made
+     * "accepts several clients" permanent: a controller that was swapped, or a
+     * simulator switched back to single-client, could never be corrected, and
+     * the app went on offering multi-client behaviour that the board no longer
+     * had.
+     *
+     * A reconnect without scan permission still writes nothing.
+     */
+    fun lastUsedBoardAdvertisesWhileConnected(brand: BoardBrand) =
+        booleanPreferencesKey("last_used_board_multi_client_${brand.wireValue}")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -287,6 +398,8 @@ object PreferenceKeys {
     // "Nur unbewertete (Projekte)" browse mode — list shows ONLY ungraded
     // climbs while set; persisted like every other browse filter.
     val BOARD_UNGRADED_ONLY = booleanPreferencesKey("board_ungraded_only")
+    val BOARD_QUANTUM_RULE_MASK = longPreferencesKey("board_quantum_rule_mask")
+    val BOARD_QUANTUM_OVERLAP_FILTER = stringPreferencesKey("board_quantum_overlap_filter")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -307,6 +420,8 @@ object PreferenceKeys {
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
     val LAST_CLIMB_ANGLE = intPreferencesKey("last_climb_angle")
     val LAST_CLIMB_TIMESTAMP = longPreferencesKey("last_climb_timestamp")
+    val LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT =
+        booleanPreferencesKey("last_climb_projection_survives_disconnect")
     val CRASH_REPORT_OPT_IN = booleanPreferencesKey("crash_report_opt_in")
     val LAST_ANNOUNCEMENT_CHECK = stringPreferencesKey("last_announcement_check")
     val ANNOUNCEMENTS_ENABLED = booleanPreferencesKey("announcements_enabled")
@@ -363,6 +478,10 @@ data class BoardFilterSnapshot(
     /** Ungraded-only ("Projekte") browse mode. Defaults to false so fresh
      *  installs and pre-existing prefs open on the normal catalogue view. */
     val ungradedOnly: Boolean = false,
+    /** Required positive Quantum/eWalls route rules; ignored by every other board. */
+    val quantumRuleMask: Long = 0L,
+    /** Quantum-only compatibility filter, stored by enum name for safe evolution. */
+    val quantumOverlapFilter: String = "OFF",
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val boardBrand: String = "kilter",
 )
@@ -391,6 +510,8 @@ class UserPreferences(
             originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
             myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
             ungradedOnly = prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] ?: false,
+            quantumRuleMask = prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] ?: 0L,
+            quantumOverlapFilter = prefs[PreferenceKeys.BOARD_QUANTUM_OVERLAP_FILTER] ?: "OFF",
         )
     }
 
@@ -430,6 +551,10 @@ class UserPreferences(
         prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP]
     }
 
+    val lastLocalShareSnapshotSha256: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256]
+    }
+
     val gradeScale: Flow<GradeScale> = dataStore.data.map { prefs ->
         val value = prefs[PreferenceKeys.GRADE_SCALE] ?: GradeScale.FRENCH.name
         try { GradeScale.valueOf(value) } catch (_: IllegalArgumentException) { GradeScale.FRENCH }
@@ -465,6 +590,94 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
         }
+    }
+
+    // ── MoonBoard hold sets (FEAT-049) ─────────────────────────
+    // The second axis next to the variant: WHICH of the variant's hold sets
+    // are physically mounted. MoonBoard has no product size to derive this
+    // from the way Kilter does, so it is user-owned and stored per layout.
+
+    /**
+     * The hold sets mounted on [variant], as a live flow. Emits the variant's
+     * FULL set universe when nothing is stored — an absent preference means
+     * "complete setup", which is what a bundle buyer has and what every
+     * existing install gets on upgrade.
+     *
+     * A stored value that resolves to nothing (empty string, ids from another
+     * board, hand-edited rubbish) is read the same lenient way. Reading it as
+     * "no sets mounted" would hide the entire catalogue behind a filter the
+     * user never set.
+     */
+    fun moonBoardHoldSets(variant: MoonBoardVariant): Flow<List<Long>> =
+        dataStore.data.map { prefs ->
+            resolveMoonBoardHoldSets(prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)], variant)
+        }
+
+    /** Single-read counterpart to [moonBoardHoldSets], for the browse query's
+     *  one-shot mask computation. */
+    suspend fun getMoonBoardHoldSets(variant: MoonBoardVariant): List<Long> =
+        resolveMoonBoardHoldSets(
+            dataStore.data.first()[PreferenceKeys.moonBoardHoldSets(variant.layoutId)],
+            variant,
+        )
+
+    /**
+     * Persist the mounted hold sets for [variant]. Selecting every set — the
+     * "complete setup" line — simply stores every id; there is no separate
+     * flag for it, so the summary follows from the stored list alone.
+     *
+     * An empty [setIds] is refused rather than stored: at least one set has to
+     * stay selected for the board to have any climbs at all, and the read path
+     * would silently re-expand it to "all" anyway.
+     */
+    suspend fun setMoonBoardHoldSets(variant: MoonBoardVariant, setIds: Collection<Long>) {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        val kept = universe.filter { it in setIds }
+        if (kept.isEmpty()) return
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)] = kept.joinToString(",")
+        }
+    }
+
+    /**
+     * Tick or untick ONE set for [variant], deriving the new selection inside a
+     * single store edit. Returns false when the toggle was refused because it
+     * would have left nothing selected (edge case 1); the stored value is then
+     * untouched.
+     *
+     * Why not read the selection, flip it and call [setMoonBoardHoldSets]: two
+     * taps landing before the store's flow has emitted back would both read the
+     * same list and each write a full replacement derived from it, so the second
+     * write silently restores the set the first one removed (edge case 11). Here
+     * the read and the write are one `edit` block, and DataStore serialises
+     * edits — the second toggle starts from the first one's result even if the
+     * flow has not caught up. That is also why this belongs in the store rather
+     * than behind a ViewModel mutex: the value on disk is the shared truth, and
+     * a second ViewModel or a later caller gets the same guarantee for free.
+     */
+    suspend fun toggleMoonBoardHoldSet(variant: MoonBoardVariant, setId: Long): Boolean {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        val key = PreferenceKeys.moonBoardHoldSets(variant.layoutId)
+        var accepted = true
+        dataStore.edit { prefs ->
+            val current = resolveMoonBoardHoldSets(prefs[key], variant).toMutableSet()
+            if (setId in current) current -= setId else current += setId
+            val kept = universe.filter { it in current }
+            if (kept.isEmpty()) {
+                accepted = false
+                return@edit
+            }
+            prefs[key] = kept.joinToString(",")
+        }
+        return accepted
+    }
+
+    private fun resolveMoonBoardHoldSets(stored: String?, variant: MoonBoardVariant): List<Long> {
+        val universe = MoonBoardHoldSets.setIdsFor(variant)
+        if (stored.isNullOrBlank()) return universe
+        val selected = stored.split(',').mapNotNullTo(mutableSetOf()) { it.trim().toLongOrNull() }
+        val kept = universe.filter { it in selected }
+        return kept.ifEmpty { universe }
     }
 
     /**
@@ -666,6 +879,16 @@ class UserPreferences(
         }
     }
 
+    suspend fun setLastLocalShareSnapshotSha256(sha256: String?) {
+        dataStore.edit { prefs ->
+            if (sha256 != null) {
+                prefs[PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256] = sha256
+            } else {
+                prefs.remove(PreferenceKeys.LAST_LOCAL_SHARE_SNAPSHOT_SHA256)
+            }
+        }
+    }
+
     val kilterSyncEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
         prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] ?: false
     }
@@ -711,6 +934,24 @@ class UserPreferences(
 
     suspend fun setCommunityClimbSince(epochSeconds: Long) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE] = epochSeconds }
+    }
+
+    /**
+     * Atomically removes an implausibly future cursor left by an older build
+     * while preserving every acceptable cursor. Returns the retained value,
+     * or `null` when absent/removed so the caller can perform a safe backfill.
+     */
+    suspend fun sanitizeCommunityClimbSince(maximumEpochSeconds: Long): Long? {
+        var retained: Long? = null
+        keyScoped.edit { prefs ->
+            val stored = prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE]
+            if (stored != null && stored > maximumEpochSeconds) {
+                prefs.remove(KeyScopedKeys.COMMUNITY_CLIMB_SINCE)
+            } else {
+                retained = stored
+            }
+        }
+        return retained
     }
 
     /**
@@ -779,18 +1020,188 @@ class UserPreferences(
      * BLE idle-disconnect timeout in seconds. New storage key since
      * 0.1.3; old installs had whole-minute granularity under
      * [PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]. The fallback read
-     * multiplies the legacy value by 60 so upgrading users keep their
-     * chosen timeout to the second — the next write lands in the new
-     * seconds key and the legacy entry eventually becomes dead bytes.
+     * multiplies an explicitly stored legacy value by 60 so upgrading users
+     * keep their chosen timeout. With neither key present the safe default is
+     * off; releasing an exclusive controller is always an explicit opt-in.
      */
     val bleAutoDisconnectSeconds: Flow<Int> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS]
-            ?: ((prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1) * 60)
+            ?: prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]?.times(60)
+            ?: 0
     }
 
     suspend fun setBleAutoDisconnectSeconds(seconds: Int) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS] = seconds
+        }
+    }
+
+    /**
+     * An exclusive controller can only be used by this app connection, so its
+     * established default is AUTOMATIC. A persisted per-capacity or legacy
+     * choice still wins; only a genuinely absent preference takes the default.
+     */
+    val singleConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: BoardSendMode.AUTOMATIC
+    }
+
+    suspend fun setSingleConnectionBoardSendMode(mode: BoardSendMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    /**
+     * Default EXPLICIT: several people can be on this board at once, so every
+     * send takes the wall away from whoever is on it. Swiping through a list
+     * must not do that — the tap is the point at which the climber says they
+     * actually want the wall.
+     */
+    val multiConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            ?: BoardSendMode.EXPLICIT
+    }
+
+    suspend fun setMultiConnectionBoardSendMode(mode: BoardSendMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    /** BELOW is the pre-existing wire format and therefore the upgrade default. */
+    val moonBoardLedMode: Flow<MoonBoardLedMode> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MOONBOARD_LED_MODE]?.let(MoonBoardLedMode::fromWire)
+            ?: if (prefs[PreferenceKeys.MOONBOARD_LEDS_ABOVE_HOLDS] == true) {
+                MoonBoardLedMode.BOTH
+            } else {
+                MoonBoardLedMode.BELOW
+            }
+    }
+
+    suspend fun setMoonBoardLedMode(mode: MoonBoardLedMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MOONBOARD_LED_MODE] = mode.name
+            prefs.remove(PreferenceKeys.MOONBOARD_LEDS_ABOVE_HOLDS)
+        }
+    }
+
+    /** Physical controller most recently connected successfully, per board family. */
+    val lastUsedBoardAddresses: Flow<Map<BoardBrand, String>> = dataStore.data.map { prefs ->
+        BoardBrand.entries
+            .asSequence()
+            .filter { it.isInteractive }
+            .mapNotNull { brand ->
+                prefs[PreferenceKeys.lastUsedBoardAddress(brand)]?.let { brand to it }
+            }
+            .toMap()
+    }
+
+    suspend fun setLastUsedBoardAddress(brand: BoardBrand, address: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = address
+        }
+    }
+
+    /**
+     * Last successfully connected physical controller, per board family. A
+     * complete descriptor lets Android reconnect by address without a BLE scan,
+     * so legacy Android does not need location permission or location services.
+     */
+    val rememberedBoardControllers: Flow<Map<BoardBrand, RememberedBoardController>> =
+        dataStore.data.map { prefs ->
+            BoardBrand.entries
+                .asSequence()
+                .filter { it.isInteractive }
+                .mapNotNull { brand ->
+                    val address = prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+                        ?.takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val displayName = prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)]
+                        ?.takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val apiLevel = prefs[PreferenceKeys.lastUsedBoardApiLevel(brand)]
+                        ?.takeIf { it >= 0 }
+                        ?: return@mapNotNull null
+                    brand to RememberedBoardController(
+                        displayName = displayName,
+                        serial = prefs[PreferenceKeys.lastUsedBoardSerial(brand)].orEmpty(),
+                        apiLevel = apiLevel,
+                        address = address,
+                        boardBrand = brand,
+                        advertisesWhileConnected =
+                            prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)],
+                    )
+                }
+                .toMap()
+        }
+
+    suspend fun setRememberedBoardController(controller: RememberedBoardController) {
+        dataStore.edit { prefs ->
+            val brand = controller.boardBrand
+            val previousAddress = prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+            if (previousAddress?.equals(controller.address, ignoreCase = true) != true) {
+                // Capacity belongs to a physical controller, not to a brand.
+                // Never carry an observation from one Kilter/Moon/etc. board
+                // over to a different controller that happens to share it.
+                prefs.remove(PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand))
+            }
+            prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = controller.address
+            prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)] = controller.displayName
+            prefs[PreferenceKeys.lastUsedBoardSerial(brand)] = controller.serial
+            prefs[PreferenceKeys.lastUsedBoardApiLevel(brand)] = controller.apiLevel
+            // Deliberately never writes false or removes the key: this record is
+            // rewritten on every successful connect, and a connect without scan
+            // permission carries no observation. Clobbering here would discard a
+            // capacity that was verified in an earlier, scan-capable session.
+            if (controller.advertisesWhileConnected == true) {
+                prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = true
+            }
+        }
+    }
+
+    /**
+     * Records a controller-capacity observation for the exact [address] of the
+     * remembered [brand] — positive by default, negative when the probe
+     * completed a scan and saw nothing.
+     *
+     * Both directions are stored. Writing only the positive made "accepts
+     * several clients" permanent, so a controller switched back to
+     * single-client was misjudged for ever; see the key's own doc.
+     *
+     * Separate from [setRememberedBoardController] because the observation
+     * arrives seconds after the connect that stored the record, from the
+     * post-connect advertising probe.
+     */
+    suspend fun setRememberedBoardAdvertisesWhileConnected(
+        brand: BoardBrand,
+        address: String,
+        observed: Boolean = true,
+    ) {
+        dataStore.edit { prefs ->
+            if (prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+                    ?.equals(address, ignoreCase = true) == true
+            ) {
+                prefs[PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(brand)] = observed
+            }
+        }
+    }
+
+    /**
+     * Forget what was observed about every controller's capacity.
+     *
+     * The probe then measures afresh on the next connect. Needed because the
+     * stored verdict outlives the hardware it describes — a swapped gym
+     * controller, or a board simulator moved between modes, otherwise keeps the
+     * old answer for good.
+     */
+    suspend fun clearBoardCapacityObservations() {
+        dataStore.edit { prefs ->
+            BoardBrand.entries.forEach {
+                prefs.remove(PreferenceKeys.lastUsedBoardAdvertisesWhileConnected(it))
+            }
         }
     }
 
@@ -854,6 +1265,33 @@ class UserPreferences(
         }
     }
 
+    /**
+     * Split the legacy global send mode into capacity-specific defaults once.
+     *
+     * 0.2.1 had a single `board_send_mode` and no per-capacity distinction, so
+     * an upgrading user may carry an explicit global choice. Preserve it for
+     * both capacities. Without one, exclusive boards default to AUTOMATIC and
+     * shared boards to EXPLICIT.
+     *
+     * Guarded by its own flag rather than by inspecting the values, because
+     * Re-running would otherwise overwrite later per-capacity choices.
+     */
+    suspend fun migrateToManualSendDefaultIfNeeded() {
+        dataStore.edit { prefs ->
+            if (prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] == true) return@edit
+            val legacy = prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
+            if (PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE !in prefs) {
+                prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] =
+                    (legacy ?: BoardSendMode.AUTOMATIC).name
+            }
+            if (PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE !in prefs) {
+                prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] =
+                    (legacy ?: BoardSendMode.EXPLICIT).name
+            }
+            prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] = true
+        }
+    }
+
     // Board browser filter persistence
     val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
     val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
@@ -878,6 +1316,8 @@ class UserPreferences(
         originFilter: String = "ALL",
         myClimbsOnly: Boolean = false,
         ungradedOnly: Boolean = false,
+        quantumRuleMask: Long = 0L,
+        quantumOverlapFilter: String = "OFF",
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -892,6 +1332,8 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
             prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
             prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] = ungradedOnly
+            prefs[PreferenceKeys.BOARD_QUANTUM_RULE_MASK] = quantumRuleMask
+            prefs[PreferenceKeys.BOARD_QUANTUM_OVERLAP_FILTER] = quantumOverlapFilter
         }
     }
 
@@ -940,7 +1382,10 @@ class UserPreferences(
 
     // Nearby climb sharing
     val nearbyClimbSharing: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: false
+        // Nearby board awareness is part of the normal connected-board
+        // experience. Preserve an explicit opt-out, but do not make fresh or
+        // upgrading users discover and enable this prerequisite manually.
+        it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: true
     }
     val allowRemoteDisconnect: Flow<Boolean> = dataStore.data.map {
         it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: false
@@ -996,12 +1441,30 @@ class UserPreferences(
     val lastClimbTimestamp: Flow<Long> = dataStore.data.map {
         it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] ?: 0L
     }
+    val lastClimbProjectionSurvivesDisconnect: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT] ?: true
+    }
 
-    suspend fun setLastClimb(uuid: String, angle: Int) {
+    suspend fun setLastClimb(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         dataStore.edit {
             it[PreferenceKeys.LAST_CLIMB_UUID] = uuid
             it[PreferenceKeys.LAST_CLIMB_ANGLE] = angle
             it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] = System.currentTimeMillis()
+            it[PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT] =
+                projectionSurvivesDisconnect
+        }
+    }
+
+    suspend fun clearLastClimb() {
+        dataStore.edit {
+            it.remove(PreferenceKeys.LAST_CLIMB_UUID)
+            it.remove(PreferenceKeys.LAST_CLIMB_ANGLE)
+            it.remove(PreferenceKeys.LAST_CLIMB_TIMESTAMP)
+            it.remove(PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT)
         }
     }
 
@@ -1120,6 +1583,24 @@ class UserPreferences(
 
     suspend fun setAutoPublishAscents(enabled: Boolean) {
         keyScoped.edit { it[KeyScopedKeys.AUTO_PUBLISH_ASCENTS] = enabled }
+    }
+
+    // FEAT-044 CruxRelay: one-time sharing disclosure, app-scoped (§12).
+    val relayDisclosureSeen: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.RELAY_DISCLOSURE_SEEN] ?: false
+    }
+
+    suspend fun setRelayDisclosureSeen() {
+        dataStore.edit { it[PreferenceKeys.RELAY_DISCLOSURE_SEEN] = true }
+    }
+
+    /** Opt in to manual relay start. False means the relay follows the board connection. */
+    val relayManualStart: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.RELAY_MANUAL_START] ?: false
+    }
+
+    suspend fun setRelayManualStart(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.RELAY_MANUAL_START] = enabled }
     }
 
     val leaderboardDisplayName: Flow<String> = keyScoped.data.map {

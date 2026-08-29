@@ -21,6 +21,7 @@ class BoardBrandTest {
         // Aurora-family + info-layer families round-trip too.
         assertEquals(BoardBrand.TENSION, BoardBrand.fromWire("tension"))
         assertEquals(BoardBrand.TWELVECLIMB, BoardBrand.fromWire("12climb"))
+        assertEquals(BoardBrand.QUANTUM, BoardBrand.fromWire("quantum"))
     }
 
     @Test
@@ -44,6 +45,7 @@ class BoardBrandTest {
             BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION,
             BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL,
             BoardBrand.TOUCHSTONE,
+            BoardBrand.QUANTUM,
         )) {
             assertEquals(true, b.isInteractive, "$b should be interactive")
             assertEquals(false, b in BoardBrand.INFO_LAYER, "$b not info-layer")
@@ -71,6 +73,21 @@ class BoardBrandTest {
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraProtocol)
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraPlacements)
         assertEquals(false, BoardBrand.AURORA.usesAuroraProtocol)
+        assertEquals(false, BoardBrand.QUANTUM.usesAuroraProtocol)
+        assertEquals(true, BoardBrand.QUANTUM.usesAuroraPlacements)
+        assertEquals(true, BoardBrand.QUANTUM.usesLedPreview)
+        assertEquals(true, BoardBrand.QUANTUM.hasHeatmap)
+        assertEquals(true, BoardBrand.QUANTUM.usesCatalogueAngles)
+        assertEquals(false, BoardBrand.QUANTUM.supportsClimbTypeFilter)
+        assertEquals(false, BoardBrand.QUANTUM.supportsBenchmarkFilter)
+        assertEquals(false, BoardBrand.QUANTUM.supportsBoardSeshOrigin)
+        assertEquals(false, BoardBrand.QUANTUM.usesProductSizeEdgeFit)
+        assertEquals(false, BoardBrand.MOONBOARD.usesProductSizeEdgeFit)
+        assertEquals(false, BoardBrand.KILTER.usesCatalogueAngles)
+        assertEquals(true, BoardBrand.KILTER.supportsClimbTypeFilter)
+        assertEquals(true, BoardBrand.KILTER.supportsBenchmarkFilter)
+        assertEquals(true, BoardBrand.KILTER.supportsBoardSeshOrigin)
+        assertEquals(true, BoardBrand.KILTER.usesProductSizeEdgeFit)
 
         // Authoring is enabled for every INTERACTIVE board (Kilter, MoonBoard +
         // the Aurora family); the info-layer brands (aurora, 12climb) can't
@@ -82,6 +99,7 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.DECOY.supportsAuthoring)
         assertEquals(true, BoardBrand.SOILL.supportsAuthoring)
         assertEquals(true, BoardBrand.TOUCHSTONE.supportsAuthoring)
+        assertEquals(true, BoardBrand.QUANTUM.supportsAuthoring)
         assertEquals(false, BoardBrand.AURORA.supportsAuthoring)
         assertEquals(false, BoardBrand.TWELVECLIMB.supportsAuthoring)
         BoardBrand.entries.forEach {
@@ -104,6 +122,9 @@ class BoardBrandTest {
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(4L))
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(5L))
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(6L))
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(7L))
+        // Ambiguous globally: Kilter Original and MoonBoard 2010 both use 1.
+        // Legacy inference stays Kilter; brand-aware resolution handles 2010.
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(1L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(8L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(999L))
@@ -115,16 +136,24 @@ class BoardBrandTest {
         assertEquals(MoonBoardVariant.MASTERS_2017, MoonBoardVariant.fromLayoutId(4L))
         assertEquals(MoonBoardVariant.MASTERS_2019, MoonBoardVariant.fromLayoutId(5L))
         assertEquals(MoonBoardVariant.MINI_2020, MoonBoardVariant.fromLayoutId(6L))
+        assertEquals(MoonBoardVariant.MINI_2025, MoonBoardVariant.fromLayoutId(7L))
+        assertEquals(MoonBoardVariant.MOONBOARD_2010, MoonBoardVariant.fromLayoutId(1L))
     }
 
     @Test
     fun moonBoardVariantReturnsNullForUnsupportedLayout() {
-        // Kilter layouts (1 = Original, 8 = Homewall) are not MoonBoard
-        // variants. Mini 2020 (layout 6) joined the supported set with
-        // the bundled-image pipeline.
-        assertNull(MoonBoardVariant.fromLayoutId(1L))
         assertNull(MoonBoardVariant.fromLayoutId(8L))
         assertNull(MoonBoardVariant.fromLayoutId(999L))
+    }
+
+    @Test
+    fun moonBoardVariantSelectionIsBrandScopedForLayoutOne() {
+        assertEquals(
+            MoonBoardVariant.MOONBOARD_2010,
+            MoonBoardVariant.fromBoardSelection(1L, BoardBrand.MOONBOARD),
+        )
+        assertNull(MoonBoardVariant.fromBoardSelection(1L, BoardBrand.KILTER))
+        assertNull(MoonBoardVariant.fromBoardSelection(1L, BoardBrand.DECOY))
     }
 
     @Test
@@ -138,6 +167,8 @@ class BoardBrandTest {
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2017.angles)
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2019.angles)
         assertEquals(listOf(40), MoonBoardVariant.MINI_2020.angles)
+        assertEquals(listOf(40), MoonBoardVariant.MINI_2025.angles)
+        assertEquals(listOf(40), MoonBoardVariant.MOONBOARD_2010.angles)
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.cruxcoach.board
 
 import com.cruxcoach.domain.board.HoldSetMask
+import com.cruxcoach.domain.board.MoonBoardHoldSets
+import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -42,7 +44,7 @@ class HoldSetMaskTest {
 
     @Test
     fun emptyLayoutUniverse_filterOff() {
-        // No set data for the layout (e.g. MoonBoard) → mask 0 (filter off).
+        // No set data for the layout at all → mask 0 (filter off).
         assertEquals(0L, HoldSetMask.excludedMask(emptyList(), listOf(26L)))
     }
 
@@ -64,5 +66,46 @@ class HoldSetMaskTest {
         // A stray on-size set id not in the layout universe has no rank and
         // therefore no bit — only universe membership decides the mask.
         assertEquals(0L, HoldSetMask.excludedMask(listOf(26L, 27L), listOf(26L, 27L, 99L)))
+    }
+
+    // ── MoonBoard universes (FEAT-049) ─────────────────────────
+    // The second axis is the user's owned sets, not a product size — but the
+    // bit rule is the same one, and these cases are where it would break.
+
+    @Test
+    fun moonBoard_allSetsOwned_masksNothing() {
+        // Level 1 ("complete setup") is exactly "every set selected", and must
+        // leave browse results byte-identical to the pre-FEAT-049 behaviour.
+        MoonBoardVariant.entries.forEach { variant ->
+            val universe = MoonBoardHoldSets.setIdsFor(variant)
+            assertEquals(0L, HoldSetMask.excludedMask(universe, universe), variant.name)
+        }
+    }
+
+    @Test
+    fun moonBoard_woodenHoldsMissingOn2019_masksBit3() {
+        // The board from issue #9: a Masters 2019 without Wooden Holds (21).
+        val universe = MoonBoardHoldSets.setIdsFor(MoonBoardVariant.MASTERS_2019)
+        assertEquals(0b001000L, HoldSetMask.excludedMask(universe, universe - 21L))
+    }
+
+    @Test
+    fun moonBoard_noStoredSelection_isLenient() {
+        // An absent (or defensively emptied) preference means "all sets", and
+        // the empty-ownership guard already resolves it to mask 0. Both the
+        // caller and this leg must agree, or a fresh install would hide the
+        // whole catalogue.
+        val universe = MoonBoardHoldSets.setIdsFor(MoonBoardVariant.MASTERS_2019)
+        assertEquals(0L, HoldSetMask.excludedMask(universe, emptyList()))
+    }
+
+    @Test
+    fun moonBoard_2016SelectionOn2017Universe_cannotLeakBits() {
+        // Edge case 2: the set-id spaces are disjoint per layout, so even a
+        // stale 2016 selection applied to a 2017 universe excludes everything
+        // it does not name rather than silently matching by rank.
+        val universe2017 = MoonBoardHoldSets.setIdsFor(MoonBoardVariant.MASTERS_2017)
+        val stale2016 = MoonBoardHoldSets.setIdsFor(MoonBoardVariant.MOONBOARD_2016)
+        assertEquals(0b11111L, HoldSetMask.excludedMask(universe2017, stale2016))
     }
 }

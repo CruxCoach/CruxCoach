@@ -47,8 +47,17 @@ class FakeBleScanner {
 class FakeClimbAdvertiser {
     val isAdvertising = MutableStateFlow(false)
 
-    fun advertiseClimb(climbUuid: String, angle: Int): String = "ok"
-    fun advertiseLastClimb(climbUuid: String, angle: Int) {}
+    fun advertiseClimb(
+        climbUuid: String,
+        angle: Int,
+        sharingEnabled: Boolean = true,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): String = "ok"
+    fun advertiseLastClimb(
+        climbUuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {}
     fun clearClimb() {}
     fun onBoardDisconnected() {}
     fun advertiseDisconnectRequest() {}

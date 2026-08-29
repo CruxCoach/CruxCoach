@@ -19,8 +19,8 @@ import kotlin.random.Random
 /**
  * Creates a local hotspot for APK sharing.
  * Tries two strategies:
- * 1. WiFi Direct createGroup (Briar approach) — fixed IP 192.168.49.1
- * 2. LocalOnlyHotspot (fallback) — system-assigned IP
+ * 1. LocalOnlyHotspot — the platform path for ordinary Wi-Fi clients
+ * 2. WiFi Direct createGroup (fallback) — fixed IP 192.168.49.1
  */
 class WifiDirectHotspot(context: Context) {
 
@@ -40,7 +40,6 @@ class WifiDirectHotspot(context: Context) {
         // the HTTP server's bind() throws EADDRNOTAVAIL.
         private const val GO_IP_POLL_DELAY_MS = 500L
         private const val GO_IP_POLL_MAX_ATTEMPTS = 16  // 8s total
-        private const val LOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 min
 
         private fun reasonToString(reason: Int): String = when (reason) {
             WifiP2pManager.P2P_UNSUPPORTED -> "P2P_UNSUPPORTED"
@@ -64,6 +63,7 @@ class WifiDirectHotspot(context: Context) {
     private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var running = false
     private var usedStrategy = ""
+    private var staleCruxCoachGroupCleanupAttempted = false
     private val failureLog = mutableListOf<String>()
 
     data class HotspotInfo(val ssid: String, val password: String, val ip: String)
@@ -79,8 +79,20 @@ class WifiDirectHotspot(context: Context) {
         }
         running = true
         failureLog.clear()
+        staleCruxCoachGroupCleanupAttempted = false
         acquireLocks()
-        tryWifiDirect(1, onStarted, onError)
+        // The receiver joins through a regular Wi-Fi QR, not Wi-Fi Direct
+        // discovery/negotiation. Some Android clients repeatedly abandon a
+        // P2P group-owner AP after roughly one minute even though the group
+        // itself remains healthy. LocalOnlyHotspot is the platform API for
+        // exactly this local-only, ordinary-client topology. Keep P2P as a
+        // fallback on API 29+, where we can configure usable credentials.
+        Log.d(TAG, "Using LocalOnlyHotspot primary path on API ${Build.VERSION.SDK_INT}")
+        tryLocalOnlyHotspot(
+            onStarted,
+            onError,
+            fallbackToWifiDirect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+        )
     }
 
     // ---- Strategy 1: WiFi Direct (Briar approach) ----
@@ -116,6 +128,20 @@ class WifiDirectHotspot(context: Context) {
                 failureLog.add("P2P #$attempt: ${reasonToString(reason)}")
                 Log.w(TAG, "WiFi Direct failed: ${reasonToString(reason)}, attempt $attempt")
 
+                // A process kill can leave Android's P2P group alive after
+                // our HTTP server and service are gone. A new createGroup()
+                // then reports BUSY and would otherwise start a second,
+                // differently named LocalOnlyHotspot. Remove only a clearly
+                // CruxCoach-owned stale group; never disturb another app's or
+                // the user's unrelated Wi-Fi Direct session.
+                if (reason == WifiP2pManager.BUSY &&
+                    !staleCruxCoachGroupCleanupAttempted
+                ) {
+                    staleCruxCoachGroupCleanupAttempted = true
+                    recoverStaleCruxCoachGroup(ch, onStarted, onError)
+                    return
+                }
+
                 // Retry on both BUSY and ERROR — the P2P framework may need
                 // time to bring up its interface after initialize().
                 if ((reason == WifiP2pManager.BUSY || reason == WifiP2pManager.ERROR)
@@ -150,7 +176,10 @@ class WifiDirectHotspot(context: Context) {
                     val config = WifiP2pConfig.Builder()
                         .setNetworkName("DIRECT-${r1}${r2}-CruxCoach$suffix")
                         .setPassphrase(generatePassphrase())
-                        .setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_2GHZ)
+                        // Prefer the substantially faster, less congested 5 GHz
+                        // radio. This path is only a fallback when the regular
+                        // LocalOnlyHotspot is unavailable.
+                        .setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_5GHZ)
                         .build()
                     wifiP2pManager.createGroup(ch, config, listener)
                 } else {
@@ -162,6 +191,41 @@ class WifiDirectHotspot(context: Context) {
                 tryLocalOnlyHotspot(onStarted, onError)
             }
         }, INIT_SETTLE_MS)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun recoverStaleCruxCoachGroup(
+        ch: WifiP2pManager.Channel,
+        onStarted: (HotspotInfo) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        wifiP2pManager?.requestGroupInfo(ch) { group ->
+            if (!running) return@requestGroupInfo
+            if (group?.networkName?.contains("-CruxCoach") != true) {
+                handler.postDelayed(
+                    { if (running) tryWifiDirect(2, onStarted, onError) },
+                    RETRY_DELAY_MS,
+                )
+                return@requestGroupInfo
+            }
+            Log.w(TAG, "Removing stale CruxCoach P2P group ${group.networkName}")
+            wifiP2pManager.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    handler.postDelayed(
+                        { if (running) tryWifiDirect(1, onStarted, onError) },
+                        RETRY_DELAY_MS,
+                    )
+                }
+
+                override fun onFailure(reason: Int) {
+                    failureLog.add("P2P stale cleanup: ${reasonToString(reason)}")
+                    handler.postDelayed(
+                        { if (running) tryWifiDirect(2, onStarted, onError) },
+                        RETRY_DELAY_MS,
+                    )
+                }
+            })
+        }
     }
 
     // Briar retries requestGroupInfo up to 5 times because on some devices
@@ -241,10 +305,12 @@ class WifiDirectHotspot(context: Context) {
     @SuppressLint("MissingPermission")
     private fun tryLocalOnlyHotspot(
         onStarted: (HotspotInfo) -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        fallbackToWifiDirect: Boolean = false,
     ) {
         if (!running) return
         Log.d(TAG, "Trying LocalOnlyHotspot fallback")
+        val addressesBeforeStart = localIpv4Addresses()
 
         try {
             wifiManager?.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
@@ -254,11 +320,11 @@ class WifiDirectHotspot(context: Context) {
                         ?: if (Build.VERSION.SDK_INT >= 30) {
                             reservation.softApConfiguration?.let { sac ->
                                 Log.d(TAG, "LocalOnlyHotspot started: ${sac.ssid}")
-                                usedStrategy = "LocalOnlyHotspot"
-                                val ip = ApkShareHelper.getDeviceIpAddress() ?: "192.168.43.1"
                                 val ssid = sac.ssid ?: "unknown"
                                 val pass = sac.passphrase ?: ""
-                                onStarted(HotspotInfo(ssid, pass, ip))
+                                waitForLocalOnlyHotspotIp(
+                                    ssid, pass, addressesBeforeStart, 1, onStarted, onError,
+                                )
                                 return
                             } ?: run {
                                 failureLog.add("LOH: no config")
@@ -275,10 +341,10 @@ class WifiDirectHotspot(context: Context) {
                     val ssid = config.SSID?.trim('"') ?: "unknown"
                     @Suppress("DEPRECATION")
                     val pass = config.preSharedKey?.trim('"') ?: ""
-                    val ip = ApkShareHelper.getDeviceIpAddress() ?: "192.168.43.1"
                     Log.d(TAG, "LocalOnlyHotspot started: $ssid")
-                    usedStrategy = "LocalOnlyHotspot"
-                    onStarted(HotspotInfo(ssid, pass, ip))
+                    waitForLocalOnlyHotspotIp(
+                        ssid, pass, addressesBeforeStart, 1, onStarted, onError,
+                    )
                 }
 
                 override fun onStopped() {
@@ -288,14 +354,84 @@ class WifiDirectHotspot(context: Context) {
                 override fun onFailed(reason: Int) {
                     failureLog.add("LOH failed: reason=$reason")
                     Log.w(TAG, "LocalOnlyHotspot failed: $reason")
-                    reportFinalError(onError)
+                    if (fallbackToWifiDirect) {
+                        Log.w(TAG, "LocalOnlyHotspot unavailable; falling back to WiFi Direct")
+                        tryWifiDirect(1, onStarted, onError)
+                    } else {
+                        reportFinalError(onError)
+                    }
                 }
             }, handler)
         } catch (e: Exception) {
             failureLog.add("LOH exception: ${e.message}")
             Log.e(TAG, "LocalOnlyHotspot exception", e)
-            reportFinalError(onError)
+            if (fallbackToWifiDirect) {
+                Log.w(TAG, "LocalOnlyHotspot threw; falling back to WiFi Direct")
+                tryWifiDirect(1, onStarted, onError)
+            } else {
+                reportFinalError(onError)
+            }
         }
+    }
+
+    /** Wait until the SoftAP interface has its own private IPv4 address.
+     * Picking the first non-loopback address used to select mobile data or
+     * the home Wi-Fi on multi-homed phones, creating an unreachable QR. */
+    private fun waitForLocalOnlyHotspotIp(
+        ssid: String,
+        passphrase: String,
+        addressesBeforeStart: Set<String>,
+        attempt: Int,
+        onStarted: (HotspotInfo) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        if (!running) return
+        val current = localIpv4Addresses().filter(LocalShareProtocol::isPrivateIpv4)
+        val candidates = current - addressesBeforeStart
+        val ip = candidates.firstOrNull { it.substringAfterLast('.') == "1" }
+            ?: candidates.firstOrNull()
+            ?: current.firstOrNull { it == "192.168.43.1" }
+        if (ip != null) {
+            Log.d(TAG, "LocalOnlyHotspot IP $ip assigned after $attempt poll(s)")
+            usedStrategy = "LocalOnlyHotspot"
+            onStarted(HotspotInfo(ssid, passphrase, ip))
+            return
+        }
+        if (attempt >= GO_IP_POLL_MAX_ATTEMPTS) {
+            failureLog.add("LOH: hotspot IPv4 not assigned")
+            runCatching { hotspotReservation?.close() }
+            hotspotReservation = null
+            reportFinalError(onError)
+            return
+        }
+        handler.postDelayed(
+            {
+                waitForLocalOnlyHotspotIp(
+                    ssid,
+                    passphrase,
+                    addressesBeforeStart,
+                    attempt + 1,
+                    onStarted,
+                    onError,
+                )
+            },
+            GO_IP_POLL_DELAY_MS,
+        )
+    }
+
+    private fun localIpv4Addresses(): Set<String> = try {
+        buildSet {
+            NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { iface ->
+                iface.inetAddresses?.toList()?.forEach { address ->
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        address.hostAddress?.let(::add)
+                    }
+                }
+            }
+        }
+    } catch (error: Exception) {
+        Log.w(TAG, "Could not enumerate local IPv4 addresses", error)
+        emptySet()
     }
 
     // ---- Error & cleanup ----
@@ -315,9 +451,13 @@ class WifiDirectHotspot(context: Context) {
 
     private fun acquireLocks() {
         try {
+            // The foreground service owns this object and always releases the
+            // lock from stop(). A fixed five-minute lock silently expired in
+            // the middle of longer share sessions even though the service and
+            // HTTP server were still active.
             wakeLock = powerManager?.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK, LOCK_TAG
-            )?.apply { acquire(LOCK_TIMEOUT_MS) }
+            )?.apply { acquire() }
         } catch (e: Exception) {
             Log.w(TAG, "WakeLock failed", e)
         }

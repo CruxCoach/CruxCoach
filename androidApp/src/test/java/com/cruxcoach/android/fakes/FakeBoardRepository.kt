@@ -13,6 +13,7 @@ import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.LedGridPoint
 import com.cruxcoach.data.repository.SortDirection
+import com.cruxcoach.domain.board.MoonBoardVariant
 
 /** Mirrors the production SQL `framesCount` predicate for ClimbTypeFilter:
  *  BOULDER = single frame, ROUTE = multi-frame, ALL = both. */
@@ -178,6 +179,20 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = climbs.isNotEmpty()
     override fun hasClimbsForBrand(boardBrand: String): Boolean = climbs.isNotEmpty()
+
+    /** Overrides the FEAT-049 presence gate for tests that need it decided
+     *  without seeding a catalogue — and the only honest way to decide it here,
+     *  since the real query also demands catalogue provenance
+     *  (`source='kilter'`) and [ClimbWithStats] carries no such column. Null =
+     *  derive it from the seeded rows, which are then all taken as catalogue
+     *  rows; the provenance half is covered against real SQLite in
+     *  MoonBoardHsmFilterTest. */
+    var moonBoardHoldSetMaskPresent: Boolean? = null
+
+    override fun hasMoonBoardHoldSetMask(): Boolean =
+        moonBoardHoldSetMaskPresent ?: climbs.any {
+            it.hsm != 0L && MoonBoardVariant.fromLayoutId(it.layoutId) != null
+        }
     override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
     override fun statExistsByUuid(uuid: String): Boolean = false
 
@@ -302,15 +317,19 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllFramesForHeatmap(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long
     ): List<ClimbFrameRow> {
         return climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                (climb.hsm and hsmExcludedMask) == 0L &&
                 climb.frames.isNotEmpty()
         }.map { ClimbFrameRow(it.uuid, it.frames) }
     }
+
+    override fun getClimbFramesByUuids(uuids: Collection<String>): Map<String, String> =
+        climbs.filter { it.uuid in uuids }.associate { it.uuid to it.frames }
 
     override fun getAllFramesForHeatmapAllAngles(
         layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
@@ -335,6 +354,15 @@ class FakeBoardRepository : BoardRepository {
     override fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<com.cruxcoach.data.repository.RelayClimbCandidate> = emptyList()
+    override fun ensureRelayLookupIndex(): Boolean = false
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L
@@ -371,6 +399,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { climbs.clear() }
+    override fun deleteBoardDataForBrands(brands: Set<String>) {
+        climbs.removeAll { it.boardBrand in brands }
+    }
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> =
+        climbs.filter { it.uuid in uuids }.associate { it.uuid to it.boardBrand }
 
     override fun insertLocalDraft(draft: com.cruxcoach.data.repository.LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String?) {}
     override fun deleteLocalClimb(uuid: String) {}
@@ -448,5 +481,10 @@ class FakeBoardRepository : BoardRepository {
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
         selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
+    ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getQuantumOfficialClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        hsmExcludedMask: Long, showUngraded: Boolean,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

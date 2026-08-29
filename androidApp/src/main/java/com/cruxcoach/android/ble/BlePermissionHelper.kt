@@ -6,27 +6,47 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 
 /**
  * Utility for checking BLE permissions.
- * Android 12+ (API 31): BLUETOOTH_SCAN + BLUETOOTH_CONNECT (no location needed with neverForLocation)
- * Android 11 and below: ACCESS_FINE_LOCATION
+ * Android 12+ (API 31): BLUETOOTH_SCAN + BLUETOOTH_CONNECT (no location with neverForLocation)
+ * Android 10-11 (API 29-30): ACCESS_FINE_LOCATION
+ * Android 8-9 (API 26-28): ACCESS_COARSE_LOCATION
  */
 object BlePermissionHelper {
 
-    fun getRequiredPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_ADVERTISE
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
+    fun getScanPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        when {
+            apiLevel >= Build.VERSION_CODES.S -> arrayOf(Manifest.permission.BLUETOOTH_SCAN)
+            apiLevel >= Build.VERSION_CODES.Q -> arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            apiLevel >= Build.VERSION_CODES.M -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
+            else -> emptyArray()
         }
-    }
+
+    fun getConnectionPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        if (apiLevel >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            emptyArray()
+        }
+
+    /**
+     * True when `BluetoothAdapter.ACTION_REQUEST_ENABLE` may be launched.
+     *
+     * Asking the platform to turn Bluetooth on is itself a BLUETOOTH_CONNECT
+     * protected operation from API 31 on: without the permission the system
+     * refuses the activity start with a SecurityException, which crashes the
+     * app rather than returning a result. Below API 31 the intent needs no
+     * runtime permission at all.
+     */
+    fun canRequestBluetoothEnable(
+        hasConnectionPermission: Boolean,
+        apiLevel: Int = Build.VERSION.SDK_INT,
+    ): Boolean = hasConnectionPermission || getConnectionPermissions(apiLevel).isEmpty()
+
+    fun getRequiredPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getScanPermissions(apiLevel) + getConnectionPermissions(apiLevel)
 
     fun hasPermissions(context: Context): Boolean {
         return getRequiredPermissions().all {
@@ -34,13 +54,62 @@ object BlePermissionHelper {
         }
     }
 
-    fun getAdvertisingPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    fun hasConnectionPermission(context: Context): Boolean {
+        return getConnectionPermissions().all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun hasScanPermission(context: Context): Boolean {
+        return getScanPermissions().all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * Permissions to request when reconnecting to an already-known controller.
+     *
+     * Just the connect permission. A reconnect goes straight to the address and
+     * never scans, and the controller's capacity no longer depends on scanning
+     * either — an unprobed controller is treated as exclusive, which is what it
+     * almost certainly is (see [BoardControllerProfiles]).
+     */
+    fun getReconnectPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getConnectionPermissions(apiLevel)
+
+    /**
+     * Whether the post-connect capacity probe can run on this connection.
+     *
+     * It runs after EVERY connect whose capacity is not established yet — that
+     * is the only moment the evidence exists. The two conditions are purely
+     * about whether scanning would work at all: the permission has to be in
+     * hand already (the probe never justifies asking for one), and on API 23-30
+     * the system location switch has to be on, because the platform withholds
+     * scan results otherwise. Neither is an API-level policy — where scanning
+     * is possible, the probe runs.
+     */
+    fun wantsCapacityProbe(
+        capacityKnown: Boolean,
+        hasScanPermission: Boolean,
+        locationEnabled: Boolean = true,
+        apiLevel: Int = Build.VERSION.SDK_INT,
+    ): Boolean = !capacityKnown &&
+        hasScanPermission &&
+        !isLocationRequired(apiLevel, flowNeedsScan = true, locationEnabled = locationEnabled)
+
+    fun getAdvertisingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> {
+        return if (apiLevel >= Build.VERSION_CODES.S) {
             arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE)
         } else {
             emptyArray()
         }
     }
+
+    /** Minimum permissions for publishing a connectable GATT session.
+     * Hosting does not scan, so legacy location and BLUETOOTH_SCAN must not
+     * be requested here. */
+    fun getSessionHostingPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getAdvertisingPermissions(apiLevel) + getConnectionPermissions(apiLevel)
 
     fun hasAdvertisingPermission(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -52,13 +121,37 @@ object BlePermissionHelper {
     }
 
     /**
-     * On Android 11 and below, BLE scanning requires Location Services to be enabled.
-     * Returns true if location is not needed (Android 12+) or if it's enabled.
+     * Whether the system-wide location-services switch is on. Raw check, no
+     * API-level policy — feed the result into [isLocationRequired] to decide
+     * whether a BLE flow is actually blocked. LocationManagerCompat reads the
+     * master switch on API 28+, which is what the OS BLE stack gates scan
+     * results on; the previous hand-rolled GPS||NETWORK provider check
+     * disagreed with it on API 28-30 devices without a network-location
+     * provider (e.g. de-Googled ROMs), claiming "location off" while scan
+     * results kept flowing.
      */
-    fun isLocationEnabledForBle(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return true
+    fun isLocationServicesEnabled(context: Context): Boolean {
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
-        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-            lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        return LocationManagerCompat.isLocationEnabled(lm)
     }
+
+    /**
+     * Pure decision: does this BLE flow require location services to be on?
+     *
+     * Location only ever gates BLE *scanning*, and only on API 23-30:
+     *  - API 31+: BLUETOOTH_SCAN is declared with neverForLocation, so scan
+     *    results are delivered regardless of the location toggle — never
+     *    require (let alone prompt for) location there.
+     *  - API 23-30: the OS suppresses scan results while location
+     *    services are off, so a discovery scan needs them — but a direct GATT
+     *    connect to an already-known device works without location, so flows
+     *    that don't scan must not be gated.
+     *
+     * Kept free of Context/Build.VERSION.SDK_INT reads so the decision table
+     * is plain-JVM unit-testable.
+     */
+    fun isLocationRequired(apiLevel: Int, flowNeedsScan: Boolean, locationEnabled: Boolean): Boolean =
+        flowNeedsScan &&
+            apiLevel in Build.VERSION_CODES.M until Build.VERSION_CODES.S &&
+            !locationEnabled
 }

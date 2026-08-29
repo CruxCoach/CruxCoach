@@ -1,0 +1,5 @@
+# The killed process must not finish app-scoped delivery. Reopening Chat and
+# refreshing drains exactly the one durable queued DM.
+1::OfflineQueueManager.*Queue drain: sent
+!MessageDeliveryCoord.*Message .* delivered to relay
+

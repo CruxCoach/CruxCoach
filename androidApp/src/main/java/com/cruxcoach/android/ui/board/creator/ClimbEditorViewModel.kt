@@ -1235,6 +1235,14 @@ class ClimbEditorViewModel @Inject constructor(
      */
     private suspend fun syncLeds() {
         val cur = _state.value
+        if (cur.editor.brand == BoardBrand.QUANTUM) {
+            // Quantum projections are controller-owned layers. The generic
+            // editor mirror has no explicit rack slot/route identity and must
+            // not fall back to the shared all-zero protocol user. Users can
+            // stage the saved climb from detail once it has a real route UUID.
+            Log.d(TAG, "syncLeds(quantum): suppressed until a scoped layer is assigned")
+            return
+        }
         if (cur.editor.brand == BoardBrand.MOONBOARD) {
             // MoonBoard preview: the board lights its own LEDs from the
             // climb frame (no per-hold LED address map like Kilter). Re-use
@@ -1243,7 +1251,13 @@ class ClimbEditorViewModel @Inject constructor(
             // MoonBoardFrameEncoder.encode (inside sendMoonBoardClimb) reads.
             val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
             val frames = cur.editor.encodeFrames()
-            val result = runCatching { bleConnection.sendMoonBoardClimb(frames, variant) }
+            val result = runCatching {
+                bleConnection.sendMoonBoardClimb(
+                    frames,
+                    variant,
+                    userPreferences.moonBoardLedMode.first(),
+                )
+            }
             result.fold(
                 onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
                 onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },
@@ -1267,7 +1281,14 @@ class ClimbEditorViewModel @Inject constructor(
         // the unchanged factory palette. Same pattern as
         // BoardSendController.kt:83.
         val roleColors = cur.ledColors.toRoleColorMap()
-        val result = runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
+        val result = runCatching {
+            bleConnection.sendClimb(
+                holds,
+                ledMap,
+                roleColors,
+                expectedBrand = cur.editor.brand,
+            )
+        }
         result.fold(
             onSuccess = { Log.i(TAG, "syncLeds: sendClimb returned ok=$it holds=${holds.size}") },
             onFailure = { Log.w(TAG, "syncLeds: sendClimb threw holds=${holds.size}", it) },

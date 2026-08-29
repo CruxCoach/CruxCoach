@@ -10,9 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
@@ -27,8 +25,33 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.PlaylistCommandFeedbackKind
+import com.cruxcoach.android.ui.navigation.ClimbNavigationSource
+import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.ui.theme.OrangeAccent
+
+internal fun selectQueueClimb(
+    index: Int,
+    item: QueueItem,
+    queue: List<QueueItem>,
+    climbNavState: ClimbNavigationState,
+    onSelectClimb: ((index: Int) -> Unit)?,
+    onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+) {
+    if (onSelectClimb != null) {
+        onSelectClimb(index)
+        return
+    }
+
+    // Standalone queue sheets retain their detail-navigation behaviour.
+    // Distinct UUIDs are required because a playlist may repeat a climb.
+    climbNavState.climbUuids = queue.map { it.climbUuid }.distinct()
+    climbNavState.angle = item.angle
+    climbNavState.source = ClimbNavigationSource.QUEUE
+    onNavigateToClimb(item.climbUuid, item.angle)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +59,32 @@ fun SessionQueueSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     canEdit: Boolean,
+    /** Player context: select this queue position in the existing player
+     * instead of navigating to another screen. */
+    onSelectClimb: ((index: Int) -> Unit)? = null,
+    /** When set (player context), the end/leave button delegates here so
+     *  the caller can stage the summary instead of a silent teardown. */
+    onEndPlaylist: (() -> Unit)? = null,
     viewModel: SessionQueueViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val climbNames by viewModel.climbNames.collectAsStateWithLifecycle()
+    val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
+    val pendingCommands by viewModel.pendingCommandCount.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val conflictMessage = stringResource(R.string.board_queue_command_conflict)
+    val unavailableMessage = stringResource(R.string.board_queue_command_unavailable)
+    val failedMessage = stringResource(R.string.board_queue_command_failed)
+    LaunchedEffect(viewModel) {
+        viewModel.commandFeedback.collect { feedback ->
+            snackbarHostState.showSnackbar(
+                when (feedback.kind) {
+                    PlaylistCommandFeedbackKind.CONFLICT -> conflictMessage
+                    PlaylistCommandFeedbackKind.UNAVAILABLE -> unavailableMessage
+                    PlaylistCommandFeedbackKind.FAILED -> failedMessage
+                },
+            )
+        }
+    }
 
     // Drag-reorder state (only used when canEdit)
     var draggedFrom by remember { mutableIntStateOf(-1) }
@@ -65,6 +110,18 @@ fun SessionQueueSheet(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 32.dp)
         ) {
+            SnackbarHost(snackbarHostState)
+            if (pendingCommands > 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.board_queue_command_pending, pendingCommands),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -83,8 +140,6 @@ fun SessionQueueSheet(
                 }
                 if (state.participants.isNotEmpty()) {
                     Spacer(Modifier.width(8.dp))
-                    Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Text(" ${state.participantCount}", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
@@ -148,9 +203,13 @@ fun SessionQueueSheet(
                         .heightIn(max = 300.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    itemsIndexed(state.queue, key = { _, item -> item.climbUuid }) { index, item ->
+                    // Composite key: playlists may hold the SAME climb several
+                    // times (limit-attempt structure) — a bare uuid key crashes
+                    // LazyColumn with "Key was already used".
+                    itemsIndexed(state.queue, key = { i, item -> "$i:${item.climbUuid}" }) { index, item ->
                         val isCurrent = index == state.currentIndex
-                        val name = climbNames[item.climbUuid] ?: item.climbUuid.take(8)
+                        val info = climbInfos[item.climbUuid]
+                        val name = info?.name ?: item.climbUuid.take(8)
 
                         Card(
                             modifier = Modifier
@@ -229,11 +288,14 @@ fun SessionQueueSheet(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable {
-                                            // Set all queue UUIDs for swipe navigation in detail screen
-                                            viewModel.climbNavState.climbUuids = state.queue.map { it.climbUuid }
-                                            viewModel.climbNavState.angle = item.angle
-                                            viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
-                                            onNavigateToClimb(item.climbUuid, item.angle)
+                                            selectQueueClimb(
+                                                index = index,
+                                                item = item,
+                                                queue = state.queue,
+                                                climbNavState = viewModel.climbNavState,
+                                                onSelectClimb = onSelectClimb,
+                                                onNavigateToClimb = onNavigateToClimb,
+                                            )
                                             onDismiss()
                                         }
                                         .padding(vertical = 4.dp)
@@ -246,7 +308,10 @@ fun SessionQueueSheet(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        "${item.angle}°",
+                                        buildString {
+                                            info?.gradeLabel?.let { append("$it · ") }
+                                            append("${item.angle}°")
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -268,48 +333,6 @@ fun SessionQueueSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            // Participants — always show host, plus connected participants
-            if (state.hostName.isNotEmpty() || state.participants.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.board_queue_participants, state.participantCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(4.dp))
-                // Host (always first, with star icon)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = "Host",
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (state.role == SessionRole.HOST) stringResource(R.string.board_queue_you_host)
-                        else state.hostName.ifEmpty { "Host" },
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                state.participants.forEach { participant ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.People,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            participant.displayName,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-            }
-
             // End/Leave button
             val buttonText = when (state.role) {
                 SessionRole.HOST -> stringResource(R.string.board_queue_end_session)
@@ -318,7 +341,10 @@ fun SessionQueueSheet(
             }
             OutlinedButton(
                 onClick = {
-                    viewModel.endOrLeave()
+                    // The player routes this through its own stop() so the
+                    // summary sheet appears; standalone contexts keep the
+                    // direct end/leave.
+                    if (onEndPlaylist != null) onEndPlaylist() else viewModel.endOrLeave()
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),

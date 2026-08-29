@@ -1,0 +1,34 @@
+CREATE TABLE moon_import_staging (
+    external_id TEXT NOT NULL PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    problem_id INTEGER,
+    problem_name TEXT,
+    setter_name TEXT,
+    angle INTEGER,
+    climbed_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    rating INTEGER,
+    is_send INTEGER NOT NULL,
+    resolution_state TEXT NOT NULL DEFAULT 'pending'
+);
+
+stageMoonImport:
+INSERT OR REPLACE INTO moon_import_staging(
+    external_id, source_type, problem_id, problem_name, setter_name, angle,
+    climbed_at, attempts, rating, is_send, resolution_state)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectStagedMoonImports:
+SELECT * FROM moon_import_staging ORDER BY climbed_at, external_id;
+
+deleteStagedMoonImport:
+DELETE FROM moon_import_staging WHERE external_id = ?;
+
+markStagedMoonImportState:
+UPDATE moon_import_staging SET resolution_state = :state WHERE external_id = :externalId;
+
+countStagedMoonImports:
+SELECT COUNT(*) FROM moon_import_staging;
+
+deleteAllMoonImportStaging:
+DELETE FROM moon_import_staging;

@@ -1,6 +1,7 @@
 appId: com.cruxcoach.android
 name: detail-add-to-list
 tags:
+  - release-gate
   - smoke
   - mutates-state
 ---
@@ -9,8 +10,8 @@ tags:
 # "Favoriten" list, confirm, navigate to Lists screen, verify
 # "Favoriten" still listed (round-trip render).
 #
-# Idempotency: the flow toggles the climb INTO Favoriten and then
-# back OUT before exiting, leaving the list state as found. Catches
+# Idempotency: the flow first establishes favorite-off, toggles the climb INTO
+# Favoriten through the dialog, then back OUT before exiting. Catches
 # regressions in:
 # - showAddToListDialog wiring on detail screen
 # - dialog rendering with the user's lists
@@ -20,55 +21,68 @@ tags:
 # FILTER-STATE precondition: defaults. The flow itself doesn't touch
 # any filter; it just navigates from Browser → Detail → Add-to-list
 # dialog → close → Browser → Lists.
-- launchApp:
-    stopApp: false
-- waitForAnimationToEnd:
-    timeout: 5000
-# Open first climb detail.
-- tapOn:
-    text: "[0-9]+ Züge"
-    index: 0
-- assertVisible: "Zurück"
+- runFlow: subflows/open-first-climb.yaml
+- copyTextFrom:
+    id: "boarddetail_name"
+- evalScript: ${output.addToListTarget = maestro.copiedText}
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn:
+          id: "boarddetail_favorite_button"
+- assertVisible: "Zu Favoriten hinzufügen"
 # Open Add-to-list dialog from detail TopBar.
-- tapOn: "Zu Liste hinzufügen"
-- assertVisible:
-    text: "Zu Liste hinzufügen"
-# The dialog has the same title as the icon's content-desc; assert
-# also a Favoriten row (built-in list, always present in the list
-# of options inside the dialog).
-- assertVisible: "Favoriten"
-# Toggle Favoriten (adds the climb to the list).
 - tapOn:
-    text: "Favoriten"
-- tapOn: "Fertig"
+    id: "boarddetail_add_to_list_button"
+- assertVisible:
+    id: "add_to_list_dialog"
+- assertVisible:
+    id: "add_to_list_favorites_checkbox"
+    checked: false
+- tapOn:
+    id: "add_to_list_favorites_checkbox"
+- assertVisible:
+    id: "add_to_list_favorites_checkbox"
+    checked: true
+- tapOn:
+    id: "add_to_list_done"
+- assertVisible: "Von Favoriten entfernen"
 # After dialog close we're back on Detail. Navigate to Lists.
 - pressKey: Back
-- assertVisible: "Filter"
-- tapOn: "Meine Listen"
-- assertVisible: "Favoriten"
-# Tap into Favoriten — should show the just-added climb count or
-# the climb-card list. We don't assert the specific climb because
-# the climb name from the detail tap isn't easily exfiltrated; the
-# value of this assertion is "list opens without crash and renders".
-- tapOn: "Favoriten"
-- waitForAnimationToEnd:
-    timeout: 3000
-# A boulder list-detail-card carries "X Züge" same as browser cards.
 - assertVisible:
-    text: "[0-9]+ Züge"
+    id: "board_filter_toggle"
+- tapOn:
+    id: "board_lists_button"
+- assertVisible: "Favoriten"
+- tapOn: "Favoriten"
+- extendedWaitUntil:
+    visible: ${output.addToListTarget}
+    timeout: 15000
+- assertVisible:
+    id: "board_list_entry_card"
 - pressKey: Back
 - assertVisible: "Favoriten"
 - pressKey: Back
-- assertVisible: "Filter"
-# Cleanup: remove the climb from Favoriten so the flow is idempotent.
+- assertVisible:
+    id: "board_filter_toggle"
+# Cleanup through the same dialog path and verify detail state refresh.
 - tapOn:
-    text: "[0-9]+ Züge"
+    id: "board_climb_card"
     index: 0
-- assertVisible: "Zurück"
-- tapOn: "Zu Liste hinzufügen"
-- assertVisible: "Favoriten"
+- extendedWaitUntil:
+    visible: ${output.addToListTarget}
+    timeout: 15000
 - tapOn:
-    text: "Favoriten"
-- tapOn: "Fertig"
+    id: "boarddetail_add_to_list_button"
+- assertVisible:
+    id: "add_to_list_favorites_checkbox"
+    checked: true
+- tapOn:
+    id: "add_to_list_favorites_checkbox"
+- tapOn:
+    id: "add_to_list_done"
+- assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
-- assertVisible: "Filter"
+- assertVisible:
+    id: "board_filter_toggle"

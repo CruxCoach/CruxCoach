@@ -43,6 +43,7 @@ fun StatsScreen(
     viewModel: StatsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val statsBugReportTitle = stringResource(R.string.error_bug_report_stats_title)
 
     Scaffold(
         topBar = {
@@ -79,13 +80,12 @@ fun StatsScreen(
                     modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
                     com.cruxcoach.android.ui.common.ErrorCard(
                         error = state.error ?: stringResource(R.string.stats_error),
                         onDismiss = { viewModel.clearError() },
                         onReportBug = {
                             onNavigateToBugReport(
-                                context.getString(R.string.error_bug_report_stats_title),
+                                statsBugReportTitle,
                                 state.error ?: ""
                             )
                             viewModel.clearError()
@@ -501,4 +501,3 @@ private fun rpePointColor(rpe: Double): Color = when {
     rpe <= 8.5 -> OrangeAccent
     else -> ErrorRed
 }
-

@@ -46,15 +46,20 @@ class BoardAnglePickerTest {
     }
 
     @Test
-    fun `Mini MoonBoard 2020 stays fixed at 40`() {
-        // Guard: Mini 2020 is a genuine fixed-40° board; the 2016/2024
-        // reclassification must not accidentally widen it.
-        val chips = BoardAnglePicker.chipsFor(
-            brand = BoardBrand.MOONBOARD,
-            layoutId = MoonBoardVariant.MINI_2020.layoutId.toInt(),
-            supportedAngles = emptyList(),
+    fun `Mini boards and MoonBoard 2010 stay fixed at 40`() {
+        val fixed = listOf(
+            MoonBoardVariant.MINI_2020,
+            MoonBoardVariant.MINI_2025,
+            MoonBoardVariant.MOONBOARD_2010,
         )
-        assertEquals(listOf(40), chips)
+        fixed.forEach { variant ->
+            val chips = BoardAnglePicker.chipsFor(
+                brand = BoardBrand.MOONBOARD,
+                layoutId = variant.layoutId.toInt(),
+                supportedAngles = emptyList(),
+            )
+            assertEquals(listOf(40), chips, "expected fixed 40-degree config for $variant")
+        }
     }
 
     @Test
@@ -81,6 +86,18 @@ class BoardAnglePickerTest {
             supportedAngles = listOf(-5, 0, 5, 10),
         )
         assertEquals(listOf(-5, 0, 5, 10), chips)
+    }
+
+    @Test
+    fun `Quantum uses only the selected model catalogue angles`() {
+        val supported = listOf(15, 25, 30, 35, 40, 45, 50, 55, 60)
+        assertEquals(
+            supported,
+            BoardAnglePicker.chipsFor(BoardBrand.QUANTUM, 9101, supported),
+        )
+        val index = BoardAnglePicker.sliderIndex(supported, 40)
+        assertEquals(4, index)
+        assertEquals(40, BoardAnglePicker.angleAtSliderIndex(supported, index))
     }
 
     @Test

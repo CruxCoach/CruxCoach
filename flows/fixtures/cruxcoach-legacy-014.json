@@ -1,0 +1,80 @@
+{
+  "version": 3,
+  "app": "CruxCoach",
+  "exportedAt": "2026-05-18T12:00:00Z",
+  "nostrPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "boardAscents": [
+    {
+      "uuid": "e2200140-0001-4001-8001-000000000001",
+      "climbUuid": "e2200140000000000000000000000001",
+      "angle": 40,
+      "isMirror": false,
+      "bidCount": 1,
+      "quality": 5,
+      "difficulty": 16,
+      "comment": "E2E legacy quality five",
+      "climbedAt": "2099-01-14T12:03:00Z",
+      "climbName": "E2E Legacy 0.1.4 Five Star",
+      "difficultyAverage": 16.0,
+      "climbFrames": "p1096r15p1113r15p1392r14\u0000",
+      "framesCount": 1
+    },
+    {
+      "uuid": "e2200140-0002-4002-8002-000000000002",
+      "climbUuid": "e2200140000000000000000000000002",
+      "angle": 40,
+      "isMirror": false,
+      "bidCount": 4,
+      "quality": 4,
+      "difficulty": 17,
+      "comment": "E2E legacy quality four",
+      "climbedAt": "2099-01-14T12:02:00Z",
+      "climbName": "E2E Legacy 0.1.4 Four Star",
+      "difficultyAverage": 17.0,
+      "climbFrames": "p1169r15p1183r15p1387r14\u0000",
+      "framesCount": 1
+    },
+    {
+      "uuid": "e2200140-0003-4003-8003-000000000003",
+      "climbUuid": "e2200140000000000000000000000003",
+      "angle": 40,
+      "isMirror": false,
+      "bidCount": 2,
+      "quality": null,
+      "difficulty": 18,
+      "comment": "E2E legacy unrated",
+      "climbedAt": "2099-01-14T12:01:00Z",
+      "climbName": "E2E Legacy 0.1.4 Unrated",
+      "difficultyAverage": 18.0,
+      "climbFrames": "p1113r15p1131r15p1389r14\u0000",
+      "framesCount": 1
+    }
+  ],
+  "boardBids": [
+    {
+      "uuid": "e2200140-0004-4004-8004-000000000004",
+      "climbUuid": "e2200140000000000000000000000004",
+      "angle": 40,
+      "isMirror": false,
+      "bidCount": 3,
+      "comment": "E2E legacy attempt",
+      "climbedAt": "2099-01-14T12:00:00Z",
+      "climbName": "E2E Legacy 0.1.4 Attempt",
+      "difficultyAverage": 19.0
+    }
+  ],
+  "climbLists": [
+    {
+      "name": "e2e_legacy_014_alpha",
+      "isBuiltin": false,
+      "createdAt": "2026-05-18T12:00:00Z",
+      "entries": []
+    },
+    {
+      "name": "e2e_legacy_014_beta",
+      "isBuiltin": false,
+      "createdAt": "2026-05-18T12:01:00Z",
+      "entries": []
+    }
+  ]
+}

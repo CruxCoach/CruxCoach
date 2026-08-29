@@ -49,6 +49,10 @@ data class ClimbWithStats(
     val ascensionistCount: Long?,
     val description: String = "",
     val isNomatch: Boolean = false,
+    /** MoonBoard problem method: 'method_footless',
+     *  'method_footless_kickboard', 'method_no_kickboard'. NULL = feet follow
+     *  hands, the default that needs no marker. Aurora climbs never carry one. */
+    val method: String? = null,
     val framesPace: Long = 0,
     val hsm: Long = 0,
     val benchmarkDifficulty: Double = 0.0,
@@ -97,6 +101,38 @@ data class ClimbWithStats(
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
+
+    /**
+     * Whether [isNomatch] carries a real answer for this climb.
+     *
+     * "Matching allowed" is a Kilter-side setter decision, and the blob column
+     * is NOT NULL DEFAULT 0 — so "we never learned it" and "matching is
+     * allowed" are the same stored value. We only ever learn it for climbs
+     * that came through Kilter's catalogue; for the other origins the stored 0
+     * is a placeholder, not a fact:
+     *   * `cruxcoach` — the editor writes is_nomatch=0 on every local draft
+     *     and the publisher sends allowMatch=true unconditionally, so the
+     *     setter was never asked,
+     *   * `boardsesh` — BoardSesh-only user climbs never reach Kilter and
+     *     their feed carries no such field.
+     * Showing a green "Matching" badge there would be an invention, so the UI
+     * hides the badge entirely instead.
+     *
+     * MoonBoard is excluded outright: the whole no-match concept is Aurora's,
+     * a MoonBoard problem has no such rule, and every MoonBoard row carries
+     * origin='kilter' as its "native catalogue" marker — so without this the
+     * provenance check alone would claim the state is known for all ~278k of
+     * them and paint a green badge on a rule that does not exist.
+     *
+     * NOTE: this is provenance-level, not per-climb. A `kilter` climb the
+     * catalogue backfill could not resolve (2026-07-26: 1,073 rows, 0.5 % of
+     * the catalogue) still reads as known and defaults to "matching allowed".
+     * Making that case explicit needs a dedicated blob column — deliberately
+     * not done here, because adding one is a wire-format change for every
+     * installed app version.
+     */
+    val isMatchStateKnown: Boolean get() =
+        origin == "kilter" && BoardBrand.fromWire(boardBrand) != BoardBrand.MOONBOARD
 
     /** Move count: uses pre-computed DB value, falls back to live parse from frames. */
     val moveCount: Int by lazy {
@@ -244,6 +280,14 @@ data class BoardHole(
     val mirroredHoleId: Long?
 )
 
+/** A climb the relay lookup still has to confirm hold-by-hold.
+ *  Ordered most-plausible first (listed, most ascents). */
+data class RelayClimbCandidate(
+    val uuid: String,
+    val frames: String,
+    val popularity: Long = 0,
+)
+
 data class LedGridPoint(
     val placementId: Long,
     val x: Long,
@@ -261,11 +305,63 @@ data class Climb_lists(
     /** True only for the built-in "Ignored" list — lets the lists UI pick a
      *  distinct icon and the add-to-list dialog filter it out. */
     val isIgnored: Boolean = false,
+    /** JSON snapshot of the generator parameters a generated training list
+     *  was built from; NULL for manually assembled lists. */
+    val generatorParams: String? = null,
+    /** Whether this list has an explicit ordered training plan. Lists without
+     *  one are still directly playable in their normal or shuffled order. */
+    val hasPlaybackPlan: Boolean = false,
+    val playbackOrder: ListPlaybackOrder = ListPlaybackOrder.LIST,
+    val playbackAdvance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
+    val playbackRestSeconds: Long = 0L,
 )
+
+enum class ListPlaybackOrder(val wireValue: String) {
+    LIST("list"),
+    SHUFFLE("shuffle");
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wireValue == value } ?: LIST
+    }
+}
+
+enum class ListPlaybackAdvance(val wireValue: String) {
+    MANUAL("manual"),
+    AFTER_SEND("after_send"),
+    AFTER_LOG("after_log");
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wireValue == value } ?: MANUAL
+    }
+}
 
 data class Climb_list_entries(
     val addedAt: String,
     val climb: ClimbWithStats
+)
+
+/** One ordered training-plan step — either a climb (climbUuid + pinned angle)
+ *  or a rest block (restSeconds). Two-phase like normal lists: this row
+ *  carries only the uuid; climb details resolve against the BoardDB. */
+data class ListPlaybackStepRow(
+    val id: Long,
+    val listId: Long,
+    val position: Long,
+    /** 'climb' | 'rest' (schema list_playback_steps.step_type). */
+    val stepType: String,
+    val climbUuid: String?,
+    val restSeconds: Long?,
+    val angle: Long?,
+) {
+    val isRest: Boolean get() = stepType == "rest"
+}
+
+/** Insert payload for [PersonalBoardRepository.replacePlaybackSteps] /
+ *  append helpers. climbUuid == null means a rest step. */
+data class NewListPlaybackStep(
+    val climbUuid: String?,
+    val angle: Long? = null,
+    val restSeconds: Long? = null,
 )
 
 data class Board_sessions(
@@ -304,6 +400,20 @@ interface BoardClimbQueries {
     fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
     fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
+    /** Upstream route UUID used by the Quantum 2.0.14 BLE protocol. */
+    fun getQuantumExternalRouteUuid(appUuid: String): String? = null
+    /** Resolve a controller-reported Quantum route for one physical model.
+     * The model is mandatory because its app UUID and placement ids are
+     * model-local even when the upstream route UUID is shared. A direct UUID
+     * fallback is accepted only for an installation-owned controller player:
+     * community UUIDs are publisher-chosen and cannot identify a foreign
+     * vendor route without the imported bridge. Bridge rows are checked
+     * against the same model/brand/frame boundary. */
+    fun getQuantumClimbByExternalRoute(
+        routeUuid: String,
+        model: String,
+        allowDirectUuidFallback: Boolean = false,
+    ): ClimbWithStats? = null
     /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
      *  uuid matches [uuid] only after normalization (strip hyphens +
      *  lowercase on both sides). The board DB mixes uuid formats (legacy
@@ -334,6 +444,16 @@ interface BoardClimbQueries {
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
+    /** Presence gate for the MoonBoard hold-set filter (FEAT-049): true once
+     *  the CATALOGUE carries a real `hsm` for any MoonBoard row. The value is
+     *  produced by the build pipeline, so before that ships every row is 0 and
+     *  the filter cannot do anything — the picker says so instead of quietly
+     *  changing nothing. Only catalogue rows (`source='kilter'`) count: a
+     *  self-authored or peer-received MoonBoard climb gets its `hsm` computed
+     *  on insert and would otherwise open the gate over an inert catalogue.
+     *  Evaluated once per catalogue revision, not per query; the false case
+     *  walks the brand's rows (see the .sq comment). */
+    fun hasMoonBoardHoldSetMask(): Boolean
     fun getStatCount(): Long
     /** Stats with no matching climbs row (cron desync indicator). */
     fun countOrphanStats(): Long
@@ -404,7 +524,9 @@ interface BoardClimbQueries {
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
     fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
     /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
-    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long = 0): List<ClimbFrameRow>
+    /** Geometry hydration for lightweight browse rows, which omit frames. */
+    fun getClimbFramesByUuids(uuids: Collection<String>): Map<String, String>
     /** Angle-agnostic frames for the logbook stats heatmap: one row per climb
      *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
      *  on the angle, so the stats sheet must not pin one. */
@@ -494,6 +616,12 @@ interface BoardLayoutQueries {
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
         hsmExcludedMask: Long = 0, showUngraded: Boolean = false,
     ): List<ClimbWithStats>
+    /** Full official eWalls/Quantum set for exact origin-filter counts. */
+    fun getQuantumOfficialClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, hsmExcludedMask: Long = 0,
+        showUngraded: Boolean = false,
+    ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's
      *  layout. This pins each climb to the physical board variant
@@ -508,6 +636,21 @@ interface BoardLayoutQueries {
      *  only heuristics. */
     fun getProductSizeForClimbRender(uuid: String, boardBrand: String = "kilter"): Int?
     fun getPlacementLedMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
+    /** FEAT-044: climbs whose frame string could hold the relayed hold set.
+     *  Narrowed by frame-string length and up to two `%p<id>r%` anchors; the
+     *  caller does the exact comparison. */
+    fun findClimbCandidatesByFrames(
+        boardBrand: String,
+        layoutId: Int,
+        minLength: Int,
+        maxLength: Int,
+        anchor1: String?,
+        anchor2: String?,
+    ): List<RelayClimbCandidate>
+    /** FEAT-044: creates the expression index the candidate query needs, if it
+     *  does not exist yet (~12 s over the full catalogue, once). Returns false
+     *  when the index could not be created — the query still works, slowly. */
+    fun ensureRelayLookupIndex(): Boolean
     /** FEAT-031: per-board role-id → board colour byte, derived from the
      *  synced placement_roles.led_color. Empty when the board's catalogue
      *  hasn't shipped placement_roles yet — callers then fall back to the
@@ -550,7 +693,21 @@ interface BoardWriteOperations {
     fun getAllClimbUuids(): Set<String>
     fun getAllStatKeys(): Map<Pair<String, Long>, Long?>
     fun runInTransaction(block: () -> Unit)
+    /** Wipe the catalogue of EVERY board family in one transaction.
+     *  Locally-authored / community climbs (source='local'/'nostr') and
+     *  their stats survive — they are not re-downloadable. */
     fun deleteAllBoardData()
+    /** Per-board catalogue wipe (Settings → "Delete board data"
+     *  multiselect): only the [brands] wire values' catalogue rows +
+     *  geometry go; the same local/nostr protection as
+     *  [deleteAllBoardData]. Kilter's sync_states keys reset only when
+     *  Kilter itself is selected. One transaction. */
+    fun deleteBoardDataForBrands(brands: Set<String>)
+    /** Resolve climb uuids → `board_brand` wire value (exact-match on the
+     *  canonical stored uuid; unknown uuids are simply absent from the
+     *  result). Backs the per-board deletion of SecureDB climb-list
+     *  entries, which carry no brand column of their own. */
+    fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String>
 }
 
 data class RawAscent(
@@ -599,7 +756,16 @@ data class RawBid(
 data class RawClimbListEntry(
     val listId: Long,
     val climbUuid: String,
-    val addedAt: String
+    val addedAt: String,
+)
+
+data class RawListPlaybackStep(
+    val listId: Long,
+    val climbUuid: String?,
+    val position: Long,
+    val stepType: String,
+    val restSeconds: Long? = null,
+    val angle: Long? = null,
 )
 
 /**
@@ -667,6 +833,11 @@ data class ClimbListBackupRow(
     val description: String?,
     val color: String?,
     val externalId: String?,
+    /** Generator parameter JSON snapshot (generated training lists only). */
+    val generatorParams: String?,
+    val playbackOrder: ListPlaybackOrder,
+    val playbackAdvance: ListPlaybackAdvance,
+    val playbackRestSeconds: Long,
 )
 
 /**
@@ -819,7 +990,7 @@ sealed class KilterClaim {
  * envelope (FEAT-008 Phase B). Carries every persisted column that
  * matters for restore: the editor-domain fields, the Nostr publish
  * provenance, and the Kilter-side lifecycle. Derived columns
- * (frames_count, is_listed, is_nomatch, frames_pace, hsm) and the
+ * (frames_count, is_nomatch, frames_pace, hsm) and the
  * tombstone flag are intentionally omitted — `restoreOwnClimb` writes
  * sane defaults for those.
  */
@@ -836,6 +1007,8 @@ data class OwnClimbBackupRow(
     val createdAt: String?,
     val description: String,
     val moveCount: Long,
+    // Additive v3 field. Defaults true when importing a pre-0.2.2 backup.
+    val isListed: Boolean = true,
     val source: String,             // 'local' | 'nostr'
     val syncStatus: String,         // 'draft' | 'failed' | 'published_nostr' | …
     val createdByPubkey: String?,
@@ -965,6 +1138,13 @@ interface CommunityClimbQueries {
      * fresh. INSERT OR IGNORE: real existing rows are not trampled.
      */
     fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String)
+    /**
+     * Atomically remove a synthetic tombstone shell owned by a different
+     * author so a genuine event can reclaim its uuid. Real deleted climbs and
+     * same-author shells are never removed. Returns true only when a shell was
+     * recognized and deleted.
+     */
+    fun removeForeignTombstoneShell(uuid: String, incomingPubkey: String): Boolean = false
     /**
      * Bundle of fields the CommunityClimbDeleter reads in one go: the
      * d-tag + last published event id (for NIP-09 `a`+`e` tags), the

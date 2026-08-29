@@ -5,21 +5,31 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardControllerProfiles
+import com.cruxcoach.android.ble.BoardProjectionPolicy
+import com.cruxcoach.android.ble.BoardLayerBoardIdentity
+import com.cruxcoach.android.ble.BoardLayerManager
+import com.cruxcoach.android.ble.BoardLayerState
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.PhysicalBoardIdentity
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.SessionVisibility
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
@@ -38,6 +48,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -51,6 +62,7 @@ import com.cruxcoach.android.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 enum class RoutePlaybackMode { MANUAL, AUTO }
@@ -67,6 +79,15 @@ data class AscentFormState(
     val deleteConfirmUuid: String? = null
 )
 
+/** One-shot confirmation for an icon-dock quick log. */
+data class QuickLogFeedback(
+    val eventId: String,
+    val entryUuid: String,
+    val isSend: Boolean,
+)
+
+enum class PersonalNoteSaveStatus { IDLE, SAVING, SAVED, FAILED }
+
 /** Route/multi-frame playback state. */
 data class PlaybackState(
     val allFrames: List<List<BoardHold>> = emptyList(),
@@ -78,12 +99,19 @@ data class PlaybackState(
     val isLooping: Boolean = false,
     val speedSec: Float = 5f,
     val showPreview: Boolean = false,
-    val countdownSeconds: Int = 0
+    val countdownSeconds: Int = 0,
+    /**
+     * False while something else owns the wall — today a running playlist.
+     * Playback would still animate on screen and reach nothing.
+     */
+    val canReachBoard: Boolean = true,
 )
 
 /** BLE send-to-board state. */
 data class BoardSendState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val connectedViaRelay: Boolean = false,
+    val hostedRelayClientCount: Int = 0,
     val isSending: Boolean = false,
     val success: Boolean = false,
     /** Localized error as a string-resource id (resolved at the UI layer),
@@ -94,7 +122,10 @@ data class BoardSendState(
     /** Non-blocking post-send warning (string-resource id), e.g. holds
      *  without an LED mapping on the configured board size — the send
      *  succeeded but the wall shows a partial climb. Null = no warning. */
-    @androidx.annotation.StringRes val warning: Int? = null
+    @androidx.annotation.StringRes val warning: Int? = null,
+    /** Present only for identity/configuration failures that the shared board
+     * picker can correct. Generic transport errors intentionally have no CTA. */
+    val mismatch: com.cruxcoach.android.ui.settings.BoardConfigurationMismatch? = null,
 )
 
 /** Climb list / favorites dialog state. */
@@ -141,6 +172,35 @@ data class LogbookOnlyState(
     val ascents: List<AscentWithClimb>,
 )
 
+/**
+ * Overlays everything that belongs to the DEVICE, not the climb, onto a cached
+ * page.
+ *
+ * [BoardClimbDetailViewModel.preloadClimb] snapshots the WHOLE state, so a
+ * cached page also carries the send mode, the board connection and the palette
+ * as they were at preload time. Restoring it verbatim rolled those back — a
+ * page preloaded before the send mode resolved came back as AUTOMATIC and the
+ * explicit-send button stayed gone until the preference changed again (its
+ * collector only emits on change).
+ */
+internal fun ClimbDetailState.withLiveDeviceState(live: ClimbDetailState): ClimbDetailState =
+    copy(
+        boardSendMode = live.boardSendMode,
+        ble = live.ble,
+        nearby = live.nearby,
+        gradeScale = live.gradeScale,
+        ledColors = live.ledColors,
+        restTimerTotalSeconds = live.restTimerTotalSeconds,
+        restTimerAutoStart = live.restTimerAutoStart,
+        zones = live.zones,
+        currentUserPubkey = live.currentUserPubkey,
+        boardLayers = live.boardLayers,
+        // A slot choice belongs to the climb variant on which it was made.
+        // Cached neighbours must never inherit it and become a replacement.
+        selectedBoardLayerSlot = null,
+        selectedBoardLayerColor = null,
+    )
+
 data class ClimbDetailState(
     val isLoading: Boolean = true,
     val climb: ClimbWithStats? = null,
@@ -166,14 +226,28 @@ data class ClimbDetailState(
     /** Whether this climb is on the user's built-in "Ignored" list — drives
      *  the overflow menu's ignore/un-ignore action. */
     val isIgnored: Boolean = false,
+    /** Private note stored in the encrypted per-user database. */
+    val personalNote: String = "",
+    /** Unsaved editor content; retained across sheet dismissal and save failures. */
+    val personalNoteDraft: String = "",
+    val personalNoteSaveStatus: PersonalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
     val zones: IntensityZones? = null,
     val availableAngles: List<AngleOption> = emptyList(),
     val error: String? = null,
     val ascent: AscentFormState = AscentFormState(),
+    val isQuickLogging: Boolean = false,
+    val quickLogFeedback: QuickLogFeedback? = null,
+    val quickLogFailed: Boolean = false,
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
+    val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    /** Live physical-board layers. Quantum currently supplies four; other
+     * boards remain a single projection through the same capability model. */
+    val boardLayers: BoardLayerState = BoardLayerState(),
+    val selectedBoardLayerSlot: Int? = null,
+    val selectedBoardLayerColor: Int? = null,
     val listDialog: ListDialogState = ListDialogState(),
     val nearby: NearbySharingState = NearbySharingState(),
     /** Hex pubkey of the local NostrSigner. Used by the UI to gate
@@ -261,10 +335,14 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val boardLayerManager: BoardLayerManager,
+    /** The board's group, when there is one. Read for exactly one question:
+     *  whether this screen may command the wall at all. */
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: com.cruxcoach.android.data.SessionQueueManager,
+    private val cruxRelayManager: com.cruxcoach.android.data.CruxRelayManager,
     private val bleShareManager: BleShareManager,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
@@ -305,9 +383,13 @@ class BoardClimbDetailViewModel @Inject constructor(
     val pageCache: StateFlow<Map<String, ClimbDetailState>> = _pageCache.asStateFlow()
 
     private var loadJob: Job? = null
+    private val personalNoteSaveJobs = ConcurrentHashMap<String, Job>()
+    private val personalNoteDrafts = ConcurrentHashMap<String, String>()
+    private val personalNoteSaveStatuses = ConcurrentHashMap<String, PersonalNoteSaveStatus>()
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
     private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
+    private val supportedAnglesCache = ConcurrentHashMap<Pair<Int, String>, Set<Int>>()
 
     // --- Delegated controllers ---
 
@@ -329,8 +411,13 @@ class BoardClimbDetailViewModel @Inject constructor(
         scope = viewModelScope,
         state = _state,
         userPreferences = userPreferences,
-        onFrameChanged = { holds ->
-            if (sendController.isConnected()) sendController.sendToBoard()
+        onFrameChanged = {
+            // Frame navigation/playback is already an explicit user command.
+            // Once started, every frame must reach the board regardless of the
+            // saved climb-selection send mode — but only when a send can get
+            // there at all. Asking isConnected() alone let the animation run
+            // through while a session queue swallowed every single frame.
+            if (sendController.canSendToBoard()) sendController.sendToBoard(automaticLayer = true)
         }
     )
 
@@ -343,11 +430,39 @@ class BoardClimbDetailViewModel @Inject constructor(
         userPreferences = userPreferences,
         climbAdvertiser = climbAdvertiser,
         sessionQueueManager = sessionQueueManager,
-        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled }
+        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled },
+        boardLayerManager = boardLayerManager,
     )
 
     init {
         PerfLogger.navMilestone("BoardClimbDetailVM.init start")
+        viewModelScope.launch {
+            boardLayerManager.state.collect { layers ->
+                _state.update { current -> current.copy(boardLayers = layers) }
+            }
+        }
+        // Attach the rack to the board it is for, before anything reconciles
+        // into it. The rack survives a disconnect on purpose — the controller
+        // keeps its projections and a reconnect must be able to recognise its
+        // own slots again — but that is only true of the same board. Carried
+        // to a different controller the previews are a plan for holds that are
+        // not there, and on the same model they would send.
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                bleConnection.connectedBoardDescriptor,
+                bleConnection.connectedQuantumModel,
+            ) { board, model -> connectedLayerBoard(board, model) }
+                .distinctUntilChanged()
+                .collect(boardLayerManager::bindBoard)
+        }
+        viewModelScope.launch {
+            bleConnection.quantumControllerState.collect { controller ->
+                if (controller.authoritative) {
+                    boardLayerManager.reconcile(controller.players)
+                    sendController.hydrateQuantumControllerState()
+                }
+            }
+        }
         // Re-load the displayed climb whenever a creator-side mutation happens
         // (e.g. an edit/publish from the editor opened on top of this screen).
         // The nav entry can stay RESUMED behind the editor, so a lifecycle
@@ -384,6 +499,15 @@ class BoardClimbDetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            cruxRelayManager.state.collect { relayState ->
+                _state.update {
+                    it.copy(
+                        ble = it.ble.copy(hostedRelayClientCount = relayState.clientCount),
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             try {
                 userPreferences.gradeScale.collect { scale ->
                     _state.update { it.copy(gradeScale = scale) }
@@ -407,6 +531,72 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
+                var previousCapacity = BoardControllerProfiles
+                    .forBoard(bleConnection.connectedBoard)
+                    .connectionCapacity
+                var previousResolvedMode = _state.value.boardSendMode
+                combine(
+                    userPreferences.singleConnectionBoardSendMode,
+                    userPreferences.multiConnectionBoardSendMode,
+                    bleConnection.connectedBoardDescriptor,
+                    cruxRelayManager.state,
+                ) { singleMode, multiMode, board, relayState ->
+                    val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
+                    BoardSendModePolicy.resolve(
+                        connectionCapacity = capacity,
+                        singleConnectionMode = singleMode,
+                        multiConnectionMode = multiMode,
+                        hostingForOthers = relayState.clientCount > 0,
+                    ) to capacity
+                }.distinctUntilChanged().collect { (mode, capacity) ->
+                    val shouldAutoSend = BoardSendModePolicy
+                        .shouldAutoSendAfterCapacityResolution(
+                            previousCapacity = previousCapacity,
+                            currentCapacity = capacity,
+                            previousResolvedMode = previousResolvedMode,
+                            resolvedMode = mode,
+                        )
+                    previousCapacity = capacity
+                    previousResolvedMode = mode
+                    _state.update { it.copy(boardSendMode = mode) }
+                    if (shouldAutoSend &&
+                        bleConnection.connectionState.value == ConnectionState.CONNECTED
+                    ) {
+                        sendAutomaticallyIfEnabled()
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "capacity-specific board send mode collect terminated", e)
+            }
+        }
+        // Keep the playback controls honest about whether a frame can land.
+        // Three inputs matter: the link can drop, a legacy session queue can
+        // take the wall over while this screen is open, and a group can form
+        // on the board — and a group is the case where a frame does not fail
+        // loudly, it arrives as a whole-climb projection and leaves the wall
+        // on frame 1.
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.flow.combine(
+                    bleConnection.connectionState,
+                    sessionQueueManager.state,
+                ) { _, _ -> sendController.canSendToBoard() }
+                    .distinctUntilChanged()
+                    .collect { canReach ->
+                        _state.update {
+                            it.copy(playback = it.playback.copy(canReachBoard = canReach))
+                        }
+                    }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "canReachBoard collect terminated", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
                 // Track previous state to only auto-send on genuine first-connect,
                 // not on SENDING->CONNECTED transitions (which caused a send loop on Android 9).
                 var prevConnState = bleConnection.connectionState.value
@@ -417,13 +607,26 @@ class BoardClimbDetailViewModel @Inject constructor(
                         && connState == ConnectionState.CONNECTED
                     prevConnState = connState
 
-                    _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
+                    _state.update {
+                        it.copy(
+                            ble = it.ble.copy(
+                                connectionState = connState,
+                                connectedViaRelay = connState != ConnectionState.DISCONNECTED &&
+                                    bleConnection.connectedBoard?.isCruxRelay == true,
+                            ),
+                        )
+                    }
 
-                    if (connState == ConnectionState.CONNECTED
-                        && wasDisconnectedOrConnecting
-                        && _state.value.holds.isNotEmpty()
+                    val climbState = _state.value
+                    if (connState == ConnectionState.CONNECTED &&
+                        wasDisconnectedOrConnecting &&
+                        BoardProjectionPolicy.hasSendablePayload(
+                            brand = climbState.climb?.brand,
+                            holdCount = climbState.holds.size,
+                            frames = climbState.climb?.frames,
+                        )
                     ) {
-                        sendToBoard()
+                        sendAutomaticallyIfEnabled()
                     }
 
                     // Auto-disconnect after a send is now driven entirely by
@@ -644,50 +847,107 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(ownPublishFeedback = null) }
     }
 
+    /**
+     * Which board the layer rack is currently staged for, or null when there is
+     * nothing connected to stage against.
+     *
+     * Only Quantum has more than one layer, so only Quantum can strand a
+     * preview on the wrong controller; every other board reports null here and
+     * leaves the rack untouched.
+     */
+    private fun connectedLayerBoard(
+        board: com.cruxcoach.android.ble.DiscoveredBoard?,
+        model: QuantumBoardModel?,
+    ): BoardLayerBoardIdentity? {
+        if (board == null || board.boardBrand != BoardBrand.QUANTUM || model == null) return null
+        val physical = runCatching { PhysicalBoardIdentity.resolve(board) }.getOrNull() ?: return null
+        return BoardLayerBoardIdentity(physical.value, model.productSizeId)
+    }
+
+    /**
+     * Everything in flight that belonged to the variant being left behind.
+     *
+     * Climb and angle are the same kind of change as far as the board is
+     * concerned — both replace the holds — so both have to tear down the same
+     * things. Keeping that in one place rather than two is the point: the two
+     * paths had already drifted apart once, and the half that forgot to cancel
+     * let a finished send mark the newly shown variant as lit.
+     */
+    private fun stopWorkForPreviousVariant() {
+        playbackController.stopPlayback()
+        sendController.cancelSend()
+        loadJob?.cancel()
+    }
+
     fun switchClimb(uuid: String, angle: Int) {
         if (uuid == currentClimbUuid && angle == currentAngle) return
+        ascentLogger.finishQuickSequence()
         Log.d(TAG, "switchClimb: $uuid angle=$angle (was: $currentClimbUuid)")
         currentClimbUuid = uuid
         currentAngle = angle
-        playbackController.stopPlayback()
-        loadJob?.cancel()
-        sendController.cancelSend()
-        // Update nearby advertising immediately on swipe (before async load / state replacement)
-        val sharingEnabled = bleShareManager.uiState.value.sharingEnabled
-        val isConnected = bleConnection.connectionState.value == ConnectionState.CONNECTED
-        Log.d(TAG, "switchClimb: climbSharingEnabled=$sharingEnabled connected=$isConnected")
-        if (sharingEnabled && isConnected) {
-            val result = climbAdvertiser.advertiseClimb(uuid, angle)
-            Log.d(TAG, "switchClimb: advertiseClimb result=$result")
-        }
+        stopWorkForPreviousVariant()
         // Reset BLE send state so a stale isSending=true from the previous climb
         // doesn't block auto-send for the new climb.
         val currentConn = bleConnection.connectionState.value
         // Use cached page state if available to avoid loading flash during pager swipe
         val cached = _pageCache.value[uuid]
         if (cached != null) {
-            _state.update { current -> cached.copy(
+            _state.update { current -> cached.withLiveDeviceState(current).copy(
                 ascent = AscentFormState(),
                 listDialog = ListDialogState(),
-                ble = BoardSendState(connectionState = currentConn),
-                nearby = current.nearby
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
+                ble = current.ble.copy(
+                    connectionState = currentConn,
+                    isSending = false,
+                    success = false,
+                    error = null,
+                    warning = null,
+                ),
             ) }
         } else {
             _state.update { it.copy(
                 isLoading = true,
                 error = null,
                 isMirrored = false,
-                ble = BoardSendState(connectionState = currentConn),
+                ble = it.ble.copy(
+                    connectionState = currentConn,
+                    isSending = false,
+                    success = false,
+                    error = null,
+                    warning = null,
+                ),
                 playback = it.playback.copy(showPreview = false),
                 ascent = AscentFormState(),
-                listDialog = it.listDialog.copy(show = false)
+                listDialog = it.listDialog.copy(show = false),
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
             ) }
         }
-        loadClimb(uuid, angle, advertise = false) // switchClimb already called advertiseClimb
+        loadClimb(uuid, angle)
     }
 
     fun onAngleSelected(angle: Int) {
         if (angle == currentAngle) return
+        ascentLogger.finishQuickSequence()
+        // Only clearing isSending in the state below used to leave the send
+        // itself running: it came back past its last suspension point and
+        // marked the angle now on screen as lit, with the other angle's holds
+        // on the wall. The send controller fences the residual window after
+        // the last suspension; this closes the one that was open for the
+        // whole job.
+        stopWorkForPreviousVariant()
+        currentAngle = angle
+        _state.update { current ->
+            current.copy(
+                isLoading = true,
+                error = null,
+                angle = angle,
+                ble = current.ble.copy(isSending = false, success = false, error = null),
+                selectedBoardLayerSlot = null,
+                selectedBoardLayerColor = null,
+            )
+        }
         loadClimb(currentClimbUuid, angle)
     }
 
@@ -712,11 +972,22 @@ class BoardClimbDetailViewModel @Inject constructor(
         // imported climbs are angle-agnostic, so there's no single setter angle.
         val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
         val supported: Set<Int> = when {
-            brand.usesAuroraProtocol ->
+            brand.usesAuroraProtocol -> {
                 // Pass the climb's own brand: layout ids collide across brands
                 // (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone),
                 // so an unscoped lookup would union other brands' angle ranges.
-                boardRepository.getSupportedAnglesForLayout(climb.layoutId.toInt(), climb.boardBrand).toSet()
+                val cacheKey = climb.layoutId.toInt() to climb.boardBrand
+                supportedAnglesCache[cacheKey] ?: PerfLogger.trace("loadClimb.supportedAngles") {
+                    boardRepository
+                        .getSupportedAnglesForLayout(climb.layoutId.toInt(), climb.boardBrand)
+                        .toSet()
+                }.also { loaded ->
+                    // Do not retain an empty result: the first detail can race a
+                    // just-started catalogue import, and the completed import
+                    // must be allowed to populate the picker later.
+                    if (loaded.isNotEmpty()) supportedAnglesCache.putIfAbsent(cacheKey, loaded)
+                }
+            }
             brand == BoardBrand.MOONBOARD ->
                 MoonBoardVariant.fromLayoutId(climb.layoutId)?.angles?.toSet() ?: emptySet()
             else -> emptySet()
@@ -732,7 +1003,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
     }
 
-    private fun loadClimb(uuid: String, angle: Int, advertise: Boolean = true) {
+    private fun loadClimb(uuid: String, angle: Int) {
         loadJob = viewModelScope.launch {
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
@@ -791,6 +1062,10 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                         val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
+                        val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
+                        val personalNoteDraft = personalNoteDrafts[climb.uuid] ?: personalNote
+                        val personalNoteStatus = personalNoteSaveStatuses[climb.uuid]
+                            ?: PersonalNoteSaveStatus.IDLE
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
@@ -834,6 +1109,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 angle = angle,
                                 isFavorited = isFavorited,
                                 isIgnored = isIgnored,
+                                personalNote = personalNote,
+                                personalNoteDraft = personalNoteDraft,
+                                personalNoteSaveStatus = personalNoteStatus,
                                 availableAngles = angles,
                                 isMirrorable = isMirrorable,
                                 canPublishAsMine = canPublishAsMine,
@@ -854,8 +1132,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         _pageCache.update { it + (uuid to _state.value) }
                         PerfLogger.navMilestone("loadClimb complete ($uuid)")
-                        if (advertise) sendController.updateNearbyAdvertising(uuid, angle)
-                        if (sendController.isConnected()) sendController.sendToBoard()
+                        sendAutomaticallyIfEnabled()
                         // Fire-and-forget Kind 0 lookup. Doesn't block UI;
                         // updates state when the relay responds (or skips
                         // silently if not). Only relevant for community
@@ -992,6 +1269,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                     val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
+                    val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
                     val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                     val isMirrorable = BoardConstants.isLayoutMirrorable(
                         climb.brand, climb.layoutId.toInt()
@@ -1008,6 +1286,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         angle = angle,
                         isFavorited = isFavorited,
                         isIgnored = isIgnored,
+                        personalNote = personalNote,
                         availableAngles = angles,
                         isMirrored = false,
                         isMirrorable = isMirrorable,
@@ -1037,6 +1316,10 @@ class BoardClimbDetailViewModel @Inject constructor(
     // --- Ascent delegation ---
 
     fun showAscentDialog() = ascentLogger.showDialog()
+    fun quickLogAscent(isSend: Boolean) = ascentLogger.quickLog(isSend)
+    fun consumeQuickLogFeedback() = ascentLogger.consumeQuickLogFeedback()
+    fun undoQuickLog() = ascentLogger.undoQuickLog()
+    fun consumeQuickLogFailure() = _state.update { it.copy(quickLogFailed = false) }
     fun dismissAscentDialog() = ascentLogger.dismissDialog()
     fun updateAscentIsSend(isSend: Boolean) = ascentLogger.updateIsSend(isSend)
     fun updateAscentBidCount(count: Int) = ascentLogger.updateBidCount(count)
@@ -1066,6 +1349,79 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun sendToBoard() = sendController.sendToBoard()
 
+    fun clearBoardMismatch() {
+        _state.update { it.copy(ble = it.ble.copy(error = null, mismatch = null)) }
+    }
+
+    fun selectBoardLayer(slot: Int) {
+        val existing = _state.value.boardLayers.layers.firstOrNull { it.slot == slot }
+        _state.update {
+            it.copy(
+                selectedBoardLayerSlot = slot,
+                selectedBoardLayerColor = existing?.color ?: boardLayerManager.defaultColor(slot),
+            )
+        }
+    }
+
+    fun selectBoardLayerColor(color: Int) {
+        _state.update { it.copy(selectedBoardLayerColor = color) }
+    }
+
+    /** Apply the policy's one safe answer atomically. This remains a local
+     * selection; assigning or lighting is a separate explicit action. */
+    fun selectSuggestedBoardLayer(slot: Int, color: Int) {
+        if (slot !in 0 until BoardLayerManager.MAX_LAYER_IDENTITIES ||
+            color !in BoardLayerManager.LAYER_COLORS
+        ) return
+        _state.update {
+            it.copy(selectedBoardLayerSlot = slot, selectedBoardLayerColor = color)
+        }
+    }
+
+    fun assignCurrentToBoardLayer() = sendController.assignCurrentToBoardLayer()
+    fun sendBoardLayer(slot: Int) = sendController.sendBoardLayer(slot)
+    fun sendAllBoardLayers() = sendController.sendAllBoardLayers()
+    fun cancelBoardLayerReplacement(slot: Int) = sendController.cancelBoardLayerReplacement(slot)
+    fun removeBoardLayer(slot: Int) = sendController.removeBoardLayer(slot)
+
+    /**
+     * Primary detail action. A shared session owns board delivery, so the
+     * same surface that lights a directly connected board adds to the shared
+     * queue when this device is a host or participant.
+     */
+    fun deliverClimb() {
+        val climbState = _state.value
+        val climb = climbState.climb ?: return
+        val queueState = sessionQueueManager.state.value
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = climbState.boardSendMode,
+            boardBrand = climb.brand,
+            sessionRole = queueState.role,
+            sessionConnecting = queueState.isConnecting,
+            localPlaylist = queueState.isPlaylist &&
+                queueState.visibility == SessionVisibility.LOCAL_ONLY,
+            boardConnected = sendController.isConnected(),
+            hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                brand = climb.brand,
+                holdCount = climbState.holds.size,
+                frames = climb.frames,
+            ),
+            connectedViaRelay = climbState.ble.connectedViaRelay,
+        )
+        when (decision.target) {
+            // A tap on the lamp is an explicit projection request. Quantum may
+            // therefore claim the first genuinely free, conflict-free layer
+            // without making the user open the layer rack first.
+            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard(
+                automaticLayer = true,
+                userInitiated = true,
+            )
+            BoardDeliveryTarget.SHARED_QUEUE ->
+                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
+            BoardDeliveryTarget.NONE -> Unit
+        }
+    }
+
     // --- Favorites & lists ---
 
     fun toggleFavorite() {
@@ -1084,6 +1440,85 @@ class BoardClimbDetailViewModel @Inject constructor(
                 // coroutine. Log + leave the previous favorite-state
                 // visible (no UI flip).
                 Log.w(TAG, "toggleFavorite failed", e)
+            }
+        }
+    }
+
+    fun savePersonalNote(note: String) {
+        val climbUuid = _state.value.climb?.uuid ?: currentClimbUuid
+        val normalized = note.trim().take(1000)
+        if (
+            _state.value.climb?.uuid == climbUuid &&
+            _state.value.personalNote == normalized &&
+            _state.value.personalNoteSaveStatus != PersonalNoteSaveStatus.FAILED
+        ) return
+        personalNoteDrafts[climbUuid] = note.take(1000)
+        personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.SAVING
+        personalNoteSaveJobs.remove(climbUuid)?.cancel()
+        _state.update { current ->
+            if (current.climb?.uuid == climbUuid) {
+                current.copy(
+                    personalNoteDraft = note.take(1000),
+                    personalNoteSaveStatus = PersonalNoteSaveStatus.SAVING,
+                )
+            } else current
+        }
+        personalNoteSaveJobs[climbUuid] = viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.saveClimbNote(climbUuid, normalized)
+                }
+                personalNoteDrafts.remove(climbUuid)
+                personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.SAVED
+                _state.update { current ->
+                    if (current.climb?.uuid == climbUuid) current.copy(
+                        personalNote = normalized,
+                        personalNoteDraft = normalized,
+                        personalNoteSaveStatus = PersonalNoteSaveStatus.SAVED,
+                    )
+                    else current
+                }
+                _pageCache.update { cache ->
+                    cache.mapValues { (_, cached) ->
+                        if (cached.climb?.uuid == climbUuid) cached.copy(
+                            personalNote = normalized,
+                            personalNoteDraft = normalized,
+                            personalNoteSaveStatus = PersonalNoteSaveStatus.SAVED,
+                        )
+                        else cached
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "savePersonalNote failed", e)
+                personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.FAILED
+                _state.update { current ->
+                    if (current.climb?.uuid == climbUuid) {
+                        current.copy(personalNoteSaveStatus = PersonalNoteSaveStatus.FAILED)
+                    } else current
+                }
+            }
+        }
+    }
+
+    fun updatePersonalNoteDraft(note: String) {
+        val climbUuid = _state.value.climb?.uuid ?: return
+        val bounded = note.take(1000)
+        personalNoteDrafts[climbUuid] = bounded
+        personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.IDLE
+        _state.update { current ->
+            if (current.climb?.uuid == climbUuid) current.copy(
+                personalNoteDraft = bounded,
+                personalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
+            ) else current
+        }
+        _pageCache.update { cache ->
+            cache.mapValues { (_, cached) ->
+                if (cached.climb?.uuid == climbUuid) cached.copy(
+                    personalNoteDraft = bounded,
+                    personalNoteSaveStatus = PersonalNoteSaveStatus.IDLE,
+                ) else cached
             }
         }
     }
@@ -1109,6 +1544,14 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun toggleMirror() {
+        ascentLogger.finishQuickSequence()
+        // A mirror flip replaces every hold that would go to the wall, which
+        // makes it the same kind of change as a climb or an angle: whatever is
+        // in flight was computed for the other side of the board. Tearing it
+        // down here is also what lets the send controller identify a variant by
+        // its holds at all — a dropped result is only safe once nothing is
+        // still running that could have produced it.
+        stopWorkForPreviousVariant()
         val s = _state.value
         val newMirrored = !s.isMirrored
         val frames = if (newMirrored) {
@@ -1124,9 +1567,53 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(
             isMirrored = newMirrored,
             holds = holds,
-            playback = it.playback.copy(allFrames = frames)
+            playback = it.playback.copy(allFrames = frames),
+            ble = it.ble.copy(isSending = false, success = false, error = null, warning = null),
         ) }
-        if (sendController.isConnected()) sendController.sendToBoard()
+        viewModelScope.launch { sendAutomaticallyIfEnabled() }
+    }
+
+    private suspend fun sendAutomaticallyIfEnabled() {
+        val mode = try {
+            combine(
+                userPreferences.singleConnectionBoardSendMode,
+                userPreferences.multiConnectionBoardSendMode,
+            ) { singleMode, multiMode ->
+                BoardSendModePolicy.resolve(
+                    connectionCapacity = BoardControllerProfiles
+                        .forBoard(bleConnection.connectedBoard)
+                        .connectionCapacity,
+                    singleConnectionMode = singleMode,
+                    multiConnectionMode = multiMode,
+                    hostingForOthers = _state.value.ble.hostedRelayClientCount > 0,
+                )
+            }.first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "capacity-specific board send mode read failed; using UI state", e)
+            _state.value.boardSendMode
+        }
+        val climbState = _state.value
+        val queueState = sessionQueueManager.state.value
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = mode,
+            boardBrand = climbState.climb?.brand,
+            sessionRole = queueState.role,
+            sessionConnecting = queueState.isConnecting,
+            localPlaylist = queueState.isPlaylist &&
+                queueState.visibility == SessionVisibility.LOCAL_ONLY,
+            boardConnected = sendController.isConnected(),
+            hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                brand = climbState.climb?.brand,
+                holdCount = climbState.holds.size,
+                frames = climbState.climb?.frames,
+            ),
+            connectedViaRelay = climbState.ble.connectedViaRelay,
+        )
+        if (decision.dispatchAutomatically) {
+            sendController.sendToBoard(automaticLayer = true)
+        }
     }
 
     private fun mirrorHolds(holds: List<BoardHold>): List<BoardHold> {
@@ -1216,27 +1703,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun showAddToListDialog() {
-        viewModelScope.launch {
-            try {
-                val lists = withContext(Dispatchers.IO) {
-                    personalBoardRepo.ensureFavoritesListExists()
-                    // Hide the built-in "Ignored" list — ignoring has its own
-                    // dedicated overflow action; it doesn't belong in the
-                    // add-to-list picker.
-                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
-                }
-                val inListIds = withContext(Dispatchers.IO) {
-                    personalBoardRepo.getListIdsForClimb(currentClimbUuid)
-                }
-                _state.update { it.copy(listDialog = ListDialogState(
-                    show = true, lists = lists, climbInListIds = inListIds
-                )) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "showAddToListDialog failed", e)
-            }
-        }
+        // Content is loaded by AddToListDialogHost's own ViewModel — the
+        // detail VM only tracks visibility.
+        _state.update { it.copy(listDialog = ListDialogState(show = true)) }
     }
 
     fun dismissAddToListDialog() {
@@ -1253,68 +1722,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleClimbInList(listId: Long) {
-        viewModelScope.launch {
-            try {
-                val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
-                withContext(Dispatchers.IO) {
-                    if (currentlyIn) {
-                        personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
-                    } else {
-                        personalBoardRepo.addClimbToList(listId, currentClimbUuid)
-                    }
-                }
-                val newIds = if (currentlyIn) {
-                    _state.value.listDialog.climbInListIds - listId
-                } else {
-                    _state.value.listDialog.climbInListIds + listId
-                }
-                _state.update { it.copy(listDialog = it.listDialog.copy(climbInListIds = newIds)) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "toggleClimbInList listId=$listId failed", e)
-            }
-        }
-    }
-
-    fun updateNewListName(name: String) {
-        _state.update { it.copy(listDialog = it.listDialog.copy(newListName = name)) }
-    }
-
-    fun createNewListAndAdd() {
-        val name = _state.value.listDialog.newListName.trim()
-        if (name.isBlank()) return
-        val existing = _state.value.listDialog.lists.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        if (existing != null) {
-            toggleClimbInList(existing.id)
-            _state.update { it.copy(listDialog = it.listDialog.copy(newListName = "")) }
-            return
-        }
-        viewModelScope.launch {
-            try {
-                val newListId = withContext(Dispatchers.IO) {
-                    val id = personalBoardRepo.createClimbList(name)
-                    personalBoardRepo.addClimbToList(id, currentClimbUuid)
-                    id
-                }
-                val updatedLists = withContext(Dispatchers.IO) {
-                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
-                }
-                _state.update { it.copy(listDialog = it.listDialog.copy(
-                    lists = updatedLists,
-                    climbInListIds = it.listDialog.climbInListIds + newListId,
-                    newListName = ""
-                )) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "createNewListAndAdd failed name=$name", e)
-            }
-        }
-    }
-
     override fun onCleared() {
+        // The Snackbar belongs to the screen, but persistence finalization
+        // must not disappear when Back removes that screen immediately.
+        ascentLogger.finishQuickSequence()
         super.onCleared()
         // Don't touch the advertiser here. BleConnectionViewModel fully manages
         // the advertising lifecycle (connected -> climb -> lastClimb -> gone).

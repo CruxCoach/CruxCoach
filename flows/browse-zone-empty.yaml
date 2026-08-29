@@ -1,0 +1,44 @@
+appId: com.cruxcoach.android
+name: browse-zone-empty
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# A tiny top-left box intentionally contains too little board geometry for a
+# complete climb. Zero is an explicit result, Apply is disabled, and dismissing
+# the sheet leaves the browser intact.
+- runFlow: subflows/reset-browser-filters.yaml
+- tapOn:
+    id: "board_search_fab"
+- tapOn:
+    id: "board_hold_search"
+- tapOn:
+    id: "hold_search_zone_mode"
+- swipe:
+    start: "5%,37%"
+    end: "15%,43%"
+    duration: 800
+- extendedWaitUntil:
+    visible:
+      id: "hold_search_match_count"
+      text: "0 Climbs gefunden"
+    timeout: 30000
+- assertVisible:
+    id: "hold_search_zone_active"
+- assertVisible:
+    id: "hold_search_apply"
+    enabled: false
+- assertNotVisible:
+    id: "hold_search_action_bar"
+- tapOn:
+    id: "board_search_fab"
+- assertNotVisible:
+    id: "board_search_field"
+- tapOn:
+    id: "hold_search_reset"
+- pressKey: Back
+- assertVisible:
+    id: "board_climb_card"
+- assertNotVisible:
+    id: "hold_search_action_bar"

@@ -3,19 +3,30 @@ package com.cruxcoach.android.ble
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 
 /**
  * Binary encoding/decoding for Session Queue GATT payloads.
  *
  * **Commands** (Client → Host, written to QUEUE_COMMAND):
- *   CMD_ADD, CMD_REMOVE, CMD_SET_CURRENT, CMD_NEXT, CMD_PREV, CMD_JOIN, CMD_LEAVE
+ *   CMD_ADD, CMD_REMOVE, CMD_SET_CURRENT, CMD_NEXT, CMD_PREV, CMD_JOIN,
+ *   CMD_LEAVE, CMD_RESEND
  *
  * **Events** (Host → Client, notified via QUEUE_EVENT):
  *   EVT_ADDED, EVT_REMOVED, EVT_CURRENT, EVT_CLEARED, EVT_PARTICIPANT_JOINED/LEFT
  *   Each event fits in a single BLE notification (max 19 bytes).
  *
- * **Full State** (read via QUEUE_STATE characteristic, supports GATT Long Read for large queues):
- *   [1B currentIndex][1B itemCount][per item: 1B angle + 16B uuid]
+ * **Full State** (read via QUEUE_STATE characteristic, supports GATT Long Read):
+ *   [1B currentIndex][1B page][1B pageCount][1B itemsInPage][per item: 1B angle + 16B uuid]
+ *
+ *   Paged, because one attribute cannot carry a whole playlist. GATT caps an
+ *   attribute value at 512 bytes and a notification at ATT_MTU-3 (509 here),
+ *   which is 29 items — while the generator builds sessions of up to 38. The
+ *   frame used to be a flat list with a single count byte, so anything larger
+ *   arrived truncated, failed the length check on the participant's side and
+ *   was dropped without a word: the joiner saw the host, the participant count
+ *   and an empty queue.
  */
 object SessionQueueProtocol {
 
@@ -28,6 +39,7 @@ object SessionQueueProtocol {
     const val CMD_JOIN: Byte = 0x06
     const val CMD_LEAVE: Byte = 0x07
     const val CMD_MOVE: Byte = 0x08
+    const val CMD_RESEND: Byte = 0x09
 
     // --- Event opcodes (Host → Client) ---
     const val EVT_ADDED: Byte = 0x01
@@ -36,6 +48,35 @@ object SessionQueueProtocol {
     const val EVT_CLEARED: Byte = 0x04
     const val EVT_PARTICIPANT_JOINED: Byte = 0x05
     const val EVT_PARTICIPANT_LEFT: Byte = 0x06
+
+    /**
+     * Rest phase, added 2026-08-06.
+     *
+     * A rest is not a queue position — it is a phase during which the queue
+     * already points at the upcoming climb. Participants therefore only ever
+     * received [EVT_CURRENT] and jumped straight to that climb while the host
+     * was still counting down. Measured on two devices: the host showed
+     * "Pause 0:26 · next DA REAL 6A+" while the participant showed DA REAL
+     * 6A+ ready to climb, both labelled "2 of 3".
+     *
+     * [QueueItem.restAfterSeconds] deliberately stays off the wire — the
+     * 17-byte frame and old-client compatibility were good reasons and still
+     * are. What the old reasoning got wrong is the sentence "rest timers are
+     * personal pacing, not shared board state": the host drives the wall, so
+     * during its rest the NEXT climb is already lit. That makes the rest very
+     * much shared state, and it is the phase that has to travel, not the
+     * per-item duration.
+     *
+     * New opcodes rather than a wider frame: both decoders answer `null` on
+     * anything unknown, so a 0.2.2-or-older participant ignores these and
+     * behaves exactly as it does today.
+     */
+    const val EVT_REST_STARTED: Byte = 0x07
+    const val EVT_REST_ENDED: Byte = 0x08
+    const val EVT_COMMAND_RESULT: Byte = 0x09
+
+    private const val COMMAND_CONTEXT_MARKER: Byte = -51 // 0xCD
+    private const val COMMAND_CONTEXT_VERSION: Byte = 1
 
     // ===== Command encoding (Client → Host) =====
 
@@ -71,6 +112,49 @@ object SessionQueueProtocol {
 
     fun encodeMove(from: Int, to: Int): ByteArray = byteArrayOf(CMD_MOVE, from.toByte(), to.toByte())
 
+    fun encodeResend(): ByteArray = byteArrayOf(CMD_RESEND)
+
+    fun encodeCommand(command: SessionCommand): ByteArray = when (command) {
+        is SessionCommand.Add -> encodeAdd(command.climbUuid, command.angle)
+        is SessionCommand.Remove -> encodeRemove(command.index)
+        is SessionCommand.SetCurrent -> encodeSetCurrent(command.index)
+        SessionCommand.Next -> encodeNext()
+        SessionCommand.Prev -> encodePrev()
+        is SessionCommand.Join -> encodeJoin(command.displayName)
+        SessionCommand.Leave -> encodeLeave()
+        is SessionCommand.Move -> encodeMove(command.from, command.to)
+        SessionCommand.Resend -> encodeResend()
+    }
+
+    /**
+     * Appends an extension older 0.2.2 hosts safely ignore after decoding the
+     * legacy command prefix. New hosts use it for idempotency and semantic rebase.
+     */
+    fun encodeCommandRequest(requestId: Long, command: SessionCommand,
+        context: SessionCommandContext): ByteArray {
+        val output = ByteArrayOutputStream()
+        output.write(encodeCommand(command))
+        DataOutputStream(output).use { data ->
+            data.writeByte(COMMAND_CONTEXT_MARKER.toInt())
+            data.writeByte(COMMAND_CONTEXT_VERSION.toInt())
+            data.writeLong(requestId)
+            data.writeInt(context.sessionId)
+            listOf(context.subject, context.before, context.after,
+                context.expectedCurrent, context.expectedTarget).forEach { ref ->
+                if (ref == null) data.writeByte(0) else {
+                    data.writeByte(1)
+                    val uuid = UUID.fromString(normalizeUuid(ref.climbUuid))
+                    data.writeLong(uuid.mostSignificantBits)
+                    data.writeLong(uuid.leastSignificantBits)
+                    data.writeByte(ref.angle.coerceIn(0, 255))
+                    data.writeByte(ref.occurrence.coerceIn(0, 255))
+                    data.writeByte(ref.totalAtBase.coerceIn(0, 255))
+                }
+            }
+        }
+        return output.toByteArray()
+    }
+
     // ===== Command decoding (Host reads from Client) =====
 
     fun decodeCommand(data: ByteArray): SessionCommand? {
@@ -103,8 +187,41 @@ object SessionQueueProtocol {
                 if (data.size < 3) return null
                 SessionCommand.Move(data[1].toInt() and 0xFF, data[2].toInt() and 0xFF)
             }
+            CMD_RESEND -> SessionCommand.Resend
             else -> null
         }
+    }
+
+    fun decodeCommandRequest(data: ByteArray): SessionCommandRequest? {
+        val command = decodeCommand(data) ?: return null
+        val offset = legacyCommandSize(command, data) ?: return SessionCommandRequest(null, command, null)
+        if (data.size <= offset || data[offset] != COMMAND_CONTEXT_MARKER)
+            return SessionCommandRequest(null, command, null)
+        return runCatching {
+            val buffer = ByteBuffer.wrap(data, offset + 1, data.size - offset - 1)
+                .order(ByteOrder.BIG_ENDIAN)
+            require(buffer.get() == COMMAND_CONTEXT_VERSION)
+            val requestId = buffer.long
+            val sessionId = buffer.int
+            fun readRef(): SessionItemRef? {
+                if (buffer.get().toInt() == 0) return null
+                val uuid = UUID(buffer.long, buffer.long).toString().replace("-", "").uppercase()
+                return SessionItemRef(uuid, buffer.get().toInt() and 0xff,
+                    buffer.get().toInt() and 0xff, buffer.get().toInt() and 0xff)
+            }
+            val context = SessionCommandContext(sessionId, readRef(), readRef(), readRef(), readRef(), readRef())
+            require(!buffer.hasRemaining())
+            SessionCommandRequest(requestId, command, context)
+        }.getOrNull()
+    }
+
+    private fun legacyCommandSize(command: SessionCommand, data: ByteArray): Int? = when (command) {
+        is SessionCommand.Add -> 18
+        is SessionCommand.Remove, is SessionCommand.SetCurrent -> 2
+        SessionCommand.Next, SessionCommand.Prev, SessionCommand.Leave,
+        SessionCommand.Resend -> 1
+        is SessionCommand.Move -> 3
+        is SessionCommand.Join -> if (data.size >= 2) 2 + (data[1].toInt() and 0xff) else null
     }
 
     // ===== Event encoding (Host → Client, via notifications) =====
@@ -147,6 +264,33 @@ object SessionQueueProtocol {
         return buf
     }
 
+    /**
+     * Two bytes for the countdown: a rest can legitimately run to 60 minutes
+     * (the editor's own upper bound), which does not fit in one.
+     */
+    fun encodeEventRestStarted(remainingSeconds: Int, nextIndex: Int): ByteArray {
+        val clamped = remainingSeconds.coerceIn(0, 0xFFFF)
+        return byteArrayOf(
+            EVT_REST_STARTED,
+            ((clamped shr 8) and 0xFF).toByte(),
+            (clamped and 0xFF).toByte(),
+            nextIndex.coerceIn(0, 0xFF).toByte(),
+        )
+    }
+
+    fun encodeEventRestEnded(): ByteArray = byteArrayOf(EVT_REST_ENDED)
+
+    fun encodeEventCommandResult(requestId: Long, result: SessionCommandResult): ByteArray =
+        ByteBuffer.allocate(10).order(ByteOrder.BIG_ENDIAN).apply {
+            put(EVT_COMMAND_RESULT)
+            putLong(requestId)
+            put(when (result) {
+                SessionCommandResult.COMMITTED -> 0
+                SessionCommandResult.CONFLICT -> 1
+                SessionCommandResult.FAILED -> 2
+            }.toByte())
+        }.array()
+
     // ===== Event decoding (Client reads from Host notifications) =====
 
     fun decodeEvent(data: ByteArray): SessionEvent? {
@@ -178,18 +322,57 @@ object SessionQueueProtocol {
                 val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
                 SessionEvent.ParticipantLeft(String(data, 2, nameLen, Charsets.UTF_8))
             }
+            EVT_REST_STARTED -> {
+                if (data.size < 4) return null
+                val seconds = ((data[1].toInt() and 0xFF) shl 8) or (data[2].toInt() and 0xFF)
+                SessionEvent.RestStarted(seconds, data[3].toInt() and 0xFF)
+            }
+            EVT_REST_ENDED -> SessionEvent.RestEnded
+            EVT_COMMAND_RESULT -> if (data.size == 10) {
+                val buffer = ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN)
+                buffer.get()
+                val requestId = buffer.long
+                when (buffer.get().toInt()) {
+                    0 -> SessionEvent.CommandResult(requestId, SessionCommandResult.COMMITTED)
+                    1 -> SessionEvent.CommandResult(requestId, SessionCommandResult.CONFLICT)
+                    2 -> SessionEvent.CommandResult(requestId, SessionCommandResult.FAILED)
+                    else -> null
+                }
+            } else null
             else -> null
         }
     }
 
     // ===== Full queue state (for GATT Read / initial sync) =====
 
-    fun encodeQueueState(currentIndex: Int, items: List<QueueItem>): ByteArray {
-        val buf = ByteArray(2 + items.size * 17)
+    /** Items per page — sized for a notification (ATT_MTU-3 = 509 here). */
+    const val QUEUE_STATE_PAGE_SIZE = 29
+
+    private const val QUEUE_STATE_HEADER = 4
+    private const val QUEUE_STATE_ITEM = 17
+
+    /** One page of a queue. [page] is 0-based, [pageCount] is at least 1. */
+    data class QueueStatePage(
+        val currentIndex: Int,
+        val page: Int,
+        val pageCount: Int,
+        val items: List<QueueItem>,
+    )
+
+    /** How many pages [itemCount] items need. An empty queue still sends one. */
+    fun queueStatePageCount(itemCount: Int): Int =
+        if (itemCount == 0) 1 else (itemCount + QUEUE_STATE_PAGE_SIZE - 1) / QUEUE_STATE_PAGE_SIZE
+
+    fun encodeQueueState(currentIndex: Int, items: List<QueueItem>, page: Int = 0): ByteArray {
+        val pageCount = queueStatePageCount(items.size)
+        val slice = items.drop(page * QUEUE_STATE_PAGE_SIZE).take(QUEUE_STATE_PAGE_SIZE)
+        val buf = ByteArray(QUEUE_STATE_HEADER + slice.size * QUEUE_STATE_ITEM)
         buf[0] = currentIndex.toByte()
-        buf[1] = items.size.toByte()
-        items.forEachIndexed { i, item ->
-            val offset = 2 + i * 17
+        buf[1] = page.toByte()
+        buf[2] = pageCount.toByte()
+        buf[3] = slice.size.toByte()
+        slice.forEachIndexed { i, item ->
+            val offset = QUEUE_STATE_HEADER + i * QUEUE_STATE_ITEM
             buf[offset] = item.angle.coerceIn(0, 70).toByte()
             val uuid = UUID.fromString(normalizeUuid(item.climbUuid))
             putUuid(buf, offset + 1, uuid)
@@ -197,39 +380,71 @@ object SessionQueueProtocol {
         return buf
     }
 
-    fun decodeQueueState(data: ByteArray): Pair<Int, List<QueueItem>>? {
-        if (data.size < 2) return null
+    fun decodeQueueState(data: ByteArray): QueueStatePage? {
+        if (data.size < QUEUE_STATE_HEADER) return null
         val currentIndex = data[0].toInt() and 0xFF
-        val count = data[1].toInt() and 0xFF
-        if (data.size < 2 + count * 17) return null
+        val page = data[1].toInt() and 0xFF
+        val pageCount = data[2].toInt() and 0xFF
+        val count = data[3].toInt() and 0xFF
+        if (pageCount == 0 || page >= pageCount) return null
+        if (data.size < QUEUE_STATE_HEADER + count * QUEUE_STATE_ITEM) return null
         val items = (0 until count).map { i ->
-            val offset = 2 + i * 17
+            val offset = QUEUE_STATE_HEADER + i * QUEUE_STATE_ITEM
             val angle = data[offset].toInt() and 0xFF
             val uuid = getUuid(data, offset + 1)
             QueueItem(uuid.toString().replace("-", "").uppercase(), angle)
         }
-        return currentIndex to items
+        return QueueStatePage(currentIndex, page, pageCount, items)
     }
 
     // ===== Session info (for GATT Read) =====
 
-    fun encodeSessionInfo(hostName: String, participantCount: Int): ByteArray {
+    fun encodeSessionInfo(
+        hostName: String,
+        participantCount: Int,
+        awaitingExplicitSend: Boolean = false,
+    ): ByteArray {
         val nameBytes = hostName.toByteArray(Charsets.UTF_8).let {
             if (it.size > 20) it.copyOf(20) else it
         }
-        val buf = ByteArray(2 + nameBytes.size)
+        // The trailing state byte is backwards-compatible: older clients read
+        // only count + name and ignore it. Bit 0 makes the host's send-mode
+        // decision authoritative on every participant UI.
+        val buf = ByteArray(3 + nameBytes.size)
         buf[0] = participantCount.toByte()
         buf[1] = nameBytes.size.toByte()
         nameBytes.copyInto(buf, 2)
+        buf[2 + nameBytes.size] = if (awaitingExplicitSend) 1 else 0
         return buf
     }
+
+    /**
+     * The host is leaving. [migrate] true means the group carries on and the
+     * first participant takes over; false means the playlist is over for
+     * everyone.
+     *
+     * The migrating form is the historical two-byte sentinel (participant
+     * count 0). The final form appends a flag byte, which a client that
+     * predates it simply does not read — so an older participant falls back to
+     * migration, which is the safe way to be wrong.
+     */
+    fun encodeSessionEnded(migrate: Boolean): ByteArray =
+        if (migrate) byteArrayOf(0, 0)
+        else byteArrayOf(0, 0, SESSION_END_FINAL_FLAG)
+
+    /** Whether a session-ended sentinel means "over", not "hand over". */
+    fun isFinalSessionEnd(data: ByteArray): Boolean =
+        data.size >= 3 && data[0].toInt() == 0 && data[2] == SESSION_END_FINAL_FLAG
+
+    private const val SESSION_END_FINAL_FLAG: Byte = 1
 
     fun decodeSessionInfo(data: ByteArray): SessionInfo? {
         if (data.size < 2) return null
         val count = data[0].toInt() and 0xFF
         val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
         val name = String(data, 2, nameLen, Charsets.UTF_8)
-        return SessionInfo(name, count)
+        val flags = data.getOrNull(2 + nameLen)?.toInt() ?: 0
+        return SessionInfo(name, count, awaitingExplicitSend = flags and 1 != 0)
     }
 
     // ===== Participant list (for GATT Read) =====
@@ -297,6 +512,7 @@ sealed class SessionCommand {
     data class Join(val displayName: String) : SessionCommand()
     data object Leave : SessionCommand()
     data class Move(val from: Int, val to: Int) : SessionCommand()
+    data object Resend : SessionCommand()
 }
 
 sealed class SessionEvent {
@@ -306,7 +522,62 @@ sealed class SessionEvent {
     data object Cleared : SessionEvent()
     data class ParticipantJoined(val name: String) : SessionEvent()
     data class ParticipantLeft(val name: String) : SessionEvent()
+
+    /**
+     * The host has begun a planned rest and will resume in
+     * [remainingSeconds]. [nextIndex] is the climb the queue already points
+     * at — sent alongside so a participant that missed the preceding
+     * [CurrentChanged] still shows the right "up next".
+     *
+     * Seconds remaining, not an absolute deadline: the two clocks are not
+     * synchronised and a wall-clock skew of even a few seconds would show
+     * one side a countdown that ends at the wrong moment.
+     */
+    data class RestStarted(val remainingSeconds: Int, val nextIndex: Int) : SessionEvent()
+
+    /** The rest is over — either it ran out or somebody skipped it. */
+    data object RestEnded : SessionEvent()
+    data class CommandResult(val requestId: Long, val result: SessionCommandResult) : SessionEvent()
 }
 
-data class QueueItem(val climbUuid: String, val angle: Int)
-data class SessionInfo(val hostName: String, val participantCount: Int)
+data class SessionItemRef(
+    val climbUuid: String,
+    val angle: Int,
+    val occurrence: Int,
+    val totalAtBase: Int,
+)
+
+data class SessionCommandContext(
+    val sessionId: Int,
+    val subject: SessionItemRef? = null,
+    val before: SessionItemRef? = null,
+    val after: SessionItemRef? = null,
+    val expectedCurrent: SessionItemRef? = null,
+    val expectedTarget: SessionItemRef? = null,
+)
+
+data class SessionCommandRequest(
+    val requestId: Long?,
+    val command: SessionCommand,
+    val context: SessionCommandContext?,
+)
+
+enum class SessionCommandResult { COMMITTED, CONFLICT, FAILED }
+
+/**
+ * One queue entry. [restAfterSeconds] is HOST-LOCAL playlist metadata
+ * ("rest this long after completing the climb") — it is deliberately NOT
+ * wire-encoded: the GATT frame stays 17 bytes (angle + uuid), old clients
+ * remain compatible, and rest timers are personal pacing, not shared board
+ * state. Participants (and a migrated host) therefore see 0 here.
+ */
+data class QueueItem(
+    val climbUuid: String,
+    val angle: Int,
+    val restAfterSeconds: Int = 0,
+)
+data class SessionInfo(
+    val hostName: String,
+    val participantCount: Int,
+    val awaitingExplicitSend: Boolean = false,
+)

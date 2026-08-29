@@ -37,13 +37,20 @@ import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardStateManager
+import com.cruxcoach.android.data.BoardProjectionCoordinator
+import com.cruxcoach.android.data.RelayClimbIdentifier
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
+import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
+import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
+import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SharingConfig
@@ -53,6 +60,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimbScanner
+import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
 import com.cruxcoach.android.util.PerfLogger
@@ -60,7 +68,8 @@ import com.cruxcoach.data.BoardDriverFactory
 import com.cruxcoach.data.SecureDriverFactory
 import com.cruxcoach.data.SecureDatabaseTransactionRunner
 import com.cruxcoach.data.TransactionRunner
-import com.cruxcoach.data.createBoardDatabase
+import com.cruxcoach.data.BoardDatabaseHandle
+import com.cruxcoach.data.createBoardDatabaseHandle
 import com.cruxcoach.data.createSecureDatabase
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.db.board.BoardDatabase
@@ -105,13 +114,17 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardDatabase(
+    fun provideBoardDatabaseHandle(
         @ApplicationContext context: Context
-    ): BoardDatabase {
+    ): BoardDatabaseHandle {
         return PerfLogger.trace("DI: BoardDatabase") {
-            createBoardDatabase(BoardDriverFactory(context))
+            createBoardDatabaseHandle(BoardDriverFactory(context))
         }
     }
+
+    @Provides
+    @Singleton
+    fun provideBoardDatabase(handle: BoardDatabaseHandle): BoardDatabase = handle.database
 
     // --- Repositories ---
 
@@ -153,8 +166,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardRepository(database: BoardDatabase): BoardRepository {
-        return BoardRepositoryImpl(database)
+    fun provideBoardRepository(handle: BoardDatabaseHandle): BoardRepository {
+        // The driver comes along for the FEAT-044 relay lookup index, which is
+        // raw SQL the generated database cannot express.
+        return BoardRepositoryImpl(handle.database, handle.driver)
     }
 
     @Provides
@@ -235,11 +250,28 @@ object AppModule {
         // need their own, more lenient profile. readTimeout still bounds
         // per-byte progress; callTimeout is intentionally omitted so a
         // slow-but-progressing mirror is not killed by a wall-clock cap.
+        //
+        // Identifiable User-Agent, same reasoning as the kilter client:
+        // mirror operators can tell our traffic apart and reach us instead
+        // of blocking us blind. This is not hypothetical — blossom.primal.net
+        // rejected default library UAs in July 2026 (403 / CF 1010), which
+        // cost us a mirror for three weeks; the sync script works around it
+        // with its own UA string.
+        val ua = "${com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT}/" +
+            "${com.cruxcoach.android.BuildConfig.VERSION_NAME} " +
+            "(https://${com.cruxcoach.android.BuildConfig.APP_LINK_HOST})"
         return PerfLogger.trace("DI: BlossomOkHttpClient") {
             OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
+                .addInterceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .header("User-Agent", ua)
+                            .build()
+                    )
+                }
                 .build()
         }
     }
@@ -286,9 +318,33 @@ object AppModule {
         boardLocationRepository: BoardLocationRepository,
         moonBoardCatalogueSync: MoonBoardCatalogueSync,
         auroraCatalogueSync: AuroraCatalogueSync,
+        quantumCatalogueSync: QuantumCatalogueSync,
+        integrityVerifier: com.cruxcoach.android.updater.IntegrityVerifier,
+        moonBoardCsvImporter: MoonBoardCsvImporter,
     ): BoardSyncManager {
-        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync, auroraCatalogueSync)
+        return BoardSyncManager(
+            importer,
+            blossomSyncManager,
+            userPreferences,
+            context,
+            boardRepository,
+            personalBoardRepo,
+            boardLocationRepository,
+            moonBoardCatalogueSync,
+            auroraCatalogueSync,
+            quantumCatalogueSync,
+            integrityVerifier,
+            moonBoardCsvImporter,
+        )
     }
+
+    /** FEAT-049: the catalogue revision, for consumers that need nothing else
+     *  from the sync manager (see [CatalogueRevisionSource]). Same singleton. */
+    @Provides
+    @Singleton
+    fun provideCatalogueRevisionSource(
+        boardSyncManager: BoardSyncManager
+    ): CatalogueRevisionSource = boardSyncManager
 
     @Provides
     @Singleton
@@ -330,8 +386,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBoardBleConnection(@ApplicationContext context: Context): BoardBleConnection {
-        return PerfLogger.trace("DI: BoardBleConnection") { BoardBleConnection(context) }
+    fun provideBoardBleConnection(
+        @ApplicationContext context: Context,
+        boardLayerManager: com.cruxcoach.android.ble.BoardLayerManager,
+    ): BoardBleConnection {
+        return PerfLogger.trace("DI: BoardBleConnection") {
+            BoardBleConnection(context, boardLayerManager::ownsIdentity)
+        }
     }
 
     @Provides
@@ -380,15 +441,30 @@ object AppModule {
         climbBleAdvertiser: ClimbBleAdvertiser,
         sessionQueueManager: SessionQueueManager,
         boardSessionManager: BoardSessionManager,
-        userPreferences: UserPreferences
+        userPreferences: UserPreferences,
     ): BleShareManager {
         return PerfLogger.trace("DI: BleShareManager") {
             BleShareManager(
                 boardStateManager, nearbyPresenceManager, nearbyClimbScanner,
                 sharingConfig, climbBleAdvertiser, sessionQueueManager, boardSessionManager,
-                userPreferences
+                userPreferences,
             )
         }
+    }
+
+    @Provides
+    @Singleton
+    fun providePlaylistPlaybackCoordinator(
+        sessionQueueManager: SessionQueueManager,
+        boardSessionManager: BoardSessionManager,
+        sessionGattBridge: SessionGattBridge,
+        bleShareManager: BleShareManager,
+        bleConnection: BoardBleConnection,
+    ): PlaylistPlaybackCoordinator {
+        return PlaylistPlaybackCoordinator(
+            sessionQueueManager, boardSessionManager, sessionGattBridge, bleShareManager,
+            bleConnection,
+        )
     }
 
     @Provides
@@ -420,13 +496,65 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideRelayGattServer(@ApplicationContext context: Context): RelayGattServer {
+        return RelayGattServer(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideCruxRelayManager(
+        @ApplicationContext context: Context,
+        relayServer: RelayGattServer,
+        advertiser: ClimbBleAdvertiser,
+        bleConnection: BoardBleConnection,
+        projectionCoordinator: BoardProjectionCoordinator,
+        userPreferences: UserPreferences,
+    ): CruxRelayManager {
+        return CruxRelayManager(
+            context,
+            relayServer,
+            advertiser,
+            bleConnection,
+            projectionCoordinator,
+            userPreferences,
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardProjectionCoordinator(
+        sessionQueueManager: SessionQueueManager,
+        boardStateManager: BoardStateManager,
+        climbIdentifier: RelayClimbIdentifier,
+        advertiser: ClimbBleAdvertiser,
+        userPreferences: UserPreferences,
+    ): BoardProjectionCoordinator =
+        BoardProjectionCoordinator(
+            sessionQueueManager,
+            boardStateManager,
+            climbIdentifier,
+            advertiser,
+            userPreferences,
+        )
+
+    @Provides
+    @Singleton
     fun provideSessionQueueManager(
         bleConnection: BoardBleConnection,
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
-        userPreferences: UserPreferences
+        userPreferences: UserPreferences,
+        boardLayerManager: com.cruxcoach.android.ble.BoardLayerManager,
+        climbAdvertiser: ClimbBleAdvertiser,
     ): SessionQueueManager {
-        return SessionQueueManager(bleConnection, boardRepository, climbNameResolver, userPreferences)
+        return SessionQueueManager(
+            bleConnection = bleConnection,
+            boardRepository = boardRepository,
+            climbNameResolver = climbNameResolver,
+            userPreferences = userPreferences,
+            boardLayerManager = boardLayerManager,
+            climbAdvertiser = climbAdvertiser,
+        )
     }
 
     @Provides
@@ -440,10 +568,22 @@ object AppModule {
         nearbyScanner: NearbyClimbScanner,
         bleConnection: BoardBleConnection,
         boardStateManager: BoardStateManager,
-        boardSessionManager: BoardSessionManager
+        boardSessionManager: BoardSessionManager,
+        sharingConfig: SharingConfig,
     ): SessionGattBridge {
         return PerfLogger.trace("DI: SessionGattBridge") {
-            SessionGattBridge(context, queueManager, gattServer, gattClient, advertiser, nearbyScanner, bleConnection, boardStateManager, boardSessionManager)
+            SessionGattBridge(
+                context,
+                queueManager,
+                gattServer,
+                gattClient,
+                advertiser,
+                nearbyScanner,
+                bleConnection,
+                boardStateManager,
+                boardSessionManager,
+                shouldAdvertiseIndividualClimbs = { sharingConfig.sharingEnabled.value },
+                    )
         }
     }
 
@@ -873,20 +1013,74 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideCodebergReleaseClient(
+    fun provideVerifiedUpdateMetrics(): com.cruxcoach.android.updater.VerifiedUpdateMetrics {
+        return com.cruxcoach.android.updater.AnonymousUpdateMetricsClient()
+    }
+
+    @Provides
+    @Singleton
+    fun provideForgeReleaseClient(
         @Named("updater") okHttpClient: OkHttpClient,
-    ): com.cruxcoach.android.updater.CodebergReleaseClient {
-        return com.cruxcoach.android.updater.CodebergReleaseClient(okHttpClient)
+    ): com.cruxcoach.android.updater.ForgeReleaseClient {
+        return com.cruxcoach.android.updater.ForgeReleaseClient(okHttpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideZapstoreReleaseClient(
+        @Named("updater") okHttpClient: OkHttpClient,
+        pinStore: com.cruxcoach.android.updater.UpdaterPinStore,
+    ): com.cruxcoach.android.updater.ZapstoreReleaseClient {
+        return com.cruxcoach.android.updater.ZapstoreReleaseClient(okHttpClient, pinStore)
+    }
+
+    /**
+     * FEAT-050: the ordered release-source list. Singleton because it caches
+     * the runtime manifest — one fetch per day, not one per check.
+     */
+    @Provides
+    @Singleton
+    fun provideDeviceSupportGate(): com.cruxcoach.android.updater.DeviceSupportGate {
+        return com.cruxcoach.android.updater.DeviceSupportGate()
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdateSourceRegistry(
+        @Named("updater") okHttpClient: OkHttpClient,
+        preferences: com.cruxcoach.android.updater.UpdaterPreferences,
+    ): com.cruxcoach.android.updater.UpdateSourceRegistry {
+        return com.cruxcoach.android.updater.UpdateSourceRegistry(okHttpClient, preferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideReleaseSourceFactory(
+        forgeClient: com.cruxcoach.android.updater.ForgeReleaseClient,
+        zapstoreClient: com.cruxcoach.android.updater.ZapstoreReleaseClient,
+        @Named("updater") okHttpClient: OkHttpClient,
+    ): com.cruxcoach.android.updater.ReleaseSourceFactory {
+        return com.cruxcoach.android.updater.ReleaseSourceFactory(
+            forgeClient,
+            zapstoreClient,
+            okHttpClient,
+        )
     }
 
     @Provides
     @Singleton
     fun provideUpdateChecker(
         preferences: com.cruxcoach.android.updater.UpdaterPreferences,
-        client: com.cruxcoach.android.updater.CodebergReleaseClient,
+        sourceFactory: com.cruxcoach.android.updater.ReleaseSourceFactory,
         gate: com.cruxcoach.android.updater.InstallSourceGate,
+        registry: com.cruxcoach.android.updater.UpdateSourceRegistry,
     ): com.cruxcoach.android.updater.UpdateChecker {
-        return com.cruxcoach.android.updater.UpdateChecker(preferences, client, gate)
+        return com.cruxcoach.android.updater.UpdateChecker(
+            preferences,
+            sourceFactory,
+            gate,
+            registry,
+        )
     }
 
     @Provides

@@ -49,6 +49,7 @@ import com.cruxcoach.domain.model.BodyStatTimeRange
 import com.cruxcoach.domain.model.StatCategory
 import com.cruxcoach.domain.model.StatRegistry
 import com.cruxcoach.domain.model.TrendEntry
+import com.cruxcoach.android.ui.bodystat.BodyStatLabels
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,7 +96,7 @@ internal fun BodyStatChartsSection(
                         count = BodyStatTimeRange.entries.size,
                     ),
                 ) {
-                    Text(range.labelDe)
+                    Text(stringResource(BodyStatLabels.range(range)))
                 }
             }
         }
@@ -202,7 +203,7 @@ private fun SummaryTilesRow(
                         )
                     }
                     Text(
-                        text = def?.labelDe ?: key,
+                        text = statLabel(key),
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
                     )
@@ -222,7 +223,7 @@ private fun MetricDropdown(
     onSelected: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val label = "${StatRegistry.labelDe(selectedKey)} (${StatRegistry.unit(selectedKey)})"
+    val label = "${statLabel(selectedKey)} (${StatRegistry.unit(selectedKey)})"
 
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
@@ -242,7 +243,7 @@ private fun MetricDropdown(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = category.labelDe,
+                            text = stringResource(BodyStatLabels.category(category)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -252,7 +253,7 @@ private fun MetricDropdown(
                 )
                 visible.forEach { def ->
                     DropdownMenuItem(
-                        text = { Text("${def.labelDe} (${def.unit})") },
+                        text = { Text("${statLabel(def.key)} (${def.unit})") },
                         onClick = {
                             onSelected(def.key)
                             expanded = false
@@ -333,7 +334,7 @@ private fun CompareSection(
     if (compareEnabled) {
         var expanded by remember { mutableStateOf(false) }
         val label = compareBodyStat?.let {
-            "${StatRegistry.labelDe(it)} (${StatRegistry.unit(it)})"
+            "${statLabel(it)} (${StatRegistry.unit(it)})"
         } ?: stringResource(R.string.dropdown_selection_placeholder)
 
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
@@ -352,7 +353,7 @@ private fun CompareSection(
                     .filter { it.key in availableKeys && it.key != excludeKey }
                     .forEach { def ->
                         DropdownMenuItem(
-                            text = { Text("${def.labelDe} (${def.unit})") },
+                            text = { Text("${statLabel(def.key)} (${def.unit})") },
                             onClick = {
                                 onCompareStatSelected(def.key)
                                 expanded = false
@@ -384,3 +385,8 @@ private fun deltaColor(delta: Double, higherIsBetter: Boolean): Color {
 private fun formatValue(value: Double): String {
     return if (value == value.toLong().toDouble()) "%.0f".format(value) else "%.1f".format(value)
 }
+
+/** Localized label for a stat key; unknown keys show the raw key, as before. */
+@Composable
+private fun statLabel(key: String): String =
+    BodyStatLabels.label(key)?.let { stringResource(it) } ?: key

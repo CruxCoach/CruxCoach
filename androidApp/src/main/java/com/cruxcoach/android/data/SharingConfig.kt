@@ -21,7 +21,9 @@ class SharingConfig @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val _sharingEnabled = MutableStateFlow(false)
+    // Match UserPreferences' absent-key default while its DataStore flow is
+    // starting so consumers never observe a transient, incorrect opt-out.
+    private val _sharingEnabled = MutableStateFlow(true)
     val sharingEnabled: StateFlow<Boolean> = _sharingEnabled.asStateFlow()
 
     private val _allowRemoteDisconnect = MutableStateFlow(false)

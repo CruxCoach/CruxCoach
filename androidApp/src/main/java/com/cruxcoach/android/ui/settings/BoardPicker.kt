@@ -13,10 +13,12 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -73,6 +75,7 @@ class BoardPickerViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
     private val auroraBoardSelector: AuroraBoardSelector,
+    private val quantumCatalogueSync: QuantumCatalogueSync,
 ) : ViewModel() {
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
@@ -94,7 +97,9 @@ class BoardPickerViewModel @Inject constructor(
             initialBrand = brand,
             productSizes = sizes,
             selectedKilterSizeId = sizeId,
-            selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
+            selectedMoonBoardVariant = MoonBoardVariant.fromBoardSelection(
+                layoutId.toLong(), BoardBrand.fromWire(brand),
+            ),
             selectedAuroraLayoutId = layoutId,
             loadedAuroraBrands = loaded,
             selectedAuroraProductSizeId = sizeId,
@@ -172,6 +177,23 @@ class BoardPickerViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
     }
 
+    fun selectQuantum(model: QuantumBoardModel) {
+        viewModelScope.launch {
+            userPreferences.setBoardSelection(
+                BoardBrand.QUANTUM.wireValue,
+                model.layoutId.toInt(),
+                model.productSizeId.toInt(),
+                null,
+            )
+            // Selection remains usable offline when already cached; a failed
+            // refresh is non-destructive and can be retried from board sync.
+            val result = quantumCatalogueSync.sync()
+            if (result is QuantumCatalogueSync.Result.Failed) {
+                Toast.makeText(context, R.string.quantum_sync_failed_generic, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null) {
         viewModelScope.launch {
             val status = try {
@@ -209,6 +231,8 @@ internal fun BoardPickerDialog(
     onDismiss: () -> Unit,
     onSelected: () -> Unit = {},
     onFindViaGym: (() -> Unit)? = null,
+    prefill: BoardPickerPrefill? = null,
+    mismatch: BoardConfigurationMismatch? = null,
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
@@ -216,7 +240,7 @@ internal fun BoardPickerDialog(
     // selection once (unkeyed remember), so it must not see the placeholder.
     if (!state.loaded) return
     BoardSelectionDialog(
-        initialBrand = state.initialBrand,
+        initialBrand = prefill?.brand?.wireValue ?: state.initialBrand,
         productSizes = state.productSizes,
         selectedKilterSizeId = state.selectedKilterSizeId,
         selectedMoonBoardVariant = state.selectedMoonBoardVariant,
@@ -226,8 +250,11 @@ internal fun BoardPickerDialog(
         auroraBrandSizes = state.auroraBrandSizes,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
+        prefill = prefill,
+        mismatch = mismatch,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
         onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
+        onConfirmQuantum = { viewModel.selectQuantum(it); onSelected() },
         onConfirmAurora = { brand, variant, sizeId -> viewModel.selectAurora(brand, variant, sizeId); onSelected() },
         onFindViaGym = onFindViaGym,
         onDismiss = onDismiss,

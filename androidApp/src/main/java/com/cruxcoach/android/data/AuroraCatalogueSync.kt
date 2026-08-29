@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
+import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -85,8 +86,13 @@ class AuroraCatalogueSync @Inject constructor(
         try {
             onProgress?.invoke(BoardDatabaseImporter.ImportStep.FetchingManifest)
             val manifest = blossomSync.fetchManifest()
+            if (!blossomSync.canApplyManifest(manifest)) {
+                Log.w(TAG, "${board.wireValue} stale manifest rejected — keeping current catalogue")
+                return@withContext Result.AlreadyCurrent
+            }
             val changed = blossomSync.getChangedChunks(manifest)
             if (changed.isEmpty()) {
+                blossomSync.saveAcceptedManifestTimestamp(manifest)
                 Log.d(TAG, "${board.wireValue} catalogue already current — nothing to download")
                 return@withContext Result.AlreadyCurrent
             }
@@ -120,15 +126,17 @@ class AuroraCatalogueSync @Inject constructor(
                         )
                     }
                 )
-                importer.importAuroraSnapshot(outFile, board.wireValue) { step ->
-                    if (step is BoardDatabaseImporter.ImportStep.Done) {
-                        importedClimbs = step.climbs.toLong()
+                withBackgroundThreadPriority {
+                    importer.importAuroraSnapshot(outFile, board.wireValue) { step ->
+                        if (step is BoardDatabaseImporter.ImportStep.Done) {
+                            importedClimbs = step.climbs.toLong()
+                        }
+                        onProgress?.invoke(step)
                     }
-                    onProgress?.invoke(step)
                 }
-                // Persist the chunk hash so the next sync short-circuits
-                // unless a fresher snapshot is published.
-                blossomSync.saveChunkHash(chunk.name, chunk.sha256)
+                // Persist the hash and rollback watermark together only after
+                // the snapshot import has completed successfully.
+                blossomSync.saveCompletedManifest(manifest, changed)
             } finally {
                 outFile.delete()
             }

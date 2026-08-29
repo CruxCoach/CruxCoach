@@ -1,0 +1,4 @@
+NAV START: SetterDetail .* ClimbDetail\(
+BOARD_CLIMB_DETAIL composable entered
+loadClimb complete \([0-9a-f-]+\)
+NAV COMPLETE: BoardClimbDetail\([0-9a-f-]+\)

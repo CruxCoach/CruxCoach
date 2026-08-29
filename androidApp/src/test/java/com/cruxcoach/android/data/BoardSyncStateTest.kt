@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -18,6 +19,32 @@ import kotlin.test.assertTrue
  * is verified directly here instead.
  */
 class BoardSyncStateTest {
+
+    @Test
+    fun catalogueOrderPrioritisesSelectedBoardAndStillContainsEveryInteractiveBrand() {
+        val order = catalogueSyncOrder(BoardBrand.QUANTUM)
+
+        assertEquals(BoardBrand.QUANTUM, order.first())
+        assertEquals(BoardBrand.entries.filter { it.isInteractive }.toSet(), order.toSet())
+        assertEquals(order.size, order.distinct().size)
+    }
+
+    @Test
+    fun catalogueOrderKeepsStableDefaultOrderForMapOnlySelection() {
+        assertEquals(
+            BoardBrand.entries.filter { it.isInteractive },
+            catalogueSyncOrder(BoardBrand.AURORA),
+        )
+    }
+
+    @Test
+    fun waitingForWifiIsDistinctFromFailureAndNeverClaimsSyncSlot() {
+        val queued = BoardSyncState(waitingForUnmeteredNetwork = true)
+
+        assertTrue(queued.waitingForUnmeteredNetwork)
+        assertFalse(queued.isSyncing)
+        assertEquals(null, queued.errorMessage)
+    }
 
     @Test
     fun boardStepsUnifiesAllStreamsOrderedKilterMoonboardAurora() {
@@ -63,5 +90,29 @@ class BoardSyncStateTest {
         val state = BoardSyncState()
         assertTrue(state.boardSteps.isEmpty())
         assertTrue(state.boardErrors.isEmpty())
+    }
+
+    @Test
+    fun freshInstallProbeDoesNotClaimNearbyTransferBeforeManifestIsFound() {
+        val probing = BoardSyncState(
+            isSyncing = true,
+            importStep = ImportStep.CheckingUpdate,
+        )
+
+        assertFalse(probing.localShareInProgress)
+        assertTrue(probing.localShareBoardSteps.isEmpty())
+
+        val discovered = probing.copy(
+            importStep = ImportStep.DiscoveringLocalShare,
+            localShareInProgress = true,
+            localShareBoardSteps = mapOf(
+                BoardBrand.KILTER to ImportStep.DiscoveringLocalShare,
+            ),
+        )
+        assertTrue(discovered.localShareInProgress)
+        assertEquals(
+            ImportStep.DiscoveringLocalShare,
+            discovered.localShareBoardSteps[BoardBrand.KILTER],
+        )
     }
 }

@@ -89,6 +89,8 @@ class InsertLocalDraftPreservationTest {
             move_count = 3L,
             created_by_pubkey = "pubkey-hex",
             frames_hash = framesHash,
+            // FEAT-049: MoonBoard rows derive hsm on insert; a Kilter fixture has none.
+            hsm = 0L,
             board_brand = "kilter",
         )
     }

@@ -4,11 +4,13 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
-import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardSource
+import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.android.data.SessionVisibility
+import com.cruxcoach.android.ui.board.LocalPlaylistBrowserCard
 import com.cruxcoach.android.ui.board.SessionQueueSheet
 
 private const val TAG = "CruxBLE/UI"
@@ -23,6 +25,14 @@ val LocalSessionQueueManager = staticCompositionLocalOf<SessionQueueManager> {
 
 val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
     error("SessionGattBridge not provided")
+}
+
+/** Opens the playlist player from anywhere (mini-player tap, join flow).
+ *  Provided at NavGraph level; default no-op keeps previews harmless. */
+val LocalOpenPlaylistPlayer = staticCompositionLocalOf<() -> Unit> { {} }
+
+val LocalPlaylistPlayback = staticCompositionLocalOf<PlaylistPlaybackCoordinator> {
+    error("PlaylistPlaybackCoordinator not provided")
 }
 
 /**
@@ -44,7 +54,7 @@ fun BleStatusArea(
     currentClimbUuid: String? = null,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null,
     onAddToQueue: (() -> Unit)? = null,
-    onRandomToQueue: (() -> Unit)? = null
+    onRandomToQueue: (() -> Unit)? = null,
 ) {
     val bleShareManager = LocalBleShareManager.current
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
@@ -53,18 +63,54 @@ fun BleStatusArea(
     val sessionQueueManager = LocalSessionQueueManager.current
     val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
+    val pendingSuccessor by sessionGattBridge.pendingSuccessorJoin.collectAsStateWithLifecycle()
+    val isLocalPlaylist = queueState.isActive && queueState.isPlaylist
+    val currentPlaylistClimbName by sessionQueueManager.currentClimbName.collectAsStateWithLifecycle()
+    val playback = LocalPlaylistPlayback.current
+    val playbackState by playback.state.collectAsStateWithLifecycle()
+    val displayState = if (isLocalPlaylist) state.copy(ownSession = null) else state
 
-    val boardSessionManager = LocalBoardSessionManager.current
-    val handleJoinSession: (NearbySessionEntry) -> Unit = { sessionEntry ->
-        val device = sessionEntry.rawSession.device
-        if (device != null) {
-            boardSessionManager.startSession()
-            // Don't call startQueue() here — that sets role=HOST and causes a
-            // HOST→PARTICIPANT flicker during the 2-3s GATT connection.
-            // joinSession() will call setConnecting() immediately and
-            // setParticipantRole() once GATT connects successfully.
-            sessionGattBridge.joinSession(device)
-        }
+    pendingSuccessor?.let { successor ->
+        SuccessorJoinDialog(
+            hostName = successor.hostName,
+            onJoin = sessionGattBridge::confirmPendingSuccessorJoin,
+            onKeepQueue = sessionGattBridge::declinePendingSuccessorJoin,
+        )
+    }
+
+    // A participant promoted after host loss keeps the queue but stays local
+    // until this one explicit decision. Render it above the early-return below
+    // so the choice cannot disappear merely because the status chip has no
+    // other BLE content yet.
+    if (queueState.pendingHostVisibilityDecision) {
+        SessionVisibilityDialog(
+            onDismiss = {
+                sessionQueueManager.setVisibilityRequested(SessionVisibility.LOCAL_ONLY)
+            },
+            onSelect = { visibility ->
+                sessionQueueManager.setVisibilityRequested(visibility)
+                if (visibility == SessionVisibility.JOINABLE) {
+                    sessionGattBridge.startSharing()
+                }
+            },
+        )
+    }
+
+    // One universal Playlist-UX banner on every screen. It replaces the old
+    // session mini-player everywhere, not just in the board browser.
+    if (isLocalPlaylist) {
+        LocalPlaylistBrowserCard(
+            currentClimbName = currentPlaylistClimbName,
+            currentIndex = queueState.currentIndex,
+            totalCount = queueState.queue.size,
+            hasPrevious = playbackState.hasPrevious,
+            hasNext = playbackState.hasNext,
+            canLight = playbackState.currentClimb != null && playbackState.boardConnected,
+            onPrevious = playback::previous,
+            onLight = playback::resendCurrentClimb,
+            onNext = playback::next,
+            onOpen = LocalOpenPlaylistPlayer.current,
+        )
     }
 
     // Suppress on-board climb on detail screen:
@@ -72,12 +118,12 @@ fun BleStatusArea(
     // 2. LOCAL_ACTIVE — user is swiping through climbs they're sending to the board;
     //    the chip would briefly flash on each swipe because the new page UUID differs
     //    from the stale BLE state for one frame before the BLE state catches up.
-    val effectiveOnBoard = state.onBoardClimb?.takeIf {
+    val effectiveOnBoard = displayState.onBoardClimb?.takeIf {
         if (currentClimbUuid == null) true
         else it.climbUuid != currentClimbUuid && it.source != OnBoardSource.LOCAL_ACTIVE
     }
-    val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
-        state.nearbySessions.isNotEmpty() || state.ownSession != null
+    val hasContent = effectiveOnBoard != null || displayState.boardOccupiedCount > 0 ||
+        displayState.ownSession != null
 
     if (!hasContent) return
 
@@ -97,22 +143,21 @@ fun BleStatusArea(
 
     if (expanded) {
         BleStatusExpanded(
-            state = state,
+            state = displayState,
             effectiveOnBoard = effectiveOnBoard,
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
             onClimbTapped = onClimbTapped,
-            onJoinSession = handleJoinSession,
             onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
-            onOpenQueueSheet = { showQueueSheet = true }
+            onOpenQueueSheet = { showQueueSheet = true },
         )
     } else {
         BleStatusChip(
-            state = state,
+            state = displayState,
             effectiveOnBoard = effectiveOnBoard,
             onExpand = { Log.d(TAG, "EXPAND"); expanded = true },
             onAddToQueue = onAddToQueue,
-            onRandomToQueue = onRandomToQueue
+            onRandomToQueue = onRandomToQueue,
         )
     }
 }

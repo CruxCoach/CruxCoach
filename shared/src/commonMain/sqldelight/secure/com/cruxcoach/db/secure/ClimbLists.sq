@@ -10,12 +10,23 @@ CREATE TABLE climb_lists (
     -- preserve all three so a re-imported circuit keeps its identity.
     description TEXT,
     color TEXT,
-    external_id TEXT
+    external_id TEXT,
+    -- JSON snapshot of the generator parameters a generated training list
+    -- was built from ("re-generate" re-runs them). NULL for manual lists.
+    generator_params TEXT,
+    -- Playback defaults are properties of every list. The ordinary list
+    -- remains useful without a training plan; these values only matter when
+    -- the user starts playback.
+    playback_order TEXT NOT NULL DEFAULT 'list',
+    playback_advance TEXT NOT NULL DEFAULT 'manual',
+    playback_rest_seconds INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX idx_climb_lists_external_id ON climb_lists(external_id)
     WHERE external_id IS NOT NULL;
 
+-- Normal list membership is deliberately unique. Repetitions, pinned angles
+-- and rest blocks belong to list_playback_steps below, not to membership.
 CREATE TABLE climb_list_entries (
     list_id INTEGER NOT NULL,
     climb_uuid TEXT NOT NULL,
@@ -25,6 +36,22 @@ CREATE TABLE climb_list_entries (
 
 CREATE INDEX idx_climb_list_entries_list ON climb_list_entries(list_id);
 CREATE INDEX idx_climb_list_entries_climb ON climb_list_entries(climb_uuid);
+
+-- Optional ordered training plan for a list. It may repeat climbs (4x4), pin
+-- an angle and interleave explicit rest blocks. Deleting the plan never
+-- deletes the underlying list membership.
+CREATE TABLE list_playback_steps (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    list_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    step_type TEXT NOT NULL DEFAULT 'climb',
+    climb_uuid TEXT,
+    rest_seconds INTEGER,
+    angle INTEGER
+);
+
+CREATE INDEX idx_list_playback_steps_list ON list_playback_steps(list_id, position);
+CREATE INDEX idx_list_playback_steps_climb ON list_playback_steps(climb_uuid);
 
 -- ═══ List CRUD ═══
 
@@ -43,14 +70,16 @@ getLastInsertedListId:
 SELECT last_insert_rowid();
 
 getClimbListById:
-SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count,
+       (SELECT COUNT(*) FROM list_playback_steps lps WHERE lps.list_id = cl.id) AS playback_step_count
 FROM climb_lists cl
 LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
 WHERE cl.id = ?
 GROUP BY cl.id;
 
 getAllClimbLists:
-SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count,
+       (SELECT COUNT(*) FROM list_playback_steps lps WHERE lps.list_id = cl.id) AS playback_step_count
 FROM climb_lists cl
 LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
 GROUP BY cl.id
@@ -61,7 +90,8 @@ ORDER BY cl.is_builtin DESC, cl.name ASC;
 -- list (also is_builtin=1, but carries the ignored sentinel external_id);
 -- without it this LIMIT 1 could return the wrong built-in.
 getBuiltinFavoritesList:
-SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count,
+       (SELECT COUNT(*) FROM list_playback_steps lps WHERE lps.list_id = cl.id) AS playback_step_count
 FROM climb_lists cl
 LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
 WHERE cl.is_builtin = 1 AND cl.external_id IS NULL
@@ -100,7 +130,8 @@ SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ?;
 -- client-side to each fetched page (cross-DB — the ignored UUIDs live in
 -- the encrypted SecureDB, the browse rows in the board DB, so no JOIN).
 getAllClimbUuidsInList:
-SELECT climb_uuid FROM climb_list_entries WHERE list_id = ?;
+SELECT climb_uuid FROM climb_list_entries
+WHERE list_id = ?;
 
 getListIdsForClimb:
 SELECT list_id FROM climb_list_entries WHERE climb_uuid = ?;
@@ -111,7 +142,8 @@ SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ? AND climb_uuid = ?;
 -- ═══ Export ═══
 
 getClimbListEntriesRaw:
-SELECT list_id, climb_uuid, added_at FROM climb_list_entries ORDER BY list_id, added_at;
+SELECT list_id, climb_uuid, added_at
+FROM climb_list_entries ORDER BY list_id, added_at;
 
 -- ═══ Bulk operations ═══
 
@@ -120,6 +152,86 @@ DELETE FROM climb_list_entries;
 
 deleteAllClimbLists:
 DELETE FROM climb_lists;
+
+-- ═══ Playback settings + optional training plan ═══
+
+insertGeneratedClimbList:
+INSERT INTO climb_lists(name, is_builtin, created_at, generator_params)
+VALUES (?, 0, ?, ?);
+
+updateGeneratorParams:
+UPDATE climb_lists SET generator_params = ? WHERE id = ?;
+
+updatePlaybackSettings:
+UPDATE climb_lists
+SET playback_order = ?, playback_advance = ?, playback_rest_seconds = ?
+WHERE id = ?;
+
+insertPlaybackClimbStep:
+INSERT INTO list_playback_steps(list_id, climb_uuid, position, step_type, angle)
+VALUES (?, ?, ?, 'climb', ?);
+
+insertPlaybackRestStep:
+INSERT INTO list_playback_steps(list_id, position, step_type, rest_seconds)
+VALUES (?, ?, 'rest', ?);
+
+getLastInsertedPlaybackStepId:
+SELECT last_insert_rowid();
+
+getPlaybackSteps:
+SELECT id, climb_uuid, position, step_type, rest_seconds, angle
+FROM list_playback_steps
+WHERE list_id = ?
+ORDER BY position ASC, id ASC;
+
+getAllPlaybackStepsRaw:
+SELECT id, list_id, climb_uuid, position, step_type, rest_seconds, angle
+FROM list_playback_steps
+ORDER BY list_id, position, id;
+
+deletePlaybackStepById:
+DELETE FROM list_playback_steps WHERE id = ?;
+
+deletePlaybackStepsForClimb:
+DELETE FROM list_playback_steps WHERE list_id = ? AND climb_uuid = ?;
+
+-- External circuit refreshes replace membership in bulk. Preserve the user's
+-- plan structure but remove climb steps the refreshed list no longer owns.
+prunePlaybackStepsOutsideMembership:
+DELETE FROM list_playback_steps
+WHERE list_id = :list_id
+  AND step_type = 'climb'
+  AND (
+      climb_uuid IS NULL OR NOT EXISTS (
+          SELECT 1 FROM climb_list_entries
+          WHERE climb_list_entries.list_id = :list_id
+            AND climb_list_entries.climb_uuid = list_playback_steps.climb_uuid
+      )
+  );
+
+deleteListPlaybackSteps:
+DELETE FROM list_playback_steps WHERE list_id = ?;
+
+deleteAllPlaybackSteps:
+DELETE FROM list_playback_steps;
+
+updatePlaybackStepPosition:
+UPDATE list_playback_steps SET position = ? WHERE id = ?;
+
+updatePlaybackStepRestSeconds:
+UPDATE list_playback_steps SET rest_seconds = ? WHERE id = ?;
+-- Per-board logbook deletion (lists are cross-board since 0.2.1):
+-- entries carry no brand column, so the caller resolves each entry's
+-- climb → board family via the board DB (the uuids live in this
+-- encrypted DB, the brands in the plain board DB — no JOIN possible)
+-- and passes the doomed uuids in. The list rows themselves survive.
+deleteClimbListEntriesForClimbs:
+DELETE FROM climb_list_entries WHERE climb_uuid IN :climbUuids;
+
+-- Every DISTINCT climb uuid referenced by any list — the input to the
+-- cross-DB brand resolution above.
+getAllListEntryClimbUuids:
+SELECT DISTINCT climb_uuid FROM climb_list_entries;
 
 -- ═══ FEAT-005 Aurora-JSON-import — circuit upsert by external_id ═══
 

@@ -1,6 +1,7 @@
 package com.cruxcoach.data
 
 import com.cruxcoach.data.repository.*
+import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.model.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -38,6 +39,10 @@ object CruxCoachBackup {
     private const val MAX_EXTERNAL_ID_LEN = 100
     private const val MAX_DATE_LEN = 40
     private const val MAX_BRAND_LEN = 32
+    // Layout ids are vendor/catalogue identities, not a dense Kilter-only
+    // range. Quantum intentionally lives at 9101..9105. This wider cap keeps
+    // pre-0.2.2 payloads valid while still rejecting crafted huge integers.
+    private const val MAX_LAYOUT_ID = 100_000L
 
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
@@ -64,6 +69,17 @@ object CruxCoachBackup {
 
     private fun requireFinite(name: String, value: Double?) {
         require(value == null || value.isFinite()) { "invalid backup: $name not finite" }
+    }
+
+    /** Quantum's layout ids are part of its fixed model/wire contract. Keep
+     * unknown future brands forward-compatible, but never restore a row that
+     * explicitly claims Quantum with geometry from another board family. */
+    private fun requireQuantumLayout(name: String, boardBrand: String?, layoutId: Long?) {
+        if (boardBrand?.equals("quantum", ignoreCase = true) == true) {
+            require(layoutId != null && QuantumBoardModel.fromLayoutId(layoutId) != null) {
+                "invalid backup: $name Quantum layoutId=$layoutId"
+            }
+        }
     }
 
     private fun requireFiniteFloat(name: String, value: Float) {
@@ -93,6 +109,7 @@ object CruxCoachBackup {
         // v3:      0.1.4+ adds boardClimbs + boardClimbStats. 0.1.3 clients
         //          reject v3 explicitly — by-design forward-incompatibility,
         //          documented at the export side.
+        require(app == "CruxCoach") { "invalid backup: app" }
         require(version in 1..3) { "invalid backup: unsupported version $version" }
         requireLen("exportedAt", exportedAt, MAX_DATE_LEN)
         nostrPubkey?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: nostrPubkey" } }
@@ -108,6 +125,7 @@ object CruxCoachBackup {
         requireSize("climbLists", climbLists.size)
         requireSize("boardClimbs", boardClimbs.size)
         requireSize("boardClimbStats", boardClimbStats.size)
+        requireSize("climbNotes", climbNotes.size)
 
         profile?.let { p ->
             requireLen("profile.name", p.name, MAX_NAME_LEN)
@@ -188,7 +206,8 @@ object CruxCoachBackup {
             // by BoardBrand.fromWire at read time, the cap just blocks a giant
             // string from a crafted backup.
             requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
-            requireRange("ascent.layoutId", a.layoutId, 0L..1_000L)
+            requireRange("ascent.layoutId", a.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("ascent", a.boardBrand, a.layoutId)
             // Full-fidelity additions — cap, don't whitelist (same posture
             // as boardBrand): odd legacy values must not brick a restore.
             requireLen("ascent.gymUuid", a.gymUuid, MAX_EXTERNAL_ID_LEN)
@@ -208,7 +227,8 @@ object CruxCoachBackup {
             requireLen("bid.climbedAt", b.climbedAt, MAX_DATE_LEN)
             // Board context (FEAT-027 P2) — see the ascent loop above.
             requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
-            requireRange("bid.layoutId", b.layoutId, 0L..1_000L)
+            requireRange("bid.layoutId", b.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("bid", b.boardBrand, b.layoutId)
             requireLen("bid.gymUuid", b.gymUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.wallUuid", b.wallUuid, MAX_EXTERNAL_ID_LEN)
             requireLen("bid.productLayoutUuid", b.productLayoutUuid, MAX_EXTERNAL_ID_LEN)
@@ -235,6 +255,37 @@ object CruxCoachBackup {
             }
             for (entry in list.entries) {
                 requireUuid("climbList.entry", entry)
+            }
+            require(list.kind in setOf("list", "playlist")) {
+                "invalid backup: climbList.kind=${list.kind}"
+            }
+            list.playbackOrder?.let {
+                require(it in ListPlaybackOrder.entries.map(ListPlaybackOrder::wireValue)) {
+                    "invalid backup: climbList.playbackOrder=$it"
+                }
+            }
+            list.playbackAdvance?.let {
+                require(it in ListPlaybackAdvance.entries.map(ListPlaybackAdvance::wireValue)) {
+                    "invalid backup: climbList.playbackAdvance=$it"
+                }
+            }
+            list.playbackRestSeconds?.let {
+                requireRange("climbList.playbackRestSeconds", it, 0L..3_600L)
+            }
+            requireLen("climbList.generatorParams", list.generatorParams, MAX_NOTES_LEN)
+            require(list.playlistEntries.size <= MAX_COLLECTION_SIZE) {
+                "invalid backup: climbList.playlistEntries too large"
+            }
+            for (pe in list.playlistEntries) {
+                require(pe.entryType in setOf("climb", "rest")) {
+                    "invalid backup: playlistEntry.entryType=${pe.entryType}"
+                }
+                if (pe.entryType == "climb") {
+                    requireUuid("playlistEntry.climbUuid", pe.climbUuid ?: "")
+                } else {
+                    requireRange("playlistEntry.restSeconds", pe.restSeconds ?: 0L, 0L..3_600L)
+                }
+                pe.angle?.let { requireRange("playlistEntry.angle", it, 0L..90L) }
             }
         }
 
@@ -272,6 +323,15 @@ object CruxCoachBackup {
             c.createdByPubkey?.let {
                 require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.createdByPubkey" }
             }
+            if (c.source == "nostr") {
+                require(nostrPubkey != null && c.createdByPubkey == nostrPubkey) {
+                    "invalid backup: published own climb does not belong to nostrPubkey"
+                }
+            } else {
+                require(c.createdByPubkey == null || c.createdByPubkey == nostrPubkey) {
+                    "invalid backup: local own climb belongs to another pubkey"
+                }
+            }
             c.framesHash?.let {
                 require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.framesHash" }
             }
@@ -282,7 +342,8 @@ object CruxCoachBackup {
             // Cap, don't whitelist (see boardBrand) — a Keycloak uuid today,
             // but an odd legacy value must not brick the whole restore.
             requireLen("ownClimb.kilterAuthorUuid", c.kilterAuthorUuid, MAX_EXTERNAL_ID_LEN)
-            requireRange("ownClimb.layoutId", c.layoutId, 0L..1_000L)
+            requireRange("ownClimb.layoutId", c.layoutId, 0L..MAX_LAYOUT_ID)
+            requireQuantumLayout("ownClimb", c.boardBrand, c.layoutId)
             requireRange("ownClimb.moveCount", c.moveCount, 0L..1_000L)
             requireRange("ownClimb.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
             // edge_* are pixel coords on the layout grid — generous range.
@@ -292,14 +353,29 @@ object CruxCoachBackup {
             requireRange("ownClimb.edgeTop", c.edgeTop, 0L..10_000L)
         }
 
+        val ownClimbUuids = boardClimbs.mapTo(mutableSetOf()) { it.uuid.lowercase() }
         for (s in boardClimbStats) {
             requireUuid("ownClimbStat.climbUuid", s.climbUuid)
+            require(s.climbUuid.lowercase() in ownClimbUuids) {
+                "invalid backup: ownClimbStat does not belong to boardClimbs"
+            }
             requireRange("ownClimbStat.angle", s.angle, 0L..70L)
             requireRange("ownClimbStat.ascensionistCount", s.ascensionistCount, 0L..100_000L)
             requireFinite("ownClimbStat.displayDifficulty", s.displayDifficulty)
             requireFinite("ownClimbStat.difficultyAverage", s.difficultyAverage)
             requireFinite("ownClimbStat.qualityAverage", s.qualityAverage)
             requireFinite("ownClimbStat.benchmarkDifficulty", s.benchmarkDifficulty)
+        }
+
+        for (n in climbNotes) {
+            // Same mixed-case/no-dash tolerance as the ascent uuids: a note
+            // can be attached to a Kilter-logbook-imported climb whose uuid
+            // never went through the dashed form.
+            requireUuid("climbNote.climbUuid", n.climbUuid)
+            // The editor caps at 1000; MAX_NOTES_LEN (4000) is the envelope's
+            // guard against a crafted file, not a second product rule.
+            requireLen("climbNote.note", n.note, MAX_NOTES_LEN)
+            requireLen("climbNote.updatedAt", n.updatedAt, MAX_DATE_LEN)
         }
 
         return this
@@ -317,7 +393,12 @@ object CruxCoachBackup {
         BOARD_LOGBOOK("Board-Sends & -Versuche"),
         BOARD_SESSIONS("Board-Sessions"),
         CLIMB_LISTS("Climb-Listen & Favoriten"),
-        OWN_CLIMBS("Eigene Climbs & Drafts")
+        OWN_CLIMBS("Eigene Climbs & Drafts"),
+        /** Private per-climb notes. Their own category rather than a rider on
+         *  CLIMB_LISTS: the catalogue can be re-downloaded and the logbook
+         *  re-derived, but nothing anywhere can reconstruct what the user
+         *  wrote, so it must be selectable — and visible — on its own. */
+        CLIMB_NOTES("Private Climb-Notizen")
     }
 
     // ── Serializable backup envelope ────────────────────────────
@@ -355,6 +436,22 @@ object CruxCoachBackup {
         // primary key — modelling it as a child collection of OwnClimbExport
         // would force the JSON to denormalise and bloat re-export diffs.
         val boardClimbStats: List<OwnClimbStatExport> = emptyList(),
+        // ── Additive, still version 3 ──────────────────────────────
+        // Private per-climb notes (secure DB). Deliberately NOT a version
+        // bump: the field defaults to empty and the reader has
+        // ignoreUnknownKeys, so a 0.1.4+ client that predates notes still
+        // restores everything else from a backup that carries them. Bumping
+        // to 4 would instead make every one of those clients reject the whole
+        // file at `require(version in 1..3)` — strictly less compatible for
+        // the sake of a field they can safely ignore.
+        val climbNotes: List<ClimbNoteExport> = emptyList(),
+    )
+
+    @Serializable
+    data class ClimbNoteExport(
+        val climbUuid: String,
+        val note: String,
+        val updatedAt: String,
     )
 
     @Serializable
@@ -439,7 +536,9 @@ object CruxCoachBackup {
         val name: String,
         val isBuiltin: Boolean,
         val createdAt: String,
-        val entries: List<String>, // climb UUIDs
+        // Unique normal list membership. The optional ordered training plan
+        // is stored separately below.
+        val entries: List<String>,
         // ── Identity metadata (all defaulted; absent in pre-fix backups).
         // externalId disambiguates the two is_builtin=1 lists (Favorites has
         // none, the Ignored list carries the sentinel — pre-fix restores
@@ -449,6 +548,29 @@ object CruxCoachBackup {
         val externalId: String? = null,
         val description: String? = null,
         val color: String? = null,
+        // Legacy wire hint retained so backups from the pre-release playlist
+        // implementation stay readable. It is not an app-side object type.
+        val kind: String = "list",
+        /** Generator parameter JSON snapshot (generated training lists). */
+        val generatorParams: String? = null,
+        /** Full ordered training-plan rows including rests. The historical
+         *  JSON field name is kept for backup compatibility. */
+        val playlistEntries: List<PlaylistEntryExport> = emptyList(),
+        /** Nullable defaults distinguish old backups (field absent) from an
+         *  explicit setting and avoid overwriting newer local preferences. */
+        val playbackOrder: String? = null,
+        val playbackAdvance: String? = null,
+        val playbackRestSeconds: Long? = null,
+    )
+
+    @Serializable
+    data class PlaylistEntryExport(
+        /** NULL for rest rows. */
+        val climbUuid: String? = null,
+        /** 'climb' | 'rest'. */
+        val entryType: String = "climb",
+        val restSeconds: Long? = null,
+        val angle: Long? = null,
     )
 
     /**
@@ -472,6 +594,9 @@ object CruxCoachBackup {
         val createdAt: String? = null,
         val description: String = "",
         val moveCount: Long = 0,
+        // Additive inside v3. A pre-0.2.2 envelope omitted this key and
+        // therefore keeps the historical listed-by-default behaviour.
+        val isListed: Boolean = true,
         val source: String,                   // 'local' | 'nostr'
         val origin: String = "cruxcoach",     // always 'cruxcoach' (validated)
         val syncStatus: String,               // 'draft' | 'failed' | 'published_nostr' | …
@@ -523,6 +648,7 @@ object CruxCoachBackup {
         val boardSessions: Int = 0,
         val climbLists: Int = 0,
         val ownClimbs: Int = 0,
+        val climbNotes: Int = 0,
     ) {
         /** Which categories have data in this backup? */
         fun detectedCategories(): Set<Category> {
@@ -537,6 +663,7 @@ object CruxCoachBackup {
             if (boardSessions > 0) cats.add(Category.BOARD_SESSIONS)
             if (climbLists > 0) cats.add(Category.CLIMB_LISTS)
             if (ownClimbs > 0) cats.add(Category.OWN_CLIMBS)
+            if (climbNotes > 0) cats.add(Category.CLIMB_NOTES)
             return cats
         }
 
@@ -551,6 +678,7 @@ object CruxCoachBackup {
             Category.BOARD_SESSIONS -> "$boardSessions Sessions"
             Category.CLIMB_LISTS -> "$climbLists Listen"
             Category.OWN_CLIMBS -> "$ownClimbs eigene Climbs"
+            Category.CLIMB_NOTES -> "$climbNotes Notizen"
         }
     }
 
@@ -570,6 +698,7 @@ object CruxCoachBackup {
             boardSessions = backup.boardSessions.size,
             climbLists = backup.climbLists.size,
             ownClimbs = backup.boardClimbs.size,
+            climbNotes = backup.climbNotes.size,
         )
     }
 
@@ -669,14 +798,32 @@ object CruxCoachBackup {
         val climbLists = if (Category.CLIMB_LISTS in categories) {
             val rawEntries = personalBoardRepo.getClimbListEntriesRaw()
             val entriesByList = rawEntries.groupBy { it.listId }
+            val rawPlaybackSteps = personalBoardRepo.getListPlaybackStepsRaw()
+            val playbackStepsByList = rawPlaybackSteps.groupBy { it.listId }
             personalBoardRepo.getClimbListsForBackup().map { list ->
+                val raw = entriesByList[list.id].orEmpty()
+                val plan = playbackStepsByList[list.id].orEmpty().sortedBy { it.position }
                 ClimbListExport(
                     name = list.name, isBuiltin = list.isBuiltin,
                     createdAt = list.createdAt,
-                    entries = entriesByList[list.id]?.map { it.climbUuid } ?: emptyList(),
+                    entries = raw.map { it.climbUuid },
                     externalId = list.externalId,
                     description = list.description,
                     color = list.color,
+                    // Older 0.2.2 development builds understand this hint.
+                    kind = if (plan.isEmpty()) "list" else "playlist",
+                    generatorParams = list.generatorParams,
+                    playlistEntries = plan.map { step ->
+                        PlaylistEntryExport(
+                            climbUuid = step.climbUuid,
+                            entryType = step.stepType,
+                            restSeconds = step.restSeconds,
+                            angle = step.angle,
+                        )
+                    },
+                    playbackOrder = list.playbackOrder.wireValue,
+                    playbackAdvance = list.playbackAdvance.wireValue,
+                    playbackRestSeconds = list.playbackRestSeconds,
                 )
             }
         } else emptyList()
@@ -689,7 +836,14 @@ object CruxCoachBackup {
         // `created_by_pubkey IS NULL` orphans (signer-init-race drafts)
         // by binding them to the active pubkey on the export side.
         val ownClimbs = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
-            boardRepository.getOwnClimbsForBackup(nostrPubkey).map { row ->
+            // Authenticated public catalogue imports can temporarily have
+            // origin='cruxcoach' with source='kilter'. They are downloadable
+            // public rows, not private lifecycle records, and `kilter` is not
+            // a valid OwnClimbExport source. Exclude them until a private
+            // backup promotes the row to local/nostr.
+            boardRepository.getOwnClimbsForBackup(nostrPubkey)
+                .filter { it.source == "local" || it.source == "nostr" }
+                .map { row ->
                 OwnClimbExport(
                     uuid = row.uuid, layoutId = row.layoutId,
                     setterUsername = row.setterUsername, name = row.name,
@@ -698,6 +852,7 @@ object CruxCoachBackup {
                     edgeBottom = row.edgeBottom, edgeTop = row.edgeTop,
                     createdAt = row.createdAt, description = row.description,
                     moveCount = row.moveCount,
+                    isListed = row.isListed,
                     source = row.source, syncStatus = row.syncStatus,
                     createdByPubkey = row.createdByPubkey,
                     framesHash = row.framesHash,
@@ -710,11 +865,14 @@ object CruxCoachBackup {
                     boardBrand = row.boardBrand,
                     kilterAuthorUuid = row.kilterAuthorUuid,
                 )
-            }
+                }
         } else emptyList()
 
         val ownClimbStats = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
-            boardRepository.getOwnClimbStatsForBackup(nostrPubkey).map { row ->
+            val exportedOwnClimbUuids = ownClimbs.mapTo(hashSetOf()) { it.uuid }
+            boardRepository.getOwnClimbStatsForBackup(nostrPubkey)
+                .filter { it.climbUuid in exportedOwnClimbUuids }
+                .map { row ->
                 OwnClimbStatExport(
                     climbUuid = row.climbUuid, angle = row.angle,
                     displayDifficulty = row.displayDifficulty,
@@ -722,6 +880,18 @@ object CruxCoachBackup {
                     qualityAverage = row.qualityAverage,
                     ascensionistCount = row.ascensionistCount,
                     benchmarkDifficulty = row.benchmarkDifficulty,
+                )
+                }
+        } else emptyList()
+
+        // Private notes. Cheap to read (one small table) and impossible to
+        // reconstruct from anything else in the file.
+        val climbNotes = if (Category.CLIMB_NOTES in categories) {
+            personalBoardRepo.getClimbNotesForBackup().map { row ->
+                ClimbNoteExport(
+                    climbUuid = row.climbUuid,
+                    note = row.note,
+                    updatedAt = row.updatedAt,
                 )
             }
         } else emptyList()
@@ -733,6 +903,7 @@ object CruxCoachBackup {
             trainingPlans = plansWithSessions, boardAscents = ascents,
             boardBids = bids, boardSessions = boardSessions, climbLists = climbLists,
             boardClimbs = ownClimbs, boardClimbStats = ownClimbStats,
+            climbNotes = climbNotes,
         )
 
         return json.encodeToString(backup)
@@ -756,6 +927,10 @@ object CruxCoachBackup {
         val ownClimbs: Int = 0,
         /** Per-angle stats rows upserted for the imported own climbs. */
         val ownClimbStats: Int = 0,
+        /** Private per-climb notes written back. Restore is an upsert keyed on
+         *  the climb uuid, so re-running an import is a no-op rather than a
+         *  duplicate. */
+        val climbNotes: Int = 0,
         val skippedDuplicates: Int = 0
     )
 
@@ -779,8 +954,9 @@ object CruxCoachBackup {
          * Nostr identity the backup MUST belong to (typically the
          * currently active signer's pubkey), pass it here. If the
          * decrypted payload carries a different pubkey in its
-         * [Backup.nostrPubkey] envelope field, `import` refuses before
-         * any DB write — catches the "identity mismatch" edge case
+         * [Backup.nostrPubkey] envelope field, or omits that identity while
+         * selected own-climb data is present, `import` refuses before any DB
+         * write — catches the "identity mismatch" edge case
          * that the NIP-44 decrypt layer already makes cryptographically
          * unlikely, but would otherwise silently import wrong-owner
          * data if it ever reached this code path. `null` skips the
@@ -789,12 +965,16 @@ object CruxCoachBackup {
         expectedNostrPubkey: String? = null,
     ): ImportResult {
         val backup = json.decodeFromString<Backup>(jsonString).validate()
-        if (expectedNostrPubkey != null && backup.nostrPubkey != null &&
+        val importsOwnClimbData = Category.OWN_CLIMBS in selectedCategories &&
+            (backup.boardClimbs.isNotEmpty() || backup.boardClimbStats.isNotEmpty())
+        if (expectedNostrPubkey != null &&
+            (backup.nostrPubkey != null || importsOwnClimbData) &&
             backup.nostrPubkey != expectedNostrPubkey
         ) {
+            val payloadIdentity = backup.nostrPubkey?.take(8)?.plus("…") ?: "missing"
             throw IllegalArgumentException(
                 "invalid backup: nostrPubkey does not match active signer " +
-                    "(payload ${backup.nostrPubkey.take(8)}…, active ${expectedNostrPubkey.take(8)}…)",
+                    "(payload $payloadIdentity, active ${expectedNostrPubkey.take(8)}…)",
             )
         }
 
@@ -1056,7 +1236,8 @@ object CruxCoachBackup {
             // — name-collision is rare in practice and the alternative
             // (always-additive) was already breaking idempotent re-imports.
             if (Category.CLIMB_LISTS in selectedCategories) {
-                val existingByName = personalBoardRepo.getClimbListsForBackup()
+                val existingLists = personalBoardRepo.getClimbListsForBackup()
+                val existingByName = existingLists
                     .filter { !it.isBuiltin && it.externalId == null }
                     .associate { it.name to it.id }
                 for (list in backup.climbLists) {
@@ -1088,8 +1269,58 @@ object CruxCoachBackup {
                             skipped++
                         }
                     }
+                    // Generated metadata and the optional plan are independent
+                    // of normal membership. Referenced plan climbs are also
+                    // added to membership by replacePlaybackSteps().
+                    personalBoardRepo.updateGeneratorParams(listId, list.generatorParams)
+                    if (list.playlistEntries.isNotEmpty() || list.kind == "playlist") {
+                        personalBoardRepo.replacePlaybackSteps(
+                            listId,
+                            list.playlistEntries.map { step ->
+                                NewListPlaybackStep(
+                                    climbUuid = step.climbUuid?.lowercase(),
+                                    angle = step.angle,
+                                    restSeconds = step.restSeconds,
+                                )
+                            },
+                        )
+                    }
+                    if (
+                        list.playbackOrder != null ||
+                        list.playbackAdvance != null ||
+                        list.playbackRestSeconds != null
+                    ) {
+                        personalBoardRepo.updatePlaybackSettings(
+                            listId = listId,
+                            order = ListPlaybackOrder.fromWire(list.playbackOrder),
+                            advance = ListPlaybackAdvance.fromWire(list.playbackAdvance),
+                            restSeconds = list.playbackRestSeconds ?: 0L,
+                        )
+                    }
                 }
                 result = result.copy(climbLists = backup.climbLists.size)
+            }
+
+            // 10b. Private climb notes. Inside the secure-DB transaction with
+            // everything else it belongs to, and idempotent by construction:
+            // the table is keyed on the climb uuid and the write is an upsert,
+            // so a re-import overwrites rather than duplicating.
+            if (Category.CLIMB_NOTES in selectedCategories && backup.climbNotes.isNotEmpty()) {
+                var notes = 0
+                for (note in backup.climbNotes) {
+                    // Lowercase for the same reason as the list entries above:
+                    // a note can be attached to a climb whose uuid was stored
+                    // upper-case by an older logbook import.
+                    personalBoardRepo.restoreClimbNote(
+                        ClimbNoteBackupRow(
+                            climbUuid = note.climbUuid.lowercase(),
+                            note = note.note,
+                            updatedAt = note.updatedAt,
+                        )
+                    )
+                    notes++
+                }
+                result = result.copy(climbNotes = notes)
             }
 
             result.copy(skippedDuplicates = skipped)
@@ -1119,6 +1350,14 @@ object CruxCoachBackup {
         var ownClimbStatsImported = 0
         var ownClimbsSkipped = 0
         if (Category.OWN_CLIMBS in selectedCategories) {
+            // Existing rows are eligible for idempotent stat restore only when
+            // the repository already recognizes them as belonging to this
+            // backup identity (or as a legacy NULL-pubkey local draft). A UUID
+            // collision with an arbitrary catalogue/community row must neither
+            // fill its lifecycle metadata nor replace its statistics.
+            val restorableUuids = boardRepository
+                .getOwnClimbsForBackup(backup.nostrPubkey.orEmpty())
+                .mapTo(mutableSetOf()) { it.uuid.lowercase() }
             for (climb in backup.boardClimbs) {
                 // uuid lowercase — same legacy-mixed-case defense as the
                 // ascents / bids / list-entries above. v3 backups from
@@ -1133,6 +1372,7 @@ object CruxCoachBackup {
                     edgeBottom = climb.edgeBottom, edgeTop = climb.edgeTop,
                     createdAt = climb.createdAt, description = climb.description,
                     moveCount = climb.moveCount,
+                    isListed = climb.isListed,
                     source = climb.source, syncStatus = climb.syncStatus,
                     createdByPubkey = climb.createdByPubkey,
                     framesHash = climb.framesHash,
@@ -1146,9 +1386,18 @@ object CruxCoachBackup {
                     boardBrand = climb.boardBrand,
                     kilterAuthorUuid = climb.kilterAuthorUuid,
                 )
-                if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
+                if (boardRepository.restoreOwnClimb(row)) {
+                    ownClimbsImported++
+                    restorableUuids += row.uuid
+                } else {
+                    ownClimbsSkipped++
+                }
             }
             for (stat in backup.boardClimbStats) {
+                if (stat.climbUuid.lowercase() !in restorableUuids) {
+                    ownClimbsSkipped++
+                    continue
+                }
                 boardRepository.restoreOwnClimbStat(
                     OwnClimbStatBackupRow(
                         climbUuid = stat.climbUuid.lowercase(), angle = stat.angle,

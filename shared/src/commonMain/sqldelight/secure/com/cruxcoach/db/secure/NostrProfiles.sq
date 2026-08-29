@@ -7,6 +7,8 @@ CREATE TABLE nostr_profiles (
     banner_url TEXT,
     nip05 TEXT,
     website TEXT,
+    about TEXT,
+    local_primary INTEGER NOT NULL DEFAULT 0,
     -- Unix seconds of `event.createdAt` for the Kind-0 this row was
     -- built from. Drives the stale-event guard the caller wraps
     -- around `upsert` (see `getLastEventCreatedAt` + the
@@ -29,15 +31,18 @@ CREATE TABLE nostr_profiles (
 upsert:
 INSERT OR REPLACE INTO nostr_profiles(
     pubkey, display_name, lightning_address, picture_url, updated_at,
-    banner_url, nip05, website, last_event_created_at
+    banner_url, nip05, website, about, local_primary, last_event_created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Stale-event guard companion: returns the cached
 -- `last_event_created_at` (or null if no row exists / pre-migration
 -- row). Caller treats null as 0 and writes the incoming event.
 getLastEventCreatedAt:
 SELECT last_event_created_at FROM nostr_profiles WHERE pubkey = ?;
+
+isLocalPrimary:
+SELECT local_primary FROM nostr_profiles WHERE pubkey = ?;
 
 getByPubkey:
 SELECT * FROM nostr_profiles WHERE pubkey = ?;

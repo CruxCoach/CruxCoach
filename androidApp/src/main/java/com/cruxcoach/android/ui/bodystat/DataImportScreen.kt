@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -19,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
@@ -43,7 +42,7 @@ fun DataImportScreen(
     viewModel: DataExchangeViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
+    val importBugReportTitle = stringResource(R.string.error_bug_report_import_title)
     val snackbarHostState = SnackbarHostState()
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -104,7 +103,7 @@ fun DataImportScreen(
                     onDismiss = { viewModel.clearMessage() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_import_title),
+                            importBugReportTitle,
                             error
                         )
                         viewModel.clearMessage()
@@ -144,10 +143,16 @@ fun DataImportScreen(
                 )
 
                 OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/json", "text/csv", "text/*")) },
+                    onClick = {
+                        importLauncher.launch(arrayOf(
+                            "application/json",
+                            "application/zip",
+                            "application/x-zip-compressed",
+                        ))
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("import_pick_file"),
                     enabled = !state.isLoadingPreview,
                     shape = RoundedCornerShape(16.dp)
@@ -157,7 +162,7 @@ fun DataImportScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.bodystat_analyzing_file))
                     } else {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null)
+                        Icon(Icons.Default.FolderOpen, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.bodystat_choose_file))
                     }
@@ -169,7 +174,9 @@ fun DataImportScreen(
                     onToggleCategory = { viewModel.toggleImportCategory(it) },
                     onConfirm = { viewModel.confirmImport() },
                     onCancel = { viewModel.cancelImport() },
-                    isImporting = state.isImporting
+                    isImporting = state.isImporting,
+                    boardImportInProgress = state.boardImportInProgress,
+                    waitingForBoardSync = state.waitingForBoardSync,
                 )
             }
 
@@ -185,7 +192,9 @@ private fun ImportPreviewCard(
     onToggleCategory: (Category) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
-    isImporting: Boolean
+    isImporting: Boolean,
+    boardImportInProgress: Boolean,
+    waitingForBoardSync: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -237,6 +246,20 @@ private fun ImportPreviewCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            if (boardImportInProgress || waitingForBoardSync) {
+                Text(
+                    text = stringResource(
+                        if (waitingForBoardSync) {
+                            R.string.import_waiting_for_board_data
+                        } else {
+                            R.string.import_board_data_not_ready
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -251,7 +274,7 @@ private fun ImportPreviewCard(
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
-                    enabled = !isImporting && selectedCategories.isNotEmpty(),
+                    enabled = !isImporting && !boardImportInProgress && selectedCategories.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -259,6 +282,16 @@ private fun ImportPreviewCard(
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
                             color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(
+                                if (waitingForBoardSync) {
+                                    R.string.import_waiting_for_board_data_short
+                                } else {
+                                    R.string.import_in_progress_short
+                                },
+                            ),
                         )
                     } else {
                         Text(stringResource(R.string.bodystat_import), fontWeight = FontWeight.Bold)
@@ -344,4 +377,3 @@ private fun PubkeyMismatchDialog(
         }
     )
 }
-

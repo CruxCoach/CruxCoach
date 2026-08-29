@@ -17,10 +17,12 @@ import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrEventDecryptor
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -57,6 +59,17 @@ class NotificationPollWorker @AssistedInject constructor(
     }
 
     private suspend fun pollAnnouncements() {
+        // This preference is the privacy boundary for unattended announcement traffic, not merely
+        // a notification-display preference. The shared worker must still run for user DMs, so we
+        // gate this leg here instead of cancelling the whole worker.
+        if (!AnnouncementPollingPolicy.allowsBackgroundFetch(
+                userPreferences.announcementsEnabled.first(),
+            )
+        ) {
+            Log.d(TAG, "Announcement background fetch disabled by user")
+            return
+        }
+
         val lastCheck = userPreferences.lastAnnouncementCheck.first()
         val sinceTimestamp = lastCheck ?: (System.currentTimeMillis() / 1000 - 86400) // default: last 24h
 
@@ -65,7 +78,6 @@ class NotificationPollWorker @AssistedInject constructor(
             append(""","since":$sinceTimestamp}""")
         }
 
-        val notificationsEnabled = userPreferences.announcementsEnabled.first()
         val enabledCategories = buildSet {
             if (userPreferences.announcementCatRelease.first()) add(AnnouncementTagParser.CATEGORY_RELEASE)
             if (userPreferences.announcementCatIssue.first()) add(AnnouncementTagParser.CATEGORY_ISSUE)
@@ -80,8 +92,17 @@ class NotificationPollWorker @AssistedInject constructor(
             try {
                 val event = Event.fromJson(json)
 
-                if (event.pubKey != NostrConfig.DEV_PUBKEY) continue
-                if (!event.verifySignature()) continue
+                val signatureValid = event.verifySignature()
+                val idValid = signatureValid && event.verifyId()
+                if (!NostrEventPolicy.accepts(
+                        actualPubkey = event.pubKey,
+                        actualKind = event.kind,
+                        expectedPubkey = NostrConfig.DEV_PUBKEY,
+                        expectedKind = 1,
+                        signatureValid = signatureValid,
+                        idValid = idValid,
+                    )
+                ) continue
 
                 if (!AnnouncementTagParser.isAnnouncement(event.tags)) continue
 
@@ -101,7 +122,7 @@ class NotificationPollWorker @AssistedInject constructor(
                     createdAt = event.createdAt * 1000
                 )
 
-                if (notificationsEnabled && category in enabledCategories) {
+                if (category in enabledCategories) {
                     // Extract localized content for the notification text
                     val localizedContent = AnnouncementTagParser.extractLocalizedContent(
                         event.content, appLang
@@ -271,4 +292,8 @@ class NotificationPollWorker @AssistedInject constructor(
             )
         }
     }
+}
+
+internal object AnnouncementPollingPolicy {
+    fun allowsBackgroundFetch(enabled: Boolean): Boolean = enabled
 }

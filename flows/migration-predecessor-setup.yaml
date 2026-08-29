@@ -1,0 +1,73 @@
+appId: com.cruxcoach.android
+name: migration-predecessor-setup
+tags:
+  - extended
+  - destructive
+  - upgrade
+  - manual-prereq
+  - mutates-state
+---
+# Compatibility root for unmodified public-tag 0.1.4/0.2.0/0.2.1 debug
+# fixtures. Those versions do not expose Compose testTag values as Android
+# resource IDs. Every predecessor action therefore uses only visible text or
+# an Icon contentDescription proven by audit_migration_predecessor.py against
+# all three tags. There are deliberately no id/point selectors in this root.
+# clearState makes an infrastructure replay deterministic.
+- launchApp:
+    clearState: true
+    stopApp: true
+- runFlow:
+    when:
+      visible: "Zulassen"
+    commands:
+      - tapOn: "Zulassen"
+- extendedWaitUntil:
+    visible: "(Weiter|Next)"
+    timeout: 15000
+- tapOn: "(Weiter|Next)"
+- tapOn: "(Weiter|Next)"
+- extendedWaitUntil:
+    visible: "(Fertig|Done)"
+    timeout: 15000
+- tapOn: "(Fertig|Done)"
+- extendedWaitUntil:
+    visible: "[0-9]+ (Züge|moves)"
+    timeout: 300000
+- tapOn:
+    text: "[0-9]+ (Züge|moves)"
+    index: 0
+- extendedWaitUntil:
+    visible: "(Begehung loggen|Log ascent)"
+    timeout: 15000
+# Establish a deterministic favorite marker.
+- runFlow:
+    when:
+      visible: "(Von Favoriten entfernen|Remove from favorites)"
+    commands:
+      - tapOn: "(Von Favoriten entfernen|Remove from favorites)"
+- assertVisible: "(Zu Favoriten hinzufügen|Add to favorites)"
+- tapOn: "(Zu Favoriten hinzufügen|Add to favorites)"
+- assertVisible: "(Von Favoriten entfernen|Remove from favorites)"
+# Create one run-scoped ascent through the common historical accessibility UI.
+- tapOn: "(Begehung loggen|Log ascent)"
+- assertVisible: '(Kommentar \(optional\)|Comment \(optional\))'
+- tapOn: "Send"
+- tapOn:
+    text: "+"
+    repeat: 2
+- tapOn: "(4 Sterne|4 stars)"
+- tapOn: '(Kommentar \(optional\)|Comment \(optional\))'
+- inputText: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+- hideKeyboard
+- assertVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+- tapOn: "(Speichern|Save)"
+- assertNotVisible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: "Board Logbook"
+- extendedWaitUntil:
+    visible: "E2E-MIGRATION-${E2E_MIGRATION_MARKER}"
+    timeout: 15000
+- assertVisible: "4★"

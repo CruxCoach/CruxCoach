@@ -1,11 +1,15 @@
 package com.cruxcoach.android.ui.navigation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -14,7 +18,15 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.view.WindowManager
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -28,6 +40,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -51,6 +66,10 @@ import com.cruxcoach.android.ui.stats.StatsScreen
 import com.cruxcoach.android.ui.bodystat.BodyStatScreen
 import com.cruxcoach.android.ui.bodystat.DataExportScreen
 import com.cruxcoach.android.ui.bodystat.DataImportScreen
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
 import com.cruxcoach.android.ui.board.BoardFilterScreen
@@ -65,8 +84,13 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
+import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
+import com.cruxcoach.android.ble.BlePermissionHelper
+import com.cruxcoach.android.data.CruxRelayManager
+import com.cruxcoach.android.data.RelayError
 import com.cruxcoach.android.ui.workout.ActiveWorkoutScreen
 import com.cruxcoach.android.ui.workout.PostWorkoutScreen
 import com.cruxcoach.android.ui.devcontact.DevChatScreen
@@ -109,11 +133,16 @@ object Routes {
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
+    const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
+    const val PLAYLIST_GENERATOR = "playlist_generator"
+    const val PLAYLIST_IMPORT = "playlist_import/{payload}"
+    const val PLAYLIST_PLAYER = "playlist_player"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
     const val AURORA_MIGRATION = "aurora_migration"
+    const val MOONBOARD_CSV_IMPORT = "moonboard_csv_import"
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
@@ -139,6 +168,7 @@ object Routes {
         "post_workout/$sessionId/$durationMin/$completedCount"
     fun boardClimbDetail(climbUuid: String, angle: Int) = "board_climb_detail/$climbUuid/$angle"
     fun boardListDetail(listId: Long) = "board_list_detail/$listId"
+    fun playlistDetail(listId: Long) = "playlist_detail/$listId"
     fun messageThread(eventId: String) = "message_thread/$eventId"
     fun bugReport(title: String = "", description: String = ""): String {
         val t = android.net.Uri.encode(title)
@@ -168,7 +198,8 @@ private val bottomBarRoutes = emptySet<String>()
 // Routes where screen should stay on (board tab)
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
-    Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC
+    Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,7 +264,10 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
-            route.startsWith("message_thread/") ->
+            route == Routes.APP_SHARE ||
+            route == Routes.MOONBOARD_CSV_IMPORT ||
+            route.startsWith("message_thread/") ||
+            route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
@@ -244,6 +278,25 @@ fun CruxCoachNavHost(
                     // Stage — the actual download starts only after the user
                     // confirms in BoardSyncScreen's dialog. Never auto-import.
                     startViewModel.syncManager.stageLocalImport(localDbUrl)
+                }
+                val offlineShare = android.net.Uri.parse("nav://$route")
+                    .getQueryParameter("offlineShare")
+                    ?.let { android.net.Uri.decode(it) }
+                    ?.let { android.net.Uri.parse(it) }
+                    ?.let { com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(it) }
+                if (offlineShare != null) {
+                    startViewModel.syncManager.stageOfflineShare(offlineShare)
+                }
+                val connectedShare = android.net.Uri.parse("nav://$route")
+                    .getQueryParameter("connectedShare")
+                    ?.let { android.net.Uri.decode(it) }
+                    ?.let { android.net.Uri.parse(it) }
+                    ?.let {
+                        com.cruxcoach.android.util.LocalShareProtocol
+                            .parseConnectedInvitation(it)
+                    }
+                if (connectedShare != null) {
+                    startViewModel.syncManager.stageConnectedShare(connectedShare)
                 }
                 navController.navigate(Routes.BOARD_SYNC) { launchSingleTop = true }
             }
@@ -261,8 +314,14 @@ fun CruxCoachNavHost(
         LocalBoardSyncManager provides startViewModel.syncManager,
         LocalSessionQueueManager provides startViewModel.queueManager,
         LocalSessionGattBridge provides startViewModel.gattBridge,
-        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) }
+        LocalPlaylistPlayback provides startViewModel.playbackCoordinator,
+        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
+        LocalOpenPlaylistPlayer provides {
+            navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
+        },
     ) {
+    CruxRelayDisclosureEffect(startViewModel.cruxRelayManager)
+    CruxRelayAdvertisingPermissionEffect(startViewModel.cruxRelayManager)
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }
     ) { innerPadding ->
@@ -296,6 +355,12 @@ fun CruxCoachNavHost(
                         // to the same onboarding step they were on (state +
                         // ViewModel preserved via the survived BackStackEntry).
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                        onNavigateToMoonBoardImport = {
+                            navController.navigate(Routes.MOONBOARD_CSV_IMPORT)
+                        },
+                        onNavigateToDataImport = {
+                            navController.navigate(Routes.DATA_IMPORT)
+                        },
                     )
                 }
             }
@@ -422,6 +487,20 @@ fun CruxCoachNavHost(
                 }
             }
 
+            composable(Routes.MOONBOARD_CSV_IMPORT) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "MoonBoardCsvImport",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.moonboard.MoonBoardCsvImportScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBugReport = { title, desc ->
+                            navController.navigate(Routes.bugReport(title, desc))
+                        },
+                    )
+                }
+            }
+
             composable(Routes.STATS) {
                 StatsScreen(
                     onNavigateBack = { navController.popBackStack() },
@@ -437,7 +516,16 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.BOARD_BROWSER) {
+            composable(
+                Routes.BOARD_BROWSER,
+                // The browser and the climb detail are both expensive surfaces:
+                // the former restores a catalogue list while the latter draws
+                // hundreds of board placements.  Animating both during a pop
+                // made low-memory phones compose/draw them concurrently and
+                // blocked the main thread for seconds.  Restore the browser in
+                // one frame instead; the forward navigation may still animate.
+                popEnterTransition = { EnterTransition.None },
+            ) {
                 BoardBrowserScreen(
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
@@ -496,6 +584,11 @@ fun CruxCoachNavHost(
                     com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
                         onBack = { navController.popBackStack() },
                         onPublished = { uuid -> navController.popBackStack() },
+                        onNavigateToBoardBrowser = {
+                            if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                                navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                            }
+                        },
                         onNavigateToKilterSettings = {
                             navController.popBackStack()
                             navController.navigate(Routes.SETTINGS)
@@ -528,10 +621,24 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.BOARD_CLIMB_DETAIL) {
+            composable(
+                Routes.BOARD_CLIMB_DETAIL,
+                // Pair with BOARD_BROWSER's no-animation pop enter.  Disposing
+                // the photo-backed board renderer immediately prevents it from
+                // competing with the restored LazyColumn on constrained OEMs.
+                popExitTransition = { ExitTransition.None },
+            ) {
                 PerfLogger.navMilestone("BOARD_CLIMB_DETAIL composable entered")
                 BoardClimbDetailScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = {
+                        PerfLogger.navStart("BoardClimbDetail", "BoardBrowser(back)")
+                        navController.popBackStack()
+                    },
+                    onNavigateToBoardBrowser = {
+                        if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                            navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                        }
+                    },
                     onNavigateToClimb = { uuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(uuid, angle)) {
                             popUpTo(Routes.BOARD_CLIMB_DETAIL) { inclusive = true }
@@ -586,6 +693,9 @@ fun CruxCoachNavHost(
                     onNavigateToHistory = {
                         navController.navigate(Routes.BOARD_LOGBOOK_HISTORY)
                     },
+                    onNavigateToGenerator = {
+                        navController.navigate(Routes.PLAYLIST_GENERATOR)
+                    },
                 )
             }
 
@@ -603,8 +713,133 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
-                    }
+                    },
+                    onNavigateToPlaybackPlan = { listId ->
+                        navController.navigate(Routes.playlistDetail(listId))
+                    },
+                    onPlayed = {
+                        navController.navigate(Routes.PLAYLIST_PLAYER) {
+                            launchSingleTop = true
+                        }
+                    },
                 )
+            }
+
+            composable(Routes.PLAYLIST_DETAIL) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistDetail",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistDetailScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToBrowser = {
+                            if (!navController.popBackStack(Routes.BOARD_BROWSER, false)) {
+                                navController.navigate(Routes.BOARD_BROWSER) { launchSingleTop = true }
+                            }
+                        },
+                        // The training-plan editor can also start directly.
+                        onPlayed = {
+                            navController.navigate(Routes.PLAYLIST_PLAYER) {
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_PLAYER) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistPlayer",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    val playerViewModel:
+                        com.cruxcoach.android.ui.playlist.PlaylistPlayerViewModel = hiltViewModel()
+                    // The player's "sharing blocked" banner offers to turn
+                    // Bluetooth on. Without this launcher the button fell back
+                    // to the parameter's empty default and swallowed every tap.
+                    val btEnableLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.StartActivityForResult()
+                    ) { /* the coordinator picks the adapter change up by itself */ }
+                    val sharingPermissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestMultiplePermissions()
+                    ) {
+                        // A runtime-permission grant emits no Bluetooth adapter
+                        // event. Retry explicitly; otherwise a promoted host
+                        // remains local-only and the Allow button appears to do
+                        // nothing even though Android granted the permission.
+                        if (com.cruxcoach.android.ble.BlePermissionHelper
+                                .hasAdvertisingPermission(context) &&
+                            com.cruxcoach.android.ble.BlePermissionHelper
+                                .hasConnectionPermission(context)
+                        ) {
+                            playerViewModel.retrySharing()
+                        }
+                    }
+                    com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                        onNavigateToBrowser = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
+                        onEnableBluetooth = {
+                            btEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                        },
+                        onRequestSharingPermission = {
+                            sharingPermissionLauncher.launch(
+                                com.cruxcoach.android.ble.BlePermissionHelper
+                                    .getSessionHostingPermissions()
+                            )
+                        },
+                        viewModel = playerViewModel,
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_IMPORT) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistImport",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistImportScreen(
+                        onImported = { listId ->
+                            navController.navigate(Routes.boardListDetail(listId)) {
+                                // Import is one-shot: back from the list must
+                                // not re-import.
+                                popUpTo(Routes.PLAYLIST_IMPORT) { inclusive = true }
+                            }
+                        },
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_GENERATOR) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistGenerator",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistGeneratorScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToPlaylist = { listId ->
+                            navController.navigate(Routes.boardListDetail(listId)) {
+                                // Generator is a one-shot wizard: leaving it on the
+                                // back stack would re-generate on back-press.
+                                popUpTo(Routes.BOARD_LISTS)
+                            }
+                        },
+                    )
+                }
             }
 
             composable(Routes.SETTINGS) {
@@ -620,6 +855,7 @@ fun CruxCoachNavHost(
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                     onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+                    onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                     onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                     onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
@@ -808,8 +1044,68 @@ fun CruxCoachNavHost(
         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
         onNavigateToBoardMap = { navController.navigate(Routes.BOARD_MAP) },
         onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+        onNavigateToMoonBoardImport = {
+            navController.navigate(Routes.MOONBOARD_CSV_IMPORT) { launchSingleTop = true }
+        },
     )
     } // CompositionLocalProvider
+}
+
+/**
+ * Auto-starting CruxRelay is the first flow that may need ADVERTISE after the
+ * user already granted SCAN/CONNECT. Surface the platform dialog at that exact
+ * point and retry once permission is granted; never make the user hunt through
+ * Android settings and never request unrelated Nearby permissions.
+ */
+@Composable
+private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val context = LocalContext.current
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+    var handledFailure by remember { mutableStateOf<String?>(null) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) relayManager.requestEnable()
+    }
+    val missing = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+    ) != PackageManager.PERMISSION_GRANTED
+    val permissionFailure = relayState.error == RelayError.ADVERTISE_FAILED &&
+        relayState.errorDetail == "no permission" && !relayState.pendingDisclosure
+
+    LaunchedEffect(permissionFailure, missing) {
+        if (!permissionFailure) handledFailure = null
+        if (permissionFailure && missing && handledFailure != relayState.errorDetail) {
+            handledFailure = relayState.errorDetail
+            launcher.launch(BlePermissionHelper.getAdvertisingPermissions().single())
+        }
+    }
+}
+
+/** App-global one-time disclosure. Automatic sharing may be requested while
+ * the connection sheet is closed, so this trust gate overlays every route. */
+@Composable
+private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+    if (!relayState.pendingDisclosure) return
+    AlertDialog(
+        onDismissRequest = relayManager::dismissDisclosure,
+        modifier = Modifier.testTag("relay_disclosure_dialog"),
+        title = { Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_title)) },
+        text = { Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_text)) },
+        confirmButton = {
+            Button(onClick = relayManager::confirmDisclosureAndEnable) {
+                Text(stringResource(com.cruxcoach.android.R.string.relay_disclosure_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = relayManager::dismissDisclosure) {
+                Text(stringResource(com.cruxcoach.android.R.string.action_cancel))
+            }
+        },
+    )
 }
 
 /** Isolated composable for wake lock — reads navBackStackEntry without recomposing parent. */
@@ -820,7 +1116,7 @@ private fun WakeLockEffect(navController: NavHostController, startViewModel: Sta
     val keepScreenOnSetting by startViewModel.keepScreenOn.collectAsStateWithLifecycle(initialValue = false)
     val keepScreenOn = keepScreenOnSetting && currentRoute in wakeLockRoutes
 
-    val activity = LocalContext.current as? android.app.Activity
+    val activity = LocalActivity.current
     DisposableEffect(keepScreenOn) {
         if (keepScreenOn) {
             activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -878,4 +1174,3 @@ private fun CruxCoachBottomBar(navController: NavHostController) {
     }
     } // AnimatedVisibility
 }
-

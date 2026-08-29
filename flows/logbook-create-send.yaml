@@ -1,0 +1,67 @@
+appId: com.cruxcoach.android
+name: logbook-create-send
+tags:
+  - release-gate
+  - extended
+  - mutates-state
+---
+# A transport retry reuses E2E_RUN_ID. Remove at most the immediately prior
+# attempt's run-scoped marker before writing it again, then leave Logbook.
+- runFlow: subflows/launch-browser.yaml
+- tapOn:
+    id: "board_logbook_icon"
+- runFlow:
+    when:
+      visible: "E2E-SEND-${E2E_RUN_ID}"
+    commands:
+      - tapOn:
+          id: "logbook_ascent_select_.*"
+          index: 0
+      - tapOn:
+          id: "logbook_delete_selected"
+      - tapOn:
+          id: "logbook_delete_confirm"
+      - extendedWaitUntil:
+          notVisible: "E2E-SEND-${E2E_RUN_ID}"
+          timeout: 10000
+- pressKey: Back
+- runFlow: subflows/open-first-climb.yaml
+- tapOn:
+    id: "boarddetail_log_button"
+- assertVisible:
+    id: "ascent_dialog"
+- tapOn:
+    id: "ascent_type_send"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_attempts_up"
+- tapOn:
+    id: "ascent_quality_4"
+- tapOn:
+    id: "ascent_comment"
+- inputText: "E2E-SEND-${E2E_RUN_ID}"
+- hideKeyboard
+- tapOn:
+    id: "ascent_save"
+- assertNotVisible:
+    id: "ascent_dialog"
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "board_logbook_icon"
+- extendedWaitUntil:
+    visible: "E2E-SEND-${E2E_RUN_ID}"
+    timeout: 15000
+- assertVisible: "Top · 3 Versuche"
+- assertVisible: "4★"
+- assertVisible: "40°"
+- runFlow: subflows/delete-first-logbook-entry.yaml
+- extendedWaitUntil:
+    notVisible: "E2E-SEND-${E2E_RUN_ID}"
+    timeout: 10000
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"

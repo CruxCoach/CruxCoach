@@ -37,6 +37,7 @@ class UpdaterRepositoryReArmTest {
     private val installer: ApkInstaller = mockk(relaxed = true)
     private val notifier: UpdateNotifier = mockk(relaxed = true)
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
+    private val registry: UpdateSourceRegistry = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -57,6 +58,7 @@ class UpdaterRepositoryReArmTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        registry = registry,
         ioDispatcher = dispatcher,
     )
 
@@ -68,7 +70,7 @@ class UpdaterRepositoryReArmTest {
         pipelineStage = stage,
         pendingTagName = "v0.2.0",
         pendingVersionName = "0.2.0",
-        pendingApkUrl = "https://example/CruxCoach-v0.2.0.apk",
+        pendingDownloadUrls = listOf("https://example/CruxCoach-v0.2.0.apk"),
         pendingApkSha256 = "a".repeat(64),
         pendingApkSizeBytes = 1000L,
         pendingApkSha256Url = "https://example/CruxCoach-v0.2.0.apk.sha256",

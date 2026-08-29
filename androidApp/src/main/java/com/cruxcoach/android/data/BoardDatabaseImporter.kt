@@ -5,6 +5,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.FramesBinaryCodec
+import com.cruxcoach.domain.board.QuantumBoardModel
 import java.io.File
 import java.io.FileOutputStream
 
@@ -15,6 +17,7 @@ import java.io.FileOutputStream
  * - **Blossom** ([importFromChunks]): Imports from 3 separate chunk files (meta, climbs, stats)
  * - **Online legacy** ([downloadAndImport]): Delegates APK download and DB extraction
  *   to [ApkDownloader], then imports the extracted file.
+ * - **Local share** ([importFromLocalDb]): Imports missing rows from an unverified peer DB.
  *
  * All produce temp SQLite files with the Kilter board schema (Aurora-style: climbs, climb_stats,
  * placements, holes, etc.), then bulk-insert into SQLDelight.
@@ -24,10 +27,43 @@ class BoardDatabaseImporter(
     private val boardRepository: BoardRepository,
     private val apkDownloader: ApkDownloader
 ) {
+    /**
+     * Trust belongs to the import entry point, never to columns inside the
+     * source DB. A peer-controlled SQLite file can claim any schema, origin,
+     * or setter pubkey it wants.
+     */
+    private enum class ClimbImportPolicy(
+        val acceptsCommunityProvenance: Boolean,
+        val refreshesExistingClimbs: Boolean,
+    ) {
+        /** Maintainer-authenticated Blossom chunks. */
+        AUTHENTICATED_CATALOGUE(
+            acceptsCommunityProvenance = true,
+            refreshesExistingClimbs = true,
+        ),
+
+        /** Legacy upstream catalogue: refresh data, but never assert Nostr identity. */
+        LEGACY_CATALOGUE(
+            acceptsCommunityProvenance = false,
+            refreshesExistingClimbs = true,
+        ),
+
+        /**
+         * Explicit local/WiFi share: climb rows are additive only and cannot
+         * assert community authorship. Public stats and geometry remain part
+         * of the catalogue payload the user explicitly chose to import.
+         */
+        UNVERIFIED_LOCAL_SHARE(
+            acceptsCommunityProvenance = false,
+            refreshesExistingClimbs = false,
+        ),
+    }
+
     companion object {
         private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+        private val QUANTUM_MODELS = setOf("xl", "l", "m", "s", "belay")
 
         // Hot-path indexes for the climbs table — dropped before bulk
         // import + recreated afterwards. Must stay byte-equivalent (modulo
@@ -177,7 +213,12 @@ class BoardDatabaseImporter(
                     for ((i, file) in climbsDbFiles.withIndex()) {
                         val baseInserted = cumInserted; val baseScanned = cumScanned
                         openReadOnly(file) { rawDb ->
-                            importClimbs(rawDb, freshInstall = freshInstallClimbs, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                            importClimbs(
+                                rawDb,
+                                freshInstall = freshInstallClimbs,
+                                sharedTargetDb = sharedDb,
+                                policy = ClimbImportPolicy.AUTHENTICATED_CATALOGUE,
+                            ) { inserted, scanned, _ ->
                                 onProgress?.invoke(ImportStep.ImportClimbs(
                                     baseInserted + inserted, baseScanned + scanned, grandClimbTotal
                                 ))
@@ -328,6 +369,7 @@ class BoardDatabaseImporter(
         // backfill is skipped — the Kilter chunk path ([importClimbs]) does
         // the same via its own `hasMoveCount` check.
         var snapshotHasMoveCount = false
+        var snapshotHasMethod = false
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
@@ -348,12 +390,17 @@ class BoardDatabaseImporter(
                     while (c.moveToNext()) {
                         when (c.getString(1)) {
                             "move_count" -> snapshotHasMoveCount = true
+                            "method" -> snapshotHasMethod = true
                             "origin" -> snapshotHasOrigin = true
                             "created_by_pubkey" -> snapshotHasPubkey = true
                         }
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                // MoonBoard problem method. Blobs built before 2026-07-26 have
+                // no such column, and NULL there means what it means in a fresh
+                // blob: "feet follow hands". Aurora blobs never carry one.
+                val methodExpr = if (snapshotHasMethod) "method" else "NULL"
                 val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
                 // A snapshot row carrying a setter pubkey is CruxCoach-authored
@@ -371,7 +418,7 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
                 mergeSnapshotClimbs(
                     targetDb, "mb", "moonboard",
-                    moveCountExpr, originExpr, pubkeyExpr
+                    moveCountExpr, originExpr, pubkeyExpr, methodExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -385,10 +432,10 @@ class BoardDatabaseImporter(
                         climb_uuid, angle, display_difficulty, difficulty_average,
                         quality_average, ascensionist_count, benchmark_difficulty,
                         fa_username, fa_at, official_kilter_difficulty, layout_id)
-                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                    SELECT LOWER(TRIM(climb_uuid)), angle, display_difficulty, difficulty_average,
                            quality_average, ascensionist_count, benchmark_difficulty,
                            fa_username, fa_at, NULL,
-                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(TRIM(climb_uuid))), 0)
                     FROM mb.climb_stats
                     """.trimIndent()
                 )
@@ -435,9 +482,16 @@ class BoardDatabaseImporter(
         // Snapshots built by build_board_db.py carry is_nomatch; move_count is
         // computed post-import (the bundle has no move_count column).
         var snapshotHasMoveCount = false
+        var snapshotHasMethod = false
         val brand = arrayOf<Any?>(boardBrand)
-        withDeferredIndexes(
-            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        // Aurora-family snapshots are much smaller than the combined local
+        // catalogue. Rebuilding every global climb/stat index once per board
+        // becomes O(boards × total catalogue) after MoonBoard is present and
+        // caused minutes of CPU saturation. Maintain indexes incrementally for
+        // these board-scoped inserts; reserve drop/rebuild for the large Kilter
+        // and MoonBoard bulk imports where it is actually cheaper.
+        withIncrementalIndexes(
+            onComplete = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             val targetDb = openTargetDb()
             try {
@@ -455,12 +509,17 @@ class BoardDatabaseImporter(
                     while (c.moveToNext()) {
                         when (c.getString(1)) {
                             "move_count" -> snapshotHasMoveCount = true
+                            "method" -> snapshotHasMethod = true
                             "origin" -> snapshotHasOrigin = true
                             "created_by_pubkey" -> snapshotHasPubkey = true
                         }
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                // MoonBoard problem method. Blobs built before 2026-07-26 have
+                // no such column, and NULL there means what it means in a fresh
+                // blob: "feet follow hands". Aurora blobs never carry one.
+                val methodExpr = if (snapshotHasMethod) "method" else "NULL"
                 val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
                 // A snapshot row carrying a setter pubkey is CruxCoach-authored
@@ -479,7 +538,7 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
                 mergeSnapshotClimbs(
                     targetDb, "ab", boardBrand,
-                    moveCountExpr, originExpr, pubkeyExpr
+                    moveCountExpr, originExpr, pubkeyExpr, methodExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -492,10 +551,10 @@ class BoardDatabaseImporter(
                         climb_uuid, angle, display_difficulty, difficulty_average,
                         quality_average, ascensionist_count, benchmark_difficulty,
                         fa_username, fa_at, official_kilter_difficulty, layout_id)
-                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                    SELECT LOWER(TRIM(climb_uuid)), angle, display_difficulty, difficulty_average,
                            quality_average, ascensionist_count, benchmark_difficulty,
                            fa_username, fa_at, NULL,
-                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(TRIM(climb_uuid))), 0)
                     FROM ab.climb_stats
                     """.trimIndent()
                 )
@@ -577,6 +636,223 @@ class BoardDatabaseImporter(
     }
 
     /**
+     * Import the dedicated Quantum v1 snapshot. The source schema is kept
+     * intentionally separate from the historical Aurora schema; this method
+     * adapts it into CruxCoach's brand-namespaced catalogue and coordinate
+     * tables without changing any old manifest or migration contract.
+     */
+    @Synchronized
+    fun importQuantumSnapshot(
+        snapshotFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null,
+    ) {
+        val db = openTargetDb()
+        try {
+            db.execSQL("ATTACH DATABASE ? AS qb", arrayOf(snapshotFile.absolutePath))
+            val schema = queryLong(db, "PRAGMA qb.user_version")
+            require(schema == 1L) { "Unsupported Quantum snapshot schema: $schema" }
+            val required = setOf(
+                "quantum_models", "quantum_diodes", "quantum_routes",
+                "quantum_route_models", "quantum_route_lights",
+            )
+            val present = mutableSetOf<String>()
+            db.rawQuery("SELECT name FROM qb.sqlite_master WHERE type='table'", null).use { c ->
+                while (c.moveToNext()) present += c.getString(0)
+            }
+            require(present.containsAll(required)) { "Quantum snapshot is missing required tables" }
+
+            // eWalls encodes the LED address as text in autocad_id. It is sent
+            // over the controller's two-byte position field, so accepting a
+            // negative, non-integral, or wider value here would silently turn
+            // untrusted catalogue data into a different hardware address. Do
+            // this before beginning any target refresh so a malformed snapshot
+            // cannot remove the last known-good Quantum catalogue.
+            val invalidLedPositionCount = queryLong(
+                db,
+                """
+                SELECT COUNT(*)
+                FROM qb.quantum_diodes d
+                JOIN qb.quantum_models m USING(model)
+                WHERE d.autocad_id IS NULL
+                   OR TRIM(CAST(d.autocad_id AS TEXT)) = ''
+                   OR TRIM(CAST(d.autocad_id AS TEXT)) GLOB '*[^0-9]*'
+                   OR CAST(TRIM(CAST(d.autocad_id AS TEXT)) AS INTEGER) NOT BETWEEN 0 AND 65535
+                """.trimIndent(),
+            )
+            require(invalidLedPositionCount == 0L) {
+                "Quantum snapshot contains an invalid LED position"
+            }
+
+            db.beginTransaction()
+            try {
+                // Refresh only Quantum catalogue rows. Personal/log/list rows
+                // reference the stable synthetic climb ids and stay untouched.
+                db.execSQL("DELETE FROM climb_stats WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum'))")
+                db.execSQL("DELETE FROM climbs WHERE board_brand='quantum' AND origin IN ('kilter','quantum')")
+                db.execSQL("DELETE FROM placements WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM leds WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM product_sizes WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM placement_roles WHERE board_brand='quantum'")
+                db.execSQL("DELETE FROM quantum_route_refs")
+                db.execSQL("DELETE FROM quantum_route_metadata")
+
+                db.execSQL(
+                    """
+                    INSERT INTO product_sizes(board_brand,id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename)
+                    SELECT 'quantum', product_size_id, 91, name,
+                           CAST(edge_left*1000 AS INTEGER), CAST(edge_right*1000 AS INTEGER),
+                           CAST(edge_bottom*1000 AS INTEGER), CAST(edge_top*1000 AS INTEGER), NULL
+                    FROM qb.quantum_models
+                    """.trimIndent()
+                )
+                // Prefix model-local placement ids with the stable model slot
+                // (layout_id - 9100). This
+                // keeps the shared (brand,placement_id) PK collision-free while
+                // preserving a stable reversible mapping AND staying within
+                // BoardHold's Int identity range.
+                db.execSQL(
+                    """
+                    INSERT INTO placements(board_brand,placement_id,hole_id,set_id,x,y)
+                    SELECT 'quantum', (m.layout_id-9100)*1000000+d.placement_id,
+                           (m.layout_id-9100)*1000000+d.placement_id, 1,
+                           CAST(d.x*1000 AS INTEGER), CAST(d.y*1000 AS INTEGER)
+                    FROM qb.quantum_diodes d JOIN qb.quantum_models m USING(model)
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO leds(board_brand,hole_id,product_size_id,position)
+                    SELECT 'quantum', (m.layout_id-9100)*1000000+d.placement_id,
+                           m.product_size_id, CAST(d.autocad_id AS INTEGER)
+                    FROM qb.quantum_diodes d JOIN qb.quantum_models m USING(model)
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO placement_roles(board_brand,id,name,led_color,screen_color) VALUES
+                    ('quantum',12,'Start','#00ff00','#00ff00'),
+                    ('quantum',13,'Step','#00ffff','#00ffff'),
+                    ('quantum',14,'Finish','#ff00ff','#ff00ff')
+                    """.trimIndent()
+                )
+
+                val routeCount = queryLong(db, "SELECT COUNT(*) FROM qb.quantum_route_models").toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, routeCount))
+                db.execSQL(
+                    """
+                    INSERT INTO quantum_route_refs(app_uuid,route_uuid,model)
+                    SELECT LOWER(app_uuid), LOWER(route_uuid), model
+                    FROM qb.quantum_route_models
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO quantum_route_metadata(
+                        app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                    SELECT LOWER(rm.app_uuid),COALESCE(r.grade,''),
+                           r.campusing,r.edge,r.kickplate,r.matching,r.standard,COALESCE(r.tags,'')
+                    FROM qb.quantum_route_models rm
+                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climbs(
+                        uuid,layout_id,setter_username,name,frames_count,is_listed,
+                        edge_left,edge_right,edge_bottom,edge_top,created_at,description,
+                        frames,is_nomatch,hsm,move_count,board_brand,origin,source,sync_status)
+                    SELECT LOWER(rm.app_uuid), m.layout_id,
+                           NULLIF(r.setter,''), r.name, 1, CASE WHEN r.disabled=0 THEN 1 ELSE 0 END,
+                           CAST((SELECT MIN(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.x) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MIN(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST((SELECT MAX(d.y) FROM qb.quantum_route_lights l
+                                 JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                                 WHERE l.route_uuid=r.uuid AND l.model=rm.model)*1000 AS INTEGER),
+                           CAST(r.created_at AS TEXT), COALESCE(r.tips,''),
+                           CAST(COALESCE((
+                             SELECT group_concat('p'||q.placement||'r'||q.role,'') FROM (
+                               SELECT (m2.layout_id-9100)*1000000+d.placement_id AS placement,
+                                      CASE l.step WHEN 1 THEN 12 WHEN 3 THEN 14 ELSE 13 END AS role
+                               FROM qb.quantum_route_lights l
+                               JOIN qb.quantum_diodes d ON d.model=l.model AND d.diode_uuid=l.diode_uuid
+                               JOIN qb.quantum_models m2 ON m2.model=l.model
+                               WHERE l.route_uuid=r.uuid AND l.model=rm.model
+                               ORDER BY l.step,d.placement_id
+                             ) q
+                           ),'') AS BLOB), 0,
+                           (CASE WHEN COALESCE(r.campusing,0)=0 THEN 1 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.edge,0)=0 THEN 2 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.kickplate,0)=0 THEN 4 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.matching,0)=0 THEN 8 ELSE 0 END) +
+                           (CASE WHEN COALESCE(r.standard,0)=0 THEN 16 ELSE 0 END),
+                           MAX((SELECT COUNT(*) FROM qb.quantum_route_lights l WHERE l.route_uuid=r.uuid AND l.model=rm.model)-2,0),
+                           'quantum','quantum','quantum','synced'
+                    FROM qb.quantum_route_models rm
+                    JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                    JOIN qb.quantum_models m ON m.model=rm.model
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    WITH route_grades AS (
+                      SELECT rm.app_uuid,rm.route_uuid,rm.model,m.layout_id,r.angle,r.rating,r.ascents,
+                             REPLACE(TRIM(r.grade),' ','') AS source_bucket
+                      FROM qb.quantum_route_models rm
+                      JOIN qb.quantum_routes r ON r.uuid=rm.route_uuid
+                      JOIN qb.quantum_models m ON m.model=rm.model
+                    ), mapped_grades AS (
+                      SELECT *, CASE
+                        WHEN source_bucket IN ('[6]','[7]') THEN 10
+                        WHEN source_bucket IN ('[7,8]','[8]') THEN 11
+                        WHEN source_bucket='[9]' THEN 12
+                        WHEN source_bucket IN ('[9,10]','[10]') THEN 13
+                        WHEN source_bucket='[11]' THEN 14
+                        WHEN source_bucket IN ('[11,12]','[12]','[12,13]','[13]') THEN 15
+                        WHEN source_bucket IN (
+                          '[14]','[15]','[16]','[17]','[18]','[19]','[20]','[21]','[22]',
+                          '[23]','[24]','[25]','[26]','[27]','[28]','[29]','[30]','[31]','[32]'
+                        ) THEN CAST(SUBSTR(source_bucket,2,LENGTH(source_bucket)-2) AS INTEGER)+2
+                        WHEN source_bucket='[15,16]' THEN 18
+                        WHEN source_bucket='[19,20]' THEN 22
+                        WHEN source_bucket='[20,21]' THEN 23
+                        WHEN source_bucket='[21,22]' THEN 24
+                        WHEN source_bucket='[22,23]' THEN 25
+                        ELSE NULL
+                      END AS crux_grade
+                      FROM route_grades
+                    )
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid,angle,display_difficulty,difficulty_average,quality_average,
+                        ascensionist_count,benchmark_difficulty,fa_username,fa_at,
+                        official_kilter_difficulty,layout_id)
+                    SELECT LOWER(app_uuid),angle,crux_grade,crux_grade,
+                           rating,ascents,NULL,NULL,NULL,NULL,layout_id
+                    FROM mapped_grades
+                    """.trimIndent()
+                )
+                db.setTransactionSuccessful()
+                onProgress?.invoke(ImportStep.ImportClimbs(routeCount, routeCount, routeCount))
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            runCatching { db.execSQL("DETACH DATABASE qb") }
+            db.close()
+        }
+        backfillMoveCounts()
+        val count = boardRepository.getClimbCountsByBrand()["quantum"] ?: 0L
+        onProgress?.invoke(ImportStep.Done(count.toInt(), count.toInt(), 0, 0))
+        Log.i(TAG, "importQuantumSnapshot done: climbs=$count")
+    }
+
+    /**
      * Merge a snapshot's `climbs` (attached as [alias]) into the target —
      * the snapshot analogue of the Kilter chunk path's two-step merge in
      * [importClimbs]. A blanket INSERT OR REPLACE is forbidden here: the
@@ -612,6 +888,7 @@ class BoardDatabaseImporter(
         moveCountExpr: String,
         originExpr: String,
         pubkeyExpr: String,
+        methodExpr: String = "NULL",
     ) {
         // Stage with uuid pre-lowercased + PK-indexed so every pass below
         // is an O(log n) lookup, same rationale as the Kilter chunk_norm.
@@ -625,7 +902,8 @@ class BoardDatabaseImporter(
                 edge_bottom INTEGER, edge_top INTEGER,
                 created_at INTEGER, description TEXT,
                 is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
-                move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
+                method TEXT
             ) WITHOUT ROWID
             """.trimIndent()
         )
@@ -635,12 +913,12 @@ class BoardDatabaseImporter(
             targetDb.execSQL(
                 """
                 INSERT OR IGNORE INTO snapshot_norm
-                SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                SELECT LOWER(TRIM(uuid)), layout_id, setter_username, name, frames,
                        frames_count, is_listed, edge_left, edge_right,
                        edge_bottom, edge_top, created_at,
                        COALESCE(description, ''), COALESCE(is_nomatch, 0),
                        COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                       $originExpr, $pubkeyExpr
+                       $originExpr, $pubkeyExpr, $methodExpr
                 FROM $alias.climbs
                 """.trimIndent()
             )
@@ -651,12 +929,12 @@ class BoardDatabaseImporter(
                     frames_count, is_listed, edge_left, edge_right,
                     edge_bottom, edge_top, created_at,
                     description, is_nomatch, frames_pace, hsm, move_count,
-                    board_brand, origin, created_by_pubkey)
+                    board_brand, origin, created_by_pubkey, method)
                 SELECT uuid, layout_id, setter_username, name, frames,
                        frames_count, is_listed, edge_left, edge_right,
                        edge_bottom, edge_top, created_at,
                        description, is_nomatch, frames_pace, hsm, move_count,
-                       ?, origin, created_by_pubkey
+                       ?, origin, created_by_pubkey, method
                 FROM snapshot_norm
                 WHERE is_listed = 1
                 """.trimIndent(),
@@ -668,11 +946,11 @@ class BoardDatabaseImporter(
                     (layout_id, setter_username, name, frames,
                      frames_count, is_listed, edge_left, edge_right,
                      edge_bottom, edge_top, created_at, description,
-                     is_nomatch, frames_pace, hsm, move_count)
+                     is_nomatch, frames_pace, hsm, move_count, method)
                     = (SELECT layout_id, setter_username, name, frames,
                               frames_count, is_listed, edge_left, edge_right,
                               edge_bottom, edge_top, created_at, description,
-                              is_nomatch, frames_pace, hsm, move_count
+                              is_nomatch, frames_pace, hsm, move_count, method
                        FROM snapshot_norm
                        WHERE snapshot_norm.uuid = main.climbs.uuid)
                 WHERE origin = 'kilter'
@@ -683,6 +961,19 @@ class BoardDatabaseImporter(
                 """
                 UPDATE climbs SET is_listed = 0
                 WHERE is_listed = 1
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
+                """.trimIndent()
+            )
+            // FEAT-041 item 1: same delete-convergence as the Kilter chunk
+            // path — a delisted community (origin='cruxcoach') row from the
+            // snapshot is a deletion, so arm is_deleted=1 (and thus the L3
+            // resurrection guard) on chunk-only devices. Kilter-origin delist
+            // is not a deletion, so it is left untouched.
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET is_deleted = 1
+                WHERE origin = 'cruxcoach'
+                  AND is_deleted = 0
                   AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
                 """.trimIndent()
             )
@@ -715,15 +1006,25 @@ class BoardDatabaseImporter(
     }
 
     /**
-     * Import from a full uncompressed board DB (e.g. received via local WiFi share).
-     * This is the same as the legacy online import path.
+     * Import from a full uncompressed board DB received via local WiFi share.
+     * Peer climb rows are additive and cannot assert Nostr provenance or
+     * refresh climbs already present on the receiver.
      */
     @Synchronized
     fun importFromLocalDb(
         dbFile: File,
+        // A direct full-DB injection is a 0.2.2-capable path and therefore
+        // imports the complete catalogue by default. The wire receiver passes
+        // false explicitly for the historical v1 scrubbed artifact.
+        includeQuantum: Boolean = true,
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
-        importFromDbFile(dbFile, onProgress)
+        importFromDbFile(
+            dbFile = dbFile,
+            policy = ClimbImportPolicy.UNVERIFIED_LOCAL_SHARE,
+            includeQuantum = includeQuantum,
+            onProgress = onProgress,
+        )
     }
 
     /**
@@ -744,7 +1045,11 @@ class BoardDatabaseImporter(
             )
 
             onProgress?.invoke(ImportStep.Extract)
-            importFromDbFile(tempDb, onProgress)
+            importFromDbFile(
+                dbFile = tempDb,
+                policy = ClimbImportPolicy.LEGACY_CATALOGUE,
+                onProgress = onProgress,
+            )
         } finally {
             tempDb.delete()
         }
@@ -753,12 +1058,15 @@ class BoardDatabaseImporter(
     // ── Shared import core ───────────────────────────────────────────
 
     /**
-     * Central import method used by both online and offline paths.
+     * Central import method used by both online and offline paths. [policy]
+     * carries the trust decision made by the caller into the merge logic.
      * Opens the raw-schema SQLite [dbFile], runs delta comparison if data
      * already exists, and bulk-inserts all tables into SQLDelight.
      */
     private fun importFromDbFile(
         dbFile: File,
+        policy: ClimbImportPolicy,
+        includeQuantum: Boolean = false,
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
@@ -790,17 +1098,39 @@ class BoardDatabaseImporter(
             // transaction AFTER climbs/stats had already committed — a
             // partial import. Probing every source SELECT first turns that
             // into a clean, zero-write abort.
-            if (isModernSource) preflightModernSource(dbFile)
+            if (isModernSource) preflightModernSource(dbFile, includeQuantum)
+            var modernLayoutCount: Int? = null
             val (climbCount, statCount) = withDeferredIndexes {
-                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
-                val climbs = importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, total ->
-                    onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
+                if (isModernSource) {
+                    val imported = importModernCatalogueAtomically(
+                        srcFile = dbFile,
+                        rawDb = rawDb,
+                        freshInstallClimbs = freshInstallClimbs,
+                        freshInstallStats = freshInstallStats,
+                        policy = policy,
+                        includeQuantum = includeQuantum,
+                        onProgress = onProgress,
+                    )
+                    modernLayoutCount = imported.placements
+                    imported.climbs to imported.stats
+                } else {
+                    onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
+                    val climbs = importClimbs(
+                        rawDb,
+                        freshInstall = freshInstallClimbs,
+                        policy = policy,
+                    ) { inserted, scanned, total ->
+                        onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
+                    }
+                    onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
+                    val stats = importClimbStats(
+                        rawDb,
+                        freshInstall = freshInstallStats,
+                    ) { inserted, scanned, total ->
+                        onProgress?.invoke(ImportStep.ImportStats(inserted, scanned, total))
+                    }
+                    climbs to stats
                 }
-                onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
-                val stats = importClimbStats(rawDb, freshInstall = freshInstallStats) { inserted, scanned, total ->
-                    onProgress?.invoke(ImportStep.ImportStats(inserted, scanned, total))
-                }
-                climbs to stats
             }
 
             backfillMoveCounts()
@@ -821,15 +1151,14 @@ class BoardDatabaseImporter(
                 // bootstraps a fresh install and merges brands an existing
                 // install doesn't have yet — deliberately NOT gated on
                 // hasLayout like the Kilter path.
-                val copied = importModernGeometry(dbFile)
                 // The sender's DB also carries gym locations + walls.
                 // Guarded + non-fatal by design (skips when absent/empty).
                 importLocations(rawDb)
-                copied
+                checkNotNull(modernLayoutCount)
             } else {
                 val hasLayout = snapshot != null && snapshot.placementCount > 0
                 val count = if (hasLayout) {
-                    snapshot!!.placementCount
+                    snapshot.placementCount
                 } else {
                     importPlacements(rawDb)
                 }
@@ -845,6 +1174,10 @@ class BoardDatabaseImporter(
             importSyncState(rawDb)
             onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
 
+            // The local full-DB path still has sync-state writes and result
+            // accounting after geometry. Emit an explicit terminal phase so
+            // the UI never appears frozen at "Layout 100%".
+            onProgress?.invoke(ImportStep.Finalizing)
             val nomatchCount = boardRepository.countNomatchClimbs()
             onProgress?.invoke(ImportStep.Done(
                 climbCount, statCount, layoutCount,
@@ -858,9 +1191,19 @@ class BoardDatabaseImporter(
     // ── Progress model ───────────────────────────────────────────────
 
     sealed class ImportStep {
+        /** First-onboarding probe for a sender on the currently joined Wi-Fi. */
+        data object DiscoveringLocalShare : ImportStep()
+        /** Sender is folding, scrubbing and compressing its immutable DB copy. */
+        data object PreparingSnapshot : ImportStep()
         data object CheckingUpdate : ImportStep()
         data class Download(val bytesRead: Long, val totalBytes: Long) : ImportStep()
+        data class DownloadApk(val bytesRead: Long, val totalBytes: Long) : ImportStep()
+        /** Hash/integrity validation can take several seconds after a bar has
+         *  reached 100%; expose it so 100% never looks like a frozen transfer. */
+        data object VerifyingSnapshot : ImportStep()
+        data object VerifyingApk : ImportStep()
         data object Extract : ImportStep()
+        data class Decompress(val bytesRead: Long, val totalBytes: Long) : ImportStep()
 
         /** Fetching the Blossom manifest from Nostr relays. */
         data object FetchingManifest : ImportStep()
@@ -1012,7 +1355,7 @@ class BoardDatabaseImporter(
                     cursor.use {
                         while (it.moveToNext()) {
                             lastUuid = it.getString(0)
-                            val frames = it.getString(1) ?: ""
+                            val frames = FramesBinaryCodec.decode(it.getBlob(1) ?: ByteArray(0))
                             val sem = roleSem[it.getString(2)]
                             val moves = if (sem != null) computeMoveCount(frames, sem)
                                         else computeMoveCount(frames)
@@ -1044,28 +1387,63 @@ class BoardDatabaseImporter(
         existingUuids: Set<String>? = null,
         freshInstall: Boolean = false,
         sharedTargetDb: SQLiteDatabase? = null,
+        sourceAlreadyAttached: Boolean = false,
+        manageBatchTransactions: Boolean = true,
+        allowLegacyFallback: Boolean = true,
+        sourceTableOverride: String? = null,
+        sourceColumnsOverride: Set<String>? = null,
+        policy: ClimbImportPolicy,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
-        val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
-        val srcTable = resolveClimbsTable(rawDb)
+        val chunkPath = rawDb.path ?: if (allowLegacyFallback) {
+            return importClimbsLegacy(
+                rawDb = rawDb,
+                existingUuids = existingUuids,
+                allowExistingUpdates = policy.refreshesExistingClimbs,
+                onProgress = onProgress,
+            )
+        } else {
+            throw IllegalStateException("Modern share source has no filesystem path")
+        }
+        val srcTable = sourceTableOverride ?: resolveClimbsTable(rawDb)
         // sharedTargetDb is owned by the caller (importFromChunks holds one
         // connection per phase to avoid PRAGMA-roundtrip + page-cache-cold
         // overhead on every chunk). Only close locally-opened ones.
         val targetDb = sharedTargetDb ?: openTargetDb()
         val ownsTargetDb = sharedTargetDb == null
         try {
-            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
+            if (!sourceAlreadyAttached) {
+                targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
+            }
             // Source-column probe + derived expressions come before the
             // total-count query because $draftFilter feeds it.
             //
             // Copy move_count when the source has it (CruxCoach backups always,
             // Blossom chunks from 2026-04-21+). Old chunks without the column
             // fall back to 0 and backfillMoveCounts() computes it post-import.
-            val srcCols = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
-                buildSet { while (c.moveToNext()) add(c.getString(1)) }
-            }
+            val srcCols = sourceColumnsOverride ?: rawDb.rawQuery(
+                "PRAGMA table_info($srcTable)", null,
+            ).use { c -> buildSet { while (c.moveToNext()) add(c.getString(1)) } }
             val hasMoveCount = "move_count" in srcCols
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
+            // MoonBoard problem method (25.sqm) — a PUBLIC climbing rule
+            // ('method_footless' & friends), not provenance, so it crosses
+            // every boundary including the unverified peer share: without it
+            // a shared footless problem reads as ordinary feet-follow-hands.
+            // Sources predating 25.sqm (Kilter APK dumps, pre-2026-07-26
+            // blobs, older senders) have no such column → NULL, which is
+            // exactly the schema default. LocalShareSchema's
+            // CLIMBS_PEER_SHARE_CONTRACT carries the full per-column trust
+            // classification and the test that enforces it.
+            val hasMethod = "method" in srcCols
+            val methodExpr = if (hasMethod) "method" else "NULL"
+            // Catalogue-refresh (existing-row) half of the same decision.
+            // `method` may only join the refresh tuple when the source really
+            // carries the column — mirroring [mergeSnapshotClimbs], which
+            // refreshes it for the MoonBoard/Aurora snapshots. Unguarded, a
+            // pre-25.sqm source (whose [methodExpr] is the literal NULL)
+            // would silently clear a method an earlier snapshot had set.
+            val methodRefresh = if (hasMethod) ", method" else ""
             // origin column landed in Blossom chunks at a known schema-roll
             // boundary; older chunks without it fall back to the schema
             // default 'kilter' on the target side. Note: the UPDATE pass
@@ -1087,7 +1465,11 @@ class BoardDatabaseImporter(
             // works for fresh installs. Defensive — pre-Plan-C blobs
             // don't have it.
             val hasCreatedByPubkey = "created_by_pubkey" in srcCols
-            val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
+            val pubkeyExpr = if (hasCreatedByPubkey && policy.acceptsCommunityProvenance) {
+                "created_by_pubkey"
+            } else {
+                "NULL"
+            }
             // A climb that carries a setter pubkey is CruxCoach-authored — a
             // native Kilter climb never has one — so recognise it as
             // origin='cruxcoach' even when the blob's own origin column says
@@ -1098,10 +1480,18 @@ class BoardDatabaseImporter(
             // climbs as 'kilter' and stops recognising them as CruxCoach
             // climbs — no edit/publish actions, missing from the cruxcoach
             // filter. 21.sqm heals rows imported before this landed.
-            val originExpr = if (hasCreatedByPubkey)
+            val originExpr = if (!policy.acceptsCommunityProvenance) {
+                // Neither a schema marker nor peer-provided origin/pubkey
+                // authenticates authorship. Keep the row usable as catalogue
+                // data. A later maintainer-authenticated catalogue sync can
+                // restore verified community provenance for the same UUID.
+                "'kilter'"
+            } else if (hasCreatedByPubkey) {
                 "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
                     "THEN 'cruxcoach' ELSE $baseOriginExpr END"
-            else baseOriginExpr
+            } else {
+                baseOriginExpr
+            }
             // board_brand exists on modern CruxCoach sources (the in-app
             // offline share serves the sender's own cruxcoach.db, which
             // carries EVERY brand's climbs); Kilter cron chunks are
@@ -1117,7 +1507,7 @@ class BoardDatabaseImporter(
             // crafted/corrupted source must not resurrect one here.
             val deletedGuard = if ("is_deleted" in srcCols) " AND COALESCE(is_deleted, 0) = 0" else ""
             val draftFilter =
-                (if ("source" in srcCols) "AND COALESCE(source, 'kilter') != 'local'" else "") + deletedGuard
+                (if ("source" in srcCols) "AND LOWER(COALESCE(source, 'kilter')) != 'local'" else "") + deletedGuard
 
             // Drafts are excluded from `total` too, so the progress bar's
             // denominator matches what the staging INSERT actually scans.
@@ -1140,15 +1530,15 @@ class BoardDatabaseImporter(
             // target (chunk #1 just populated it) and would otherwise
             // wrongly re-enable the slow UPDATE path.
             //
-            // For incremental syncs (`freshInstall=false`), the UPDATE
-            // passes remain mandatory for content / tombstone / pubkey
-            // refresh.
-            val skipUpdatePasses = freshInstall
+            // Authenticated incremental catalogue syncs refresh existing
+            // content/tombstones/provenance. Unverified local shares stay
+            // additive even when the target is not a fresh install.
+            val updateExistingClimbs = !freshInstall && policy.refreshesExistingClimbs
             // countBefore is now only used for the inserted-count math
             // on the incremental path; on the fresh-install path we skip
             // it entirely (saves an O(N) PK-index scan on a 174k+ row
             // target before each chunk's batches).
-            val countBefore = if (skipUpdatePasses) 0L
+            val countBefore = if (freshInstall) 0L
             else queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
             onProgress?.invoke(0, 0, total)
 
@@ -1198,7 +1588,7 @@ class BoardDatabaseImporter(
                     created_at INTEGER, description TEXT,
                     is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
                     move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
-                    board_brand TEXT
+                    board_brand TEXT, method TEXT
                 ) WITHOUT ROWID
             """)
             val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
@@ -1207,7 +1597,7 @@ class BoardDatabaseImporter(
             var scanned = 0
             while (batchStart <= maxRowid) {
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
-                targetDb.beginTransaction()
+                if (manageBatchTransactions) targetDb.beginTransaction()
                 try {
                     // LOWER(uuid) is the canonical write form (see 7.sqm
                     // for full rationale). The Kilter blob carries the
@@ -1221,7 +1611,7 @@ class BoardDatabaseImporter(
                     targetDb.execSQL("DELETE FROM chunk_norm")
                     targetDb.execSQL("""
                         INSERT OR IGNORE INTO chunk_norm
-                        SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                        SELECT LOWER(TRIM(uuid)), layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                COALESCE(description, ''), COALESCE(is_nomatch, 0),
@@ -1229,7 +1619,8 @@ class BoardDatabaseImporter(
                                $moveCountExpr,
                                $originExpr,
                                $pubkeyExpr,
-                               $brandExpr
+                               $brandExpr,
+                               $methodExpr
                         FROM src.$srcTable
                         WHERE rowid BETWEEN $batchStart AND $batchEnd
                           $draftFilter
@@ -1243,12 +1634,12 @@ class BoardDatabaseImporter(
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
                             description, is_nomatch, frames_pace, hsm, move_count,
-                            origin, created_by_pubkey, board_brand)
+                            origin, created_by_pubkey, board_brand, method)
                         SELECT uuid, layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                description, is_nomatch, frames_pace, hsm, move_count,
-                               origin, created_by_pubkey, board_brand
+                               origin, created_by_pubkey, board_brand, method
                         FROM chunk_norm
                         WHERE is_listed = 1
                     """)
@@ -1268,17 +1659,20 @@ class BoardDatabaseImporter(
                     // Climbs authored via CruxCoach (origin='cruxcoach')
                     // have Nostr as their source of truth and are
                     // protected from blob refresh entirely.
-                    if (!skipUpdatePasses) {
+                    //
+                    // `method` joins the refresh tuple ONLY when the source
+                    // actually carries the column — see [methodRefresh].
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET
                                 (layout_id, setter_username, name, frames,
                                  frames_count, is_listed, edge_left, edge_right,
                                  edge_bottom, edge_top, created_at, description,
-                                 is_nomatch, frames_pace, hsm, move_count)
+                                 is_nomatch, frames_pace, hsm, move_count$methodRefresh)
                                 = (SELECT layout_id, setter_username, name, frames,
                                           frames_count, is_listed, edge_left, edge_right,
                                           edge_bottom, edge_top, created_at, description,
-                                          is_nomatch, frames_pace, hsm, move_count
+                                          is_nomatch, frames_pace, hsm, move_count$methodRefresh
                                    FROM chunk_norm
                                    WHERE chunk_norm.uuid = main.climbs.uuid)
                             WHERE origin = 'kilter'
@@ -1301,10 +1695,30 @@ class BoardDatabaseImporter(
                     // Splitting the listing flip into its own UPDATE
                     // pass keeps tombstone propagation working while
                     // separating it from the kilter content-refresh.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET is_listed = 0
                             WHERE is_listed = 1
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
+                        """)
+                    }
+                    // FEAT-041 item 1: converge the chunk-only delete path with
+                    // the live tombstone. The delist flip above hides the climb
+                    // (is_listed=0), but a device that only ever sees the chunk
+                    // (never the live Kind-5 tombstone) keeps is_deleted=0 — so
+                    // the L3 stale-resurrection guard (keys on is_deleted=1)
+                    // stays disarmed and a later stray Original-Event rebroadcast
+                    // could re-list it. For origin='cruxcoach' a chunk is_listed=0
+                    // IS a deletion (community rows are only delisted upstream
+                    // when the author deletes), so flip is_deleted=1 too — the
+                    // same on-disk state markCommunityClimbDeleted produces on
+                    // live-sub devices. Kilter-origin is_listed=0 is a catalogue
+                    // delist, NOT a deletion, so it is left untouched.
+                    if (updateExistingClimbs) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET is_deleted = 1
+                            WHERE origin = 'cruxcoach'
+                              AND is_deleted = 0
                               AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
                         """)
                     }
@@ -1312,7 +1726,7 @@ class BoardDatabaseImporter(
                     // climbs (Plan C: cron resolves Kind-0 + writes the
                     // display_name into the blob). COALESCE keeps the
                     // local value when source is NULL.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET setter_username = COALESCE(
                                 (SELECT setter_username FROM chunk_norm
@@ -1324,7 +1738,7 @@ class BoardDatabaseImporter(
                         """)
                     }
                     // Origin upgrade — kilter→cruxcoach only (asymmetric).
-                    if (!skipUpdatePasses && hasOrigin) {
+                    if (updateExistingClimbs && hasOrigin && policy.acceptsCommunityProvenance) {
                         targetDb.execSQL("""
                             UPDATE climbs SET origin = 'cruxcoach'
                             WHERE origin != 'cruxcoach'
@@ -1332,7 +1746,7 @@ class BoardDatabaseImporter(
                         """)
                     }
                     // Pubkey backfill — fills NULL only, never overwrites.
-                    if (!skipUpdatePasses && hasCreatedByPubkey) {
+                    if (updateExistingClimbs && hasCreatedByPubkey && policy.acceptsCommunityProvenance) {
                         targetDb.execSQL("""
                             UPDATE climbs SET created_by_pubkey = (
                                 SELECT created_by_pubkey FROM chunk_norm
@@ -1344,9 +1758,9 @@ class BoardDatabaseImporter(
                               )
                         """)
                     }
-                    targetDb.setTransactionSuccessful()
+                    if (manageBatchTransactions) targetDb.setTransactionSuccessful()
                 } finally {
-                    targetDb.endTransaction()
+                    if (manageBatchTransactions) targetDb.endTransaction()
                 }
                 // Approximate scanned-progress from rowid arithmetic
                 // (avoids a per-batch COUNT scan on the source chunk).
@@ -1373,19 +1787,27 @@ class BoardDatabaseImporter(
             // the progress callback.
             // Incremental path keeps the precise COUNT(*) so the UI's
             // "X new climbs" line is accurate.
-            val inserted = if (skipUpdatePasses) {
+            val inserted = if (freshInstall) {
                 scanned
             } else {
                 val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
                 (countAfter - countBefore).toInt()
             }
             onProgress?.invoke(inserted, total, total)
-            targetDb.execSQL("DETACH DATABASE src")
+            if (!sourceAlreadyAttached) targetDb.execSQL("DETACH DATABASE src")
             return inserted
         } catch (e: Exception) {
-            try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            if (!sourceAlreadyAttached) {
+                try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            }
+            if (!allowLegacyFallback) throw e
             Log.w(TAG, "ATTACH-import failed for climbs; falling back to legacy row-by-row", e)
-            return importClimbsLegacy(rawDb, existingUuids, onProgress)
+            return importClimbsLegacy(
+                rawDb = rawDb,
+                existingUuids = existingUuids,
+                allowExistingUpdates = policy.refreshesExistingClimbs,
+                onProgress = onProgress,
+            )
         } finally {
             if (ownsTargetDb) targetDb.close()
         }
@@ -1399,6 +1821,7 @@ class BoardDatabaseImporter(
     private fun importClimbsLegacy(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,
+        allowExistingUpdates: Boolean = true,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val srcTable = resolveClimbsTable(rawDb)
@@ -1424,7 +1847,9 @@ class BoardDatabaseImporter(
                 // on the same string regardless of which path the chunk
                 // took to get here.
                 val uuid = it.getString(0).lowercase()
-                if (existingUuids != null && uuid in existingUuids) {
+                if ((existingUuids != null && uuid in existingUuids) ||
+                    (!allowExistingUpdates && boardRepository.climbExistsByUuid(uuid))
+                ) {
                     if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
                     continue
                 }
@@ -1457,23 +1882,73 @@ class BoardDatabaseImporter(
         existingStats: Map<Pair<String, Long>, Long?>? = null,
         freshInstall: Boolean = false,
         sharedTargetDb: SQLiteDatabase? = null,
+        sourceAlreadyAttached: Boolean = false,
+        manageBatchTransactions: Boolean = true,
+        allowLegacyFallback: Boolean = true,
+        sourceTableOverride: String? = null,
+        peerClimbsTable: String? = null,
+        peerClimbColumns: Set<String> = emptySet(),
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
-        val chunkPath = rawDb.path ?: return importClimbStatsLegacy(rawDb, existingStats, onProgress)
-        val srcTable = resolveStatsTable(rawDb)
+        val chunkPath = rawDb.path ?: if (allowLegacyFallback) {
+            return importClimbStatsLegacy(rawDb, existingStats, onProgress)
+        } else {
+            throw IllegalStateException("Modern share source has no filesystem path")
+        }
+        val srcTable = sourceTableOverride ?: resolveStatsTable(rawDb)
         // See [importClimbs] — long-lived shared connection avoids
         // PRAGMA + page-cache reset on every chunk.
         val targetDb = sharedTargetDb ?: openTargetDb()
         val ownsTargetDb = sharedTargetDb == null
         try {
-            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
-            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
+            if (!sourceAlreadyAttached) {
+                targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
+            }
+            // A peer-controlled modern DB may contain stats for private drafts,
+            // tombstones, or a climb UUID belonging to a different board brand
+            // on this receiver. Only stats whose source climb passes the exact
+            // peer catalogue policy and whose target climb has the same brand
+            // are eligible. Authenticated/legacy catalogue imports retain their
+            // historical unfiltered behavior.
+            val peerJoin = peerClimbsTable?.let { climbsTable ->
+                val sourceBrand = if ("board_brand" in peerClimbColumns) {
+                    "LOWER(COALESCE(sc.board_brand,'kilter'))"
+                } else {
+                    "'kilter'"
+                }
+                """JOIN src.$climbsTable sc
+                       ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(s.climb_uuid))
+                   JOIN main.climbs tc
+                       ON tc.uuid=LOWER(TRIM(s.climb_uuid))
+                      AND LOWER(tc.board_brand)=$sourceBrand""".trimIndent()
+            }.orEmpty()
+            val peerFilter = if (peerClimbsTable == null) {
+                ""
+            } else buildString {
+                append(" AND sc.is_listed=1")
+                if ("source" in peerClimbColumns) {
+                    append(" AND LOWER(COALESCE(sc.source,'kilter'))!='local'")
+                }
+                if ("is_deleted" in peerClimbColumns) {
+                    append(" AND COALESCE(sc.is_deleted,0)=0")
+                }
+            }
+            // A peer catalogue is additive: its aggregate row may fill a
+            // missing (climb_uuid, angle), but it must never replace an
+            // already-authoritative receiver row after a same-brand UUID
+            // collision. Authenticated/vendor and legacy imports retain their
+            // historical refresh behavior.
+            val conflictAction = if (peerClimbsTable == null) "REPLACE" else "IGNORE"
+            val total = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM src.$srcTable s $peerJoin WHERE 1=1$peerFilter",
+            ).toInt()
             // See [importClimbs] for the same fresh-install fast-path
             // rationale — the only diff is climb_stats has no UPDATE
             // pass, just an INSERT OR REPLACE, so the only saving here
             // is the per-chunk countBefore / countAfter pair which goes
             // O(N) over a 290k-row target by the last few chunks.
-            val countBefore = if (freshInstall) 0L
+            val countBefore = if (freshInstall && peerClimbsTable == null) 0L
             else queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
             onProgress?.invoke(0, 0, total)
 
@@ -1484,7 +1959,7 @@ class BoardDatabaseImporter(
             var scanned = 0
             while (batchStart <= maxRowid) {
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
-                targetDb.beginTransaction()
+                if (manageBatchTransactions) targetDb.beginTransaction()
                 try {
                     // Mirror the climbs-side LOWER() canonicalization so
                     // climb_stats.climb_uuid matches the lowercase uuids
@@ -1492,20 +1967,21 @@ class BoardDatabaseImporter(
                     // climb_browse fails for any chunk that ships stats
                     // in upper-case while climbs landed lower-case.
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO climb_stats(
+                        INSERT OR $conflictAction INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
                             fa_username, fa_at, layout_id)
-                        SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
-                               quality_average, ascensionist_count, benchmark_difficulty,
-                               fa_username, fa_at,
-                               COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
-                        FROM src.$srcTable
-                        WHERE rowid BETWEEN $batchStart AND $batchEnd
+                        SELECT LOWER(TRIM(s.climb_uuid)), s.angle, s.display_difficulty, s.difficulty_average,
+                               s.quality_average, s.ascensionist_count, s.benchmark_difficulty,
+                               s.fa_username, s.fa_at,
+                               COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(TRIM(s.climb_uuid))), 0)
+                        FROM src.$srcTable s
+                        $peerJoin
+                        WHERE s.rowid BETWEEN $batchStart AND $batchEnd$peerFilter
                     """)
-                    targetDb.setTransactionSuccessful()
+                    if (manageBatchTransactions) targetDb.setTransactionSuccessful()
                 } finally {
-                    targetDb.endTransaction()
+                    if (manageBatchTransactions) targetDb.endTransaction()
                 }
                 // Same rowid-arithmetic optimisation as [importClimbs] —
                 // skip the per-batch source COUNT scan. inserted=0
@@ -1516,17 +1992,20 @@ class BoardDatabaseImporter(
                 batchStart = batchEnd + 1
             }
 
-            val inserted = if (freshInstall) {
+            val inserted = if (freshInstall && peerClimbsTable == null) {
                 scanned
             } else {
                 val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
                 (countAfter - countBefore).toInt()
             }
             onProgress?.invoke(inserted, total, total)
-            targetDb.execSQL("DETACH DATABASE src")
+            if (!sourceAlreadyAttached) targetDb.execSQL("DETACH DATABASE src")
             return inserted
         } catch (e: Exception) {
-            try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            if (!sourceAlreadyAttached) {
+                try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            }
+            if (!allowLegacyFallback) throw e
             Log.w(TAG, "ATTACH-import failed for climb_stats; falling back to legacy row-by-row", e)
             return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         } finally {
@@ -1669,6 +2148,16 @@ class BoardDatabaseImporter(
                 db2.close()
             }
         }
+    }
+
+    /** Run a board-scoped import with existing indexes intact. */
+    private inline fun <R> withIncrementalIndexes(
+        crossinline onComplete: () -> Unit = {},
+        block: () -> R,
+    ): R = try {
+        block()
+    } finally {
+        onComplete()
     }
 
     /**
@@ -1877,53 +2366,552 @@ class BoardDatabaseImporter(
      *
      * @throws IllegalStateException with a user-actionable message.
      */
-    private fun preflightModernSource(srcFile: File) {
+    private fun preflightModernSource(srcFile: File, includeQuantum: Boolean) {
+        val source = SQLiteDatabase.openDatabase(
+            srcFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY,
+        )
         val targetDb = openTargetDb()
+        var attached = false
         try {
+            val statements = modernCopyStatements(source, includeQuantum)
+            validateQuantumBridge(source, targetDb, includeQuantum)
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(srcFile.absolutePath))
-            try {
-                for (probe in LocalShareSchema.MODERN_GEOMETRY_SOURCE_PROBES) {
-                    try {
-                        targetDb.rawQuery(probe, null).use { it.count }
-                    } catch (e: android.database.SQLException) {
-                        throw IllegalStateException(
-                            "Die geteilte Datenbank stammt von einer älteren " +
-                                "CruxCoach-Version — bitte zuerst die App auf dem " +
-                                "sendenden Gerät aktualisieren. (${e.message})",
-                            e
-                        )
-                    }
+            attached = true
+            for (statement in statements) {
+                // EXPLAIN compiles the complete DML statement without running
+                // it. Extracting the first SELECT was only safe while every
+                // copy was INSERT .. SELECT; the additive provenance UPDATE
+                // contains a nested SELECT whose closing `IN (...)` delimiter
+                // is not a standalone query and therefore cannot be wrapped.
+                targetDb.rawQuery("EXPLAIN $statement", null).use { cursor ->
+                    while (cursor.moveToNext()) Unit
                 }
+            }
+        } catch (error: Exception) {
+            if (error is IllegalStateException &&
+                error.message?.startsWith("Die geteilte Datenbank") == true
+            ) {
+                throw error
+            }
+            throw IllegalStateException(
+                "Die geteilte Datenbank ist strukturell unvollständig. (${error.message})",
+                error,
+            )
+        } finally {
+            if (attached) runCatching { targetDb.execSQL("DETACH DATABASE src") }
+            targetDb.close()
+            source.close()
+        }
+    }
+
+    private data class ModernImportResult(
+        val climbs: Int,
+        val stats: Int,
+        val placements: Int,
+    )
+
+    /**
+     * The modern peer payload is one logical catalogue. Generic climb/stat
+     * rows, brand geometry, and the Quantum controller UUID bridge commit
+     * together. In particular, neither a malformed bridge nor a later SQLite
+     * trigger/runtime failure can leave browseable Quantum rows that cannot be
+     * addressed on the BLE wire.
+     */
+    private fun importModernCatalogueAtomically(
+        srcFile: File,
+        rawDb: SQLiteDatabase,
+        freshInstallClimbs: Boolean,
+        freshInstallStats: Boolean,
+        policy: ClimbImportPolicy,
+        includeQuantum: Boolean,
+        onProgress: ((step: ImportStep) -> Unit)?,
+    ): ModernImportResult {
+        val statements = modernCopyStatements(rawDb, includeQuantum)
+        // Once the source is ATTACHed under a write transaction, Android's
+        // separate rawDb connection can block on even sqlite_master/PRAGMA
+        // reads. Capture every source-schema fact before that lock boundary.
+        val climbsTable = resolveClimbsTable(rawDb)
+        val statsTable = resolveStatsTable(rawDb)
+        val hasPlacements = hasTable(rawDb, "placements")
+        val placementsHaveBrand = hasPlacements && rawDb.rawQuery(
+            "PRAGMA table_info(placements)", null,
+        ).use { cursor ->
+            var found = false
+            while (cursor.moveToNext()) {
+                if (cursor.getString(1) == "board_brand") found = true
+            }
+            found
+        }
+        val climbColumns = rawDb.rawQuery(
+            "PRAGMA table_info($climbsTable)", null,
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
+        val targetDb = openTargetDb()
+        var attached = false
+        try {
+            val quantumRows = validateQuantumBridge(
+                rawDb, targetDb, includeQuantum, validateTarget = false,
+            )
+            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(srcFile.absolutePath))
+            attached = true
+            targetDb.beginTransaction()
+            try {
+                // Recheck receiver ownership under the transaction lock. The
+                // earlier preflight validates source shape, but a catalogue or
+                // community sync could otherwise create a colliding target row
+                // before the peer's first write.
+                validateQuantumTargetBridge(targetDb, quantumRows)
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
+                val climbs = importClimbs(
+                    rawDb = rawDb,
+                    freshInstall = freshInstallClimbs,
+                    sharedTargetDb = targetDb,
+                    sourceAlreadyAttached = true,
+                    manageBatchTransactions = false,
+                    allowLegacyFallback = false,
+                    sourceTableOverride = climbsTable,
+                    sourceColumnsOverride = climbColumns,
+                    policy = policy,
+                ) { inserted, scanned, total ->
+                    onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
+                }
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
+                val stats = importClimbStats(
+                    rawDb = rawDb,
+                    freshInstall = freshInstallStats,
+                    sharedTargetDb = targetDb,
+                    sourceAlreadyAttached = true,
+                    manageBatchTransactions = false,
+                    allowLegacyFallback = false,
+                    sourceTableOverride = statsTable,
+                    peerClimbsTable = climbsTable,
+                    peerClimbColumns = climbColumns,
+                ) { inserted, scanned, total ->
+                    onProgress?.invoke(ImportStep.ImportStats(inserted, scanned, total))
+                }
+                statements.forEach { statement -> targetDb.execSQL(statement) }
+                val placements = if (hasPlacements) {
+                    val filter = if (!includeQuantum && placementsHaveBrand) {
+                        " WHERE LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'"
+                    } else {
+                        ""
+                    }
+                    queryLong(targetDb, "SELECT COUNT(*) FROM src.placements$filter").toInt()
+                } else {
+                    0
+                }
+                targetDb.setTransactionSuccessful()
+                return ModernImportResult(climbs, stats, placements)
             } finally {
-                targetDb.execSQL("DETACH DATABASE src")
+                targetDb.endTransaction()
             }
         } finally {
+            if (attached) runCatching { targetDb.execSQL("DETACH DATABASE src") }
             targetDb.close()
         }
     }
 
-    private fun importModernGeometry(srcFile: File): Int {
-        val targetDb = openTargetDb()
-        try {
-            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(srcFile.absolutePath))
-            try {
-                targetDb.beginTransaction()
-                try {
-                    for (statement in LocalShareSchema.MODERN_GEOMETRY_COPY) {
-                        targetDb.execSQL(statement)
-                    }
-                    targetDb.setTransactionSuccessful()
-                } finally {
-                    targetDb.endTransaction()
-                }
-                return queryLong(targetDb, "SELECT COUNT(*) FROM src.placements").toInt()
-            } finally {
-                targetDb.execSQL("DETACH DATABASE src")
+    /**
+     * Adapt a modern CruxCoach DB from any historical schema generation to
+     * the current brand-namespaced target. Missing additive tables are skipped;
+     * pre-multiboard geometry is Kilter by definition and is stamped as such.
+     */
+    private fun modernCopyStatements(source: SQLiteDatabase, includeQuantum: Boolean): List<String> {
+        fun columns(table: String): Set<String> = source.rawQuery(
+            "PRAGMA table_info($table)", null,
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
+        fun has(table: String) = hasTable(source, table)
+        fun requireColumns(table: String, required: Set<String>) {
+            if (!has(table)) return
+            val missing = required - columns(table)
+            require(missing.isEmpty()) {
+                "Shared database table $table is missing required columns: ${missing.sorted()}"
             }
-        } finally {
-            targetDb.close()
+        }
+        fun brand(table: String) = if ("board_brand" in columns(table)) "board_brand" else "'kilter'"
+        fun legacyGeometryFilter(table: String): String =
+            if (!includeQuantum && "board_brand" in columns(table)) {
+                " WHERE LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'"
+            } else {
+                ""
+            }
+
+        requireColumns("placements", setOf("placement_id", "hole_id", "set_id", "x", "y"))
+        requireColumns("holes", setOf("id", "product_size_id", "x", "y", "mirrored_hole_id"))
+        requireColumns(
+            "product_sizes",
+            setOf(
+                "id", "product_id", "name", "edge_left", "edge_right",
+                "edge_bottom", "edge_top", "image_filename",
+            ),
+        )
+        requireColumns(
+            "board_images",
+            setOf("id", "product_size_id", "layout_id", "set_id", "image_filename"),
+        )
+        requireColumns("leds", setOf("hole_id", "product_size_id", "position"))
+        requireColumns(
+            "placement_roles",
+            setOf("id", "name", "led_color", "screen_color"),
+        )
+
+        val statements = buildList {
+            if (has("placements")) add(
+                "INSERT OR REPLACE INTO placements(board_brand,placement_id,hole_id,set_id,x,y) " +
+                    "SELECT ${brand("placements")},placement_id,hole_id,set_id,x,y FROM src.placements" +
+                    legacyGeometryFilter("placements")
+            )
+            if (has("holes")) add(
+                "INSERT OR REPLACE INTO holes(board_brand,id,product_size_id,x,y,mirrored_hole_id) " +
+                    "SELECT ${brand("holes")},id,product_size_id,x,y,mirrored_hole_id FROM src.holes" +
+                    legacyGeometryFilter("holes")
+            )
+            if (has("product_sizes")) add(
+                "INSERT OR REPLACE INTO product_sizes(board_brand,id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename) " +
+                    "SELECT ${brand("product_sizes")},id,product_id,name,edge_left,edge_right,edge_bottom,edge_top,image_filename FROM src.product_sizes" +
+                    legacyGeometryFilter("product_sizes")
+            )
+            if (has("board_images")) add(
+                "INSERT OR REPLACE INTO board_images(board_brand,id,product_size_id,layout_id,set_id,image_filename) " +
+                    "SELECT ${brand("board_images")},id,product_size_id,layout_id,set_id,image_filename FROM src.board_images" +
+                    legacyGeometryFilter("board_images")
+            )
+            if (has("leds")) add(
+                "INSERT OR REPLACE INTO leds(board_brand,hole_id,product_size_id,position) " +
+                    "SELECT ${brand("leds")},hole_id,product_size_id,position FROM src.leds" +
+                    legacyGeometryFilter("leds")
+            )
+            if (has("placement_roles")) add(
+                "INSERT OR REPLACE INTO placement_roles(board_brand,id,name,led_color,screen_color) " +
+                    "SELECT ${brand("placement_roles")},id,name,led_color,screen_color FROM src.placement_roles" +
+                    legacyGeometryFilter("placement_roles")
+            )
+            if (includeQuantum) {
+                val hasRefs = has("quantum_route_refs")
+                val hasMetadata = has("quantum_route_metadata")
+                require(hasRefs == hasMetadata) { "Quantum share bridge is incomplete" }
+                val climbColumns = columns("climbs")
+                // Some migration-era databases have the empty additive bridge
+                // tables but still use the Kilter-only, brandless climbs shape.
+                // They cannot contain an accepted Quantum row, so there is no
+                // bridge/provenance work to compile or apply.
+                if (hasRefs && "board_brand" in climbColumns) {
+                    val sourceGuard = buildString {
+                        append("LOWER(COALESCE(sc.board_brand,'kilter'))='quantum' AND sc.is_listed=1")
+                        if ("source" in climbColumns) {
+                            // Only vendor-catalogue Quantum rows have an eWalls
+                            // route UUID/metadata bridge. Public Nostr Quantum
+                            // climbs remain valid generic catalogue rows and use
+                            // their app UUID as the controller fallback.
+                            append(" AND LOWER(COALESCE(sc.source,'kilter'))='quantum'")
+                        }
+                        if ("is_deleted" in climbColumns) {
+                            append(" AND COALESCE(sc.is_deleted,0)=0")
+                        }
+                    }
+                    add(
+                        """INSERT INTO quantum_route_refs(app_uuid,route_uuid,model)
+                           SELECT LOWER(TRIM(r.app_uuid)),LOWER(TRIM(r.route_uuid)),LOWER(TRIM(r.model))
+                           FROM src.quantum_route_refs r
+                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(r.app_uuid))
+                           JOIN main.climbs c ON c.uuid=LOWER(TRIM(r.app_uuid))
+                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
+                             AND NOT EXISTS (
+                               SELECT 1 FROM main.quantum_route_refs existing
+                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(r.app_uuid))
+                             )""".trimIndent(),
+                    )
+                    add(
+                        """INSERT INTO quantum_route_metadata(
+                               app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                           SELECT LOWER(TRIM(m.app_uuid)),COALESCE(m.source_grade,''),
+                                  COALESCE(m.campusing,0),COALESCE(m.edge,0),
+                                  COALESCE(m.kickplate,0),COALESCE(m.matching,0),
+                                  COALESCE(m.standard,0),COALESCE(m.tags,'')
+                           FROM src.quantum_route_metadata m
+                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(m.app_uuid))
+                           JOIN main.climbs c ON c.uuid=LOWER(TRIM(m.app_uuid))
+                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
+                             AND NOT EXISTS (
+                               SELECT 1 FROM main.quantum_route_metadata existing
+                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(m.app_uuid))
+                             )""".trimIndent(),
+                    )
+                    // importClimbs intentionally distrusts and does not copy a
+                    // peer's provenance column. The fully validated official
+                    // bridge is the exception: retain `source=quantum` so this
+                    // receiver can re-share the same operational route bridge
+                    // to a third v2 client.
+                    add(
+                        """UPDATE main.climbs
+                           SET source='quantum'
+                           WHERE board_brand='quantum' AND source='kilter' AND uuid IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE $sourceGuard
+                           )""".trimIndent(),
+                    )
+                }
+                if ("board_brand" in climbColumns && "source" in climbColumns) {
+                    // The generic importer deliberately strips peer provenance,
+                    // but a Quantum community row has already passed the strict
+                    // source allow-list above. Retain only this operational
+                    // discriminator (not origin/pubkey/authorship) so a second
+                    // v2 hop continues to treat it as bridge-free community
+                    // catalogue data instead of rejecting source='kilter'.
+                    add(
+                        """UPDATE main.climbs
+                           SET source='nostr'
+                           WHERE board_brand='quantum' AND source='kilter' AND uuid IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE LOWER(COALESCE(sc.board_brand,'kilter'))='quantum'
+                                 AND sc.is_listed=1
+                                 AND LOWER(COALESCE(sc.source,''))='nostr'
+                                 ${if ("is_deleted" in climbColumns) "AND COALESCE(sc.is_deleted,0)=0" else ""}
+                           )""".trimIndent(),
+                    )
+                }
+            }
+        }
+        return statements
+    }
+
+    private data class QuantumBridgeRow(
+        val appUuid: String,
+        val routeUuid: String,
+        val model: String,
+    )
+
+    private fun validateQuantumBridge(
+        source: SQLiteDatabase,
+        target: SQLiteDatabase,
+        includeQuantum: Boolean,
+        validateTarget: Boolean = true,
+    ): List<QuantumBridgeRow> {
+        fun columns(table: String): Set<String> = source.rawQuery(
+            "PRAGMA table_info($table)", null,
+        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
+        fun requireColumns(table: String, required: Set<String>) {
+            val missing = required - columns(table)
+            require(missing.isEmpty()) {
+                "Shared database table $table is missing required columns: ${missing.sorted()}"
+            }
+        }
+
+        requireColumns(
+            "climbs",
+            setOf(
+                "uuid", "layout_id", "setter_username", "name", "frames",
+                "frames_count", "is_listed", "edge_left", "edge_right",
+                "edge_bottom", "edge_top", "created_at", "description",
+                "is_nomatch", "frames_pace", "hsm",
+            ),
+        )
+        requireColumns(
+            "climb_stats",
+            setOf(
+                "climb_uuid", "angle", "display_difficulty", "difficulty_average",
+                "quality_average", "ascensionist_count", "benchmark_difficulty",
+                "fa_username", "fa_at",
+            ),
+        )
+        requireColumns(
+            LocalShareSchema.MODERN_MARKER_TABLE,
+            setOf("table_name", "last_synchronized_at"),
+        )
+        val climbColumns = columns("climbs")
+        val acceptedQuantumLayouts = if ("board_brand" !in climbColumns) {
+            emptyMap()
+        } else {
+            val draftFilter = if ("source" in climbColumns) {
+                " AND LOWER(COALESCE(source,'kilter'))!='local'"
+            } else ""
+            val deletedFilter = if ("is_deleted" in climbColumns) {
+                " AND COALESCE(is_deleted,0)=0"
+            } else ""
+            val values = mutableListOf<Pair<String, Long>>()
+            source.rawQuery(
+                """SELECT LOWER(TRIM(uuid)),layout_id FROM climbs
+                   WHERE LOWER(COALESCE(board_brand,'kilter'))='quantum'
+                     AND is_listed=1$draftFilter$deletedFilter""".trimIndent(),
+                null,
+            ).use { cursor ->
+                while (cursor.moveToNext()) values += cursor.getString(0) to cursor.getLong(1)
+            }
+            require(values.all { isCanonicalUuid(it.first) }) { "Quantum app UUID is invalid" }
+            require(values.map { it.first }.distinct().size == values.size) {
+                "Quantum catalogue has duplicate normalized app UUIDs"
+            }
+            values.toMap()
+        }
+        val acceptedQuantum = acceptedQuantumLayouts.keys
+        if ("source" in climbColumns && acceptedQuantum.isNotEmpty()) {
+            val deletedFilter = if ("is_deleted" in climbColumns) {
+                " AND COALESCE(is_deleted,0)=0"
+            } else ""
+            val invalidSourceCount = source.rawQuery(
+                """SELECT COUNT(*) FROM climbs
+                   WHERE LOWER(COALESCE(board_brand,'kilter'))='quantum'
+                     AND is_listed=1 AND LOWER(COALESCE(source,'kilter'))!='local'
+                     AND LOWER(COALESCE(source,'')) NOT IN ('quantum','nostr')$deletedFilter""".trimIndent(),
+                null,
+            ).use { cursor -> cursor.moveToFirst(); cursor.getLong(0) }
+            require(invalidSourceCount == 0L) {
+                "Quantum catalogue row has invalid provenance"
+            }
+        }
+
+        if (!includeQuantum) {
+            require(acceptedQuantum.isEmpty()) { "Legacy v1 share contains Quantum catalogue rows" }
+            return emptyList()
+        }
+
+        // Official rows require the controller bridge. Community Quantum rows
+        // (`source=nostr`) are authored in CruxCoach and intentionally have no
+        // vendor metadata. A schema without `source` predates Quantum support,
+        // so treating any hypothetical rows as official is the conservative
+        // compatibility behavior.
+        val acceptedLayouts = if ("board_brand" !in climbColumns) {
+            // A pre-multiboard schema is Kilter-only by definition. It may
+            // already have a `source` column, but querying a later additive
+            // brand column would make an otherwise valid v0.2.1 DB unreadable.
+            emptyMap()
+        } else if ("source" !in climbColumns) acceptedQuantumLayouts else {
+            val deletedFilter = if ("is_deleted" in climbColumns) {
+                " AND COALESCE(is_deleted,0)=0"
+            } else ""
+            val values = mutableListOf<Pair<String, Long>>()
+            source.rawQuery(
+                """SELECT LOWER(TRIM(uuid)),layout_id FROM climbs
+                   WHERE LOWER(COALESCE(board_brand,'kilter'))='quantum'
+                     AND is_listed=1 AND LOWER(COALESCE(source,'kilter'))='quantum'$deletedFilter""".trimIndent(),
+                null,
+            ).use { cursor ->
+                while (cursor.moveToNext()) values += cursor.getString(0) to cursor.getLong(1)
+            }
+            require(values.all { isCanonicalUuid(it.first) }) { "Quantum app UUID is invalid" }
+            require(values.map { it.first }.distinct().size == values.size) {
+                "Quantum catalogue has duplicate normalized app UUIDs"
+            }
+            values.toMap()
+        }
+        val accepted = acceptedLayouts.keys
+
+        val hasRefs = hasTable(source, "quantum_route_refs")
+        val hasMetadata = hasTable(source, "quantum_route_metadata")
+        require(hasRefs == hasMetadata) { "Quantum share bridge is incomplete" }
+        if (accepted.isEmpty()) return emptyList()
+        require(hasRefs) { "Quantum catalogue has no controller UUID bridge" }
+        requireColumns("quantum_route_refs", setOf("app_uuid", "route_uuid", "model"))
+        requireColumns(
+            "quantum_route_metadata",
+            setOf(
+                "app_uuid", "source_grade", "campusing", "edge", "kickplate",
+                "matching", "standard", "tags",
+            ),
+        )
+
+        val rows = mutableListOf<QuantumBridgeRow>()
+        source.rawQuery(
+            "SELECT app_uuid,route_uuid,model FROM quantum_route_refs",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val appUuid = cursor.getString(0)?.trim()?.lowercase().orEmpty()
+                if (appUuid !in accepted) continue
+                val routeUuid = cursor.getString(1)?.trim()?.lowercase().orEmpty()
+                val model = cursor.getString(2)?.trim()?.lowercase().orEmpty()
+                require(isCanonicalUuid(appUuid) && isCanonicalUuid(routeUuid)) {
+                    "Quantum UUID bridge contains an invalid UUID"
+                }
+                require(model in QUANTUM_MODELS) { "Quantum UUID bridge has an unknown model" }
+                require(QuantumBoardModel.fromWire(model)?.layoutId == acceptedLayouts[appUuid]) {
+                    "Quantum UUID bridge model does not match the climb layout"
+                }
+                rows += QuantumBridgeRow(appUuid, routeUuid, model)
+            }
+        }
+        require(rows.map { it.appUuid }.toSet() == accepted && rows.size == accepted.size) {
+            "Quantum UUID bridge does not cover the accepted catalogue exactly once"
+        }
+        require(rows.map { it.routeUuid to it.model }.distinct().size == rows.size) {
+            "Quantum UUID bridge has duplicate normalized route/model pairs"
+        }
+
+        val metadataApps = mutableListOf<String>()
+        source.rawQuery("SELECT app_uuid FROM quantum_route_metadata", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val appUuid = cursor.getString(0)?.trim()?.lowercase().orEmpty()
+                if (appUuid in accepted) metadataApps += appUuid
+            }
+        }
+        require(metadataApps.toSet() == accepted && metadataApps.size == accepted.size) {
+            "Quantum metadata does not cover the accepted catalogue exactly once"
+        }
+
+        if (validateTarget) validateQuantumTargetBridge(target, rows)
+        return rows
+    }
+
+    /** Receiver-side half of bridge validation; safe to repeat after the
+     * target transaction starts without touching the separately-open source. */
+    private fun validateQuantumTargetBridge(
+        target: SQLiteDatabase,
+        rows: List<QuantumBridgeRow>,
+    ) {
+        if (rows.isEmpty()) return
+        // Peer data is additive. Existing mappings are authoritative: an
+        // identical normalized mapping is retained; any attempt to remap an
+        // app UUID or claim an existing controller route/model aborts before
+        // the first catalogue write.
+        val byApp = mutableMapOf<String, Pair<String, String>>()
+        val byExternal = mutableMapOf<Pair<String, String>, String>()
+        target.rawQuery("SELECT app_uuid,route_uuid,model FROM quantum_route_refs", null).use { cursor ->
+            while (cursor.moveToNext()) {
+                val app = cursor.getString(0).trim().lowercase()
+                val external = cursor.getString(1).trim().lowercase() to
+                    cursor.getString(2).trim().lowercase()
+                require(byApp.put(app, external) == null) {
+                    "Receiver has duplicate normalized Quantum app UUIDs"
+                }
+                require(byExternal.put(external, app) == null) {
+                    "Receiver has duplicate normalized Quantum route/model pairs"
+                }
+            }
+        }
+        val targetBrands = mutableMapOf<String, String>()
+        rows.map { it.appUuid }.chunked(400).forEach { uuids ->
+            val placeholders = uuids.joinToString(",") { "?" }
+            target.rawQuery(
+                "SELECT uuid,board_brand FROM climbs WHERE uuid IN ($placeholders)",
+                uuids.toTypedArray(),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    targetBrands[cursor.getString(0).lowercase()] = cursor.getString(1).lowercase()
+                }
+            }
+        }
+        rows.forEach { row ->
+            val external = row.routeUuid to row.model
+            val targetBrand = targetBrands[row.appUuid]
+            require(targetBrand == null ||
+                (targetBrand == "quantum" && byApp[row.appUuid] == external)
+            ) {
+                "Peer attempted to claim an existing climb UUID without its authoritative Quantum mapping"
+            }
+            require(byApp[row.appUuid]?.let { it == external } != false) {
+                "Peer attempted to replace an authoritative Quantum app mapping"
+            }
+            require(byExternal[external]?.let { it == row.appUuid } != false) {
+                "Peer attempted to replace an authoritative Quantum route mapping"
+            }
         }
     }
+
+    private fun isCanonicalUuid(value: String): Boolean =
+        value.matches(
+            Regex(
+                "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            ),
+        )
 
     /**
      * Import the kilter_board_location table from a chunk SQLite file via

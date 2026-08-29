@@ -2,7 +2,7 @@ package com.cruxcoach.android.ui.onboarding
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,11 +14,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -27,6 +27,7 @@ import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
 import com.cruxcoach.android.ui.aurora.MigrationFlowContent
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -35,10 +36,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,28 +55,21 @@ import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardBrand
 
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
     onNavigateToKeyImport: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
+    onNavigateToMoonBoardImport: () -> Unit = {},
+    onNavigateToDataImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Honest 3-step progress bar.
-        val steps = OnboardingStep.entries
-        val currentIdx = steps.indexOf(state.currentStep)
-        LinearProgressIndicator(
-            progress = { (currentIdx + 1).toFloat() / steps.size },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp),
-            color = OrangeAccent,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
+        OnboardingProgressHeader(state.currentStep)
 
         AnimatedContent(
             targetState = state.currentStep,
@@ -82,8 +78,17 @@ fun OnboardingScreen(
         ) { step ->
             when (step) {
                 OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
-                OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
-                OnboardingStep.KILTER -> KilterStep(state, viewModel)
+                // Compatibility-only state from an interrupted older
+                // onboarding: continue into the new second screen.
+                OnboardingStep.PRIVACY -> KilterStep(
+                    state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport,
+                )
+                OnboardingStep.KILTER -> KilterStep(
+                    state = state,
+                    viewModel = viewModel,
+                    onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
+                    onNavigateToDataImport = onNavigateToDataImport,
+                )
             }
         }
 
@@ -111,7 +116,7 @@ fun OnboardingScreen(
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
-                        Text(stringResource(R.string.action_next))
+                        Text(stringResource(R.string.onboarding_continue))
                     }
                 }
                 OnboardingStep.PRIVACY -> {
@@ -159,7 +164,7 @@ fun OnboardingScreen(
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Text(stringResource(R.string.action_done))
+                            Text(stringResource(R.string.onboarding_start_cruxcoach))
                         }
                     }
                 }
@@ -274,6 +279,49 @@ fun OnboardingScreen(
     }
 }
 
+@Composable
+private fun OnboardingProgressHeader(step: OnboardingStep) {
+    val steps = listOf(OnboardingStep.BOARD_SETUP, OnboardingStep.KILTER)
+    val current = if (step == OnboardingStep.BOARD_SETUP) 1 else 2
+    val title = stringResource(
+        when (step) {
+            OnboardingStep.BOARD_SETUP -> R.string.onboarding_progress_board
+            OnboardingStep.PRIVACY -> R.string.onboarding_progress_import
+            OnboardingStep.KILTER -> R.string.onboarding_progress_import
+        },
+    )
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.onboarding_progress_step, current, steps.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = OrangeAccent,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { current.toFloat() / steps.size },
+                modifier = Modifier.fillMaxWidth().height(3.dp),
+                color = OrangeAccent,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+        }
+    }
+}
+
 // ─── Step 1: Board setup (with inline welcome header) ─────────────────────
 
 @Composable
@@ -309,78 +357,64 @@ private fun BoardSetupStep(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .testTag("onboarding_board_setup")
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Compact welcome header (no longer a standalone step).
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Surface(
+            color = OrangeAccent.copy(alpha = 0.10f),
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            // Can't use R.mipmap.ic_launcher{,_round} directly — those
-            // resolve to an <adaptive-icon> XML on Android 8+, which
-            // Compose's painterResource refuses ("Only VectorDrawables
-            // and rasterized asset types are supported") and crashes.
-            // Compose the same visual here: black circle background (the
-            // adaptive icon's <background>) + the foreground PNG sized
-            // generously to compensate for the adaptive-icon safe zone.
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.size(84.dp),
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.onboarding_welcome),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    stringResource(R.string.onboarding_welcome_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Surface(
+                    color = OrangeAccent,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape,
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.padding(11.dp).size(26.dp),
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        stringResource(R.string.onboarding_choose_board_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(R.string.onboarding_board_first_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
         // Board picker — hardware knowledge, no sync round-trip needed.
         // Original/Homewall is now an in-dialog segment, not a chip.
         com.cruxcoach.android.ui.settings.BoardModelSection(
-            boardModelName = state.boardProductSizeName,
+            boardModelName = com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                brand = BoardBrand.fromWire(state.boardBrand),
+                layoutId = state.boardLayoutId,
+                detail = state.boardProductSizeName,
+            ),
             onChangeModel = { showBoardModelDialog = true },
         )
 
-        HorizontalDivider()
-
-        Text(
-            stringResource(R.string.onboarding_board_setup_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            stringResource(R.string.onboarding_board_setup_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        // Inline sync card — no navigation hop. Handles progress
-        // checklist, already-synced state, error + model-select dialogs
-        // without leaving the onboarding step. autoStartIfNeeded fires
-        // the download immediately so the user doesn't have to scroll
-        // and tap "Jetzt laden" — by the time they finish the intro
-        // text the chunks are already coming down.
+        // The catalogues prepare in the background. Keep this status compact:
+        // the board choice is the decision on this screen, not the download.
         BoardSyncInlineCard(
             modifier = Modifier.fillMaxWidth(),
             autoStartIfNeeded = true,
+            compact = true,
         )
     }
 }
@@ -411,25 +445,7 @@ private fun PrivacyStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        PrivacyToggleCard(
-            icon = { Icon(Icons.Default.Bluetooth, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
-            title = stringResource(R.string.onboarding_privacy_ble_title),
-            description = stringResource(R.string.onboarding_privacy_ble_desc),
-            checked = state.bleSharing,
-            onCheckedChange = { viewModel.updateBleSharing(it) },
-            testTag = "onboarding_ble_switch",
-        )
-
         BackupCard(state, viewModel, onNavigateToKeyManagement)
-
-        PrivacyToggleCard(
-            icon = { Icon(Icons.Default.Forum, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
-            title = stringResource(R.string.onboarding_privacy_community_title),
-            description = stringResource(R.string.onboarding_privacy_community_desc),
-            checked = state.communityFeatures,
-            onCheckedChange = { viewModel.updateCommunityFeatures(it) },
-            testTag = "onboarding_community_switch",
-        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -667,26 +683,269 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
     }
 }
 
+// ─── Step 3: existing logbook (optional) ──────────────────────────────────
+
+private enum class LogbookImportSource { CRUXCOACH, KILTER, MOONBOARD }
+
 @Composable
-private fun PrivacyToggleCard(
+private fun KilterStep(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+    onNavigateToMoonBoardImport: () -> Unit,
+    onNavigateToDataImport: () -> Unit,
+) {
+    // Keep the first view deliberately quiet. Import credentials, scraping
+    // instructions and migration details only appear after the user chooses
+    // their previous app. An in-progress/completed Kilter import is restored
+    // directly so rotation or process recreation never hides its result.
+    var selectedSource by rememberSaveable {
+        mutableStateOf<LogbookImportSource?>(
+            if (state.kilterConnected || state.kilterImportResult != null) {
+                LogbookImportSource.KILTER
+            } else {
+                null
+            },
+        )
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            stringResource(R.string.onboarding_existing_data_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.testTag("onboarding_import"),
+        )
+        Text(
+            stringResource(R.string.onboarding_existing_data_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ImportSourceChoiceCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = { Icon(Icons.Default.Lock, null) },
+                label = stringResource(R.string.onboarding_source_cruxcoach),
+                selected = selectedSource == LogbookImportSource.CRUXCOACH,
+                testTag = "onboarding_import_source_cruxcoach",
+                onClick = { selectedSource = LogbookImportSource.CRUXCOACH },
+            )
+            ImportSourceChoiceCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
+                label = BoardBrand.KILTER.displayName,
+                selected = selectedSource == LogbookImportSource.KILTER,
+                testTag = "onboarding_import_source_kilter",
+                onClick = { selectedSource = LogbookImportSource.KILTER },
+            )
+            ImportSourceChoiceCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = { Icon(Icons.Default.History, null) },
+                label = BoardBrand.MOONBOARD.displayName,
+                selected = selectedSource == LogbookImportSource.MOONBOARD,
+                testTag = "onboarding_import_source_moonboard",
+                onClick = { selectedSource = LogbookImportSource.MOONBOARD },
+            )
+        }
+
+        AnimatedContent(
+            targetState = selectedSource,
+            label = "logbook_import_source",
+        ) { source ->
+            when (source) {
+                LogbookImportSource.CRUXCOACH -> Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ImportSourceCard(
+                        icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
+                        title = stringResource(R.string.onboarding_cruxcoach_restore_title),
+                        description = stringResource(R.string.onboarding_cruxcoach_restore_desc),
+                        action = stringResource(R.string.onboarding_cruxcoach_restore_action),
+                        onClick = {
+                            viewModel.setBackupOptIn(true)
+                            viewModel.setBackupChoice(BackupChoice.RESTORE)
+                            viewModel.requestKeyImport()
+                        },
+                        highlighted = true,
+                        testTag = "onboarding_cruxcoach_restore",
+                    )
+                    ImportSourceCard(
+                        icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
+                        title = stringResource(R.string.onboarding_cruxcoach_file_title),
+                        description = stringResource(R.string.onboarding_cruxcoach_file_desc),
+                        action = stringResource(R.string.onboarding_cruxcoach_file_action),
+                        onClick = onNavigateToDataImport,
+                        highlighted = false,
+                        testTag = "onboarding_cruxcoach_file_import",
+                    )
+                }
+                LogbookImportSource.KILTER -> Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = OrangeAccent.copy(alpha = 0.08f),
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    stringResource(R.string.onboarding_kilter_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                com.cruxcoach.android.ui.common.KilterDataInfoButton()
+                            }
+                            Text(
+                                stringResource(R.string.onboarding_kilter_desc),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            // While the board catalogue is still importing, a Kilter
+                            // import works but its ascents show up nameless/gradeless
+                            // until the catalogue lands — tell the user rather than let
+                            // them hit that state unwarned. Hidden once a result is shown.
+                            val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                            if (boardSyncing && state.kilterImportResult == null) {
+                                Text(
+                                    stringResource(R.string.kilter_import_board_sync_pending),
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = OrangeAccent,
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            ) {
+                                if (state.kilterImportResult != null) {
+                                    KilterImportDoneContent(state, viewModel)
+                                } else if (state.kilterConnected && state.kilterImportPreview != null) {
+                                    KilterPreviewContent(state, viewModel)
+                                } else {
+                                    KilterLoginContent(state, viewModel)
+                                }
+                            }
+                        }
+                    }
+                    AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
+                }
+                LogbookImportSource.MOONBOARD ->
+                    MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
+                null -> Spacer(Modifier.height(1.dp))
+            }
+        }
+
+    }
+
+    if (state.auroraSheetOpen) {
+        AuroraMigrationBottomSheet(
+            onDismiss = { viewModel.setAuroraSheetOpen(false) },
+        )
+    }
+}
+
+@Composable
+private fun ImportSourceChoiceCard(
+    modifier: Modifier,
     icon: @Composable () -> Unit,
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+    label: String,
+    selected: Boolean,
     testTag: String,
+    onClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+            }
+            .testTag(testTag),
+        onClick = onClick,
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) OrangeAccent else MaterialTheme.colorScheme.outlineVariant,
+        ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            containerColor = if (selected) OrangeAccent.copy(alpha = 0.10f)
+            else MaterialTheme.colorScheme.surface,
         ),
         shape = RoundedCornerShape(16.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CompositionLocalProvider(LocalContentColor provides OrangeAccent) { icon() }
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            if (selected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = stringResource(R.string.settings_led_selected),
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoonBoardImportCard(onClick: () -> Unit, highlighted: Boolean) {
+    ImportSourceCard(
+        icon = { Icon(Icons.Default.History, null, tint = OrangeAccent, modifier = Modifier.size(28.dp)) },
+        title = stringResource(R.string.onboarding_moon_import_title),
+        description = stringResource(R.string.onboarding_moon_import_desc),
+        action = stringResource(R.string.onboarding_moon_import_action),
+        onClick = onClick,
+        highlighted = highlighted,
+        testTag = "onboarding_moon_import",
+    )
+}
+
+@Composable
+private fun ImportSourceCard(
+    icon: @Composable () -> Unit,
+    title: String,
+    description: String,
+    action: String,
+    onClick: () -> Unit,
+    highlighted: Boolean,
+    testTag: String,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag(testTag),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) OrangeAccent.copy(alpha = 0.10f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -699,139 +958,8 @@ private fun PrivacyToggleCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                modifier = Modifier.testTag(testTag),
-                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
-            )
+            Text(action, style = MaterialTheme.typography.labelMedium, color = OrangeAccent)
         }
-    }
-}
-
-// ─── Step 3: Kilter (optional) ────────────────────────────────────────────
-
-@Composable
-private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                stringResource(R.string.onboarding_kilter_step_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            // "Optional" badge in the header itself (not just the fine print
-            // below), so it is obvious this whole step can be skipped.
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(OrangeAccent.copy(alpha = 0.15f))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    stringResource(R.string.badge_optional),
-                    color = OrangeAccent,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
-        Text(
-            stringResource(R.string.onboarding_kilter_step_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-            ),
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Login, null, tint = OrangeAccent, modifier = Modifier.size(28.dp))
-                    Text(
-                        stringResource(R.string.onboarding_kilter_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // ⓘ explains the Kilter data exchange (import / local / publish).
-                    com.cruxcoach.android.ui.common.KilterDataInfoButton()
-                }
-
-                Text(
-                    stringResource(R.string.onboarding_kilter_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                // While the board catalogue is still importing, a Kilter
-                // import works but its ascents show up nameless/gradeless
-                // until the catalogue lands — tell the user rather than let
-                // them hit that state unwarned. Hidden once a result is shown.
-                val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
-                if (boardSyncing && state.kilterImportResult == null) {
-                    Text(
-                        stringResource(R.string.kilter_import_board_sync_pending),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OrangeAccent,
-                    )
-                }
-
-                if (state.kilterImportResult != null) {
-                    KilterImportDoneContent(state, viewModel)
-                } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                    KilterPreviewContent(state, viewModel)
-                } else {
-                    KilterLoginContent(state, viewModel)
-                }
-            }
-        }
-
-        // FEAT-005 — Aurora-from-old-Kilter migration tile. Tucked
-        // below the live OAuth card so the default path (sign in to
-        // the new Kilter API) still wins visually for the 95 % of
-        // users who never used Aurora.
-        AuroraOnboardingCard(
-            onClick = { viewModel.setAuroraSheetOpen(true) },
-        )
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Text(
-                stringResource(R.string.onboarding_kilter_skip_hint),
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = InfoBlue,
-            )
-        }
-    }
-
-    if (state.auroraSheetOpen) {
-        AuroraMigrationBottomSheet(
-            onDismiss = { viewModel.setAuroraSheetOpen(false) },
-        )
     }
 }
 

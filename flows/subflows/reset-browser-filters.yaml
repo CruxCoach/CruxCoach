@@ -1,0 +1,18 @@
+appId: com.cruxcoach.android
+name: subflow-reset-browser-filters
+---
+- runFlow: launch-browser.yaml
+- tapOn:
+    id: "board_filter_toggle"
+- assertVisible:
+    id: "board_filter_reset"
+- tapOn:
+    id: "board_filter_reset"
+- pressKey: Back
+- assertVisible:
+    id: "board_filter_toggle"
+- extendedWaitUntil:
+    visible:
+      id: "board_climb_card"
+    timeout: 30000
+

@@ -4,11 +4,10 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
-import java.security.cert.CertificateFactory
-import java.util.zip.ZipFile
 
 /**
  * Two-gate integrity check that sits between download (§5.3) and install
@@ -16,8 +15,9 @@ import java.util.zip.ZipFile
  *
  *  1. SHA-256 of the downloaded bytes must match the hash from the
  *     `.sha256` sidecar asset (§5.4.1).
- *  2. SHA-256 of the APK's signing certificate must match the TOFU pin
- *     held by [UpdaterPinStore] (§5.4.2).
+ *  2. The TOFU pin held by [UpdaterPinStore] must appear somewhere in the
+ *     APK's signing-certificate history (§5.4.2) — as its current signer,
+ *     or as an ancestor in a v3 SigningCertificateLineage.
  *
  * Both comparisons use [MessageDigest.isEqual] for constant-time equality
  * so that a same-length-but-wrong hash cannot be inferred byte-for-byte
@@ -49,21 +49,50 @@ class IntegrityVerifier(
             return Result.PayloadMismatch
         }
 
-        val signerHash = try {
-            sha256OfApkSigner(apkFile)
+        // Logged separately from the signer gate below: when the certificate
+        // check fails, this line is what says the bytes themselves were fine,
+        // which is the difference between "wrong build served" and "corrupted
+        // download".
+        Log.i(TAG, "event=payload_sha256_ok bytes=${apkFile.length()}")
+
+        val signerHashes = try {
+            apkSignerCertHashes(apkFile)
         } catch (e: Exception) {
             Log.w(TAG, "Extracting APK signer failed", e)
             return Result.SignerUnavailable(e.message ?: e.javaClass.simpleName)
-        } ?: return Result.SignerUnavailable("No signing certificate in APK")
+        }
+        if (signerHashes.isEmpty()) {
+            return Result.SignerUnavailable("No signing certificate in APK")
+        }
 
         val pin = pinStore.getOrTofu()
-        if (!hexEqualsConstantTime(signerHash, pin.certSha256Hex)) {
+        // Accept when the pinned certificate appears ANYWHERE in the APK's
+        // signing history, not only as its current signer. That is what makes
+        // a v3 key rotation installable: the rotated APK is signed by the new
+        // key and carries a SigningCertificateLineage proving the old key
+        // authorised it, so "the cert I trusted on first use is in this APK's
+        // lineage" is precisely the property we want to require.
+        //
+        // This does not weaken the gate. The lineage is only ever read back
+        // from PackageManager, which validates each link before exposing the
+        // history — a forged lineage does not parse.
+        val matched = pinMatchesSigningHistory(pin.certSha256Hex, signerHashes)
+        if (!matched) {
             Log.w(
                 TAG,
-                "Cert pin mismatch — pinned=${pin.certSha256Hex.redactHash()} apk=${signerHash.redactHash()}",
+                "Cert pin mismatch — pinned=${pin.certSha256Hex.redactHash()} " +
+                    "apkCerts=${signerHashes.joinToString(",") { it.redactHash() }}",
             )
-            return Result.CertMismatch(expected = pin.certSha256Hex, actual = signerHash)
+            return Result.CertMismatch(
+                expected = pin.certSha256Hex,
+                actual = signerHashes.first(),
+            )
         }
+        Log.i(
+            TAG,
+            "event=signer_ok certsInApk=${signerHashes.size} " +
+                "pin=${pin.certSha256Hex.redactHash()}",
+        )
         return Result.Ok
     }
 
@@ -80,22 +109,34 @@ class IntegrityVerifier(
         return md.digest().toHexLower()
     }
 
-    private fun sha256OfApkSigner(apkFile: File): String? {
+    /**
+     * Every signing certificate the APK can prove it is authorised to use,
+     * as lower-case SHA-256 hex.
+     *
+     * On API 28+ this is the whole [android.content.pm.SigningInfo]
+     * certificate history, so a v3-rotated APK yields both the old and the
+     * new certificate. The older paths yield exactly one certificate each —
+     * they predate rotation and have no concept of it — which is why a
+     * rotated APK must be verified through the modern path to be accepted.
+     * Ordered, with the most authoritative source first.
+     */
+    private fun apkSignerCertHashes(apkFile: File): List<String> {
         val pm = context.packageManager
         val viaPm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            extractSignerModern(pm, apkFile) ?: extractSignerLegacy(pm, apkFile)
+            extractSignerHistoryModern(pm, apkFile) ?: extractSignerLegacy(pm, apkFile)?.let(::listOf)
         } else {
-            extractSignerLegacy(pm, apkFile)
+            extractSignerLegacy(pm, apkFile)?.let(::listOf)
         }
-        val signerBytes = viaPm ?: extractSignerFromZip(apkFile)
-        return signerBytes?.let(pinStore::sha256OfApkSigner)
+        val certs = viaPm.orEmpty()
+        return certs.map(pinStore::sha256OfApkSigner).distinct()
     }
 
     /** API 28+ path. Some OEM ROMs (observed on HTC Android 9) hand back a
      *  non-null [android.content.pm.PackageInfo] with a `null` `signingInfo`
      *  for APKs in app-scoped external dirs — caller falls back to the
      *  deprecated [extractSignerLegacy] when this returns null. */
-    private fun extractSignerModern(pm: PackageManager, apkFile: File): ByteArray? {
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun extractSignerHistoryModern(pm: PackageManager, apkFile: File): List<ByteArray>? {
         val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
         if (info == null) {
             Log.w(TAG, "getPackageArchiveInfo(GET_SIGNING_CERTIFICATES) returned null — size=${apkFile.length()} sdk=${Build.VERSION.SDK_INT}")
@@ -106,14 +147,21 @@ class IntegrityVerifier(
             Log.w(TAG, "signingInfo is null — package=${info.packageName} sdk=${Build.VERSION.SDK_INT}")
             return null
         }
-        val signers = if (signing.hasMultipleSigners()) signing.apkContentsSigners
-        else signing.signingCertificateHistory
-        val first = signers?.firstOrNull()
-        if (first == null) {
+        // Multiple concurrent signers are mutually exclusive with rotation:
+        // a multi-signer APK has no lineage, so apkContentsSigners is the
+        // complete set. Otherwise signingCertificateHistory carries the
+        // rotation chain (a single entry when nothing was ever rotated).
+        val signers = if (signing.hasMultipleSigners()) {
+            signing.apkContentsSigners
+        } else {
+            signing.signingCertificateHistory
+        }
+        val certs = signers?.mapNotNull { it?.toByteArray() }.orEmpty()
+        if (certs.isEmpty()) {
             Log.w(TAG, "signingInfo has no signers (multi=${signing.hasMultipleSigners()})")
             return null
         }
-        return first.toByteArray()
+        return certs
     }
 
     /** Legacy [PackageManager.GET_SIGNATURES] path. Works on every SDK;
@@ -133,45 +181,6 @@ class IntegrityVerifier(
             return null
         }
         return first.toByteArray()
-    }
-
-    /** Last-resort path: parse the APK as a ZIP, read the PKCS#7 `.RSA`
-     *  (or `.DSA` / `.EC`) entry in `META-INF/`, and let the JCA
-     *  [CertificateFactory] extract the X.509 signer. This sidesteps
-     *  PackageManager entirely, so it still works when a ROM refuses to
-     *  scan APKs in the app-scoped external dir (observed: HTC Android 9).
-     *
-     *  Returns the same DER-encoded certificate bytes as
-     *  `Signature.toByteArray()` for non-rotated signing keys, so the
-     *  SHA-256 fed into the TOFU pin matches byte-for-byte. */
-    private fun extractSignerFromZip(apkFile: File): ByteArray? {
-        return try {
-            ZipFile(apkFile).use { zip ->
-                val entry = zip.entries().asSequence()
-                    .firstOrNull { e ->
-                        val n = e.name.uppercase()
-                        n.startsWith("META-INF/") &&
-                            (n.endsWith(".RSA") || n.endsWith(".DSA") || n.endsWith(".EC"))
-                    }
-                if (entry == null) {
-                    Log.w(TAG, "No META-INF/*.RSA|DSA|EC in APK ZIP")
-                    return@use null
-                }
-                val cf = CertificateFactory.getInstance("X.509")
-                zip.getInputStream(entry).use { input ->
-                    val cert = cf.generateCertificates(input).firstOrNull()
-                    if (cert == null) {
-                        Log.w(TAG, "PKCS#7 entry ${entry.name} yielded no certificates")
-                        null
-                    } else {
-                        cert.encoded
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "ZIP-based signer extraction failed", e)
-            null
-        }
     }
 
     private fun hexEqualsConstantTime(a: String, b: String): Boolean {
@@ -199,18 +208,49 @@ class IntegrityVerifier(
 
         /**
          * The signing certificate could not be extracted from the APK at all
-         * (every PackageManager path returned null AND the ZIP v1-signature
-         * fallback found no cert). Unlike [PayloadMismatch]/[PayloadError]
-         * this is NOT fixable by re-downloading — it's a ROM/signing-scheme
-         * edge (e.g. a v2/v3-only APK on a ROM where getPackageArchiveInfo
-         * returns null) — so the caller hands off to the release page instead
-         * of looping on a corrupt-retry that can never succeed.
+         * (every PackageManager path returned null or no signers). Unlike
+         * [PayloadMismatch]/[PayloadError] this is NOT fixable by re-
+         * downloading — it is a ROM/package-parser edge — so the caller hands
+         * off to the canonical release page instead of accepting unverified
+         * `META-INF` certificate material or looping forever.
          */
         data class SignerUnavailable(val message: String) : Result
     }
 
     companion object {
         private const val TAG = "IntegrityVerifier"
+
+        /**
+         * The cert gate's whole decision, isolated so it can be tested
+         * without a PackageManager: does the pinned certificate appear
+         * anywhere in the certificate history the APK proved?
+         *
+         * Empty history is a hard no — "we could not read any certificate"
+         * must never be mistaken for "the certificate matched". Comparison
+         * is constant-time per entry and case-insensitive, because the three
+         * extraction paths do not agree on hex casing.
+         */
+        internal fun pinMatchesSigningHistory(
+            pinCertSha256Hex: String,
+            apkCertSha256Hexes: List<String>,
+        ): Boolean {
+            if (pinCertSha256Hex.isBlank() || apkCertSha256Hexes.isEmpty()) return false
+            // Deliberately not short-circuiting on the first match: the number
+            // of comparisons should not depend on WHERE in the lineage the pin
+            // sits, only on how long the lineage is (which is public).
+            var matched = false
+            for (candidate in apkCertSha256Hexes) {
+                if (hexEqualsConstantTimeStatic(candidate, pinCertSha256Hex)) matched = true
+            }
+            return matched
+        }
+
+        private fun hexEqualsConstantTimeStatic(a: String, b: String): Boolean {
+            if (a.length != b.length) return false
+            val aBytes = a.lowercase().toByteArray(Charsets.US_ASCII)
+            val bBytes = b.lowercase().toByteArray(Charsets.US_ASCII)
+            return MessageDigest.isEqual(aBytes, bBytes)
+        }
 
         /** Trims a hex hash for logs: first 8 + last 8 chars, rest elided. */
         internal fun String.redactHash(): String =

@@ -81,6 +81,33 @@ object BoardClimbParser {
         return parseHoldEntries(frames)
     }
 
+    /**
+     * Parse one complete frame without accepting a valid-looking substring of
+     * malformed input.
+     *
+     * [parseFrames] is intentionally lenient for legacy catalogue rendering:
+     * its regex skips bytes it does not understand. Controller coexistence is a
+     * different trust boundary. Treating `p1r12BROKEN` as the known one-hold
+     * route could miss a foreign user's occupied holds, so hydration uses this
+     * all-or-nothing variant instead.
+     */
+    fun parseSingleFrameStrict(frames: String): List<BoardHold>? {
+        if (frames.isBlank() || ',' in frames) return null
+        val holds = parseHoldEntries(frames)
+        if (holds.isEmpty()) return null
+        // parseHoldEntries is deliberately lenient for legacy rendering. Make
+        // the controller boundary strict by re-encoding every parsed entry and
+        // requiring an exact round trip. This uses the same parser that already
+        // renders catalogue climbs on Android and avoids platform differences
+        // observed while walking Regex MatchResult ranges in feature APKs.
+        val canonical = if (frames.startsWith('h')) {
+            holds.joinToString("") { "h${it.placementId}p${it.roleId}" }
+        } else {
+            encodeFrames(holds)
+        }
+        return holds.takeIf { canonical == frames }
+    }
+
     /** Detect whether a frames string uses Kilter climbConcat format. */
     fun isClimbConcat(frames: String): Boolean = frames.trimStart().startsWith("h")
 

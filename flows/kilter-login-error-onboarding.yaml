@@ -1,0 +1,55 @@
+appId: com.cruxcoach.android
+name: kilter-login-error-onboarding
+tags:
+  - release-gate
+  - extended
+  - destructive
+  - live-external
+  - network
+  - mutates-state
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+- runFlow:
+    when:
+      visible: "Zulassen"
+    commands:
+      - tapOn: "Zulassen"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding_board_setup"
+    timeout: 15000
+- tapOn:
+    id: "onboarding_next_button"
+- assertVisible:
+    id: "onboarding_import"
+- tapOn:
+    id: "onboarding_import_source_kilter"
+- scrollUntilVisible:
+    element:
+      id: "onboarding_kilter_email"
+    direction: DOWN
+- tapOn:
+    id: "onboarding_kilter_email"
+- inputText: "maestro-e2e-invalid@example.invalid"
+- scrollUntilVisible:
+    element:
+      id: "onboarding_kilter_password"
+    direction: DOWN
+- tapOn:
+    id: "onboarding_kilter_password"
+- inputText: "not-a-real-password"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "onboarding_kilter_login"
+    direction: DOWN
+- tapOn:
+    id: "onboarding_kilter_login"
+- extendedWaitUntil:
+    visible: "Ungültige Zugangsdaten."
+    timeout: 30000
+- assertVisible:
+    id: "onboarding_import"
+- assertNotVisible: "Angemeldet als"

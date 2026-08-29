@@ -64,6 +64,10 @@ object WhatsNewItems {
      *  separate recap item would double-fire for the direct-upgrade cohort. */
     val RELEASE_021 = WhatsNewItem(id = "release-0.2.1", sinceVersionCode = 7)
 
+    /** 0.2.2 highlights: playable lists, Moon import, Quantum and CruxRelay. */
+    val RELEASE_022 = WhatsNewItem(id = "release-0.2.2", sinceVersionCode = 8)
+
+
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
@@ -94,6 +98,7 @@ object WhatsNewItems {
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
         RELEASE_021,
+        RELEASE_022,
     )
 }
 
@@ -176,6 +181,7 @@ fun WhatsNewHost(
     onNavigateToAuroraMigration: () -> Unit = {},
     onNavigateToBoardMap: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToMoonBoardImport: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -186,6 +192,11 @@ fun WhatsNewHost(
             Release021WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToSettings = onNavigateToSettings,
+            )
+        WhatsNewItems.RELEASE_022.id ->
+            Release022WhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
             )
         WhatsNewItems.MOONBOARD_SUPPORT.id ->
             MoonBoardWhatsNewDialog(

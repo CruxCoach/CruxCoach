@@ -28,11 +28,7 @@ jobs:
       - name: Authorize feature maintainer
         env:
           ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
-        run: |
-          test -n "$ACTOR"
-          grep -Fvx '#' .github/authorized-feature-maintainers.txt \
-            | sed '/^[[:space:]]*$/d' \
-            | grep -Fx -- "$ACTOR"
+        run: python3 scripts/authorized_feature_maintainer.py --actor "$ACTOR"
       - name: Derive immutable feature identity
         id: identity
         env:

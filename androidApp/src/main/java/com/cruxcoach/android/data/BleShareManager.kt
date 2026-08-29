@@ -124,6 +124,8 @@ class BleShareManager @Inject constructor(
                 old.onBoardClimb?.angle == new.onBoardClimb?.angle &&
                 old.onBoardClimb?.name == new.onBoardClimb?.name &&
                 old.onBoardClimb?.grade == new.onBoardClimb?.grade &&
+                old.onBoardClimb?.isStillProjected == new.onBoardClimb?.isStillProjected &&
+                old.boardShowsInstead == new.boardShowsInstead &&
                 old.boardOccupiedCount == new.boardOccupiedCount &&
                 old.nearbySessions.size == new.nearbySessions.size &&
                 old.nearbySessions.zip(new.nearbySessions).all { (a, b) ->
@@ -142,6 +144,7 @@ class BleShareManager @Inject constructor(
                 _uiState.update { current ->
                     current.copy(
                         onBoardClimb = newState.onBoardClimb,
+                        boardShowsInstead = newState.boardShowsInstead,
                         boardOccupiedCount = newState.boardOccupiedCount,
                         nearbySessions = newState.nearbySessions,
                         sharingEnabled = newState.sharingEnabled,
@@ -165,11 +168,13 @@ class BleShareManager @Inject constructor(
                 buildOwnSessionState(queueState, climbInfo, sessionState, gradeScale)
             }.distinctUntilChanged { old, new ->
                 old?.isHost == new?.isHost &&
+                old?.visibility == new?.visibility &&
                 old?.participantCount == new?.participantCount &&
                 old?.queue == new?.queue &&
                 old?.currentIndex == new?.currentIndex &&
                 old?.currentClimbName == new?.currentClimbName &&
                 old?.currentClimbGrade == new?.currentClimbGrade &&
+                old?.externalBoardOverride == new?.externalBoardOverride &&
                 old?.isPaused == new?.isPaused
                 // Deliberately ignoring elapsedSeconds — timer display collects directly
             }.collect { ownSession ->
@@ -223,6 +228,7 @@ class BleShareManager @Inject constructor(
         if (queueState.role == SessionRole.NONE && !queueState.isConnecting) return null
         return OwnSessionState(
             isHost = queueState.role == SessionRole.HOST,
+            visibility = queueState.visibility,
             participantCount = queueState.participantCount,
             queue = queueState.queue,
             currentIndex = queueState.currentIndex,
@@ -230,6 +236,7 @@ class BleShareManager @Inject constructor(
             currentClimbGrade = climbInfo?.difficultyAverage?.let {
                 GradeDisplayHelper.formatDifficulty(it, gradeScale)
             },
+            externalBoardOverride = queueState.externalBoardOverride,
             isPaused = sessionState.isPaused,
             elapsedSeconds = sessionState.elapsedSeconds
         )
@@ -270,7 +277,11 @@ class BleShareManager @Inject constructor(
             // Either we don't have an active climb, or the remote UUID changed (new send
             // that overwrites our climb on the board).
             Log.d(TAG, "BRIDGE remote=ClimbData uuid=${remoteActive.climbUuid.take(8)} hasActive=${climbAdvertiser.hasActiveClimb()} newSend=$isNewRemoteSend → accept")
-            boardStateManager.setLastClimb(remoteActive.climbUuid, remoteActive.angle)
+            boardStateManager.setLastClimb(
+                remoteActive.climbUuid,
+                remoteActive.angle,
+                remoteActive.projectionSurvivesDisconnect,
+            )
             climbAdvertiser.clearActiveClimb()
             return
         }
@@ -292,7 +303,11 @@ class BleShareManager @Inject constructor(
                 return
             }
             Log.d(TAG, "BRIDGE remote=LastClimb uuid=${remoteLast.climbUuid.take(8)} hasActive=false → accept")
-            boardStateManager.setLastClimb(remoteLast.climbUuid, remoteLast.angle)
+            boardStateManager.setLastClimb(
+                remoteLast.climbUuid,
+                remoteLast.angle,
+                remoteLast.projectionSurvivesDisconnect,
+            )
         }
     }
 
@@ -323,14 +338,25 @@ class BleShareManager @Inject constructor(
             (rawOnBoard.source == OnBoardSource.SESSION_REMOTE && queueState.role == SessionRole.NONE) ||
             (rawOnBoard.source == OnBoardSource.REMOTE_LAST && overwriteSessionUuid != null)
         )
-        val onBoardClimb = if (rawOnBoard != null && sessionClimbUuid != null &&
+        val suppressed = rawOnBoard != null && sessionClimbUuid != null &&
             queueState.role != SessionRole.NONE &&
             !isNonSuppressible &&
             !queueState.isConnecting
-        ) null else rawOnBoard
+        val onBoardClimb = if (suppressed) null else rawOnBoard
+        // Suppressing it hid the one case worth showing: the wall disagreeing
+        // with the queue. Compared by UUID, never by name — the name resolves
+        // asynchronously in another collector, so comparing names would report a
+        // mismatch for a moment on every single advance.
+        val boardShowsInstead = rawOnBoard
+            ?.takeIf { suppressed && it.climbUuid != sessionClimbUuid }
+            ?.let { BoardMismatch(climbUuid = it.climbUuid, name = it.name, grade = it.grade) }
 
         // Count connected-only entries (board occupied without climb)
-        val boardOccupiedCount = nearbyClimbs.count { it.connectedOnly }
+        // Some Android controllers report their own BLE advertisement back to their
+        // scanner. Do not present that loopback as another person occupying the board.
+        val boardOccupiedCount = nearbyClimbs.count {
+            it.connectedOnly && it.senderToken != climbAdvertiser.localPresenceToken
+        }
 
         // Map nearby sessions
         val nearbySessionEntries = sessions.map { session ->
@@ -351,10 +377,14 @@ class BleShareManager @Inject constructor(
 
         return BleShareUiState(
             onBoardClimb = onBoardClimb,
+            boardShowsInstead = boardShowsInstead,
             boardOccupiedCount = boardOccupiedCount,
             nearbySessions = nearbySessionEntries,
             sharingEnabled = sharingEnabled,
-            canRequestDisconnect = sharingEnabled && nearbyClimbs.any { !it.isLastClimb && !it.connectedOnly }
+            canRequestDisconnect = sharingEnabled && nearbyClimbs.any {
+                !it.isLastClimb && it.acceptsDisconnectRequests &&
+                    it.senderToken != climbAdvertiser.localPresenceToken
+            }
         )
     }
 
@@ -460,7 +490,9 @@ class BleShareManager @Inject constructor(
         val remoteLast = nearbyClimbs.firstOrNull {
             !it.connectedOnly && it.climbUuid.isNotEmpty() && it.isLastClimb
         }
-        if (remoteLast != null && !climbAdvertiser.hasActiveClimb() && overwriteSessionUuid != null) {
+        if (remoteLast != null && remoteLast.projectionSurvivesDisconnect &&
+            !climbAdvertiser.hasActiveClimb() && overwriteSessionUuid != null
+        ) {
             // Session hasn't advanced since the overwrite → board still shows external climb
             if (anySessionClimbUuid == overwriteSessionUuid) {
                 val info = climbInfos[remoteLast.climbUuid]
@@ -470,7 +502,8 @@ class BleShareManager @Inject constructor(
                     name = info?.name,
                     grade = info.grade(),
                     source = OnBoardSource.REMOTE_LAST,
-                    rssi = remoteLast.rssi
+                    rssi = remoteLast.rssi,
+                    isStillProjected = true,
                 )
             }
             // Session advanced → it sent a new climb → session re-took control
@@ -511,8 +544,33 @@ class BleShareManager @Inject constructor(
             )
         }
 
-        // 5. Session remote climb for NON-PARTICIPANT — session advertisement
-        val sessionClimb = sessions.firstOrNull { it.currentClimbUuid != null }
+        // 5. Session remote climb — from the session advertisement.
+        //
+        // Reached by a non-participant (nothing else to show) and by a session
+        // member whose own queue has no current climb yet, which is how a
+        // participant sees what the host put on the wall before the queue
+        // arrives over GATT.
+        //
+        // Which session matters, though. This took the first advertisement
+        // carrying any climb, so a member with an empty queue could be shown a
+        // *stranger's* climb as "session climb", right beside their own queue
+        // banner. The suppression at the top cannot catch that: it keys off the
+        // same currentClimb that was null. Once we are in a session, only that
+        // session may speak here.
+        // Session id 0 means "we have no identity to compare with". Participants
+        // are always 0 today — setParticipantRole is called with a literal 0,
+        // an invariant migration depends on and two tests pin — so the check
+        // only bites for a host. Stay permissive there rather than hide the
+        // host's climb, which is what this stage exists to show. Closing the
+        // participant half needs a session identity they do not currently
+        // have; that is a design change, not a fix.
+        val ownSessionId = queueState.sessionId.takeIf { it != 0 }
+        val sessionClimb = sessions.firstOrNull {
+            it.currentClimbUuid != null &&
+                (queueState.role == SessionRole.NONE ||
+                    ownSessionId == null ||
+                    it.sessionId == ownSessionId)
+        }
         if (sessionClimb != null) {
             val info = climbInfos[sessionClimb.currentClimbUuid]
             return OnBoardClimbEntry(
@@ -534,7 +592,8 @@ class BleShareManager @Inject constructor(
                 name = info?.name,
                 grade = info.grade(),
                 source = OnBoardSource.REMOTE_LAST,
-                rssi = remoteLast.rssi
+                rssi = remoteLast.rssi,
+                isStillProjected = remoteLast.projectionSurvivesDisconnect,
             )
         }
 
@@ -546,7 +605,8 @@ class BleShareManager @Inject constructor(
                 angle = lastClimb.angle,
                 name = info?.name ?: lastClimb.name,
                 grade = info.grade(),
-                source = OnBoardSource.LOCAL_MANAGER
+                source = OnBoardSource.LOCAL_MANAGER,
+                isStillProjected = lastClimb.projectionSurvivesDisconnect,
             )
         }
 

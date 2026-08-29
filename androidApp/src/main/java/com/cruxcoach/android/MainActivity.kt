@@ -37,7 +37,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
@@ -145,8 +147,10 @@ class MainActivity : AppCompatActivity() {
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {
             pendingDeepLink.value = safeNavigateToRoute(intent)
+                ?: extractOfflineShareDeepLink(intent)
                 ?: extractBoardDbDeepLink(intent)
                 ?: extractClimbAppLink(intent)
+                ?: extractPlaylistAppLink(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
@@ -316,8 +320,10 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         pendingDeepLink.value = safeNavigateToRoute(intent)
+            ?: extractOfflineShareDeepLink(intent)
             ?: extractBoardDbDeepLink(intent)
             ?: extractClimbAppLink(intent)
+            ?: extractPlaylistAppLink(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -351,6 +357,13 @@ class MainActivity : AppCompatActivity() {
             raw == "announcements" -> raw
             raw == "dev_chat" -> raw
             raw == "settings" -> raw
+            raw == "app_share" -> raw
+            // Carries no parameters and reaches no import sink of its own: the
+            // MoonBoard screen only offers a file picker and the opt-in
+            // accessibility transfer, both of which need a further user tap.
+            // The accessibility service uses it to land the user back on this
+            // screen when a transfer finishes.
+            raw == "moonboard_csv_import" -> raw
             raw.startsWith("message_thread/") &&
                 raw.removePrefix("message_thread/")
                     .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
@@ -382,6 +395,25 @@ class MainActivity : AppCompatActivity() {
             return null
         }
         return "board_sync?localDbUrl=${android.net.Uri.encode(url)}"
+    }
+
+    /** Validate and forward the one-scan local-share invitation. */
+    private fun extractOfflineShareDeepLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        com.cruxcoach.android.util.LocalShareProtocol.parseInvitation(data)?.let { invitation ->
+            if (!isAllowedLocalImportUrl(invitation.baseUrl)) {
+                android.util.Log.w("MainActivity", "Rejected offline-share invitation outside private IPv4")
+                return null
+            }
+            return "board_sync?offlineShare=${android.net.Uri.encode(data.toString())}"
+        }
+        val connected = com.cruxcoach.android.util.LocalShareProtocol
+            .parseConnectedInvitation(data) ?: return null
+        if (!isAllowedLocalImportUrl(connected.baseUrl)) {
+            android.util.Log.w("MainActivity", "Rejected connected share outside private IPv4")
+            return null
+        }
+        return "board_sync?connectedShare=${android.net.Uri.encode(data.toString())}"
     }
 
     /**
@@ -447,23 +479,29 @@ class MainActivity : AppCompatActivity() {
         return "board_climb_detail/$uuid/$angle"
     }
 
+
+    /**
+     * Extract a playlist share-link from `https://<APP_LINK_HOST>/l/<payload>`.
+     * The payload is validated by [com.cruxcoach.android.util.PlaylistShareLink.parse]
+     * on the import screen; here we only shape-check (base64url charset) and
+     * route — malformed links fall through to the normal launcher path.
+     */
+    private fun extractPlaylistAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "l") return null
+        val payload = segments[1]
+        if (payload.isBlank() || payload.length > 4096) return null
+        if (!payload.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
+        return "playlist_import/${android.net.Uri.encode(payload)}"
+    }
+
     private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {
         val uri = runCatching { android.net.Uri.parse(rawUrl) }.getOrNull() ?: return false
         val scheme = uri.scheme?.lowercase()
         if (scheme != "http" && scheme != "https") return false
-        val host = uri.host ?: return false
-        val parts = host.split(".")
-        if (parts.size != 4) return false
-        val octets = parts.map { it.toIntOrNull() ?: return false }
-        if (octets.any { it !in 0..255 }) return false
-        val (a, b, _, _) = octets
-        return when {
-            a == 10 -> true
-            a == 127 -> true
-            a == 192 && b == 168 -> true
-            a == 172 && b in 16..31 -> true
-            else -> false
-        }
+        return com.cruxcoach.android.util.LocalShareProtocol.isPrivateIpv4(uri.host)
     }
 
     private suspend fun sendCrashReport(crashText: String) {

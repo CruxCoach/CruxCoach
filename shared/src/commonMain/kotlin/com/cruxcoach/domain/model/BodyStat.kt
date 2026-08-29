@@ -11,6 +11,14 @@ data class BodyStat(
     val unit: String = "kg"
 )
 
+/**
+ * Display names are NOT taken from here. `shared` cannot reach Android
+ * resources, so these German strings used to be rendered directly and an
+ * English user read them untranslated inside an otherwise localized screen.
+ * The Android layer maps [StatDefinition.key] to a string resource
+ * (`ui/bodystat/BodyStatLabels.kt`); what survives here is a fallback and a
+ * developer-facing name.
+ */
 enum class StatCategory(val labelDe: String) {
     BODY_COMPOSITION("Körperzusammensetzung"),
     CLIMBING_SPECIFIC("Kletter-spezifisch"),

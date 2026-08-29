@@ -173,16 +173,24 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onTriggerRestore,
-                enabled = !state.isCheckingForBackup && !state.boardImportInProgress,
+                enabled = !state.isCheckingForBackup && !state.isRestoring && !state.boardImportInProgress,
             ) {
-                if (state.isCheckingForBackup) {
+                if (state.isCheckingForBackup || state.isRestoring) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         color = MaterialTheme.colorScheme.primary,
                         strokeWidth = 2.dp,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.settings_backup_restore_checking))
+                    Text(
+                        stringResource(
+                            if (state.isRestoring) {
+                                R.string.settings_backup_restoring
+                            } else {
+                                R.string.settings_backup_restore_checking
+                            },
+                        ),
+                    )
                 } else {
                     Text(stringResource(R.string.settings_backup_restore))
                 }
@@ -252,6 +260,7 @@ internal fun DeleteRemoteBackupsDialog(
 @Composable
 internal fun BackupRestoreDialog(
     info: BackupInfo,
+    boardImportInProgress: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -266,10 +275,17 @@ internal fun BackupRestoreDialog(
                         formatSize(info.pointer.size),
                     ),
                 )
+                if (boardImportInProgress) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.settings_backup_restore_wait_import),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm) {
+            Button(onClick = onConfirm, enabled = !boardImportInProgress) {
                 Text(stringResource(R.string.settings_backup_restore_confirm))
             }
         },

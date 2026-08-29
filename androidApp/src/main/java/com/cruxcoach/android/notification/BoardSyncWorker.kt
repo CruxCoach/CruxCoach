@@ -85,13 +85,34 @@ class BoardSyncWorker @AssistedInject constructor(
          * KEEP so repeated taps / overlapping triggers don't stack a
          * second import on top of a running one.
          */
-        fun enqueueExpedited(context: Context) {
+        /**
+         * Runs a sync the user just asked for.
+         *
+         * REPLACE, not KEEP. KEEP drops the new request whenever one under the
+         * same name is still ENQUEUED or RUNNING — and a one-shot that the
+         * system deferred (Doze, battery optimisation, an exhausted expedited
+         * quota) or that is sitting out its retry backoff stays ENQUEUED
+         * indefinitely. Every later tap on "re-download" was then discarded
+         * without a trace: no sync, no error, nothing on screen. A deliberate
+         * tap has to win over whatever is stale in the queue.
+         *
+         * Safe against interrupting a live sync: the caller only gets here
+         * while [BoardSyncManager] reports no sync in progress.
+         */
+        fun enqueueExpedited(context: Context, allowMetered: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<BoardSyncWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(
+                            if (allowMetered) NetworkType.CONNECTED else NetworkType.UNMETERED,
+                        )
+                        .build(),
+                )
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME_ONESHOT,
-                ExistingWorkPolicy.KEEP,
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
         }

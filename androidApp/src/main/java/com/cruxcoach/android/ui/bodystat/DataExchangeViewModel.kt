@@ -6,11 +6,12 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.CruxCoachCsvArchive
+import com.cruxcoach.android.data.CruxCoachExcelWorkbook
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.CruxCoachBackup.Category
 import com.cruxcoach.data.TransactionRunner
-import com.cruxcoach.data.WaistlineExchange
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.util.DateTimeUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,32 +24,26 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
 import javax.inject.Inject
 
-enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
+enum class DataExchangeFormat { JSON, CSV_ZIP, EXCEL }
 
-/**
- * Categories visible in the manual JSON export/import UI — gated to
- * what the user can actually access via 0.1.4's app surface.
+/** Categories available in the manual JSON/CSV export/import UI.
  *
- * Hidden in 0.1.4 (no user-facing UI yet, so no point exporting):
- * - PROFILE (carries the fitness UserProfile only, age/weight/grade —
- *   that data has no UI in 0.1.4 to set or view; the label
- *   "Profil & Einstellungen" is misleading because app preferences
- *   are NOT in the wire format at all)
- * - CLIMB_LOGS (generic ClimbLog diary, part of the hidden bottom-bar
- *   training surface — no Add-form exposed in 0.1.4)
- * - ASSESSMENTS, BODY_STATS, WORKOUT_LOGS, TRAINING_PLANS,
- *   BOARD_SESSIONS — same "no UI yet" reason.
+ * Keep this list aligned with data users can actually create or inspect in the
+ * released app. The training surface is still intentionally hidden, so showing
+ * profile, assessment, body-stat, workout, generic climb-log, or training-plan
+ * rows here promises controls the rest of the app does not offer. Board-session
+ * history is also internal-only for now; playlists themselves are included in
+ * [Category.CLIMB_LISTS]. Private climb notes travel with
+ * [Category.BOARD_LOGBOOK] instead of occupying a separate UI category.
  *
- * Re-add them here as their UI lands so the wire format stays in sync
- * with the visible feature surface.
- *
- * Note: the Nostr-backup path (BackupRepository) deliberately uses
- * `Category.entries.toSet()` instead — the cloud-backup is a true
- * snapshot of *everything* the wire format supports, so a future build
- * that re-enables one of the hidden categories doesn't lose the user's
- * old hidden-but-still-stored data on the next backup cycle.
+ * [com.cruxcoach.android.nostr.backup.BackupRepository] deliberately continues
+ * to use every codec category for automatic full recovery. When a hidden
+ * feature gets a real user-facing entry point, add its category here as part of
+ * that feature.
  */
 val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.BOARD_LOGBOOK,
@@ -56,19 +51,34 @@ val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.OWN_CLIMBS,
 )
 
+/** Translate the compact manual selection into the more granular wire format. */
+internal fun Set<Category>.withBundledClimbNotes(): Set<Category> =
+    if (Category.BOARD_LOGBOOK in this) this + Category.CLIMB_NOTES else this
+
+/** Collapse wire-format notes back into the user-facing logbook category. */
+internal fun Set<Category>.toManualCategories(): Set<Category> = buildSet {
+    addAll(this@toManualCategories.intersect(VISIBLE_CATEGORIES))
+    if (Category.CLIMB_NOTES in this@toManualCategories) add(Category.BOARD_LOGBOOK)
+}
+
 data class DataExchangeState(
     // Export
-    val exportFormat: ExportFormat = ExportFormat.CRUXCOACH,
+    val exportFormat: DataExchangeFormat = DataExchangeFormat.JSON,
     val exportCategories: Set<Category> = VISIBLE_CATEGORIES,
     val isExporting: Boolean = false,
+    val pendingShare: ExportShare? = null,
 
     // Import — two-phase: preview → confirm
     val isLoadingPreview: Boolean = false,
     val importPreview: CruxCoachBackup.ImportPreview? = null,
     val importCategories: Set<Category> = emptySet(),
     val pendingImportJson: String? = null,
-    val detectedWaistline: Boolean = false,
     val isImporting: Boolean = false,
+    /** Board catalogue writes and backup imports share the board DB writer.
+     *  Keep the reason for a disabled/waiting import visible instead of
+     *  presenting an unexplained spinner while the initial sync completes. */
+    val boardImportInProgress: Boolean = false,
+    val waitingForBoardSync: Boolean = false,
     /** Set when the preview detected that the backup's `nostrPubkey`
      *  envelope field doesn't match the active signer. Drives a one-shot
      *  warning dialog in the UI; the user picks "import anyway" or
@@ -91,6 +101,8 @@ data class DataExchangeState(
     val message: String? = null,
     val error: String? = null
 )
+
+data class ExportShare(val uri: Uri, val mimeType: String)
 
 @HiltViewModel
 class DataExchangeViewModel @Inject constructor(
@@ -125,13 +137,21 @@ class DataExchangeViewModel @Inject constructor(
     private val _state = MutableStateFlow(DataExchangeState())
     val state: StateFlow<DataExchangeState> = _state.asStateFlow()
 
-    // ── Export format ───────────────────────────────────────────
-
-    fun setExportFormat(format: ExportFormat) {
-        _state.update { it.copy(exportFormat = format) }
+    init {
+        viewModelScope.launch {
+            boardSyncManager.state.collect { sync ->
+                _state.update {
+                    it.copy(boardImportInProgress = sync.isSyncing || !sync.alreadyImported)
+                }
+            }
+        }
     }
 
-    // ── Export categories (only for CruxCoach format) ───────────
+    // ── Export categories ───────────────────────────────────────
+
+    fun setExportFormat(format: DataExchangeFormat) {
+        _state.update { it.copy(exportFormat = format) }
+    }
 
     fun toggleExportCategory(category: Category) {
         _state.update { s ->
@@ -153,7 +173,7 @@ class DataExchangeViewModel @Inject constructor(
 
     fun exportBackup(uri: Uri) {
         val s = _state.value
-        if (s.exportFormat == ExportFormat.CRUXCOACH && s.exportCategories.isEmpty()) {
+        if (s.exportCategories.isEmpty()) {
             _state.update { it.copy(error = context.getString(R.string.error_select_category)) }
             return
         }
@@ -161,31 +181,12 @@ class DataExchangeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val content = when (s.exportFormat) {
-                        ExportFormat.CRUXCOACH -> CruxCoachBackup.export(
-                            categories = s.exportCategories,
-                            userRepository = userRepository,
-                            bodyStatRepository = bodyStatRepository,
-                            workoutRepository = workoutRepository,
-                            climbRepository = climbRepository,
-                            planRepository = planRepository,
-                            personalBoardRepo = personalBoardRepo,
-                            boardRepository = boardRepository,
-                            exportedAt = DateTimeUtil.nowIso(),
-                            nostrPubkey = nostrSigner.getPublicKeyHex()
-                        )
-                        ExportFormat.WAISTLINE_JSON -> WaistlineExchange.exportToJson(bodyStatRepository)
-                        ExportFormat.WAISTLINE_CSV -> WaistlineExchange.exportToCsv(bodyStatRepository)
-                    }
+                    val content = buildExport(s)
                     context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
-                        stream.write(content.toByteArray(Charsets.UTF_8))
+                        stream.write(content)
                     } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
                 }
-                val label = when (s.exportFormat) {
-                    ExportFormat.CRUXCOACH -> context.getString(R.string.export_categories_exported, s.exportCategories.size)
-                    ExportFormat.WAISTLINE_JSON -> context.getString(R.string.export_waistline_json_success)
-                    ExportFormat.WAISTLINE_CSV -> context.getString(R.string.export_waistline_csv_success)
-                }
+                val label = context.getString(R.string.export_categories_exported, s.exportCategories.size)
                 _state.update { it.copy(isExporting = false, message = label) }
             } catch (e: Exception) {
                 _state.update { it.copy(isExporting = false, error = context.getString(R.string.error_export_failed, e.message ?: "")) }
@@ -193,62 +194,117 @@ class DataExchangeViewModel @Inject constructor(
         }
     }
 
-    /** Suggested filename based on selected format. */
-    fun exportFilename(): String = when (_state.value.exportFormat) {
-        ExportFormat.CRUXCOACH -> "cruxcoach_backup.json"
-        ExportFormat.WAISTLINE_JSON -> "waistline_export.json"
-        ExportFormat.WAISTLINE_CSV -> "diary_export.csv"
+    fun shareExport() {
+        val s = _state.value
+        if (s.exportCategories.isEmpty()) {
+            _state.update { it.copy(error = context.getString(R.string.error_select_category)) }
+            return
+        }
+        _state.update { it.copy(isExporting = true, error = null, message = null) }
+        viewModelScope.launch {
+            try {
+                val share = withContext(Dispatchers.IO) {
+                    val file = File(context.cacheDir, exportFilename(s.exportFormat))
+                    file.writeBytes(buildExport(s))
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file,
+                    )
+                    ExportShare(uri, exportMimeType(s.exportFormat))
+                }
+                _state.update { it.copy(isExporting = false, pendingShare = share) }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        isExporting = false,
+                        error = context.getString(R.string.error_export_failed, e.message ?: ""),
+                    )
+                }
+            }
+        }
+    }
+
+    fun shareHandled() {
+        _state.update { it.copy(pendingShare = null) }
+    }
+
+    private fun buildExport(state: DataExchangeState): ByteArray {
+        val json = CruxCoachBackup.export(
+            categories = state.exportCategories.withBundledClimbNotes(),
+            userRepository = userRepository,
+            bodyStatRepository = bodyStatRepository,
+            workoutRepository = workoutRepository,
+            climbRepository = climbRepository,
+            planRepository = planRepository,
+            personalBoardRepo = personalBoardRepo,
+            boardRepository = boardRepository,
+            exportedAt = DateTimeUtil.nowIso(),
+            nostrPubkey = nostrSigner.getPublicKeyHex(),
+        )
+        return when (state.exportFormat) {
+            DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
+            DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.fromJson(
+                json,
+                state.exportCategories.withBundledClimbNotes(),
+            )
+            DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.fromJson(
+                json,
+                state.exportCategories.withBundledClimbNotes(),
+            )
+        }
+    }
+
+    /** Suggested filename for the selected CruxCoach export format. */
+    fun exportFilename(): String = exportFilename(_state.value.exportFormat)
+
+    private fun exportFilename(format: DataExchangeFormat): String = when (format) {
+        DataExchangeFormat.JSON -> "cruxcoach_export.json"
+        DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.FILE_NAME
+        DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.FILE_NAME
     }
 
     /** MIME type for the file picker. */
-    fun exportMimeType(): String = when (_state.value.exportFormat) {
-        ExportFormat.CRUXCOACH, ExportFormat.WAISTLINE_JSON -> "application/json"
-        ExportFormat.WAISTLINE_CSV -> "text/csv"
+    fun exportMimeType(): String = exportMimeType(_state.value.exportFormat)
+
+    private fun exportMimeType(format: DataExchangeFormat): String = when (format) {
+        DataExchangeFormat.JSON -> "application/json"
+        DataExchangeFormat.CSV_ZIP -> CruxCoachCsvArchive.MIME_TYPE
+        DataExchangeFormat.EXCEL -> CruxCoachExcelWorkbook.MIME_TYPE
     }
 
     // ── Import: Phase 1 — Preview / detect format ───────────────
 
     fun loadImportPreview(uri: Uri) {
-        _state.update { it.copy(isLoadingPreview = true, error = null, message = null, importPreview = null, detectedWaistline = false) }
+        _state.update { it.copy(isLoadingPreview = true, error = null, message = null, importPreview = null) }
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val raw = context.contentResolver.openInputStream(uri)?.use { stream ->
-                        stream.bufferedReader().readText()
-                    } ?: throw Exception(context.getString(R.string.error_cannot_read_file))
-
-                    val trimmed = raw.trimStart()
-                    val isCruxCoach = trimmed.startsWith("{") && trimmed.contains("\"app\"")
-                    val isWaistlineJson = !isCruxCoach && trimmed.startsWith("{") && raw.contains("\"diary\"")
-                    val isWaistlineCsv = !trimmed.startsWith("{") && !trimmed.startsWith("[")
-
-                    if (isWaistlineJson || isWaistlineCsv) {
-                        // Waistline format → import directly
-                        val count = if (isWaistlineJson) {
-                            WaistlineExchange.importFromJson(raw, bodyStatRepository)
-                        } else {
-                            WaistlineExchange.importFromCsv(raw, bodyStatRepository)
-                        }
-                        _state.update { it.copy(
-                            isLoadingPreview = false,
-                            message = context.getString(R.string.import_waistline_success, count)
-                        ) }
+                    val raw = readImportBytes(uri)
+                    val jsonString = if (CruxCoachCsvArchive.looksLikeZip(raw)) {
+                        CruxCoachCsvArchive.toJson(raw)
                     } else {
-                        // CruxCoach format → show preview
-                        val preview = CruxCoachBackup.preview(raw)
-                        val detected = preview.detectedCategories().intersect(VISIBLE_CATEGORIES)
-                        val currentPubkey = nostrSigner.getPublicKeyHex()
-                        val mismatch = preview.nostrPubkey != null &&
-                            preview.nostrPubkey != currentPubkey
-                        _state.update { it.copy(
-                            isLoadingPreview = false,
-                            importPreview = preview,
-                            importCategories = detected,
-                            pendingImportJson = raw,
-                            importPubkeyMismatch = mismatch,
-                            importSourcePubkey = if (mismatch) preview.nostrPubkey else null
-                        ) }
+                        val text = raw.toString(Charsets.UTF_8)
+                        val trimmed = text.trimStart()
+                        require(trimmed.startsWith("{") && trimmed.contains("\"app\"")) {
+                            context.getString(R.string.error_not_cruxcoach_export)
+                        }
+                        text
                     }
+
+                    val preview = CruxCoachBackup.preview(jsonString)
+                    val detected = preview.detectedCategories().toManualCategories()
+                    val currentPubkey = nostrSigner.getPublicKeyHex()
+                    val mismatch = preview.nostrPubkey != null &&
+                        preview.nostrPubkey != currentPubkey
+                    _state.update { it.copy(
+                        isLoadingPreview = false,
+                        importPreview = preview,
+                        importCategories = detected,
+                        pendingImportJson = jsonString,
+                        importPubkeyMismatch = mismatch,
+                        importSourcePubkey = if (mismatch) preview.nostrPubkey else null
+                    ) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(
@@ -256,6 +312,26 @@ class DataExchangeViewModel @Inject constructor(
                     error = context.getString(R.string.error_file_not_readable, e.message ?: "")
                 ) }
             }
+        }
+    }
+
+    private fun readImportBytes(uri: Uri): ByteArray {
+        val stream = context.contentResolver.openInputStream(uri)
+            ?: throw Exception(context.getString(R.string.error_cannot_read_file))
+        return stream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= CruxCoachCsvArchive.MAX_ARCHIVE_BYTES) {
+                    context.getString(R.string.error_import_too_large)
+                }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
         }
     }
 
@@ -274,7 +350,11 @@ class DataExchangeViewModel @Inject constructor(
     fun confirmImport() {
         val s = _state.value
         val jsonString = s.pendingImportJson ?: return
-        val categories = s.importCategories
+        val categories = s.importCategories.withBundledClimbNotes()
+        // UI disables the action while catalogue setup is active. Keep the
+        // same invariant in the ViewModel so accessibility/rapid taps cannot
+        // start a known-blocked operation behind the disabled surface.
+        if (s.boardImportInProgress) return
         if (categories.isEmpty()) {
             _state.update { it.copy(error = context.getString(R.string.error_select_category)) }
             return
@@ -304,9 +384,11 @@ class DataExchangeViewModel @Inject constructor(
                 // Wait out any in-flight board-sync before writing — see
                 // BackupRepository.restore for the same pattern + rationale.
                 if (boardSyncManager.state.value.isSyncing) {
+                    _state.update { it.copy(waitingForBoardSync = true) }
                     Log.i(TAG, "import: awaiting board-sync to finish before write")
                     boardSyncManager.state.first { !it.isSyncing }
                     Log.i(TAG, "import: board-sync done, proceeding")
+                    _state.update { it.copy(waitingForBoardSync = false) }
                 }
                 val result = withContext(Dispatchers.IO) {
                     CruxCoachBackup.import(
@@ -336,6 +418,7 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.boardSessions > 0) parts.add(context.getString(R.string.import_result_board_sessions, result.boardSessions))
                 if (result.climbLists > 0) parts.add(context.getString(R.string.import_result_lists, result.climbLists))
                 if (result.ownClimbs > 0) parts.add(context.getString(R.string.import_result_own_climbs, result.ownClimbs))
+                if (result.climbNotes > 0) parts.add(context.getString(R.string.import_result_notes, result.climbNotes))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val dupNote = if (result.skippedDuplicates > 0)
@@ -343,6 +426,7 @@ class DataExchangeViewModel @Inject constructor(
 
                 _state.update { it.copy(
                     isImporting = false,
+                    waitingForBoardSync = false,
                     importPreview = null,
                     pendingImportJson = null,
                     importCategories = emptySet(),
@@ -351,7 +435,13 @@ class DataExchangeViewModel @Inject constructor(
                     message = context.getString(R.string.import_result_summary, "$summary$dupNote")
                 ) }
             } catch (e: Exception) {
-                _state.update { it.copy(isImporting = false, error = context.getString(R.string.error_import_failed, e.message ?: "")) }
+                _state.update {
+                    it.copy(
+                        isImporting = false,
+                        waitingForBoardSync = false,
+                        error = context.getString(R.string.error_import_failed, e.message ?: ""),
+                    )
+                }
             }
         }
     }

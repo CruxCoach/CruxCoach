@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -22,6 +24,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -47,6 +54,7 @@ fun SettingsScreen(
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
+    onNavigateToMoonBoardCsvImport: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
@@ -65,15 +73,17 @@ fun SettingsScreen(
     // isLoading guard and are restored by the NavBackStackEntry SavedStateHolder
     // on back-navigation from sub-screens.
     val scrollState = rememberScrollState()
-    var displayExpanded by rememberSaveable { mutableStateOf(false) }
+    var generalExpanded by rememberSaveable { mutableStateOf(false) }
+    // Keep the dense board-specific hub collapsed on entry, like the other
+    // settings groups. The header remains the explicit discovery affordance.
     var boardSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     var accountExpanded by rememberSaveable { mutableStateOf(false) }
-    var kilterExpanded by rememberSaveable { mutableStateOf(false) }
     var devContactExpanded by rememberSaveable { mutableStateOf(false) }
-    var dataExpanded by rememberSaveable { mutableStateOf(false) }
+    var accountsDataExpanded by rememberSaveable { mutableStateOf(false) }
     var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Notification-tap deep-link auto-expand: opens the updater section so
     // the inline confirmation dialog inside [UpdaterSettingsSection] can
@@ -84,6 +94,9 @@ fun SettingsScreen(
     val updaterDialogRequested by updaterVm.downloadDialogRequested.collectAsStateWithLifecycle()
     LaunchedEffect(updaterDialogRequested) {
         if (updaterDialogRequested) updaterExpanded = true
+    }
+    LaunchedEffect(state.isLoading, state.boardBrand) {
+        if (!state.isLoading && settingsBoardWire == null) settingsBoardWire = state.boardBrand
     }
 
     Scaffold(
@@ -138,6 +151,15 @@ fun SettingsScreen(
                     showBoardModelDialog = false
                     showGymSearch = true
                 },
+                prefill = settingsBoardWire
+                    ?.let(BoardBrand::fromWire)
+                    ?.takeIf { it.wireValue != state.boardBrand }
+                    ?.let {
+                        BoardPickerPrefill(
+                            brand = it,
+                            source = BoardPickerPrefillSource.CLIMB,
+                        )
+                    },
             )
         }
         if (showGymSearch) {
@@ -159,10 +181,14 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Section 1: Anzeige (Sprache + Darstellung)
-            CollapsibleHeader(stringResource(R.string.settings_section_display), displayExpanded) { displayExpanded = !displayExpanded }
-            AnimatedVisibility(visible = displayExpanded) {
+            val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
+            val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
+
+            // General preferences apply regardless of the selected board.
+            CollapsibleHeader(stringResource(R.string.settings_section_general), generalExpanded) { generalExpanded = !generalExpanded }
+            AnimatedVisibility(visible = generalExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_appearance))
                     LanguageSection()
                     HorizontalDivider()
                     DisplaySection(
@@ -173,57 +199,8 @@ fun SettingsScreen(
                         onDarkModeChange = { viewModel.updateDarkMode(it) },
                         onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
                     )
-                }
-            }
-
-            HorizontalDivider()
-
-            // Section 2: Board-Einstellungen
-            CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
-            AnimatedVisibility(visible = boardSettingsExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // FEAT-027: for a MoonBoard show the variant name; else the
-                    // Kilter board-size label. (0.1.5 dropped the standalone
-                    // Original/Homewall toggle — the picker resolves layout.)
-                    BoardModelSection(
-                        // Always show WHICH board it is, not just the size
-                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
-                        // shows its name/variant + size; Kilter shows the size.
-                        boardModelName = run {
-                            val brand = BoardBrand.fromWire(state.boardBrand)
-                            when {
-                                brand == BoardBrand.MOONBOARD ->
-                                    state.moonBoardVariant?.displayName ?: ""
-                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
-                                    val boardName = BoardConstants
-                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
-                                        ?: brand.displayName
-                                    if (state.boardProductSizeName.isNotBlank())
-                                        "$boardName · ${state.boardProductSizeName}" else boardName
-                                }
-                                else -> state.boardProductSizeName
-                            }
-                        },
-                        onChangeModel = { showBoardModelDialog = true },
-                    )
                     HorizontalDivider()
-                    BleAutoDisconnectSection(
-                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                    )
-                    HorizontalDivider()
-                    ClimbSharingSection(
-                        climbSharing = state.climbSharing,
-                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) }
-                    )
-                    HorizontalDivider()
-                    LedColorSection(
-                        ledColors = state.ledColors,
-                        onColorChange = { roleId, colorByte -> viewModel.updateLedColor(roleId, colorByte) },
-                        onResetColors = { viewModel.resetLedColors() },
-                        onKilterColors = { viewModel.setKilterColors() }
-                    )
-                    HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_training_playback))
                     RestTimerSection(
                         restTimer = state.restTimer,
                         onDurationChange = { viewModel.updateRestTimerDuration(it) },
@@ -238,15 +215,154 @@ fun SettingsScreen(
                         onCountdownSecondsChange = { viewModel.updateRouteCountdownSeconds(it) },
                         onAutoLoopChange = { viewModel.updateRouteAutoLoop(it) }
                     )
+                    HorizontalDivider()
+                    ClimbSharingSection(
+                        climbSharing = state.climbSharing,
+                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
+                        relayManualStart = state.relayManualStart,
+                        onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
+                    )
                 }
             }
 
             HorizontalDivider()
 
-            // Section: Kilter Board Account
-            CollapsibleHeader(stringResource(R.string.kilter_section_title), kilterExpanded) { kilterExpanded = !kilterExpanded }
-            AnimatedVisibility(visible = kilterExpanded) {
+            // Board hub: selecting a card only changes the settings context.
+            // Persisting an active board remains isolated in BoardPickerDialog's
+            // explicit confirm callback.
+            CollapsibleHeader(
+                stringResource(R.string.settings_section_board),
+                boardSettingsExpanded,
+            ) { boardSettingsExpanded = !boardSettingsExpanded }
+            AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
+                    BoardSendModeSection(
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
+                    )
+                    HorizontalDivider()
+                    BleAutoDisconnectSection(
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
+                    HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_selected_board))
+                    Text(
+                        stringResource(R.string.settings_board_hub_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        boardSettingsCards(activeBoardBrand).forEach { card ->
+                            BoardHubCard(
+                                card = card,
+                                selectedForSettings = settingsBoardBrand == card.brand,
+                                onSelect = { settingsBoardWire = card.brand.wireValue },
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.settings_board_viewing, settingsBoardBrand.displayName),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (settingsBoardBrand != activeBoardBrand) {
+                        Text(
+                            stringResource(R.string.settings_board_inactive_hint, settingsBoardBrand.displayName),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = { showBoardModelDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                        ) {
+                            Text(stringResource(R.string.settings_board_make_active))
+                        }
+                    }
+                    val hasSelectedBoardSettings =
+                        settingsBoardBrand == activeBoardBrand ||
+                            settingsBoardBrand == BoardBrand.MOONBOARD ||
+                            showsKilterLedColors(settingsBoardBrand)
+                    if (hasSelectedBoardSettings) {
+                        SettingsGroupHeader(
+                            stringResource(
+                                if (settingsBoardBrand == activeBoardBrand) {
+                                    R.string.settings_board_active_connection
+                                } else {
+                                    R.string.settings_board_specific
+                                },
+                            ),
+                        )
+                    }
+                    // FEAT-027: for a MoonBoard show the variant name; else the
+                    // Kilter board-size label. (0.1.5 dropped the standalone
+                    // Original/Homewall toggle — the picker resolves layout.)
+                    if (settingsBoardBrand == activeBoardBrand) BoardModelSection(
+                        // Always show WHICH board it is, not just the size
+                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
+                        // shows its name/variant + size; Kilter shows the size.
+                        boardModelName = run {
+                            val brand = activeBoardBrand
+                            val detail = when {
+                                brand == BoardBrand.MOONBOARD ->
+                                    state.moonBoardVariant?.displayName ?: ""
+                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
+                                    val boardName = BoardConstants
+                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
+                                        ?: brand.displayName
+                                    if (state.boardProductSizeName.isNotBlank())
+                                        "$boardName · ${state.boardProductSizeName}" else boardName
+                                }
+                                else -> state.boardProductSizeName
+                            }
+                            boardSelectionLabel(brand, state.boardLayoutId, detail)
+                        },
+                        onChangeModel = { showBoardModelDialog = true },
+                    )
+                    // FEAT-049: which of the variant's hold sets are actually
+                    // mounted. Renders nothing for any other brand, and none
+                    // for MoonBoard 2010 (one set, no choice).
+                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand == BoardBrand.MOONBOARD) {
+                        MoonBoardHoldSetSection()
+                    }
+                    if (settingsBoardBrand == BoardBrand.MOONBOARD) {
+                        MoonBoardLedPositionSection(
+                            ledMode = state.moonBoardLedMode,
+                            onModeChange = viewModel::updateMoonBoardLedMode,
+                        )
+                    }
+                    if (settingsBoardBrand == activeBoardBrand) {
+                        BoardProjectionLifecycleHint(activeBoardBrand)
+                    }
+                    if (showsKilterLedColors(settingsBoardBrand)) {
+                        HorizontalDivider()
+                        LedColorSection(
+                            ledColors = state.ledColors,
+                            onColorChange = { roleId, colorByte -> viewModel.updateLedColor(roleId, colorByte) },
+                            onResetColors = { viewModel.resetLedColors() },
+                            onKilterColors = { viewModel.setKilterColors() }
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            // Accounts, board-logbook imports and data lifecycle belong together.
+            CollapsibleHeader(stringResource(R.string.settings_section_accounts_data), accountsDataExpanded) { accountsDataExpanded = !accountsDataExpanded }
+            AnimatedVisibility(visible = accountsDataExpanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_board_accounts_imports))
                     KilterAccountSection(
                         state = state.kilterAccount,
                         onShowLogin = { viewModel.showKilterLogin() },
@@ -266,32 +382,20 @@ fun SettingsScreen(
                         onDismissResult = { viewModel.dismissKilterResult() },
                         onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
                     )
-                }
-            }
-
-            HorizontalDivider()
-
-            // Section 3: Datenverwaltung
-            //
-            // Ordering reflects how the user thinks about their data, not
-            // our internal implementation split:
-            //   1. Board sync  — public community data (unrelated concern).
-            //   2. Encrypted cloud backup (Nostr+Blossom internally) — primary backup flow; opt-in, ongoing.
-            //   3. Import / Export — manual backup variant (file-based).
-            //   4. Delete Board / User data — destructive, parked at the
-            //      bottom so the user scrolls PAST both backup variants
-            //      before encountering it.
-            CollapsibleHeader(stringResource(R.string.settings_section_data), dataExpanded) { dataExpanded = !dataExpanded }
-            AnimatedVisibility(visible = dataExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    HorizontalDivider()
+                    BoardLogbookImportSection(
+                        onNavigateToAuroraMigration = onNavigateToAuroraMigration,
+                        onNavigateToMoonBoardCsvImport = onNavigateToMoonBoardCsvImport,
+                    )
+                    HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_board_catalogs))
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
                     )
-                    // Inline sync card: download, progress, re-sync, model
-                    // selection — no navigation hop to a dedicated screen.
                     BoardSyncInlineCard()
                     HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_backup_transfer))
                     BackupSettingsSection(
                         state = backupState,
                         onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
@@ -302,20 +406,23 @@ fun SettingsScreen(
                         onNavigateToKeyManagement = onNavigateToKeyManagement,
                     )
                     HorizontalDivider()
-                    DataImportExportSection(
+                    AppDataTransferSection(
                         deleteSuccess = state.deleteSuccess,
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
-                        onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                     )
                     HorizontalDivider()
+                    SettingsGroupHeader(stringResource(R.string.settings_group_delete_data))
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
                         showDeleteUserDataDialog = state.showDeleteUserDataDialog,
                         isDeletingBoardData = state.isDeletingBoardData,
+                        selectedBrands = state.deleteDialogSelection,
                         onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
                         onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
+                        onToggleBrand = { viewModel.toggleDeleteDialogBrand(it) },
+                        onToggleSelectAll = { viewModel.toggleDeleteDialogSelectAll() },
                         onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
                         onDeleteBoardData = { viewModel.deleteBoardData() },
                         onDeleteUserBoardData = { viewModel.deleteUserBoardData() },
@@ -399,6 +506,7 @@ fun SettingsScreen(
     backupState.pendingRestore?.let { info ->
         BackupRestoreDialog(
             info = info,
+            boardImportInProgress = backupState.boardImportInProgress,
             onConfirm = { backupViewModel.confirmRestore() },
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
@@ -422,7 +530,11 @@ fun SettingsScreen(
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
             is BackupSettingsState.Snackbar.RestoreSucceeded ->
-                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
+                stringResource(
+                    R.string.settings_backup_restored,
+                    snackbar.logbookEntries,
+                    snackbar.lists,
+                )
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
@@ -519,6 +631,64 @@ private fun CollapsibleHeader(
         )
     }
 }
+
+@Composable
+private fun SettingsGroupHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = OrangeAccent,
+    )
+}
+
+@Composable
+internal fun BoardHubCard(
+    card: BoardSettingsCard,
+    selectedForSettings: Boolean,
+    onSelect: () -> Unit,
+) {
+    val activeLabel = stringResource(R.string.settings_board_active_badge)
+    OutlinedCard(
+        modifier = Modifier
+            .widthIn(min = 132.dp, max = 176.dp)
+            .testTag("settings_board_card_${card.brand.wireValue}")
+            .selectable(
+                selected = selectedForSettings,
+                onClick = onSelect,
+                role = Role.RadioButton,
+            )
+            .semantics {
+                selected = selectedForSettings
+                if (card.isActive) stateDescription = activeLabel
+            },
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (selectedForSettings) {
+                OrangeAccent.copy(alpha = 0.10f)
+            } else MaterialTheme.colorScheme.surface
+        ),
+        border = CardDefaults.outlinedCardBorder().copy(
+            width = if (selectedForSettings) 2.dp else 1.dp,
+        ),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(card.brand.displayName, fontWeight = FontWeight.Bold)
+            if (card.isActive) {
+                Text(
+                    activeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OrangeAccent,
+                )
+            }
+        }
+    }
+}
+
+internal fun showsKilterLedColors(boardBrand: BoardBrand): Boolean =
+    boardBrand == BoardBrand.KILTER
 
 /**
  * Map a [BackupErrorReason] to its locale-aware user-facing string.

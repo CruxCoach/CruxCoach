@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.io.FileInputStream
@@ -22,13 +23,20 @@ import java.io.FileInputStream
  */
 class ApkInstaller(private val context: Context) {
 
-    fun install(apkFile: File): InstallResult {
+    fun install(apkFile: File, deferUserConfirmation: Boolean = false): InstallResult {
         if (!apkFile.exists() || apkFile.length() == 0L) {
             return InstallResult.Error("APK file missing or empty")
         }
         val pi = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(context.packageName)
+        // CruxCoach deliberately keeps the final decision with the user. Even
+        // when this app happens to qualify for an unattended update, the two
+        // updater modes promise a consistent confirmation step instead of a
+        // device-dependent silent install.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+        }
         val sessionId = try {
             pi.createSession(params)
         } catch (e: Exception) {
@@ -47,6 +55,7 @@ class ApkInstaller(private val context: Context) {
                 val statusIntent = Intent(ACTION_INSTALL_STATUS).apply {
                     setPackage(context.packageName)
                     putExtra(EXTRA_SESSION_ID, sessionId)
+                    putExtra(EXTRA_DEFER_USER_CONFIRMATION, deferUserConfirmation)
                 }
                 val pendingFlags =
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
@@ -66,6 +75,10 @@ class ApkInstaller(private val context: Context) {
         }
     }
 
+    fun canRequestPackageInstalls(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            context.packageManager.canRequestPackageInstalls()
+
     sealed interface InstallResult {
         data class Committed(val sessionId: Int) : InstallResult
         data class Error(val message: String) : InstallResult
@@ -75,5 +88,6 @@ class ApkInstaller(private val context: Context) {
         private const val TAG = "ApkInstaller"
         const val ACTION_INSTALL_STATUS = "com.cruxcoach.android.updater.INSTALL_STATUS"
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_DEFER_USER_CONFIRMATION = "defer_user_confirmation"
     }
 }

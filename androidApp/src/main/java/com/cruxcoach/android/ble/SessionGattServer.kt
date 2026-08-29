@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -55,11 +57,12 @@ class SessionGattServer(private val context: Context) {
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
-    // Buffer sized to absorb a burst from MAX_CONNECTED_DEVICES participants
-    // issuing queue commands simultaneously — tryEmit on the BLE binder
-    // thread must not silently drop user actions.
-    private val _commands = MutableSharedFlow<GattCommand>(extraBufferCapacity = 128)
-    val commands: SharedFlow<GattCommand> = _commands.asSharedFlow()
+    // Large enough for a human-generated burst, bounded against a flooding peer.
+    // Android must never acknowledge a command that the app then drops.
+    private val commandChannel = Channel<GattCommand>(512)
+    val commands = commandChannel.receiveAsFlow()
+    /** Serializes the running gate with enqueue/drain at session boundaries. */
+    private val commandLock = Any()
 
     private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 32)
     val connectionEvents: SharedFlow<GattConnectionEvent> = _connectionEvents.asSharedFlow()
@@ -82,10 +85,30 @@ class SessionGattServer(private val context: Context) {
     var queueStateProvider: (() -> ByteArray)? = null
     var participantListProvider: (() -> ByteArray)? = null
 
+    /**
+     * Address of the phone's own board link, when there is one.
+     *
+     * Android reports every device already connected to the local adapter to a
+     * freshly opened GATT server — including the board WE are the client of —
+     * and it never disconnects while that link is up. Counted as a participant
+     * it makes [getConnectedCount] permanently positive, which silently
+     * disarmed the liveness half of the successor check before releasing a
+     * board. [RelayGattServer] has carried this filter since da988da2; the
+     * session server was not brought along.
+     */
+    var boardAddressProvider: () -> String? = { null }
+
+    private fun isOwnBoard(address: String): Boolean =
+        boardAddressProvider()?.equals(address, ignoreCase = true) == true
+
     private val gattCallback = object : BluetoothGattServerCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             val address = device.address
+            if (isOwnBoard(address)) {
+                Log.d(TAG, "Ignoring own board link on the session server: $address")
+                return
+            }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     synchronized(lock) {
@@ -153,11 +176,11 @@ class SessionGattServer(private val context: Context) {
         ) {
             if (characteristic.uuid == SessionGattUuids.QUEUE_COMMAND && value != null) {
                 Log.d(TAG, "Write request: QUEUE_COMMAND ${value.size} bytes from ${device.address}")
-                if (!_commands.tryEmit(GattCommand(device.address, value))) {
-                    Log.w(TAG, "commands buffer full — dropping ${value.size}B from ${device.address}")
-                }
+                val queued = enqueueCommand(device.address, value)
+                if (!queued) Log.w(TAG, "command queue full — rejecting ${value.size}B write")
                 if (responseNeeded) {
-                    gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                    gattServer?.sendResponse(device, requestId,
+                        if (queued) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE, 0, null)
                 }
             } else if (responseNeeded) {
                 gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
@@ -246,7 +269,7 @@ class SessionGattServer(private val context: Context) {
             return false
         }
 
-        _isRunning.value = true
+        synchronized(commandLock) { _isRunning.value = true }
 
         // Periodic liveness check: detect stale entries when onConnectionStateChange(DISCONNECTED)
         // doesn't fire (e.g., device goes out of range without graceful disconnect)
@@ -264,7 +287,10 @@ class SessionGattServer(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun stop() {
-        if (!_isRunning.value) return
+        if (!_isRunning.value) {
+            discardPendingCommands()
+            return
+        }
         val deviceCount = synchronized(lock) { connectedDevices.size }
         Log.d(TAG, "stop() called, $deviceCount connected devices")
         livenessJob?.cancel()
@@ -276,11 +302,45 @@ class SessionGattServer(private val context: Context) {
             connectedDevices.clear()
             subscribedDevices.clear()
         }
+        // Close the acceptance gate before the platform server. A binder
+        // callback already in flight either enqueues before this lock (and is
+        // drained below) or observes stopped and is rejected.
+        synchronized(commandLock) { _isRunning.value = false }
         gattServer?.close()
         gattServer = null
-        _isRunning.value = false
+        // Close first so no binder callback can enqueue behind the drain.
+        discardPendingCommands()
         Log.d(TAG, "GATT server stopped")
     }
+
+    /**
+     * Commands are scoped to the host session that accepted them, while this
+     * server and its channel are process-wide. Drop any orphaned backlog at a
+     * session boundary so it cannot mutate the next queue.
+     */
+    internal fun discardPendingCommands(): Int {
+        val dropped = synchronized(commandLock) {
+            var count = 0
+            while (commandChannel.tryReceive().isSuccess) count++
+            count
+        }
+        if (dropped > 0) {
+            Log.w(TAG, "Dropped $dropped command(s) queued outside a host session")
+        }
+        return dropped
+    }
+
+    private fun enqueueCommand(deviceAddress: String, data: ByteArray): Boolean =
+        synchronized(commandLock) {
+            _isRunning.value &&
+                commandChannel.trySend(GattCommand(deviceAddress, data)).isSuccess
+        }
+
+    /** Narrow test seam for constructing an orphaned pre-fix backlog. */
+    internal fun enqueueOrphanedCommandForTest(deviceAddress: String, data: ByteArray): Boolean =
+        synchronized(commandLock) {
+            commandChannel.trySend(GattCommand(deviceAddress, data)).isSuccess
+        }
 
     /**
      * Notify all subscribed devices of a characteristic change.
@@ -331,7 +391,29 @@ class SessionGattServer(private val context: Context) {
         }
     }
 
+    /** Sends a command result only to the client that issued it. */
+    @SuppressLint("MissingPermission")
+    fun notifyDevice(deviceAddress: String, charUuid: UUID, value: ByteArray) {
+        val server = gattServer ?: return
+        val characteristic = server.getService(SessionGattUuids.SERVICE)
+            ?.getCharacteristic(charUuid) ?: return
+        if (synchronized(lock) {
+                subscribedDevices[charUuid]?.contains(deviceAddress) != true
+            }) return
+        val device = bluetoothManager?.adapter?.getRemoteDevice(deviceAddress) ?: return
+        synchronized(notifyLock) {
+            characteristic.value = value
+            if (!server.notifyCharacteristicChanged(device, characteristic, false)) {
+                Log.w(TAG, "notifyDevice failed for ...${charUuid.toString().substring(4, 8)}")
+            }
+        }
+    }
+
     fun getConnectedCount(): Int = synchronized(lock) { connectedDevices.size }
+
+    fun isConnected(deviceAddress: String): Boolean = synchronized(lock) {
+        connectedDevices.contains(deviceAddress)
+    }
 
     /**
      * Proactively disconnect a device from the server side.
