@@ -1,4 +1,4 @@
-# CruxCoach 0.2.2 — 2026-08-28
+# CruxCoach 0.2.2 — 2026-08-29
 
 Your lists become training sessions you can play, your Moon logbook comes with you, Quantum Boards join CruxCoach, and CruxRelay lets the whole room use one connected wall.
 
