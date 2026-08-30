@@ -1,6 +1,6 @@
 # UI slice: active board session surface
 
-Status: specified; portable state and Android mapper covered, renderer fixture next
+Status: deterministic Android candidate implemented; pixel review pending
 
 Decision date: 2026-08-30
 
@@ -111,6 +111,10 @@ Golden changes are never accepted automatically.
   counts, current climb and connection without Android/SwiftUI types.
 - Android mapping distinguishes active, manual pause and planned rest; the rest
   expiry regression is covered.
+- Addressable active, resting, paused and no-current-climb fixtures now render
+  the same tokenized component. Focused tests cover phase/copy, fixed duration
+  formatting, missing climb, explicit connection text and the 48 dp continue
+  action.
 - Existing playlist mini-player and global rest banner contain controls below
   48 dp. They are retained for parity and must be corrected or replaced only in
   focused, tested changesets.

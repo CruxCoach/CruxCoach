@@ -731,6 +731,13 @@
     <string name="board_browser_error_title">Climbs konnten nicht geladen werden</string>
     <string name="board_browser_error_hint">Deine Filter sind unverändert. Versuche, die Ergebnisse erneut zu laden.</string>
     <string name="board_browser_load_more_error">Weitere Climbs konnten nicht geladen werden.</string>
+    <string name="session_continue_action">Session fortsetzen</string>
+    <string name="session_continue_active">Aktive Session</string>
+    <string name="session_continue_paused">Session pausiert</string>
+    <string name="session_continue_resting">Pause</string>
+    <string name="session_continue_rest_remaining">Noch %1$s</string>
+    <string name="session_continue_no_current_climb">Kein aktueller Climb</string>
+    <string name="session_continue_metrics">%1$s aktiv · %2$d Sends · %3$d Versuche</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
     <string name="board_detail_error">Fehler</string>
