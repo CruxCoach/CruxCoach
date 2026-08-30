@@ -530,7 +530,6 @@ fun CruxCoachNavHost(
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },

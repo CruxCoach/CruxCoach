@@ -1,6 +1,5 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,19 +11,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Verified
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -48,7 +43,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
-import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BrowserIssue
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
@@ -59,12 +53,6 @@ import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
-import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.util.GradeConverter
-import com.cruxcoach.data.repository.ClimbSortField
-import com.cruxcoach.data.repository.ClimbTypeFilter
-import com.cruxcoach.data.repository.SortDirection
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -79,7 +67,6 @@ import com.cruxcoach.android.util.PerfLogger
 @Composable
 fun BoardBrowserScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
-    onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
