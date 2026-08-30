@@ -328,7 +328,7 @@ class BoardSessionManager(
                 notificationService.notifyRestTimerFinished()
                 alarmScheduler.cleanup()
                 // Resume session when rest timer finishes
-                resumeSession()
+                resumeSession(PauseReason.PLANNED_REST)
             } else {
                 _restTimer.update { it.copy(
                     secondsRemaining = ((remainingMs + 999) / 1000).toInt() // ceil
