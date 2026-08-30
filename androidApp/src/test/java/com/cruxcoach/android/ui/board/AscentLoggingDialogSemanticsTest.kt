@@ -6,13 +6,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import org.junit.Assert.assertEquals
@@ -61,6 +66,8 @@ class AscentLoggingDialogSemanticsTest {
         }
 
         compose.onNodeWithContentDescription("4 stars").assertHasClickAction()
+        compose.onNodeWithTag("ascent_quality_4").assertIsSelected()
+        compose.onNodeWithTag("ascent_benchmark").assertIsSelected()
         compose.onNodeWithText("Save").assertHasClickAction().performClick()
         compose.onNodeWithText("Cancel").assertHasClickAction().performClick()
 
@@ -68,10 +75,72 @@ class AscentLoggingDialogSemanticsTest {
         assertEquals(1, cancelled)
     }
 
+    @Test
+    fun `unfinished attempt hides fields that are not persisted`() {
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(scenario = AscentLoggingScenarios.NewAttempt)
+            }
+        }
+
+        compose.onNodeWithText("Quality").assertDoesNotExist()
+        compose.onNodeWithTag("ascent_benchmark").assertDoesNotExist()
+        compose.onNodeWithText("Comment (optional)").assertExists()
+    }
+
+    @Test
+    fun `compact controls meet minimum target height`() {
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(scenario = AscentLoggingScenarios.NewSend)
+            }
+        }
+
+        listOf(
+            "ascent_outcome_send",
+            "ascent_outcome_attempt",
+            "ascent_attempt_decrease",
+            "ascent_attempt_increase",
+            "ascent_quality_1",
+            "ascent_quality_2",
+            "ascent_quality_3",
+            "ascent_quality_4",
+            "ascent_quality_5",
+            "ascent_benchmark",
+            "ascent_save",
+            "ascent_cancel",
+        ).forEach { tag ->
+            compose.onNodeWithTag(tag)
+                .assertHeightIsAtLeast(48.dp)
+                .assertWidthIsAtLeast(48.dp)
+        }
+    }
+
+    @Test
+    fun `attempt count callback preserves form behavior`() {
+        var requestedCount: Int? = null
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(
+                    scenario = AscentLoggingScenarios.NewSend,
+                    onBidCountChanged = { requestedCount = it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag("ascent_attempt_decrease").assertIsNotEnabled()
+        compose.onNodeWithTag("ascent_attempt_increase").performClick()
+
+        assertEquals(2, requestedCount)
+    }
+
     @Composable
     private fun dialog(
         scenario: AscentLoggingScenario,
         onIsSendChanged: (Boolean) -> Unit = {},
+        onBidCountChanged: (Int) -> Unit = {},
+        onQualityChanged: (Int) -> Unit = {},
+        onIsBenchmarkChanged: (Boolean) -> Unit = {},
         onSave: () -> Unit = {},
         onDismiss: () -> Unit = {},
     ) {
@@ -82,10 +151,10 @@ class AscentLoggingDialogSemanticsTest {
             quality = scenario.quality,
             comment = scenario.comment,
             isBenchmark = scenario.isBenchmark,
-            onIsBenchmarkChanged = {},
+            onIsBenchmarkChanged = onIsBenchmarkChanged,
             onIsSendChanged = onIsSendChanged,
-            onBidCountChanged = {},
-            onQualityChanged = {},
+            onBidCountChanged = onBidCountChanged,
+            onQualityChanged = onQualityChanged,
             onCommentChanged = {},
             onSave = onSave,
             onDismiss = onDismiss,

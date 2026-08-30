@@ -1,6 +1,6 @@
 # UI slice: log a board-climb attempt
 
-Status: implementation-ready, visual baseline pending an Android renderer
+Status: Android candidate implemented, pixel review pending an Android renderer
 
 Decision date: 2026-08-30
 
@@ -125,9 +125,16 @@ human direction. Golden changes are never accepted automatically.
 ## Verification record
 
 - Baseline screenshot: blocked on 2026-08-30; `adb devices -l` lists no device.
-- Baseline semantics: deterministic fixture/test to be implemented before the
-  visual change.
-- Android execution: requires NDK `27.2.12479018` in the configured SDK.
+- A direct Robolectric capture of the dialog window was also attempted in
+  native and default graphics modes; it failed at the documented renderer
+  boundary and produced no accepted baseline.
+- Baseline semantics passed before the visual change. Candidate semantics now
+  cover exclusive outcome selection, progressive send-only fields, named
+  actions, and 48 dp minimum width and height for compact controls.
+- Android candidate, logger integration, and token contrast tests pass using
+  the process-local SDK override documented in `external-gates.md`.
+- Correction rounds: zero pixel-based rounds; pixels have not been rendered
+  successfully and visual quality is therefore not claimed.
 - Apple comparison: deferred until the shared contract is exported and the
   native SwiftUI shell exists on a Mac.
 

@@ -16,6 +16,14 @@ python3 scripts/validate_refactor_contracts.py
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
+A simulator-independent pixel capture of the tagged Compose `AlertDialog` was
+also attempted with Robolectric 4.14.1 on 2026-08-30. With native graphics it
+failed to reach Compose idle after 60 seconds; with the default graphics mode
+it exhausted the test heap while waiting. The equivalent semantics composition
+passes. Do not present Preview fixtures as reviewed pixels. Continue pixel
+verification on an attached Android renderer, or in a separately reviewed
+Roborazzi spike that first proves stable dialog-window capture on this stack.
+
 The shell default points `ANDROID_HOME` at the read-only `/opt/android-sdk` and
 therefore tries and fails to install NDK `27.2.12479018`. A complete writable
 SDK was found at `/home/myuser/android-sdk` on 2026-08-30. Android checks can be
