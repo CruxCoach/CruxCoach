@@ -12,6 +12,8 @@ replacement for executable tests.
 - `ui-slice-review.md` is the mandatory, single-region UI changeset template.
 - `ui-ux-tooling-decision.md` records the time-stamped tooling research and
   adopt/spike/defer/reject decisions that gate productive UI work.
+- `slices/` contains the journey, parity, hierarchy, hypothesis, deterministic
+  scenarios, and budgets that must exist before each visual implementation.
 - `external-gates.md` records checks that cannot run on this Linux host.
 
 Validate all machine-readable contracts and their referenced fixtures with:
