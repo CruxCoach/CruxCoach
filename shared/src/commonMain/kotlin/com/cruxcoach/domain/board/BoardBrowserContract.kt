@@ -78,6 +78,8 @@ sealed interface BoardBrowserScreenState {
         val totalResultCount: Long?,
         val canLoadMore: Boolean,
         val activeSession: ActiveSessionState? = null,
+        /** Recoverable background failure while already-rendered results remain usable. */
+        val transientIssue: BrowserIssue? = null,
     ) : BoardBrowserScreenState
 }
 
