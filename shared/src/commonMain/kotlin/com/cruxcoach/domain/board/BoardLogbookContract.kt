@@ -8,7 +8,7 @@ enum class LogbookIssue {
 data class LogbookEntrySummary(
     val entryUuid: String,
     val climbUuid: String,
-    val climbName: String,
+    val climbName: String?,
     val outcome: AttemptOutcome,
     val angle: Int,
     val isMirrored: Boolean,
@@ -23,7 +23,7 @@ data class LogbookEntrySummary(
     init {
         require(entryUuid.isNotBlank())
         require(climbUuid.isNotBlank())
-        require(climbName.isNotBlank())
+        require(climbName == null || climbName.isNotBlank())
         require(attemptCount >= 1L)
         require(quality == null || quality in 1L..5L)
         require(outcome == AttemptOutcome.SEND || quality == null)
