@@ -92,6 +92,32 @@ started it, first confirm its advertised endpoint/device, then run the BLE matri
 board, then repeat the documented hardware-only API2 checks on physical
 hardware. A successful unit vector is not evidence of a physical send.
 
+## Local-share v1 sender compatibility decision
+
+The refactor rule that only the current format may be written conflicts with
+the published v0.2.2 local-share contract: a current sender deliberately emits
+a v1 manifest and scrubbed snapshot to an already released v1 receiver. The
+current receiver independently reads v1 senders through a v2-first fallback.
+Removing the sender path would satisfy a strict current-writer rule but break
+the documented old-receiver offline-share/upgrade path, so it was not changed
+as an incidental cleanup.
+
+To continue this gate, the owner must choose whether "all published versions
+remain supported" includes new-sender-to-old-receiver interoperability. Audit
+the exact boundary with:
+
+```sh
+rg -n 'VERSION_V2|MANIFEST_PATH|BOARD_PATH|snapshotProtocolForApkRequest' \
+  androidApp/src/main/java/com/cruxcoach/android/util \
+  androidApp/src/test/java/com/cruxcoach/android/util/LocalShareProtocolTest.kt
+sed -n '1,45p' docs/en/LOCAL_SHARE_CONTRACT.md
+```
+
+If bidirectional interoperability wins, retain the compatibility responder and
+model it separately from the default v2 writer in the machine-readable matrix.
+If current-only emission wins, retire the v1 server routes and snapshot build
+only after adding a test that the v1 decoder/client fallback remains intact.
+
 ## Apple toolchain
 
 This Linux host has no Xcode, iOS SDK, simulator, or signing environment. On a
