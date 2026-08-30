@@ -210,13 +210,13 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 userPreferences.migrateLegacyLedDefaultsIfNeeded()
             }.onFailure { PerfLogger.warn("[appScope] migrateLegacyLedDefaults failed", it) }
             runCatching {
-                // 0.2.1 → 0.2.2: sending is manual by default now, for single-
-                // and multi-connection boards alike. Existing installs carry a
-                // value written under the old meaning (or none, which used to
-                // read as AUTOMATIC), so they are moved across exactly once.
-                // Self-guarding; a later deliberate AUTOMATIC survives.
-                userPreferences.migrateToManualSendDefaultIfNeeded()
-            }.onFailure { PerfLogger.warn("[appScope] migrateToManualSendDefault failed", it) }
+                // 0.2.1 → 0.2.2: split the old global preference by controller
+                // capacity. Preserve an existing choice for both capacities;
+                // otherwise exclusive boards default to AUTOMATIC and shared
+                // boards to EXPLICIT. The persisted guard makes this one-shot,
+                // so later deliberate choices survive.
+                userPreferences.migrateCapacitySpecificSendModesIfNeeded()
+            }.onFailure { PerfLogger.warn("[appScope] migrateCapacitySpecificSendModes failed", it) }
             runCatching {
                 // Recover from a partial-import state left by a previous run
                 // that was killed mid-sync (restartApp during identity-switch,

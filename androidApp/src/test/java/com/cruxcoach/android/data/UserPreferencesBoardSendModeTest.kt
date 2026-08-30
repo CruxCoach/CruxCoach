@@ -68,7 +68,7 @@ class UserPreferencesBoardSendModeTest {
             prefs[PreferenceKeys.BOARD_SEND_MODE] = BoardSendMode.AUTOMATIC.name
         }
 
-        preferences.migrateToManualSendDefaultIfNeeded()
+        preferences.migrateCapacitySpecificSendModesIfNeeded()
 
         assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
         assertEquals(BoardSendMode.AUTOMATIC, preferences.multiConnectionBoardSendMode.first())
@@ -83,10 +83,10 @@ class UserPreferencesBoardSendModeTest {
     fun `a later deliberate automatic survives every further launch`() = runTest {
         val preferences = createTestUserPreferences(backgroundScope)
 
-        preferences.migrateToManualSendDefaultIfNeeded()
+        preferences.migrateCapacitySpecificSendModesIfNeeded()
         preferences.setSingleConnectionBoardSendMode(BoardSendMode.AUTOMATIC)
 
-        repeat(3) { preferences.migrateToManualSendDefaultIfNeeded() }
+        repeat(3) { preferences.migrateCapacitySpecificSendModesIfNeeded() }
 
         assertEquals(
             BoardSendMode.AUTOMATIC,
@@ -99,7 +99,7 @@ class UserPreferencesBoardSendModeTest {
         val preferences = createTestUserPreferences(backgroundScope)
 
         assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
-        preferences.migrateToManualSendDefaultIfNeeded()
+        preferences.migrateCapacitySpecificSendModesIfNeeded()
         assertEquals(BoardSendMode.AUTOMATIC, preferences.singleConnectionBoardSendMode.first())
         assertEquals(BoardSendMode.EXPLICIT, preferences.multiConnectionBoardSendMode.first())
     }

@@ -317,10 +317,10 @@ object PreferenceKeys {
     // disturbed. Never read by UI.
     val LED_DEFAULTS_MIGRATED = booleanPreferencesKey("led_defaults_migrated_v020")
 
-    // One-time guard for the manual-send default (0.2.1 had no per-capacity
-    // distinction, so every install that predates it has to be moved across
-    // exactly once — see migrateToManualSendDefaultIfNeeded).
-    val MANUAL_SEND_DEFAULT_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
+    // One-time guard for splitting the 0.2.1 global mode by capacity. The wire
+    // key keeps its released name for upgrade compatibility; only this Kotlin
+    // symbol and the migration description use the accurate terminology.
+    val CAPACITY_SEND_MODES_MIGRATED = booleanPreferencesKey("manual_send_default_migrated_v022")
 
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
@@ -1276,9 +1276,9 @@ class UserPreferences(
      * Guarded by its own flag rather than by inspecting the values, because
      * Re-running would otherwise overwrite later per-capacity choices.
      */
-    suspend fun migrateToManualSendDefaultIfNeeded() {
+    suspend fun migrateCapacitySpecificSendModesIfNeeded() {
         dataStore.edit { prefs ->
-            if (prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] == true) return@edit
+            if (prefs[PreferenceKeys.CAPACITY_SEND_MODES_MIGRATED] == true) return@edit
             val legacy = prefs[PreferenceKeys.BOARD_SEND_MODE]?.let(BoardSendMode::fromWire)
             if (PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE !in prefs) {
                 prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] =
@@ -1288,7 +1288,7 @@ class UserPreferences(
                 prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] =
                     (legacy ?: BoardSendMode.EXPLICIT).name
             }
-            prefs[PreferenceKeys.MANUAL_SEND_DEFAULT_MIGRATED] = true
+            prefs[PreferenceKeys.CAPACITY_SEND_MODES_MIGRATED] = true
         }
     }
 
