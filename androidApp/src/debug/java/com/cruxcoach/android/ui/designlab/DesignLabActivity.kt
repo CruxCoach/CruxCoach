@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.Density
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.board.AscentLoggingScenarioContent
 import com.cruxcoach.android.ui.board.AscentLoggingScenarios
+import com.cruxcoach.android.ui.board.BoardBrowserScenarioContent
+import com.cruxcoach.android.ui.board.BoardBrowserScenarios
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import java.util.Locale
 
@@ -29,9 +31,7 @@ class DesignLabActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val scenario = AscentLoggingScenarios.require(
-            intent.getStringExtra(EXTRA_SCENARIO) ?: AscentLoggingScenarios.NewSend.id,
-        )
+        val scenarioId = intent.getStringExtra(EXTRA_SCENARIO) ?: AscentLoggingScenarios.NewSend.id
         val darkMode = when (intent.getStringExtra(EXTRA_THEME) ?: THEME_LIGHT) {
             THEME_LIGHT -> DarkModeSetting.LIGHT
             THEME_DARK -> DarkModeSetting.DARK
@@ -55,7 +55,15 @@ class DesignLabActivity : ComponentActivity() {
                             .testTag("design_lab_root"),
                         color = MaterialTheme.colorScheme.background,
                     ) {
-                        AscentLoggingScenarioContent(scenario)
+                        when {
+                            scenarioId.startsWith("log/") ->
+                                AscentLoggingScenarioContent(AscentLoggingScenarios.require(scenarioId))
+                            scenarioId.startsWith("browser/") ->
+                                BoardBrowserScenarioContent(BoardBrowserScenarios.require(scenarioId))
+                            else -> throw IllegalArgumentException(
+                                "Unknown DesignLab scenario: $scenarioId",
+                            )
+                        }
                     }
                 }
             }

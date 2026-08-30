@@ -169,9 +169,11 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   session surfaces.
 - `BoardBrowserState.error` is currently written on search/load-more failure but
   is never rendered; this is a verified state-model gap, not a redesign guess.
-- Existing unit tests cover filtering, board switches, pagination, random choice
-  and catalogue revisions; no browser Compose screenshot/accessibility suite
-  exists yet.
+- Existing unit tests cover filtering, board switches, pagination, random
+  choice and catalogue revisions. The portable projection, addressable
+  `browser/content`, `browser/empty` and `browser/error` fixtures, direct-search
+  behavior, text-plus-icon connection state and 48 dp header actions now have
+  focused tests.
 - Baseline pixels and device semantics are blocked because `adb devices -l`
   reports no device. Continue with portable contracts and deterministic
   renderer fixtures; do not claim visual quality until the ADB loop in

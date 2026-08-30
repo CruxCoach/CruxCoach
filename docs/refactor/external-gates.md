@@ -16,16 +16,26 @@ python3 scripts/validate_refactor_contracts.py
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
-The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`, and
-`log/edit-send`. After a reviewed debug APK is installed, discover its exact
-package with `adb shell pm list packages | rg com.cruxcoach.android`, then
-capture a state without updating any Golden:
+The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`,
+`log/edit-send`, `browser/content`, `browser/empty`, and `browser/error`. After
+a reviewed debug APK is installed, discover its exact package with
+`adb shell pm list packages | rg com.cruxcoach.android`, then capture a state
+without updating any Golden:
 
 ```sh
 scripts/capture_design_lab.sh \
   com.cruxcoach.android.dev.f_40293f116dca \
   log/new-send light en 1.0 \
   /tmp/cruxcoach-designlab/log-new-send-light-en
+```
+
+For the first browser region, capture the stable content fixture with:
+
+```sh
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  browser/content light en 1.0 \
+  /tmp/cruxcoach-designlab/browser-content-light-en
 ```
 
 Repeat with `dark`, `de`, and `1.5`; use compact and expanded emulator/device

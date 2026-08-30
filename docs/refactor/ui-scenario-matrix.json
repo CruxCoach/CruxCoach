@@ -17,9 +17,9 @@
     "repositories": "fixture-only"
   },
   "states": [
-    {"id":"browser/content","capability":"board-browser","status":"planned"},
-    {"id":"browser/empty","capability":"board-browser","status":"planned"},
-    {"id":"browser/error","capability":"board-browser","status":"planned"},
+    {"id":"browser/content","capability":"board-browser","status":"partial"},
+    {"id":"browser/empty","capability":"board-browser","status":"partial"},
+    {"id":"browser/error","capability":"board-browser","status":"partial"},
     {"id":"detail/disconnected","capability":"climb-detail","status":"planned"},
     {"id":"detail/connected","capability":"climb-detail","status":"planned"},
     {"id":"session/active","capability":"active-board-session","status":"planned"},

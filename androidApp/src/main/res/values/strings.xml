@@ -726,6 +726,8 @@
     <string name="board_browser_empty_no_catalogue">The catalogue for this board hasn\'t been downloaded yet</string>
     <string name="board_browser_empty_load_catalogue">Load catalogue</string>
     <string name="board_browser_empty_catalogue_loading">Catalogue is loading…</string>
+    <string name="board_browser_active_filters">Filters, %1$d active</string>
+    <string name="board_browser_error_title">Climbs couldn’t be loaded</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>
