@@ -2288,6 +2288,10 @@
     <string name="history_empty_title">No history yet</string>
     <string name="history_empty_body">Sent boulders appear here once you climb them.</string>
     <string name="history_backup_local_only">Saved only on this device — not included in the backup.</string>
+    <string name="history_retention_off">Off</string>
+    <string name="history_retention_30_days">30 days</string>
+    <string name="history_retention_90_days">90 days</string>
+    <string name="history_retention_365_days">365 days</string>
     <string name="history_subtitle">Recently sent to the board</string>
     <string name="history_delete_title">Delete entries</string>
     <string name="cd_navigate_back">Back</string>

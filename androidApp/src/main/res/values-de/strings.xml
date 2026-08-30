@@ -2287,6 +2287,10 @@
     <string name="history_empty_title">Noch kein Verlauf</string>
     <string name="history_empty_body">Geschickte Boulder erscheinen hier, sobald du sie kletterst.</string>
     <string name="history_backup_local_only">Nur auf diesem Gerät gespeichert — nicht im Backup enthalten.</string>
+    <string name="history_retention_off">Aus</string>
+    <string name="history_retention_30_days">30 Tage</string>
+    <string name="history_retention_90_days">90 Tage</string>
+    <string name="history_retention_365_days">365 Tage</string>
     <string name="history_subtitle">Zuletzt ans Board gesendet</string>
     <string name="history_delete_title">Einträge löschen</string>
     <string name="cd_navigate_back">Zurück</string>

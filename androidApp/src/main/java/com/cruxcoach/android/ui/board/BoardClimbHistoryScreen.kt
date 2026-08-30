@@ -97,7 +97,7 @@ fun BoardClimbHistoryScreen(
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.cd_clear_selection),
+                                    contentDescription = stringResource(R.string.cd_delete_selected),
                                     tint = if (state.hasSelection) ErrorRed
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                                 )
@@ -159,10 +159,10 @@ fun BoardClimbHistoryScreen(
 }
 
 private val retentionOptions = listOf(
-    HistoryRetention.OFF to "Aus",
-    HistoryRetention.DAYS_30 to "30 Tage",
-    HistoryRetention.DAYS_90 to "90 Tage",
-    HistoryRetention.DAYS_365 to "365 Tage",
+    HistoryRetention.OFF to R.string.history_retention_off,
+    HistoryRetention.DAYS_30 to R.string.history_retention_30_days,
+    HistoryRetention.DAYS_90 to R.string.history_retention_90_days,
+    HistoryRetention.DAYS_365 to R.string.history_retention_365_days,
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -177,11 +177,11 @@ private fun RetentionSelectorRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        retentionOptions.forEach { (retention, label) ->
+        retentionOptions.forEach { (retention, labelResource) ->
             FilterChip(
                 selected = selected == retention,
                 onClick = { onSelect(retention) },
-                label = { Text(label) },
+                label = { Text(stringResource(labelResource)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                     selectedLabelColor = OrangeAccent
