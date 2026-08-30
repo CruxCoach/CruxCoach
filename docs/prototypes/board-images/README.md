@@ -1,22 +1,37 @@
-# AI board-image prototype
+# AI board-image prototypes
 
-`board_10-ai-full-preview-3x.png` is a non-production visual prototype for the
-Kilter Original 12 x 12 board with kickboard (`product_size_id=10`). It is not
-used by the Android app.
+These are non-production visual prototypes for the Kilter Original 12 x 12
+board with kickboard (`product_size_id=10`). They are not used by the Android
+app.
 
-The preview was assembled from nine overlapping AI-edited image tiles. The
-original bundled asset supplied the immutable alpha mask for every connected
-hold component, so the final 3240 x 3510 preview retains the source canvas,
-hold positions, rotations, spacing, and outer silhouettes. AI editing supplies
-the high-resolution surface material, lighting, and micro-detail. A local
-graphite panel is included so the transparent hold layer can be judged against
-CruxCoach's dark UI.
+## Sandstone Noir
+
+`board_10-ai-sandstone-noir-3x.png` is the current visual target. It deliberately
+separates board identity from source-photo appearance: warm, porous
+sandstone-resin holds sit on a dark aubergine technical panel with a restrained
+position grid. The look is intended to read as commissioned CruxCoach artwork,
+not as a retouched original image. `board_10-ai-sandstone-noir-zoom.png` is a
+native-resolution detail crop.
+
+The full 3240 x 3510 preview was assembled from nine overlapping AI-generated
+detail tiles. A deterministic geometry-lock pass reapplied the original alpha
+mask pixel for pixel, retaining the source canvas, hold positions, rotations,
+spacing, and outer silhouettes. AI generation supplies the new material,
+lighting, and high-resolution surface detail; the panel and grid are generated
+independently so they remain consistent across all future boards.
+
+## Earlier baseline
+
+`board_10-ai-full-preview-3x.png` was the first geometry-lock experiment. It
+proved the tiled workflow, but intentionally stayed close to the original gray
+material and is retained only for comparison.
 
 Known prototype limitations:
 
 - Inner details such as bolt wells and secondary screw marks are not yet
   independently registered and can drift slightly within a locked silhouette.
-- Some tonal variation remains between independently generated tiles.
+- Exact real-world micro-topology needs a per-hold photo or scan catalogue;
+  reference-image generation alone cannot guarantee a manufacturing-grade
+  digital twin.
 - This experiment does not change the existing image provenance or legal
   analysis. Production adoption needs a separate review.
-
