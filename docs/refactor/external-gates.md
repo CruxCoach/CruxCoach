@@ -74,7 +74,18 @@ hardware. A successful unit vector is not evidence of a physical send.
 ## Apple toolchain
 
 This Linux host has no Xcode, iOS SDK, simulator, or signing environment. On a
-Mac, verify the shared framework for `iosArm64` and `iosSimulatorArm64`, compile
-the SwiftUI shell, and run VoiceOver, Dynamic Type XXXL, light/dark, and iPhone
-compact-width checks. Do not add signing credentials to this repository or to
-command arguments.
+Mac, first complete the owner-reviewed target/driver changes described in
+`docs/refactor/ios-readiness.md`, then run:
+
+```sh
+xcodebuild -version
+./gradlew :shared:compileKotlinIosSimulatorArm64
+./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
+./gradlew :shared:iosSimulatorArm64Test
+./gradlew :shared:linkReleaseFrameworkIosArm64
+```
+
+Only after those pass should the fixture-backed SwiftUI logging shell be
+compiled and checked with VoiceOver, Dynamic Type AX5, light/dark, reduced
+motion and iPhone compact width. Do not add signing credentials to this
+repository or to command arguments.

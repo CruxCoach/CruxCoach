@@ -12,6 +12,8 @@ replacement for executable tests.
 - `ui-slice-review.md` is the mandatory, single-region UI changeset template.
 - `ui-ux-tooling-decision.md` records the time-stamped tooling research and
   adopt/spike/defer/reject decisions that gate productive UI work.
+- `ios-readiness.md` separates Linux-proven portable boundaries from the
+  owner-reviewed Gradle and Mac/Xcode gates required before a SwiftUI shell.
 - `slices/` contains the journey, parity, hierarchy, hypothesis, deterministic
   scenarios, and budgets that must exist before each visual implementation.
 - `external-gates.md` records checks that cannot run on this Linux host.
