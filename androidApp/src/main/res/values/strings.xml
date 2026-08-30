@@ -1008,6 +1008,9 @@
     <!-- Board: Detail -->
     <string name="board_detail_sending">Sending to board\u2026</string>
     <string name="board_detail_sent">Sent to board</string>
+    <string name="detail_delivery_ready">Board connected · ready to light</string>
+    <string name="detail_hero_metadata">%1$s · %2$d° · %3$s</string>
+    <string name="detail_board_semantics">Board preview for %1$s</string>
     <string name="board_detail_share_link">Copy share link</string>
     <string name="board_detail_link_copied">Link copied to clipboard</string>
     <string name="board_detail_climb_shared">Climb is being shared</string>

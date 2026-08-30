@@ -20,7 +20,8 @@ The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`,
 `log/edit-send`, `browser/content`, `browser/empty`, `browser/error`,
 `session/active`, `session/resting`, `session/paused`,
 `session/active-no-climb`, `progress/history`, `progress/empty`, and
-`progress/error`. After a reviewed debug APK is installed, discover
+`progress/error`, `detail/disconnected`, and `detail/connected`. After a
+reviewed debug APK is installed, discover
 its exact package with
 `adb shell pm list packages | rg com.cruxcoach.android`, then capture a state
 without updating any Golden:
@@ -69,6 +70,23 @@ scripts/capture_design_lab.sh \
 Also inspect `progress/empty` and `progress/error`; neither is a reviewed
 production design until its pixels and semantics have been checked on the
 attached renderer.
+
+Capture the same climb identity in both delivery states without BoardSimulator:
+
+```sh
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  detail/disconnected light en 1.0 \
+  /tmp/cruxcoach-designlab/detail-disconnected-light-en
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  detail/connected light en 1.0 \
+  /tmp/cruxcoach-designlab/detail-connected-light-en
+```
+
+The candidate is deliberately not wired into the production detail screen
+until both captures have been reviewed for board prominence, large-text
+wrapping, traversal order, and delivery-state clarity.
 
 A simulator-independent pixel capture of the tagged Compose `AlertDialog` was
 also attempted with Robolectric 4.14.1 on 2026-08-30. With native graphics it
