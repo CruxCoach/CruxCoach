@@ -2,23 +2,70 @@
 
 ## Android visual and accessibility evidence
 
-Blocked on 2026-08-30 because `adb devices -l` returned no attached device.
-Do not accept or update screenshot baselines without review.
+Rechecked on 2026-08-30 with Nokia 6.1 `PL2GAR9841808297` attached: Android
+15/API 35, physical 1080 x 1920 at 420 dpi (about 411 dp wide), system locale
+`de-DE`, font scale 1.0, and Bluetooth enabled. The serial is test-lab
+evidence, not a Bluetooth device address and must not be copied into public
+user data. No package matching `cruxcoach` was installed, no APK existed under
+the worktree's build outputs, and no remote workflow run/artifact existed for
+`feat/cross-platform-refactor`. Do not accept or update screenshot baselines
+without viewing them.
 
-Continue after a device or emulator is attached:
+The focused scenario/semantics set and both repository validators passed using
+the writable SDK on 2026-08-30. Reproduce with:
 
 ```sh
 adb devices -l
 python3 scripts/validate_refactor_contracts.py
-./gradlew :androidApp:testDebugUnitTest --tests '*Scenario*' --tests '*Semantics*'
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew :androidApp:testDebugUnitTest \
+  --tests 'com.cruxcoach.android.ui.board.AscentLoggingScenarioTest' \
+  --tests 'com.cruxcoach.android.ui.board.AscentLoggingDialogSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.AttemptLogConfirmationSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserScenarioTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserErrorContentSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserHeaderSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.ActiveSessionScenarioTest' \
+  --tests 'com.cruxcoach.android.ui.board.ActiveSessionContinueCardSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.ClimbDetailScenarioTest' \
+  --tests 'com.cruxcoach.android.ui.board.ClimbDetailHeroSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.ProgressHistoryScenarioTest' \
+  --tests 'com.cruxcoach.android.ui.board.ProgressHistoryContentSemanticsTest'
 ```
+
+The remaining rendering gate is APK availability, not ADB. Repository rules
+assign full APK builds to CI. A push/PR would violate this refactor session's
+explicit no-push/no-PR constraint, and the branch currently has no CI artifact.
+If the owner explicitly authorizes the minimal local transport build, use the
+existing feature identity and CI's non-publish placeholder version code exactly
+as follows; this command is intentionally documented, not executed:
+
+```sh
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew :androidApp:assembleDebug --console=plain \
+  -PfeatureBranch=feat/cross-platform-refactor \
+  -PfeatureTrack=feat-cross-platform-refactor-40293f11 \
+  -PfeaturePackage=com.cruxcoach.android.dev.f_40293f116dca \
+  -PfeatureLabel=cross-platform-refactor \
+  -PfeatureVersionCode=1000013
+adb -s PL2GAR9841808297 install -r \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk
+adb -s PL2GAR9841808297 shell pm list packages \
+  | rg '^package:com\.cruxcoach\.android\.dev\.f_40293f116dca$'
+```
+
+`1000013` is the credential-free transport placeholder already used by
+`.github/workflows/feature-build.yml`; this APK must never be published. Do not
+change signing, package identity, APKTrack configuration, or release files.
 
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
 The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`,
-`log/edit-send`, `log/success`, `log/error`, `browser/content`, `browser/empty`,
-`browser/error`,
+`log/edit-send`, `log/saving`, `log/success`, `log/error`, `browser/content`,
+`browser/empty`, `browser/error`,
 `session/active`, `session/resting`, `session/paused`,
 `session/active-no-climb`, `progress/history`, `progress/empty`,
 `progress/error`, `detail/disconnected`, and `detail/connected`. After a
@@ -70,6 +117,23 @@ profiles for the width axis. The package shown is the permanent identity for
 `feat/cross-platform-refactor`; pass the installed package reported by ADB if a
 local non-published build uses a different development suffix. Inspect both
 `screenshot.png` and `semantics.xml` before any baseline is reviewed.
+
+Once installed, capture all 144 combinations for each verified width class.
+The wrapper refuses a mismatched renderer instead of labelling compact pixels
+as expanded (or vice versa):
+
+```sh
+scripts/capture_design_lab_matrix.sh \
+  com.cruxcoach.android.dev.f_40293f116dca compact \
+  /tmp/cruxcoach-designlab
+# Repeat on an emulator/device whose effective width is at least 600 dp:
+scripts/capture_design_lab_matrix.sh \
+  com.cruxcoach.android.dev.f_40293f116dca expanded \
+  /tmp/cruxcoach-designlab
+```
+
+The attached Nokia is about 411 dp wide and therefore covers only `compact`.
+Do not use a distorted `wm size` override as expanded-layout evidence.
 
 Capture the deterministic history candidate (fixed rows and relative dates)
 with:
@@ -133,9 +197,12 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 
 ## BoardSimulator and hardware
 
-BoardSimulator is intentionally not started by agents. When a human has
-started it, first confirm its advertised endpoint/device. Before transport,
-lock the simulator-independent encoder/parser vectors with:
+BoardSimulator is intentionally not started or stopped by agents. On
+2026-08-30 a human confirmed a nearby Kilter advertisement, but the repository
+client could not scan or connect because no CruxCoach APK was installed. No
+name, Bluetooth address, GATT API, MTU, response, or LED state was therefore
+recorded, and no Kilter transport claim is made. Before transport, lock the
+simulator-independent encoder/parser vectors with:
 
 ```sh
 python3 scripts/validate_refactor_contracts.py
@@ -157,10 +224,11 @@ simulator LED/result state. Repeat Aurora API2 on physical API2 hardware; a
 successful unit or simulator vector is not evidence that the 18 W scaling is
 safe on a real board.
 
-There is currently no repository-owned BoardSimulator launcher, endpoint
-contract or automated transport adapter to turn a fixture ID into a simulator
-send. That is the exact external blocker; inventing an endpoint would not be a
-reproducible check. Once a human starts the simulator, continue with:
+The three focused encoder test classes and JSON parse passed on 2026-08-30.
+There is still no repository-owned BoardSimulator launcher or automated
+transport adapter to turn a fixture ID into a simulator send. After the
+reviewed debug client is installed while the human-run simulator remains
+available, continue through the real app path with:
 
 ```sh
 adb devices -l
@@ -168,35 +236,32 @@ adb shell pm list packages | rg com.cruxcoach.android
 python3 -m json.tool docs/refactor/fixtures/ble-golden-frames.json
 ```
 
-Then provide the simulator-advertised endpoint/device identifier to the
-transport adapter changeset. Do not modify signing, package identity or
-release configuration to connect it.
+Select only the advertised Kilter device in-app, record a redacted address
+(last two octets only), negotiated API/MTU, the matching Kilter golden fixture
+ID and bytes, simulator response, and LED state. Do not infer Aurora API2,
+Moon, Quantum, or physical-board evidence from this Kilter simulator run.
 
 ## Local-share v1 sender compatibility decision
 
-The refactor rule that only the current format may be written conflicts with
-the published v0.2.2 local-share contract: a current sender deliberately emits
-a v1 manifest and scrubbed snapshot to an already released v1 receiver. The
-current receiver independently reads v1 senders through a v2-first fallback.
-Removing the sender path would satisfy a strict current-writer rule but break
-the documented old-receiver offline-share/upgrade path, so it was not changed
-as an incidental cleanup.
+Resolved on 2026-08-30: bidirectional published interoperability wins. The v1
+responder remains, but is named and routed separately from the v2 default
+writer as `PUBLISHED_V1_COMPATIBILITY_RESPONDER`. Current receivers retain the
+v2-first, v1-only-when-missing fallback and both versions retain their decoder
+coverage. The machine-readable matrix marks v1 `write=false` and
+`compatibilityResponseWrite=true`, so no unrelated writer may emit v1.
 
-To continue this gate, the owner must choose whether "all published versions
-remain supported" includes new-sender-to-old-receiver interoperability. Audit
-the exact boundary with:
+Recheck the boundary with:
 
 ```sh
-rg -n 'VERSION_V2|MANIFEST_PATH|BOARD_PATH|snapshotProtocolForApkRequest' \
+rg -n 'VERSION_V2|MANIFEST_PATH|BOARD_PATH|responseContractForApkRequest' \
   androidApp/src/main/java/com/cruxcoach/android/util \
   androidApp/src/test/java/com/cruxcoach/android/util/LocalShareProtocolTest.kt
 sed -n '1,45p' docs/en/LOCAL_SHARE_CONTRACT.md
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew :androidApp:testDebugUnitTest \
+  --tests 'com.cruxcoach.android.util.LocalShareProtocolTest'
 ```
-
-If bidirectional interoperability wins, retain the compatibility responder and
-model it separately from the default v2 writer in the machine-readable matrix.
-If current-only emission wins, retire the v1 server routes and snapshot build
-only after adding a test that the v1 decoder/client fallback remains intact.
 
 ## Apple toolchain
 
