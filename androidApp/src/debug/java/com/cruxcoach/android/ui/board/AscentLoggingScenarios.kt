@@ -54,6 +54,9 @@ internal object AscentLoggingScenarios {
     )
 
     val all = sequenceOf(NewSend, NewAttempt, EditSend)
+
+    fun require(id: String): AscentLoggingScenario = all.firstOrNull { it.id == id }
+        ?: throw IllegalArgumentException("Unknown DesignLab scenario: $id")
 }
 
 internal class AscentLoggingScenarioProvider : PreviewParameterProvider<AscentLoggingScenario> {
@@ -84,22 +87,25 @@ internal annotation class LogAttemptPreviewMatrix
 private fun AscentLoggingDialogPreview(
     @PreviewParameter(AscentLoggingScenarioProvider::class) scenario: AscentLoggingScenario,
 ) {
+    CruxCoachTheme { AscentLoggingScenarioContent(scenario) }
+}
+
+@Composable
+internal fun AscentLoggingScenarioContent(scenario: AscentLoggingScenario) {
     var current by remember(scenario.id) { mutableStateOf(scenario) }
-    CruxCoachTheme {
-        AscentLoggingDialog(
-            isEditing = current.isEditing,
-            isSend = current.isSend,
-            bidCount = current.attemptCount,
-            quality = current.quality,
-            comment = current.comment,
-            isBenchmark = current.isBenchmark,
-            onIsBenchmarkChanged = { current = current.copy(isBenchmark = it) },
-            onIsSendChanged = { current = current.copy(isSend = it) },
-            onBidCountChanged = { current = current.copy(attemptCount = it.coerceAtLeast(1)) },
-            onQualityChanged = { current = current.copy(quality = it) },
-            onCommentChanged = { current = current.copy(comment = it) },
-            onSave = {},
-            onDismiss = {},
-        )
-    }
+    AscentLoggingDialog(
+        isEditing = current.isEditing,
+        isSend = current.isSend,
+        bidCount = current.attemptCount,
+        quality = current.quality,
+        comment = current.comment,
+        isBenchmark = current.isBenchmark,
+        onIsBenchmarkChanged = { current = current.copy(isBenchmark = it) },
+        onIsSendChanged = { current = current.copy(isSend = it) },
+        onBidCountChanged = { current = current.copy(attemptCount = it.coerceAtLeast(1)) },
+        onQualityChanged = { current = current.copy(quality = it) },
+        onCommentChanged = { current = current.copy(comment = it) },
+        onSave = {},
+        onDismiss = {},
+    )
 }

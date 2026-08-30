@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".ui.designlab.DesignLabActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.CruxCoach" />
+    </application>
+</manifest>

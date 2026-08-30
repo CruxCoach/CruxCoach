@@ -28,6 +28,10 @@ Check the dependency directions already established by the staged refactor with:
 python3 scripts/check_architecture.py
 ```
 
+The debug-only Android DesignLab and its non-accepting ADB capture command are
+documented in `external-gates.md`. Preview fixtures do not count as visual
+evidence until rendered pixels and the paired semantics dump are inspected.
+
 Status values are deliberately small and stable: `covered`, `partial`,
 `planned`, `hidden-preserved`, and `external-gate`. A refactor may improve a
 status, but must not silently remove an entry.

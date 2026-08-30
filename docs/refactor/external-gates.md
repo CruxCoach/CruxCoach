@@ -16,6 +16,24 @@ python3 scripts/validate_refactor_contracts.py
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
+The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`, and
+`log/edit-send`. After a reviewed debug APK is installed, discover its exact
+package with `adb shell pm list packages | rg com.cruxcoach.android`, then
+capture a state without updating any Golden:
+
+```sh
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  log/new-send light en 1.0 \
+  /tmp/cruxcoach-designlab/log-new-send-light-en
+```
+
+Repeat with `dark`, `de`, and `1.5`; use compact and expanded emulator/device
+profiles for the width axis. The package shown is the permanent identity for
+`feat/cross-platform-refactor`; pass the installed package reported by ADB if a
+local non-published build uses a different development suffix. Inspect both
+`screenshot.png` and `semantics.xml` before any baseline is reviewed.
+
 A simulator-independent pixel capture of the tagged Compose `AlertDialog` was
 also attempted with Robolectric 4.14.1 on 2026-08-30. With native graphics it
 failed to reach Compose idle after 60 seconds; with the default graphics mode
