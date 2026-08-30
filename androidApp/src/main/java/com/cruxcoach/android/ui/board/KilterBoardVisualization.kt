@@ -406,7 +406,7 @@ internal fun KilterBoardVisualization(
                         val xS = size.width.toFloat() / boardWidth
                         val yS = size.height.toFloat() / boardHeight
                         val tapRadius = quantumModel?.let { quantumHitRadiusDp(it).dp.toPx() }
-                            ?: boardMarkerScale(brand, xS, boardWidth) * 6f
+                            ?: xS * 6f
                         var nearest: Int? = null
                         var nearestDist = Float.MAX_VALUE
                         placements.values.forEach { placement ->
@@ -500,7 +500,7 @@ internal fun KilterBoardVisualization(
                 val markerScale = if (quantumModel != null) {
                     (QUANTUM_DIODE_DIAMETER_DP / 8f).dp.toPx()
                 } else {
-                    boardMarkerScale(brand, xScale, boardWidth)
+                    xScale
                 }
 
                 // Zone-box overlay: below the hold circles so selections stay

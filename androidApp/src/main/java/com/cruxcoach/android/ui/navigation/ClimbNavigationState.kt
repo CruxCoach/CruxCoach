@@ -24,8 +24,6 @@ class ClimbNavigationState @Inject constructor() {
     var statusDataChanged: Boolean = false
     /** UUIDs of climbs whose status changed (logged/deleted). Consumed together with the flag. */
     val changedClimbUuids: MutableSet<String> = mutableSetOf()
-    /** Set by detail screen when user taps a setter name; consumed by browser on resume. */
-    var pendingSetterFilter: String? = null
     /** Set by [ClimbEditorViewModel] after any save / update / publish / delete
      *  on a local draft; read & reset by [BoardBrowserViewModel.refreshBoardData].
      *  Without this, edit-without-count-change (e.g. rename) leaves the browser

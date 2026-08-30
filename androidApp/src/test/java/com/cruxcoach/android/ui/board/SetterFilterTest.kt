@@ -2,21 +2,17 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.TestClimb
-import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.ClimbWithStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
  * Tests for the Setter Filter feature.
  *
  * Verifies that:
- * - ClimbNavigationState carries the pendingSetterFilter correctly
  * - FakeBoardRepository searchClimbsByName matches setter_username (like the real SQL)
  * - countSearchClimbs also matches setter_username
- * - The filter is consumed (reset to null) after reading
  * - Search by setter name returns only that setter's climbs
  */
 class SetterFilterTest {
@@ -31,42 +27,6 @@ class SetterFilterTest {
         uuid = uuid, name = name, setterUsername = setter,
         difficulty = difficulty, ascensionists = ascensionists, frames = "",
     )
-
-    // ── ClimbNavigationState pendingSetterFilter ──────────────
-
-    @Test
-    fun `pendingSetterFilter is null by default`() {
-        val navState = ClimbNavigationState()
-        assertNull(navState.pendingSetterFilter)
-    }
-
-    @Test
-    fun `pendingSetterFilter stores and returns setter name`() {
-        val navState = ClimbNavigationState()
-        navState.pendingSetterFilter = "CoolSetter123"
-        assertEquals("CoolSetter123", navState.pendingSetterFilter)
-    }
-
-    @Test
-    fun `pendingSetterFilter can be consumed and reset to null`() {
-        val navState = ClimbNavigationState()
-        navState.pendingSetterFilter = "TestSetter"
-
-        // Simulate consume pattern from BoardBrowserViewModel
-        val consumed = navState.pendingSetterFilter
-        navState.pendingSetterFilter = null
-
-        assertEquals("TestSetter", consumed)
-        assertNull(navState.pendingSetterFilter)
-    }
-
-    @Test
-    fun `pendingSetterFilter can be overwritten before consumption`() {
-        val navState = ClimbNavigationState()
-        navState.pendingSetterFilter = "FirstSetter"
-        navState.pendingSetterFilter = "SecondSetter"
-        assertEquals("SecondSetter", navState.pendingSetterFilter)
-    }
 
     // ── FakeBoardRepository search matches setter_username ────
 
@@ -187,30 +147,4 @@ class SetterFilterTest {
         assertTrue(bobClimbs.all { it.setterUsername == setterB })
     }
 
-    // ── End-to-end: pendingSetterFilter → search query flow ───
-
-    @Test
-    fun `setter filter flow - set filter then consume into search query`() {
-        val navState = ClimbNavigationState()
-        val repo = FakeBoardRepository()
-        repo.addClimbs(
-            climb("1", name = "Easy One", setter = "ProSetter"),
-            climb("2", name = "Hard One", setter = "ProSetter"),
-            climb("3", name = "Medium One", setter = "OtherGuy")
-        )
-
-        // Step 1: Detail screen sets the setter filter
-        navState.pendingSetterFilter = "ProSetter"
-
-        // Step 2: Browser consumes it (simulating refreshBoardData)
-        val searchQuery = navState.pendingSetterFilter!!
-        navState.pendingSetterFilter = null
-
-        // Step 3: Search with the consumed query
-        val results = repo.searchClimbsByName(searchQuery, angle = 40, layoutId = 1, boardBrand = "kilter")
-
-        assertEquals(2, results.size)
-        assertTrue(results.all { it.setterUsername == "ProSetter" })
-        assertNull(navState.pendingSetterFilter)
-    }
 }

@@ -1753,16 +1753,6 @@ class BoardClimbDetailViewModel @Inject constructor(
         sessionManager.dismissRestTimerFinished()
     }
 
-    /** @deprecated The setter-link click no longer applies a browse filter
-     *  — it navigates to [SetterDetailScreen] instead. The browser still
-     *  honours `pendingSetterFilter` if some future code wants to set it,
-     *  but the climb-detail-by-setter row stopped using it as of Plan 8.
-     *  Left in place for binary compat with the existing nav-state field. */
-    @Deprecated("Use SetterDetailScreen via onNavigateToSetter instead.")
-    fun requestSetterFilter(setter: String) {
-        climbNavState.pendingSetterFilter = setter
-    }
-
     companion object {
         private const val TAG = "BoardClimbDetailVM"
     }

@@ -101,12 +101,6 @@ class BoardImageAssetsTest {
     }
 
     @Test
-    fun otherBoardMarkerScaleIsUnchanged() {
-        assertEquals(3f, boardMarkerScale(BoardBrand.KILTER, 3f, 144f))
-        assertEquals(3f, boardMarkerScale(BoardBrand.TENSION, 3f, 144f))
-    }
-
-    @Test
     fun collidingSizeIdsAcrossBrandsResolveToDistinctPaths() {
         // Kilter size 7 and (a hypothetical) Tension size 7 must not alias.
         assertNotEquals(

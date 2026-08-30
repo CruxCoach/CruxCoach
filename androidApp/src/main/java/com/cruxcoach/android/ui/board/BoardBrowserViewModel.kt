@@ -29,7 +29,6 @@ import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZoneEngine
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.MoonBoardVariant
-import com.cruxcoach.domain.board.SessionType
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -185,16 +184,6 @@ internal suspend fun refillBrowsePages(
         exhausted = nextExhausted
     }
     return Triple(results, offset, exhausted)
-}
-
-@Deprecated("Use EnhancedSessionSummary", replaceWith = ReplaceWith("EnhancedSessionSummary"))
-data class SessionZoneSummary(
-    val warmupCount: Int = 0,
-    val optimalCount: Int = 0,
-    val limitCount: Int = 0,
-    val sessionType: SessionType = SessionType.PYRAMID_SESSION
-) {
-    val total: Int get() = warmupCount + optimalCount + limitCount
 }
 
 data class BrowserFilterState(
@@ -870,13 +859,6 @@ class BoardBrowserViewModel @Inject constructor(
             if (it) climbNavState.creatorDataChanged = false
         }
 
-        // Consume pending setter filter from detail screen
-        val setterFilterApplied = climbNavState.pendingSetterFilter != null
-        climbNavState.pendingSetterFilter?.let { setter ->
-            climbNavState.pendingSetterFilter = null
-            _state.update { it.copy(filter = it.filter.copy(searchQuery = setter)) }
-        }
-
         // Immediate UI update: when the active filter excludes sent climbs
         // (a non-empty selection without SENT — e.g. Neu, Versucht, or
         // Neu+Versucht), a just-logged send/bid should drop out of view at
@@ -1013,14 +995,13 @@ class BoardBrowserViewModel @Inject constructor(
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
-                if ((countChanged || force || dataChanged || creatorDirty || setterFilterApplied || needsBoardReload) && count > 0) {
+                if ((countChanged || force || dataChanged || creatorDirty || needsBoardReload) && count > 0) {
                     // dataChanged / creatorDirty re-run the SAME query the
                     // user was scrolled into (back from the climb detail /
                     // editor) — keep the loaded depth so the restored scroll
                     // position isn't clamped to page 1. Every other trigger
                     // changes the result set and resets to a single page.
-                    val sameQueryRefresh = (dataChanged || creatorDirty) &&
-                        !setterFilterApplied && !needsBoardReload
+                    val sameQueryRefresh = (dataChanged || creatorDirty) && !needsBoardReload
                     searchClimbs(preserveDepth = sameQueryRefresh)
                 } else {
                     _state.update { it.copy(isLoading = false) }

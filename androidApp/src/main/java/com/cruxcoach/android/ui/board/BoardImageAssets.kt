@@ -47,9 +47,3 @@ internal fun boardImageCandidatePaths(
         listOf(sizePath)
     }
 }
-
-internal fun boardMarkerScale(
-    @Suppress("UNUSED_PARAMETER") brand: BoardBrand,
-    xScale: Float,
-    @Suppress("UNUSED_PARAMETER") boardWidth: Float,
-): Float = xScale
