@@ -6,10 +6,13 @@ Rechecked on 2026-08-30 with Nokia 6.1 `PL2GAR9841808297` attached: Android
 15/API 35, physical 1080 x 1920 at 420 dpi (about 411 dp wide), system locale
 `de-DE`, font scale 1.0, and Bluetooth enabled. The serial is test-lab
 evidence, not a Bluetooth device address and must not be copied into public
-user data. No package matching `cruxcoach` was installed, no APK existed under
-the worktree's build outputs, and no remote workflow run/artifact existed for
-`feat/cross-platform-refactor`. Do not accept or update screenshot baselines
-without viewing them.
+user data. A stable `com.cruxcoach.android` v0.2.2 package was subsequently
+installed by the operator; it is not debuggable and has no DesignLab activity.
+The side-by-side feature package `com.cruxcoach.android.dev.f_40293f116dca`
+is not installed, no APK exists under the worktree's build outputs, and no
+remote workflow run/artifact exists for `feat/cross-platform-refactor`. Do not
+accept or update screenshot baselines without viewing them. Do not open, clear,
+replace, or reuse the stable package for feature evidence.
 
 The focused scenario/semantics set and both repository validators passed using
 the writable SDK on 2026-08-30. Reproduce with:
@@ -34,14 +37,27 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
   --tests 'com.cruxcoach.android.ui.board.ProgressHistoryContentSemanticsTest'
 ```
 
-The remaining rendering gate is APK availability, not ADB. Repository rules
-assign full APK builds to CI. A push/PR would violate this refactor session's
-explicit no-push/no-PR constraint, and the branch currently has no CI artifact.
-If the owner explicitly authorizes the minimal local transport build, use the
-existing feature identity and CI's non-publish placeholder version code exactly
-as follows; this command is intentionally documented, not executed:
+The owner authorized exactly one local feature build and APKTrack publication
+on 2026-08-30. Publication is blocked before build because the canonical
+`apktrack reserve-version` command reports that `APKTRACK_AGENT_TOKEN` is not
+available. The host has only `apktrack-publish-fips`; by policy that wrapper's
+one-use token may reach only its `publish-build` child, so it cannot be reused
+for reservation. Do not invent a token path, use the placeholder `1000013`, or
+build before a version has been atomically reserved.
+
+Once the operator provides a canonical scoped secret provider for
+`reserve-version`, re-read all three `AGENTS.md` files and continue with the
+then-current clean committed SHA and freshly derived identity:
 
 ```sh
+commit=$(git rev-parse HEAD)
+python3 scripts/feature_identity.py --branch feat/cross-platform-refactor
+version_code=$(apktrack reserve-version \
+  --config .apktrack/project.toml \
+  --track feat-cross-platform-refactor-40293f11 \
+  --branch feat/cross-platform-refactor \
+  --commit "$commit" \
+  --minimum 1000013)
 ANDROID_HOME=/home/myuser/android-sdk \
 ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ./gradlew :androidApp:assembleDebug --console=plain \
@@ -49,16 +65,22 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
   -PfeatureTrack=feat-cross-platform-refactor-40293f11 \
   -PfeaturePackage=com.cruxcoach.android.dev.f_40293f116dca \
   -PfeatureLabel=cross-platform-refactor \
-  -PfeatureVersionCode=1000013
-adb -s PL2GAR9841808297 install -r \
-  androidApp/build/outputs/apk/debug/androidApp-debug.apk
-adb -s PL2GAR9841808297 shell pm list packages \
-  | rg '^package:com\.cruxcoach\.android\.dev\.f_40293f116dca$'
+  -PfeatureVersionCode="$version_code"
+/home/myuser/.local/bin/apktrack-publish-fips \
+  androidApp/build/outputs/apk/debug/androidApp-debug.apk \
+  --config .apktrack/project.toml \
+  --branch feat/cross-platform-refactor \
+  --commit "$commit" \
+  --track feat-cross-platform-refactor-40293f11 \
+  --wait-timeout 2700
 ```
 
-`1000013` is the credential-free transport placeholder already used by
-`.github/workflows/feature-build.yml`; this APK must never be published. Do not
-change signing, package identity, APKTrack configuration, or release files.
+Proceed to the verified APKTrack blob download only when the final result says
+both `status="published"` and `receipt_delivered=true`. Preserve the deterministic
+idempotency key
+`cruxcoach-feat-cross-platform-refactor-40293f11-<lowercase-commit>` on any
+diagnostic retry. Do not change signing, package identity, APKTrack
+configuration, wrapper, registry, or release files.
 
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
