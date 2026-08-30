@@ -1,6 +1,5 @@
 package com.cruxcoach.android.ui.board
 
-import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.cruxcoach.android.ble.BoardBleConnection
@@ -68,7 +67,6 @@ class BoardClimbDetailOwnPublishTest {
     private val cruxRelayManager = mockk<CruxRelayManager>(relaxed = true)
     private val bleShareManager = mockk<BleShareManager>(relaxed = true)
     private val ownClimbPublisher = mockk<OwnKilterClimbPublisher>(relaxed = true)
-    private val context = mockk<Context>(relaxed = true)
 
     private val climbUuid = "11111111-aaaa-bbbb-cccc-000000000001"
     private val angle = 40
@@ -154,7 +152,6 @@ class BoardClimbDetailOwnPublishTest {
             communityClimbDeleter = mockk(relaxed = true),
             ownClimbPublisher = ownClimbPublisher,
             climbNavState = mockk(relaxed = true),
-            context = context,
         )
     }
 

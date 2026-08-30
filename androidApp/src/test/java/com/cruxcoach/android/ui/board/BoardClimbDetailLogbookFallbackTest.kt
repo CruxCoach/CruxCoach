@@ -1,9 +1,7 @@
 package com.cruxcoach.android.ui.board
 
-import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
-import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardLayerManager
 import com.cruxcoach.android.ble.BoardLayerState
@@ -24,6 +22,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.board.ClimbDetailIssue
 import com.cruxcoach.domain.board.IntensityZones
 import io.mockk.coEvery
 import io.mockk.every
@@ -38,6 +37,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -49,9 +49,9 @@ import org.junit.Test
  *
  * A climb the user has a local Kilter ascent for but which is absent from
  * the board DB (Kilter new-PowerSync-world uuid, never mirrored) must NOT
- * dead-end on [ClimbDetailState.error]. Instead the VM resolves the user's
+ * dead-end on [ClimbDetailState.issue]. Instead the VM resolves the user's
  * local history and exposes a [LogbookOnlyState]. When there is no history,
- * the raw error path is preserved.
+ * a stable typed issue is exposed without raw exception text.
  *
  * Only the not-found code path of `loadClimb` is exercised, which runs
  * before any [UserPreferences] read — so the heavy Android collaborators are
@@ -72,7 +72,6 @@ class BoardClimbDetailLogbookFallbackTest {
     private val climbAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
     private val cruxRelayManager = mockk<CruxRelayManager>(relaxed = true)
     private val bleShareManager = mockk<BleShareManager>(relaxed = true)
-    private val context = mockk<Context>(relaxed = true)
 
     private val missingUuid = "a30d8042-aeea-42ce-8015-239016c87769"
     private val angle = 25
@@ -104,7 +103,6 @@ class BoardClimbDetailLogbookFallbackTest {
         every { boardRepository.getClimbByUuid(any(), any()) } returns null
         every { boardRepository.getClimbByUuidNormalized(any(), any()) } returns null
 
-        every { context.getString(any(), any(), any()) } returns "Climb not found"
     }
 
     @After
@@ -135,7 +133,6 @@ class BoardClimbDetailLogbookFallbackTest {
             communityClimbDeleter = mockk(relaxed = true),
             ownClimbPublisher = mockk(relaxed = true),
             climbNavState = mockk(relaxed = true),
-            context = context,
         )
     }
 
@@ -166,7 +163,7 @@ class BoardClimbDetailLogbookFallbackTest {
             var s = awaitItem()
             while (s.isLoading) s = awaitItem()
 
-            assertNull("error must not be set when history exists", s.error)
+            assertNull("issue must not be set when history exists", s.issue)
             assertNull("no board-DB climb is resolved", s.climb)
             val logbookOnly = s.logbookOnly
             assertNotNull("logbook-only fallback must be populated", logbookOnly)
@@ -203,7 +200,7 @@ class BoardClimbDetailLogbookFallbackTest {
     }
 
     @Test
-    fun missingClimb_withNoHistory_keepsRawErrorState() = runTest {
+    fun missingClimb_withNoHistory_exposesTypedNotFoundState() = runTest {
         coEvery { personalBoardRepo.getUserHistoryForClimb(missingUuid) } returns emptyList()
 
         val vm = buildViewModel()
@@ -213,7 +210,25 @@ class BoardClimbDetailLogbookFallbackTest {
             while (s.isLoading) s = awaitItem()
 
             assertNull("no logbook fallback without history", s.logbookOnly)
-            assertNotNull("raw error path preserved for truly-unknown climb", s.error)
+            assertEquals(ClimbDetailIssue.NOT_FOUND, s.issue)
+            assertEquals("uuid=$missingUuid angle=$angle", s.issueDiagnostic)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun loadFailure_doesNotExposeRawExceptionText() = runTest {
+        every { boardRepository.getClimbByUuid(any(), any()) } throws
+            IllegalStateException("private database detail")
+
+        val vm = buildViewModel()
+
+        vm.state.test {
+            var s = awaitItem()
+            while (s.isLoading) s = awaitItem()
+
+            assertEquals(ClimbDetailIssue.LOAD_FAILED, s.issue)
+            assertFalse(s.issueDiagnostic.orEmpty().contains("private database detail"))
             cancelAndIgnoreRemainingEvents()
         }
     }

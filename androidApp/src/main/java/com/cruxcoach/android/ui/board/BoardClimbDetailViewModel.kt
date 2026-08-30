@@ -59,10 +59,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.cruxcoach.android.R
-import dagger.hilt.android.qualifiers.ApplicationContext
-import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.domain.board.ClimbDetailIssue
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -164,9 +162,9 @@ data class SetterProfile(
  * the user has a local Kilter ascent for is absent from the curated board
  * DB (it lives only in Kilter's new PowerSync world — dashed-lowercase
  * uuid, never mirrored into our board DB nor present in BoardSesh). Rather
- * than dead-ending on [ClimbDetailState.error], the detail screen renders
+ * than dead-ending on [ClimbDetailState.issue], the detail screen renders
  * what the ascent rows already carry. The diagnostic uuid/angle string is
- * NOT surfaced here — only in the truly-unknown (no-history) error path.
+ * never rendered; it is retained only for an explicitly initiated bug report.
  */
 data class LogbookOnlyState(
     val uuid: String,
@@ -236,7 +234,9 @@ data class ClimbDetailState(
     val restTimerAutoStart: Boolean = false,
     val zones: IntensityZones? = null,
     val availableAngles: List<AngleOption> = emptyList(),
-    val error: String? = null,
+    val issue: ClimbDetailIssue? = null,
+    /** Non-user-facing context for logs and an explicitly initiated bug report. */
+    val issueDiagnostic: String? = null,
     val ascent: AscentFormState = AscentFormState(),
     val isQuickLogging: Boolean = false,
     val quickLogFeedback: QuickLogFeedback? = null,
@@ -351,7 +351,6 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
-    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
@@ -658,7 +657,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _state.update { it.copy(error = null) }
+        _state.update { it.copy(issue = null, issueDiagnostic = null) }
     }
 
     /** Open the confirm-delete dialog for the currently-displayed climb.
@@ -898,6 +897,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                 listDialog = ListDialogState(),
                 selectedBoardLayerSlot = null,
                 selectedBoardLayerColor = null,
+                issue = null,
+                issueDiagnostic = null,
                 ble = current.ble.copy(
                     connectionState = currentConn,
                     isSending = false,
@@ -909,7 +910,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         } else {
             _state.update { it.copy(
                 isLoading = true,
-                error = null,
+                issue = null,
+                issueDiagnostic = null,
                 isMirrored = false,
                 ble = it.ble.copy(
                     connectionState = currentConn,
@@ -942,7 +944,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { current ->
             current.copy(
                 isLoading = true,
-                error = null,
+                issue = null,
+                issueDiagnostic = null,
                 angle = angle,
                 ble = current.ble.copy(isSending = false, success = false, error = null),
                 selectedBoardLayerSlot = null,
@@ -1099,7 +1102,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                         _state.update { s ->
                             s.copy(
                                 isLoading = false,
-                                error = null,
+                                issue = null,
+                                issueDiagnostic = null,
                                 logbookOnly = null,
                                 climb = climb,
                                 holds = holds,
@@ -1156,7 +1160,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                             _state.update {
                                 it.copy(
                                     isLoading = false,
-                                    error = null,
+                                    issue = null,
+                                    issueDiagnostic = null,
                                     climb = null,
                                     userAscents = history,
                                     logbookOnly = LogbookOnlyState(uuid = uuid, ascents = history),
@@ -1167,7 +1172,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 it.copy(
                                     isLoading = false,
                                     logbookOnly = null,
-                                    error = context.getString(R.string.error_climb_not_found, uuid, angle),
+                                    issue = ClimbDetailIssue.NOT_FOUND,
+                                    issueDiagnostic = "uuid=$uuid angle=$angle",
                                 )
                             }
                         }
@@ -1176,7 +1182,14 @@ class BoardClimbDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                Log.e(TAG, "loadClimb failed uuid=$uuid angle=$angle", e)
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        issue = ClimbDetailIssue.LOAD_FAILED,
+                        issueDiagnostic = "uuid=$uuid angle=$angle",
+                    )
+                }
             }
         }
     }
@@ -1292,7 +1305,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                         isMirrored = false,
                         isMirrorable = isMirrorable,
                         canPublishAsMine = ownClimbPublisher.isPublishableAsMine(climb.uuid),
-                        error = null,
+                        issue = null,
+                        issueDiagnostic = null,
                         ascent = AscentFormState(),
                         listDialog = ListDialogState(),
                         playback = _state.value.playback.copy(

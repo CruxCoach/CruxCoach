@@ -740,7 +740,8 @@
     <string name="session_continue_metrics">%1$s aktiv · %2$d Sends · %3$d Versuche</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
-    <string name="board_detail_error">Fehler</string>
+    <string name="board_detail_not_found">Dieser Climb ist auf diesem Gerät nicht verfügbar.</string>
+    <string name="board_detail_load_failed">Der Climb konnte nicht geladen werden. Versuche es erneut.</string>
     <string name="board_detail_delete_ascent_title">Begehung löschen?</string>
     <string name="board_detail_delete_ascent_message">Diese Begehung wird unwiderruflich gelöscht.</string>
     <string name="board_filter_all">Alle</string>
@@ -1661,7 +1662,6 @@
     <string name="exercises_equipment_label">Equipment: </string>
     <string name="exercises_muscles_label">Muskeln: </string>
     <string name="exercises_none_found">Keine Übungen gefunden</string>
-    <string name="error_climb_not_found">Climb nicht gefunden [uuid=%1$s angle=%2$d]</string>
     <string name="error_climb_not_in_db_title">Noch nicht in der CruxCoach-Datenbank</string>
     <string name="error_climb_not_in_db_body">Dieser Kilter-Boulder ist noch nicht in der CruxCoach-Datenbank, daher ist die Board-Ansicht nicht verfügbar. Deine protokollierten Begehungen findest du unten.</string>
     <string name="error_climb_not_in_db_unnamed">Kilter-Boulder</string>

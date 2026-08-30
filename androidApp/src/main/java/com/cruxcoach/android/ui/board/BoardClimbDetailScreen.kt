@@ -494,7 +494,7 @@ fun BoardClimbDetailScreen(
             // Same gate as the page body below: over an error card or a
             // logbook-only stub there is no climb to act on, and a dock
             // offering to light one would be offering nothing.
-            if (state.climb != null && state.error == null && state.logbookOnly == null) {
+            if (state.climb != null && state.issue == null && state.logbookOnly == null) {
                 BoardDetailBottomActions(
                     state = state,
                     decision = deliveryDecision,
@@ -1793,15 +1793,26 @@ private fun ClimbDetailPageContent(
                 modifier = modifier
             )
         }
-        state.error != null -> {
+        state.issue != null -> {
+            val issueText = stringResource(
+                when (state.issue) {
+                    com.cruxcoach.domain.board.ClimbDetailIssue.NOT_FOUND ->
+                        R.string.board_detail_not_found
+                    com.cruxcoach.domain.board.ClimbDetailIssue.LOAD_FAILED ->
+                        R.string.board_detail_load_failed
+                },
+            )
             Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 com.cruxcoach.android.ui.common.ErrorCard(
-                    error = state.error ?: stringResource(R.string.board_detail_error),
+                    error = issueText,
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
                             climbBugReportTitle,
-                            state.error ?: ""
+                            buildString {
+                                append(state.issue.name)
+                                state.issueDiagnostic?.let { append(": ").append(it) }
+                            },
                         )
                         viewModel.clearError()
                     }

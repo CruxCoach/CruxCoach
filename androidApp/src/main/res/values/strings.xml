@@ -739,7 +739,8 @@
     <string name="session_continue_metrics">%1$s active · %2$d sends · %3$d attempts</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
-    <string name="board_detail_error">Error</string>
+    <string name="board_detail_not_found">This climb isn’t available on this device.</string>
+    <string name="board_detail_load_failed">The climb couldn’t be loaded. Try again.</string>
     <string name="board_detail_delete_ascent_title">Delete ascent?</string>
     <string name="board_detail_delete_ascent_message">This ascent will be permanently deleted.</string>
     <string name="board_filter_all">All</string>
@@ -1618,7 +1619,6 @@
     <string name="exercises_equipment_label">Equipment: </string>
     <string name="exercises_muscles_label">Muscles: </string>
     <string name="exercises_none_found">No exercises found</string>
-    <string name="error_climb_not_found">Climb not found [uuid=%1$s angle=%2$d]</string>
     <string name="error_climb_not_in_db_title">Not in the CruxCoach database yet</string>
     <string name="error_climb_not_in_db_body">This Kilter climb isn\'t in the CruxCoach database yet, so the board view isn\'t available. Your logged ascents are shown below.</string>
     <string name="error_climb_not_in_db_unnamed">Kilter climb</string>
