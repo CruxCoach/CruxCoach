@@ -24,6 +24,8 @@ import com.cruxcoach.android.ui.board.ActiveSessionScenarioContent
 import com.cruxcoach.android.ui.board.ActiveSessionScenarios
 import com.cruxcoach.android.ui.board.BoardBrowserScenarioContent
 import com.cruxcoach.android.ui.board.BoardBrowserScenarios
+import com.cruxcoach.android.ui.board.ProgressHistoryScenarioContent
+import com.cruxcoach.android.ui.board.ProgressHistoryScenarios
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import java.util.Locale
 
@@ -64,6 +66,8 @@ class DesignLabActivity : ComponentActivity() {
                                 BoardBrowserScenarioContent(BoardBrowserScenarios.require(scenarioId))
                             scenarioId.startsWith("session/") ->
                                 ActiveSessionScenarioContent(ActiveSessionScenarios.require(scenarioId))
+                            scenarioId.startsWith("progress/") ->
+                                ProgressHistoryScenarioContent(ProgressHistoryScenarios.require(scenarioId))
                             else -> throw IllegalArgumentException(
                                 "Unknown DesignLab scenario: $scenarioId",
                             )
