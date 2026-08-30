@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import io.mockk.coEvery
@@ -192,6 +193,49 @@ class AscentLoggerQuickLogTest {
         assertFalse(failed.isQuickLogging)
         assertEquals(null, failed.quickLogFeedback)
         verify(exactly = 0) { session.recordBid() }
+    }
+
+    @Test
+    fun `failed explicit log keeps form content and exposes retry state`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        val session = mockk<BoardSessionManager>(relaxed = true)
+        every {
+            repo.insertAscent(
+                uuid = any(),
+                climbUuid = any(),
+                angle = any(),
+                isMirror = any(),
+                attemptId = any(),
+                bidCount = any(),
+                quality = any(),
+                difficulty = any(),
+                isBenchmark = any(),
+                comment = any(),
+                climbedAt = any(),
+                synced = any(),
+                climbName = any(),
+                difficultyAverage = any(),
+                climbFrames = any(),
+                framesCount = any(),
+                boardBrand = any(),
+                layoutId = any(),
+            )
+        } throws IllegalStateException("database unavailable")
+        val logger = logger(state, repo, session) { }
+
+        logger.showDialog()
+        logger.updateBidCount(3)
+        logger.updateComment("Keep this beta")
+        logger.save()
+        val failed = withTimeout(5_000) {
+            state.first { it.ascent.submissionState == AttemptLogSubmissionState.FAILED }
+        }
+
+        assertTrue(failed.ascent.showDialog)
+        assertEquals(3, failed.ascent.bidCount)
+        assertEquals("Keep this beta", failed.ascent.comment)
+        verify(exactly = 0) { session.recordAscent() }
     }
 
     private fun logger(

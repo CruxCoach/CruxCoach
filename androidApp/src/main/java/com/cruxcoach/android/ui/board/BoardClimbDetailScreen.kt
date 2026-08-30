@@ -219,7 +219,8 @@ fun BoardClimbDetailScreen(
             onQualityChanged = { viewModel.updateAscentQuality(it) },
             onCommentChanged = { viewModel.updateAscentComment(it) },
             onSave = { viewModel.saveAscent() },
-            onDismiss = { viewModel.dismissAscentDialog() }
+            onDismiss = { viewModel.dismissAscentDialog() },
+            submissionState = state.ascent.submissionState,
         )
     }
 

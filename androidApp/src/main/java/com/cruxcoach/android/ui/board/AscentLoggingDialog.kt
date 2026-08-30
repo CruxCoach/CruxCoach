@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
 
 @Composable
 internal fun AscentLoggingDialog(
@@ -60,14 +62,16 @@ internal fun AscentLoggingDialog(
     onQualityChanged: (Int) -> Unit,
     onCommentChanged: (String) -> Unit,
     onSave: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    submissionState: AttemptLogSubmissionState = AttemptLogSubmissionState.EDITING,
 ) {
     val colors = CruxCoachDesign.colors
     val spacing = CruxCoachDesign.spacing
     val shapes = CruxCoachDesign.shapes
+    val isSaving = submissionState == AttemptLogSubmissionState.SAVING
     AlertDialog(
         modifier = Modifier.testTag("ascent_logging_dialog"),
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         title = {
             Text(
                 stringResource(
@@ -83,6 +87,22 @@ internal fun AscentLoggingDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(spacing.large),
             ) {
+                if (submissionState == AttemptLogSubmissionState.FAILED) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("ascent_save_error"),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = shapes.medium,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.board_ascent_save_failed),
+                            modifier = Modifier.padding(spacing.medium),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
                 if (!isEditing) {
                     Text(
                         stringResource(R.string.board_ascent_type),
@@ -97,6 +117,7 @@ internal fun AscentLoggingDialog(
                     ) {
                         FilterChip(
                             selected = isSend,
+                            enabled = !isSaving,
                             onClick = { onIsSendChanged(true) },
                             modifier = Modifier
                                 .weight(1f)
@@ -114,6 +135,7 @@ internal fun AscentLoggingDialog(
                         )
                         FilterChip(
                             selected = !isSend,
+                            enabled = !isSaving,
                             onClick = { onIsSendChanged(false) },
                             modifier = Modifier
                                 .weight(1f)
@@ -156,7 +178,7 @@ internal fun AscentLoggingDialog(
                                 .size(spacing.minimumTouchTarget)
                                 .testTag("ascent_attempt_decrease"),
                             onClick = { onBidCountChanged(bidCount - 1) },
-                            enabled = bidCount > 1,
+                            enabled = bidCount > 1 && !isSaving,
                         ) {
                             Icon(
                                 Icons.Default.Remove,
@@ -176,6 +198,7 @@ internal fun AscentLoggingDialog(
                                 .size(spacing.minimumTouchTarget)
                                 .testTag("ascent_attempt_increase"),
                             onClick = { onBidCountChanged(bidCount + 1) },
+                            enabled = !isSaving,
                         ) {
                             Icon(
                                 Icons.Default.Add,
@@ -210,6 +233,7 @@ internal fun AscentLoggingDialog(
                                 onClick = {
                                     onQualityChanged(if (quality == star) 0 else star)
                                 },
+                                enabled = !isSaving,
                                 modifier = Modifier
                                     .size(spacing.minimumTouchTarget)
                                     .semantics {
@@ -232,6 +256,7 @@ internal fun AscentLoggingDialog(
 
                     FilterChip(
                         selected = isBenchmark,
+                        enabled = !isSaving,
                         onClick = { onIsBenchmarkChanged(!isBenchmark) },
                         modifier = Modifier
                             .heightIn(min = spacing.minimumTouchTarget)
@@ -247,6 +272,7 @@ internal fun AscentLoggingDialog(
                 OutlinedTextField(
                     value = comment,
                     onValueChange = onCommentChanged,
+                    enabled = !isSaving,
                     label = { Text(stringResource(R.string.board_ascent_comment)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -257,6 +283,7 @@ internal fun AscentLoggingDialog(
         confirmButton = {
             Button(
                 onClick = onSave,
+                enabled = !isSaving,
                 modifier = Modifier
                     .heightIn(min = spacing.minimumTouchTarget)
                     .testTag("ascent_save"),
@@ -266,12 +293,26 @@ internal fun AscentLoggingDialog(
                 ),
                 shape = shapes.medium,
             ) {
-                Text(stringResource(R.string.action_save), fontWeight = FontWeight.SemiBold)
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .padding(end = spacing.small)
+                            .size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Text(
+                    stringResource(
+                        if (isSaving) R.string.board_ascent_saving else R.string.action_save,
+                    ),
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
+                enabled = !isSaving,
                 modifier = Modifier
                     .heightIn(min = spacing.minimumTouchTarget)
                     .testTag("ascent_cancel"),

@@ -10,6 +10,7 @@ import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.QuickLogBidInput
 import com.cruxcoach.data.repository.QuickLogSendInput
 import com.cruxcoach.domain.board.AttemptOutcome
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
 import com.cruxcoach.domain.board.LogAttemptCommand
 import com.cruxcoach.domain.board.LogAttemptResult
 import com.cruxcoach.domain.board.LogAttemptUseCase
@@ -83,19 +84,39 @@ internal class AscentLogger(
     }
 
     fun updateIsSend(isSend: Boolean) {
-        state.update { it.copy(ascent = it.ascent.copy(isSend = isSend)) }
+        state.update {
+            it.copy(ascent = it.ascent.copy(
+                isSend = isSend,
+                submissionState = AttemptLogSubmissionState.EDITING,
+            ))
+        }
     }
 
     fun updateBidCount(count: Int) {
-        state.update { it.copy(ascent = it.ascent.copy(bidCount = count.coerceAtLeast(1))) }
+        state.update {
+            it.copy(ascent = it.ascent.copy(
+                bidCount = count.coerceAtLeast(1),
+                submissionState = AttemptLogSubmissionState.EDITING,
+            ))
+        }
     }
 
     fun updateQuality(quality: Int) {
-        state.update { it.copy(ascent = it.ascent.copy(quality = quality.coerceIn(0, 5))) }
+        state.update {
+            it.copy(ascent = it.ascent.copy(
+                quality = quality.coerceIn(0, 5),
+                submissionState = AttemptLogSubmissionState.EDITING,
+            ))
+        }
     }
 
     fun updateComment(comment: String) {
-        state.update { it.copy(ascent = it.ascent.copy(comment = comment)) }
+        state.update {
+            it.copy(ascent = it.ascent.copy(
+                comment = comment,
+                submissionState = AttemptLogSubmissionState.EDITING,
+            ))
+        }
     }
 
     fun save() = save(isQuickLog = false)
@@ -285,6 +306,7 @@ internal class AscentLogger(
 
     private fun save(isQuickLog: Boolean) {
         val s = state.value
+        if (!isQuickLog && s.ascent.submissionState == AttemptLogSubmissionState.SAVING) return
         // Close on the way out. The bare `return` left the dialog standing and
         // every further tap did the same nothing, which reads as a hang rather
         // than as "not possible here". The button that opens this is gated on
@@ -297,6 +319,16 @@ internal class AscentLogger(
         val editUuid = form.editingUuid
         val entryUuid = editUuid ?: UUID.randomUUID().toString()
         val climbUuid = currentClimbUuid()
+
+        if (!isQuickLog) {
+            state.update { current ->
+                current.copy(
+                    ascent = current.ascent.copy(
+                        submissionState = AttemptLogSubmissionState.SAVING,
+                    ),
+                )
+            }
+        }
 
         scope.launch {
             try {
@@ -504,6 +536,13 @@ internal class AscentLogger(
                         isQuickLogging = false,
                         quickLogFeedback = null,
                         quickLogFailed = isQuickLog && isSameVariant,
+                        ascent = if (!isQuickLog && isSameVariant) {
+                            current.ascent.copy(
+                                submissionState = AttemptLogSubmissionState.FAILED,
+                            )
+                        } else {
+                            current.ascent
+                        },
                     )
                 }
             }

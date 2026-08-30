@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -134,6 +136,41 @@ class AscentLoggingDialogSemanticsTest {
         assertEquals(2, requestedCount)
     }
 
+    @Test
+    fun `saving blocks duplicate submission and dismissal`() {
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(
+                    scenario = AscentLoggingScenarios.NewSend,
+                    submissionState = AttemptLogSubmissionState.SAVING,
+                )
+            }
+        }
+
+        compose.onNodeWithText("Saving…").assertExists()
+        compose.onNodeWithTag("ascent_save").assertIsNotEnabled()
+        compose.onNodeWithTag("ascent_cancel").assertIsNotEnabled()
+        compose.onNodeWithTag("ascent_attempt_increase").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `failed submission keeps a retry action and explicit text`() {
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(
+                    scenario = AscentLoggingScenarios.EditSend,
+                    submissionState = AttemptLogSubmissionState.FAILED,
+                )
+            }
+        }
+
+        compose.onNodeWithText(
+            "Couldn’t save this log. Your entries are still here — try again.",
+        ).assertExists()
+        compose.onNodeWithTag("ascent_save_error").assertExists()
+        compose.onNodeWithTag("ascent_save").assertIsEnabled()
+    }
+
     @Composable
     private fun dialog(
         scenario: AscentLoggingScenario,
@@ -143,6 +180,7 @@ class AscentLoggingDialogSemanticsTest {
         onIsBenchmarkChanged: (Boolean) -> Unit = {},
         onSave: () -> Unit = {},
         onDismiss: () -> Unit = {},
+        submissionState: AttemptLogSubmissionState = AttemptLogSubmissionState.EDITING,
     ) {
         AscentLoggingDialog(
             isEditing = scenario.isEditing,
@@ -158,6 +196,7 @@ class AscentLoggingDialogSemanticsTest {
             onCommentChanged = {},
             onSave = onSave,
             onDismiss = onDismiss,
+            submissionState = submissionState,
         )
     }
 }

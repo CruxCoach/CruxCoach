@@ -36,7 +36,7 @@ losing the richer fields used for later analysis.
 | Save into current-format ascent/bid tables | Preserve | writer adapter plus existing repository tests |
 | Refresh detail history and active-session totals | Preserve | existing logger integration test |
 | Quick-log consolidation, promotion, seven-second undo | Unchanged and outside visual slice | `AscentLoggerQuickLogTest` |
-| Loading/saving/error feedback | Existing dialog has no explicit saving state; add as a later state-contract slice | parity matrix remains `covered`, scenario `log/error` remains planned |
+| Loading/saving/error feedback | Saving disables duplicate submission and dismissal; failure preserves the form and exposes retry | portable submission state, logger failure test, focused Compose test |
 
 Historical backup, database, share/import, playlist, and BLE formats are not
 read by this UI and must not be changed by the slice.
@@ -133,6 +133,9 @@ human direction. Golden changes are never accepted automatically.
   actions, and 48 dp minimum width and height for compact controls.
 - Android candidate, logger integration, and token contrast tests pass using
   the process-local SDK override documented in `external-gates.md`.
+- Explicit persistence failure now preserves every form field and returns the
+  portable submission state to `FAILED`; retrying transitions through `SAVING`
+  and duplicate save/dismiss actions are disabled while I/O is active.
 - Correction rounds: zero pixel-based rounds; pixels have not been rendered
   successfully and visual quality is therefore not claimed.
 - Apple comparison: deferred until the shared contract is exported and the

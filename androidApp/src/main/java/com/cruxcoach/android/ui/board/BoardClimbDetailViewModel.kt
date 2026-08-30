@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.domain.board.ClimbDetailIssue
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -75,7 +76,8 @@ data class AscentFormState(
     val comment: String = "",
     val isBenchmark: Boolean = false,
     val editingUuid: String? = null,
-    val deleteConfirmUuid: String? = null
+    val deleteConfirmUuid: String? = null,
+    val submissionState: AttemptLogSubmissionState = AttemptLogSubmissionState.EDITING,
 )
 
 /** One-shot confirmation for an icon-dock quick log. */
@@ -1341,7 +1343,12 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun updateAscentQuality(quality: Int) = ascentLogger.updateQuality(quality)
     fun updateAscentComment(comment: String) = ascentLogger.updateComment(comment)
     fun updateAscentIsBenchmark(value: Boolean) {
-        _state.update { it.copy(ascent = it.ascent.copy(isBenchmark = value)) }
+        _state.update {
+            it.copy(ascent = it.ascent.copy(
+                isBenchmark = value,
+                submissionState = AttemptLogSubmissionState.EDITING,
+            ))
+        }
     }
     fun saveAscent() = ascentLogger.save()
     fun editAscent(ascent: AscentWithClimb) = ascentLogger.edit(ascent)

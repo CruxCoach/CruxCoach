@@ -56,6 +56,13 @@ sealed interface LogAttemptResult {
     data object StorageFailure : LogAttemptResult
 }
 
+/** Portable submission state; platform UIs own presentation and localized copy. */
+enum class AttemptLogSubmissionState {
+    EDITING,
+    SAVING,
+    FAILED,
+}
+
 data class LoggedAttempt(
     val entryUuid: String,
     val climbUuid: String,
