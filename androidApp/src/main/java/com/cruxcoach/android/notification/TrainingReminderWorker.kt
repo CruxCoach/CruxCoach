@@ -20,6 +20,10 @@ class TrainingReminderWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        // A queued job from a previous release may start before startup has a
+        // chance to cancel it. Hidden planner UI must never produce reminders.
+        if (!TrainingPlannerAvailability.remindersEnabled) return Result.success()
+
         val profile = userRepository.getActiveProfile() ?: return Result.success()
 
         planRepository.getActivePlan(profile.id) ?: return Result.success()
@@ -46,7 +50,15 @@ class TrainingReminderWorker @AssistedInject constructor(
     companion object {
         const val WORK_NAME = "training_reminder_daily"
 
-        fun schedule(context: Context) {
+        fun reconcile(context: Context) {
+            if (!TrainingPlannerAvailability.remindersEnabled) {
+                WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+                return
+            }
+            schedule(context)
+        }
+
+        private fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<TrainingReminderWorker>(
                 1, TimeUnit.DAYS
             )
@@ -76,4 +88,9 @@ class TrainingReminderWorker @AssistedInject constructor(
             return target.timeInMillis - now.timeInMillis
         }
     }
+}
+
+/** Single product gate; planner domain and persisted data remain available. */
+internal object TrainingPlannerAvailability {
+    const val remindersEnabled: Boolean = false
 }

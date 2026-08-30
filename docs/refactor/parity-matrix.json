@@ -18,7 +18,7 @@
     {"id":"catalog-sync","route":"board_sync","reachability":"browser/settings","states":["idle","syncing","success","error","offline"],"status":"covered","evidence":["androidApp/src/main/java/com/cruxcoach/android/data/BoardSyncManager.kt"]},
     {"id":"settings-import-export","route":"settings","reachability":"browser","states":["settings","data-import","data-export","aurora-import","moon-csv-import","offline-share"],"status":"covered","evidence":["flows/settings-navigate.yaml","flows/backup-json-roundtrip.yaml"]},
     {"id":"community-and-identity","route":"nostr_profile","reachability":"settings/detail","states":["profile","keys","messages","announcements","publish"],"status":"covered","evidence":["flows/community-browse-detail.yaml","flows/nostr-dm-delivery.yaml"]},
-    {"id":"general-training-planner","route":"dashboard","reachability":"hidden","states":["dashboard","plan","workout","assessment","stats"],"status":"hidden-preserved","evidence":["shared/src/commonMain/kotlin/com/cruxcoach/domain/engine/TrainingEngine.kt","shared/src/commonMain/sqldelight/secure/com/cruxcoach/db/secure/TrainingPlans.sq"]}
+    {"id":"general-training-planner","route":"dashboard","reachability":"hidden","states":["dashboard","plan","workout","assessment","stats"],"status":"hidden-preserved","evidence":["shared/src/commonMain/kotlin/com/cruxcoach/domain/engine/TrainingEngine.kt","shared/src/commonMain/sqldelight/secure/com/cruxcoach/db/secure/TrainingPlans.sq","androidApp/src/test/java/com/cruxcoach/android/notification/TrainingPlannerAvailabilityTest.kt"]}
   ],
   "scenarioHarness": [
     {"id":"browser/content","status":"planned"},

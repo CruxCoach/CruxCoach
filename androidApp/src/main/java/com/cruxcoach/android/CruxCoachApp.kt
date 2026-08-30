@@ -108,7 +108,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
             Thread.setDefaultUncaughtExceptionHandler(CruxCoachCrashHandler(this, defaultHandler))
         }
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
-        PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
+        // The general planner is intentionally unreachable during the board-first
+        // refactor. Reconcile also cancels periodic work left by older installs;
+        // its domain data and reminder implementation remain intact for return.
+        PerfLogger.trace("TrainingReminderWorker.reconcile") {
+            TrainingReminderWorker.reconcile(this)
+        }
         PerfLogger.trace("NotificationPollWorker.schedule") { NotificationPollWorker.schedule(this) }
 
         // FEAT-001: NIP-65 relay discovery — opportunistic refresh on app
