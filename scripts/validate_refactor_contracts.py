@@ -78,6 +78,10 @@ def validate_compatibility() -> None:
             require_file(entry["fixture"])
         if entry["id"].startswith("backup-v") and entry["write"] != (entry["id"] == "backup-v3"):
             raise AssertionError("only backup v3 may be marked writable")
+        if entry["id"].startswith("playlist-link-v") and entry["write"] != (
+            entry["id"] == "playlist-link-v2"
+        ):
+            raise AssertionError("only playlist link v2 may be marked writable")
     for entry in matrix["bleGoldens"]:
         require_file(entry["fixture"])
     vectors = load("docs/refactor/fixtures/ble-golden-frames.json")["vectors"]

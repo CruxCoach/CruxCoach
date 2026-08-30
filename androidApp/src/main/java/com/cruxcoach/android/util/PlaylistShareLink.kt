@@ -52,29 +52,7 @@ object PlaylistShareLink {
         data class Rest(val seconds: Int) : SharedStep
     }
 
-    /** Legacy climbs-only encoder kept for call-site and test compatibility. */
-    fun build(name: String, climbs: List<SharedClimb>): String? {
-        val encodable = climbs.mapNotNull { climb ->
-            val uuid = parseUuid(climb.climbUuid) ?: return@mapNotNull null
-            uuid to climb.angle.coerceIn(0, MAX_ANGLE)
-        }.take(MAX_STEPS)
-        if (encodable.isEmpty()) return null
-
-        val nameBytes = truncateName(name)
-        val buffer = ByteBuffer.allocate(3 + nameBytes.size + encodable.size * 17)
-        buffer.put(VERSION_CLIMBS_ONLY.toByte())
-        buffer.put(nameBytes.size.toByte())
-        buffer.put(nameBytes)
-        buffer.put(encodable.size.toByte())
-        encodable.forEach { (uuid, angle) ->
-            buffer.put(angle.toByte())
-            buffer.putLong(uuid.mostSignificantBits)
-            buffer.putLong(uuid.leastSignificantBits)
-        }
-        return linkFor(buffer.array())
-    }
-
-    /** Full-fidelity training-plan encoder. Invalid climb UUIDs are skipped. */
+    /** The sole current-format encoder. Invalid climb UUIDs are skipped. */
     fun buildPlan(
         name: String,
         steps: List<SharedStep>,
