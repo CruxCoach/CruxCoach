@@ -43,7 +43,7 @@ class BoardBrowserStateMapperTest {
         val portable = BoardBrowserState(
             isLoading = false,
             hasBoardData = true,
-            error = "SQLite unavailable",
+            issue = BrowserIssue.QUERY_FAILED,
         ).toPortableState()
 
         assertEquals(BrowserIssue.QUERY_FAILED, assertIs<BoardBrowserScreenState.Error>(portable).issue)
@@ -76,7 +76,7 @@ class BoardBrowserStateMapperTest {
             isLoading = false,
             hasBoardData = true,
             climbs = listOf(TestClimb.stats(uuid = "still-visible")),
-            error = "next page failed",
+            issue = BrowserIssue.LOAD_MORE_FAILED,
         ).toPortableState()
 
         assertEquals(

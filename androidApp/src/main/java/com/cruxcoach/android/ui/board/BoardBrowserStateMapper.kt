@@ -38,8 +38,8 @@ fun BoardBrowserState.toPortableState(
         }
         return BoardBrowserScreenState.Loading(kind, boardContext)
     }
-    if (error != null && climbs.isEmpty()) {
-        return BoardBrowserScreenState.Error(BrowserIssue.QUERY_FAILED, boardContext)
+    if (issue != null && climbs.isEmpty()) {
+        return BoardBrowserScreenState.Error(issue, boardContext)
     }
     if (climbs.isEmpty()) {
         return BoardBrowserScreenState.Empty(
@@ -74,7 +74,7 @@ fun BoardBrowserState.toPortableState(
         totalResultCount = filteredCount.takeIf { it >= 0 },
         canLoadMore = canLoadMore,
         activeSession = activeSession,
-        transientIssue = error?.let { BrowserIssue.LOAD_MORE_FAILED },
+        transientIssue = issue,
     )
 }
 

@@ -39,6 +39,7 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardZone
 import com.cruxcoach.domain.board.BoardZoneFilter
+import com.cruxcoach.domain.board.BrowserIssue
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
@@ -378,7 +379,7 @@ data class BoardBrowserState(
     val dbOffset: Int = 0,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
     val zones: IntensityZones? = null,
-    val error: String? = null,
+    val issue: BrowserIssue? = null,
     val easterAnimationsUnlocked: Boolean = false,
     val placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
@@ -1376,7 +1377,7 @@ class BoardBrowserViewModel @Inject constructor(
             _state.update { it.copy(
                 isLoading = !hasExisting,
                 isLoadingMore = hasExisting,
-                error = null
+                issue = null
             ) }
             try {
                 val filter = _state.value.filter
@@ -1412,7 +1413,14 @@ class BoardBrowserViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.update { it.copy(isLoading = false, isLoadingMore = false, error = e.message) }
+                Log.w(TAG, "Browse query failed", e)
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoadingMore = false,
+                        issue = BrowserIssue.QUERY_FAILED,
+                    )
+                }
             }
         }
     }
@@ -1505,7 +1513,13 @@ class BoardBrowserViewModel @Inject constructor(
                 ) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.update { it.copy(isLoadingMore = false, error = e.message) }
+                Log.w(TAG, "Browse next page failed", e)
+                _state.update {
+                    it.copy(
+                        isLoadingMore = false,
+                        issue = BrowserIssue.LOAD_MORE_FAILED,
+                    )
+                }
             }
         }
     }
