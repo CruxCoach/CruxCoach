@@ -4,23 +4,28 @@ These are non-production visual prototypes for the Kilter Original 12 x 12
 board with kickboard (`product_size_id=10`). They are not used by the Android
 app.
 
-## Sandstone Noir
+## Graphite Studio
 
-`board_10-ai-sandstone-noir-3x.png` is the current visual target. It deliberately
-separates board identity from source-photo appearance: warm, porous
-sandstone-resin holds sit on a dark aubergine technical panel with a restrained
-position grid. The look is intended to read as commissioned CruxCoach artwork,
-not as a retouched original image. `board_10-ai-sandstone-noir-zoom.png` is a
-native-resolution detail crop.
+`board_10-ai-graphite-studio-3x.png` is the current visual target. It retains the
+real board's neutral-gray hold identity while increasing perceived depth with
+high-resolution surface detail, directional edge light, tight contact
+occlusion, and broader cast shadows. The original dark void is replaced by a
+custom blue-black graphite panel with restrained facets and coordinate crosses.
+`board_10-ai-graphite-studio-zoom.png` is a native-resolution detail crop.
 
 The full 3240 x 3510 preview was assembled from nine overlapping AI-generated
-detail tiles. A deterministic geometry-lock pass reapplied the original alpha
+hold-detail tiles. A deterministic geometry-lock pass reapplied the original alpha
 mask pixel for pixel, retaining the source canvas, hold positions, rotations,
-spacing, and outer silhouettes. AI generation supplies the new material,
-lighting, and high-resolution surface detail; the panel and grid are generated
-independently so they remain consistent across all future boards.
+spacing, and outer silhouettes. AI generation supplies the high-resolution
+surface detail and the original graphite panel; deterministic compositing keeps
+the neutral hold color, lighting system, and position grid consistent across
+future boards.
 
-## Earlier baseline
+## Earlier studies
+
+`board_10-ai-sandstone-noir-3x.png` explored a deliberately different warm
+material treatment. It remains as a useful style study but is no longer the
+target because the physical holds are gray.
 
 `board_10-ai-full-preview-3x.png` was the first geometry-lock experiment. It
 proved the tiled workflow, but intentionally stayed close to the original gray
