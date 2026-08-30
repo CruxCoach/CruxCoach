@@ -17,9 +17,10 @@ Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
 The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`,
-`log/edit-send`, `browser/content`, `browser/empty`, `browser/error`,
+`log/edit-send`, `log/success`, `log/error`, `browser/content`, `browser/empty`,
+`browser/error`,
 `session/active`, `session/resting`, `session/paused`,
-`session/active-no-climb`, `progress/history`, `progress/empty`, and
+`session/active-no-climb`, `progress/history`, `progress/empty`,
 `progress/error`, `detail/disconnected`, and `detail/connected`. After a
 reviewed debug APK is installed, discover
 its exact package with
@@ -31,6 +32,19 @@ scripts/capture_design_lab.sh \
   com.cruxcoach.android.dev.f_40293f116dca \
   log/new-send light en 1.0 \
   /tmp/cruxcoach-designlab/log-new-send-light-en
+```
+
+Capture the durable result and preserved failure form with:
+
+```sh
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  log/success light en 1.0 \
+  /tmp/cruxcoach-designlab/log-success-light-en
+scripts/capture_design_lab.sh \
+  com.cruxcoach.android.dev.f_40293f116dca \
+  log/error light en 1.0 \
+  /tmp/cruxcoach-designlab/log-error-light-en
 ```
 
 Capture the portable planned-rest snapshot independently of BLE hardware:

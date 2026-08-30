@@ -10,6 +10,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
+import com.cruxcoach.domain.board.AttemptLogSubmissionState
+
+internal enum class AscentLoggingScenarioKind { FORM, SUCCESS }
 
 /** Debug-only, side-effect-free input shared by previews and semantics tests. */
 internal data class AscentLoggingScenario(
@@ -20,6 +23,8 @@ internal data class AscentLoggingScenario(
     val quality: Int,
     val comment: String,
     val isBenchmark: Boolean,
+    val submissionState: AttemptLogSubmissionState = AttemptLogSubmissionState.EDITING,
+    val kind: AscentLoggingScenarioKind = AscentLoggingScenarioKind.FORM,
 )
 
 internal object AscentLoggingScenarios {
@@ -53,7 +58,17 @@ internal object AscentLoggingScenarios {
         isBenchmark = true,
     )
 
-    val all = sequenceOf(NewSend, NewAttempt, EditSend)
+    val Success = NewSend.copy(
+        id = "log/success",
+        kind = AscentLoggingScenarioKind.SUCCESS,
+    )
+
+    val Error = EditSend.copy(
+        id = "log/error",
+        submissionState = AttemptLogSubmissionState.FAILED,
+    )
+
+    val all = sequenceOf(NewSend, NewAttempt, EditSend, Success, Error)
 
     fun require(id: String): AscentLoggingScenario = all.firstOrNull { it.id == id }
         ?: throw IllegalArgumentException("Unknown DesignLab scenario: $id")
@@ -92,6 +107,16 @@ private fun AscentLoggingDialogPreview(
 
 @Composable
 internal fun AscentLoggingScenarioContent(scenario: AscentLoggingScenario) {
+    if (scenario.kind == AscentLoggingScenarioKind.SUCCESS) {
+        AttemptLogConfirmation(
+            climbName = "Quiet Riot",
+            gradeLabel = "6c+",
+            angle = 40,
+            isSend = scenario.isSend,
+            onViewLogbook = {},
+        )
+        return
+    }
     var current by remember(scenario.id) { mutableStateOf(scenario) }
     AscentLoggingDialog(
         isEditing = current.isEditing,
@@ -107,5 +132,6 @@ internal fun AscentLoggingScenarioContent(scenario: AscentLoggingScenario) {
         onCommentChanged = { current = current.copy(comment = it) },
         onSave = {},
         onDismiss = {},
+        submissionState = current.submissionState,
     )
 }

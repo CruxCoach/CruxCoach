@@ -87,6 +87,8 @@ BLE state, or network:
 | `log/new-send` | send, 1 attempt, no quality/note | default hierarchy |
 | `log/new-attempt` | attempt, 3 attempts | progressive disclosure |
 | `log/edit-send` | edit, 2 attempts, quality 4, benchmark, note | maximum content |
+| `log/success` | durable send confirmation for a fixed climb | end-state clarity |
+| `log/error` | failed edit with all inputs retained | recovery and retry |
 | `log/large-text` | edit-send fixture at font scale 1.5 | reflow and targets |
 
 Render coverage must include English/German, light/dark, compact/expanded,

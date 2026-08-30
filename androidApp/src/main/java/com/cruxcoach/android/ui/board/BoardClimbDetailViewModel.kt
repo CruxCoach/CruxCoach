@@ -87,6 +87,12 @@ data class QuickLogFeedback(
     val isSend: Boolean,
 )
 
+/** One-shot confirmation after an explicit form submission is durable. */
+data class AttemptLogFeedback(
+    val eventId: String,
+    val isSend: Boolean,
+)
+
 enum class PersonalNoteSaveStatus { IDLE, SAVING, SAVED, FAILED }
 
 /** Route/multi-frame playback state. */
@@ -240,6 +246,7 @@ data class ClimbDetailState(
     /** Non-user-facing context for logs and an explicitly initiated bug report. */
     val issueDiagnostic: String? = null,
     val ascent: AscentFormState = AscentFormState(),
+    val attemptLogFeedback: AttemptLogFeedback? = null,
     val isQuickLogging: Boolean = false,
     val quickLogFeedback: QuickLogFeedback? = null,
     val quickLogFailed: Boolean = false,
@@ -1335,6 +1342,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun showAscentDialog() = ascentLogger.showDialog()
     fun quickLogAscent(isSend: Boolean) = ascentLogger.quickLog(isSend)
     fun consumeQuickLogFeedback() = ascentLogger.consumeQuickLogFeedback()
+    fun consumeAttemptLogFeedback() = _state.update { it.copy(attemptLogFeedback = null) }
     fun undoQuickLog() = ascentLogger.undoQuickLog()
     fun consumeQuickLogFailure() = _state.update { it.copy(quickLogFailed = false) }
     fun dismissAscentDialog() = ascentLogger.dismissDialog()

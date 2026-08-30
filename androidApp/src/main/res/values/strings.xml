@@ -1013,6 +1013,10 @@
     <string name="detail_board_semantics">Board preview for %1$s</string>
     <string name="board_ascent_saving">Saving…</string>
     <string name="board_ascent_save_failed">Couldn’t save this log. Your entries are still here — try again.</string>
+    <string name="board_ascent_send_logged">Send logged to your logbook</string>
+    <string name="board_ascent_attempt_logged">Attempt logged to your logbook</string>
+    <string name="board_ascent_success_body">%1$s · %2$s · %3$d° is now in your logbook.</string>
+    <string name="board_ascent_view_logbook">View logbook</string>
     <string name="board_detail_share_link">Copy share link</string>
     <string name="board_detail_link_copied">Link copied to clipboard</string>
     <string name="board_detail_climb_shared">Climb is being shared</string>

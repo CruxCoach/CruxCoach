@@ -1057,6 +1057,10 @@
     <string name="detail_board_semantics">Board-Vorschau für %1$s</string>
     <string name="board_ascent_saving">Speichert…</string>
     <string name="board_ascent_save_failed">Dieses Log konnte nicht gespeichert werden. Deine Eingaben sind noch da — versuche es erneut.</string>
+    <string name="board_ascent_send_logged">Send im Logbuch gespeichert</string>
+    <string name="board_ascent_attempt_logged">Versuch im Logbuch gespeichert</string>
+    <string name="board_ascent_success_body">%1$s · %2$s · %3$d° ist jetzt in deinem Logbuch.</string>
+    <string name="board_ascent_view_logbook">Logbuch öffnen</string>
     <string name="board_detail_share_link">Link kopieren</string>
     <string name="board_detail_link_copied">Link in die Zwischenablage kopiert</string>
     <string name="board_detail_climb_shared">Climb wird geteilt</string>

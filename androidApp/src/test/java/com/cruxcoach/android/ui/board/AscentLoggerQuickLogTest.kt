@@ -238,6 +238,26 @@ class AscentLoggerQuickLogTest {
         verify(exactly = 0) { session.recordAscent() }
     }
 
+    @Test
+    fun `successful explicit log closes form and emits durable confirmation`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        val session = mockk<BoardSessionManager>(relaxed = true)
+        every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
+        every { repo.observeClimbHistory() } returns flowOf(emptyList())
+        val logger = logger(state, repo, session) { }
+
+        logger.showDialog()
+        logger.save()
+        val confirmed = withTimeout(5_000) {
+            state.first { it.attemptLogFeedback != null }
+        }
+
+        assertFalse(confirmed.ascent.showDialog)
+        assertTrue(confirmed.attemptLogFeedback!!.isSend)
+        verify(timeout = 5_000) { session.recordAscent() }
+    }
+
     private fun logger(
         state: MutableStateFlow<ClimbDetailState>,
         repo: PersonalBoardRepository,

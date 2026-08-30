@@ -429,6 +429,18 @@ fun BoardClimbDetailScreen(
         else viewModel.consumeQuickLogFeedback()
     }
 
+    LaunchedEffect(state.attemptLogFeedback?.eventId) {
+        val feedback = state.attemptLogFeedback ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            resources.getString(
+                if (feedback.isSend) R.string.board_ascent_send_logged
+                else R.string.board_ascent_attempt_logged,
+            ),
+            withDismissAction = true,
+        )
+        viewModel.consumeAttemptLogFeedback()
+    }
+
     LaunchedEffect(state.quickLogFailed) {
         if (!state.quickLogFailed) return@LaunchedEffect
         snackbarHostState.showSnackbar(resources.getString(R.string.board_detail_quick_log_failed))

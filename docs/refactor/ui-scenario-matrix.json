@@ -24,8 +24,8 @@
     {"id":"detail/connected","capability":"climb-detail","status":"partial"},
     {"id":"session/active","capability":"active-board-session","status":"partial"},
     {"id":"session/resting","capability":"active-board-session","status":"partial"},
-    {"id":"log/success","capability":"log-attempt","status":"planned"},
-    {"id":"log/error","capability":"log-attempt","status":"planned"},
+    {"id":"log/success","capability":"log-attempt","status":"partial"},
+    {"id":"log/error","capability":"log-attempt","status":"partial"},
     {"id":"progress/history","capability":"progress-history","status":"partial"}
   ],
   "requiredEvidence": [

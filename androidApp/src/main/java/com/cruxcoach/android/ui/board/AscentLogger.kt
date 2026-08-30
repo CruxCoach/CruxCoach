@@ -500,6 +500,14 @@ internal class AscentLogger(
                     if (!isSameVariant) return@update current.copy(isQuickLogging = false)
                     current.copy(
                         ascent = AscentFormState(),
+                        attemptLogFeedback = if (!isQuickLog) {
+                            AttemptLogFeedback(
+                                eventId = UUID.randomUUID().toString(),
+                                isSend = form.isSend,
+                            )
+                        } else {
+                            current.attemptLogFeedback
+                        },
                         userAscents = updatedAscents,
                         isQuickLogging = false,
                         quickLogFeedback = if (isQuickLog && editUuid == null) {
