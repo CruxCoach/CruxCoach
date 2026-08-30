@@ -37,50 +37,48 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
   --tests 'com.cruxcoach.android.ui.board.ProgressHistoryContentSemanticsTest'
 ```
 
-The owner authorized exactly one local feature build and APKTrack publication
-on 2026-08-30. Publication is blocked before build because the canonical
-`apktrack reserve-version` command reports that `APKTRACK_AGENT_TOKEN` is not
-available. The host has only `apktrack-publish-fips`; by policy that wrapper's
-one-use token may reach only its `publish-build` child, so it cannot be reused
-for reservation. Do not invent a token path, use the placeholder `1000013`, or
-build before a version has been atomically reserved.
+The local reservation gate recorded in commit `193661ee` was superseded by the
+owner's CI/CD decision on 2026-08-30. Do not reserve, build, or publish this
+feature locally. Push only the clean `feat/cross-platform-refactor` branch to
+the `github` remote. The existing workflows own the complete trusted path:
 
-Once the operator provides a canonical scoped secret provider for
-`reserve-version`, re-read all three `AGENTS.md` files and continue with the
-then-current clean committed SHA and freshly derived identity:
+1. `Feature APK request` (`.github/workflows/feature-build.yml`) runs the
+   credential-free tests for the deterministic feature identity.
+2. `Publish verified feature APK` (`.github/workflows/feature-publish.yml`),
+   triggered by `workflow_run`, checks the authorized maintainer, reserves the
+   versionCode, builds and binds the transport APK, publishes through APKTrack,
+   verifies `status="published"` plus `receipt_delivered=true`, and stores the
+   centrally signed artifact.
+
+Re-read all three `AGENTS.md` files, confirm the active GitHub login is present
+in `.github/authorized-feature-maintainers.txt`, then reproduce with:
 
 ```sh
-commit=$(git rev-parse HEAD)
+git status --short --branch
+gh api user --jq .login
 python3 scripts/feature_identity.py --branch feat/cross-platform-refactor
-version_code=$(apktrack reserve-version \
-  --config .apktrack/project.toml \
-  --track feat-cross-platform-refactor-40293f11 \
-  --branch feat/cross-platform-refactor \
-  --commit "$commit" \
-  --minimum 1000013)
-ANDROID_HOME=/home/myuser/android-sdk \
-ANDROID_SDK_ROOT=/home/myuser/android-sdk \
-./gradlew :androidApp:assembleDebug --console=plain \
-  -PfeatureBranch=feat/cross-platform-refactor \
-  -PfeatureTrack=feat-cross-platform-refactor-40293f11 \
-  -PfeaturePackage=com.cruxcoach.android.dev.f_40293f116dca \
-  -PfeatureLabel=cross-platform-refactor \
-  -PfeatureVersionCode="$version_code"
-/home/myuser/.local/bin/apktrack-publish-fips \
-  androidApp/build/outputs/apk/debug/androidApp-debug.apk \
-  --config .apktrack/project.toml \
-  --branch feat/cross-platform-refactor \
-  --commit "$commit" \
-  --track feat-cross-platform-refactor-40293f11 \
-  --wait-timeout 2700
+git push github feat/cross-platform-refactor
+gh run list --branch feat/cross-platform-refactor \
+  --workflow 'Feature APK request' --limit 5
+gh run list --branch feat/cross-platform-refactor \
+  --workflow 'Publish verified feature APK' --limit 5
 ```
 
-Proceed to the verified APKTrack blob download only when the final result says
-both `status="published"` and `receipt_delivered=true`. Preserve the deterministic
-idempotency key
-`cruxcoach-feat-cross-platform-refactor-40293f11-<lowercase-commit>` on any
-diagnostic retry. Do not change signing, package identity, APKTrack
-configuration, wrapper, registry, or release files.
+The build workflow alone is not publication success. Continue only after the
+publisher job confirms both required APKTrack fields. Preserve the deterministic
+idempotency key `cruxcoach-feat-cross-platform-refactor-40293f11-<commit>` on
+diagnosis; do not change workflow, signing, package identity, APKTrack policy,
+credentials, or release files.
+
+After success, take the confirmed `release_sha256` from the publisher log and
+download only
+`https://stats.cruxcoach.org/apktrack/v2/blobs/<release_sha256>` (or use the
+verifying APKTrack web UI) directly on the Android device. Verify the downloaded
+file's SHA-256 on-device before opening the normal package installer. Do not use
+`adb install` as the default fallback. If Android requests permission to install
+unknown apps or final confirmation, pause for that human action. Afterwards,
+verify the feature package, versionCode and certificate read-only, while stable
+`com.cruxcoach.android` remains installed unchanged beside it.
 
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
