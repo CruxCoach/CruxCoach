@@ -50,7 +50,10 @@ def validate_parity() -> None:
     required = {
         "browser/content", "browser/empty", "browser/error",
         "detail/disconnected", "detail/connected", "session/active",
-        "session/resting", "log/success", "log/error", "progress/history",
+        "session/resting", "session/paused", "session/active-no-climb",
+        "log/new-send", "log/new-attempt", "log/edit-send", "log/saving",
+        "log/success", "log/error", "progress/history", "progress/empty",
+        "progress/error",
     }
     if scenario_ids != required:
         raise AssertionError(f"scenario contract drift: {scenario_ids ^ required}")

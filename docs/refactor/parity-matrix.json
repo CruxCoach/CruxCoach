@@ -28,8 +28,16 @@
     {"id":"detail/connected","status":"partial"},
     {"id":"session/active","status":"partial"},
     {"id":"session/resting","status":"partial"},
+    {"id":"session/paused","status":"partial"},
+    {"id":"session/active-no-climb","status":"partial"},
+    {"id":"log/new-send","status":"partial"},
+    {"id":"log/new-attempt","status":"partial"},
+    {"id":"log/edit-send","status":"partial"},
+    {"id":"log/saving","status":"partial"},
     {"id":"log/success","status":"partial"},
     {"id":"log/error","status":"partial"},
-    {"id":"progress/history","status":"partial"}
+    {"id":"progress/history","status":"partial"},
+    {"id":"progress/empty","status":"partial"},
+    {"id":"progress/error","status":"partial"}
   ]
 }

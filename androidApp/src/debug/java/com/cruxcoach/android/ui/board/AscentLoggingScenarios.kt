@@ -63,12 +63,17 @@ internal object AscentLoggingScenarios {
         kind = AscentLoggingScenarioKind.SUCCESS,
     )
 
+    val Saving = NewSend.copy(
+        id = "log/saving",
+        submissionState = AttemptLogSubmissionState.SAVING,
+    )
+
     val Error = EditSend.copy(
         id = "log/error",
         submissionState = AttemptLogSubmissionState.FAILED,
     )
 
-    val all = sequenceOf(NewSend, NewAttempt, EditSend, Success, Error)
+    val all = sequenceOf(NewSend, NewAttempt, EditSend, Saving, Success, Error)
 
     fun require(id: String): AscentLoggingScenario = all.firstOrNull { it.id == id }
         ?: throw IllegalArgumentException("Unknown DesignLab scenario: $id")
