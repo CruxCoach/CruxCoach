@@ -1,0 +1,44 @@
+# External verification gates
+
+## Android visual and accessibility evidence
+
+Blocked on 2026-08-30 because `adb devices -l` returned no attached device.
+Do not accept or update screenshot baselines without review.
+
+Continue after a device or emulator is attached:
+
+```sh
+adb devices -l
+python3 scripts/validate_refactor_contracts.py
+./gradlew :androidApp:testDebugUnitTest --tests '*Scenario*' --tests '*Semantics*'
+```
+
+Then capture the same DesignLab scenario before and after each UI change with
+`adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
+
+The default Gradle configuration also attempts to install NDK
+`27.2.12479018`; this host's `/opt/android-sdk` is not writable. Shared-only
+tests remain available without changing the SDK by using:
+
+```sh
+./gradlew --configure-on-demand :shared:testDebugUnitTest --tests '<test class>'
+```
+
+Android tests require that NDK version to be installed by the environment
+owner, then can be resumed with the analogous focused `:androidApp` test task.
+
+## BoardSimulator and hardware
+
+BoardSimulator is intentionally not started by agents. When a human has
+started it, first confirm its advertised endpoint/device, then run the BLE matrix represented by
+`docs/refactor/fixtures/ble-golden-frames.json` for every simulator-advertised
+board, then repeat the documented hardware-only API2 checks on physical
+hardware. A successful unit vector is not evidence of a physical send.
+
+## Apple toolchain
+
+This Linux host has no Xcode, iOS SDK, simulator, or signing environment. On a
+Mac, verify the shared framework for `iosArm64` and `iosSimulatorArm64`, compile
+the SwiftUI shell, and run VoiceOver, Dynamic Type XXXL, light/dark, and iPhone
+compact-width checks. Do not add signing credentials to this repository or to
+command arguments.

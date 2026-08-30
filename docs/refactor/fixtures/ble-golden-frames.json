@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "vectors": [
+    {"id":"aurora-api3-single-green","input":{"apiLevel":3,"position":16,"rgb332":28},"wireHex":"01047f025410001c03"},
+    {"id":"aurora-api2-single-green","input":{"apiLevel":2,"position":10,"rgb332":28},"wireHex":"01037502500a3003"},
+    {"id":"moon-standard-basic","input":{"frames":"p1r42p12r43p198r44","variant":"MOONBOARD_2016","ledMode":"BELOW"},"wireUtf8":"l#S0,P1,E197#"},
+    {"id":"moon-mini-basic","input":{"frames":"p12r42p13r43p132r44","variant":"MINI_2020","ledMode":"BELOW"},"wireUtf8":"l#S1,P22,E131#"},
+    {"id":"quantum-turn-off-all","input":{"command":"turnOffAll"},"wireHex":"014500010000c59d"},
+    {"id":"quantum-empty-route-snapshot","input":{"broadcast":"routeList"},"wireHex":"01470000"}
+  ]
+}

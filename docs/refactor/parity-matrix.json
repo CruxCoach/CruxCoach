@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "version": "0.2.2",
+    "commit": "18fb0b4f5eb549a4321b424c04b0adeb966cb5b4",
+    "startRoute": "board_browser"
+  },
+  "capabilities": [
+    {"id":"onboarding","route":"onboarding","reachability":"first-run","states":["board-selection","connection","complete"],"status":"covered","evidence":["flows/release-fresh-onboarding.yaml"]},
+    {"id":"board-browser","route":"board_browser","reachability":"start","states":["loading","content","empty","error","search","filtered","active-session"],"status":"partial","evidence":["flows/browser-search.yaml","flows/browser-filter-sheet.yaml"]},
+    {"id":"climb-detail","route":"board_climb_detail/{climbUuid}/{angle}","reachability":"browser/deep-link/list/logbook","states":["loading","content-disconnected","content-connected","error"],"status":"covered","evidence":["flows/detail-open.yaml","flows/detail-open-rendered-board.yaml"]},
+    {"id":"log-attempt","route":"board_climb_detail/{climbUuid}/{angle}","reachability":"climb-detail","states":["editing","saving","success","error"],"status":"covered","evidence":["flows/logbook-create-send.yaml","flows/logbook-honest-flash-and-stats.yaml"]},
+    {"id":"active-board-session","route":"board_browser","reachability":"browser/detail","states":["inactive","active","resting","paused","complete"],"status":"partial","evidence":["shared/src/commonMain/sqldelight/secure/com/cruxcoach/db/secure/BoardSessions.sq"]},
+    {"id":"board-logbook","route":"board_logbook","reachability":"browser","states":["loading","content","empty","error","edit","delete"],"status":"covered","evidence":["flows/logbook-create-send.yaml"]},
+    {"id":"progress-history","route":"board_logbook_history","reachability":"logbook","states":["loading","content","empty"],"status":"partial","evidence":["androidApp/src/main/java/com/cruxcoach/android/ui/board/BoardClimbHistoryScreen.kt"]},
+    {"id":"lists-playlists","route":"board_lists","reachability":"browser/detail","states":["content","empty","detail","player","import","generator"],"status":"covered","evidence":["flows/lists-navigate.yaml","flows/list-playback-smoke.yaml","flows/share-deep-link-roundtrip.yaml"]},
+    {"id":"board-map","route":"board_map","reachability":"browser","states":["content"],"status":"covered","evidence":["flows/map-navigate.yaml"]},
+    {"id":"catalog-sync","route":"board_sync","reachability":"browser/settings","states":["idle","syncing","success","error","offline"],"status":"covered","evidence":["androidApp/src/main/java/com/cruxcoach/android/data/BoardSyncManager.kt"]},
+    {"id":"settings-import-export","route":"settings","reachability":"browser","states":["settings","data-import","data-export","aurora-import","moon-csv-import","offline-share"],"status":"covered","evidence":["flows/settings-navigate.yaml","flows/backup-json-roundtrip.yaml"]},
+    {"id":"community-and-identity","route":"nostr_profile","reachability":"settings/detail","states":["profile","keys","messages","announcements","publish"],"status":"covered","evidence":["flows/community-browse-detail.yaml","flows/nostr-dm-delivery.yaml"]},
+    {"id":"general-training-planner","route":"dashboard","reachability":"hidden","states":["dashboard","plan","workout","assessment","stats"],"status":"hidden-preserved","evidence":["shared/src/commonMain/kotlin/com/cruxcoach/domain/engine/TrainingEngine.kt","shared/src/commonMain/sqldelight/secure/com/cruxcoach/db/secure/TrainingPlans.sq"]}
+  ],
+  "scenarioHarness": [
+    {"id":"browser/content","status":"planned"},
+    {"id":"browser/empty","status":"planned"},
+    {"id":"browser/error","status":"planned"},
+    {"id":"detail/disconnected","status":"planned"},
+    {"id":"detail/connected","status":"planned"},
+    {"id":"session/active","status":"planned"},
+    {"id":"session/resting","status":"planned"},
+    {"id":"log/success","status":"planned"},
+    {"id":"log/error","status":"planned"},
+    {"id":"progress/history","status":"planned"}
+  ]
+}

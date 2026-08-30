@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "policy": "All published inputs remain readable; only the current format is written.",
+  "databaseOriginFixture": "docs/refactor/fixtures/database-origin-schemas.json",
+  "databaseOrigins": [
+    {"release":"v0.1.0","commit":"9ed9375d1590c51532499b5045621b2d7f6a8333","boardSchema":0,"secureSchema":0,"status":"covered-by-sqldelight-chain"},
+    {"release":"v0.1.1","commit":"b5cb77c8d4c61e41fe5bae7d9b6637434bc684a0","boardSchema":1,"secureSchema":0,"status":"covered-by-sqldelight-chain"},
+    {"release":"v0.1.2","commit":"c0573c3bc06ee910a59f589f875dacf9c0a2d60f","boardSchema":1,"secureSchema":1,"status":"covered-by-sqldelight-chain"},
+    {"release":"v0.1.3","commit":"c1d876ce882388e8d0cbdebd36ea7d20be68f9d2","boardSchema":1,"secureSchema":1,"status":"covered-by-sqldelight-chain"},
+    {"release":"v0.1.4","commit":"250e93620b5fecbb3291a35a902db812a0e51dbc","boardSchema":11,"secureSchema":6,"status":"fixture-covered","fixture":"flows/fixtures/cruxcoach-legacy-014.json"},
+    {"release":"v0.2.0","commit":"8008769f289f14574ae562f33ff00ab97f4ce938","boardSchema":22,"secureSchema":9,"status":"covered-by-sqldelight-chain"},
+    {"release":"v0.2.1","commit":"a1f0d93c3c8db62000ea4ad25a2b3018fcdce804","boardSchema":23,"secureSchema":9,"status":"device-fixture-covered","fixture":"flows/fixtures/cruxcoach-release-upgrade-baseline-v3.json"},
+    {"release":"v0.2.2","commit":"18fb0b4f5eb549a4321b424c04b0adeb966cb5b4","boardSchema":28,"secureSchema":13,"status":"current-writer"}
+  ],
+  "formats": [
+    {"id":"backup-v1","read":true,"write":false,"fixture":"docs/refactor/fixtures/backup-v1.json","decoder":"CruxCoachBackup.Backup","status":"covered"},
+    {"id":"backup-v2","read":true,"write":false,"fixture":"docs/refactor/fixtures/backup-v2.json","decoder":"CruxCoachBackup.Backup","status":"covered"},
+    {"id":"backup-v3","read":true,"write":true,"fixture":"docs/refactor/fixtures/backup-v3.json","decoder":"CruxCoachBackup.Backup","status":"covered"},
+    {"id":"playlist-link-v1","read":true,"write":true,"fixture":"docs/refactor/fixtures/playlist-link-v1.json","decoder":"PlaylistShareLink.parse","status":"legacy-writer-to-remove"},
+    {"id":"playlist-link-v2","read":true,"write":true,"fixture":"docs/refactor/fixtures/playlist-link-v2.json","decoder":"PlaylistShareLink.parse","status":"current-writer"},
+    {"id":"local-share-v1","read":true,"write":true,"decoder":"LocalShareProtocol.parseManifest","status":"legacy-supported"},
+    {"id":"local-share-v2","read":true,"write":true,"decoder":"LocalShareProtocol.parseManifest","status":"current-writer"}
+  ],
+  "bleGoldens": [
+    {"family":"kilter-aurora-api3","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
+    {"family":"kilter-aurora-api2","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
+    {"family":"moonboard-standard","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
+    {"family":"moonboard-mini","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
+    {"family":"quantum","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"simulator-vector-covered-hardware-gate"}
+  ]
+}
