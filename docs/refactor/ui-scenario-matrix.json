@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-08-30",
+  "coverageMode": "cartesian",
+  "dimensions": {
+    "locale": ["en", "de"],
+    "theme": ["light", "dark"],
+    "width": ["compact", "expanded"],
+    "fontScale": [1.0, 1.5]
+  },
+  "rendering": {
+    "clock": "2026-08-30T12:00:00Z",
+    "timezone": "UTC",
+    "animations": "disabled-or-manual-clock",
+    "fontSource": "repository-or-platform-pinned",
+    "network": "fixture-only",
+    "repositories": "fixture-only"
+  },
+  "states": [
+    {"id":"browser/content","capability":"board-browser","status":"planned"},
+    {"id":"browser/empty","capability":"board-browser","status":"planned"},
+    {"id":"browser/error","capability":"board-browser","status":"planned"},
+    {"id":"detail/disconnected","capability":"climb-detail","status":"planned"},
+    {"id":"detail/connected","capability":"climb-detail","status":"planned"},
+    {"id":"session/active","capability":"active-board-session","status":"planned"},
+    {"id":"session/resting","capability":"active-board-session","status":"planned"},
+    {"id":"log/success","capability":"log-attempt","status":"planned"},
+    {"id":"log/error","capability":"log-attempt","status":"planned"},
+    {"id":"progress/history","capability":"progress-history","status":"planned"}
+  ],
+  "requiredEvidence": [
+    "screenshot",
+    "merged-semantics-tree",
+    "unmerged-semantics-tree",
+    "behavior-assertions",
+    "accessibility-assertions",
+    "reviewed-diff"
+  ],
+  "budgets": {
+    "minimumTouchTargetDp": 48,
+    "normalTextContrast": 4.5,
+    "largeTextAndNonTextContrast": 3.0,
+    "colorOnlyStateEncodingAllowed": false,
+    "maximumAutonomousCorrectionRounds": 3,
+    "unreviewedGoldenUpdatesAllowed": false
+  }
+}

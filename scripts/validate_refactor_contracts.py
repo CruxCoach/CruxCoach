@@ -12,6 +12,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_PARITY = {"covered", "partial", "planned", "hidden-preserved", "external-gate"}
+EXPECTED_UI_DIMENSIONS = {
+    "locale": ["en", "de"],
+    "theme": ["light", "dark"],
+    "width": ["compact", "expanded"],
+    "fontScale": [1.0, 1.5],
+}
 
 
 def load(relative: str) -> dict:
@@ -86,6 +92,31 @@ def validate_backup_fixtures() -> None:
             raise AssertionError(f"invalid backup v{version} fixture envelope")
 
 
+def validate_ui_scenarios() -> None:
+    matrix = load("docs/refactor/ui-scenario-matrix.json")
+    parity = load("docs/refactor/parity-matrix.json")
+    if matrix["coverageMode"] != "cartesian":
+        raise AssertionError("core UI states require Cartesian configuration coverage")
+    if matrix["dimensions"] != EXPECTED_UI_DIMENSIONS:
+        raise AssertionError("UI rendering dimension contract drift")
+    state_ids = [entry["id"] for entry in matrix["states"]]
+    parity_ids = [entry["id"] for entry in parity["scenarioHarness"]]
+    if state_ids != parity_ids:
+        raise AssertionError("UI scenario matrix and parity harness differ")
+    capability_ids = {entry["id"] for entry in parity["capabilities"]}
+    if any(entry["capability"] not in capability_ids for entry in matrix["states"]):
+        raise AssertionError("UI scenario references an unknown capability")
+    if matrix["budgets"] != {
+        "minimumTouchTargetDp": 48,
+        "normalTextContrast": 4.5,
+        "largeTextAndNonTextContrast": 3.0,
+        "colorOnlyStateEncodingAllowed": False,
+        "maximumAutonomousCorrectionRounds": 3,
+        "unreviewedGoldenUpdatesAllowed": False,
+    }:
+        raise AssertionError("UI quality budgets changed without contract review")
+
+
 def validate_playlist_fixtures() -> None:
     for version in (1, 2):
         fixture = load(f"docs/refactor/fixtures/playlist-link-v{version}.json")
@@ -127,4 +158,5 @@ if __name__ == "__main__":
     validate_compatibility()
     validate_backup_fixtures()
     validate_playlist_fixtures()
+    validate_ui_scenarios()
     print("refactor contracts: OK")
