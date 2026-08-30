@@ -728,6 +728,8 @@
     <string name="board_browser_empty_catalogue_loading">Catalogue is loading…</string>
     <string name="board_browser_active_filters">Filters, %1$d active</string>
     <string name="board_browser_error_title">Climbs couldn’t be loaded</string>
+    <string name="board_browser_error_hint">Your filters are unchanged. Try loading the results again.</string>
+    <string name="board_browser_load_more_error">More climbs couldn’t be loaded.</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>

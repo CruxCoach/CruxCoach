@@ -167,13 +167,14 @@ correction rounds are allowed; Golden changes are never accepted automatically.
 - The route and implementation inventory confirms the browser start destination,
   onboarding gate, all top-level actions, empty/import states, pagination and
   session surfaces.
-- `BoardBrowserState.error` is currently written on search/load-more failure but
-  is never rendered; this is a verified state-model gap, not a redesign guess.
+- The former raw `BoardBrowserState.error` gap is closed: query and pagination
+  failures now use `BrowserIssue`, render distinct recovery surfaces, and keep
+  already-loaded results usable.
 - Existing unit tests cover filtering, board switches, pagination, random
   choice and catalogue revisions. The portable projection, addressable
   `browser/content`, `browser/empty` and `browser/error` fixtures, direct-search
-  behavior, text-plus-icon connection state and 48 dp header actions now have
-  focused tests.
+  behavior, text-plus-icon connection state, initial/pagination retry behavior
+  and 48 dp actions now have focused tests.
 - Baseline pixels and device semantics are blocked because `adb devices -l`
   reports no device. Continue with portable contracts and deterministic
   renderer fixtures; do not claim visual quality until the ADB loop in

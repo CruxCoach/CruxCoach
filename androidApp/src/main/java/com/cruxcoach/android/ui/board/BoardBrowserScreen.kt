@@ -50,6 +50,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.BrowserIssue
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
@@ -580,6 +581,8 @@ fun BoardBrowserScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = OrangeAccent)
                 }
+            } else if (state.issue == BrowserIssue.QUERY_FAILED && state.climbs.isEmpty()) {
+                BoardBrowserErrorContent(onRetry = { viewModel.searchClimbs() })
             } else if (state.climbs.isEmpty()) {
                 // Zero-results empty state — this area used to render a
                 // silently blank list. Two causes, two recoveries: the active
@@ -749,6 +752,11 @@ fun BoardBrowserScreen(
                                     strokeWidth = 2.dp
                                 )
                             }
+                        }
+                    }
+                    if (state.issue == BrowserIssue.LOAD_MORE_FAILED) {
+                        item(key = "load-more-error", contentType = "load-more-error") {
+                            BoardBrowserLoadMoreError(onRetry = { viewModel.loadMore() })
                         }
                     }
                 }

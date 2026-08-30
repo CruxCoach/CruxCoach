@@ -1499,7 +1499,7 @@ class BoardBrowserViewModel @Inject constructor(
         val requestGeneration = browseRequestGate.current()
 
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoadingMore = true) }
+            _state.update { it.copy(isLoadingMore = true, issue = null) }
             try {
                 val (nextFiltered, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
                     fetchFiltered(s.filter, dbOffset = s.dbOffset)

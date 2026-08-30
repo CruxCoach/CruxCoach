@@ -178,11 +178,7 @@ internal fun BoardBrowserScenarioContent(scenario: BoardBrowserScenario) {
                 action = stringResource(R.string.board_browser_empty_clear_filters),
                 tag = "browser_scenario_empty",
             )
-            is BoardBrowserScreenState.Error -> ScenarioRecovery(
-                title = stringResource(R.string.board_browser_error_title),
-                action = stringResource(R.string.action_retry),
-                tag = "browser_scenario_error",
-            )
+            is BoardBrowserScreenState.Error -> BoardBrowserErrorContent(onRetry = {})
             else -> Unit
         }
     }
