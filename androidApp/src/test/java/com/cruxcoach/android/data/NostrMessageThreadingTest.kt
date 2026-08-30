@@ -148,21 +148,21 @@ class NostrMessageThreadingTest {
     fun `learnThreadAnchor sets a wiped anchor but never overwrites an existing one`() {
         insertRow(ROOT_LOCAL, threadAnchorId = null)
         repo.learnThreadAnchor(ROOT_LOCAL, ROOT_ANCHOR)
-        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.thread_anchor_id)
+        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.threadAnchorId)
 
         repo.learnThreadAnchor(ROOT_LOCAL, "some-other-id")
-        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.thread_anchor_id)
+        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.threadAnchorId)
     }
 
     @Test
     fun `learnThreadAnchor ignores received rows and identical ids`() {
         insertRow("dev-root", direction = "received", threadAnchorId = null)
         repo.learnThreadAnchor("dev-root", ROOT_ANCHOR)
-        assertNull(repo.getById("dev-root")?.thread_anchor_id)
+        assertNull(repo.getById("dev-root")?.threadAnchorId)
 
         insertRow(ROOT_LOCAL, threadAnchorId = null)
         repo.learnThreadAnchor(ROOT_LOCAL, ROOT_LOCAL)
-        assertNull(repo.getById(ROOT_LOCAL)?.thread_anchor_id)
+        assertNull(repo.getById(ROOT_LOCAL)?.threadAnchorId)
     }
 
     @Test
@@ -173,7 +173,7 @@ class NostrMessageThreadingTest {
         insertRow(ROOT_LOCAL, threadAnchorId = null)
 
         repo.relearnAnchorFromReplies(ROOT_LOCAL)
-        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.thread_anchor_id)
+        assertEquals(ROOT_ANCHOR, repo.getById(ROOT_LOCAL)?.threadAnchorId)
     }
 
     @Test
@@ -184,7 +184,7 @@ class NostrMessageThreadingTest {
         insertRow(ROOT_LOCAL, threadAnchorId = null)
 
         repo.relearnAnchorFromReplies(ROOT_LOCAL)
-        assertNull(repo.getById(ROOT_LOCAL)?.thread_anchor_id)
+        assertNull(repo.getById(ROOT_LOCAL)?.threadAnchorId)
     }
 
     // ── resolveReplyContext (repository lambda plumbing) ───────────────

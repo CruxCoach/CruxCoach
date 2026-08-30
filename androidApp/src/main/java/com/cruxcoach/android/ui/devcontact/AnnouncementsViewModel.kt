@@ -4,11 +4,11 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.AnnouncementRepository
+import com.cruxcoach.android.data.AnnouncementRecord
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.notification.AnnouncementTagParser
-import com.cruxcoach.db.secure.Announcements
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -124,15 +124,15 @@ class AnnouncementsViewModel @Inject constructor(
         }
     }
 
-    private fun Announcements.toUi(): UiAnnouncement {
+    private fun AnnouncementRecord.toUi(): UiAnnouncement {
         val lang = Locale.getDefault().language
         return UiAnnouncement(
             id = id,
             content = AnnouncementTagParser.extractLocalizedContent(content, lang),
             category = category,
             priority = priority,
-            timestamp = created_at,
-            isRead = read != 0L
+            timestamp = createdAt,
+            isRead = this.isRead
         )
     }
 

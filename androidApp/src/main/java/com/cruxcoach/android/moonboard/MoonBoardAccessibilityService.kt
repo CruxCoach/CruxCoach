@@ -10,8 +10,8 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.cruxcoach.android.MainActivity
+import com.cruxcoach.android.NavigationTarget
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.navigation.Routes
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -708,7 +708,7 @@ class MoonBoardAccessibilityService : AccessibilityService() {
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP,
             )
-            .putExtra("navigate_to", Routes.MOONBOARD_CSV_IMPORT)
+            .putExtra("navigate_to", NavigationTarget.MOONBOARD_CSV_IMPORT)
         runCatching { startActivity(intent) }
             .onFailure { Log.w(TAG, "could not return to CruxCoach", it) }
     }

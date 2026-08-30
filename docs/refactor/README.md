@@ -30,6 +30,11 @@ Check the dependency directions already established by the staged refactor with:
 python3 scripts/check_architecture.py
 ```
 
+The check rejects Android types from the portable core, UI imports from
+Android data and runtime packages, and generated SQLDelight or GATT types from
+Android UI code. Repositories expose stable records at that boundary; generated
+rows remain implementation details of the data package.
+
 The debug-only Android DesignLab and its non-accepting ADB capture command are
 documented in `external-gates.md`. Preview fixtures do not count as visual
 evidence until rendered pixels and the paired semantics dump are inspected.

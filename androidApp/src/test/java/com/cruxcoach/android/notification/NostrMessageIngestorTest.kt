@@ -10,7 +10,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Shared ingest wiring (used by BOTH NostrPushCoordinator and
@@ -90,10 +92,10 @@ class NostrMessageIngestorTest {
 
         assertEquals("message_thread/$ROOT_LOCAL", route)
         val row = repo.getById("dev-reply")!!
-        assertEquals(ROOT_LOCAL, row.reply_to_id)
-        assertEquals(ROOT_ANCHOR, row.reply_to_wire_id)
+        assertEquals(ROOT_LOCAL, row.replyToId)
+        assertEquals(ROOT_ANCHOR, row.replyToWireId)
         assertEquals("received", row.direction)
-        assertEquals(0L, row.read)
+        assertFalse(row.isRead)
     }
 
     @Test
@@ -112,7 +114,7 @@ class NostrMessageIngestorTest {
             isSelfWrap = false
         )
         assertEquals("message_thread/not-ingested-yet", route)
-        assertEquals("not-ingested-yet", repo.getById("dev-reply")?.reply_to_id)
+        assertEquals("not-ingested-yet", repo.getById("dev-reply")?.replyToId)
     }
 
     // ── self-wrap bookkeeping ─────────────────────────────────────────
@@ -125,10 +127,10 @@ class NostrMessageIngestorTest {
         ingestor.ingest(msg(ROOT_LOCAL), isSelfWrap = true)
 
         val row = repo.getById(ROOT_LOCAL)!!
-        assertNull(row.queued_at)
-        assertEquals(1L, row.relay_accepted)
+        assertNull(row.queuedAt)
+        assertTrue(row.isRelayAccepted)
         // INSERT OR IGNORE must keep the original row (anchor untouched).
-        assertEquals(ROOT_ANCHOR, row.thread_anchor_id)
+        assertEquals(ROOT_ANCHOR, row.threadAnchorId)
     }
 
     // ── wipe-and-refetch regression (recovery migrations, reinstall) ──
@@ -164,7 +166,7 @@ class NostrMessageIngestorTest {
         )
         assertEquals(
             ROOT_ANCHOR,
-            repo.getById(ROOT_LOCAL)?.thread_anchor_id,
+            repo.getById(ROOT_LOCAL)?.threadAnchorId,
             "re-learned anchor after refetch order $order"
         )
         // New replies must go out with the dashboard-known id on the wire
@@ -221,8 +223,8 @@ class NostrMessageIngestorTest {
         )
 
         val row = repo.getById(OWN_REPLY)!!
-        assertEquals(ROOT_LOCAL, row.reply_to_id)
-        assertEquals(ROOT_ANCHOR, row.reply_to_wire_id)
+        assertEquals(ROOT_LOCAL, row.replyToId)
+        assertEquals(ROOT_ANCHOR, row.replyToWireId)
         // Root echo arrives later — the reply is already threaded under it.
         ingestor.ingest(msg(ROOT_LOCAL), isSelfWrap = true)
         assertEquals(

@@ -24,9 +24,30 @@ def forbidden_imports(root: Path, prefixes: tuple[str, ...]) -> list[str]:
 
 
 def main() -> None:
-    failures = forbidden_imports(
-        ROOT / "androidApp/src/main/java/com/cruxcoach/android/data",
-        ("com.cruxcoach.android.ui.",),
+    failures: list[str] = []
+    runtime_packages = (
+        "aurora",
+        "ble",
+        "community",
+        "data",
+        "moonboard",
+        "nostr",
+        "notification",
+        "updater",
+        "util",
+    )
+    for package in runtime_packages:
+        failures += forbidden_imports(
+            ROOT / f"androidApp/src/main/java/com/cruxcoach/android/{package}",
+            ("com.cruxcoach.android.ui.",),
+        )
+    failures += forbidden_imports(
+        ROOT / "androidApp/src/main/java/com/cruxcoach/android/ui",
+        (
+            "android.bluetooth.BluetoothGatt",
+            "app.cash.sqldelight.",
+            "com.cruxcoach.db.",
+        ),
     )
     failures += forbidden_imports(
         ROOT / "shared/src/commonMain/kotlin",

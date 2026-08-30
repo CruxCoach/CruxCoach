@@ -9,6 +9,23 @@ import com.cruxcoach.db.secure.Nostr_messages
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class NostrMessageRecord(
+    val id: String,
+    val type: String,
+    val direction: String,
+    val content: String,
+    val subject: String?,
+    val senderPubkey: String,
+    val createdAt: Long,
+    val isRelayAccepted: Boolean,
+    val isRead: Boolean,
+    val replyToId: String?,
+    val queuedAt: Long?,
+    val eventJson: String?,
+    val threadAnchorId: String?,
+    val replyToWireId: String?,
+)
+
 @Singleton
 class NostrMessageRepository @Inject constructor(
     private val database: SecureDatabase
@@ -45,17 +62,19 @@ class NostrMessageRepository @Inject constructor(
         )
     }
 
-    fun getAll(): List<Nostr_messages> = queries.getAll().executeAsList()
+    fun getAll(): List<NostrMessageRecord> = queries.getAll().executeAsList().map { it.toRecord() }
 
-    fun getByType(type: String): List<Nostr_messages> = queries.getByType(type).executeAsList()
+    fun getByType(type: String): List<NostrMessageRecord> =
+        queries.getByType(type).executeAsList().map { it.toRecord() }
 
-    fun getById(id: String): Nostr_messages? = queries.getById(id).executeAsOneOrNull()
+    fun getById(id: String): NostrMessageRecord? =
+        queries.getById(id).executeAsOneOrNull()?.toRecord()
 
-    fun getRootMessagesByType(type: String): List<Nostr_messages> =
-        queries.getRootMessagesByType(type).executeAsList()
+    fun getRootMessagesByType(type: String): List<NostrMessageRecord> =
+        queries.getRootMessagesByType(type).executeAsList().map { it.toRecord() }
 
-    fun getThread(rootId: String): List<Nostr_messages> =
-        queries.getThread(rootId).executeAsList()
+    fun getThread(rootId: String): List<NostrMessageRecord> =
+        queries.getThread(rootId).executeAsList().map { it.toRecord() }
 
     /**
      * Resolves an arbitrary event id — local (self-wrap) row id OR the
@@ -119,11 +138,28 @@ class NostrMessageRepository @Inject constructor(
         queries.resolveThreadMember(eventId).executeAsOneOrNull()
             ?.let { ThreadMemberRef(id = it.id, replyToId = it.reply_to_id) }
 
-    private fun Nostr_messages.toThreadMemberRef(): ThreadMemberRef = ThreadMemberRef(
+    private fun NostrMessageRecord.toThreadMemberRef(): ThreadMemberRef = ThreadMemberRef(
         id = id,
-        replyToId = reply_to_id,
-        threadAnchorId = thread_anchor_id,
+        replyToId = replyToId,
+        threadAnchorId = threadAnchorId,
         type = type
+    )
+
+    private fun Nostr_messages.toRecord() = NostrMessageRecord(
+        id = id,
+        type = type,
+        direction = direction,
+        content = content,
+        subject = subject,
+        senderPubkey = sender_pubkey,
+        createdAt = created_at,
+        isRelayAccepted = relay_accepted != 0L,
+        isRead = read != 0L,
+        replyToId = reply_to_id,
+        queuedAt = queued_at,
+        eventJson = event_json,
+        threadAnchorId = thread_anchor_id,
+        replyToWireId = reply_to_wire_id,
     )
 
     fun getUnreadCountByType(type: String): Long =

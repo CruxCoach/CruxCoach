@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.data.NostrMessageRecord
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.nostr.MessageDeliveryCoordinator
@@ -18,7 +19,6 @@ import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
-import com.cruxcoach.db.secure.Nostr_messages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -252,12 +252,12 @@ class DevContactViewModel @Inject constructor(
                 emptyList()
             } else {
                 rawMessages.filter { m ->
-                    (m.direction == "sent" && m.sender_pubkey == currentPubkey) ||
-                        (m.direction == "received" && m.sender_pubkey == NostrConfig.DEV_PUBKEY) ||
+                    (m.direction == "sent" && m.senderPubkey == currentPubkey) ||
+                        (m.direction == "received" && m.senderPubkey == NostrConfig.DEV_PUBKEY) ||
                         // Keep queued rows even if they were inserted under a
                         // pubkey that no longer matches, so offline drafts
                         // aren't silently dropped from the UI.
-                        m.queued_at != null
+                        m.queuedAt != null
                 }
             }
             val dropped = rawMessages.size - messages.size
@@ -491,7 +491,7 @@ class DevContactViewModel @Inject constructor(
         viewModelScope.launch {
             val msg = withContext(Dispatchers.IO) { messageRepository.getById(messageId) }
                 ?: return@launch
-            val eventJson = msg.event_json ?: return@launch
+            val eventJson = msg.eventJson ?: return@launch
 
             val success = try {
                 messageSender.retrySend(eventJson)
@@ -616,17 +616,17 @@ class DevContactViewModel @Inject constructor(
         return com.cruxcoach.android.nostr.DevicePrivacy.generalizedDeviceInfoLine(context)
     }
 
-    private fun Nostr_messages.toUiMessage(): UiMessage = UiMessage(
+    private fun NostrMessageRecord.toUiMessage(): UiMessage = UiMessage(
         id = id,
         content = stripLegacyPadding(content),
         subject = subject,
         isSent = direction == "sent",
-        timestamp = created_at,
-        isRead = read != 0L,
-        replyToId = reply_to_id,
+        timestamp = createdAt,
+        isRead = isRead,
+        replyToId = replyToId,
         type = type,
-        isQueued = queued_at != null,
-        isDelivered = relay_accepted != 0L
+        isQueued = queuedAt != null,
+        isDelivered = isRelayAccepted,
     )
 
     /** Strip legacy app-level padding (---pad:~~~...) from old messages. */

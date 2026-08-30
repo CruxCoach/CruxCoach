@@ -50,6 +50,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.cruxcoach.android.NavigationTarget
 import com.cruxcoach.android.ui.climb.ClimbLogScreen
 import com.cruxcoach.android.ui.dashboard.DashboardScreen
 import com.cruxcoach.android.ui.plan.SessionDetailScreen
@@ -142,7 +143,7 @@ object Routes {
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
     const val AURORA_MIGRATION = "aurora_migration"
-    const val MOONBOARD_CSV_IMPORT = "moonboard_csv_import"
+    const val MOONBOARD_CSV_IMPORT = NavigationTarget.MOONBOARD_CSV_IMPORT
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"

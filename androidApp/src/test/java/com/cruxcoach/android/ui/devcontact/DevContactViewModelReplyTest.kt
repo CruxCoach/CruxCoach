@@ -174,9 +174,9 @@ class DevContactViewModelReplyTest {
         // anchor and the raw wire reference.
         val row = repo.getById(REPLY_SELF_WRAP)!!
         assertEquals(MessageType.FEATURE.label, row.type)
-        assertEquals(ROOT_LOCAL, row.reply_to_id)
-        assertEquals(REPLY_RECIPIENT_WRAP, row.thread_anchor_id)
-        assertEquals(ROOT_ANCHOR, row.reply_to_wire_id)
+        assertEquals(ROOT_LOCAL, row.replyToId)
+        assertEquals(REPLY_RECIPIENT_WRAP, row.threadAnchorId)
+        assertEquals(ROOT_ANCHOR, row.replyToWireId)
         // And the thread view picks the new reply up immediately.
         assertEquals(
             listOf(ROOT_LOCAL, REPLY_SELF_WRAP),
