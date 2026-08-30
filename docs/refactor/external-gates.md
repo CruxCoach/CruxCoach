@@ -25,7 +25,13 @@ tests remain available without changing the SDK by using:
 ```
 
 Android tests require that NDK version to be installed by the environment
-owner, then can be resumed with the analogous focused `:androidApp` test task.
+owner. The logging-contract integration check attempted on 2026-08-30 can then
+be resumed exactly with:
+
+```sh
+./gradlew --configure-on-demand :androidApp:testDebugUnitTest \
+  --tests 'com.cruxcoach.android.ui.board.AscentLoggerQuickLogTest'
+```
 
 ## BoardSimulator and hardware
 

@@ -4,9 +4,16 @@ import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.PersonalBoardAttemptLogStore
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.QuickLogBidInput
 import com.cruxcoach.data.repository.QuickLogSendInput
+import com.cruxcoach.domain.board.AttemptOutcome
+import com.cruxcoach.domain.board.LogAttemptCommand
+import com.cruxcoach.domain.board.LogAttemptResult
+import com.cruxcoach.domain.board.LogAttemptUseCase
+import com.cruxcoach.domain.board.LoggedClimbSnapshot
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +42,8 @@ internal class AscentLogger(
     private val currentClimbUuid: () -> String,
     private val onAscentSaved: (isSend: Boolean) -> Unit
 ) {
+
+    private val logAttempt = LogAttemptUseCase(PersonalBoardAttemptLogStore(personalBoardRepo))
 
     /** One still-open quick-log sequence on the currently displayed variant. */
     private data class ActiveQuickLog(
@@ -237,6 +246,43 @@ internal class AscentLogger(
         layoutId = active.layoutId,
     )
 
+    private fun logNewEntry(
+        entryUuid: String,
+        climb: ClimbWithStats,
+        angle: Long,
+        isMirrored: Boolean,
+        outcome: AttemptOutcome,
+        attemptCount: Long,
+        quality: Long?,
+        isBenchmark: Boolean,
+        comment: String?,
+        climbedAt: String,
+    ) {
+        val result = logAttempt(
+            LogAttemptCommand(
+                entryUuid = entryUuid,
+                climb = LoggedClimbSnapshot(
+                    uuid = climb.uuid,
+                    name = climb.name,
+                    angle = angle,
+                    isMirrored = isMirrored,
+                    difficultyAverage = climb.difficultyAverage,
+                    frames = climb.frames,
+                    framesCount = climb.framesCount,
+                    boardBrand = climb.boardBrand,
+                    layoutId = climb.layoutId,
+                ),
+                outcome = outcome,
+                attemptCount = attemptCount,
+                quality = quality,
+                isBenchmark = isBenchmark,
+                comment = comment,
+                climbedAt = climbedAt,
+            )
+        )
+        check(result is LogAttemptResult.Logged) { "Attempt log was not persisted: $result" }
+    }
+
     private fun save(isQuickLog: Boolean) {
         val s = state.value
         // Close on the way out. The bare `return` left the dialog standing and
@@ -320,25 +366,17 @@ internal class AscentLogger(
                                 )
                             )
                         } else {
-                            personalBoardRepo.insertAscent(
-                                uuid = effectiveEntryUuid,
-                                climbUuid = climb.uuid,
+                            logNewEntry(
+                                entryUuid = effectiveEntryUuid,
+                                climb = climb,
                                 angle = s.angle.toLong(),
-                                isMirror = s.isMirrored,
-                                attemptId = 0,
-                                bidCount = attemptsToTop,
+                                isMirrored = s.isMirrored,
+                                outcome = AttemptOutcome.SEND,
+                                attemptCount = attemptsToTop,
                                 quality = if (form.quality > 0) form.quality.toLong() else null,
-                                difficulty = climb.difficultyAverage?.toLong(),
                                 isBenchmark = form.isBenchmark,
-                                comment = form.comment.ifBlank { null },
+                                comment = form.comment,
                                 climbedAt = now,
-                                synced = false,
-                                climbName = climb.name,
-                                difficultyAverage = climb.difficultyAverage,
-                                climbFrames = climb.frames,
-                                framesCount = climb.framesCount,
-                                boardBrand = climb.boardBrand,
-                                layoutId = climb.layoutId,
                             )
                         }
                         sendEntryUuid = effectiveEntryUuid
@@ -387,19 +425,17 @@ internal class AscentLogger(
                                 boardBrand = climb.boardBrand,
                                 layoutId = climb.layoutId,
                             )
-                            personalBoardRepo.insertBid(
-                                uuid = effectiveEntryUuid,
-                                climbUuid = climb.uuid,
+                            logNewEntry(
+                                entryUuid = effectiveEntryUuid,
+                                climb = climb,
                                 angle = s.angle.toLong(),
-                                isMirror = s.isMirrored,
-                                bidCount = form.bidCount.toLong(),
-                                comment = form.comment.ifBlank { null },
+                                isMirrored = s.isMirrored,
+                                outcome = AttemptOutcome.ATTEMPT,
+                                attemptCount = form.bidCount.toLong(),
+                                quality = null,
+                                isBenchmark = false,
+                                comment = form.comment,
                                 climbedAt = now,
-                                synced = false,
-                                climbName = climb.name,
-                                difficultyAverage = climb.difficultyAverage,
-                                boardBrand = climb.boardBrand,
-                                layoutId = climb.layoutId,
                             )
                         }
                         if (isQuickLog) activeQuickLog = quickAfter
