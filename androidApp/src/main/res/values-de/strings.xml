@@ -951,13 +951,18 @@
     <!-- Board: Ascent Logging -->
     <string name="board_ascent_edit_title">Begehung bearbeiten</string>
     <string name="board_ascent_log_title">Begehung loggen</string>
-    <string name="board_ascent_type">Typ:</string>
-    <string name="board_ascent_benchmark_label">Benchmark:</string>
-    <string name="board_ascent_benchmark_attempt">Benchmark-Versuch</string>
-    <string name="board_ascent_attempts">Versuche: %d</string>
+    <string name="board_ascent_type">Ergebnis</string>
+    <string name="board_ascent_benchmark_label">Benchmark</string>
+    <string name="board_ascent_benchmark_attempt">Als Benchmark markieren</string>
+    <string name="board_ascent_attempts">Versuche</string>
+    <string name="board_ascent_attempt_count">Versuchsanzahl: %d</string>
+    <string name="cd_decrease_attempt_count">Versuchsanzahl verringern</string>
+    <string name="cd_increase_attempt_count">Versuchsanzahl erhöhen</string>
     <string name="board_ascent_first_try">Top · 1. Versuch</string>
     <string name="board_ascent_open_one">Offen · 1 Versuch</string>
-    <string name="board_ascent_quality">Qualität:</string>
+    <string name="board_ascent_quality">Qualität</string>
+    <string name="board_ascent_quality_none">Keine Qualitätsbewertung</string>
+    <string name="board_ascent_quality_selected">%d von 5 Sternen</string>
     <string name="board_ascent_comment">Kommentar (optional)</string>
 
     <!-- Board: Session Summary -->

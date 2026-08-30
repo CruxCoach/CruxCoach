@@ -907,13 +907,18 @@
     <!-- Board: Ascent Logging -->
     <string name="board_ascent_edit_title">Edit ascent</string>
     <string name="board_ascent_log_title">Log ascent</string>
-    <string name="board_ascent_type">Type:</string>
-    <string name="board_ascent_benchmark_label">Benchmark:</string>
-    <string name="board_ascent_benchmark_attempt">Benchmark attempt</string>
-    <string name="board_ascent_attempts">Attempts: %d</string>
+    <string name="board_ascent_type">Result</string>
+    <string name="board_ascent_benchmark_label">Benchmark</string>
+    <string name="board_ascent_benchmark_attempt">Mark as benchmark</string>
+    <string name="board_ascent_attempts">Attempts</string>
+    <string name="board_ascent_attempt_count">Attempt count: %d</string>
+    <string name="cd_decrease_attempt_count">Decrease attempt count</string>
+    <string name="cd_increase_attempt_count">Increase attempt count</string>
     <string name="board_ascent_first_try">Sent · 1st try</string>
     <string name="board_ascent_open_one">Open · 1 attempt</string>
-    <string name="board_ascent_quality">Quality:</string>
+    <string name="board_ascent_quality">Quality</string>
+    <string name="board_ascent_quality_none">No quality rating</string>
+    <string name="board_ascent_quality_selected">%d of 5 stars</string>
     <string name="board_ascent_comment">Comment (optional)</string>
 
     <!-- Board: Session Summary -->
