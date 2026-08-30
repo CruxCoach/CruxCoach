@@ -25,13 +25,31 @@ import java.net.Socket
 import java.util.UUID
 import kotlin.concurrent.thread
 
-/** No header is the immutable v1 contract; only an exact v2 marker opts into
- * the full-Quantum snapshot build. */
-internal fun snapshotProtocolForApkRequest(header: String?): Int =
+/** Sender roles are deliberately asymmetric: v2 is the only default writer,
+ * while v1 exists solely to answer already-published receiver requests. */
+internal enum class LocalShareResponseContract(
+    val protocolVersion: Int,
+    val manifestPath: String,
+    val boardPath: String,
+) {
+    CURRENT_V2_WRITER(
+        LocalShareProtocol.VERSION_V2,
+        LocalShareProtocol.V2_MANIFEST_PATH,
+        LocalShareProtocol.V2_BOARD_PATH,
+    ),
+    PUBLISHED_V1_COMPATIBILITY_RESPONDER(
+        LocalShareProtocol.VERSION,
+        LocalShareProtocol.MANIFEST_PATH,
+        LocalShareProtocol.BOARD_PATH,
+    ),
+}
+
+/** A headerless APK request is the immutable published v1 receiver contract. */
+internal fun responseContractForApkRequest(header: String?): LocalShareResponseContract =
     if (header?.trim() == LocalShareProtocol.VERSION_V2.toString()) {
-        LocalShareProtocol.VERSION_V2
+        LocalShareResponseContract.CURRENT_V2_WRITER
     } else {
-        LocalShareProtocol.VERSION
+        LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER
     }
 
 /**
@@ -494,25 +512,37 @@ class LocalApkServer(
                         receiverCompleted = true
                     }
                     method != "GET" && method != "HEAD" -> serveMethodNotAllowed(out)
-                    path == LocalShareProtocol.V2_MANIFEST_PATH ->
-                        serveManifest(out, headOnly, LocalShareProtocol.VERSION_V2)
-                    path == LocalShareProtocol.MANIFEST_PATH ||
-                        path == "/.well-known/cruxcoach-share" -> serveManifest(out, headOnly)
+                    path == LocalShareResponseContract.CURRENT_V2_WRITER.manifestPath -> serveManifest(
+                        out,
+                        headOnly,
+                        LocalShareResponseContract.CURRENT_V2_WRITER,
+                    )
+                    path == LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER.manifestPath ||
+                        path == "/.well-known/cruxcoach-share" -> serveManifest(
+                            out,
+                            headOnly,
+                            LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+                        )
                     path == LocalShareProtocol.APK_PATH -> serveApk(
                         out,
                         headers["range"],
                         headOnly,
-                        snapshotProtocolForApkRequest(
+                        responseContractForApkRequest(
                             headers[LocalShareProtocol.PROTOCOL_HEADER.lowercase()],
                         ),
                     )
-                    path == LocalShareProtocol.BOARD_PATH ->
-                        serveBoardDb(out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly)
-                    path == LocalShareProtocol.V2_BOARD_PATH ->
-                        serveBoardDb(out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly,
-                            protocolVersion = LocalShareProtocol.VERSION_V2)
-                    path == "/board.db" ->
-                        serveBoardDb(out, compressed = false, rangeHeader = headers["range"], headOnly = headOnly)
+                    path == LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER.boardPath -> serveBoardDb(
+                        out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly,
+                        contract = LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+                    )
+                    path == LocalShareResponseContract.CURRENT_V2_WRITER.boardPath -> serveBoardDb(
+                        out, compressed = true, rangeHeader = headers["range"], headOnly = headOnly,
+                        contract = LocalShareResponseContract.CURRENT_V2_WRITER,
+                    )
+                    path == "/board.db" -> serveBoardDb(
+                        out, compressed = false, rangeHeader = headers["range"], headOnly = headOnly,
+                        contract = LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+                    )
                     path == "/favicon.ico" -> serve404(out)
                     else -> serveLandingPage(out)
                 }
@@ -549,7 +579,7 @@ class LocalApkServer(
     private fun serveManifest(
         out: java.io.OutputStream,
         headOnly: Boolean,
-        protocolVersion: Int = LocalShareProtocol.VERSION,
+        contract: LocalShareResponseContract,
     ) {
         // Reading the manifest must stay cheap: the receiver uses it to decide
         // whether an APK is needed. Snapshot work is armed explicitly by a
@@ -557,7 +587,7 @@ class LocalApkServer(
         // Hashing the APK is intentionally lazy but deterministic. The first
         // manifest request pays this one-time read while the board snapshot is
         // normally still being prepared in parallel.
-        val view = snapshotView(protocolVersion)
+        val view = snapshotView(contract.protocolVersion)
         val boardJson = org.json.JSONObject().put(
             "status",
             when {
@@ -569,8 +599,7 @@ class LocalApkServer(
             view.compressed != null && view.metadata != null
         ) {
             boardJson
-                .put("path", if (protocolVersion == LocalShareProtocol.VERSION_V2)
-                    LocalShareProtocol.V2_BOARD_PATH else LocalShareProtocol.BOARD_PATH)
+                .put("path", contract.boardPath)
                 .put("compression", "gzip")
                 .put("sizeBytes", view.compressed.length())
                 .put("sha256", view.metadata.compressedSha256)
@@ -591,7 +620,7 @@ class LocalApkServer(
                 )
         }
         val json = org.json.JSONObject()
-            .put("protocolVersion", protocolVersion)
+            .put("protocolVersion", contract.protocolVersion)
             .put("sessionId", sessionId)
             .put("idleTimeoutSeconds", AUTO_SHUTDOWN_MS / 1000L)
             .put(
@@ -640,7 +669,7 @@ class LocalApkServer(
         out: java.io.OutputStream,
         rangeHeader: String?,
         headOnly: Boolean,
-        receiverProtocolVersion: Int,
+        contract: LocalShareResponseContract,
     ) {
         serveFile(
             out = out,
@@ -654,7 +683,7 @@ class LocalApkServer(
         // their historical "APK GET arms snapshot" behavior. A v2 receiver
         // identifies itself on that same APK path so only the full Quantum
         // snapshot is built; this avoids concurrent half-gigabyte v1/v2 copies.
-        if (!headOnly) ensureSnapshotBuilding(receiverProtocolVersion)
+        if (!headOnly) ensureSnapshotBuilding(contract.protocolVersion)
     }
 
     /**
@@ -674,8 +703,9 @@ class LocalApkServer(
         compressed: Boolean,
         rangeHeader: String?,
         headOnly: Boolean,
-        protocolVersion: Int = LocalShareProtocol.VERSION,
+        contract: LocalShareResponseContract,
     ) {
+        val protocolVersion = contract.protocolVersion
         val live = boardDbFile
         if (live == null || !live.exists()) {
             serve404(out)

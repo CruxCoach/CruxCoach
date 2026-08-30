@@ -45,11 +45,27 @@ class LocalShareProtocolTest {
     }
 
     @Test
-    fun apkSnapshotProtocolIsLegacyUnlessReceiverExplicitlyRequestsV2() {
-        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest(null))
-        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest("1"))
-        assertEquals(LocalShareProtocol.VERSION, snapshotProtocolForApkRequest("unexpected"))
-        assertEquals(LocalShareProtocol.VERSION_V2, snapshotProtocolForApkRequest(" 2 "))
+    fun apkResponseUsesV1ResponderUnlessReceiverExplicitlyRequestsCurrentV2() {
+        assertEquals(
+            LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+            responseContractForApkRequest(null),
+        )
+        assertEquals(
+            LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+            responseContractForApkRequest("1"),
+        )
+        assertEquals(
+            LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER,
+            responseContractForApkRequest("unexpected"),
+        )
+        assertEquals(
+            LocalShareResponseContract.CURRENT_V2_WRITER,
+            responseContractForApkRequest(" 2 "),
+        )
+        assertEquals(
+            LocalShareProtocol.VERSION_V2,
+            LocalShareResponseContract.CURRENT_V2_WRITER.protocolVersion,
+        )
     }
 
     @Test

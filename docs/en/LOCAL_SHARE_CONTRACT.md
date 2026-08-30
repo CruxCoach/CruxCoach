@@ -3,6 +3,10 @@
 CruxCoach local share uses two intentionally distinct board artifacts. This is
 a wire-compatibility boundary, not merely two URLs for the same file.
 
+Protocol v2 is the only default writer. Protocol v1 remains an explicit
+`PUBLISHED_V1_COMPATIBILITY_RESPONDER` for already released receivers; this is
+the sole legacy response-writer exception to the current-format-only policy.
+
 - v1: `GET /v1/manifest`, protocol `1`, board path `/board.db.gz`. The served
   private snapshot is scrubbed with `LocalShareSchema.SNAPSHOT_SCRUB` in its
   historical order. It contains no Quantum catalogue, Quantum geometry, route

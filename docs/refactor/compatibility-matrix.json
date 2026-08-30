@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "policy": "All published inputs remain readable; only the current format is written.",
+  "policy": "All published inputs remain readable; default writers emit only the current format. The published local-share v1 receiver contract is the sole explicit legacy response-writer exception.",
   "databaseOriginFixture": "docs/refactor/fixtures/database-origin-schemas.json",
   "databaseOrigins": [
     {"release":"v0.1.0","commit":"9ed9375d1590c51532499b5045621b2d7f6a8333","boardSchema":0,"secureSchema":0,"status":"covered-by-sqldelight-chain"},
@@ -18,8 +18,8 @@
     {"id":"backup-v3","read":true,"write":true,"fixture":"docs/refactor/fixtures/backup-v3.json","decoder":"CruxCoachBackup.Backup","status":"covered"},
     {"id":"playlist-link-v1","read":true,"write":false,"fixture":"docs/refactor/fixtures/playlist-link-v1.json","decoder":"PlaylistShareLink.parseV1","status":"legacy-decoder-covered"},
     {"id":"playlist-link-v2","read":true,"write":true,"fixture":"docs/refactor/fixtures/playlist-link-v2.json","decoder":"PlaylistShareLink.parse","status":"current-writer"},
-    {"id":"local-share-v1","read":true,"write":true,"decoder":"LocalShareProtocol.parseManifest","status":"legacy-supported"},
-    {"id":"local-share-v2","read":true,"write":true,"decoder":"LocalShareProtocol.parseManifest","status":"current-writer"}
+    {"id":"local-share-v1","read":true,"write":false,"compatibilityResponseWrite":true,"decoder":"LocalShareProtocol.parseManifest","writer":"LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER","status":"published-receiver-interop"},
+    {"id":"local-share-v2","read":true,"write":true,"compatibilityResponseWrite":false,"decoder":"LocalShareProtocol.parseManifest","writer":"LocalShareResponseContract.CURRENT_V2_WRITER","status":"current-default-writer"}
   ],
   "bleGoldens": [
     {"family":"kilter-aurora-api3","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},

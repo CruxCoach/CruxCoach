@@ -85,6 +85,31 @@ def validate_compatibility() -> None:
             entry["id"] == "playlist-link-v2"
         ):
             raise AssertionError("only playlist link v2 may be marked writable")
+    local_share = {
+        entry["id"]: entry for entry in matrix["formats"]
+        if entry["id"].startswith("local-share-v")
+    }
+    if local_share != {
+        "local-share-v1": {
+            "id": "local-share-v1",
+            "read": True,
+            "write": False,
+            "compatibilityResponseWrite": True,
+            "decoder": "LocalShareProtocol.parseManifest",
+            "writer": "LocalShareResponseContract.PUBLISHED_V1_COMPATIBILITY_RESPONDER",
+            "status": "published-receiver-interop",
+        },
+        "local-share-v2": {
+            "id": "local-share-v2",
+            "read": True,
+            "write": True,
+            "compatibilityResponseWrite": False,
+            "decoder": "LocalShareProtocol.parseManifest",
+            "writer": "LocalShareResponseContract.CURRENT_V2_WRITER",
+            "status": "current-default-writer",
+        },
+    }:
+        raise AssertionError("local-share current writer and v1 interop responder drift")
     for entry in matrix["bleGoldens"]:
         require_file(entry["fixture"])
     vectors = load("docs/refactor/fixtures/ble-golden-frames.json")["vectors"]
