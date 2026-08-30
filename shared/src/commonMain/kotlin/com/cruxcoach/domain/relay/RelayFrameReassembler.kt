@@ -7,11 +7,10 @@ import com.cruxcoach.domain.board.BoardPacketEncoder
  * Kilter/Aurora app writes to CruxRelay's emulated board characteristic.
  *
  * [rawBytes] is byte-identical to what the app sent (its packets concatenated),
- * so [chunks] — the same bytes re-split at [BoardPacketEncoder.BLE_MTU] for
- * [com.cruxcoach.android.ble.BoardBleConnection.sendRawChunks] — forward the
- * climb to the real board with ZERO alteration (the board reassembles by the
- * framing bytes, so chunk boundaries are irrelevant). This is the CruxRelay
- * faithful-pass-through invariant.
+ * so [chunks] — the same bytes re-split at [BoardPacketEncoder.BLE_MTU] for a
+ * platform transport — forward the climb to the real board with ZERO
+ * alteration (the board reassembles by the framing bytes, so chunk boundaries
+ * are irrelevant). This is the CruxRelay faithful-pass-through invariant.
  */
 data class CompleteClimb(
     val rawBytes: ByteArray,

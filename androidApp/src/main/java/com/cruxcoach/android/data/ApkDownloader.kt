@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
-import com.cruxcoach.domain.board.SupportedBoard
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -31,6 +30,7 @@ class ApkDownloader(
 ) {
     companion object {
         private const val TAG = "ApkDownloader"
+        private const val KILTER_LEGACY_PACKAGE = "com.auroraclimbing.kilterboard"
         private const val APK_USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
@@ -54,7 +54,7 @@ class ApkDownloader(
      */
     fun checkForUpdate(): UpdateCheck {
         return try {
-            val url = URL("https://d.apkpure.net/b/APK/${SupportedBoard.KILTER.appPackage}?version=latest")
+            val url = URL("https://d.apkpure.net/b/APK/$KILTER_LEGACY_PACKAGE?version=latest")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "HEAD"
             conn.instanceFollowRedirects = false
@@ -132,7 +132,7 @@ class ApkDownloader(
     ) {
         val tempApk = File(context.cacheDir, "aurora_apk_download.zip")
         try {
-            val apkUrl = "https://d.apkpure.net/b/APK/${SupportedBoard.KILTER.appPackage}?version=latest"
+            val apkUrl = "https://d.apkpure.net/b/APK/$KILTER_LEGACY_PACKAGE?version=latest"
             downloadFile(apkUrl, tempApk, onDownloadProgress)
             extractDatabase(tempApk, targetDbFile)
         } finally {
