@@ -1,0 +1,94 @@
+package com.cruxcoach.android.ui.board
+
+import android.app.Application
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.cruxcoach.android.data.DarkModeSetting
+import com.cruxcoach.android.ui.theme.CruxCoachTheme
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class AscentLoggingDialogSemanticsTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    @Test
+    fun `outcome exposes one selected option and changes through its callback`() {
+        compose.setContent {
+            var isSend by remember { mutableStateOf(true) }
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(
+                    scenario = AscentLoggingScenarios.NewSend.copy(isSend = isSend),
+                    onIsSendChanged = { isSend = it },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Send").assertIsSelected()
+        compose.onNodeWithText("Attempt").assertIsNotSelected().performClick()
+        compose.onNodeWithText("Attempt").assertIsSelected()
+        compose.onNodeWithText("Send").assertIsNotSelected()
+    }
+
+    @Test
+    fun `rating and terminal actions are named and actionable`() {
+        var saved = 0
+        var cancelled = 0
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                dialog(
+                    scenario = AscentLoggingScenarios.EditSend,
+                    onSave = { saved += 1 },
+                    onDismiss = { cancelled += 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("4 stars").assertHasClickAction()
+        compose.onNodeWithText("Save").assertHasClickAction().performClick()
+        compose.onNodeWithText("Cancel").assertHasClickAction().performClick()
+
+        assertEquals(1, saved)
+        assertEquals(1, cancelled)
+    }
+
+    @Composable
+    private fun dialog(
+        scenario: AscentLoggingScenario,
+        onIsSendChanged: (Boolean) -> Unit = {},
+        onSave: () -> Unit = {},
+        onDismiss: () -> Unit = {},
+    ) {
+        AscentLoggingDialog(
+            isEditing = scenario.isEditing,
+            isSend = scenario.isSend,
+            bidCount = scenario.attemptCount,
+            quality = scenario.quality,
+            comment = scenario.comment,
+            isBenchmark = scenario.isBenchmark,
+            onIsBenchmarkChanged = {},
+            onIsSendChanged = onIsSendChanged,
+            onBidCountChanged = {},
+            onQualityChanged = {},
+            onCommentChanged = {},
+            onSave = onSave,
+            onDismiss = onDismiss,
+        )
+    }
+}

@@ -16,19 +16,23 @@ python3 scripts/validate_refactor_contracts.py
 Then capture the same DesignLab scenario before and after each UI change with
 `adb exec-out screencap -p` and `adb shell uiautomator dump /sdcard/window.xml`.
 
-The default Gradle configuration also attempts to install NDK
-`27.2.12479018`; this host's `/opt/android-sdk` is not writable. Shared-only
-tests remain available without changing the SDK by using:
+The shell default points `ANDROID_HOME` at the read-only `/opt/android-sdk` and
+therefore tries and fails to install NDK `27.2.12479018`. A complete writable
+SDK was found at `/home/myuser/android-sdk` on 2026-08-30. Android checks can be
+run without changing Gradle or repository configuration by scoping the override
+to the test process:
 
 ```sh
-./gradlew --configure-on-demand :shared:testDebugUnitTest --tests '<test class>'
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew --configure-on-demand :androidApp:testDebugUnitTest --tests '<test class>'
 ```
 
-Android tests require that NDK version to be installed by the environment
-owner. The logging-contract integration check attempted on 2026-08-30 can then
-be resumed exactly with:
+The logging-contract integration check now passes with:
 
 ```sh
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ./gradlew --configure-on-demand :androidApp:testDebugUnitTest \
   --tests 'com.cruxcoach.android.ui.board.AscentLoggerQuickLogTest'
 ```
