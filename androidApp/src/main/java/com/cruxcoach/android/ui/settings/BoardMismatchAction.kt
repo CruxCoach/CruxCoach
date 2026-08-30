@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardConfigurationMismatch
 
 /** One action shape for every send surface. Passing the typed mismatch through
  * the callback prevents a screen from rebuilding prefill via strings. */

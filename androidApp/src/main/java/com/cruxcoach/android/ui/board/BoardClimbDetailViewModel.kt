@@ -18,6 +18,7 @@ import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSendMode
+import com.cruxcoach.android.data.BoardSendModePolicy
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
@@ -125,7 +126,7 @@ data class BoardSendState(
     @androidx.annotation.StringRes val warning: Int? = null,
     /** Present only for identity/configuration failures that the shared board
      * picker can correct. Generic transport errors intentionally have no CTA. */
-    val mismatch: com.cruxcoach.android.ui.settings.BoardConfigurationMismatch? = null,
+    val mismatch: com.cruxcoach.android.data.BoardConfigurationMismatch? = null,
 )
 
 /** Climb list / favorites dialog state. */

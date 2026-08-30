@@ -20,6 +20,12 @@ Validate all machine-readable contracts and their referenced fixtures with:
 python3 scripts/validate_refactor_contracts.py
 ```
 
+Check the dependency directions already established by the staged refactor with:
+
+```sh
+python3 scripts/check_architecture.py
+```
+
 Status values are deliberately small and stable: `covered`, `partial`,
 `planned`, `hidden-preserved`, and `external-gate`. A refactor may improve a
 status, but must not silently remove an entry.

@@ -15,6 +15,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardConfigurationMismatch
+import com.cruxcoach.android.data.BoardMismatchKind
+import com.cruxcoach.android.data.BoardPickerPrefill
+import com.cruxcoach.android.data.BoardPickerPrefillSource
 import com.cruxcoach.android.ui.board.ZoomableBoardPreview
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize

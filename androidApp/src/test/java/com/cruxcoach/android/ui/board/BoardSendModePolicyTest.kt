@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.data.BoardSendMode
+import com.cruxcoach.android.data.BoardSendModePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

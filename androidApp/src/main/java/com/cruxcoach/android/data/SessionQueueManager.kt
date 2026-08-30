@@ -18,14 +18,7 @@ import com.cruxcoach.android.ble.hasCompleteQuantumLedMapping
 import com.cruxcoach.android.ble.hasConfirmableQuantumDiodeCount
 import com.cruxcoach.android.ble.matchesQuantumPlayers
 import com.cruxcoach.android.ble.planKey
-import com.cruxcoach.android.ui.board.BoardSendModePolicy
-import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
-import com.cruxcoach.android.ui.settings.BoardConfigurationMismatch
-import com.cruxcoach.android.ui.settings.BoardSendIdentity
-import com.cruxcoach.android.ui.settings.boardSizeMismatch
-import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
 import com.cruxcoach.android.ble.BoardControllerProfiles
-import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol

@@ -72,8 +72,8 @@ import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
-import com.cruxcoach.android.ui.settings.BoardSendIdentity
-import com.cruxcoach.android.ui.settings.resolveBoardConfigurationMismatch
+import com.cruxcoach.android.data.BoardSendIdentity
+import com.cruxcoach.android.data.resolveBoardConfigurationMismatch
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold

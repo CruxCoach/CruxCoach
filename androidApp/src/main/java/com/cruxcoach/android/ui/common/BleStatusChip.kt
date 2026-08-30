@@ -40,7 +40,7 @@ import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionVisibility
-import com.cruxcoach.android.ui.board.QueueDeliveryPolicy
+import com.cruxcoach.android.data.QueueDeliveryPolicy
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen

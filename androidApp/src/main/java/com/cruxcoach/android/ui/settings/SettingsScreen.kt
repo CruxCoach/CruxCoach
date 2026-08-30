@@ -43,6 +43,8 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardPickerPrefill
+import com.cruxcoach.android.data.BoardPickerPrefillSource
 import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)

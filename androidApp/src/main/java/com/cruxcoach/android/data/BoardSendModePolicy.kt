@@ -1,7 +1,6 @@
-package com.cruxcoach.android.ui.board
+package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.BoardConnectionCapacity
-import com.cruxcoach.android.data.BoardSendMode
 
 /** Selects the user's send preference for the currently observed controller. */
 internal object BoardSendModePolicy {

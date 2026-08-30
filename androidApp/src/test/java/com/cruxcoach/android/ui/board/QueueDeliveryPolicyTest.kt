@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.BoardSendMode
+import com.cruxcoach.android.data.QueueDeliveryPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

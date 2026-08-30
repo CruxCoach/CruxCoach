@@ -49,7 +49,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
-import com.cruxcoach.android.ui.settings.connectedBoardConfigurationMismatch
+import com.cruxcoach.android.data.connectedBoardConfigurationMismatch
 
 private enum class PendingScanStart {
     MANUAL,

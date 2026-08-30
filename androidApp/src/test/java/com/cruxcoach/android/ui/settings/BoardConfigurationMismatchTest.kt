@@ -1,5 +1,11 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.BoardMismatchKind
+import com.cruxcoach.android.data.BoardPickerPrefillSource
+import com.cruxcoach.android.data.BoardSendIdentity
+import com.cruxcoach.android.data.boardSizeMismatch
+import com.cruxcoach.android.data.connectedBoardConfigurationMismatch
+import com.cruxcoach.android.data.resolveBoardConfigurationMismatch
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel

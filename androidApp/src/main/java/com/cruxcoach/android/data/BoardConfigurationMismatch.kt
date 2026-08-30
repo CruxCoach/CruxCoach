@@ -1,6 +1,5 @@
-package com.cruxcoach.android.ui.settings
+package com.cruxcoach.android.data
 
-import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
@@ -197,8 +196,3 @@ private fun BoardSendIdentity.mismatch(
     activeLayoutId = activeLayoutId,
     prefill = prefill,
 )
-
-data class BoardSettingsCard(val brand: BoardBrand, val isActive: Boolean)
-
-fun boardSettingsCards(activeBrand: BoardBrand): List<BoardSettingsCard> =
-    BoardBrand.entries.filter { it.isInteractive }.map { BoardSettingsCard(it, it == activeBrand) }

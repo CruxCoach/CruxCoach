@@ -12,6 +12,8 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardConfigurationMismatch
+import com.cruxcoach.android.data.BoardPickerPrefill
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.data.repository.BoardRepository

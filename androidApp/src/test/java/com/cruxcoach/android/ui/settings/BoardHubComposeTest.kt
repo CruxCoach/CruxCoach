@@ -11,6 +11,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.cruxcoach.android.data.BoardConfigurationMismatch
+import com.cruxcoach.android.data.BoardPickerPrefillSource
+import com.cruxcoach.android.data.BoardSendIdentity
+import com.cruxcoach.android.data.resolveBoardConfigurationMismatch
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import org.junit.Assert.assertEquals
