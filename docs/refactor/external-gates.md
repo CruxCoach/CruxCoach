@@ -134,10 +134,43 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ## BoardSimulator and hardware
 
 BoardSimulator is intentionally not started by agents. When a human has
-started it, first confirm its advertised endpoint/device, then run the BLE matrix represented by
-`docs/refactor/fixtures/ble-golden-frames.json` for every simulator-advertised
-board, then repeat the documented hardware-only API2 checks on physical
-hardware. A successful unit vector is not evidence of a physical send.
+started it, first confirm its advertised endpoint/device. Before transport,
+lock the simulator-independent encoder/parser vectors with:
+
+```sh
+python3 scripts/validate_refactor_contracts.py
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew --configure-on-demand :shared:testDebugUnitTest \
+  --tests 'com.cruxcoach.board.BoardPacketEncoderTest' \
+  --tests 'com.cruxcoach.board.MoonBoardFrameEncoderTest' \
+  --tests 'com.cruxcoach.board.QuantumBoardPacketEncoderTest'
+python3 -m json.tool docs/refactor/fixtures/ble-golden-frames.json >/dev/null
+```
+
+The transport matrix is the six IDs in
+`docs/refactor/fixtures/ble-golden-frames.json`: Aurora API3, Aurora API2,
+MoonBoard Standard, MoonBoard Mini, Quantum turn-off and Quantum empty route
+snapshot. Record, for every board family the simulator advertises, the
+advertised name/address, negotiated API/MTU, fixture ID, bytes observed and
+simulator LED/result state. Repeat Aurora API2 on physical API2 hardware; a
+successful unit or simulator vector is not evidence that the 18 W scaling is
+safe on a real board.
+
+There is currently no repository-owned BoardSimulator launcher, endpoint
+contract or automated transport adapter to turn a fixture ID into a simulator
+send. That is the exact external blocker; inventing an endpoint would not be a
+reproducible check. Once a human starts the simulator, continue with:
+
+```sh
+adb devices -l
+adb shell pm list packages | rg com.cruxcoach.android
+python3 -m json.tool docs/refactor/fixtures/ble-golden-frames.json
+```
+
+Then provide the simulator-advertised endpoint/device identifier to the
+transport adapter changeset. Do not modify signing, package identity or
+release configuration to connect it.
 
 ## Local-share v1 sender compatibility decision
 
