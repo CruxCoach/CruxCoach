@@ -177,20 +177,24 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   and 48 dp actions now have focused tests.
 - The compact `browser/content`, `browser/empty`, and `browser/error` candidate
   matrix was rendered on the API-35 Nokia across EN/DE, light/dark, and
-  font-scale 1.0/1.5. Screenshots were opened and semantics parsed. The
-  installed `d780f4a6` harness placed its full-screen top content under the
-  status bar; the source correction is not yet installed. Expanded width and
-  corrected-source pixels remain gates.
+  font-scale 1.0/1.5. The current f2fe screenshots were opened and effective
+  semantics parsed; critical content now starts below the status bar, all
+  actions meet 48 dp, and EN/DE plus large text remain usable. Expanded width
+  remains the only rendering gate for this matrix.
 - Production now uses only the candidate's isolated board-context region and
   its active-session continue surface. A narrow production header host owns
   the Android-state projection, first-run absence and established BLE/filter
   callbacks without moving them into the renderer. Existing search/FAB
   behavior, hold search, map, filters, BLE/playlist status, management
   destinations and their established test tags remain in place. This
-  deliberately stops short of the broader header replacement until
-  corrected-source pixels can be reviewed.
+  deliberately stops short of the broader header replacement until that larger
+  parity surface and Expanded pixels can be reviewed.
+- The f2fe production host was inspected disconnected and connected to the
+  Kilter simulator. It retained board/angle selection, search, filters,
+  logbook, lists, settings, random, create and climb navigation, plus explicit
+  connection and current-climb text. No active queue existed, so live continue
+  pixels would require creating user state; its four current deterministic
+  states are fully reviewed instead.
 - The focused production sources compile. The browser context, portable mapper,
   production header host, active-session host and continue-card
-  Robolectric/semantics tests pass using the writable SDK. Corrected-source
-  device pixels still require a centrally signed current feature package;
-  continue with the exact CI/CD and installation loop in `external-gates.md`.
+  Robolectric/semantics tests pass using the writable SDK.

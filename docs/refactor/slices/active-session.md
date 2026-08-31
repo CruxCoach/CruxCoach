@@ -126,8 +126,9 @@ Golden changes are never accepted automatically.
   light/dark, and font-scale 1.0/1.5; screenshots were opened and semantics
   parsed. Phase, countdown/no-countdown, connection text, current-climb absence
   and the single continue action remained distinguishable. The installed
-  `d780f4a6` harness had the same top-inset defect as Browser and Progress; its
-  source correction is not installed. The reviewed continue card is now hosted
+  f2fe harness places critical content below the status bar and exposes no
+  sub-48-dp or unnamed interactive node. The reviewed continue card is hosted
   in the production browser while existing banners remain for parity. Focused
-  host, mapping and semantics tests pass. Expanded width and corrected-source
-  device pixels remain gates, so existing banners are not removed yet.
+  host, mapping and semantics tests pass. The installed profile had no active
+  queue, so a live production continue card was not fabricated by mutating user
+  state. Expanded width remains a gate, so existing banners are not removed.

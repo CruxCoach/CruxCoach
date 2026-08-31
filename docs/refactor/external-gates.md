@@ -25,6 +25,18 @@ versionCode `1000014`, source commit
 The on-device base APK hash matched the published hash before review; package
 identity and central development certificate remained unchanged.
 
+The current reviewed package is versionCode `1000015`, source commit
+`f2fe146f14185e87aa6c370e9bfb8c90f8cea81f`, published by run
+`33391580904` through APKTrack job `f78d93ae096345ee8a7a368e41344761`.
+The terminal result was `status=published`, `receipt_delivered=true`, with
+release SHA-256
+`75fe23e04350f19c54c5b46fda9af7550f0f4aceb4cea5816f791a3bb330c729`.
+The operator installed it through Android's normal package installer after a
+byte-exact on-device hash check. Read-only ADB inspection confirmed versionName
+`0.2.2`, versionCode `1000015`, and `InstallSuccess`. No `adb install` was
+used. Stable remains installed separately at versionCode `8` and its package
+and data were not opened, cleared, updated, or reused.
+
 The focused scenario/semantics set and both repository validators passed again
 using the writable SDK on 2026-08-31. Reproduce with:
 
@@ -285,20 +297,49 @@ That command intentionally exits non-zero for this historical artifact and
 prints exactly the 16 checkbox findings; it must reach zero on a current-HEAD
 capture before the correction is approved.
 
+That current-HEAD gate is now closed for compact Android. The complete matrix
+from versionCode `1000015` is at
+`/tmp/cruxcoach-designlab-v1000015-f2fe/compact`: 144 screenshots, 144
+semantics trees and 144 environment records across all 18 scenarios, EN/DE,
+light/dark and font scales 1.0/1.5. Every screenshot was opened at full
+resolution and every effective action/checkable label was inspected. The
+validator checked 3,802 semantic nodes and reports zero missing artifacts,
+out-of-bounds nodes, sub-48-dp clickable targets, or unlabelled checkables.
+All 72 EN/DE pairs differ and all captures bind to the same source commit and
+release hash.
+
+The d780 regressions are visibly resolved: Browser, Session and Progress begin
+their critical content below the status bar, while Detail intentionally keeps
+only its non-critical board hero edge-to-edge. Progress retention controls and
+both history-row checkboxes have visible shapes, checked state and localized
+names; selection is also differentiated by surface, not colour alone. Logging
+Saving/Success/Error, all Browser states, all four Session phases, both Detail
+connection states, and Progress history/empty/error remain usable in both
+themes and at 1.5 font scale. Long secondary text wraps or ellipsizes without
+hiding a primary action. No correction round was warranted by the reviewed
+compact pixels. Reproduce the zero-finding result with:
+
+```sh
+python3 scripts/validate_design_lab_capture.py \
+  /tmp/cruxcoach-designlab-v1000015-f2fe/compact
+```
+
 The attached Nokia is about 411 dp wide and therefore covers only `compact`.
 Do not use a distorted `wm size` override as expanded-layout evidence.
 
 The reviewed Progress body was subsequently wired into
 `BoardClimbHistoryScreen` without replacing the platform app bar, navigation,
 select-all or delete confirmation. Its mapper and focused semantics tests pass,
-but the installed `d780f4a6` package predates both the accessibility correction
-and this production composition. Treat the production pixels as unverified
-until a centrally signed APK containing the source checkpoint is installed;
-do not infer them from the DesignLab candidate captures. The current history
-ViewModel now projects initial loading and a failed repository stream into
-typed loading/error states with a real collector retry. That source behavior is
-unit-covered but, like the production composition, awaits a signed APK for
-device verification.
+and the f2fe package now verifies the production composition on-device. The
+real empty Board Logbook remains distinct from device-local Progress history.
+Through Lists -> History, the production Progress screen showed its app bar
+below the status bar, four 126-pixel-high retention targets, the local-only
+disclosure, exact `Floats Your Boat` UUID/40-degree row navigation, and a
+separately focusable checkbox named `Floats Your Boat auswählen`. The ViewModel
+projects initial loading and a failed repository stream into typed
+loading/error states with a real collector retry; deterministic DesignLab and
+focused tests cover those states because the device's current repository was
+content-only.
 
 Capture the deterministic history candidate (fixed rows and relative dates)
 with:
@@ -310,9 +351,9 @@ scripts/capture_design_lab.sh \
   /tmp/cruxcoach-designlab/progress-history-light-en
 ```
 
-Also inspect `progress/empty` and `progress/error`; neither is a reviewed
-production design until its pixels and semantics have been checked on the
-attached renderer.
+`progress/empty` and `progress/error` are reviewed in the current deterministic
+compact matrix. Their production state projection is focused-test-covered; the
+installed profile did not naturally enter either state during this run.
 
 Capture the same climb identity in both delivery states without BoardSimulator:
 
@@ -344,9 +385,14 @@ The reviewed Macrobenchmark spike is now machine-readable at
 `scripts/validate_refactor_contracts.py`. It fixes stable AndroidX Benchmark
 1.4.1, development-package-only targeting, deterministic fixture inputs,
 20+ iterations, retained raw/device artifacts and the 5% median / 10% frame
-regression tripwires. The installed `d780f4a6` package can provide diagnostic
-ADB timings, but it predates current production hosts and is not a valid
-before/after Macrobenchmark target.
+regression tripwires. The current f2fe package exposes all declared UIAutomator
+completion markers. One force-stop/launcher diagnostic on the Nokia (not a
+Macrobenchmark result) recorded first Browser content at 29,875 ms, including
+a 19,283-ms filtered catalogue query. Browser-to-Detail completed in 5,142 ms,
+including a 3,548-ms supported-angle query. These uncontrolled single
+observations are negative evidence and a reason to execute the planned repeated
+benchmark; they must not be presented as stable medians or compared to the
+regression tripwires.
 
 Creating the separate benchmark module/build variant and adding its dependency
 would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
@@ -416,6 +462,29 @@ production Detail UI rendered the board and explicit `An Board gesendet` state.
 The address is redacted from committed evidence. This repeat does not add an
 independent radio-byte or simulator-LED claim, and it does not validate source
 newer than `d780f4a6`.
+
+The f2fe/versionCode-1000015 package repeated the same real path once more.
+Android reported Bluetooth ON with SCAN and CONNECT granted. The scanner found
+`Kilter Board#0001@3` at roughly -42 to -44 dBm; the address is redacted.
+GATT connected with status 0 on its first attempt, discovered ten services and
+became ready. This client does not request a larger MTU, so ATT-MTU 23 and
+20-byte application chunks apply. Opening `Floats Your Boat` at 40 degrees
+resolved 15 frames and recorded `success=true`, `unmapped=0`. Detail displayed
+`An Board gesendet`; returning to Browser displayed both `Verbunden mit Kilter
+Board` and the current-climb banner, so neither connection nor delivery was
+encoded by colour alone. The exact 51-byte encoder fixture remains split
+20/20/11; HCI snooping was not enabled, so this is application/encoder evidence,
+not an independent over-the-air byte capture.
+
+The production Browser and Detail hosts were inspected at full resolution and
+through their UIAutomator trees. Browser retained board/angle selection,
+connection, filter, logbook, lists, settings, random, create, search and climb
+navigation. Detail retained the board hero, exact 40-degree context,
+angle/mirror metadata, favorite, list, overflow, timer, BLE and both attempt
+actions. No active queue/playlist existed in the installed profile, so a live
+production Continue-session card could not be produced without mutating user
+state; all four deterministic card states were nevertheless pixel- and
+semantics-reviewed in the current artifact.
 
 Real production d780 Browser, Detail and Progress screenshots and semantics
 were also inspected. Browser retained search/filter/list/management navigation;

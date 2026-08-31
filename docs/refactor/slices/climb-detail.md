@@ -146,3 +146,12 @@ drop parity that its two fixture states do not model. The focused Android
 compile and the detail projection/delivery-policy tests pass after the
 extraction. A visual change inside the new boundary still requires the same
 installed-source compact/expanded comparison described in `external-gates.md`.
+
+The f2fe production host is now compact-device verified with the real public
+`Floats Your Boat` UUID at 40 degrees. Full-resolution pixels and UIAutomator
+semantics retain the board hero, angle/mirror metadata, playback-owned surface,
+favorite/list/overflow/timer controls and both logging actions. The real Kilter
+API-3 path changed the explicit action from `Board verbinden` to the textual
+`An Board gesendet` state after 15 successful frames; the browser then retained
+the connected/current-climb context. This does not approve a wholesale
+candidate substitution or Expanded rendering.

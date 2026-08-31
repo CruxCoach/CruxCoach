@@ -77,6 +77,19 @@
     "loadClimb complete",
     "NAV COMPLETE: BoardClimbDetail"
   ],
+  "diagnosticDeviceEvidence": {
+    "status": "uncontrolled-single-run-not-a-macrobenchmark",
+    "date": "2026-08-31",
+    "package": "com.cruxcoach.android.dev.f_40293f116dca",
+    "versionCode": 1000015,
+    "sourceCommit": "f2fe146f14185e87aa6c370e9bfb8c90f8cea81f",
+    "renderer": "Nokia 6.1 API 35",
+    "browserFirstContentMs": 29875,
+    "browserFilteredQueryMs": 19283,
+    "browserToDetailCompleteMs": 5142,
+    "detailSupportedAnglesQueryMs": 3548,
+    "interpretation": "negative evidence only; do not compare to repeated-run tripwires"
+  },
   "regressionTripwires": {
     "medianPercent": 5,
     "frameTimePercent": 10

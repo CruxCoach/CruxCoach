@@ -18,42 +18,52 @@
   },
   "renderingEvidence": {
     "installedPackage": "com.cruxcoach.android.dev.f_40293f116dca",
-    "versionCode": 1000014,
-    "sourceCommit": "d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509",
-    "releaseSha256": "3a7dcd9134b2a6577c28d83fc724a77466bac39b3541e960a5e29ae42fe989d8",
+    "versionCode": 1000015,
+    "sourceCommit": "f2fe146f14185e87aa6c370e9bfb8c90f8cea81f",
+    "releaseSha256": "75fe23e04350f19c54c5b46fda9af7550f0f4aceb4cea5816f791a3bb330c729",
     "compact": {
       "renderer": "Nokia 6.1 API 35, 1080x1920 at 420dpi (~411dp)",
       "screenshotsReviewed": 144,
       "semanticsTreesParsed": 144,
       "semanticNodesChecked": 3802,
       "undersizedClickableTargets": 0,
-      "unlabelledCheckables": 16,
+      "unlabelledCheckables": 0,
       "minimumTargetDp": 48,
-      "evidencePath": "/tmp/cruxcoach-designlab-v1000014-d780/compact"
+      "evidencePath": "/tmp/cruxcoach-designlab-v1000015-f2fe/compact"
     },
     "expanded": {
       "status": "external-gate",
       "requirement": "real or emulated renderer with effective width >=600dp"
     },
     "sourceCorrections": {
-      "status": "partial-device-verification",
-      "verifiedInInstalledArtifact": ["locale-axis"],
-      "awaitingCurrentHeadArtifact": [
+      "status": "verified-current-compact",
+      "verifiedInInstalledArtifact": [
+        "locale-axis",
         "safe-drawing-insets",
         "labelled-progress-checkboxes",
         "production-progress-host",
         "production-browser-context-and-session-hosts",
         "production-detail-hero-host"
       ],
-      "reason": "the installed d780 artifact predates commits 750d8ba6 and later"
+      "awaitingCurrentHeadArtifact": []
     },
-    "priorCapture": {
-      "versionCode": 1000013,
-      "sourceCommit": "c4ff4b2ece16ffdb1a5b4f33fb21d6afe61af8cc",
-      "screenshotsReviewed": 144,
-      "semanticsTreesParsed": 144,
-      "evidencePath": "/tmp/cruxcoach-designlab-v1000013"
-    }
+    "priorCaptures": [
+      {
+        "versionCode": 1000014,
+        "sourceCommit": "d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509",
+        "screenshotsReviewed": 144,
+        "semanticsTreesParsed": 144,
+        "unlabelledCheckables": 16,
+        "evidencePath": "/tmp/cruxcoach-designlab-v1000014-d780/compact"
+      },
+      {
+        "versionCode": 1000013,
+        "sourceCommit": "c4ff4b2ece16ffdb1a5b4f33fb21d6afe61af8cc",
+        "screenshotsReviewed": 144,
+        "semanticsTreesParsed": 144,
+        "evidencePath": "/tmp/cruxcoach-designlab-v1000013"
+      }
+    ]
   },
   "states": [
     {"id":"browser/content","capability":"board-browser","status":"partial"},
