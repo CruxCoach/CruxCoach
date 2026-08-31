@@ -22,7 +22,7 @@
     {"id":"local-share-v2","read":true,"write":true,"compatibilityResponseWrite":false,"decoder":"LocalShareProtocol.parseManifest","writer":"LocalShareResponseContract.CURRENT_V2_WRITER","status":"current-default-writer"}
   ],
   "bleGoldens": [
-    {"family":"kilter-aurora-api3","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
+    {"family":"kilter-aurora-api3","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"simulator-transport-covered-visual-state-gate"},
     {"family":"kilter-aurora-api2","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
     {"family":"moonboard-standard","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},
     {"family":"moonboard-mini","fixture":"docs/refactor/fixtures/ble-golden-frames.json","status":"unit-covered-hardware-gate"},

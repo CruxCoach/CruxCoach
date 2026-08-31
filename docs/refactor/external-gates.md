@@ -9,10 +9,14 @@ evidence, not a Bluetooth device address and must not be copied into public
 user data. A stable `com.cruxcoach.android` v0.2.2 package was subsequently
 installed by the operator; it is not debuggable and has no DesignLab activity.
 The side-by-side feature package `com.cruxcoach.android.dev.f_40293f116dca`
-is not installed, no APK exists under the worktree's build outputs, and no
-remote workflow run/artifact exists for `feat/cross-platform-refactor`. Do not
-accept or update screenshot baselines without viewing them. Do not open, clear,
-replace, or reuse the stable package for feature evidence.
+was installed through the normal package installer from the verified APKTrack
+blob on 2026-08-31. It is versionCode `1000013`, source commit
+`c4ff4b2ece16ffdb1a5b4f33fb21d6afe61af8cc`, and uses the central development
+certificate (SHA-256
+`7C:79:E8:83:B3:32:26:9C:8A:36:F4:ED:B9:81:F7:34:D2:84:4F:C0:57:CF:CC:15:AE:C4:BC:04:E3:C3:E6:A5`).
+Stable `com.cruxcoach.android` remains installed at v0.2.2/versionCode 8 and
+was not opened, cleared, replaced, or reused for feature evidence. Do not
+accept or update screenshot baselines without viewing them.
 
 The focused scenario/semantics set and both repository validators passed using
 the writable SDK on 2026-08-30. Reproduce with:
@@ -69,6 +73,18 @@ publisher job confirms both required APKTrack fields. Preserve the deterministic
 idempotency key `cruxcoach-feat-cross-platform-refactor-40293f11-<commit>` on
 diagnosis; do not change workflow, signing, package identity, APKTrack policy,
 credentials, or release files.
+
+The first publication completed in publisher run `33342201518` with
+`status=published`, `receipt_delivered=true`, and release SHA-256
+`50b69133520f6fc7a792dd40e645e467eb469cc77820691d502d653316262a6e`.
+After the DesignLab locale fix at
+`d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509`, feature build run `33366830151`
+passed and publisher run `33367234270` reserved versionCode `1000014` and
+completed its build. Its publish stage failed in APKTrack job
+`873a8be28eb34730b89576b0b0ab1762`: the external central signer exited 1,
+`status=failed`, `release_sha256=null`, and `receipt_delivered=false`. Preserve
+that job and deterministic key. This is an external signing-infrastructure
+gate; do not rerun with another key or modify a trust-boundary file.
 
 After success, take the confirmed `release_sha256` from the publisher log and
 download only
@@ -152,6 +168,34 @@ scripts/capture_design_lab_matrix.sh \
   /tmp/cruxcoach-designlab
 ```
 
+The complete compact matrix was captured from versionCode `1000013` on
+2026-08-31 at `/tmp/cruxcoach-designlab-v1000013`: 144/144 screenshots,
+144/144 semantics XML files and 144/144 environment records. Every screenshot
+was 1080 x 1920, every XML document parsed, no node extended outside the
+screen, and all 728 clickable nodes met 48 dp on the 420-dpi renderer. All five
+labelled contact sheets (logging, browser, session, detail and progress) were
+opened and reviewed, with problem states reopened at original resolution.
+Concrete findings:
+
+- Logging saving/success/error communicate status with text and icons as well
+  as colour; dialogs remain usable at 1.5 font scale in both themes.
+- Detail keeps the board as hero, distinguishes connected/disconnected in text
+  and iconography, and preserves both logging actions at 1.5.
+- Browser, Session and Progress candidates placed top content beneath status
+  icons in the edge-to-edge harness. The next source revision applies safe
+  drawing insets to those full-screen harness families while retaining the
+  deliberate edge-to-edge Detail hero.
+- Sixteen rendered Progress history checkboxes (two rows across eight axes)
+  had no accessible name. The next source revision adds bilingual per-climb
+  labels and an explicit 48-dp semantics target; its focused Compose test
+  passes.
+- Twenty of 72 EN/DE pairs were semantically identical: every axis of
+  `log/new-send`, `log/new-attempt`, `log/edit-send`, `log/saving` and
+  `log/error`. Other scenario families switched locale correctly. The
+  `LocalResources` fix at `d780f4a6` is unit-covered but cannot be claimed as
+  device-verified until central signing succeeds and the corrected package is
+  installed.
+
 The attached Nokia is about 411 dp wide and therefore covers only `compact`.
 Do not use a distorted `wm size` override as expanded-layout evidence.
 
@@ -218,11 +262,27 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ## BoardSimulator and hardware
 
 BoardSimulator is intentionally not started or stopped by agents. On
-2026-08-30 a human confirmed a nearby Kilter advertisement, but the repository
-client could not scan or connect because no CruxCoach APK was installed. No
-name, Bluetooth address, GATT API, MTU, response, or LED state was therefore
-recorded, and no Kilter transport claim is made. Before transport, lock the
-simulator-independent encoder/parser vectors with:
+2026-08-31 the installed feature app followed its normal onboarding, requested
+Android's Nearby permission, scanned and auto-connected to the single advertised
+Kilter simulator. Privacy-safe evidence: advertised name
+`Kilter Board#0001@3`, address suffix only `…:26`, RSSI -48 to -52 dBm, API 3,
+GATT status 0, ten discovered services and a ready connection. Aurora/Kilter
+does not request a larger MTU in this client, so the run used default ATT-MTU
+23 and 20-byte writes.
+
+Opening public climb `Floats Your Boat` at 40 degrees exercised the real app
+path. It resolved 15/15 placements, displayed `An Board gesendet`, and the log
+recorded successful callbacks for all writes with `unmapped=0`. The exact
+encoder output is fixture `kilter-simulator-api3-floats-your-boat`: 51 wire
+bytes split 20/20/11, locked by `BoardPacketEncoderTest`. Android HCI snooping
+was disabled, so these bytes are derived from the exact database frames,
+placement-to-LED map and production encoder rather than an independent radio
+capture. The manually hosted simulator GUI/log was not accessible from this
+host, so its LED rendering remains an explicit external observation gate. No
+Aurora API2, Moon, Quantum or physical-board claim follows from this run.
+
+Before further transport, lock the simulator-independent encoder/parser
+vectors with:
 
 ```sh
 python3 scripts/validate_refactor_contracts.py
@@ -235,20 +295,20 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 python3 -m json.tool docs/refactor/fixtures/ble-golden-frames.json >/dev/null
 ```
 
-The transport matrix is the six IDs in
-`docs/refactor/fixtures/ble-golden-frames.json`: Aurora API3, Aurora API2,
-MoonBoard Standard, MoonBoard Mini, Quantum turn-off and Quantum empty route
-snapshot. Record, for every board family the simulator advertises, the
+The transport matrix is the seven IDs in
+`docs/refactor/fixtures/ble-golden-frames.json`: two Aurora API3 vectors,
+Aurora API2, MoonBoard Standard, MoonBoard Mini, Quantum turn-off and Quantum
+empty route snapshot. Record, for every board family the simulator advertises, the
 advertised name/address, negotiated API/MTU, fixture ID, bytes observed and
 simulator LED/result state. Repeat Aurora API2 on physical API2 hardware; a
 successful unit or simulator vector is not evidence that the 18 W scaling is
 safe on a real board.
 
-The three focused encoder test classes and JSON parse passed on 2026-08-30.
+The three focused encoder test classes and JSON parse passed on 2026-08-30;
+the Kilter device-derived API3 vector was added and rechecked on 2026-08-31.
 There is still no repository-owned BoardSimulator launcher or automated
-transport adapter to turn a fixture ID into a simulator send. After the
-reviewed debug client is installed while the human-run simulator remains
-available, continue through the real app path with:
+transport adapter to turn a fixture ID into a simulator send. Continue through
+the real app path with:
 
 ```sh
 adb devices -l
@@ -256,10 +316,12 @@ adb shell pm list packages | rg com.cruxcoach.android
 python3 -m json.tool docs/refactor/fixtures/ble-golden-frames.json
 ```
 
-Select only the advertised Kilter device in-app, record a redacted address
-(last two octets only), negotiated API/MTU, the matching Kilter golden fixture
-ID and bytes, simulator response, and LED state. Do not infer Aurora API2,
-Moon, Quantum, or physical-board evidence from this Kilter simulator run.
+To close the remaining Kilter observation without restarting the simulator,
+inspect the existing simulator GUI/log for the 15-hold update corresponding to
+`Floats Your Boat` and record its decoded holds and LED state. For an
+independent byte capture, arrange a reviewed HCI capture before a fresh run
+(it was disabled for this run), then repeat the same climb. Do not infer
+Aurora API2, Moon, Quantum, or physical-board evidence from this Kilter run.
 
 ## Local-share v1 sender compatibility decision
 

@@ -160,6 +160,22 @@ class BoardPacketEncoderTest {
     }
 
     @Test
+    fun kilterSimulatorClimbLocksTheSuccessfulApi3TransportBytes() {
+        val holds = listOf(
+            198 to 0xF4, 244 to 0xF4, 140 to 0xF4, 241 to 0xF4, 137 to 0xF4,
+            206 to 0x1C, 257 to 0x1C, 260 to 0x1F, 159 to 0x1F, 284 to 0xF4,
+            215 to 0x1F, 216 to 0x1F, 270 to 0x1F, 272 to 0xE3, 323 to 0xE3,
+        )
+        val expected =
+            "012ef60254c600f4f400f48c00f4f100f48900f4" +
+                "ce001c01011c04011f9f001f1c01f4d7001fd800" +
+                "1f0e011f1001e34301e303"
+        val expectedBytes = expected.chunked(2).map { it.toInt(16).toByte() }
+
+        assertEquals(expectedBytes, encoder.encodeClimb(holds).flatMap { it.toList() })
+    }
+
+    @Test
     fun v2EncodesTwoBytesPerLedPerSpec() {
         // @2 hardware: 2 bytes/LED (not 3). Position 10, green (0x1C), full scale.
         // green 0x1C → (0,255,0); scaledColourV2 → (0,3,0); posHi 0.
