@@ -27,8 +27,8 @@ case "$font_scale" in 1.0|1.5) ;; *) echo "font scale must be 1.0 or 1.5" >&2; e
 
 mkdir -p "$output_dir"
 adb wait-for-device
-adb shell am force-stop "$package_name"
 adb shell am start -W \
+  -f 0x10008000 \
   -n "$package_name/com.cruxcoach.android.ui.designlab.DesignLabActivity" \
   --es scenario "$scenario" \
   --es theme "$theme" \

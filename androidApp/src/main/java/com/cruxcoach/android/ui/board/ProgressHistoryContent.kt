@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -169,6 +170,7 @@ private fun HistoryRow(
         labels.board,
         labels.date,
     )
+    val selectionLabel = stringResource(R.string.history_select_entry, entry.climbName)
     Surface(
         onClick = if (selectionMode) onToggleSelection else onOpen,
         modifier = Modifier
@@ -190,7 +192,13 @@ private fun HistoryRow(
             Checkbox(
                 checked = selected,
                 onCheckedChange = { onToggleSelection() },
-                modifier = Modifier.testTag("history_select_${entry.id}"),
+                modifier = Modifier
+                    .sizeIn(
+                        minWidth = CruxCoachSpacing.minimumTouchTarget,
+                        minHeight = CruxCoachSpacing.minimumTouchTarget,
+                    )
+                    .semantics { contentDescription = selectionLabel }
+                    .testTag("history_select_${entry.id}"),
             )
             Spacer(Modifier.width(CruxCoachSpacing.small))
             Column(modifier = Modifier.weight(1f)) {

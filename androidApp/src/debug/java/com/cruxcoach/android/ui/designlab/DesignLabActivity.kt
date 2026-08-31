@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -59,6 +60,17 @@ class DesignLabActivity : ComponentActivity() {
                     Surface(
                         modifier = Modifier
                             .fillMaxSize()
+                            .then(
+                                if (
+                                    scenarioId.startsWith("browser/") ||
+                                    scenarioId.startsWith("session/") ||
+                                    scenarioId.startsWith("progress/")
+                                ) {
+                                    Modifier.safeDrawingPadding()
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .testTag("design_lab_root"),
                         color = MaterialTheme.colorScheme.background,
                     ) {

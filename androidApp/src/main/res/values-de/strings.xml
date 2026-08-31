@@ -2306,6 +2306,7 @@
     <string name="history_error_body">Dein Verlauf konnte nicht geladen werden. Versuche es erneut.</string>
     <string name="history_entry_metadata">%1$s · %2$d° · %3$s</string>
     <string name="history_entry_semantics">%1$s, %2$s, %3$d Grad, %4$s, %5$s</string>
+    <string name="history_select_entry">%1$s auswählen</string>
     <string name="history_fixture_today">Heute, 11:45</string>
     <string name="history_fixture_yesterday">Gestern, 18:10</string>
     <string name="history_subtitle">Zuletzt ans Board gesendet</string>

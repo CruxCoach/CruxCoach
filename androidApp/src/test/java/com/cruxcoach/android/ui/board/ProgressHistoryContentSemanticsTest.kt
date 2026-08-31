@@ -39,6 +39,9 @@ class ProgressHistoryContentSemanticsTest {
         compose.onNodeWithContentDescription(
             "Quiet Riot, 6c+, 40 degrees, Kilter Original, Today, 11:45",
         ).assertHasClickAction().performClick()
+        compose.onNodeWithContentDescription("Select Quiet Riot")
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("history_entry_11").assertHeightIsAtLeast(48.dp)
         assertEquals(1, toggled)
     }
