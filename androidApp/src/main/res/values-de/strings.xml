@@ -715,7 +715,7 @@
     <string name="board_filter_min_ascents">Min. Begehungen: %d</string>
     <string name="board_show_on_board">Auf Board anzeigen</string>
     <string name="board_log_send">Send loggen</string>
-    <string name="board_log_attempt">Attempt loggen</string>
+    <string name="board_log_attempt">Versuch loggen</string>
     <string name="board_browser_search_hint">Name oder Setter suchen…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d geladen)</string>
