@@ -86,6 +86,31 @@ completed its build. Its publish stage failed in APKTrack job
 that job and deterministic key. This is an external signing-infrastructure
 gate; do not rerun with another key or modify a trust-boundary file.
 
+Read-only worker-journal diagnosis on 2026-08-31 identified the precise cause:
+Android `apksigner` raised `java.io.IOException: No space left on device` while
+writing the signed output. The candidate is 66,535,040 bytes and the APKTrack
+volume had only 72 MiB free at the later check; publication needs space for
+both the uploaded candidate and a similarly sized signed copy, plus working
+headroom. The wrapper, `apksigner`, development keystore and worker service
+were present and readable/running. APKTrack correctly made the job terminal
+and removed its staging candidate and partial signed output.
+
+This APKTrack version has no canonical failed-job requeue command. Reposting
+the same commit/key uploads bytes but the idempotency lookup returns the
+existing terminal job without leasing it again; a different key would violate
+the publication contract. Recovery therefore requires a private-plane
+operator to (1) reclaim or add APKTrack-volume capacity using the documented
+retention/backup policy, leaving comfortably more than two candidate sizes
+free, and (2) provide an audited same-job requeue/restage mechanism for job
+`873a8be28eb34730b89576b0b0ab1762` that preserves its candidate hash and
+deterministic key. Until that operator action exists, do not rerun the workflow:
+
+```sh
+df -h /mnt/HC_Volume_106554832/labs/apktrack-data/staging
+apktrack build-status 873a8be28eb34730b89576b0b0ab1762 \
+  --server-url https://stats.cruxcoach.org/apktrack
+```
+
 After success, take the confirmed `release_sha256` from the publisher log and
 download only
 `https://stats.cruxcoach.org/apktrack/v2/blobs/<release_sha256>` (or use the
