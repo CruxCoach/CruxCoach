@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
@@ -101,6 +104,28 @@ class BoardLogbookCardSemanticsTest {
             .performClick()
 
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun `paging failure stacks message above retry at large text`() {
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 1.5f)) {
+                CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                    BoardLogbookLoadMoreError(onRetry = {})
+                }
+            }
+        }
+
+        val messageBounds = compose.onNodeWithTag("logbook_load_more_message")
+            .fetchSemanticsNode().boundsInRoot
+        val retryBounds = compose.onNodeWithTag("logbook_load_more_retry")
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .fetchSemanticsNode().boundsInRoot
+
+        assert(messageBounds.bottom <= retryBounds.top) {
+            "Expected the large-text retry below the message: $messageBounds, $retryBounds"
+        }
     }
 
     @Test

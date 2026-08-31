@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -345,20 +346,16 @@ internal fun BoardLogbookLoadMoreError(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(CruxCoachSpacing.small)
-            .testTag("logbook_load_more_error"),
-        horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val useStackedLayout = LocalDensity.current.fontScale >= 1.3f
+    val message: @Composable (Modifier) -> Unit = { messageModifier ->
         Text(
             text = stringResource(R.string.board_logbook_load_more_error),
-            modifier = Modifier.weight(1f),
+            modifier = messageModifier.testTag("logbook_load_more_message"),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+    val retry: @Composable () -> Unit = {
         OutlinedButton(
             onClick = onRetry,
             modifier = Modifier
@@ -366,6 +363,34 @@ internal fun BoardLogbookLoadMoreError(
                 .testTag("logbook_load_more_retry"),
         ) {
             Text(stringResource(R.string.action_retry))
+        }
+    }
+    val containerModifier = modifier
+        .fillMaxWidth()
+        .padding(CruxCoachSpacing.small)
+        .testTag("logbook_load_more_error")
+
+    if (useStackedLayout) {
+        Column(
+            modifier = containerModifier,
+            verticalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
+        ) {
+            message(Modifier.fillMaxWidth())
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                retry()
+            }
+        }
+    } else {
+        Row(
+            modifier = containerModifier,
+            horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            message(Modifier.weight(1f))
+            retry()
         }
     }
 }
