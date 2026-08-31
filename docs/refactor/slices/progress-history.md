@@ -117,6 +117,13 @@ database details. Retention-write/prune and delete failures now keep existing
 content and selection usable, expose stable portable issue categories and retry
 the exact failed operation; exception text remains out of renderer state. The
 supplemental `progress/action-error` scenario and focused semantics/ViewModel
-tests cover that region; device pixels remain required before visual approval.
+tests cover that region. The centrally signed b44a/versionCode-1000018 artifact
+was rendered and inspected at EN/light/1.5 and DE/dark/1.5. The message and
+retry remained fully visible; existing rows and the selected checkbox stayed
+usable, and status/navigation insets did not overlap content. Retry measured at
+least 126 px high and the named checkboxes 126 by 126 px on the 420-dpi Nokia,
+meeting 48 dp. The transient message is a polite live region in the focused
+Compose semantics test; UIAutomator does not export that property. No visual
+correction round was required.
 Deterministic current-build pixels and semantics cover content, empty and error
 across EN/DE, light/dark and font scale 1.0/1.5; Expanded remains separate.

@@ -171,6 +171,20 @@ apktrack build-status 873a8be28eb34730b89576b0b0ab1762 \
   --server-url https://stats.cruxcoach.org/apktrack
 ```
 
+The retryable Progress action-error slice at
+`b44a98864edf22aa602bd2ef7d6a401c542e393a` followed the same trusted path.
+Feature run `33415779255` and publisher run `33416297690` completed
+successfully. APKTrack job `dc771d4781d141fe9eb098385239bffd` reserved
+versionCode `1000018` and finished with `status=published`,
+`receipt_delivered=true`, and release SHA-256
+`92df1ec336ad311963d6da18084249417d4d85ff0d4dcfad77fbe9fbd04b8805`.
+The blob was downloaded through Brave from the canonical APKTrack endpoint;
+its on-device SHA-256 matched before Android's normal package installer
+updated the feature package. The installer reported success. Development and
+Stable remain side-by-side at versionCodes `1000018` and `8` with distinct,
+unchanged signature identifiers `[897b1adc]` and `[6e1997b5]`. No
+`adb install` or direct APK byte transfer was used.
+
 After success, take the confirmed `release_sha256` from the publisher log and
 download only
 `https://stats.cruxcoach.org/apktrack/v2/blobs/<release_sha256>` (or use the
@@ -189,7 +203,8 @@ The debug-only DesignLab accepts `log/new-send`, `log/new-attempt`,
 `browser/empty`, `browser/error`,
 `session/active`, `session/resting`, `session/paused`,
 `session/active-no-climb`, `progress/history`, `progress/empty`,
-`progress/error`, `detail/disconnected`, and `detail/connected`. After a
+`progress/error`, the focused supplemental `progress/action-error`,
+`detail/disconnected`, and `detail/connected`. After a
 reviewed debug APK is installed, discover
 its exact package with
 `adb shell pm list packages | rg com.cruxcoach.android`, then capture a state
@@ -541,6 +556,20 @@ ATT-MTU-23/20-byte chunk constraint applies. The later b6c change only
 localized a Detail action and did not alter transport; no additional BLE claim
 is inferred from it.
 
+The b44a/versionCode-1000018 artifact repeated the real Kilter path after the
+Progress-only UI change. The scanner found the single nearby
+`Kilter Board#0001@3` between roughly -38 and -46 dBm; the address is redacted.
+Auto-connect completed with GATT status 0, discovered ten services and reached
+ready state. Android's system log also observed a remote MTU-517 request during
+connection, but the CruxCoach client did not request an MTU change and its
+production encoder/chunk contract remained the fixture-locked 51 bytes split
+20/20/11. Opening `Floats Your Boat` at 40 degrees sent 15 frames and recorded
+`success=true`, `unmapped=0`; Detail rendered the exact board hero and explicit
+`An Board gesendet` text. The checked encoder suite passed for Aurora API3/API2,
+Moon and Quantum fixtures. Without HCI snooping or access to the manually
+hosted simulator GUI, this repeat still makes no independent radio-byte, LED,
+API2, Moon, Quantum or physical-hardware claim.
+
 The production Browser and Detail hosts were inspected at full resolution and
 through their UIAutomator trees. Browser retained board/angle selection,
 connection, filter, logbook, lists, settings, random, create, search and climb
@@ -558,6 +587,22 @@ favorite/list/overflow and attempt/send actions; Progress retained retention,
 local-only disclosure and UUID/angle row navigation. All measured clickable
 nodes were at least 48 dp. Progress still exposed the expected unnamed row
 checkbox, matching the DesignLab failure and the later source correction.
+
+The centrally signed b44a/versionCode-1000018 artifact completed the full
+current Compact matrix again: 18 core scenarios by EN/DE, light/dark and font
+scales 1.0/1.5, for 144 artifact-bound screenshots, semantics trees and
+environment records. `validate_design_lab_capture.py` accepted 144/144
+captures, 3,802 semantic nodes and exactly one artifact identity. All 18
+eight-variant contact sheets were opened and inspected. Status/navigation
+insets remained separate from content; German/1.5 Browser search, Detail
+`Versuch loggen`, Session phase labels and Progress rows wrapped without
+clipping. Saving remained visibly disabled and explicit, Success/Error and
+connection/session states retained text or icon cues in addition to colour,
+and Progress checkboxes/Retry remained reachable. No autonomous correction
+round or Golden acceptance was needed. The supplemental
+`progress/action-error` pixels and semantics were reviewed separately because
+adding a focused state must not silently redefine the established 18-by-8
+baseline.
 
 Before further transport, lock the simulator-independent encoder/parser
 vectors with:
