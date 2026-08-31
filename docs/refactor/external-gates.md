@@ -263,9 +263,12 @@ scripts/capture_design_lab.sh \
   /tmp/cruxcoach-designlab/detail-connected-light-en
 ```
 
-The candidate is deliberately not wired into the production detail screen
-until both captures have been reviewed for board prominence, large-text
-wrapping, traversal order, and delivery-state clarity.
+Both compact captures and their full EN/DE, light/dark and 1.0/1.5 font-scale
+axes were reviewed for board prominence, wrapping, traversal and delivery-state
+clarity. The candidate is still deliberately not wired into production because
+the isolated component does not yet host the existing playback, angle/mirror,
+partial-send, session-ownership and authorized management actions. Expanded
+rendering and that parity-preserving host boundary remain gates.
 
 A simulator-independent pixel capture of the tagged Compose `AlertDialog` was
 also attempted with Robolectric 4.14.1 on 2026-08-30. With native graphics it

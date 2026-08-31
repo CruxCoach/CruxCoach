@@ -1,6 +1,6 @@
 # UI slice: log a board-climb attempt
 
-Status: Android candidate implemented, pixel review pending an Android renderer
+Status: compact Android flow reviewed; corrected locale build pending
 
 Decision date: 2026-08-30
 
