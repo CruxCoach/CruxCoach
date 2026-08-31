@@ -18,8 +18,8 @@ Stable `com.cruxcoach.android` remains installed at v0.2.2/versionCode 8 and
 was not opened, cleared, replaced, or reused for feature evidence. Do not
 accept or update screenshot baselines without viewing them.
 
-The focused scenario/semantics set and both repository validators passed using
-the writable SDK on 2026-08-30. Reproduce with:
+The focused scenario/semantics set and both repository validators passed again
+using the writable SDK on 2026-08-31. Reproduce with:
 
 ```sh
 adb devices -l
