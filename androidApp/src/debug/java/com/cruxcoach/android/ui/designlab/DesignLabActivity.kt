@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
 import com.cruxcoach.android.data.DarkModeSetting
@@ -97,7 +98,7 @@ class DesignLabActivity : ComponentActivity() {
 }
 
 @Composable
-private fun DesignLabEnvironment(
+internal fun DesignLabEnvironment(
     localeTag: String,
     fontScale: Float,
     content: @Composable () -> Unit,
@@ -116,6 +117,7 @@ private fun DesignLabEnvironment(
     CompositionLocalProvider(
         LocalConfiguration provides configuration,
         LocalContext provides localizedContext,
+        LocalResources provides localizedContext.resources,
         LocalDensity provides Density(baseDensity.density, fontScale),
         content = content,
     )
