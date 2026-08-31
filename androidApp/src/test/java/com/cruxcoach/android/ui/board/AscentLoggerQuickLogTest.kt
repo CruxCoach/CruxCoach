@@ -10,6 +10,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -81,21 +82,21 @@ class AscentLoggerQuickLogTest {
         val repo = mockk<PersonalBoardRepository>(relaxed = true)
         every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
         every { repo.observeClimbHistory() } returns flowOf(emptyList())
-        var quickFollowUps = 0
+        val quickFollowUps = Channel<Unit>(capacity = Channel.UNLIMITED)
         val logger = logger(
             state = state,
             repo = repo,
             session = mockk(relaxed = true),
             onSaved = {},
-            onQuickSaved = { quickFollowUps++ },
+            onQuickSaved = { quickFollowUps.trySend(Unit).getOrThrow() },
         )
 
         repeat(2) {
             logger.quickLog(isSend = false)
-            withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback != null } }
+            withTimeout(5_000) { quickFollowUps.receive() }
         }
 
-        assertEquals(2, quickFollowUps)
+        assertTrue(quickFollowUps.tryReceive().isFailure)
     }
 
     @Test
