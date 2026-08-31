@@ -90,17 +90,32 @@
     "detailSupportedAnglesQueryMs": 3548,
     "interpretation": "negative evidence only; do not compare to repeated-run tripwires"
   },
-  "mitigationsAwaitingInstalledArtifact": [
+  "installedMitigationEvidence": {
+    "status": "uncontrolled-single-run-not-a-macrobenchmark",
+    "date": "2026-08-31",
+    "package": "com.cruxcoach.android.dev.f_40293f116dca",
+    "versionCode": 1000016,
+    "sourceCommit": "d2ba31a01c4719fd181d7cb8263bd9d00bb64818",
+    "renderer": "Nokia 6.1 API 35",
+    "browserFirstContentMs": 10177,
+    "browserFilteredQueryMs": 284,
+    "browserSortedQueryMs": 274,
+    "browserToDetailCompleteMs": 1260,
+    "detailSupportedAnglesQueryObserved": false,
+    "backgroundExactCountMs": 21473,
+    "interpretation": "installed end-to-end diagnostic confirms the two targeted paths; still not a repeated Macrobenchmark result"
+  },
+  "mitigations": [
     {
       "path": "cold-start-to-browser-content",
       "change": "default popularity browse starts from idx_climb_stats_by_popularity before UUID/brand/fit checks",
       "readOnlyDeviceSqlSeconds": [0.51, 0.54, 0.50],
-      "caveat": "query-only ADB evidence; rerun the declared end-to-end benchmark"
+      "caveat": "installed single-run diagnostic passed; rerun the declared repeated benchmark"
     },
     {
       "path": "browser-to-detail",
       "change": "Kilter detail uses the established fifteen 0..70 degree stops without a catalogue-wide supported-angle query",
-      "caveat": "focused tests pass; verify the navigation markers in a newly installed feature artifact"
+      "caveat": "installed navigation markers passed once; repeat under the declared benchmark harness"
     }
   ],
   "regressionTripwires": {

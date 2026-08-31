@@ -25,7 +25,7 @@ versionCode `1000014`, source commit
 The on-device base APK hash matched the published hash before review; package
 identity and central development certificate remained unchanged.
 
-The current reviewed package is versionCode `1000015`, source commit
+The current complete 144-state matrix package is versionCode `1000015`, source commit
 `f2fe146f14185e87aa6c370e9bfb8c90f8cea81f`, published by run
 `33391580904` through APKTrack job `f78d93ae096345ee8a7a368e41344761`.
 The terminal result was `status=published`, `receipt_delivered=true`, with
@@ -36,6 +36,24 @@ byte-exact on-device hash check. Read-only ADB inspection confirmed versionName
 `0.2.2`, versionCode `1000015`, and `InstallSuccess`. No `adb install` was
 used. Stable remains installed separately at versionCode `8` and its package
 and data were not opened, cleared, updated, or reused.
+
+Two later in-place updates used the same browser/download/hash/package-installer
+path and central development signature. VersionCode `1000016`, source commit
+`d2ba31a01c4719fd181d7cb8263bd9d00bb64818`, was published by run
+`33408731812` through APKTrack job `d831db68ee9d46c7aebbcea36f9aa1c1`
+with release SHA-256
+`933166822934f306dfd14b0d7fc5b98357153d130a7e4777d46f07d797d1c4ef`.
+VersionCode `1000017`, source commit
+`b6c61ea33327a35ac4ff5acd575e39d427d1ee95`, was published by run
+`33412112527` through job `95ef8f514189407ab79b00a335a0c77b`, with release
+SHA-256
+`d84b7c39ba1630bd995d80ecfa221b33098c60c47dbdec4f0486a74a354b26e6`.
+Both terminal results were `status=published` and `receipt_delivered=true`.
+The Nokia computed each exact release hash before installation; package-manager
+inspection now reports versionCode `1000017`, versionName `0.2.2`, the unchanged
+Development signature and `InstallSuccess`. Stable remains untouched at
+versionCode `8` with its distinct production signature. `adb install` was not
+used.
 
 The focused scenario/semantics set and both repository validators passed again
 using the writable SDK on 2026-08-31. Reproduce with:
@@ -324,6 +342,19 @@ python3 scripts/validate_design_lab_capture.py \
   /tmp/cruxcoach-designlab-v1000015-f2fe/compact
 ```
 
+The performance-only d2ba artifact then repeated representative Browser,
+Detail, Session and Progress captures at
+`/tmp/cruxcoach-designlab-v1000016-d2ba-smoke`, including EN/DE, light/dark and
+1.0/1.5 stress combinations. All four screenshots and semantics trees were
+reviewed; critical content remained in bounds, Progress checkboxes retained
+localized labels and checked state, and no primary action was clipped. This
+smoke exposed one localized Detail label, `Attempt loggen`, that did not match
+the agreed German journey term. The single correction round changed it to
+`Versuch loggen`. The centrally signed b6c/versionCode-1000017 capture at
+`/tmp/cruxcoach-designlab-v1000017-b6c61ea/detail-connected-de-dark-1.5`
+confirms the corrected pixel and semantic text at 1.5 font scale while all
+three Detail actions remain visible and at least 48 dp.
+
 The attached Nokia is about 411 dp wide and therefore covers only `compact`.
 Do not use a distorted `wm size` override as expanded-layout evidence.
 
@@ -404,9 +435,19 @@ equivalent query-only ADB probe completed in 0.51, 0.54 and 0.50 seconds. Kilter
 Detail reuses the already-established fifteen 0..70-degree slider stops instead
 of rediscovering that constant hardware domain from 912k stats rows; other
 Aurora-family boards remain brand-scoped and data-driven. Focused fit/HSM/
-ungraded/Quantum/angle tests compile and pass. These are not end-to-end results:
-a centrally signed artifact containing the changes must still repeat the
-declared startup and Detail markers before claiming a user-visible gain.
+ungraded/Quantum/angle tests compile and pass. The centrally signed
+d2ba/versionCode-1000016 artifact repeated the two end-to-end markers on the
+same database and device. One force-stop launch reached first Browser content
+at 10,177 ms with `searchClimbs.fetchFiltered` at 284 ms and
+`searchClimbsSorted(offset=0)` at 274 ms. Browser-to-Detail completed in
+1,260 ms; the removed Kilter `loadClimb.supportedAngles` query did not occur.
+Compared with the earlier uncontrolled single observation, the catalogue query
+fell from 19,283 ms and Detail from 5,142 ms. These remain single diagnostics,
+not Macrobenchmark medians, and must not be compared to the regression
+tripwires. The exact background result-count query still took 21,473 ms after
+content; a read-only stats-first experiment remained about 12.9 seconds, so no
+parity-breaking estimate replaced it. Treat exact count/random selection as a
+separate schema/benchmark follow-up.
 
 Creating the separate benchmark module/build variant and adding its dependency
 would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
@@ -489,6 +530,16 @@ Board` and the current-climb banner, so neither connection nor delivery was
 encoded by colour alone. The exact 51-byte encoder fixture remains split
 20/20/11; HCI snooping was not enabled, so this is application/encoder evidence,
 not an independent over-the-air byte capture.
+
+The d2ba/versionCode-1000016 artifact repeated the live path after its query
+changes. It found `Kilter Board#0001@3` at roughly -40 to -46 dBm (address
+redacted), connected with GATT status 0, discovered ten services and reached
+ready state. The production path sent `Floats Your Boat` at 40 degrees as 15
+frames and recorded `success=true`, `unmapped=0`; Detail rendered both `Board
+verbunden` and `An Board gesendet`. No larger MTU was requested, so the same
+ATT-MTU-23/20-byte chunk constraint applies. The later b6c change only
+localized a Detail action and did not alter transport; no additional BLE claim
+is inferred from it.
 
 The production Browser and Detail hosts were inspected at full resolution and
 through their UIAutomator trees. Browser retained board/angle selection,
