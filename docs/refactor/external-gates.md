@@ -10,13 +10,20 @@ user data. A stable `com.cruxcoach.android` v0.2.2 package was subsequently
 installed by the operator; it is not debuggable and has no DesignLab activity.
 The side-by-side feature package `com.cruxcoach.android.dev.f_40293f116dca`
 was installed through the normal package installer from the verified APKTrack
-blob on 2026-08-31. It is versionCode `1000013`, source commit
+blob on 2026-08-31. That first install was versionCode `1000013`, source commit
 `c4ff4b2ece16ffdb1a5b4f33fb21d6afe61af8cc`, and uses the central development
 certificate (SHA-256
 `7C:79:E8:83:B3:32:26:9C:8A:36:F4:ED:B9:81:F7:34:D2:84:4F:C0:57:CF:CC:15:AE:C4:BC:04:E3:C3:E6:A5`).
 Stable `com.cruxcoach.android` remains installed at v0.2.2/versionCode 8 and
 was not opened, cleared, replaced, or reused for feature evidence. Do not
 accept or update screenshot baselines without viewing them.
+
+That feature package was updated in place through the same device-side flow to
+versionCode `1000014`, source commit
+`d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509`, release SHA-256
+`3a7dcd9134b2a6577c28d83fc724a77466bac39b3541e960a5e29ae42fe989d8`.
+The on-device base APK hash matched the published hash before review; package
+identity and central development certificate remained unchanged.
 
 The focused scenario/semantics set and both repository validators passed again
 using the writable SDK on 2026-08-31. Reproduce with:
@@ -107,11 +114,8 @@ The first publication completed in publisher run `33342201518` with
 After the DesignLab locale fix at
 `d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509`, feature build run `33366830151`
 passed and publisher run `33367234270` reserved versionCode `1000014` and
-completed its build. Its publish stage failed in APKTrack job
-`873a8be28eb34730b89576b0b0ab1762`: the external central signer exited 1,
-`status=failed`, `release_sha256=null`, and `receipt_delivered=false`. Preserve
-that job and deterministic key. This is an external signing-infrastructure
-gate; do not rerun with another key or modify a trust-boundary file.
+completed its build. Its first publish attempt failed in APKTrack job
+`873a8be28eb34730b89576b0b0ab1762` when the external signer volume filled.
 
 Read-only worker-journal diagnosis on 2026-08-31 identified the precise cause:
 Android `apksigner` raised `java.io.IOException: No space left on device` while
@@ -122,15 +126,14 @@ headroom. The wrapper, `apksigner`, development keystore and worker service
 were present and readable/running. APKTrack correctly made the job terminal
 and removed its staging candidate and partial signed output.
 
-This APKTrack version has no canonical failed-job requeue command. Reposting
-the same commit/key uploads bytes but the idempotency lookup returns the
-existing terminal job without leasing it again; a different key would violate
-the publication contract. Recovery therefore requires a private-plane
-operator to (1) reclaim or add APKTrack-volume capacity using the documented
-retention/backup policy, leaving comfortably more than two candidate sizes
-free, and (2) provide an audited same-job requeue/restage mechanism for job
-`873a8be28eb34730b89576b0b0ab1762` that preserves its candidate hash and
-deterministic key. Until that operator action exists, do not rerun the workflow:
+The operator removed only regenerable build/temporary artifacts, restored the
+exact original candidate bytes, and reprocessed that same job without changing
+its commit, candidate hash, job ID or idempotency identity. CI run
+`33367234270`, attempt 2 is green. The terminal result is
+`status=published`, `receipt_delivered=true`, with release SHA-256
+`3a7dcd9134b2a6577c28d83fc724a77466bac39b3541e960a5e29ae42fe989d8`.
+The incident is closed; it was a volume-capacity failure, not a missing key or
+a code/signing-policy defect. The retained read-only diagnostic commands are:
 
 ```sh
 df -h /mnt/HC_Volume_106554832/labs/apktrack-data/staging
@@ -220,7 +223,7 @@ scripts/capture_design_lab_matrix.sh \
   /tmp/cruxcoach-designlab
 ```
 
-The complete compact matrix was captured from versionCode `1000013` on
+The complete compact matrix was first captured from versionCode `1000013` on
 2026-08-31 at `/tmp/cruxcoach-designlab-v1000013`: 144/144 screenshots,
 144/144 semantics XML files and 144/144 environment records. Every screenshot
 was 1080 x 1920, every XML document parsed, no node extended outside the
@@ -244,9 +247,43 @@ Concrete findings:
 - Twenty of 72 EN/DE pairs were semantically identical: every axis of
   `log/new-send`, `log/new-attempt`, `log/edit-send`, `log/saving` and
   `log/error`. Other scenario families switched locale correctly. The
-  `LocalResources` fix at `d780f4a6` is unit-covered but cannot be claimed as
-  device-verified until central signing succeeds and the corrected package is
-  installed.
+  older artifact predates the `LocalResources` fix at `d780f4a6`.
+
+VersionCode `1000014`, built from full commit
+`d780f4a6c3e32a1e3641365bdfa9cc59ef3e9509`, was then downloaded through the
+canonical APKTrack blob endpoint, hash-checked on-device against the published
+release SHA and installed through Android's normal package installer. No
+`adb install` or Stable-package mutation was used. Read-only package inspection
+confirmed feature versionCode `1000014`; Stable `com.cruxcoach.android` remains
+installed at versionCode `8`.
+
+The full compact matrix was repeated at
+`/tmp/cruxcoach-designlab-v1000014-d780/compact`. All 144 screenshots were
+opened and reviewed and all 144 semantics trees parsed. The capture contains
+3,802 semantic nodes, no out-of-bounds nodes, and no clickable target below
+48 dp on the 420-dpi device. Every one of the 72 EN/DE pairs now differs,
+confirming the locale fix on-device. The only automated accessibility findings
+are the two unnamed Progress-history selection checkboxes across eight axes
+(16 findings total). This is expected negative evidence: `d780f4a6` predates
+the labelled-checkbox and safe-drawing-inset correction at `750d8ba6`.
+
+Visual inspection found no clipped primary action in Logging, Detail, Session,
+Browser or Progress at font scale 1.5. Saving, Success, Error, connection and
+session phases all use text/icon cues in addition to colour. Browser, Session
+and Progress DesignLab roots still draw critical content into the status-bar
+region in d780; Detail deliberately keeps only its board hero edge-to-edge.
+The current source correction cannot be called pixel-verified until a centrally
+signed artifact containing `750d8ba6` and the later production-host commits is
+installed. Validate the captured artifact with:
+
+```sh
+python3 scripts/validate_design_lab_capture.py \
+  /tmp/cruxcoach-designlab-v1000014-d780/compact
+```
+
+That command intentionally exits non-zero for this historical artifact and
+prints exactly the 16 checkbox findings; it must reach zero on a current-HEAD
+capture before the correction is approved.
 
 The attached Nokia is about 411 dp wide and therefore covers only `compact`.
 Do not use a distorted `wm size` override as expanded-layout evidence.
@@ -254,7 +291,7 @@ Do not use a distorted `wm size` override as expanded-layout evidence.
 The reviewed Progress body was subsequently wired into
 `BoardClimbHistoryScreen` without replacing the platform app bar, navigation,
 select-all or delete confirmation. Its mapper and focused semantics tests pass,
-but the installed `c4ff4b2e` package predates both the accessibility correction
+but the installed `d780f4a6` package predates both the accessibility correction
 and this production composition. Treat the production pixels as unverified
 until a centrally signed APK containing the source checkpoint is installed;
 do not infer them from the DesignLab candidate captures. The current history
@@ -307,7 +344,7 @@ The reviewed Macrobenchmark spike is now machine-readable at
 `scripts/validate_refactor_contracts.py`. It fixes stable AndroidX Benchmark
 1.4.1, development-package-only targeting, deterministic fixture inputs,
 20+ iterations, retained raw/device artifacts and the 5% median / 10% frame
-regression tripwires. The installed `c4ff4b2e` package can provide diagnostic
+regression tripwires. The installed `d780f4a6` package can provide diagnostic
 ADB timings, but it predates current production hosts and is not a valid
 before/after Macrobenchmark target.
 
@@ -369,15 +406,24 @@ capture. The manually hosted simulator GUI/log was not accessible from this
 host, so its LED rendering remains an explicit external observation gate. No
 Aurora API2, Moon, Quantum or physical-board claim follows from this run.
 
-The same installed `c4ff4b2e` feature package repeated the live path later on
-2026-08-31 while the simulator was still advertising. The connection sheet
-showed the Kilter board near -36 dBm; GATT connected with status 0 and discovered
-ten services. After the controller-capability scan selected the automatic
-policy, production logs recorded `holds=15`, `success=true`, `unmapped=0`, and
-the detail UI again rendered the textual sent state. Address and screenshots
-remain privacy-scoped test-lab evidence under `/tmp/cruxcoach-current-device`;
-no address is committed. This repeat does not add an independent radio-byte or
-simulator-LED claim, and it does not validate source newer than `c4ff4b2e`.
+The installed `d780f4a6` feature package repeated the live path after the
+versionCode `1000014` installation while the simulator was still advertising.
+The scanner reported `Kilter Board#0001@3` at -37 to -46 dBm. The first GATT
+attempt returned Android status 133 and the normal bounded retry connected with
+status 0, discovered ten services and reached ready state. Opening `Floats Your
+Boat` at 40 degrees recorded `frames=15`, `success=true`, `unmapped=0`; the
+production Detail UI rendered the board and explicit `An Board gesendet` state.
+The address is redacted from committed evidence. This repeat does not add an
+independent radio-byte or simulator-LED claim, and it does not validate source
+newer than `d780f4a6`.
+
+Real production d780 Browser, Detail and Progress screenshots and semantics
+were also inspected. Browser retained search/filter/list/management navigation;
+Detail retained board visualization, exact 40-degree context, BLE status,
+favorite/list/overflow and attempt/send actions; Progress retained retention,
+local-only disclosure and UUID/angle row navigation. All measured clickable
+nodes were at least 48 dp. Progress still exposed the expected unnamed row
+checkbox, matching the DesignLab failure and the later source correction.
 
 Before further transport, lock the simulator-independent encoder/parser
 vectors with:
