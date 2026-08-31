@@ -102,5 +102,16 @@ has been rendered and reviewed on Android.
 3. Add addressable deterministic scenarios and semantics assertions.
 4. Capture the existing screen and one-region candidate on a real Android
    renderer; allow at most three reviewed correction rounds.
-5. Wire the proven candidate into production, then run focused history tests
-   and the existing navigation journey.
+5. The reviewed candidate body is wired into the Android production screen:
+   the existing app bar, exact UUID/angle navigation,
+   select-all/delete confirmation, repository ordering, pruning, and grade
+   preference remain platform-owned. The portable mapper and Compose semantics
+   tests pass. Pixel verification of this production composition still needs a
+   centrally signed APK containing that commit.
+
+The repository stream currently exposes entries but no loading/error result.
+Consequently the production screen maps its reachable content/empty states to
+the portable contract while DesignLab owns deterministic loading/error
+coverage. Adding a typed repository failure channel and a real retry action is
+the next architecture step; an inert production error state was deliberately
+not fabricated.

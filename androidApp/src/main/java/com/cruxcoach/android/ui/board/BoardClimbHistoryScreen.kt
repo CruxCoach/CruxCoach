@@ -1,25 +1,18 @@
 package com.cruxcoach.android.ui.board
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
@@ -31,11 +24,12 @@ import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.HistoryRetentionPeriod
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.ProgressHistoryEntry
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardClimbHistoryScreen(
     onNavigateBack: () -> Unit,
@@ -111,83 +105,17 @@ fun BoardClimbHistoryScreen(
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            RetentionSelectorRow(
-                selected = state.retention,
-                onSelect = { viewModel.setRetention(it) }
-            )
-
-            // The Verlauf table is device-local by design and is NOT part of
-            // the JSON/Nostr backup — surface that so the loss on reinstall
-            // is never silent (backup-compat audit, 0.2.0).
-            Text(
-                stringResource(R.string.history_backup_local_only),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
-
-            if (state.entries.isEmpty()) {
-                EmptyHistoryMessage()
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Repo emits newest-recorded first, so the natural order is
-                    // already most-recent first.
-                    items(state.entries, key = { it.id }) { entry ->
-                        HistoryEntryCard(
-                            entry = entry,
-                            gradeScale = state.gradeScale,
-                            isSelected = entry.id in state.selectedIds,
-                            // While a selection is active, tapping a card extends
-                            // the selection instead of navigating away — the
-                            // standard contextual multi-select gesture.
-                            onClick = {
-                                if (state.hasSelection) viewModel.toggleSelection(entry.id)
-                                else onNavigateToClimb(entry.climbUuid, entry.angle)
-                            },
-                            onToggleSelect = { viewModel.toggleSelection(entry.id) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private val retentionOptions = listOf(
-    HistoryRetention.OFF to R.string.history_retention_off,
-    HistoryRetention.DAYS_30 to R.string.history_retention_30_days,
-    HistoryRetention.DAYS_90 to R.string.history_retention_90_days,
-    HistoryRetention.DAYS_365 to R.string.history_retention_365_days,
-)
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun RetentionSelectorRow(
-    selected: HistoryRetention,
-    onSelect: (HistoryRetention) -> Unit
-) {
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        retentionOptions.forEach { (retention, labelResource) ->
-            FilterChip(
-                selected = selected == retention,
-                onClick = { onSelect(retention) },
-                label = { Text(stringResource(labelResource)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
+        ProgressHistoryContent(
+            state = state.toPortableState(),
+            labelsFor = { entry -> entry.labels(state.gradeScale) },
+            onChooseRetention = { viewModel.setRetention(it.toAndroidRetention()) },
+            onOpenEntry = { onNavigateToClimb(it.climbUuid, it.angle) },
+            onToggleSelection = viewModel::toggleSelection,
+            // The current repository stream has no recoverable failure channel.
+            // Keep retry platform-owned until that boundary exposes typed issues.
+            onRetry = {},
+            modifier = Modifier.padding(padding),
+        )
     }
 }
 
@@ -195,8 +123,7 @@ private fun RetentionSelectorRow(
  *  variant or the Kilter layout where (brand, layoutId) resolves one (e.g.
  *  "MoonBoard Masters 2017", "Tension Board 2 (Mirror)", "Kilter Homewall"),
  *  falling back to the plain brand name when the layout is unknown. */
-private fun boardLabel(boardBrand: String, layoutId: Long?): String {
-    val brand = BoardBrand.fromWire(boardBrand)
+private fun boardLabel(brand: BoardBrand, layoutId: Long?): String {
     return when {
         brand == BoardBrand.MOONBOARD ->
             layoutId?.let { MoonBoardVariant.fromLayoutId(it)?.displayName } ?: brand.displayName
@@ -209,120 +136,15 @@ private fun boardLabel(boardBrand: String, layoutId: Long?): String {
     }
 }
 
-@Composable
-private fun HistoryEntryCard(
-    entry: ClimbHistoryEntry,
-    gradeScale: GradeScale,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onToggleSelect: () -> Unit
-) {
-    // App-standard grade formatting (same call AscentCard uses for a
-    // difficulty_average Double), in the user's chosen scale; "?" when the
-    // grade is unknown.
-    val grade = entry.difficultyAverage?.let {
-        GradeDisplayHelper.formatDifficulty(it, gradeScale)
-    } ?: "?"
-    val brandLabel = boardLabel(entry.boardBrand, entry.layoutId)
+private fun ProgressHistoryEntry.labels(gradeScale: GradeScale) = ProgressHistoryEntryLabels(
+    grade = difficultyAverage?.let { GradeDisplayHelper.formatDifficulty(it, gradeScale) } ?: "?",
+    board = boardLabel(boardBrand, layoutId),
+    date = formatDate(recordedAt),
+)
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) OrangeAccent.copy(alpha = 0.18f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 4.dp, top = 12.dp, end = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onToggleSelect() },
-                colors = CheckboxDefaults.colors(checkedColor = OrangeAccent)
-            )
-
-            Surface(
-                color = OrangeAccent.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        grade,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = OrangeAccent
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    entry.climbName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        "${entry.angle}°",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        brandLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                formatDate(entry.recordedAt),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun EmptyHistoryMessage() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            modifier = Modifier.padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                Icons.Default.History,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.history_empty_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.history_empty_body),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
+private fun HistoryRetentionPeriod.toAndroidRetention(): HistoryRetention = when (this) {
+    HistoryRetentionPeriod.OFF -> HistoryRetention.OFF
+    HistoryRetentionPeriod.DAYS_30 -> HistoryRetention.DAYS_30
+    HistoryRetentionPeriod.DAYS_90 -> HistoryRetention.DAYS_90
+    HistoryRetentionPeriod.DAYS_365 -> HistoryRetention.DAYS_365
 }

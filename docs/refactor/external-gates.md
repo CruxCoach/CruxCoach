@@ -199,6 +199,16 @@ Concrete findings:
 The attached Nokia is about 411 dp wide and therefore covers only `compact`.
 Do not use a distorted `wm size` override as expanded-layout evidence.
 
+The reviewed Progress body was subsequently wired into
+`BoardClimbHistoryScreen` without replacing the platform app bar, navigation,
+select-all or delete confirmation. Its mapper and focused semantics tests pass,
+but the installed `c4ff4b2e` package predates both the accessibility correction
+and this production composition. Treat the production pixels as unverified
+until a centrally signed APK containing the source checkpoint is installed;
+do not infer them from the DesignLab candidate captures. The current history
+repository flow also has no typed failure channel, so production reaches
+content/empty while DesignLab retains deterministic loading/error coverage.
+
 Capture the deterministic history candidate (fixed rows and relative dates)
 with:
 
