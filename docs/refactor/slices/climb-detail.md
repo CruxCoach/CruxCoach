@@ -127,14 +127,22 @@ rendered and compared on Android.
 5. Compare the same fixtures for at most three correction rounds before wiring
    the reviewed region into the full production screen.
 
-## Current evidence and wiring gate
+## Current evidence and production boundary
 
 Both compact fixtures were rendered on the API-35 Nokia across EN/DE,
 light/dark, and font-scale 1.0/1.5. The board remained the primary visual
 region; connected/disconnected used text and icons, and both logging actions
 remained visible at large text. Screenshots were opened and semantics parsed.
 This approves the isolated compact hypothesis, not the full production
-composition. Production wiring remains deferred because the existing screen
-also owns playback, angle/mirror, session delivery, partial-send feedback and
-authorized management actions that the isolated hero intentionally omits.
-Expanded rendering and a parity-preserving host boundary are required first.
+composition. The existing production board region is now isolated behind
+`ClimbDetailProductionHeroHost` without changing its composition. That host
+retains the exact board renderer, angle selector, route playback, Quantum layer
+entry, BLE progress/success/warning/error feedback and mismatch recovery. The
+extraction does not alter screen-owned UUID/angle navigation or mirror state;
+logging and authorized management actions stay in their existing surfaces.
+
+The candidate hero is intentionally not substituted wholesale: doing so would
+drop parity that its two fixture states do not model. The focused Android
+compile and the detail projection/delivery-policy tests pass after the
+extraction. A visual change inside the new boundary still requires the same
+installed-source compact/expanded comparison described in `external-gates.md`.
