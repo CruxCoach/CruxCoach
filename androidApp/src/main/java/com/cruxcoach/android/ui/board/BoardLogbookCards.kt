@@ -340,6 +340,36 @@ internal fun BoardLogbookErrorMessage(
 }
 
 @Composable
+internal fun BoardLogbookLoadMoreError(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(CruxCoachSpacing.small)
+            .testTag("logbook_load_more_error"),
+        horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.board_logbook_load_more_error),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = onRetry,
+            modifier = Modifier
+                .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
+                .testTag("logbook_load_more_retry"),
+        ) {
+            Text(stringResource(R.string.action_retry))
+        }
+    }
+}
+
+@Composable
 internal fun DayHeader(dateKey: String, count: Int) {
     val dayNames = arrayOf(
         stringResource(R.string.day_mo), stringResource(R.string.day_tu),

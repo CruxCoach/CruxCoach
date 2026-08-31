@@ -52,7 +52,7 @@ def validate_parity() -> None:
         "detail/disconnected", "detail/connected", "session/active",
         "session/resting", "session/paused", "session/active-no-climb",
         "log/new-send", "log/new-attempt", "log/edit-send", "log/saving",
-        "log/success", "log/error", "logbook/content", "logbook/error",
+        "log/success", "log/error", "logbook/content", "logbook/error", "logbook/page-error",
         "progress/history", "progress/empty",
         "progress/error", "progress/action-error",
     }

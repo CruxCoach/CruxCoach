@@ -1455,6 +1455,7 @@
     <string name="board_logbook_empty_title">Noch keine Begehungen</string>
     <string name="board_logbook_error_message">Deine Einträge konnten nicht geladen werden. Prüfe den Gerätespeicher und versuche es erneut.</string>
     <string name="board_logbook_error_title">Logbuch nicht verfügbar</string>
+    <string name="board_logbook_load_more_error">Weitere Logbuch-Einträge konnten nicht geladen werden.</string>
     <string name="board_logbook_edit_entry">%1$s bearbeiten</string>
     <string name="board_logbook_select_entry">%1$s auswählen</string>
     <string name="board_logbook_flash">Flash</string>

@@ -22,6 +22,7 @@ internal data class BoardLogbookScenario(
     val ascent: AscentWithClimb? = null,
     val selected: Boolean = false,
     val isInitialError: Boolean = false,
+    val hasPageError: Boolean = false,
 )
 
 internal object BoardLogbookScenarios {
@@ -50,10 +51,15 @@ internal object BoardLogbookScenarios {
         id = "logbook/error",
         isInitialError = true,
     )
+    val PageError = Content.copy(
+        id = "logbook/page-error",
+        hasPageError = true,
+    )
 
     fun require(id: String): BoardLogbookScenario = when (id) {
         Content.id -> Content
         Error.id -> Error
+        PageError.id -> PageError
         else -> throw IllegalArgumentException("Unknown DesignLab scenario: $id")
     }
 }
@@ -113,5 +119,6 @@ internal fun BoardLogbookScenarioContent(scenario: BoardLogbookScenario) {
             onToggleSelect = {},
             onEdit = {},
         )
+        if (scenario.hasPageError) BoardLogbookLoadMoreError(onRetry = {})
     }
 }

@@ -463,7 +463,7 @@ class BoardLogbookViewModel @Inject constructor(
         if (s.isLoadingMore || !s.canLoadMore) return
 
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoadingMore = true) }
+            _state.update { it.copy(isLoadingMore = true, error = null) }
             try {
                 val nextPage = withContext(Dispatchers.IO) {
                     val page = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, s.ascents.size).toMutableList()
@@ -473,7 +473,8 @@ class BoardLogbookViewModel @Inject constructor(
                 _state.update { it.copy(
                     isLoadingMore = false,
                     ascents = it.ascents + nextPage,
-                    canLoadMore = nextPage.size >= PAGE_SIZE
+                    canLoadMore = nextPage.size >= PAGE_SIZE,
+                    error = null,
                 ) }
             } catch (e: Exception) {
                 _state.update { it.copy(isLoadingMore = false, error = e.message) }

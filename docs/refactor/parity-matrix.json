@@ -38,6 +38,7 @@
     {"id":"log/error","status":"partial"},
     {"id":"logbook/content","status":"focused-supplemental"},
     {"id":"logbook/error","status":"focused-supplemental"},
+    {"id":"logbook/page-error","status":"focused-supplemental"},
     {"id":"progress/history","status":"partial"},
     {"id":"progress/empty","status":"partial"},
     {"id":"progress/error","status":"partial"},

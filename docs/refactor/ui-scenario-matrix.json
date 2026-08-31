@@ -83,6 +83,7 @@
     {"id":"log/error","capability":"log-attempt","status":"partial"},
     {"id":"logbook/content","capability":"board-logbook","status":"focused-supplemental"},
     {"id":"logbook/error","capability":"board-logbook","status":"focused-supplemental"},
+    {"id":"logbook/page-error","capability":"board-logbook","status":"focused-supplemental"},
     {"id":"progress/history","capability":"progress-history","status":"partial"},
     {"id":"progress/empty","capability":"progress-history","status":"partial"},
     {"id":"progress/error","capability":"progress-history","status":"partial"},

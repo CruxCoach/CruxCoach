@@ -84,6 +84,24 @@ class BoardLogbookCardSemanticsTest {
         assertEquals(1, retries)
     }
 
+    @Test
+    fun `paging failure keeps content and exposes one 48dp retry`() {
+        var retries = 0
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                BoardLogbookLoadMoreError(onRetry = { retries += 1 })
+            }
+        }
+
+        compose.onNodeWithTag("logbook_load_more_error").assertExists()
+        compose.onNodeWithTag("logbook_load_more_retry")
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+
+        assertEquals(1, retries)
+    }
+
     private companion object {
         val ascent = AscentWithClimb(
             uuid = "entry-1",

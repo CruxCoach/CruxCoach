@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardLogbookScreenState
+import com.cruxcoach.domain.board.LogbookIssue
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -215,7 +216,10 @@ fun BoardLogbookScreen(
                     derivedStateOf {
                         val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                         val totalItems = state.ascents.size + 5 // account for header items
-                        lastVisibleItem >= totalItems - 5 && state.canLoadMore && !state.isLoadingMore
+                        lastVisibleItem >= totalItems - 5 &&
+                            state.canLoadMore &&
+                            !state.isLoadingMore &&
+                            screenState.pageIssue == null
                     }
                 }
                 LaunchedEffect(shouldLoadMore) {
@@ -297,6 +301,10 @@ fun BoardLogbookScreen(
                                     strokeWidth = 2.dp
                                 )
                             }
+                        }
+                    } else if (screenState.pageIssue == LogbookIssue.PAGE_LOAD_FAILED) {
+                        item(key = "load_more_error") {
+                            BoardLogbookLoadMoreError(onRetry = viewModel::loadMore)
                         }
                     }
                 }

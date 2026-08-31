@@ -20,7 +20,7 @@ if [[ ! "$package_name" =~ ^[A-Za-z][A-Za-z0-9_.]*$ ]]; then
   exit 64
 fi
 case "$scenario" in
-  log/new-send|log/new-attempt|log/edit-send|log/saving|log/success|log/error|logbook/content|logbook/error|browser/content|browser/empty|browser/error|session/active|session/resting|session/paused|session/active-no-climb|progress/history|progress/empty|progress/error|progress/action-error|detail/disconnected|detail/connected) ;;
+  log/new-send|log/new-attempt|log/edit-send|log/saving|log/success|log/error|logbook/content|logbook/error|logbook/page-error|browser/content|browser/empty|browser/error|session/active|session/resting|session/paused|session/active-no-climb|progress/history|progress/empty|progress/error|progress/action-error|detail/disconnected|detail/connected) ;;
   *) echo "unsupported scenario: $scenario" >&2; exit 64 ;;
 esac
 case "$theme" in light|dark) ;; *) echo "theme must be light or dark" >&2; exit 64 ;; esac
