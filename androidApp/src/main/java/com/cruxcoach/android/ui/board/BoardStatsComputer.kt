@@ -21,7 +21,8 @@ import java.util.Locale
 object BoardStatsComputer {
 
     private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
-    private val WEEK_FIELD = WeekFields.of(Locale.GERMANY).weekOfWeekBasedYear()
+    private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
+    private val WEEK_BASED_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
     private val MONTH_NAMES_FALLBACK = arrayOf("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -306,7 +307,7 @@ object BoardStatsComputer {
         val withDate = filtered.mapNotNull { a ->
             val date = parseDate(a.climbedAt) ?: return@mapNotNull null
             val diff = a.difficultyAverage ?: return@mapNotNull null
-            Triple(WeekKey(date.year, date.get(WEEK_FIELD)), diff, a)
+            Triple(WeekKey(date.get(WEEK_BASED_YEAR_FIELD), date.get(WEEK_FIELD)), diff, a)
         }
 
         return withDate.groupBy { it.first }
@@ -329,26 +330,47 @@ object BoardStatsComputer {
         context: Context? = null
     ): List<GradeProgressionPoint> {
         if (sends.isEmpty()) return emptyList()
-        val withDateAndDiff = sends.mapNotNull { a ->
-            val date = parseDate(a.climbedAt) ?: return@mapNotNull null
-            val diff = a.difficultyAverage ?: return@mapNotNull null
-            date to diff
+        data class DatedSend(
+            val date: LocalDate,
+            val difficulty: Double,
+            val climbUuid: String,
+            val angle: Long,
+        )
+        val datedSends = sends.mapNotNull { ascent ->
+            val date = parseDate(ascent.climbedAt) ?: return@mapNotNull null
+            val difficulty = ascent.difficultyAverage ?: return@mapNotNull null
+            DatedSend(date, difficulty, ascent.climbUuid, ascent.angle)
         }
-        if (withDateAndDiff.isEmpty()) return emptyList()
+        if (datedSends.isEmpty()) return emptyList()
 
-        // Bucket by week for all intervals — gives readable trend
-        return withDateAndDiff
-            .groupBy { (date, _) -> date.year to date.get(WEEK_FIELD) }
-            .toSortedMap(compareBy({ it.first }, { it.second }))
-            .map { (key, pairs) ->
-                val label = when (interval) {
-                    StatsTimeInterval.DAYS_30 -> context?.getString(R.string.calendar_week_short, key.second)
-                        ?: "CW ${key.second}"
-                    else -> context?.getString(R.string.calendar_week_short_year, key.second, key.first % 100)
-                        ?: "CW ${key.second}/${key.first % 100}"
-                }
-                GradeProgressionPoint(label, pairs.maxOf { it.second })
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+        val activeWeeks = datedSends.map { it.date.with(toMonday) }.distinct().sorted()
+        return activeWeeks.map { weekStart ->
+            val windowStart = weekStart.minusWeeks(3)
+            val windowEnd = weekStart.plusDays(6)
+            val top = datedSends.asSequence()
+                .filter { !it.date.isBefore(windowStart) && !it.date.isAfter(windowEnd) }
+                .groupBy { it.climbUuid to it.angle }
+                .values
+                .map { repeats -> repeats.maxOf { it.difficulty } }
+                .sortedDescending()
+                .take(3)
+            val level = when (top.size) {
+                1 -> top[0]
+                2 -> top.average()
+                else -> top[1]
             }
+            val week = weekStart.get(WEEK_FIELD)
+            val weekBasedYear = weekStart.get(WEEK_BASED_YEAR_FIELD)
+            val label = when (interval) {
+                StatsTimeInterval.DAYS_30 -> context?.getString(R.string.calendar_week_short, week)
+                    ?: "CW $week"
+                else -> context?.getString(
+                    R.string.calendar_week_short_year, week, weekBasedYear % 100,
+                ) ?: "CW $week/${weekBasedYear % 100}"
+            }
+            GradeProgressionPoint(label, weekStart, level)
+        }
     }
 
     private fun computeUniqueClimbsByGrade(

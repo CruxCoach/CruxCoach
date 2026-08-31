@@ -31,6 +31,9 @@ import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 import com.cruxcoach.domain.playlist.estimatedMinutes
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.ui.board.ClimbStatusFilter
+import com.cruxcoach.android.ui.board.OriginFilter
+import com.cruxcoach.android.ui.board.parseStatusFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.random.Random
@@ -48,6 +51,11 @@ data class PlaylistGeneratorState(
     val selection: CandidateSelection = CandidateSelection.NEW,
     /** Pyramid only: build-up, or up and back down. */
     val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
+    val pyramidClimbsPerTier: Int = 2,
+    /** Recommended from the logbook plan until the climber edits it. */
+    val targetMinDifficulty: Double? = null,
+    val targetMaxDifficulty: Double? = null,
+    val gradeRangeCustomized: Boolean = false,
     /** Manual only — 0 means "seed me from the profile on first load". */
     val manualMinDifficulty: Double = 0.0,
     val manualMaxDifficulty: Double = 0.0,
@@ -72,6 +80,14 @@ data class PlaylistGeneratorState(
     val layoutId: Int = 0,
     val productSizeId: Int = 0,
     val gradeScale: GradeScale = GradeScale.FRENCH,
+    /** Compatible filters inherited from the board browser. */
+    val browserMinDifficulty: Double = TrainingRanges.MIN_DIFFICULTY,
+    val browserMaxDifficulty: Double = TrainingRanges.MAX_DIFFICULTY,
+    val minAscensionists: Int = 0,
+    val benchmarkOnly: Boolean = false,
+    val originFilter: OriginFilter = OriginFilter.ALL,
+    val statusFilter: Set<ClimbStatusFilter> = emptySet(),
+    val climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER,
     /** Live plan preview, recomputed on every parameter change. */
     val plan: PlaylistPlan? = null,
     val estimatedMinutes: Int = 0,
@@ -91,6 +107,33 @@ data class PlaylistGeneratorState(
 internal fun playlistProductSizeFilter(boardBrand: String, productSizeId: Int): Int =
     if (BoardBrand.fromWire(boardBrand).usesAuroraPlacements) productSizeId else 0
 
+internal fun playlistCandidateMatchesBrowserFilters(
+    origin: String,
+    benchmarkDifficulty: Double,
+    uuid: String,
+    sent: Set<String>,
+    attempted: Set<String>,
+    benchmarkOnly: Boolean,
+    originFilter: String,
+    statusFilter: String,
+    source: String = "kilter",
+): Boolean {
+    if (benchmarkOnly && benchmarkDifficulty <= 0.0) return false
+    val originMatches = when (runCatching { OriginFilter.valueOf(originFilter) }
+        .getOrDefault(OriginFilter.ALL)) {
+        OriginFilter.ALL -> true
+        OriginFilter.CRUXCOACH -> origin == "cruxcoach" || source == "local"
+        OriginFilter.KILTER -> origin in setOf("kilter", "quantum") && source != "local"
+        OriginFilter.BOARDSESH -> origin == "boardsesh"
+    }
+    if (!originMatches) return false
+    val statuses = parseStatusFilter(statusFilter)
+    if (statuses.isEmpty()) return true
+    return (ClimbStatusFilter.SENT in statuses && uuid in sent) ||
+        (ClimbStatusFilter.ATTEMPTED in statuses && uuid in attempted) ||
+        (ClimbStatusFilter.NEW in statuses && uuid !in sent && uuid !in attempted)
+}
+
 @HiltViewModel
 class PlaylistGeneratorViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
@@ -106,6 +149,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
     init {
         viewModelScope.safeLaunch(TAG) {
             val snapshot = withContext(Dispatchers.IO) { userPreferences.getBoardFilterSnapshot() }
+            val brand = BoardBrand.fromWire(snapshot.boardBrand)
             val productSizeId = playlistProductSizeFilter(
                 snapshot.boardBrand,
                 userPreferences.boardProductSizeId.first(),
@@ -125,6 +169,22 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     layoutId = snapshot.layoutId,
                     productSizeId = productSizeId,
                     gradeScale = snapshot.gradeScale,
+                    browserMinDifficulty = TrainingRanges.MIN_DIFFICULTY + snapshot.minGrade,
+                    browserMaxDifficulty = TrainingRanges.MIN_DIFFICULTY + snapshot.maxGrade,
+                    minAscensionists = snapshot.minAscensionists,
+                    benchmarkOnly = brand.supportsBenchmarkFilter && snapshot.benchmarkOnly,
+                    originFilter = runCatching { OriginFilter.valueOf(snapshot.originFilter) }
+                        .getOrDefault(OriginFilter.ALL)
+                        .let { filter ->
+                            if (!brand.supportsBoardSeshOrigin &&
+                                filter == OriginFilter.BOARDSESH
+                            ) OriginFilter.ALL else filter
+                        },
+                    statusFilter = parseStatusFilter(snapshot.statusFilter),
+                    climbType = if (brand.supportsClimbTypeFilter) {
+                        runCatching { ClimbTypeFilter.valueOf(snapshot.climbType) }
+                            .getOrDefault(ClimbTypeFilter.BOULDER)
+                    } else ClimbTypeFilter.BOULDER,
                     maxGradeLabel = profile.maxDifficulty?.let { d ->
                         GradeDisplayHelper.formatDifficulty(d, snapshot.gradeScale)
                     },
@@ -259,7 +319,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     manualMaxDifficulty = anchor + TrainingRanges.MANUAL_SEED_HALF_BAND,
                 )
             } else it
-            seeded.copy(type = type, structureSize = type.structureRange().midpoint())
+            seeded.copy(
+                type = type,
+                structureSize = type.structureRange().midpoint(),
+                targetMinDifficulty = null,
+                targetMaxDifficulty = null,
+                gradeRangeCustomized = false,
+            )
         }
         refreshPlan()
     }
@@ -323,6 +389,68 @@ class PlaylistGeneratorViewModel @Inject constructor(
         refreshPlan()
     }
 
+    fun setPyramidClimbsPerTier(count: Int) {
+        _state.update {
+            it.copy(pyramidClimbsPerTier = count.coerceIn(TrainingRanges.PYRAMID_CLIMBS_PER_TIER))
+        }
+        refreshPlan()
+    }
+
+    fun setTargetRange(low: Double, high: Double) {
+        _state.update {
+            it.copy(
+                targetMinDifficulty = low.coerceIn(
+                    TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY,
+                ),
+                targetMaxDifficulty = high.coerceIn(low, TrainingRanges.MAX_DIFFICULTY),
+                gradeRangeCustomized = true,
+            )
+        }
+        refreshPlan()
+    }
+
+    fun useRecommendedRange() {
+        _state.update {
+            it.copy(
+                targetMinDifficulty = null,
+                targetMaxDifficulty = null,
+                gradeRangeCustomized = false,
+            )
+        }
+        refreshPlan()
+    }
+
+    fun setBrowserGradeRange(low: Double, high: Double) {
+        _state.update {
+            it.copy(
+                browserMinDifficulty = low.coerceIn(
+                    TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY,
+                ),
+                browserMaxDifficulty = high.coerceIn(low, TrainingRanges.MAX_DIFFICULTY),
+            )
+        }
+    }
+
+    fun setMinAscensionists(count: Int) {
+        _state.update { it.copy(minAscensionists = count.coerceIn(0, 50)) }
+    }
+
+    fun setBenchmarkOnly(enabled: Boolean) {
+        _state.update { it.copy(benchmarkOnly = enabled) }
+    }
+
+    fun setStatusFilter(statuses: Set<ClimbStatusFilter>) {
+        _state.update { it.copy(statusFilter = statuses) }
+    }
+
+    fun setOriginFilter(origin: OriginFilter) {
+        _state.update { it.copy(originFilter = origin) }
+    }
+
+    fun setClimbType(type: ClimbTypeFilter) {
+        _state.update { it.copy(climbType = type) }
+    }
+
     fun setSelection(selection: CandidateSelection) {
         _state.update { it.copy(selection = selection) }
     }
@@ -371,7 +499,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
         return edge(SortDirection.ASC) to edge(SortDirection.DESC)
     }
 
-    private fun currentParams(): PlaylistGeneratorParams {
+    private fun currentParams(includeTargetRange: Boolean = true): PlaylistGeneratorParams {
         val s = _state.value
         return PlaylistGeneratorParams(
             type = s.type,
@@ -383,6 +511,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
             layoutId = s.layoutId,
             productSizeId = s.productSizeId,
             pyramidShape = s.pyramidShape,
+            targetMinDifficulty = if (includeTargetRange) s.targetMinDifficulty else null,
+            targetMaxDifficulty = if (includeTargetRange) s.targetMaxDifficulty else null,
+            pyramidClimbsPerTier = s.pyramidClimbsPerTier,
             structureSize = s.structureSize,
             manualMinDifficulty = s.manualMinDifficulty,
             manualMaxDifficulty = s.manualMaxDifficulty,
@@ -390,10 +521,32 @@ class PlaylistGeneratorViewModel @Inject constructor(
             problemsPerSet = s.problemsPerSet,
             manualRestSeconds = s.manualRestSeconds,
             manualRepeatRestSeconds = s.manualRepeatRestSeconds,
+            minAscensionists = s.minAscensionists,
+            browserMinDifficulty = s.browserMinDifficulty,
+            browserMaxDifficulty = s.browserMaxDifficulty,
+            benchmarkOnly = s.benchmarkOnly,
+            originFilter = s.originFilter.name,
+            statusFilter = s.statusFilter.joinToString(",") { it.name },
+            climbType = s.climbType.name,
         )
     }
 
     private fun refreshPlan() {
+        if (!_state.value.gradeRangeCustomized) {
+            val recommended = PlaylistPlanner.plan(currentParams(includeTargetRange = false), profile)
+            val work = recommended.slots.filterIsInstance<com.cruxcoach.domain.playlist.PlanSlot.ClimbSlot>()
+                .filter { it.section != com.cruxcoach.domain.playlist.PlanSection.WARM_UP }
+            if (work.isNotEmpty()) {
+                _state.update {
+                    it.copy(
+                        targetMinDifficulty = work.minOf { slot -> slot.minDifficulty }
+                            .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
+                        targetMaxDifficulty = work.maxOf { slot -> slot.maxDifficulty }
+                            .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
+                    )
+                }
+            }
+        }
         val plan = PlaylistPlanner.plan(currentParams(), profile)
         _state.update { it.copy(plan = plan, estimatedMinutes = plan.estimatedMinutes()) }
     }
@@ -435,17 +588,28 @@ class PlaylistGeneratorViewModel @Inject constructor(
                         fun loadCandidates(
                             minDiff: Double,
                             maxDiff: Double,
-                        ): List<PlaylistCandidate> =
-                            boardRepository.searchClimbsSorted(
+                        ): List<PlaylistCandidate> {
+                            val low = maxOf(
+                                minDiff,
+                                params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY,
+                                params.browserMinDifficulty,
+                            )
+                            val high = minOf(
+                                maxDiff,
+                                params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
+                                params.browserMaxDifficulty,
+                            )
+                            if (low > high) return emptyList()
+                            return boardRepository.searchClimbsSorted(
                                 angle = params.angle,
                                 layoutId = params.layoutId,
                                 boardBrand = params.boardBrand,
-                                minDifficulty = minDiff,
-                                maxDifficulty = maxDiff,
+                                minDifficulty = low,
+                                maxDifficulty = high,
                                 // Popularity affects ranking below; it must not
                                 // exclude a valid climb and create a false
                                 // shortage on a community-sparse board.
-                                minAscensionists = 0,
+                                minAscensionists = params.minAscensionists,
                                 // The filler ranks quality itself. Sorting the
                                 // joined catalogue by quality here forced a
                                 // temp sort for every widened band on a full
@@ -454,9 +618,22 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 sortField = ClimbSortField.DIFFICULTY,
                                 sortDirection = SortDirection.ASC,
                                 limit = CANDIDATE_POOL_SIZE,
-                                climbType = ClimbTypeFilter.BOULDER,
+                                climbType = runCatching { ClimbTypeFilter.valueOf(params.climbType) }
+                                    .getOrDefault(ClimbTypeFilter.BOULDER),
                                 selProductSizeId = params.productSizeId,
-                            ).filter { it.uuid !in ignored }.mapNotNull { climb ->
+                            ).filter { climb ->
+                                climb.uuid !in ignored && playlistCandidateMatchesBrowserFilters(
+                                    origin = climb.origin,
+                                    benchmarkDifficulty = climb.benchmarkDifficulty,
+                                    uuid = climb.uuid,
+                                    sent = sent,
+                                    attempted = attempted,
+                                    benchmarkOnly = params.benchmarkOnly,
+                                    originFilter = params.originFilter,
+                                    statusFilter = params.statusFilter,
+                                    source = climb.source,
+                                )
+                            }.mapNotNull { climb ->
                                 climb.difficultyAverage?.let { diff ->
                                     PlaylistCandidate(
                                         climbUuid = climb.uuid,
@@ -469,6 +646,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                     )
                                 }
                             }
+                        }
 
                         val source = CandidateSource { minDiff, maxDiff ->
                             PerfLogger.traceQuery("playlist.candidateBand") {
@@ -486,15 +664,34 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 angle = params.angle,
                                 layoutId = params.layoutId,
                                 boardBrand = params.boardBrand,
-                                minDifficulty = TrainingRanges.MIN_DIFFICULTY,
-                                maxDifficulty = TrainingRanges.MAX_DIFFICULTY,
-                                minAscensionists = 0,
+                                minDifficulty = maxOf(
+                                    params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY,
+                                    params.browserMinDifficulty,
+                                ),
+                                maxDifficulty = minOf(
+                                    params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
+                                    params.browserMaxDifficulty,
+                                ),
+                                minAscensionists = params.minAscensionists,
                                 sortField = ClimbSortField.DIFFICULTY,
                                 sortDirection = SortDirection.ASC,
                                 limit = BOARD_GRADE_POOL_SIZE,
-                                climbType = ClimbTypeFilter.BOULDER,
+                                climbType = runCatching { ClimbTypeFilter.valueOf(params.climbType) }
+                                    .getOrDefault(ClimbTypeFilter.BOULDER),
                                 selProductSizeId = params.productSizeId,
-                            ).filter { it.uuid !in ignored }.mapNotNull { climb ->
+                            ).filter { climb ->
+                                climb.uuid !in ignored && playlistCandidateMatchesBrowserFilters(
+                                    origin = climb.origin,
+                                    benchmarkDifficulty = climb.benchmarkDifficulty,
+                                    uuid = climb.uuid,
+                                    sent = sent,
+                                    attempted = attempted,
+                                    benchmarkOnly = params.benchmarkOnly,
+                                    originFilter = params.originFilter,
+                                    statusFilter = params.statusFilter,
+                                    source = climb.source,
+                                )
+                            }.mapNotNull { climb ->
                                 climb.difficultyAverage?.let { diff ->
                                     PlaylistCandidate(
                                         climbUuid = climb.uuid,
@@ -520,7 +717,26 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 // window never turned up in it.
                                 projectCandidates = boardRepository.getClimbsByUuids(
                                     profile.openProjectUuids, params.angle,
-                                ).mapNotNull { climb ->
+                                ).filter { climb ->
+                                    val diff = climb.difficultyAverage
+                                    diff != null &&
+                                        diff >= params.browserMinDifficulty &&
+                                        diff <= params.browserMaxDifficulty &&
+                                        diff >= (params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY) &&
+                                        diff <= (params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY) &&
+                                        (climb.ascensionistCount ?: 0) >= params.minAscensionists &&
+                                        playlistCandidateMatchesBrowserFilters(
+                                            origin = climb.origin,
+                                            benchmarkDifficulty = climb.benchmarkDifficulty,
+                                            uuid = climb.uuid,
+                                            sent = sent,
+                                            attempted = attempted,
+                                            benchmarkOnly = params.benchmarkOnly,
+                                            originFilter = params.originFilter,
+                                            statusFilter = params.statusFilter,
+                                            source = climb.source,
+                                        )
+                                }.mapNotNull { climb ->
                                     climb.difficultyAverage?.let { diff ->
                                         PlaylistCandidate(
                                             climbUuid = climb.uuid,

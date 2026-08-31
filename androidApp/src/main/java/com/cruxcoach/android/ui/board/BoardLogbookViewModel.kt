@@ -40,6 +40,8 @@ enum class StatsTimeInterval(@param:androidx.annotation.StringRes val labelResId
     YEAR_1(com.cruxcoach.android.R.string.stats_interval_1_year, 365)
 }
 
+enum class LogbookOutcomeFilter { ALL, SENDS, ATTEMPTS }
+
 data class BoardGradePyramidEntry(
     val grade: String,
     val count: Int,
@@ -102,6 +104,12 @@ data class BoardLogbookState(
     // Multi-select
     val selectedUuids: Set<String> = emptySet(),
     val showBatchDeleteConfirm: Boolean = false,
+    // Filters for the visible logbook list. The date interval is shared with
+    // statistics so list and headline numbers describe the same period.
+    val logbookOutcomeFilter: LogbookOutcomeFilter = LogbookOutcomeFilter.ALL,
+    val logbookBoardFilter: String? = null,
+    val logbookAngleFilter: Int? = null,
+    val availableLogbookAngles: List<Int> = emptyList(),
     // Stats
     val statsInterval: StatsTimeInterval = StatsTimeInterval.ALL,
     val stats: BoardLogbookStats = BoardLogbookStats(),
@@ -415,11 +423,14 @@ class BoardLogbookViewModel @Inject constructor(
                         ?: defaultSelection
                     it.copy(
                         availableBoardBrands = brands,
+                        availableLogbookAngles = all.map { ascent -> ascent.angle.toInt() }.distinct().sorted(),
+                        logbookBoardFilter = it.logbookBoardFilter?.takeIf { bf -> bf in brands },
                         boardFilter = clampedFilter,
                         heatmapBoardOptions = options,
                         heatmapBoardSelection = heatmapSel,
                     )
                 }
+                applyLogbookFilters()
                 // Load the heatmap canvas for the seeded/selected board (init no
                 // longer does this — the selection didn't exist yet). No-op for
                 // the "Alle" case (null selection blanks the canvas).
@@ -517,12 +528,56 @@ class BoardLogbookViewModel @Inject constructor(
 
     fun setStatsInterval(interval: StatsTimeInterval) {
         _state.update { it.copy(statsInterval = interval, customDateFrom = null, customDateTo = null) }
+        applyLogbookFilters()
         recomputeStats()
     }
 
     fun setCustomDateRange(from: LocalDate, to: LocalDate) {
         _state.update { it.copy(customDateFrom = from, customDateTo = to) }
+        applyLogbookFilters()
         recomputeStats()
+    }
+
+    fun setLogbookOutcomeFilter(filter: LogbookOutcomeFilter) {
+        _state.update { it.copy(logbookOutcomeFilter = filter) }
+        applyLogbookFilters()
+    }
+
+    fun setLogbookBoardFilter(brand: String?) {
+        _state.update { it.copy(logbookBoardFilter = brand) }
+        applyLogbookFilters()
+    }
+
+    fun setLogbookAngleFilter(angle: Int?) {
+        _state.update { it.copy(logbookAngleFilter = angle) }
+        applyLogbookFilters()
+    }
+
+    private fun applyLogbookFilters() {
+        if (allAscents.isEmpty()) return
+        val s = _state.value
+        val visible = BoardStatsComputer.filterByInterval(
+            allAscents, s.statsInterval, s.customDateFrom, s.customDateTo,
+        ).filter { ascent ->
+            when (s.logbookOutcomeFilter) {
+                LogbookOutcomeFilter.ALL -> true
+                LogbookOutcomeFilter.SENDS -> ascent.isSend
+                LogbookOutcomeFilter.ATTEMPTS -> !ascent.isSend
+            }
+        }.filter { ascent ->
+            s.logbookBoardFilter == null || ascent.brand == BoardBrand.fromWire(s.logbookBoardFilter)
+        }.filter { ascent ->
+            s.logbookAngleFilter == null || ascent.angle.toInt() == s.logbookAngleFilter
+        }
+        val visibleUuids = visible.mapTo(mutableSetOf()) { it.uuid }
+        _state.update {
+            it.copy(
+                ascents = visible,
+                totalCount = visible.size.toLong(),
+                canLoadMore = false,
+                selectedUuids = it.selectedUuids.intersect(visibleUuids),
+            )
+        }
     }
 
     fun setGradeChartView(view: GradeChartView) {

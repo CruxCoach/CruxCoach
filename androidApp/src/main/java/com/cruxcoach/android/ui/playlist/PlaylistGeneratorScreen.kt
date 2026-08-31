@@ -5,6 +5,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,6 +33,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -64,6 +68,9 @@ import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 import androidx.compose.ui.res.pluralStringResource
 import com.cruxcoach.domain.playlist.structureRange
+import com.cruxcoach.android.ui.board.ClimbStatusFilter
+import com.cruxcoach.android.ui.board.OriginFilter
+import com.cruxcoach.data.repository.ClimbTypeFilter
 import kotlin.math.roundToInt
 import androidx.compose.material3.RangeSlider
 
@@ -72,7 +79,7 @@ import androidx.compose.material3.RangeSlider
  * a live grade-curve preview of the planned session. Generate persists the
  * generated list plus its training plan and opens the normal list detail.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PlaylistGeneratorScreen(
     onNavigateBack: () -> Unit,
@@ -81,6 +88,20 @@ fun PlaylistGeneratorScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showNameDialog by rememberSaveable { mutableStateOf(false) }
+    var showFilterSheet by rememberSaveable { mutableStateOf(false) }
+
+    if (showFilterSheet) {
+        GeneratorFilterSheet(
+            state = state,
+            onDismiss = { showFilterSheet = false },
+            onGradeRangeChange = viewModel::setBrowserGradeRange,
+            onMinAscentsChange = viewModel::setMinAscensionists,
+            onBenchmarkOnlyChange = viewModel::setBenchmarkOnly,
+            onStatusChange = viewModel::setStatusFilter,
+            onOriginChange = viewModel::setOriginFilter,
+            onClimbTypeChange = viewModel::setClimbType,
+        )
+    }
 
     // Successful generate -> jump into the fresh list, unless the filler had
     // to leave slots empty. That count was recorded and never shown: the list
@@ -147,6 +168,17 @@ fun PlaylistGeneratorScreen(
                         )
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = { showFilterSheet = true },
+                        modifier = Modifier.testTag("playlist_gen_filters"),
+                    ) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = stringResource(R.string.playlist_generator_filters),
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
@@ -163,20 +195,38 @@ fun PlaylistGeneratorScreen(
 
             // ── Session type ────────────────────────────────────
             SectionTitle(stringResource(R.string.playlist_generator_type))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                GeneratorType.entries.forEach { type ->
+                GeneratorGoal.entries.forEach { goal ->
                     FilterChip(
-                        selected = state.type == type,
-                        onClick = { viewModel.setType(type) },
-                        label = { Text(typeLabel(type)) },
+                        selected = goal.contains(state.type),
+                        onClick = { viewModel.setType(goal.defaultType) },
+                        label = { Text(generatorGoalLabel(goal)) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
                         ),
-                        modifier = Modifier.testTag("playlist_gen_type_${type.name.lowercase()}"),
+                        modifier = Modifier.testTag("playlist_gen_goal_${goal.name.lowercase()}"),
                     )
+                }
+            }
+            val siblingTypes = GeneratorGoal.forType(state.type).types
+            if (siblingTypes.size > 1) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    siblingTypes.forEach { type ->
+                        FilterChip(
+                            selected = state.type == type,
+                            onClick = { viewModel.setType(type) },
+                            label = { Text(typeLabel(type)) },
+                            modifier = Modifier.testTag(
+                                "playlist_gen_type_${type.name.lowercase()}"
+                            ),
+                        )
+                    }
                 }
             }
             Text(
@@ -184,6 +234,51 @@ fun PlaylistGeneratorScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // ── Grade range ─────────────────────────────────────
+            val targetLow = state.targetMinDifficulty
+            val targetHigh = state.targetMaxDifficulty
+            if (targetLow != null && targetHigh != null && state.type != GeneratorType.MANUAL) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionTitle(
+                        stringResource(
+                            R.string.playlist_generator_grade_range,
+                            GradeDisplayHelper.formatDifficulty(targetLow, state.gradeScale),
+                            GradeDisplayHelper.formatDifficulty(targetHigh, state.gradeScale),
+                        ),
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = viewModel::useRecommendedRange,
+                        enabled = state.gradeRangeCustomized,
+                    ) {
+                        Text(stringResource(R.string.playlist_generator_recommended))
+                    }
+                }
+                RangeSlider(
+                    value = targetLow.toFloat()..targetHigh.toFloat(),
+                    onValueChange = {
+                        viewModel.setTargetRange(
+                            it.start.roundToInt().toDouble(),
+                            it.endInclusive.roundToInt().toDouble(),
+                        )
+                    },
+                    valueRange = TrainingRanges.MIN_DIFFICULTY.toFloat()..
+                        TrainingRanges.MAX_DIFFICULTY.toFloat(),
+                    steps = (TrainingRanges.MAX_DIFFICULTY -
+                        TrainingRanges.MIN_DIFFICULTY).roundToInt() - 1,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = OrangeAccent,
+                        activeTrackColor = OrangeAccent,
+                    ),
+                    modifier = Modifier.testTag("playlist_gen_grade_range"),
+                )
+                Text(
+                    stringResource(R.string.playlist_generator_grade_range_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // ── Size ────────────────────────────────────────────
             // The slider sets the structure, not the clock. A duration slider
@@ -375,6 +470,25 @@ fun PlaylistGeneratorScreen(
             // alone, so every session under 90 minutes was half a pyramid
             // under a name that promises a whole one.
             if (state.type == GeneratorType.PYRAMID) {
+                SectionTitle(
+                    stringResource(
+                        R.string.playlist_generator_pyramid_per_tier,
+                        state.pyramidClimbsPerTier,
+                    )
+                )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TrainingRanges.PYRAMID_CLIMBS_PER_TIER.forEach { count ->
+                        FilterChip(
+                            selected = state.pyramidClimbsPerTier == count,
+                            onClick = { viewModel.setPyramidClimbsPerTier(count) },
+                            label = { Text("$count") },
+                            modifier = Modifier.testTag("playlist_gen_pyramid_per_tier_$count"),
+                        )
+                    }
+                }
                 SectionTitle(stringResource(R.string.playlist_generator_pyramid_shape))
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -610,6 +724,186 @@ private fun WarningNote(text: String) {
         style = MaterialTheme.typography.bodySmall,
         color = WarningYellow,
     )
+}
+
+/** Four user-facing goals keep the first decision small. The persisted engine
+ * types remain unchanged so old generated playlists can still be replayed. */
+private enum class GeneratorGoal(
+    val types: Set<GeneratorType>,
+    val defaultType: GeneratorType,
+) {
+    PYRAMID(setOf(GeneratorType.PYRAMID), GeneratorType.PYRAMID),
+    ENDURANCE(
+        setOf(GeneratorType.VOLUME, GeneratorType.POWER_ENDURANCE),
+        GeneratorType.VOLUME,
+    ),
+    HARD(
+        setOf(GeneratorType.LIMIT, GeneratorType.PROJECTING),
+        GeneratorType.LIMIT,
+    ),
+    CUSTOM(setOf(GeneratorType.MANUAL), GeneratorType.MANUAL),
+    ;
+
+    fun contains(type: GeneratorType): Boolean = type in types
+
+    companion object {
+        fun forType(type: GeneratorType): GeneratorGoal = entries.first { it.contains(type) }
+    }
+}
+
+@Composable
+private fun generatorGoalLabel(goal: GeneratorGoal): String = stringResource(
+    when (goal) {
+        GeneratorGoal.PYRAMID -> R.string.playlist_goal_pyramid
+        GeneratorGoal.ENDURANCE -> R.string.playlist_goal_endurance
+        GeneratorGoal.HARD -> R.string.playlist_goal_hard
+        GeneratorGoal.CUSTOM -> R.string.playlist_goal_custom
+    }
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun GeneratorFilterSheet(
+    state: PlaylistGeneratorState,
+    onDismiss: () -> Unit,
+    onGradeRangeChange: (Double, Double) -> Unit,
+    onMinAscentsChange: (Int) -> Unit,
+    onBenchmarkOnlyChange: (Boolean) -> Unit,
+    onStatusChange: (Set<ClimbStatusFilter>) -> Unit,
+    onOriginChange: (OriginFilter) -> Unit,
+    onClimbTypeChange: (ClimbTypeFilter) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.playlist_generator_filters),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.playlist_generator_filters_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SectionTitle(
+                stringResource(
+                    R.string.playlist_generator_filter_grade,
+                    GradeDisplayHelper.formatDifficulty(
+                        state.browserMinDifficulty, state.gradeScale,
+                    ),
+                    GradeDisplayHelper.formatDifficulty(
+                        state.browserMaxDifficulty, state.gradeScale,
+                    ),
+                )
+            )
+            RangeSlider(
+                value = state.browserMinDifficulty.toFloat()..
+                    state.browserMaxDifficulty.toFloat(),
+                onValueChange = {
+                    onGradeRangeChange(
+                        it.start.roundToInt().toDouble(),
+                        it.endInclusive.roundToInt().toDouble(),
+                    )
+                },
+                valueRange = TrainingRanges.MIN_DIFFICULTY.toFloat()..
+                    TrainingRanges.MAX_DIFFICULTY.toFloat(),
+                steps = (TrainingRanges.MAX_DIFFICULTY -
+                    TrainingRanges.MIN_DIFFICULTY).roundToInt() - 1,
+                modifier = Modifier.testTag("playlist_gen_filter_grade"),
+            )
+
+            SectionTitle(
+                stringResource(
+                    R.string.playlist_generator_filter_min_ascents,
+                    state.minAscensionists,
+                )
+            )
+            Slider(
+                value = state.minAscensionists.toFloat(),
+                onValueChange = { onMinAscentsChange(it.roundToInt()) },
+                valueRange = 0f..50f,
+                steps = 49,
+                modifier = Modifier.testTag("playlist_gen_filter_min_ascents"),
+            )
+
+            FilterChip(
+                selected = state.benchmarkOnly,
+                onClick = { onBenchmarkOnlyChange(!state.benchmarkOnly) },
+                label = { Text(stringResource(R.string.board_filter_benchmarks_only)) },
+            )
+
+            SectionTitle(stringResource(R.string.board_filter_status))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val statusOptions = listOf(
+                    emptySet<ClimbStatusFilter>() to R.string.board_filter_all,
+                    setOf(ClimbStatusFilter.NEW) to R.string.board_filter_status_new,
+                    setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.ATTEMPTED) to
+                        R.string.board_filter_status_unsent,
+                    setOf(ClimbStatusFilter.SENT) to R.string.board_filter_status_sent,
+                )
+                statusOptions.forEach { (value, label) ->
+                    FilterChip(
+                        selected = state.statusFilter == value,
+                        onClick = { onStatusChange(value) },
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+
+            SectionTitle(stringResource(R.string.board_filter_origin))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    OriginFilter.ALL to R.string.board_filter_all,
+                    OriginFilter.CRUXCOACH to R.string.board_filter_origin_cruxcoach,
+                    OriginFilter.KILTER to R.string.board_filter_origin_kilter,
+                    OriginFilter.BOARDSESH to R.string.board_filter_origin_boardsesh,
+                ).forEach { (value, label) ->
+                    FilterChip(
+                        selected = state.originFilter == value,
+                        onClick = { onOriginChange(value) },
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+
+            SectionTitle(stringResource(R.string.board_filter_type))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    ClimbTypeFilter.BOULDER to R.string.board_filter_type_boulder,
+                    ClimbTypeFilter.ROUTE to R.string.board_filter_type_routes,
+                    ClimbTypeFilter.ALL to R.string.board_filter_all,
+                ).forEach { (value, label) ->
+                    FilterChip(
+                        selected = state.climbType == value,
+                        onClick = { onClimbTypeChange(value) },
+                        label = { Text(stringResource(label)) },
+                    )
+                }
+            }
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            ) {
+                Text(stringResource(R.string.action_done))
+            }
+        }
+    }
 }
 
 @Composable

@@ -49,7 +49,6 @@ private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
 private fun timeChartViewLabel(view: TimeChartView): String = when (view) {
     TimeChartView.SENDS_OVER_TIME -> stringResource(R.string.board_stats_sends_over_time)
     TimeChartView.WEEKLY_VOLUME -> stringResource(R.string.board_stats_weekly_volume)
-    TimeChartView.GRADE_PROGRESSION -> stringResource(R.string.board_stats_grade_progression)
 }
 
 @Composable
@@ -264,6 +263,17 @@ internal fun BoardStatsSheet(
             // Personal Records (always visible, compact)
             BoardPersonalRecordsRow(stats.personalRecords)
 
+            // Central performance signal: a rolling four-week level based on
+            // the best distinct sends, deliberately separate from volume.
+            if (stats.gradeProgression.size >= 2) {
+                ChartSection(stringResource(R.string.board_stats_grade_progression)) {
+                    BoardGradeProgressionChart(
+                        entries = stats.gradeProgression,
+                        gradeScale = gradeScale,
+                    )
+                }
+            }
+
             // Activity heatmap (no dropdown — always the same)
             if (stats.activityMap.isNotEmpty()) {
                 ChartSection(stringResource(R.string.board_stats_activity)) {
@@ -326,12 +336,6 @@ internal fun BoardStatsSheet(
                         }
                         TimeChartView.WEEKLY_VOLUME -> {
                             BoardWeeklyVolumeChart(entries = stats.weeklyVolume)
-                        }
-                        TimeChartView.GRADE_PROGRESSION -> {
-                            BoardGradeProgressionChart(
-                                entries = stats.gradeProgression,
-                                gradeScale = gradeScale
-                            )
                         }
                     }
                 }

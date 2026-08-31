@@ -10,10 +10,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +30,7 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -41,6 +44,7 @@ fun BoardLogbookScreen(
     val hasSelection = state.selectedUuids.isNotEmpty()
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
 
     // Own-Kilter-climb publish feedback (same outcome mapping as the
     // climb-detail surface).
@@ -129,14 +133,23 @@ fun BoardLogbookScreen(
         )
     }
 
+    if (showFilters) {
+        LogbookFilterSheet(
+            state = state,
+            onOutcomeSelect = viewModel::setLogbookOutcomeFilter,
+            onBoardSelect = viewModel::setLogbookBoardFilter,
+            onAngleSelect = viewModel::setLogbookAngleFilter,
+            onDismiss = { showFilters = false },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
                     title = {
-                        if (hasSelection) Text(stringResource(R.string.board_logbook_selected, state.selectedUuids.size))
-                        else Text(stringResource(R.string.board_logbook_title))
+                        Text(stringResource(R.string.board_logbook_title))
                     },
                     navigationIcon = {
                         IconButton(
@@ -148,6 +161,16 @@ fun BoardLogbookScreen(
                     },
                     actions = {
                         if (state.hasData) {
+                            IconButton(onClick = { showFilters = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = stringResource(R.string.board_logbook_filters),
+                                    tint = if (
+                                        state.logbookOutcomeFilter != LogbookOutcomeFilter.ALL ||
+                                        state.logbookBoardFilter != null || state.logbookAngleFilter != null
+                                    ) OrangeAccent else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                             val allSelected = state.ascents.isNotEmpty() &&
                                 state.selectedUuids.size == state.ascents.size
                             IconButton(onClick = { viewModel.selectAll() }) {
@@ -237,6 +260,17 @@ fun BoardLogbookScreen(
                         StatsSummaryRow(state.stats)
                     }
 
+                    if (state.ascents.isEmpty()) {
+                        item(key = "no_filter_matches") {
+                            Text(
+                                stringResource(R.string.board_logbook_no_filter_matches),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                            )
+                        }
+                    }
+
                     // Ascent cards grouped by day
                     grouped.forEach { (dateKey, dayAscents) ->
                         item(key = "day_$dateKey") {
@@ -292,6 +326,77 @@ fun BoardLogbookScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LogbookFilterSheet(
+    state: BoardLogbookState,
+    onOutcomeSelect: (LogbookOutcomeFilter) -> Unit,
+    onBoardSelect: (String?) -> Unit,
+    onAngleSelect: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(stringResource(R.string.board_logbook_filters), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LogbookOutcomeFilter.entries.forEach { filter ->
+                    val label = when (filter) {
+                        LogbookOutcomeFilter.ALL -> stringResource(R.string.map_filter_show_all)
+                        LogbookOutcomeFilter.SENDS -> stringResource(R.string.board_sends)
+                        LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.board_logbook_attempts)
+                    }
+                    FilterChip(
+                        selected = state.logbookOutcomeFilter == filter,
+                        onClick = { onOutcomeSelect(filter) },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            if (state.availableBoardBrands.size > 1) {
+                Text(stringResource(R.string.board_logbook_filter_board), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.logbookBoardFilter == null,
+                        onClick = { onBoardSelect(null) },
+                        label = { Text(stringResource(R.string.map_filter_show_all)) },
+                    )
+                    state.availableBoardBrands.forEach { brand ->
+                        FilterChip(
+                            selected = state.logbookBoardFilter == brand,
+                            onClick = { onBoardSelect(brand) },
+                            label = { Text(BoardBrand.fromWire(brand).displayName) },
+                        )
+                    }
+                }
+            }
+            if (state.availableLogbookAngles.isNotEmpty()) {
+                Text(stringResource(R.string.board_logbook_filter_angle), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.logbookAngleFilter == null,
+                        onClick = { onAngleSelect(null) },
+                        label = { Text(stringResource(R.string.map_filter_show_all)) },
+                    )
+                    state.availableLogbookAngles.forEach { angle ->
+                        FilterChip(
+                            selected = state.logbookAngleFilter == angle,
+                            onClick = { onAngleSelect(angle) },
+                            label = { Text("$angle°") },
+                        )
+                    }
+                }
+            }
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.action_done))
             }
         }
     }

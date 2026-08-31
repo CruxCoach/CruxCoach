@@ -291,7 +291,7 @@ internal fun BoardWeeklyVolumeChart(
 }
 
 /**
- * Grade progression line chart — hardest send per time bucket.
+ * Rolling performance level from the best distinct sends in each four-week window.
  */
 @Composable
 internal fun BoardGradeProgressionChart(
@@ -300,8 +300,8 @@ internal fun BoardGradeProgressionChart(
     modifier: Modifier = Modifier
 ) {
     if (entries.size < 2) return
-    val minDiff = entries.minOf { it.hardestDifficulty }
-    val maxDiff = entries.maxOf { it.hardestDifficulty }
+    val minDiff = entries.minOf { it.performanceDifficulty }
+    val maxDiff = entries.maxOf { it.performanceDifficulty }
     val range = (maxDiff - minDiff).coerceAtLeast(2.0)
     val gridColor = MaterialTheme.colorScheme.surfaceVariant
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -333,8 +333,8 @@ internal fun BoardGradeProgressionChart(
 
         // Plot points and lines
         val points = entries.mapIndexed { index, entry ->
-            val x = leftPad + (index.toFloat() / (entries.size - 1)) * chartWidth
-            val y = topPad + chartHeight - ((entry.hardestDifficulty - minDiff) / range).toFloat() * chartHeight
+            val x = leftPad + progressionXFraction(entries, index) * chartWidth
+            val y = topPad + chartHeight - ((entry.performanceDifficulty - minDiff) / range).toFloat() * chartHeight
             Offset(x, y)
         }
 
@@ -357,7 +357,7 @@ internal fun BoardGradeProgressionChart(
         }
         entries.forEachIndexed { index, entry ->
             if (index % showEvery == 0) {
-                val x = leftPad + (index.toFloat() / (entries.size - 1)) * chartWidth
+                val x = leftPad + progressionXFraction(entries, index) * chartWidth
                 drawContext.canvas.nativeCanvas.drawText(
                     entry.label, x, size.height - 4.dp.toPx(),
                     Paint().apply {
@@ -369,6 +369,14 @@ internal fun BoardGradeProgressionChart(
             }
         }
     }
+}
+
+/** Maps real week-start dates to the chart axis so inactive gaps remain visible. */
+internal fun progressionXFraction(entries: List<GradeProgressionPoint>, index: Int): Float {
+    if (entries.size < 2) return 0f
+    val firstDay = entries.first().weekStart.toEpochDay()
+    val span = (entries.last().weekStart.toEpochDay() - firstDay).coerceAtLeast(1L)
+    return ((entries[index].weekStart.toEpochDay() - firstDay).toDouble() / span).toFloat()
 }
 
 /**

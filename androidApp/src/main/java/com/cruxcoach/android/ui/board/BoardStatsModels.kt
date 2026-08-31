@@ -31,10 +31,12 @@ data class WeeklyVolumeEntry(
     val total: Int get() = easyCount + mediumCount + hardCount + eliteCount
 }
 
-/** Grade progression point — hardest send per time bucket */
+/** Rolling performance level from the best distinct sends in the preceding
+ * four ISO calendar weeks. The real Monday preserves inactivity gaps. */
 data class GradeProgressionPoint(
     val label: String,
-    val hardestDifficulty: Double
+    val weekStart: java.time.LocalDate,
+    val performanceDifficulty: Double,
 )
 
 /** Unique climb count vs total sends per grade */
@@ -93,7 +95,6 @@ enum class GradeChartView {
 enum class TimeChartView {
     SENDS_OVER_TIME,
     WEEKLY_VOLUME,
-    GRADE_PROGRESSION
 }
 
 enum class DistributionChartView {

@@ -422,7 +422,8 @@ fun BoardClimbDetailScreen(
                 else R.string.board_detail_quick_attempt_logged,
             ),
             actionLabel = resources.getString(R.string.climb_creator_undo),
-            withDismissAction = true,
+            withDismissAction = false,
+            duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.undoQuickLog()
         else viewModel.consumeQuickLogFeedback()

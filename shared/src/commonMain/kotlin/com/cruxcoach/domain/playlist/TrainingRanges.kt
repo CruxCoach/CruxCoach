@@ -251,6 +251,7 @@ object TrainingRanges {
      * and collapse two tiers onto the same grade.
      */
     val PYRAMID_TIERS = 3..6
+    val PYRAMID_CLIMBS_PER_TIER = 1..5
 
     // ── How far the filler may stray from a band ─────────────────
 

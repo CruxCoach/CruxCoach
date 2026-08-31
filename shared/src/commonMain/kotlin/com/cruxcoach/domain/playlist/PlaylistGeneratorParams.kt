@@ -121,6 +121,13 @@ data class PlaylistGeneratorParams(
     val selection: CandidateSelection = CandidateSelection.NEW,
     /** Pyramid only — see [PyramidShape]. */
     val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
+    /** Optional hard grade range chosen in the generator. Null keeps the
+     * logbook-derived recommendation used by older saved playlists. */
+    val targetMinDifficulty: Double? = null,
+    val targetMaxDifficulty: Double? = null,
+    /** Pyramid only: a fixed number of climbs on every grade tier. Null keeps
+     * the classic 4-3-2-1 shape for older saved playlists. */
+    val pyramidClimbsPerTier: Int? = null,
     /**
      * How big the session is, in whatever the type counts: problems for
      * volume and hard bouldering, projects, 4x4 sets, pyramid tiers.
@@ -151,6 +158,14 @@ data class PlaylistGeneratorParams(
     /** Manual mode: seconds between problems, and between tries of one. */
     val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
     val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
+    /** Relevant board-browser filters captured when the list was generated. */
+    val minAscensionists: Int = 0,
+    val browserMinDifficulty: Double = TrainingRanges.MIN_DIFFICULTY,
+    val browserMaxDifficulty: Double = TrainingRanges.MAX_DIFFICULTY,
+    val benchmarkOnly: Boolean = false,
+    val originFilter: String = "ALL",
+    val statusFilter: String = "ALL",
+    val climbType: String = "BOULDER",
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 

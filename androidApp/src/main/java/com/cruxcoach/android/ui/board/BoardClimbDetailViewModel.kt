@@ -404,7 +404,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         onAscentSaved = { isSend ->
             if (_state.value.restTimerAutoStart) startRestTimer()
             kilterSyncEngine.uploadNewAscentIfEnabled()
-        }
+        },
+        onQuickLogSaved = {
+            if (_state.value.restTimerAutoStart) startRestTimer()
+        },
     )
 
     private val playbackController = RoutePlaybackController(

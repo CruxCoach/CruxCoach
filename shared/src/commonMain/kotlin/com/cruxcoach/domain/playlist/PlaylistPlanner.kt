@@ -118,7 +118,9 @@ object PlaylistPlanner {
             if (params.position == SessionPosition.START_COLD) {
                 buildWarmUpLadder(
                     anchor,
-                    firstWorkGrade(effectiveType, anchor, flashDiff, mainMinutes, size),
+                    params.targetMinDifficulty ?: firstWorkGrade(
+                        effectiveType, anchor, flashDiff, mainMinutes, size,
+                    ),
                 )
             } else emptyList()
 
@@ -131,7 +133,7 @@ object PlaylistPlanner {
         }
         val mainMinutes = max(duration - warmUpMinutes(warmUp), 10)
 
-        val main = when (effectiveType) {
+        val unconstrainedMain = when (effectiveType) {
             GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, peak, size)
             GeneratorType.LIMIT -> planLimit(mainMinutes, anchor, peak, size)
             GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
@@ -140,9 +142,22 @@ object PlaylistPlanner {
                 params.problemsPerSet?.coerceIn(TrainingRanges.PE_PROBLEMS_PER_SET_RANGE)
                     ?: TrainingRanges.PE_PROBLEMS_PER_SET,
             )
-            GeneratorType.PYRAMID -> planPyramid(mainMinutes, anchor, params.pyramidShape, size)
+            GeneratorType.PYRAMID -> planPyramid(
+                minutes = mainMinutes,
+                anchor = anchor,
+                shape = params.pyramidShape,
+                size = size,
+                targetMin = params.targetMinDifficulty,
+                targetMax = params.targetMaxDifficulty,
+                climbsPerTier = params.pyramidClimbsPerTier,
+            )
             GeneratorType.MANUAL -> planManual(params, anchor, size)
         }
+        val main = constrainToTargetRange(
+            unconstrainedMain,
+            params.targetMinDifficulty,
+            params.targetMaxDifficulty,
+        )
 
         return PlaylistPlan(
             slots = (warmUp + main).normalizeRests(),
@@ -150,7 +165,7 @@ object PlaylistPlanner {
             downgradedFromType = if (downgraded) params.type else null,
             usedDefaultProfile = !profile.isPersonalized,
             hardCeiling = min(
-                TrainingRanges.MAX_DIFFICULTY,
+                params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
                 profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS,
             ),
             maxWidening = TrainingRanges.maxWideningFor(effectiveType),
@@ -436,14 +451,23 @@ object PlaylistPlanner {
         anchor: Double,
         shape: PyramidShape,
         size: Int? = null,
+        targetMin: Double? = null,
+        targetMax: Double? = null,
+        climbsPerTier: Int? = null,
     ): List<PlanSlot> {
         // Apex 1 V below the REPEATABLE max: every tier should top.
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         // However many were asked for, but never more than there is room for:
         // below the bottom of the scale the tiers clamp onto each other and
         // the pyramid comes out with two identical steps.
-        val tiers = (size ?: pyramidTiers(minutes)).coerceAtMost(maxPyramidTiers(apex))
-        val base = pyramidBaseFor(tiers, anchor)
+        val requestedTiers = size ?: pyramidTiers(minutes)
+        val tiers = if (targetMin != null && targetMax != null) {
+            requestedTiers
+        } else {
+            requestedTiers.coerceAtMost(maxPyramidTiers(apex))
+        }
+        val base = targetMin ?: pyramidBaseFor(tiers, anchor)
+        val top = targetMax ?: apex
         // The climber's choice, not a side effect of the duration. Anything
         // under 90 minutes used to be a half pyramid called a whole one.
         val withDescent = shape == PyramidShape.UP_AND_DOWN
@@ -452,8 +476,9 @@ object PlaylistPlanner {
 
         val ascent = (0 until tiers).map { i ->
             Tier(
-                diff = min(base + i * TrainingRanges.PYRAMID_STEP, apex),
-                count = tiers - i,
+                diff = if (tiers == 1) top else base + (top - base) * i / (tiers - 1),
+                count = climbsPerTier?.coerceIn(TrainingRanges.PYRAMID_CLIMBS_PER_TIER)
+                    ?: (tiers - i),
                 section = if (i == tiers - 1) PlanSection.PEAK else PlanSection.MAIN,
             )
         }
@@ -468,7 +493,7 @@ object PlaylistPlanner {
         (ascent + descent).forEach { tier ->
             // Rests scale with proximity to the apex: the base flows, the
             // mid tier breathes, the top Font step gets near-full recovery.
-            val stepsBelowApex = (apex - tier.diff) / TrainingRanges.PYRAMID_STEP
+            val stepsBelowApex = (top - tier.diff) / TrainingRanges.PYRAMID_STEP
             val rest = when {
                 stepsBelowApex <= 1.0 -> TrainingRanges.REST_PYRAMID_HIGH_TIER
                 stepsBelowApex <= 2.0 -> TrainingRanges.REST_PYRAMID_MID_TIER
@@ -476,10 +501,44 @@ object PlaylistPlanner {
             }
             repeat(tier.count) {
                 if (slots.isNotEmpty()) slots.add(PlanSlot.RestSlot(rest, tier.section))
-                slots.add(pyramidSlot(tier.diff, tier.section))
+                slots.add(
+                    if (targetMin != null && targetMax != null) {
+                        // The selected endpoints are tier centres, not the
+                        // outer edges of fuzzy bands. Keeping them exact makes
+                        // the visible steps genuinely equidistant; the filler
+                        // may still widen within the same hard range when a
+                        // board has no climb at the exact grade.
+                        PlanSlot.ClimbSlot(tier.diff, tier.diff, tier.section)
+                    } else {
+                        pyramidSlot(tier.diff, tier.section)
+                    }
+                )
             }
         }
         return slots
+    }
+
+    /** Apply the user's grade range as a hard plan constraint. Candidate
+     * loading applies the same bounds, so the filler cannot widen around it. */
+    private fun constrainToTargetRange(
+        slots: List<PlanSlot>,
+        requestedLow: Double?,
+        requestedHigh: Double?,
+    ): List<PlanSlot> {
+        if (requestedLow == null || requestedHigh == null) return slots
+        val low = requestedLow.coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY)
+        val high = requestedHigh.coerceIn(low, TrainingRanges.MAX_DIFFICULTY)
+        return slots.map { slot ->
+            if (slot !is PlanSlot.ClimbSlot) return@map slot
+            val center = ((slot.minDifficulty + slot.maxDifficulty) / 2.0).coerceIn(low, high)
+            val minDifficulty = max(slot.minDifficulty, low)
+            val maxDifficulty = min(slot.maxDifficulty, high)
+            if (minDifficulty <= maxDifficulty) {
+                slot.copy(minDifficulty = minDifficulty, maxDifficulty = maxDifficulty)
+            } else {
+                slot.copy(minDifficulty = center, maxDifficulty = center)
+            }
+        }
     }
 
     // ── Helpers ─────────────────────────────────────────────────

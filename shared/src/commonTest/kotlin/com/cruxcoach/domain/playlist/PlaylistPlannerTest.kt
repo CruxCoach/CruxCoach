@@ -445,6 +445,40 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `custom pyramid uses equal grade steps and a fixed count per tier`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID).copy(
+                structureSize = 4,
+                targetMinDifficulty = 14.0,
+                targetMaxDifficulty = 20.0,
+                pyramidClimbsPerTier = 3,
+            ),
+            profile,
+        )
+        val centers = plan.climbs()
+            .filter { it.section != PlanSection.WARM_UP }
+            .map { (it.minDifficulty + it.maxDifficulty) / 2.0 }
+
+        assertEquals(listOf(14.0, 16.0, 18.0, 20.0), centers.distinct())
+        assertEquals(listOf(3, 3, 3, 3), centers.groupingBy { it }.eachCount().values.toList())
+    }
+
+    @Test
+    fun `chosen grade range is a hard bound for every training type`() {
+        GeneratorType.entries.filter { it != GeneratorType.MANUAL }.forEach { type ->
+            val plan = PlaylistPlanner.plan(
+                params(type).copy(
+                    targetMinDifficulty = 16.0,
+                    targetMaxDifficulty = 18.0,
+                ),
+                profile,
+            )
+            val work = plan.climbs().filter { it.section != PlanSection.WARM_UP }
+            assertTrue(work.all { it.minDifficulty >= 16.0 && it.maxDifficulty <= 18.0 }, type.name)
+        }
+    }
+
+    @Test
     fun `warm-up ladder reaches one V below the limit working grade`() {
         val plan = PlaylistPlanner.plan(
             params(GeneratorType.LIMIT, duration = 90, position = SessionPosition.START_COLD),

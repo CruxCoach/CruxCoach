@@ -99,8 +99,10 @@ internal object BoardDeliveryPolicy {
         // A retained multi-layer wall is shared mutable controller state. Merely
         // browsing a Quantum climb must not select/replace a slot, so that
         // capability always starts at the visible lamp. Single-projection boards
-        // keep their established send-mode behavior: AUTOMATIC dispatches and
-        // EXPLICIT shows the action. Keeping this branch capability-scoped is the
+        // keep automatic dispatch, but the lamp remains available as an explicit
+        // re-light action. Automatic delivery is a convenience, not a reason to
+        // remove the primary board control from the detail screen. Keeping this
+        // branch capability-scoped is the
         // compatibility fence that prevents Quantum UX from changing Kilter,
         // MoonBoard, or Aurora-family delivery semantics.
         val requiresExplicitLayerSelection =
@@ -109,8 +111,7 @@ internal object BoardDeliveryPolicy {
             target = BoardDeliveryTarget.DIRECT_BOARD,
             dispatchAutomatically = !requiresExplicitLayerSelection &&
                 sendMode == BoardSendMode.AUTOMATIC,
-            showAction = requiresExplicitLayerSelection ||
-                sendMode == BoardSendMode.EXPLICIT,
+            showAction = true,
         )
     }
 

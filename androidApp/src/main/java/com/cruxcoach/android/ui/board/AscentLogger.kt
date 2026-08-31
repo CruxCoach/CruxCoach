@@ -33,7 +33,11 @@ internal class AscentLogger(
     private val zoneManager: IntensityZoneManager,
     private val climbNavState: ClimbNavigationState,
     private val currentClimbUuid: () -> String,
-    private val onAscentSaved: (isSend: Boolean) -> Unit
+    private val onAscentSaved: (isSend: Boolean) -> Unit,
+    /** Immediate UI-side follow-up for a successful quick log. Sync remains
+     * deferred until the undo window closes, but the rest timer must restart
+     * after every tap rather than after the snackbar disappears. */
+    private val onQuickLogSaved: (isSend: Boolean) -> Unit = {},
 ) {
 
     /** One still-open quick-log sequence on the currently displayed variant. */
@@ -451,7 +455,8 @@ internal class AscentLogger(
                     climbNavState.changedClimbUuids.add(climbUuid)
                     if (form.isSend) sessionManager.recordAscent()
                     else sessionManager.recordBid()
-                    if (!isQuickLog) onAscentSaved(form.isSend)
+                    if (isQuickLog) onQuickLogSaved(form.isSend)
+                    else onAscentSaved(form.isSend)
                     zoneManager.recompute()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

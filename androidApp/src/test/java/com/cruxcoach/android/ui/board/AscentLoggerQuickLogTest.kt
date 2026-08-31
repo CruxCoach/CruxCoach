@@ -76,6 +76,29 @@ class AscentLoggerQuickLogTest {
     }
 
     @Test
+    fun `every successful quick log triggers its immediate follow-up`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
+        every { repo.observeClimbHistory() } returns flowOf(emptyList())
+        var quickFollowUps = 0
+        val logger = logger(
+            state = state,
+            repo = repo,
+            session = mockk(relaxed = true),
+            onSaved = {},
+            onQuickSaved = { quickFollowUps++ },
+        )
+
+        repeat(2) {
+            logger.quickLog(isSend = false)
+            withTimeout(5_000) { state.first { !it.isQuickLogging && it.quickLogFeedback != null } }
+        }
+
+        assertEquals(2, quickFollowUps)
+    }
+
+    @Test
     fun `undo quick send deletes log and reverses session count without syncing`() = runBlocking {
         val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
         val repo = mockk<PersonalBoardRepository>(relaxed = true)
@@ -199,6 +222,7 @@ class AscentLoggerQuickLogTest {
         repo: PersonalBoardRepository,
         session: BoardSessionManager,
         onSaved: (Boolean) -> Unit,
+        onQuickSaved: (Boolean) -> Unit = {},
     ) = AscentLogger(
         scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
         state = state,
@@ -208,5 +232,6 @@ class AscentLoggerQuickLogTest {
         climbNavState = mockk<ClimbNavigationState>(relaxed = true),
         currentClimbUuid = { climb.uuid },
         onAscentSaved = onSaved,
+        onQuickLogSaved = onQuickSaved,
     )
 }

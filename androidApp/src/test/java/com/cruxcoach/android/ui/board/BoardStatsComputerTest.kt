@@ -322,6 +322,92 @@ class BoardStatsComputerTest {
         assertNull(stats.periodComparison)
     }
 
+    // -- Rolling grade-performance progression --
+
+    @Test
+    fun `one hard outlier does not dominate three confirmed lower sends`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "outlier", difficulty = 30.0, climbedAt = "2026-01-08T10:00:00"),
+            ascent(climbUuid = "confirmed-1", difficulty = 20.0, climbedAt = "2026-01-08T11:00:00"),
+            ascent(climbUuid = "confirmed-2", difficulty = 19.0, climbedAt = "2026-01-09T10:00:00"),
+            ascent(climbUuid = "confirmed-3", difficulty = 18.0, climbedAt = "2026-01-10T10:00:00"),
+        )
+        assertEquals(20.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `three hard distinct sends raise the rolling level`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "low-1", difficulty = 18.0, climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "low-2", difficulty = 17.0, climbedAt = "2026-01-05T11:00:00"),
+            ascent(climbUuid = "low-3", difficulty = 16.0, climbedAt = "2026-01-05T12:00:00"),
+            ascent(climbUuid = "hard-1", difficulty = 26.0, climbedAt = "2026-02-02T10:00:00"),
+            ascent(climbUuid = "hard-2", difficulty = 25.0, climbedAt = "2026-02-02T11:00:00"),
+            ascent(climbUuid = "hard-3", difficulty = 24.0, climbedAt = "2026-02-02T12:00:00"),
+        )
+        assertEquals(17.0, stats.gradeProgression.first().performanceDifficulty, 0.001)
+        assertEquals(25.0, stats.gradeProgression.last().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `send older than four-week window drops out`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "old-hard", difficulty = 30.0, climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "current-1", difficulty = 20.0, climbedAt = "2026-02-02T10:00:00"),
+            ascent(climbUuid = "current-2", difficulty = 18.0, climbedAt = "2026-02-02T11:00:00"),
+        )
+        assertEquals(19.0, stats.gradeProgression.last().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `duplicate sends of same climb and angle count once`() {
+        val stats = statsForProgression(
+            ascent(uuid = "repeat-1", climbUuid = "same", angle = 40, difficulty = 30.0),
+            ascent(uuid = "repeat-2", climbUuid = "same", angle = 40, difficulty = 30.0),
+            ascent(climbUuid = "other-1", difficulty = 20.0),
+            ascent(climbUuid = "other-2", difficulty = 18.0),
+        )
+        assertEquals(20.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `same climb at different angles counts separately`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "same", angle = 30, difficulty = 30.0),
+            ascent(climbUuid = "same", angle = 40, difficulty = 28.0),
+            ascent(climbUuid = "other", angle = 40, difficulty = 20.0),
+        )
+        assertEquals(28.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `progression uses ISO week-based year at year boundary`() {
+        val point = statsForProgression(
+            ascent(climbUuid = "new-year", climbedAt = "2024-12-30T10:00:00"),
+        ).gradeProgression.single()
+        assertEquals(LocalDate.of(2024, 12, 30), point.weekStart)
+        assertEquals("CW 1/25", point.label)
+    }
+
+    @Test
+    fun `inactive weeks remain real proportional gaps in model and chart`() {
+        val points = statsForProgression(
+            ascent(climbUuid = "w1", climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "w2", climbedAt = "2026-01-12T10:00:00"),
+            ascent(climbUuid = "w5", climbedAt = "2026-02-02T10:00:00"),
+        ).gradeProgression
+        assertEquals(
+            listOf(LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 2)),
+            points.map { it.weekStart },
+        )
+        assertEquals(0f, progressionXFraction(points, 0), 0.001f)
+        assertEquals(0.25f, progressionXFraction(points, 1), 0.001f)
+        assertEquals(1f, progressionXFraction(points, 2), 0.001f)
+    }
+
+    private fun statsForProgression(vararg ascents: AscentWithClimb) =
+        BoardStatsComputer.computeStats(ascents.toList(), StatsTimeInterval.ALL, GradeScale.V_SCALE)
+
     // -- Personal records --
 
     @Test
