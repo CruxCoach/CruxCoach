@@ -1,6 +1,6 @@
 # UI slice: board browser start surface
 
-Status: compact candidate reviewed; production header wiring deferred
+Status: compact candidate reviewed; board context and continue-session hosts wired
 
 Decision date: 2026-08-30
 
@@ -180,7 +180,14 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   font-scale 1.0/1.5. Screenshots were opened and semantics parsed. The
   installed `c4ff4b2e` harness placed its full-screen top content under the
   status bar; the source correction is not yet installed. Expanded width and
-  corrected-source pixels remain gates. Do not replace the production header
-  until those pixels and the retained hold-search/map/navigation actions can
-  be reviewed together. Continue with the ADB loop documented in
-  `external-gates.md`.
+  corrected-source pixels remain gates.
+- Production now uses only the candidate's isolated board-context region and
+  its active-session continue surface. Existing search/FAB behavior, hold
+  search, map, filters, BLE/playlist status, management destinations and their
+  established test tags remain in place. This deliberately stops short of the
+  broader header replacement until corrected-source pixels can be reviewed.
+- The focused production and test sources compile. The follow-up Robolectric
+  semantics run is currently blocked before assertions while native libraries
+  are extracted because the host volume is full; this is an environment gate,
+  not accepted visual or semantic evidence. Continue with the exact recovery
+  loop documented in `external-gates.md`.

@@ -19,16 +19,8 @@ import com.cruxcoach.domain.board.BrowserLoadingKind
 fun BoardBrowserState.toPortableState(
     activeSession: ActiveSessionState? = null,
 ): BoardBrowserScreenState {
-    val boardContext = BrowserBoardContext(
-        brand = BoardBrand.fromWire(filter.boardBrand),
-        layoutId = filter.layoutId.toLong(),
-        productName = boardSize?.name,
-        angle = filter.angle,
-    )
-    val connection = BrowserConnection(
-        state = ble.connectionState.toPortableState(),
-        boardName = ble.connectedBoardName,
-    )
+    val boardContext = toPortableBoardContext()
+    val connection = toPortableConnection()
 
     if (isLoading && climbs.isEmpty()) {
         val kind = when {
@@ -77,6 +69,18 @@ fun BoardBrowserState.toPortableState(
         transientIssue = issue,
     )
 }
+
+internal fun BoardBrowserState.toPortableBoardContext() = BrowserBoardContext(
+    brand = BoardBrand.fromWire(filter.boardBrand),
+    layoutId = filter.layoutId.toLong(),
+    productName = boardSize?.name,
+    angle = filter.angle,
+)
+
+internal fun BoardBrowserState.toPortableConnection() = BrowserConnection(
+    state = ble.connectionState.toPortableState(),
+    boardName = ble.connectedBoardName,
+)
 
 private fun BrowserFilterState.activeFilterCount(): Int = listOf(
     minGradeIndex != BrowserFilterState.DEFAULT_MIN_GRADE_INDEX ||

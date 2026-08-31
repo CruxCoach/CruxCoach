@@ -11,8 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
@@ -46,6 +44,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BrowserIssue
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
+import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
@@ -84,6 +83,7 @@ fun BoardBrowserScreen(
     var searchVisible by remember { mutableStateOf(false) }
     var showMismatchPicker by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
+    val openPlaylistPlayer = LocalOpenPlaylistPlayer.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
     val context = LocalContext.current
@@ -326,18 +326,6 @@ fun BoardBrowserScreen(
             },
             actions = {
                 IconButton(
-                    onClick = { showBleSheet = true },
-                    modifier = Modifier.testTag("board_ble_button")
-                ) {
-                    Icon(
-                        if (isBleConnected) Icons.Default.BluetoothConnected
-                        else Icons.Default.Bluetooth,
-                        contentDescription = stringResource(R.string.cd_bluetooth),
-                        tint = if (isBleConnected) SuccessGreen
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(
                     onClick = onNavigateToFilter,
                     modifier = Modifier.testTag("board_filter_toggle")
                 ) {
@@ -364,6 +352,19 @@ fun BoardBrowserScreen(
             },
             windowInsets = WindowInsets(0.dp)
         )
+        if (state.hasBoardData) {
+            BoardBrowserContextHeader(
+                board = state.toPortableBoardContext(),
+                connection = state.toPortableConnection(),
+                onSelectBoard = onNavigateToFilter,
+                onConnectBoard = { showBleSheet = true },
+                connectionTestTag = "board_ble_button",
+                modifier = Modifier.padding(
+                    horizontal = CruxCoachSpacing.large,
+                    vertical = CruxCoachSpacing.small,
+                ),
+            )
+        }
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
@@ -413,6 +414,15 @@ fun BoardBrowserScreen(
                 BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
             }
         } else {
+            BoardBrowserActiveSessionHost(
+                sessionState = viewModel.sessionState,
+                restTimerState = viewModel.restTimerState,
+                currentQueueClimb = queueState.currentClimb,
+                currentClimbName = queueManager.currentClimbName,
+                connectionState = state.ble.connectionState,
+                onContinue = openPlaylistPlayer,
+            )
+
             // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
                 SessionTimerBar(

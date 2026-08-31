@@ -59,93 +59,12 @@ fun BoardBrowserHeader(
             ),
         verticalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                onClick = onSelectBoard,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
-                    .testTag("browser_board_context"),
-                shape = CruxCoachDesign.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Row(
-                    modifier = Modifier.padding(
-                        horizontal = CruxCoachSpacing.medium,
-                        vertical = CruxCoachSpacing.small,
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = buildString {
-                                append(board.brand.displayName)
-                                board.productName?.let { append(" · ").append(it) }
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = stringResource(R.string.board_filter_angle, board.angle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ExpandMore,
-                        contentDescription = null,
-                    )
-                }
-            }
-
-            val connectionColor: Color
-            val connectionLabel: String
-            when (connection.state) {
-                BoardConnectionState.DISCONNECTED -> {
-                    connectionColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    connectionLabel = stringResource(R.string.ble_disconnected)
-                }
-                BoardConnectionState.CONNECTING -> {
-                    connectionColor = CruxCoachDesign.colors.brandAccent
-                    connectionLabel = stringResource(R.string.board_ble_connecting)
-                }
-                BoardConnectionState.CONNECTED -> {
-                    connectionColor = CruxCoachDesign.colors.positive
-                    connectionLabel = connection.boardName?.let {
-                        stringResource(R.string.ble_connected, it)
-                    } ?: stringResource(R.string.board_ble_connected)
-                }
-            }
-            TextButton(
-                onClick = onConnectBoard,
-                modifier = Modifier
-                    .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
-                    .widthIn(min = CruxCoachSpacing.minimumTouchTarget)
-                    .testTag("browser_connection"),
-            ) {
-                Icon(
-                    imageVector = if (connection.state == BoardConnectionState.CONNECTED) {
-                        Icons.Default.BluetoothConnected
-                    } else {
-                        Icons.Default.Bluetooth
-                    },
-                    contentDescription = null,
-                    tint = connectionColor,
-                    modifier = Modifier.size(CruxCoachSpacing.xLarge),
-                )
-                Text(
-                    text = connectionLabel,
-                    color = connectionColor,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = CruxCoachSpacing.xSmall),
-                )
-            }
-        }
+        BoardBrowserContextHeader(
+            board = board,
+            connection = connection,
+            onSelectBoard = onSelectBoard,
+            onConnectBoard = onConnectBoard,
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -194,6 +113,102 @@ fun BoardBrowserHeader(
                     },
                 )
             }
+        }
+    }
+}
+
+/** Production-safe first region: board identity and hardware state only. */
+@Composable
+fun BoardBrowserContextHeader(
+    board: BrowserBoardContext,
+    connection: BrowserConnection,
+    onSelectBoard: () -> Unit,
+    onConnectBoard: () -> Unit,
+    modifier: Modifier = Modifier,
+    connectionTestTag: String = "browser_connection",
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = onSelectBoard,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
+                .testTag("browser_board_context"),
+            shape = CruxCoachDesign.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Row(
+                modifier = Modifier.padding(
+                    horizontal = CruxCoachSpacing.medium,
+                    vertical = CruxCoachSpacing.small,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(CruxCoachSpacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = buildString {
+                            append(board.brand.displayName)
+                            board.productName?.let { append(" · ").append(it) }
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.board_filter_angle, board.angle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(imageVector = Icons.Default.ExpandMore, contentDescription = null)
+            }
+        }
+
+        val connectionColor: Color
+        val connectionLabel: String
+        when (connection.state) {
+            BoardConnectionState.DISCONNECTED -> {
+                connectionColor = MaterialTheme.colorScheme.onSurfaceVariant
+                connectionLabel = stringResource(R.string.ble_disconnected)
+            }
+            BoardConnectionState.CONNECTING -> {
+                connectionColor = CruxCoachDesign.colors.brandAccent
+                connectionLabel = stringResource(R.string.board_ble_connecting)
+            }
+            BoardConnectionState.CONNECTED -> {
+                connectionColor = CruxCoachDesign.colors.positive
+                connectionLabel = connection.boardName?.let {
+                    stringResource(R.string.ble_connected, it)
+                } ?: stringResource(R.string.board_ble_connected)
+            }
+        }
+        TextButton(
+            onClick = onConnectBoard,
+            modifier = Modifier
+                .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
+                .widthIn(min = CruxCoachSpacing.minimumTouchTarget)
+                .testTag(connectionTestTag),
+        ) {
+            Icon(
+                imageVector = if (connection.state == BoardConnectionState.CONNECTED) {
+                    Icons.Default.BluetoothConnected
+                } else {
+                    Icons.Default.Bluetooth
+                },
+                contentDescription = null,
+                tint = connectionColor,
+                modifier = Modifier.size(CruxCoachSpacing.xLarge),
+            )
+            Text(
+                text = connectionLabel,
+                color = connectionColor,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(start = CruxCoachSpacing.xSmall),
+            )
         }
     }
 }
