@@ -149,6 +149,28 @@ def validate_ui_scenarios() -> None:
         raise AssertionError("UI quality budgets changed without contract review")
 
 
+def validate_macrobenchmark_plan() -> None:
+    plan = load("docs/refactor/macrobenchmark-plan.json")
+    if plan["status"] != "spike" or plan["androidxBenchmarkVersion"] != "1.4.1":
+        raise AssertionError("Macrobenchmark spike must stay on the reviewed stable version")
+    if plan["targetPackagePolicy"] != "development-feature-package-only":
+        raise AssertionError("performance probes must not target a production package")
+    if plan["stablePackageForbidden"] != "com.cruxcoach.android":
+        raise AssertionError("stable package protection drift")
+    if plan["gradleTrustBoundaryApprovalRequired"] is not True:
+        raise AssertionError("Macrobenchmark Gradle trust gate must remain explicit")
+    scenario_ids = {entry["id"] for entry in load("docs/refactor/ui-scenario-matrix.json")["states"]}
+    if not set(plan["fixtureScenarios"]).issubset(scenario_ids):
+        raise AssertionError("Macrobenchmark plan references an unknown fixture scenario")
+    measurement_ids = [entry["id"] for entry in plan["measurements"]]
+    if len(measurement_ids) != len(set(measurement_ids)):
+        raise AssertionError("duplicate Macrobenchmark measurement id")
+    if any(entry["minimumIterations"] < 20 for entry in plan["measurements"]):
+        raise AssertionError("Macrobenchmark measurements require at least 20 iterations")
+    if plan["regressionTripwires"] != {"medianPercent": 5, "frameTimePercent": 10}:
+        raise AssertionError("performance regression tripwires changed without review")
+
+
 def validate_playlist_fixtures() -> None:
     for version in (1, 2):
         fixture = load(f"docs/refactor/fixtures/playlist-link-v{version}.json")
@@ -191,4 +213,5 @@ if __name__ == "__main__":
     validate_backup_fixtures()
     validate_playlist_fixtures()
     validate_ui_scenarios()
+    validate_macrobenchmark_plan()
     print("refactor contracts: OK")

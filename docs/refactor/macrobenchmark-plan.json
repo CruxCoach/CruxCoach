@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-08-31",
+  "status": "spike",
+  "androidxBenchmarkVersion": "1.4.1",
+  "targetPackagePolicy": "development-feature-package-only",
+  "stablePackageForbidden": "com.cruxcoach.android",
+  "gradleTrustBoundaryApprovalRequired": true,
+  "fixtureScenarios": [
+    "browser/content",
+    "detail/connected",
+    "session/active",
+    "progress/history"
+  ],
+  "controlledEnvironment": {
+    "minimumApi": 35,
+    "locale": "en",
+    "fontScale": 1.0,
+    "theme": "light",
+    "animations": "benchmark-rule-controlled",
+    "network": "fixture-only",
+    "repositories": "fixture-only",
+    "clock": "fixed",
+    "boardTransport": "fake",
+    "batteryAndThermalStateRecorded": true,
+    "deviceBuildFingerprintRecorded": true
+  },
+  "measurements": [
+    {
+      "id": "cold-start-to-browser-content",
+      "scenario": "browser/content",
+      "metric": "StartupTimingMetric",
+      "startupMode": "COLD",
+      "minimumIterations": 25,
+      "completionSignal": "BoardBrowser first content"
+    },
+    {
+      "id": "warm-start-to-browser-content",
+      "scenario": "browser/content",
+      "metric": "StartupTimingMetric",
+      "startupMode": "WARM",
+      "minimumIterations": 25,
+      "completionSignal": "BoardBrowser first content"
+    },
+    {
+      "id": "browser-scroll",
+      "scenario": "browser/content",
+      "metric": "FrameTimingMetric",
+      "minimumIterations": 20,
+      "interaction": "fixed-distance result-list swipe"
+    },
+    {
+      "id": "browser-to-detail",
+      "scenario": "browser/content",
+      "targetScenario": "detail/connected",
+      "metric": "FrameTimingMetric",
+      "minimumIterations": 20,
+      "interaction": "select stable climb UUID and await detail content"
+    }
+  ],
+  "requiredNavigationMarkers": [
+    "NAV START: BoardBrowser → ClimbDetail",
+    "BoardClimbDetailVM.init start",
+    "loadClimb complete",
+    "NAV COMPLETE: BoardClimbDetail"
+  ],
+  "regressionTripwires": {
+    "medianPercent": 5,
+    "frameTimePercent": 10
+  },
+  "requiredArtifacts": [
+    "raw-benchmark-json",
+    "device-config",
+    "target-package-version-certificate-and-commit",
+    "fixture-manifest",
+    "before-after-summary"
+  ],
+  "exitCriteria": [
+    "all measurements use at least their declared iteration count",
+    "the same centrally signed development package identity and fixture profile are used before and after",
+    "raw results and device state are retained for review",
+    "regressions above a tripwire are investigated before acceptance"
+  ]
+}

@@ -305,7 +305,8 @@ Evidence: [Maestro repository](https://github.com/mobile-dev-inc/Maestro),
   browser/detail/session state without network or BLE.
 - **Exit:** 20+ controlled iterations for cold/warm startup and browser scroll,
   archived raw results/device config, and a before/after comparison using the
-  tripwires in `ui-slice-review.md`.
+  tripwires in `ui-slice-review.md`. The versioned, machine-checked measurement
+  and fixture contract is `macrobenchmark-plan.json`.
 
 Evidence: [benchmark overview](https://developer.android.com/topic/performance/benchmarking/benchmarking-overview),
 [Benchmark releases](https://developer.android.com/jetpack/androidx/releases/benchmark).

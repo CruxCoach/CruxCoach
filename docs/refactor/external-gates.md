@@ -268,7 +268,28 @@ axes were reviewed for board prominence, wrapping, traversal and delivery-state
 clarity. The candidate is still deliberately not wired into production because
 the isolated component does not yet host the existing playback, angle/mirror,
 partial-send, session-ownership and authorized management actions. Expanded
-rendering and that parity-preserving host boundary remain gates.
+rendering remains a visual-evidence gate. A pixel-neutral
+`ClimbDetailProductionHeroHost` now establishes the parity boundary around the
+existing renderer, playback, layer controls and BLE feedback without replacing
+those behaviors.
+
+## Macrobenchmark preparation
+
+The reviewed Macrobenchmark spike is now machine-readable at
+`docs/refactor/macrobenchmark-plan.json` and checked by
+`scripts/validate_refactor_contracts.py`. It fixes stable AndroidX Benchmark
+1.4.1, development-package-only targeting, deterministic fixture inputs,
+20+ iterations, retained raw/device artifacts and the 5% median / 10% frame
+regression tripwires. The installed `c4ff4b2e` package can provide diagnostic
+ADB timings, but it predates current production hosts and is not a valid
+before/after Macrobenchmark target.
+
+Creating the separate benchmark module/build variant and adding its dependency
+would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
+do not approximate it by benchmarking Stable or clearing Stable data. After
+approval and a centrally signed current feature package, implement the four
+measurements from the JSON plan, then retain AndroidX raw JSON plus the exact
+device, fixture, package/version/certificate and commit metadata.
 
 A simulator-independent pixel capture of the tagged Compose `AlertDialog` was
 also attempted with Robolectric 4.14.1 on 2026-08-30. With native graphics it
