@@ -221,8 +221,8 @@ class AscentLoggerQuickLogTest {
         state: MutableStateFlow<ClimbDetailState>,
         repo: PersonalBoardRepository,
         session: BoardSessionManager,
-        onSaved: (Boolean) -> Unit,
         onQuickSaved: (Boolean) -> Unit = {},
+        onSaved: (Boolean) -> Unit,
     ) = AscentLogger(
         scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
         state = state,
