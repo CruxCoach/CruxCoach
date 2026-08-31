@@ -190,7 +190,7 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   deliberately stops short of the broader header replacement until
   corrected-source pixels can be reviewed.
 - The focused production sources compile. The browser context, portable mapper,
-  active-session host and continue-card Robolectric/semantics tests pass using
-  the writable SDK. Corrected-source device pixels still require a centrally
-  signed current feature package; continue with the exact recovery loop in
-  `external-gates.md`.
+  production header host, active-session host and continue-card
+  Robolectric/semantics tests pass using the writable SDK. Corrected-source
+  device pixels still require a centrally signed current feature package;
+  continue with the exact CI/CD and installation loop in `external-gates.md`.

@@ -126,7 +126,7 @@ Golden changes are never accepted automatically.
   light/dark, and font-scale 1.0/1.5; screenshots were opened and semantics
   parsed. Phase, countdown/no-countdown, connection text, current-climb absence
   and the single continue action remained distinguishable. The installed
-  `c4ff4b2e` harness had the same top-inset defect as Browser and Progress; its
+  `d780f4a6` harness had the same top-inset defect as Browser and Progress; its
   source correction is not installed. The reviewed continue card is now hosted
   in the production browser while existing banners remain for parity. Focused
   host, mapping and semantics tests pass. Expanded width and corrected-source

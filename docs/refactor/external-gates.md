@@ -351,7 +351,7 @@ before/after Macrobenchmark target.
 Creating the separate benchmark module/build variant and adding its dependency
 would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
 do not approximate it by benchmarking Stable or clearing Stable data. After
-approval and a centrally signed current feature package, implement the four
+approval and a centrally signed current feature package, implement the five
 measurements from the JSON plan, then retain AndroidX raw JSON plus the exact
 device, fixture, package/version/certificate and commit metadata.
 
