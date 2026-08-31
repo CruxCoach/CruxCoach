@@ -13,12 +13,18 @@ enum class BoardConnectionState {
     CONNECTED,
 }
 
-/** Compact climb identity suitable for an active-session surface. */
+/**
+ * Compact climb identity suitable for an active-session surface.
+ *
+ * [isMirrored] is null when the active transport does not carry mirror state.
+ * Consumers must not turn an unknown value into a claim that the climb is not
+ * mirrored.
+ */
 data class ActiveSessionClimb(
     val uuid: String,
     val name: String,
     val angle: Long,
-    val isMirrored: Boolean,
+    val isMirrored: Boolean?,
 )
 
 /**

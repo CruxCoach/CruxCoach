@@ -1,6 +1,6 @@
 # UI slice: active board session surface
 
-Status: compact Android candidate reviewed; production host pending
+Status: compact Android candidate reviewed; production browser host wired
 
 Decision date: 2026-08-30
 
@@ -109,6 +109,10 @@ Golden changes are never accepted automatically.
 
 - `ActiveSessionState` is portable and contains phase, canonical seconds,
   counts, current climb and connection without Android/SwiftUI types.
+- Queue playback supplies UUID and angle but no mirror bit. The production
+  projection now represents that value as unknown instead of falsely claiming
+  an unmirrored climb; detail-owned mirror behavior and transport remain
+  unchanged.
 - Android mapping distinguishes active, manual pause and planned rest; the rest
   expiry regression is covered.
 - Addressable active, resting, paused and no-current-climb fixtures now render
@@ -123,5 +127,7 @@ Golden changes are never accepted automatically.
   parsed. Phase, countdown/no-countdown, connection text, current-climb absence
   and the single continue action remained distinguishable. The installed
   `c4ff4b2e` harness had the same top-inset defect as Browser and Progress; its
-  source correction is not installed. Expanded width and a production browser
-  host remain gates, so existing banners are not removed yet.
+  source correction is not installed. The reviewed continue card is now hosted
+  in the production browser while existing banners remain for parity. Focused
+  host, mapping and semantics tests pass. Expanded width and corrected-source
+  device pixels remain gates, so existing banners are not removed yet.

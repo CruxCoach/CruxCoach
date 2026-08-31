@@ -31,18 +31,7 @@ internal fun BoardBrowserActiveSessionHost(
     val session = sessionState.collectAsStateWithLifecycle().value
     val restTimer = restTimerState.collectAsStateWithLifecycle().value
     val resolvedName = currentClimbName.collectAsStateWithLifecycle().value
-    val currentClimb = currentQueueClimb?.let { queueItem ->
-        resolvedName?.let { name ->
-            ActiveSessionClimb(
-                uuid = queueItem.climbUuid,
-                name = name,
-                angle = queueItem.angle.toLong(),
-                // QueueItem's published BLE contract carries UUID + angle only.
-                // Do not infer or mutate the detail screen's mirror control.
-                isMirrored = false,
-            )
-        }
-    }
+    val currentClimb = currentQueueClimb?.toActiveSessionClimb(resolvedName)
     val portable = session.toPortableState(
         restTimer = restTimer,
         currentClimb = currentClimb,
@@ -58,6 +47,18 @@ internal fun BoardBrowserActiveSessionHost(
         ),
     )
 }
+
+internal fun QueueItem.toActiveSessionClimb(resolvedName: String?): ActiveSessionClimb? =
+    resolvedName?.let { name ->
+        ActiveSessionClimb(
+            uuid = climbUuid,
+            name = name,
+            angle = angle.toLong(),
+            // QueueItem's published BLE contract carries UUID + angle only.
+            // Preserve that uncertainty instead of claiming "not mirrored".
+            isMirrored = null,
+        )
+    }
 
 private fun ConnectionState.toPortableConnectionState(): BoardConnectionState = when (this) {
     ConnectionState.DISCONNECTED -> BoardConnectionState.DISCONNECTED

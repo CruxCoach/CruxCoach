@@ -186,8 +186,8 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   search, map, filters, BLE/playlist status, management destinations and their
   established test tags remain in place. This deliberately stops short of the
   broader header replacement until corrected-source pixels can be reviewed.
-- The focused production and test sources compile. The follow-up Robolectric
-  semantics run is currently blocked before assertions while native libraries
-  are extracted because the host volume is full; this is an environment gate,
-  not accepted visual or semantic evidence. Continue with the exact recovery
-  loop documented in `external-gates.md`.
+- The focused production sources compile. The browser context, portable mapper,
+  active-session host and continue-card Robolectric/semantics tests pass using
+  the writable SDK. Corrected-source device pixels still require a centrally
+  signed current feature package; continue with the exact recovery loop in
+  `external-gates.md`.
