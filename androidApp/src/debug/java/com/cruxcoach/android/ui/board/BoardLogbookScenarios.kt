@@ -19,8 +19,9 @@ import com.cruxcoach.data.repository.AscentWithClimb
 
 internal data class BoardLogbookScenario(
     val id: String,
-    val ascent: AscentWithClimb,
-    val selected: Boolean,
+    val ascent: AscentWithClimb? = null,
+    val selected: Boolean = false,
+    val isInitialError: Boolean = false,
 )
 
 internal object BoardLogbookScenarios {
@@ -45,9 +46,14 @@ internal object BoardLogbookScenarios {
             layoutId = 1,
         ),
     )
+    val Error = BoardLogbookScenario(
+        id = "logbook/error",
+        isInitialError = true,
+    )
 
     fun require(id: String): BoardLogbookScenario = when (id) {
         Content.id -> Content
+        Error.id -> Error
         else -> throw IllegalArgumentException("Unknown DesignLab scenario: $id")
     }
 }
@@ -78,6 +84,11 @@ private fun BoardLogbookContentPreview() {
 
 @Composable
 internal fun BoardLogbookScenarioContent(scenario: BoardLogbookScenario) {
+    if (scenario.isInitialError) {
+        BoardLogbookErrorMessage(onRetry = {})
+        return
+    }
+    val ascent = requireNotNull(scenario.ascent)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -95,7 +106,7 @@ internal fun BoardLogbookScenarioContent(scenario: BoardLogbookScenario) {
         )
         DayHeader(dateKey = "2026-08-30", count = 1)
         AscentCard(
-            ascent = scenario.ascent,
+            ascent = ascent,
             gradeScale = GradeScale.V_SCALE,
             isSelected = scenario.selected,
             onClick = {},

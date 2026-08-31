@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -281,6 +282,54 @@ internal fun EmptyLogbookMessage() {
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+internal fun BoardLogbookErrorMessage(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("logbook_error"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.padding(CruxCoachSpacing.xLarge),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                Icons.Default.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Text(
+                text = stringResource(R.string.board_logbook_error_title),
+                modifier = Modifier.padding(top = CruxCoachSpacing.large),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = stringResource(R.string.board_logbook_error_message),
+                modifier = Modifier.padding(top = CruxCoachSpacing.small),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onRetry,
+                modifier = Modifier
+                    .padding(top = CruxCoachSpacing.large)
+                    .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
+                    .testTag("logbook_error_retry"),
+            ) {
+                Text(stringResource(R.string.action_retry))
+            }
         }
     }
 }

@@ -85,5 +85,6 @@ The first comparison region is the content header plus first day group only. Sel
 - The Nokia 6.1 product baseline on 2026-08-31 renders the German dark/1.5 empty state without inset overlap or clipping. It contains no entry row, so it cannot validate row actions.
 - The first bounded card hypothesis is that explicit per-climb selection/edit labels and 48-dp targets remove ambiguous undersized controls while preserving row-open, selection and edit as distinct actions. `logbook/content` now provides the deterministic selected-row fixture needed for candidate pixels and semantics.
 - The focused Robolectric semantics contract preserves all three callbacks, checked state and 48-dp selection/edit targets. Candidate device rendering remains required before declaring this region complete.
-- Production error/empty correction and the broader content hierarchy remain separate regions; they are not implied by this card-level change.
+- The next independent state slice now routes the production host through the portable Loading/Empty/Error/Content distinction. Initial failure exposes one localized 48-dp retry; successful zero rows remain Empty, and the established content/paging branch is unchanged. `logbook/error` is the deterministic supplemental fixture; candidate device rendering remains required.
+- The broader content hierarchy remains a separate region; it is not implied by these card and initial-state changes.
 - Mac/iPhone shell mapping remains behind the KMP export and Apple gates in `docs/refactor/ios-readiness.md`.

@@ -28,6 +28,7 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardLogbookScreenState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -38,6 +39,7 @@ fun BoardLogbookScreen(
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val screenState = state.toPortableLogbookState()
     val hasSelection = state.selectedUuids.isNotEmpty()
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -186,8 +188,8 @@ fun BoardLogbookScreen(
             }
         }
     ) { padding ->
-        when {
-            state.isLoading -> {
+        when (screenState) {
+            BoardLogbookScreenState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center
@@ -195,12 +197,18 @@ fun BoardLogbookScreen(
                     CircularProgressIndicator(color = OrangeAccent)
                 }
             }
-            !state.hasData -> {
+            BoardLogbookScreenState.Empty -> {
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     EmptyLogbookMessage()
                 }
             }
-            else -> {
+            is BoardLogbookScreenState.Error -> {
+                BoardLogbookErrorMessage(
+                    onRetry = viewModel::retryInitialLoad,
+                    modifier = Modifier.padding(padding),
+                )
+            }
+            is BoardLogbookScreenState.Content -> {
                 val listState = rememberLazyListState()
 
                 val shouldLoadMore by remember {

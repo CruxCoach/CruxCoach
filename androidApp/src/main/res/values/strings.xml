@@ -1410,6 +1410,8 @@
     <string name="board_logbook_day_entries">%d entries</string>
     <string name="board_logbook_empty_message">Log your first ascent to see it here</string>
     <string name="board_logbook_empty_title">No ascents yet</string>
+    <string name="board_logbook_error_message">We couldn’t load your entries. Check your device storage and try again.</string>
+    <string name="board_logbook_error_title">Logbook unavailable</string>
     <string name="board_logbook_edit_entry">Edit %1$s</string>
     <string name="board_logbook_select_entry">Select %1$s</string>
     <string name="board_logbook_flash">Flash</string>

@@ -65,6 +65,25 @@ class BoardLogbookCardSemanticsTest {
         assertEquals(1, edited)
     }
 
+    @Test
+    fun `initial load failure is explicit and exposes one 48dp retry`() {
+        var retries = 0
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                BoardLogbookErrorMessage(onRetry = { retries += 1 })
+            }
+        }
+
+        compose.onNodeWithTag("logbook_error").assertExists()
+        compose.onNodeWithTag("logbook_ascent_card").assertDoesNotExist()
+        compose.onNodeWithTag("logbook_error_retry")
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+
+        assertEquals(1, retries)
+    }
+
     private companion object {
         val ascent = AscentWithClimb(
             uuid = "entry-1",

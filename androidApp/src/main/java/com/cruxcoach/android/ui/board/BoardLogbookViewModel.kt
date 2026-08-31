@@ -349,6 +349,10 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
+    fun retryInitialLoad() {
+        if (_state.value.ascents.isEmpty() && !_state.value.isLoading) loadAscents()
+    }
+
     private fun preloadStats() {
         viewModelScope.safeLaunch(TAG) {
             try {
