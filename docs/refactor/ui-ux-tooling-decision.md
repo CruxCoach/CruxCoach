@@ -53,9 +53,18 @@ OpenAI's current guidance supports the workflow used here:
 The practical repository implementation is `ui-scenario-matrix.json` plus
 `ui-slice-review.md`: frozen inputs, a Cartesian core-state matrix, one-region
 hypotheses, explicit evidence, at most three correction rounds, and no
-unreviewed golden update. The proposed `cruxcoach-ui-refactor` skill is deferred
-until one real ADB screenshot/semantics loop has passed; otherwise it would
-encode an unproven process.
+unreviewed golden update. After the real 144-state compact ADB
+screenshot/semantics loop completed on 2026-08-31, the proven procedure was
+packaged as the narrow repository skill
+`.agents/skills/cruxcoach-ui-refactor/SKILL.md`. It adds no dependency or
+global installation.
+
+The skill passed the structural validator and two isolated read-only Codex CLI
+evaluations with `gpt-5.6-sol` at `medium` reasoning. A representative request
+to refine Progress history empty/error states activated the skill and returned
+the required baseline, deterministic state, screenshot/semantics, focused-test
+and stop-gate workflow. A negative request to diagnose Kilter ATT-MTU 23 with
+no UI change explicitly rejected the skill and stayed within BLE diagnosis.
 
 Primary OpenAI evidence:
 

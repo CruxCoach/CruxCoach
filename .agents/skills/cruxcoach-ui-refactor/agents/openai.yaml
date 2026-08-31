@@ -1,0 +1,4 @@
+interface:
+  display_name: "CruxCoach UI Refactor"
+  short_description: "Evidence-driven Android UI slice review"
+  default_prompt: "Use $cruxcoach-ui-refactor to review and refine one deterministic CruxCoach UI slice."
