@@ -28,6 +28,8 @@ import com.cruxcoach.android.ui.board.BoardBrowserScenarioContent
 import com.cruxcoach.android.ui.board.BoardBrowserScenarios
 import com.cruxcoach.android.ui.board.ProgressHistoryScenarioContent
 import com.cruxcoach.android.ui.board.ProgressHistoryScenarios
+import com.cruxcoach.android.ui.board.BoardLogbookScenarioContent
+import com.cruxcoach.android.ui.board.BoardLogbookScenarios
 import com.cruxcoach.android.ui.board.ClimbDetailScenarioContent
 import com.cruxcoach.android.ui.board.ClimbDetailScenarios
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
@@ -64,7 +66,8 @@ class DesignLabActivity : ComponentActivity() {
                                 if (
                                     scenarioId.startsWith("browser/") ||
                                     scenarioId.startsWith("session/") ||
-                                    scenarioId.startsWith("progress/")
+                                    scenarioId.startsWith("progress/") ||
+                                    scenarioId.startsWith("logbook/")
                                 ) {
                                     Modifier.safeDrawingPadding()
                                 } else {
@@ -83,6 +86,8 @@ class DesignLabActivity : ComponentActivity() {
                                 ActiveSessionScenarioContent(ActiveSessionScenarios.require(scenarioId))
                             scenarioId.startsWith("progress/") ->
                                 ProgressHistoryScenarioContent(ProgressHistoryScenarios.require(scenarioId))
+                            scenarioId.startsWith("logbook/") ->
+                                BoardLogbookScenarioContent(BoardLogbookScenarios.require(scenarioId))
                             scenarioId.startsWith("detail/") ->
                                 ClimbDetailScenarioContent(ClimbDetailScenarios.require(scenarioId))
                             else -> throw IllegalArgumentException(

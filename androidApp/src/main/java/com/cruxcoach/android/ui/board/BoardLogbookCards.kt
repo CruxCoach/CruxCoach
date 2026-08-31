@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
@@ -50,6 +52,8 @@ internal fun AscentCard(
     } else {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     }
+    val selectLabel = stringResource(R.string.board_logbook_select_entry, ascent.climbName)
+    val editLabel = stringResource(R.string.board_logbook_edit_entry, ascent.climbName)
 
     Card(
         modifier = Modifier
@@ -67,7 +71,10 @@ internal fun AscentCard(
                 checked = isSelected,
                 onCheckedChange = { onToggleSelect() },
                 colors = CheckboxDefaults.colors(checkedColor = OrangeAccent),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = selectLabel }
+                    .testTag("logbook_select_${ascent.uuid}")
             )
             Spacer(modifier = Modifier.width(8.dp))
 
@@ -175,10 +182,16 @@ internal fun AscentCard(
             }
 
             Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = editLabel }
+                    .testTag("logbook_edit_${ascent.uuid}"),
+            ) {
                 Icon(
                     Icons.Default.Edit,
-                    contentDescription = stringResource(R.string.cd_edit),
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )

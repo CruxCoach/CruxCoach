@@ -1,6 +1,6 @@
 # UI slice: board logbook
 
-Status: portable contract in progress; production visual change blocked on Android rendering evidence
+Status: portable contract established; first production card accessibility slice awaiting candidate device render
 
 Decision date: 2026-08-30
 
@@ -82,6 +82,8 @@ The first comparison region is the content header plus first day group only. Sel
 
 - Existing Maestro coverage: `logbook-create-send`, `logbook-honest-flash-and-stats`, legacy backup import and backup round-trip.
 - Portable contract tests are Linux-runnable and do not touch persistence formats.
-- Baseline/candidate screenshots and semantics: blocked because `adb devices -l` has no attached renderer on 2026-08-30.
-- Production error/empty correction and visual hierarchy remain deferred until deterministic scenarios render successfully.
+- The Nokia 6.1 product baseline on 2026-08-31 renders the German dark/1.5 empty state without inset overlap or clipping. It contains no entry row, so it cannot validate row actions.
+- The first bounded card hypothesis is that explicit per-climb selection/edit labels and 48-dp targets remove ambiguous undersized controls while preserving row-open, selection and edit as distinct actions. `logbook/content` now provides the deterministic selected-row fixture needed for candidate pixels and semantics.
+- The focused Robolectric semantics contract preserves all three callbacks, checked state and 48-dp selection/edit targets. Candidate device rendering remains required before declaring this region complete.
+- Production error/empty correction and the broader content hierarchy remain separate regions; they are not implied by this card-level change.
 - Mac/iPhone shell mapping remains behind the KMP export and Apple gates in `docs/refactor/ios-readiness.md`.

@@ -1453,6 +1453,8 @@
     <string name="board_logbook_day_entries">%d Einträge</string>
     <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
     <string name="board_logbook_empty_title">Noch keine Begehungen</string>
+    <string name="board_logbook_edit_entry">%1$s bearbeiten</string>
+    <string name="board_logbook_select_entry">%1$s auswählen</string>
     <string name="board_logbook_flash">Flash</string>
     <string name="board_logbook_sessions">Sessions</string>
     <string name="board_logbook_unique_climbs">Unique Climbs</string>

@@ -36,6 +36,7 @@
     {"id":"log/saving","status":"partial"},
     {"id":"log/success","status":"partial"},
     {"id":"log/error","status":"partial"},
+    {"id":"logbook/content","status":"focused-supplemental"},
     {"id":"progress/history","status":"partial"},
     {"id":"progress/empty","status":"partial"},
     {"id":"progress/error","status":"partial"},
