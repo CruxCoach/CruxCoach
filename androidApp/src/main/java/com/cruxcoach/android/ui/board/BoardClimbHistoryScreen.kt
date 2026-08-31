@@ -106,14 +106,12 @@ fun BoardClimbHistoryScreen(
         }
     ) { padding ->
         ProgressHistoryContent(
-            state = state.toPortableState(),
+            state = state.toPortableState(isLoading = state.isLoading, issue = state.issue),
             labelsFor = { entry -> entry.labels(state.gradeScale) },
             onChooseRetention = { viewModel.setRetention(it.toAndroidRetention()) },
             onOpenEntry = { onNavigateToClimb(it.climbUuid, it.angle) },
             onToggleSelection = viewModel::toggleSelection,
-            // The current repository stream has no recoverable failure channel.
-            // Keep retry platform-owned until that boundary exposes typed issues.
-            onRetry = {},
+            onRetry = viewModel::retryHistory,
             modifier = Modifier.padding(padding),
         )
     }

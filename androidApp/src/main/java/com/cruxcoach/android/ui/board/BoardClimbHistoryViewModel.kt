@@ -6,22 +6,25 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.HistoryRetention
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.board.ProgressHistoryIssue
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
-import com.cruxcoach.android.util.safeLaunch
+import kotlin.time.Clock
 
 data class BoardClimbHistoryState(
     val entries: List<ClimbHistoryEntry> = emptyList(),
@@ -32,6 +35,8 @@ data class BoardClimbHistoryState(
     /** Ids of entries the user has ticked for single/multi-select delete.
      *  Empty = no selection (cards just navigate on tap). */
     val selectedIds: Set<Long> = emptySet(),
+    val isLoading: Boolean = true,
+    val issue: ProgressHistoryIssue? = null,
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
     val allSelected: Boolean get() = entries.isNotEmpty() && selectedIds.size == entries.size
@@ -50,22 +55,12 @@ class BoardClimbHistoryViewModel @Inject constructor(
         private const val TAG = "BoardHistoryVM"
     }
 
+    private var historyJob: Job? = null
+
     init {
         // History entries (newest-recorded first; the repo flow re-emits on
         // every change, so this also reflects clears + prunes immediately).
-        viewModelScope.safeLaunch(TAG) {
-            personalBoardRepo.observeClimbHistory().collect { entries ->
-                // Drop any selected ids that no longer exist (pruned/cleared
-                // elsewhere) so the selection can't go stale.
-                val liveIds = entries.mapTo(HashSet()) { it.id }
-                _state.update {
-                    it.copy(
-                        entries = entries,
-                        selectedIds = it.selectedIds.intersect(liveIds)
-                    )
-                }
-            }
-        }
+        observeHistory()
         // Retention setting. On every emission (init + later changes) prune to
         // the cutoff so the on-disk log can't drift past the chosen window;
         // OFF disables retention entirely (keep everything).
@@ -82,6 +77,37 @@ class BoardClimbHistoryViewModel @Inject constructor(
             }
         }
     }
+
+    private fun observeHistory() {
+        historyJob?.cancel()
+        _state.update { it.copy(isLoading = it.entries.isEmpty(), issue = null) }
+        historyJob = viewModelScope.launch {
+            try {
+                personalBoardRepo.observeClimbHistory().collect { entries ->
+                    // Drop any selected ids that no longer exist (pruned/cleared
+                    // elsewhere) so the selection can't go stale.
+                    val liveIds = entries.mapTo(HashSet()) { it.id }
+                    _state.update {
+                        it.copy(
+                            entries = entries,
+                            selectedIds = it.selectedIds.intersect(liveIds),
+                            isLoading = false,
+                            issue = null,
+                        )
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "observeClimbHistory failed", e)
+                _state.update {
+                    it.copy(isLoading = false, issue = ProgressHistoryIssue.LOAD_FAILED)
+                }
+            }
+        }
+    }
+
+    fun retryHistory() = observeHistory()
 
     /** Persist the chosen retention window; the historyRetention collector
      *  above then runs the prune. */

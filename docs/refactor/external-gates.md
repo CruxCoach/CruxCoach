@@ -231,8 +231,10 @@ but the installed `c4ff4b2e` package predates both the accessibility correction
 and this production composition. Treat the production pixels as unverified
 until a centrally signed APK containing the source checkpoint is installed;
 do not infer them from the DesignLab candidate captures. The current history
-repository flow also has no typed failure channel, so production reaches
-content/empty while DesignLab retains deterministic loading/error coverage.
+ViewModel now projects initial loading and a failed repository stream into
+typed loading/error states with a real collector retry. That source behavior is
+unit-covered but, like the production composition, awaits a signed APK for
+device verification.
 
 Capture the deterministic history candidate (fixed rows and relative dates)
 with:

@@ -109,9 +109,8 @@ has been rendered and reviewed on Android.
    tests pass. Pixel verification of this production composition still needs a
    centrally signed APK containing that commit.
 
-The repository stream currently exposes entries but no loading/error result.
-Consequently the production screen maps its reachable content/empty states to
-the portable contract while DesignLab owns deterministic loading/error
-coverage. Adding a typed repository failure channel and a real retry action is
-the next architecture step; an inert production error state was deliberately
-not fabricated.
+The production ViewModel now exposes initial loading and maps a failed history
+stream to `LOAD_FAILED`; retry cancels and starts that collector again. Thus
+loading/error/retry are real production states without exposing exception or
+database details. Retention-update and delete failures are still logged only;
+their typed, retryable in-content feedback remains the next architecture step.
