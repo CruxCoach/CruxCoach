@@ -81,7 +81,9 @@ internal fun BleStatusChip(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable { onExpand() },
+            .heightIn(min = 48.dp)
+            .clickable { onExpand() }
+            .testTag("ble_status_summary"),
         colors = CardDefaults.cardColors(
             containerColor = OrangeAccent.copy(alpha = 0.10f)
         ),
