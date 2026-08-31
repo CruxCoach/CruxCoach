@@ -352,19 +352,11 @@ fun BoardBrowserScreen(
             },
             windowInsets = WindowInsets(0.dp)
         )
-        if (state.hasBoardData) {
-            BoardBrowserContextHeader(
-                board = state.toPortableBoardContext(),
-                connection = state.toPortableConnection(),
-                onSelectBoard = onNavigateToFilter,
-                onConnectBoard = { showBleSheet = true },
-                connectionTestTag = "board_ble_button",
-                modifier = Modifier.padding(
-                    horizontal = CruxCoachSpacing.large,
-                    vertical = CruxCoachSpacing.small,
-                ),
-            )
-        }
+        BoardBrowserProductionHeaderHost(
+            state = state,
+            onSelectBoard = onNavigateToFilter,
+            onConnectBoard = { showBleSheet = true },
+        )
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {

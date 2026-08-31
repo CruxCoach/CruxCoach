@@ -178,14 +178,17 @@ correction rounds are allowed; Golden changes are never accepted automatically.
 - The compact `browser/content`, `browser/empty`, and `browser/error` candidate
   matrix was rendered on the API-35 Nokia across EN/DE, light/dark, and
   font-scale 1.0/1.5. Screenshots were opened and semantics parsed. The
-  installed `c4ff4b2e` harness placed its full-screen top content under the
+  installed `d780f4a6` harness placed its full-screen top content under the
   status bar; the source correction is not yet installed. Expanded width and
   corrected-source pixels remain gates.
 - Production now uses only the candidate's isolated board-context region and
-  its active-session continue surface. Existing search/FAB behavior, hold
-  search, map, filters, BLE/playlist status, management destinations and their
-  established test tags remain in place. This deliberately stops short of the
-  broader header replacement until corrected-source pixels can be reviewed.
+  its active-session continue surface. A narrow production header host owns
+  the Android-state projection, first-run absence and established BLE/filter
+  callbacks without moving them into the renderer. Existing search/FAB
+  behavior, hold search, map, filters, BLE/playlist status, management
+  destinations and their established test tags remain in place. This
+  deliberately stops short of the broader header replacement until
+  corrected-source pixels can be reviewed.
 - The focused production sources compile. The browser context, portable mapper,
   active-session host and continue-card Robolectric/semantics tests pass using
   the writable SDK. Corrected-source device pixels still require a centrally
