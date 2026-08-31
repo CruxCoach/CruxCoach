@@ -45,8 +45,25 @@
         "production-browser-context-and-session-hosts",
         "production-detail-hero-host"
       ],
-      "awaitingCurrentHeadArtifact": []
+      "awaitingCurrentHeadArtifact": [
+        "production-browser-board-status-touch-target"
+      ]
     },
+    "supplementalCaptures": [
+      {
+        "scenario": "logbook/page-error",
+        "versionCode": 1000022,
+        "sourceCommit": "0c736080dd416460b5ef801594c6ac3f33728580",
+        "releaseSha256": "725e53de50d0856ab010802392162e786fc7778c71db01752e89f0bd00a6f96e",
+        "width": "compact",
+        "screenshotsReviewed": 8,
+        "semanticsTreesParsed": 8,
+        "semanticNodesChecked": 240,
+        "undersizedClickableTargets": 0,
+        "unlabelledCheckables": 0,
+        "evidencePath": "/tmp/cruxcoach-logbook-v1000022-0c736080"
+      }
+    ],
     "priorCaptures": [
       {
         "versionCode": 1000014,

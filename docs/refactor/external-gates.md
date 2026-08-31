@@ -594,6 +594,18 @@ reported `success=true`, `unmapped=0`; Detail showed `Board verbunden` and
 This remains application/log evidence without an independent HCI capture or
 simulator-GUI LED observation and makes no claim about other board families.
 
+The `0d176dcb`/versionCode-`1000021` artifact repeated the current production
+path once more before the paging-only follow-up. It connected to the same
+privacy-safe nearby identity `Kilter Board#0001@3` (address redacted), reached
+ready state at ATT-MTU 23, and opened `Floats Your Boat` at 40 degrees. The
+production sender logged `frames=15`, `success=true`, and `unmapped=0`; Detail
+showed `An Board gesendet`, and all ten clickable Detail nodes measured at
+least 126 px at 420 dpi. VersionCode 1000022 changes only the supplemental
+Logbook paging layout, so no newer transport behavior is inferred from that
+artifact and rerunning BLE would not strengthen this transport-scoped result.
+Independent HCI bytes and the manually hosted simulator GUI/LED state remain
+separate gates, as do all non-Kilter board families and physical API2 hardware.
+
 The production Browser and Detail hosts were inspected at full resolution and
 through their UIAutomator trees. Browser retained board/angle selection,
 connection, filter, logbook, lists, settings, random, create, search and climb
@@ -664,9 +676,38 @@ measure at least 126 px at 420 dpi. The Paging state retains the card and a
 localized Retry; all four actions also meet 48 dp. Visual review rejected only
 the paging region at 1.5 because its horizontal split forces the German error
 copy into character-level wrapping. The bounded follow-up stacks message and
-Retry when font scale is at least 1.3; that region requires one final artifact
-render. The established 18-by-8 core matrix does not require recapture because
-this follow-up changes only the supplemental Logbook paging component.
+Retry when font scale is at least 1.3.
+
+That follow-up is now rendered and accepted. Feature run `33433523149` and
+publisher run `33434083979` produced `0c736080dd416460b5ef801594c6ac3f33728580`
+as versionCode `1000022`. APKTrack job `8f8eca5737644fff952c104f0e16e629`
+finished with `status=published`, `receipt_delivered=true`, and release SHA-256
+`725e53de50d0856ab010802392162e786fc7778c71db01752e89f0bd00a6f96e`.
+The Nokia verified that hash before the normal package installer updated only
+the Development package; Stable remained versionCode 8 with its distinct
+certificate. No `adb install` was used.
+
+All eight final `logbook/page-error` Compact variants were recaptured at
+`/tmp/cruxcoach-logbook-v1000022-0c736080`: EN/DE, light/dark and font scales
+1.0/1.5. Every screenshot was opened at original resolution and all 240
+UIAutomator nodes were parsed. At 1.0 the horizontal message/action layout
+remains unclipped; at 1.5 the full-width message precedes a trailing Retry,
+including the German compound without character-level wrapping. Each variant
+contains four clickable nodes with a minimum 126-px edge at 420 dpi and exactly
+one named, checked selection control. Insets, contrast/state cues, date,
+outcome and edit affordance remained intact. The paging region is accepted in
+its second bounded round. The established 18-by-8 core matrix does not require
+recapture because this follow-up changes only that supplemental component.
+
+A final production Browser inspection on versionCode 1000022 retained the
+board/angle context, disconnected text state, active-climb banner, filters,
+Logbook, lists, settings, random, create, search and climb navigation. Fourteen
+of its fifteen clickable nodes met the 126-px threshold at 420 dpi; the
+collapsed active-climb status surface measured 123 px. Commit `ee195c2a`
+therefore adds a 48-dp minimum height inside the existing outer spacing and a
+focused Compose height/callback contract. No banner copy, state, navigation or
+BLE behavior changes. Its device pixels remain artifact-scoped and must be
+recaptured from the next centrally signed feature package before acceptance.
 
 Before further transport, lock the simulator-independent encoder/parser
 vectors with:
@@ -735,4 +776,7 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ## Apple toolchain
 
 This Linux host has no Xcode, iOS SDK, simulator, or signing environment. On a
-Mac, first complete the owner-reviewed target/driver
+Mac, first complete the owner-reviewed target/driver changes and then run the
+framework, native-test and SwiftUI-shell gates documented in
+`docs/refactor/ios-readiness.md`. This is architectural follow-up, not a blocker
+for the completed Android Compact work.
