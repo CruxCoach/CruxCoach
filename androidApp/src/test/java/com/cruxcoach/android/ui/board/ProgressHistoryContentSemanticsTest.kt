@@ -4,14 +4,20 @@ import android.app.Application
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.ui.theme.CruxCoachTheme
+import com.cruxcoach.domain.board.ProgressHistoryIssue
+import com.cruxcoach.domain.board.ProgressHistoryScreenState
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -62,6 +68,31 @@ class ProgressHistoryContentSemanticsTest {
 
         compose.onNodeWithText("History unavailable").assertExists()
         compose.onNodeWithTag("history_retry")
+            .assertHasClickAction()
+            .assertHeightIsAtLeast(48.dp)
+            .performClick()
+        assertEquals(1, retries)
+    }
+
+    @Test
+    fun `action failure keeps history usable and exposes retry`() {
+        var retries = 0
+        val base = ProgressHistoryScenarios.History
+        val scenario = base.copy(
+            state = (base.state as ProgressHistoryScreenState.Content).copy(
+                transientIssue = ProgressHistoryIssue.DELETE_FAILED,
+            ),
+        )
+        compose.setContent { content(scenario, onRetry = { retries += 1 }) }
+
+        compose.onNodeWithText(
+            "The selected entries couldn’t be deleted. Your selection is still available.",
+        ).assertExists()
+        compose.onNodeWithTag("history_action_issue").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite),
+        )
+        compose.onNodeWithTag("history_list").assertExists()
+        compose.onNodeWithTag("history_action_retry")
             .assertHasClickAction()
             .assertHeightIsAtLeast(48.dp)
             .performClick()

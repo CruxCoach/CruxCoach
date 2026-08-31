@@ -113,7 +113,10 @@ has been rendered and reviewed on Android.
 The production ViewModel now exposes initial loading and maps a failed history
 stream to `LOAD_FAILED`; retry cancels and starts that collector again. Thus
 loading/error/retry are real production states without exposing exception or
-database details. Retention-update and delete failures are still logged only;
-their typed, retryable in-content feedback remains the next architecture step.
+database details. Retention-write/prune and delete failures now keep existing
+content and selection usable, expose stable portable issue categories and retry
+the exact failed operation; exception text remains out of renderer state. The
+supplemental `progress/action-error` scenario and focused semantics/ViewModel
+tests cover that region; device pixels remain required before visual approval.
 Deterministic current-build pixels and semantics cover content, empty and error
 across EN/DE, light/dark and font scale 1.0/1.5; Expanded remains separate.

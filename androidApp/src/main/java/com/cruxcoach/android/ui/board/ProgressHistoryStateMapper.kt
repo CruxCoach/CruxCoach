@@ -17,14 +17,17 @@ fun BoardClimbHistoryState.toPortableState(
     issue: ProgressHistoryIssue? = null,
 ): ProgressHistoryScreenState {
     if (isLoading && entries.isEmpty()) return ProgressHistoryScreenState.Loading
-    if (issue != null && entries.isEmpty()) {
+    if (issue in setOf(ProgressHistoryIssue.LOAD_FAILED, ProgressHistoryIssue.UNKNOWN) && entries.isEmpty()) {
         return ProgressHistoryScreenState.Error(
-            issue = issue,
+            issue = requireNotNull(issue),
             retention = retention.toPortablePeriod(),
         )
     }
     if (entries.isEmpty()) {
-        return ProgressHistoryScreenState.Empty(retention.toPortablePeriod())
+        return ProgressHistoryScreenState.Empty(
+            retention = retention.toPortablePeriod(),
+            transientIssue = issue,
+        )
     }
     return ProgressHistoryScreenState.Content(
         entries = entries.map { entry ->

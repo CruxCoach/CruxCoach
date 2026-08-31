@@ -56,6 +56,13 @@ class BoardClimbHistoryViewModel @Inject constructor(
     }
 
     private var historyJob: Job? = null
+    private sealed interface FailedAction {
+        data class RetentionWrite(val retention: HistoryRetention) : FailedAction
+        data class RetentionPrune(val retention: HistoryRetention) : FailedAction
+        data class Delete(val ids: List<Long>) : FailedAction
+        data object Clear : FailedAction
+    }
+    private var failedAction: FailedAction? = null
 
     init {
         // History entries (newest-recorded first; the repo flow re-emits on
@@ -92,7 +99,9 @@ class BoardClimbHistoryViewModel @Inject constructor(
                             entries = entries,
                             selectedIds = it.selectedIds.intersect(liveIds),
                             isLoading = false,
-                            issue = null,
+                            issue = it.issue.takeUnless { issue ->
+                                issue == ProgressHistoryIssue.LOAD_FAILED
+                            },
                         )
                     }
                 }
@@ -107,30 +116,48 @@ class BoardClimbHistoryViewModel @Inject constructor(
         }
     }
 
-    fun retryHistory() = observeHistory()
+    fun retryCurrentIssue() {
+        when (val action = failedAction) {
+            is FailedAction.RetentionWrite -> persistRetention(action.retention)
+            is FailedAction.RetentionPrune -> pruneToRetention(action.retention)
+            is FailedAction.Delete -> deleteHistory(action.ids)
+            FailedAction.Clear -> clearHistory()
+            null -> observeHistory()
+        }
+    }
 
     /** Persist the chosen retention window; the historyRetention collector
      *  above then runs the prune. */
-    fun setRetention(retention: HistoryRetention) {
+    fun setRetention(retention: HistoryRetention) = persistRetention(retention)
+
+    private fun persistRetention(retention: HistoryRetention) {
         viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(issue = null) }
             try {
                 userPreferences.setHistoryRetention(retention)
+                failedAction = null
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "setRetention failed value=$retention", e)
+                failedAction = FailedAction.RetentionWrite(retention)
+                _state.update { it.copy(issue = ProgressHistoryIssue.RETENTION_UPDATE_FAILED) }
             }
         }
     }
 
     fun clearHistory() {
         viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(issue = null) }
             try {
                 personalBoardRepo.clearClimbHistory()
+                failedAction = null
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "clearHistory failed", e)
+                failedAction = FailedAction.Clear
+                _state.update { it.copy(issue = ProgressHistoryIssue.DELETE_FAILED) }
             }
         }
     }
@@ -161,14 +188,22 @@ class BoardClimbHistoryViewModel @Inject constructor(
     fun deleteSelected() {
         val ids = _state.value.selectedIds.toList()
         if (ids.isEmpty()) return
+        deleteHistory(ids)
+    }
+
+    private fun deleteHistory(ids: List<Long>) {
         viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(issue = null) }
             try {
                 personalBoardRepo.deleteClimbHistory(ids)
+                failedAction = null
                 _state.update { it.copy(selectedIds = emptySet()) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "deleteSelected failed count=${ids.size}", e)
+                failedAction = FailedAction.Delete(ids)
+                _state.update { it.copy(issue = ProgressHistoryIssue.DELETE_FAILED) }
             }
         }
     }
@@ -176,12 +211,16 @@ class BoardClimbHistoryViewModel @Inject constructor(
     private fun pruneToRetention(retention: HistoryRetention) {
         if (retention == HistoryRetention.OFF) return
         viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(issue = null) }
             try {
                 personalBoardRepo.pruneClimbHistory(cutoffIso(retention.days))
+                failedAction = null
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "pruneToRetention failed days=${retention.days}", e)
+                failedAction = FailedAction.RetentionPrune(retention)
+                _state.update { it.copy(issue = ProgressHistoryIssue.RETENTION_UPDATE_FAILED) }
             }
         }
     }

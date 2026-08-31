@@ -30,6 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +44,7 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.theme.CruxCoachSpacing
 import com.cruxcoach.domain.board.HistoryRetentionPeriod
 import com.cruxcoach.domain.board.ProgressHistoryEntry
+import com.cruxcoach.domain.board.ProgressHistoryIssue
 import com.cruxcoach.domain.board.ProgressHistoryScreenState
 
 data class ProgressHistoryEntryLabels(
@@ -65,13 +69,17 @@ fun ProgressHistoryContent(
         is ProgressHistoryScreenState.Error -> HistoryError(onRetry, modifier)
         is ProgressHistoryScreenState.Empty -> HistoryBody(
             retention = state.retention,
+            transientIssue = state.transientIssue,
             modifier = modifier,
             onChooseRetention = onChooseRetention,
+            onRetry = onRetry,
         ) { HistoryEmpty() }
         is ProgressHistoryScreenState.Content -> HistoryBody(
             retention = state.retention,
+            transientIssue = state.transientIssue,
             modifier = modifier,
             onChooseRetention = onChooseRetention,
+            onRetry = onRetry,
         ) {
             LazyColumn(
                 modifier = Modifier
@@ -103,8 +111,10 @@ fun ProgressHistoryContent(
 @Composable
 private fun HistoryBody(
     retention: HistoryRetentionPeriod,
+    transientIssue: ProgressHistoryIssue?,
     modifier: Modifier,
     onChooseRetention: (HistoryRetentionPeriod) -> Unit,
+    onRetry: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -118,7 +128,45 @@ private fun HistoryBody(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (transientIssue != null) {
+            HistoryActionIssue(transientIssue, onRetry)
+        }
         content()
+    }
+}
+
+@Composable
+private fun HistoryActionIssue(issue: ProgressHistoryIssue, onRetry: () -> Unit) {
+    val message = when (issue) {
+        ProgressHistoryIssue.RETENTION_UPDATE_FAILED ->
+            stringResource(R.string.history_retention_update_failed)
+        ProgressHistoryIssue.DELETE_FAILED ->
+            stringResource(R.string.history_delete_failed)
+        ProgressHistoryIssue.LOAD_FAILED, ProgressHistoryIssue.UNKNOWN ->
+            stringResource(R.string.history_action_failed)
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = CruxCoachDesign.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CruxCoachSpacing.large, vertical = CruxCoachSpacing.xSmall)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag("history_action_issue"),
+    ) {
+        Column(modifier = Modifier.padding(CruxCoachSpacing.medium)) {
+            Text(text = message, style = MaterialTheme.typography.bodyMedium)
+            Button(
+                onClick = onRetry,
+                modifier = Modifier
+                    .padding(top = CruxCoachSpacing.small)
+                    .heightIn(min = CruxCoachSpacing.minimumTouchTarget)
+                    .testTag("history_action_retry"),
+            ) {
+                Text(stringResource(R.string.action_retry))
+            }
+        }
     }
 }
 

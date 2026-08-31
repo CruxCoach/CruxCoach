@@ -62,8 +62,17 @@ internal object ProgressHistoryScenarios {
             retention = HistoryRetentionPeriod.DAYS_30,
         ),
     )
+    val ActionError = ProgressHistoryScenario(
+        id = "progress/action-error",
+        state = ProgressHistoryScreenState.Content(
+            entries = entries,
+            retention = HistoryRetentionPeriod.DAYS_30,
+            selectedIds = setOf(12),
+            transientIssue = ProgressHistoryIssue.DELETE_FAILED,
+        ),
+    )
 
-    val all = sequenceOf(History, Empty, Error)
+    val all = sequenceOf(History, Empty, Error, ActionError)
 
     fun require(id: String): ProgressHistoryScenario = all.firstOrNull { it.id == id }
         ?: throw IllegalArgumentException("Unknown DesignLab scenario: $id")

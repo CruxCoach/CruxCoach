@@ -53,7 +53,7 @@ def validate_parity() -> None:
         "session/resting", "session/paused", "session/active-no-climb",
         "log/new-send", "log/new-attempt", "log/edit-send", "log/saving",
         "log/success", "log/error", "progress/history", "progress/empty",
-        "progress/error",
+        "progress/error", "progress/action-error",
     }
     if scenario_ids != required:
         raise AssertionError(f"scenario contract drift: {scenario_ids ^ required}")

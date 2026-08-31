@@ -54,6 +54,18 @@ class ProgressHistoryStateMapperTest {
             assertIs<ProgressHistoryScreenState.Content>(portable).transientIssue,
         )
     }
+
+    @Test
+    fun `retention failure keeps empty state usable`() {
+        val portable = BoardClimbHistoryState().toPortableState(
+            issue = ProgressHistoryIssue.RETENTION_UPDATE_FAILED,
+        )
+
+        assertEquals(
+            ProgressHistoryIssue.RETENTION_UPDATE_FAILED,
+            assertIs<ProgressHistoryScreenState.Empty>(portable).transientIssue,
+        )
+    }
 }
 
 private fun historyEntry() = ClimbHistoryEntry(

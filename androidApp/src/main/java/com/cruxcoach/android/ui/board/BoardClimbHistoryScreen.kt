@@ -111,7 +111,7 @@ fun BoardClimbHistoryScreen(
             onChooseRetention = { viewModel.setRetention(it.toAndroidRetention()) },
             onOpenEntry = { onNavigateToClimb(it.climbUuid, it.angle) },
             onToggleSelection = viewModel::toggleSelection,
-            onRetry = viewModel::retryHistory,
+            onRetry = viewModel::retryCurrentIssue,
             modifier = Modifier.padding(padding),
         )
     }

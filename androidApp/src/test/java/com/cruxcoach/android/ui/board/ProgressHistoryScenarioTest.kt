@@ -8,7 +8,7 @@ class ProgressHistoryScenarioTest {
     @Test
     fun `scenario ids remain adb addressable`() {
         assertEquals(
-            listOf("progress/history", "progress/empty", "progress/error"),
+            listOf("progress/history", "progress/empty", "progress/error", "progress/action-error"),
             ProgressHistoryScenarios.all.map { it.id }.toList(),
         )
         assertEquals(

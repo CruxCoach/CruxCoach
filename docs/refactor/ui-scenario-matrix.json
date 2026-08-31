@@ -83,7 +83,8 @@
     {"id":"log/error","capability":"log-attempt","status":"partial"},
     {"id":"progress/history","capability":"progress-history","status":"partial"},
     {"id":"progress/empty","capability":"progress-history","status":"partial"},
-    {"id":"progress/error","capability":"progress-history","status":"partial"}
+    {"id":"progress/error","capability":"progress-history","status":"partial"},
+    {"id":"progress/action-error","capability":"progress-history","status":"focused-supplemental"}
   ],
   "requiredEvidence": [
     "screenshot",

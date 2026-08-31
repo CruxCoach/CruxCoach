@@ -32,6 +32,8 @@ sealed interface ProgressHistoryScreenState {
 
     data class Empty(
         val retention: HistoryRetentionPeriod,
+        /** A recoverable retention action failure while the empty state stays usable. */
+        val transientIssue: ProgressHistoryIssue? = null,
     ) : ProgressHistoryScreenState
 
     data class Error(

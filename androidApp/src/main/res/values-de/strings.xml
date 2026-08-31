@@ -2304,6 +2304,9 @@
     <string name="history_loading">Verlauf wird geladen</string>
     <string name="history_error_title">Verlauf nicht verfügbar</string>
     <string name="history_error_body">Dein Verlauf konnte nicht geladen werden. Versuche es erneut.</string>
+    <string name="history_retention_update_failed">Die Aufbewahrung konnte nicht aktualisiert werden. Dein Verlauf ist weiterhin verfügbar.</string>
+    <string name="history_delete_failed">Die ausgewählten Einträge konnten nicht gelöscht werden. Deine Auswahl ist weiterhin verfügbar.</string>
+    <string name="history_action_failed">Die Verlaufsaktion konnte nicht abgeschlossen werden.</string>
     <string name="history_entry_metadata">%1$s · %2$d° · %3$s</string>
     <string name="history_entry_semantics">%1$s, %2$s, %3$d Grad, %4$s, %5$s</string>
     <string name="history_select_entry">%1$s auswählen</string>

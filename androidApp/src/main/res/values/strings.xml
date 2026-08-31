@@ -2305,6 +2305,9 @@
     <string name="history_loading">Loading history</string>
     <string name="history_error_title">History unavailable</string>
     <string name="history_error_body">Your history couldn’t be loaded. Try again.</string>
+    <string name="history_retention_update_failed">The retention setting couldn’t be updated. Your history is still available.</string>
+    <string name="history_delete_failed">The selected entries couldn’t be deleted. Your selection is still available.</string>
+    <string name="history_action_failed">The history action couldn’t be completed.</string>
     <string name="history_entry_metadata">%1$s · %2$d° · %3$s</string>
     <string name="history_entry_semantics">%1$s, %2$s, %3$d degrees, %4$s, %5$s</string>
     <string name="history_select_entry">Select %1$s</string>
