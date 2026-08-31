@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -226,7 +228,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             CruxCoachTheme(darkModeSetting = darkMode) {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Macrobenchmark and Maestro run outside the Compose
+                        // process. Expose existing stable test tags to
+                        // UIAutomator without changing visible content.
+                        .semantics { testTagsAsResourceId = true },
+                ) {
                     AnimatedVisibility(
                         visible = !showTransition,
                         enter = fadeIn(tween(400)),

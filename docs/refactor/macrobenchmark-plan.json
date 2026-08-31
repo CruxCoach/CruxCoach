@@ -6,6 +6,12 @@
   "targetPackagePolicy": "development-feature-package-only",
   "stablePackageForbidden": "com.cruxcoach.android",
   "gradleTrustBoundaryApprovalRequired": true,
+  "uiAutomatorResourceIdContract": {
+    "enabledAtComposeRoot": true,
+    "browserContent": "board_browser_results",
+    "detailContent": "boarddetail_hero",
+    "progressContent": "history_list"
+  },
   "fixtureScenarios": [
     "browser/content",
     "detail/connected",
@@ -32,7 +38,7 @@
       "metric": "StartupTimingMetric",
       "startupMode": "COLD",
       "minimumIterations": 25,
-      "completionSignal": "BoardBrowser first content"
+      "completionSignal": "board_browser_results"
     },
     {
       "id": "warm-start-to-browser-content",
@@ -40,14 +46,14 @@
       "metric": "StartupTimingMetric",
       "startupMode": "WARM",
       "minimumIterations": 25,
-      "completionSignal": "BoardBrowser first content"
+      "completionSignal": "board_browser_results"
     },
     {
       "id": "browser-scroll",
       "scenario": "browser/content",
       "metric": "FrameTimingMetric",
       "minimumIterations": 20,
-      "interaction": "fixed-distance result-list swipe"
+      "interaction": "fixed-distance board_browser_results swipe"
     },
     {
       "id": "browser-to-detail",
@@ -55,7 +61,14 @@
       "targetScenario": "detail/connected",
       "metric": "FrameTimingMetric",
       "minimumIterations": 20,
-      "interaction": "select stable climb UUID and await detail content"
+      "interaction": "select stable climb UUID and await boarddetail_hero"
+    },
+    {
+      "id": "progress-history-scroll",
+      "scenario": "progress/history",
+      "metric": "FrameTimingMetric",
+      "minimumIterations": 20,
+      "interaction": "open deterministic history and perform a fixed-distance history_list swipe"
     }
   ],
   "requiredNavigationMarkers": [
@@ -77,6 +90,7 @@
   ],
   "exitCriteria": [
     "all measurements use at least their declared iteration count",
+    "every completion and interaction marker resolves through UIAutomator resource IDs",
     "the same centrally signed development package identity and fixture profile are used before and after",
     "raw results and device state are retained for review",
     "regressions above a tripwire are investigated before acceptance"

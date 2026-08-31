@@ -159,6 +159,14 @@ def validate_macrobenchmark_plan() -> None:
         raise AssertionError("stable package protection drift")
     if plan["gradleTrustBoundaryApprovalRequired"] is not True:
         raise AssertionError("Macrobenchmark Gradle trust gate must remain explicit")
+    markers = plan["uiAutomatorResourceIdContract"]
+    if markers != {
+        "enabledAtComposeRoot": True,
+        "browserContent": "board_browser_results",
+        "detailContent": "boarddetail_hero",
+        "progressContent": "history_list",
+    }:
+        raise AssertionError("Macrobenchmark UIAutomator marker contract drift")
     scenario_ids = {entry["id"] for entry in load("docs/refactor/ui-scenario-matrix.json")["states"]}
     if not set(plan["fixtureScenarios"]).issubset(scenario_ids):
         raise AssertionError("Macrobenchmark plan references an unknown fixture scenario")
@@ -167,6 +175,21 @@ def validate_macrobenchmark_plan() -> None:
         raise AssertionError("duplicate Macrobenchmark measurement id")
     if any(entry["minimumIterations"] < 20 for entry in plan["measurements"]):
         raise AssertionError("Macrobenchmark measurements require at least 20 iterations")
+    serialized_measurements = json.dumps(plan["measurements"])
+    marker_values = (markers["browserContent"], markers["detailContent"], markers["progressContent"])
+    if any(marker not in serialized_measurements for marker in marker_values):
+        raise AssertionError("Macrobenchmark marker is not used by a measurement")
+    marker_sources = {
+        markers["browserContent"]: "androidApp/src/main/java/com/cruxcoach/android/ui/board/BoardBrowserScreen.kt",
+        markers["detailContent"]: "androidApp/src/main/java/com/cruxcoach/android/ui/board/ClimbDetailProductionHeroHost.kt",
+        markers["progressContent"]: "androidApp/src/main/java/com/cruxcoach/android/ui/board/ProgressHistoryContent.kt",
+    }
+    for marker, relative in marker_sources.items():
+        if f'testTag("{marker}")' not in (ROOT / relative).read_text(encoding="utf-8"):
+            raise AssertionError(f"Macrobenchmark marker {marker} missing from {relative}")
+    main_activity = (ROOT / "androidApp/src/main/java/com/cruxcoach/android/MainActivity.kt").read_text(encoding="utf-8")
+    if "testTagsAsResourceId = true" not in main_activity:
+        raise AssertionError("Compose test tags are not exposed to UIAutomator")
     if plan["regressionTripwires"] != {"medianPercent": 5, "frameTimePercent": 10}:
         raise AssertionError("performance regression tripwires changed without review")
 
