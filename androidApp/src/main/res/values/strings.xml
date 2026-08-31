@@ -896,7 +896,10 @@
     <string name="board_logbook_selected">%d selected</string>
     <string name="board_logbook_delete_title">Delete %d ascents?</string>
     <string name="board_logbook_delete_message">All selected ascents will be permanently deleted.</string>
-    <string name="board_logbook_ascent_count">%d ascents</string>
+    <plurals name="board_logbook_ascent_count">
+        <item quantity="one">%d ascent</item>
+        <item quantity="other">%d ascents</item>
+    </plurals>
 
     <!-- Board: Lists -->
     <string name="board_lists_title">Lists</string>
@@ -1407,7 +1410,10 @@
     <string name="board_list_empty_title">List is empty</string>
     <string name="board_logbook_attempts">Attempts</string>
     <string name="board_logbook_best_grade">Best Grade</string>
-    <string name="board_logbook_day_entries">%d entries</string>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%d entry</item>
+        <item quantity="other">%d entries</item>
+    </plurals>
     <string name="board_logbook_empty_message">Log your first ascent to see it here</string>
     <string name="board_logbook_empty_title">No ascents yet</string>
     <string name="board_logbook_error_message">We couldn’t load your entries. Check your device storage and try again.</string>

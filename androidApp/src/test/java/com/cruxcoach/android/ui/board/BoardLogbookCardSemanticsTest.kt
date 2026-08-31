@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
@@ -100,6 +101,18 @@ class BoardLogbookCardSemanticsTest {
             .performClick()
 
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun `single ascent fixture uses singular English counts`() {
+        compose.setContent {
+            CruxCoachTheme(darkModeSetting = DarkModeSetting.LIGHT) {
+                BoardLogbookScenarioContent(BoardLogbookScenarios.Content)
+            }
+        }
+
+        compose.onNodeWithText("1 ascent").assertExists()
+        compose.onNodeWithText("1 entry").assertExists()
     }
 
     private companion object {

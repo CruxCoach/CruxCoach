@@ -936,11 +936,14 @@
     <string name="board_holdsearch_clear">Aufheben</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board Logbook</string>
+    <string name="board_logbook_title">Board-Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
     <string name="board_logbook_delete_title">%d Begehungen löschen?</string>
     <string name="board_logbook_delete_message">Alle ausgewählten Begehungen werden unwiderruflich gelöscht.</string>
-    <string name="board_logbook_ascent_count">%d Begehungen</string>
+    <plurals name="board_logbook_ascent_count">
+        <item quantity="one">%d Begehung</item>
+        <item quantity="other">%d Begehungen</item>
+    </plurals>
 
     <!-- Board: Lists -->
     <string name="board_lists_title">Listen</string>
@@ -1450,7 +1453,10 @@
     <string name="board_list_empty_title">Liste ist leer</string>
     <string name="board_logbook_attempts">Attempts</string>
     <string name="board_logbook_best_grade">Bester Grad</string>
-    <string name="board_logbook_day_entries">%d Einträge</string>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%d Eintrag</item>
+        <item quantity="other">%d Einträge</item>
+    </plurals>
     <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
     <string name="board_logbook_empty_title">Noch keine Begehungen</string>
     <string name="board_logbook_error_message">Deine Einträge konnten nicht geladen werden. Prüfe den Gerätespeicher und versuche es erneut.</string>
