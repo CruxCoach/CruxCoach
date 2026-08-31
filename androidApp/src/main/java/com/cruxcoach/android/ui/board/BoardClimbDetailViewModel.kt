@@ -984,7 +984,9 @@ class BoardClimbDetailViewModel @Inject constructor(
         // A community climb has one stats row = the angle the setter chose;
         // imported climbs are angle-agnostic, so there's no single setter angle.
         val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
+        val fixedAngles = BoardAnglePicker.fixedDetailAngles(brand)
         val supported: Set<Int> = when {
+            fixedAngles != null -> fixedAngles
             brand.usesAuroraProtocol -> {
                 // Pass the climb's own brand: layout ids collide across brands
                 // (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone),

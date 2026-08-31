@@ -242,6 +242,16 @@ data class BrowserFilterState(
  *  The VM does the IO (the DISTINCT-angles query); these functions decide
  *  what the picker shows and keep the active angle valid for the board. */
 object BoardAnglePicker {
+    /**
+     * Kilter's established 0..70 degree control has fifteen 5-degree stops.
+     * Keep that hardware/product domain explicit so detail does not scan the
+     * complete multi-board catalogue merely to rediscover a constant range.
+     */
+    val kilterSupportedAngles: List<Int> = (0..70 step 5).toList()
+
+    fun fixedDetailAngles(brand: BoardBrand): Set<Int>? =
+        kilterSupportedAngles.toSet().takeIf { brand == BoardBrand.KILTER }
+
     /** The discrete angle chips for a board, or empty → Kilter slider.
      *  MoonBoard → the variant's fixed configs; Aurora-family (non-Kilter)
      *  → the supplied board angle set (already from

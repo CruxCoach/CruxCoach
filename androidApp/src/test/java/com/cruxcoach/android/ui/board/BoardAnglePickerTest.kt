@@ -110,6 +110,16 @@ class BoardAnglePickerTest {
         assertEquals(emptyList(), chips)
     }
 
+    @Test
+    fun `Kilter supported detail angles match the established slider stops`() {
+        assertEquals((0..70 step 5).toList(), BoardAnglePicker.kilterSupportedAngles)
+        assertEquals(
+            (0..70 step 5).toSet(),
+            BoardAnglePicker.fixedDetailAngles(BoardBrand.KILTER),
+        )
+        assertEquals(null, BoardAnglePicker.fixedDetailAngles(BoardBrand.TOUCHSTONE))
+    }
+
     // ── angle clamp on board switch ──────────────────────────
 
     @Test

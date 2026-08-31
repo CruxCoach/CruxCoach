@@ -620,7 +620,35 @@ browseByDifficultyAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY difficulty_average IS NULL, difficulty_average ASC LIMIT :limit OFFSET :offset;
 
 browseByAscensionistsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
+    c.board_brand, COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.method, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.nostr_event_id, c.created_at, cs.angle, cs.difficulty_average,
+    cs.quality_average, cs.ascensionist_count, cs.benchmark_difficulty
+FROM climb_stats cs INDEXED BY idx_climb_stats_by_popularity
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = :layoutId
+  AND c.board_brand = :boardBrand
+  AND c.is_listed = 1
+  AND cs.angle = :angle
+  AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+  AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+       OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+  AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+  AND (c.hsm & :hsmExcludedMask) = 0
+  AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId
+        AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (
+            ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+            AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top
+        ))
+  ))
+ORDER BY cs.ascensionist_count DESC
+LIMIT :limit OFFSET :offset;
 
 browseByAscensionistsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;

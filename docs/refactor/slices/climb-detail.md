@@ -155,3 +155,11 @@ API-3 path changed the explicit action from `Board verbinden` to the textual
 `An Board gesendet` state after 15 successful frames; the browser then retained
 the connected/current-climb context. This does not approve a wholesale
 candidate substitution or Expanded rendering.
+
+The same run exposed a separate 3.55-second supported-angle query. Kilter's
+existing product contract already defines fifteen 5-degree stops from 0 through
+70, and the real climb had exactly those fifteen stats angles. Detail now uses
+that canonical Kilter domain directly; non-Kilter Aurora families keep the
+brand-scoped catalogue lookup needed for sparse and negative angles. Focused
+angle/detail tests pass. A newly installed artifact must confirm the query is
+absent from the Detail navigation trace before closing the performance gate.

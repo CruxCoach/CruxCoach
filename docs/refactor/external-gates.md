@@ -394,6 +394,20 @@ observations are negative evidence and a reason to execute the planned repeated
 benchmark; they must not be presented as stable medians or compared to the
 regression tripwires.
 
+Read-only `EXPLAIN QUERY PLAN` against that same 603-MB Development database
+showed both delays shared one shape: SQLite began with the broad
+`climbs(board_brand)` index instead of the selective stats index. The current
+source now makes two narrow, format-neutral corrections. Default popularity
+browse starts from `idx_climb_stats_by_popularity`, then applies the unchanged
+UUID, brand, listing, frame-count, grade, HSM and product-size predicates. The
+equivalent query-only ADB probe completed in 0.51, 0.54 and 0.50 seconds. Kilter
+Detail reuses the already-established fifteen 0..70-degree slider stops instead
+of rediscovering that constant hardware domain from 912k stats rows; other
+Aurora-family boards remain brand-scoped and data-driven. Focused fit/HSM/
+ungraded/Quantum/angle tests compile and pass. These are not end-to-end results:
+a centrally signed artifact containing the changes must still repeat the
+declared startup and Detail markers before claiming a user-visible gain.
+
 Creating the separate benchmark module/build variant and adding its dependency
 would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
 do not approximate it by benchmarking Stable or clearing Stable data. After

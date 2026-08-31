@@ -90,6 +90,19 @@
     "detailSupportedAnglesQueryMs": 3548,
     "interpretation": "negative evidence only; do not compare to repeated-run tripwires"
   },
+  "mitigationsAwaitingInstalledArtifact": [
+    {
+      "path": "cold-start-to-browser-content",
+      "change": "default popularity browse starts from idx_climb_stats_by_popularity before UUID/brand/fit checks",
+      "readOnlyDeviceSqlSeconds": [0.51, 0.54, 0.50],
+      "caveat": "query-only ADB evidence; rerun the declared end-to-end benchmark"
+    },
+    {
+      "path": "browser-to-detail",
+      "change": "Kilter detail uses the established fifteen 0..70 degree stops without a catalogue-wide supported-angle query",
+      "caveat": "focused tests pass; verify the navigation markers in a newly installed feature artifact"
+    }
+  ],
   "regressionTripwires": {
     "medianPercent": 5,
     "frameTimePercent": 10

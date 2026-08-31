@@ -183,6 +183,35 @@ class BoardRepositoryImpl(
         val su = if (showUngraded) 1L else 0L
         val desc = sortDirection == SortDirection.DESC
 
+        // The default browser path has its own stats-first query. Keeping it
+        // outside the homogeneous climb_browse query family also makes the
+        // generated result type explicit instead of widening the `when` to
+        // Any. On a 694k-climb catalogue this avoids a board-brand scan before
+        // applying layout/angle and preserves the popularity index order.
+        if (sortField == ClimbSortField.ASCENSIONISTS && desc) {
+            return q.browseByAscensionistsDesc(
+                lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty,
+                su, asc, hm, sel, l, o,
+            ).executeAsList().map {
+                mapClimb(
+                    it.uuid, it.layout_id, it.setter_username, it.name, "", it.frames_count,
+                    it.difficulty_average, it.quality_average, it.ascensionist_count,
+                    it.description, it.is_nomatch, it.frames_pace, it.hsm,
+                    benchmarkDifficulty = it.benchmark_difficulty ?: 0.0,
+                    moveCount = it.move_count,
+                    origin = it.origin,
+                    kilterStatus = it.kilter_status,
+                    createdByPubkey = it.created_by_pubkey,
+                    source = it.source,
+                    syncStatus = it.sync_status,
+                    nostrEventId = it.nostr_event_id,
+                    boardBrand = it.board_brand,
+                    createdAt = it.created_at,
+                    method = it.method,
+                )
+            }
+        }
+
         return when (sortField) {
             ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByQualityAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByDifficultyAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
@@ -191,7 +220,7 @@ class BoardRepositoryImpl(
             ClimbSortField.HOLDS -> if (desc) q.browseByMovesDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByMovesAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.NEWEST -> if (desc) q.browseByNewestDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByNewestAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.browseRandom(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
-            else -> if (desc) q.browseByAscensionistsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
+            else -> q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 

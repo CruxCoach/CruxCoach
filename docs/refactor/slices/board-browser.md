@@ -198,3 +198,10 @@ correction rounds are allowed; Golden changes are never accepted automatically.
 - The focused production sources compile. The browser context, portable mapper,
   production header host, active-session host and continue-card
   Robolectric/semantics tests pass using the writable SDK.
+- Read-only device profiling found the default popularity query entering through
+  `climbs(board_brand)` and taking 19.3 seconds on the 694k-climb catalogue.
+  The source query now enters through the existing
+  `idx_climb_stats_by_popularity` index while retaining every fit, grade, HSM,
+  listing and pagination predicate. Query-only device probes were 0.50–0.54
+  seconds; installed-artifact startup/scroll Macrobenchmark evidence remains
+  required before treating that as an end-to-end result.
