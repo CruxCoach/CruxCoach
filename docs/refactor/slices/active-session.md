@@ -1,6 +1,6 @@
 # UI slice: active board session surface
 
-Status: deterministic Android candidate implemented; pixel review pending
+Status: compact Android candidate reviewed; production host pending
 
 Decision date: 2026-08-30
 
@@ -118,6 +118,10 @@ Golden changes are never accepted automatically.
 - Existing playlist mini-player and global rest banner contain controls below
   48 dp. They are retained for parity and must be corrected or replaced only in
   focused, tested changesets.
-- Pixel/semantics capture on a real renderer remains blocked: no ADB device or
-  local AVD exists. A fixture component may proceed, but visual quality and
-  duplicate-banner removal cannot be claimed before the documented ADB gate.
+- All four compact fixtures were rendered on the API-35 Nokia across EN/DE,
+  light/dark, and font-scale 1.0/1.5; screenshots were opened and semantics
+  parsed. Phase, countdown/no-countdown, connection text, current-climb absence
+  and the single continue action remained distinguishable. The installed
+  `c4ff4b2e` harness had the same top-inset defect as Browser and Progress; its
+  source correction is not installed. Expanded width and a production browser
+  host remain gates, so existing banners are not removed yet.

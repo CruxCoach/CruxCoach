@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "asOf": "2026-08-30",
+  "asOf": "2026-08-31",
   "coverageMode": "cartesian",
   "dimensions": {
     "locale": ["en", "de"],
@@ -15,6 +15,27 @@
     "fontSource": "repository-or-platform-pinned",
     "network": "fixture-only",
     "repositories": "fixture-only"
+  },
+  "renderingEvidence": {
+    "installedPackage": "com.cruxcoach.android.dev.f_40293f116dca",
+    "versionCode": 1000013,
+    "sourceCommit": "c4ff4b2ece16ffdb1a5b4f33fb21d6afe61af8cc",
+    "compact": {
+      "renderer": "Nokia 6.1 API 35, 1080x1920 at 420dpi (~411dp)",
+      "screenshotsReviewed": 144,
+      "semanticsTreesParsed": 144,
+      "clickableTargetsChecked": 728,
+      "minimumTargetDp": 48,
+      "evidencePath": "/tmp/cruxcoach-designlab-v1000013"
+    },
+    "expanded": {
+      "status": "external-gate",
+      "requirement": "real or emulated renderer with effective width >=600dp"
+    },
+    "sourceCorrections": {
+      "status": "awaiting-centrally-signed-apk",
+      "reason": "installed package predates locale, inset and Progress checkbox fixes"
+    }
   },
   "states": [
     {"id":"browser/content","capability":"board-browser","status":"partial"},

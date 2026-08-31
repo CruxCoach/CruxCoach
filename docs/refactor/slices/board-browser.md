@@ -1,6 +1,6 @@
 # UI slice: board browser start surface
 
-Status: specified; deterministic contract and renderer fixtures next
+Status: compact candidate reviewed; production header wiring deferred
 
 Decision date: 2026-08-30
 
@@ -175,7 +175,12 @@ correction rounds are allowed; Golden changes are never accepted automatically.
   `browser/content`, `browser/empty` and `browser/error` fixtures, direct-search
   behavior, text-plus-icon connection state, initial/pagination retry behavior
   and 48 dp actions now have focused tests.
-- Baseline pixels and device semantics are blocked because `adb devices -l`
-  reports no device. Continue with portable contracts and deterministic
-  renderer fixtures; do not claim visual quality until the ADB loop in
-  `external-gates.md` is executed.
+- The compact `browser/content`, `browser/empty`, and `browser/error` candidate
+  matrix was rendered on the API-35 Nokia across EN/DE, light/dark, and
+  font-scale 1.0/1.5. Screenshots were opened and semantics parsed. The
+  installed `c4ff4b2e` harness placed its full-screen top content under the
+  status bar; the source correction is not yet installed. Expanded width and
+  corrected-source pixels remain gates. Do not replace the production header
+  until those pixels and the retained hold-search/map/navigation actions can
+  be reviewed together. Continue with the ADB loop documented in
+  `external-gates.md`.
