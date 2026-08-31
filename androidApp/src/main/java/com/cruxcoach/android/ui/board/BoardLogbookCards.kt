@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -101,7 +102,7 @@ internal fun AscentCard(
                     ascent.climbName,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 // FlowRow (not Row): the meta items overflowed the card's
@@ -123,12 +124,14 @@ internal fun AscentCard(
                     Text(
                         "${ascent.angle}°",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
                     )
                     Text(
                         formatDate(ascent.climbedAt),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
                     )
                 }
                 // Optional log comment — shown beneath the meta line so the
@@ -144,41 +147,43 @@ internal fun AscentCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
+                val attemptsLabel: String
+                val attemptsColor: Color
                 if (ascent.isSend) {
-                    val attemptsLabel = when {
-                        isTrueFlash -> "Flash"
+                    attemptsLabel = when {
+                        isTrueFlash -> stringResource(R.string.board_logbook_flash)
                         ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
                         else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
                     }
-                    val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
-                    Text(
-                        attemptsLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = attemptsColor
-                    )
+                    attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
                 } else {
-                    val attemptsText = if (ascent.bidCount > 1L) {
+                    attemptsLabel = if (ascent.bidCount > 1L) {
                         stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
                     } else {
                         stringResource(R.string.board_ascent_open_one)
                     }
+                    attemptsColor = ErrorRed
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        attemptsText,
+                        attemptsLabel,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = ErrorRed
+                        color = attemptsColor,
+                        maxLines = 1,
                     )
-                }
-                ascent.quality?.let {
-                    Text(
-                        "$it★",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = WarningYellow
-                    )
+                    ascent.quality?.let {
+                        Text(
+                            "$it★",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = WarningYellow,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
