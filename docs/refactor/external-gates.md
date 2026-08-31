@@ -41,6 +41,33 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
   --tests 'com.cruxcoach.android.ui.board.ProgressHistoryContentSemanticsTest'
 ```
 
+After the production host changes, the focused compile, detail policy/projection
+tests, shared session contract and browser/session host semantics also pass:
+
+```sh
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew :androidApp:compileDebugKotlin
+ANDROID_HOME=/home/myuser/android-sdk \
+ANDROID_SDK_ROOT=/home/myuser/android-sdk \
+./gradlew :shared:testDebugUnitTest \
+  --tests 'com.cruxcoach.domain.board.BoardBrowserContractTest' \
+  :androidApp:testDebugUnitTest \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserStateMapperTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserHeaderSemanticsTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserActiveSessionProjectionTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardBrowserActiveSessionHostTest' \
+  --tests 'com.cruxcoach.android.ui.board.ActiveSessionContinueCardSemanticsTest' \
+  --tests 'com.cruxcoach.android.data.ActiveSessionStateMapperTest' \
+  --tests 'com.cruxcoach.android.ui.board.ClimbDetailStateMapperTest' \
+  --tests 'com.cruxcoach.android.ui.board.BoardDeliveryPolicyTest'
+```
+
+The shell must use the writable SDK path shown above. A first retry with the
+default 2-GiB Kotlin daemon exhausted its heap under host memory pressure;
+stopping the completed Gradle daemons and retrying the same focused command
+succeeded without any repository configuration change.
+
 The local reservation gate recorded in commit `193661ee` was superseded by the
 owner's CI/CD decision on 2026-08-30. Do not reserve, build, or publish this
 feature locally. Push only the clean `feat/cross-platform-refactor` branch to
@@ -341,6 +368,16 @@ placement-to-LED map and production encoder rather than an independent radio
 capture. The manually hosted simulator GUI/log was not accessible from this
 host, so its LED rendering remains an explicit external observation gate. No
 Aurora API2, Moon, Quantum or physical-board claim follows from this run.
+
+The same installed `c4ff4b2e` feature package repeated the live path later on
+2026-08-31 while the simulator was still advertising. The connection sheet
+showed the Kilter board near -36 dBm; GATT connected with status 0 and discovered
+ten services. After the controller-capability scan selected the automatic
+policy, production logs recorded `holds=15`, `success=true`, `unmapped=0`, and
+the detail UI again rendered the textual sent state. Address and screenshots
+remain privacy-scoped test-lab evidence under `/tmp/cruxcoach-current-device`;
+no address is committed. This repeat does not add an independent radio-byte or
+simulator-LED claim, and it does not validate source newer than `c4ff4b2e`.
 
 Before further transport, lock the simulator-independent encoder/parser
 vectors with:
