@@ -105,6 +105,24 @@
     "backgroundExactCountMs": 21473,
     "interpretation": "installed end-to-end diagnostic confirms the two targeted paths; still not a repeated Macrobenchmark result"
   },
+  "currentDetailFrameProbe": {
+    "status": "uncontrolled-single-run-not-a-macrobenchmark",
+    "date": "2026-08-31",
+    "package": "com.cruxcoach.android.dev.f_40293f116dca",
+    "versionCode": 1000020,
+    "sourceCommit": "2146379dbe4891b41c380a4a7a13ac63ebf30e5f",
+    "renderer": "Nokia 6.1 API 35",
+    "batteryPercent": 100,
+    "batteryTemperatureC": 38.0,
+    "thermalStatus": 0,
+    "path": "connected browser to Floats Your Boat detail with a live Kilter send",
+    "renderedFrames": 100,
+    "jankyFrames": 14,
+    "p95FrameMs": 200,
+    "p99FrameMs": 1050,
+    "frameDeadlineMisses": 14,
+    "interpretation": "negative diagnostic evidence; repeat browser-to-detail under the declared controlled FrameTimingMetric harness before attribution or comparison"
+  },
   "mitigations": [
     {
       "path": "cold-start-to-browser-content",

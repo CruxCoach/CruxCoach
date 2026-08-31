@@ -464,6 +464,15 @@ content; a read-only stats-first experiment remained about 12.9 seconds, so no
 parity-breaking estimate replaced it. Treat exact count/random selection as a
 separate schema/benchmark follow-up.
 
+An additional isolated `dumpsys gfxinfo reset` diagnostic on versionCode
+`1000020` measured one connected Browser-to-Detail transition that also sent
+the 15-frame Kilter route: 100 rendered frames, 14 deadline misses, P95 200 ms
+and P99 1,050 ms. Logcat reported two long UI stalls during this path. This is
+negative single-run evidence, not a controlled Macrobenchmark result and not a
+regression comparison. It is recorded in `macrobenchmark-plan.json` so the
+owner-reviewed `browser-to-detail` FrameTimingMetric must cover it before the
+cause is attributed or a broad rendering/transport change is attempted.
+
 Creating the separate benchmark module/build variant and adding its dependency
 would change Gradle trust-boundary files, so it remains an owner-reviewed gate;
 do not approximate it by benchmarking Stable or clearing Stable data. After
@@ -570,6 +579,21 @@ Moon and Quantum fixtures. Without HCI snooping or access to the manually
 hosted simulator GUI, this repeat still makes no independent radio-byte, LED,
 API2, Moon, Quantum or physical-hardware claim.
 
+The `2146379d`/versionCode-`1000020` artifact repeated that production path
+after the Logbook-only large-text correction. Publisher run `33426013219`
+completed through APKTrack job `5fa38bbb5c92490a8cc5394a7ca1122d` with
+`status=published`, `receipt_delivered=true`, and release SHA-256
+`f29c9af0bfd3dd9371034641fa528b62bf26f366adfd12038d9a5f2ed553b221`.
+The Nokia verified that hash before Android's package installer updated the
+Development package; Stable remained versionCode 8 with its distinct
+signature. The nearby privacy-safe identity was `Kilter Board#0001@3` (address
+redacted). GATT status 0, ten services and ready state were observed. Opening
+`Floats Your Boat` UUID prefix `d0e5387d` at 40 degrees sent 15 frames and
+reported `success=true`, `unmapped=0`; Detail showed `Board verbunden` and
+`An Board gesendet`. All ten clickable Detail nodes measured at least 48 dp.
+This remains application/log evidence without an independent HCI capture or
+simulator-GUI LED observation and makes no claim about other board families.
+
 The production Browser and Detail hosts were inspected at full resolution and
 through their UIAutomator trees. Browser retained board/angle selection,
 connection, filter, logbook, lists, settings, random, create, search and climb
@@ -603,6 +627,46 @@ round or Golden acceptance was needed. The supplemental
 `progress/action-error` pixels and semantics were reviewed separately because
 adding a focused state must not silently redefine the established 18-by-8
 baseline.
+
+The supplemental Board Logbook card used the same bounded evidence loop. Round
+1 (`f7892565`, versionCode `1000019`) retained named 48-dp selection/edit
+actions but was rejected because 1.5 font scale squeezed the card metadata.
+Round 2 (`2146379d`, versionCode `1000020`) captured and reviewed all eight
+`logbook/content` and eight `logbook/error` Compact variants at
+`/tmp/cruxcoach-logbook-v1000020-2146379d`. Every semantics tree was parsed;
+selection and edit remained 126 x 126 px at 420 dpi, the selected state was
+announced, and the corrected card kept the name, whole date, outcome and
+quality visible at 1.5. Initial Error remained distinct from Empty and exposed
+one localized 48-dp Retry. Round 2 was visually accepted for layout but found
+three copy defects (`1 ascents`, `1 entries`, untranslated German title), so
+the third and final correction uses Android plurals in both locales and
+`Board-Logbuch`.
+
+The resulting `0d176dcb`/versionCode-`1000021` artifact was published by the
+same CI run `33428728536`. Its first publisher attempt failed before job
+creation while the APKTrack API could not spool the upload on a full volume.
+After moving only unversioned, regenerable task evidence to tmpfs, the failed
+stage was rerun with the unchanged commit and deterministic idempotency key.
+Attempt 2 completed APKTrack job `6d21a348abdf49d6ba7cc28713f2e129`
+with `status=published`, `receipt_delivered=true`, and release SHA-256
+`185baf194dd8f3b445b3b157a6bbcf7ddcf342655659c4a466dc43b94643f362`.
+The Nokia verified that exact hash before the normal Android package installer
+updated the Development package; Stable remained versionCode 8 with its
+distinct certificate.
+
+All eight final `logbook/content` variants and all eight first
+`logbook/page-error` variants are preserved at
+`/tmp/cruxcoach-logbook-v1000021-0d176dcb`. The 16 environment records bind one
+artifact identity, and all 440 semantic nodes were parsed. The Content round
+passed: EN/DE singulars and the German title are correct, metadata remains
+whole at 1.5, selection is named and checked, and all three clickable regions
+measure at least 126 px at 420 dpi. The Paging state retains the card and a
+localized Retry; all four actions also meet 48 dp. Visual review rejected only
+the paging region at 1.5 because its horizontal split forces the German error
+copy into character-level wrapping. The bounded follow-up stacks message and
+Retry when font scale is at least 1.3; that region requires one final artifact
+render. The established 18-by-8 core matrix does not require recapture because
+this follow-up changes only the supplemental Logbook paging component.
 
 Before further transport, lock the simulator-independent encoder/parser
 vectors with:
@@ -671,18 +735,4 @@ ANDROID_SDK_ROOT=/home/myuser/android-sdk \
 ## Apple toolchain
 
 This Linux host has no Xcode, iOS SDK, simulator, or signing environment. On a
-Mac, first complete the owner-reviewed target/driver changes described in
-`docs/refactor/ios-readiness.md`, then run:
-
-```sh
-xcodebuild -version
-./gradlew :shared:compileKotlinIosSimulatorArm64
-./gradlew :shared:linkDebugFrameworkIosSimulatorArm64
-./gradlew :shared:iosSimulatorArm64Test
-./gradlew :shared:linkReleaseFrameworkIosArm64
-```
-
-Only after those pass should the fixture-backed SwiftUI logging shell be
-compiled and checked with VoiceOver, Dynamic Type AX5, light/dark, reduced
-motion and iPhone compact width. Do not add signing credentials to this
-repository or to command arguments.
+Mac, first complete the owner-reviewed target/driver
