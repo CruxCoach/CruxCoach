@@ -932,6 +932,11 @@
 
     <!-- Board: Lists -->
     <string name="board_lists_title">Listen</string>
+    <string name="board_browser_nav_board">Board</string>
+    <string name="board_browser_nav_filter">Filter</string>
+    <string name="board_browser_nav_logbook">Logbuch</string>
+    <string name="board_browser_nav_lists">Listen</string>
+    <string name="board_browser_nav_more">Mehr</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
     <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>
