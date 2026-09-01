@@ -158,7 +158,7 @@ internal fun BoardBrowserHeader(
                     .fillMaxWidth()
                     .height(52.dp)
                     .horizontalScroll(rememberScrollState())
-                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    .padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 HeaderChip(
@@ -170,7 +170,7 @@ internal fun BoardBrowserHeader(
                     tint = if (isBleConnected) SuccessGreen else OrangeAccent,
                     onClick = onBluetooth,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
                 HeaderChip(
                     icon = Icons.Default.Tune,
                     label = R.string.board_browser_nav_filter,
@@ -178,7 +178,7 @@ internal fun BoardBrowserHeader(
                     tag = "board_filter_toggle",
                     onClick = onFilter,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
                 HeaderChip(
                     icon = Icons.Default.Book,
                     label = R.string.board_browser_nav_logbook,
@@ -186,7 +186,7 @@ internal fun BoardBrowserHeader(
                     tag = "board_logbook_icon",
                     onClick = onLogbook,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(4.dp))
                 HeaderChip(
                     icon = Icons.AutoMirrored.Filled.FormatListBulleted,
                     label = R.string.board_browser_nav_lists,
@@ -222,7 +222,7 @@ private fun HeaderChip(
             .clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -231,7 +231,7 @@ private fun HeaderChip(
                 tint = tint,
                 modifier = Modifier.size(18.dp),
             )
-            Spacer(Modifier.width(7.dp))
+            Spacer(Modifier.width(5.dp))
             Text(
                 text = stringResource(label),
                 color = tint,
