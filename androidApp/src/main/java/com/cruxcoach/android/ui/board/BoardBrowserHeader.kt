@@ -4,19 +4,20 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Bluetooth
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,7 +42,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -81,8 +82,8 @@ internal fun boardBrowserHeaderContext(
 }
 
 /**
- * Variant A: familiar destinations stay visible as a compact icon rail while
- * the active wall context replaces the anonymous logo-only app bar.
+ * Variant B: the board context gets a quiet title row; the four primary jobs
+ * become explicit, comfortably tappable chips underneath it.
  */
 @Composable
 internal fun BoardBrowserHeader(
@@ -100,22 +101,19 @@ internal fun BoardBrowserHeader(
         shadowElevation = 1.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp),
+            .height(100.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(start = 10.dp, end = 4.dp),
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .padding(start = 12.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Color.Black)
                         .testTag("board_browser_home"),
@@ -143,87 +141,104 @@ internal fun BoardBrowserHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(5.dp))
-                    Box(
-                        Modifier
-                            .width(30.dp)
-                            .height(2.dp)
-                            .background(OrangeAccent, CircleShape),
+                }
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.testTag("board_settings_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = stringResource(R.string.cd_settings),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            HeaderAction(
-                icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
-                label = R.string.board_browser_nav_board,
-                contentDescription = R.string.cd_bluetooth,
-                tag = "board_ble_button",
-                tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = onBluetooth,
-            )
-            HeaderAction(
-                icon = Icons.Default.Tune,
-                label = R.string.board_browser_nav_filter,
-                contentDescription = R.string.cd_filter,
-                tag = "board_filter_toggle",
-                onClick = onFilter,
-            )
-            HeaderAction(
-                icon = Icons.Default.Book,
-                label = R.string.board_browser_nav_logbook,
-                contentDescription = R.string.board_logbook_title,
-                tag = "board_logbook_icon",
-                onClick = onLogbook,
-            )
-            HeaderAction(
-                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
-                label = R.string.board_browser_nav_lists,
-                contentDescription = R.string.board_lists_title,
-                tag = "board_lists_button",
-                onClick = onLists,
-            )
-            HeaderAction(
-                icon = Icons.Default.Settings,
-                label = R.string.board_browser_nav_more,
-                contentDescription = R.string.cd_settings,
-                tag = "board_settings_button",
-                onClick = onSettings,
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HeaderChip(
+                    icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                    label = if (isBleConnected) R.string.board_browser_connected else R.string.board_browser_connect,
+                    contentDescription = R.string.cd_bluetooth,
+                    tag = "board_ble_button",
+                    emphasized = true,
+                    tint = if (isBleConnected) SuccessGreen else OrangeAccent,
+                    onClick = onBluetooth,
+                )
+                Spacer(Modifier.width(8.dp))
+                HeaderChip(
+                    icon = Icons.Default.Tune,
+                    label = R.string.board_browser_nav_filter,
+                    contentDescription = R.string.cd_filter,
+                    tag = "board_filter_toggle",
+                    onClick = onFilter,
+                )
+                Spacer(Modifier.width(8.dp))
+                HeaderChip(
+                    icon = Icons.Default.Book,
+                    label = R.string.board_browser_nav_logbook,
+                    contentDescription = R.string.board_logbook_title,
+                    tag = "board_logbook_icon",
+                    onClick = onLogbook,
+                )
+                Spacer(Modifier.width(8.dp))
+                HeaderChip(
+                    icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                    label = R.string.board_browser_nav_lists,
+                    contentDescription = R.string.board_lists_title,
+                    tag = "board_lists_button",
+                    onClick = onLists,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun HeaderAction(
+private fun HeaderChip(
     icon: ImageVector,
     @StringRes label: Int,
     @StringRes contentDescription: Int,
     tag: String,
     onClick: () -> Unit,
+    emphasized: Boolean = false,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
-    Column(
+    Surface(
+        color = if (emphasized) {
+            tint.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
-            .width(46.dp)
-            .fillMaxHeight()
+            .height(40.dp)
             .testTag(tag)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
+            .clickable(onClick = onClick),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = stringResource(contentDescription),
-            tint = tint,
-            modifier = Modifier.size(22.dp),
-        )
-        Text(
-            text = stringResource(label),
-            color = tint,
-            fontSize = 9.sp,
-            lineHeight = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = stringResource(contentDescription),
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = stringResource(label),
+                color = tint,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
     }
 }

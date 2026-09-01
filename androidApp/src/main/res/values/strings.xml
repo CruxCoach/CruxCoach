@@ -893,6 +893,8 @@
     <string name="board_browser_nav_logbook">Logbook</string>
     <string name="board_browser_nav_lists">Lists</string>
     <string name="board_browser_nav_more">More</string>
+    <string name="board_browser_connect">Connect board</string>
+    <string name="board_browser_connected">Board connected</string>
     <string name="board_lists_delete_title">Delete list?</string>
     <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
     <string name="board_lists_empty_title">No lists yet</string>
