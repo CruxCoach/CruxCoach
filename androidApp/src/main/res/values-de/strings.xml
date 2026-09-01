@@ -2714,4 +2714,8 @@
         <item quantity="one">Schon einmal in der Playlist</item>
         <item quantity="other">Schon %1$d mal in der Playlist</item>
     </plurals>
+    <string name="beta_videos">Beta-Videos (%1$d)</string>
+    <string name="beta_video_open">Beta-Video %1$d öffnen</string>
+    <string name="beta_video_other_angle">Video bei %1$d°</string>
+    <string name="beta_video_open_failed">Keine App und kein Browser konnte dieses Beta-Video öffnen.</string>
 </resources>

@@ -151,6 +151,7 @@ class BoardDatabaseImporter(
         climbsDbFiles: List<File>,
         statsDbFiles: List<File>,
         locationsDbFiles: List<File> = emptyList(),
+        betaDbFiles: List<File> = emptyList(),
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
@@ -311,6 +312,19 @@ class BoardDatabaseImporter(
                 .onFailure { Log.w(TAG, "locations chunk import failed (non-essential) — skipping ${file.name}", it) }
         }
 
+        // Optional Kilter beta data is an authoritative, independent chunk.
+        // Validate the whole chunk before replacing the local Kilter slice.
+        for (file in betaDbFiles) {
+            val db = openTargetDb()
+            try {
+                db.execSQL("ATTACH DATABASE ? AS beta_src", arrayOf(file.absolutePath))
+                replaceEmbeddedBetaLinks(db, "beta_src", "kilter")
+            } finally {
+                runCatching { db.execSQL("DETACH DATABASE beta_src") }
+                db.close()
+            }
+        }
+
         val climbCount = boardRepository.getClimbCount()
         val statCount = boardRepository.getStatCount()
         val placementCount = boardRepository.getAllPlacements().size
@@ -370,6 +384,7 @@ class BoardDatabaseImporter(
         // the same via its own `hasMoveCount` check.
         var snapshotHasMoveCount = false
         var snapshotHasMethod = false
+        var snapshotHasClimbAliases = false
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
@@ -394,6 +409,34 @@ class BoardDatabaseImporter(
                             "origin" -> snapshotHasOrigin = true
                             "created_by_pubkey" -> snapshotHasPubkey = true
                         }
+                    }
+                }
+                snapshotHasClimbAliases = queryLong(
+                    targetDb,
+                    "SELECT COUNT(*) FROM mb.sqlite_master " +
+                        "WHERE type='table' AND name='climb_aliases'",
+                ) == 1L
+                if (snapshotHasClimbAliases) {
+                    val invalidAliases = queryLong(
+                        targetDb,
+                        """
+                        SELECT COUNT(*) FROM mb.climb_aliases a
+                        LEFT JOIN mb.climbs alias_climb
+                          ON LOWER(alias_climb.uuid) = LOWER(a.alias_uuid)
+                        LEFT JOIN mb.climbs canonical_climb
+                          ON LOWER(canonical_climb.uuid) = LOWER(a.canonical_uuid)
+                        LEFT JOIN mb.climb_aliases chained
+                          ON LOWER(chained.alias_uuid) = LOWER(a.canonical_uuid)
+                        WHERE TRIM(a.alias_uuid) = '' OR TRIM(a.canonical_uuid) = ''
+                           OR LOWER(a.alias_uuid) = LOWER(a.canonical_uuid)
+                           OR a.match_kind != 'legacy-exact-duplicate'
+                           OR alias_climb.uuid IS NULL OR canonical_climb.uuid IS NULL
+                           OR alias_climb.is_listed != 1 OR canonical_climb.is_listed != 1
+                           OR chained.alias_uuid IS NOT NULL
+                        """.trimIndent(),
+                    )
+                    require(invalidAliases == 0L) {
+                        "MoonBoard snapshot contains invalid or chained climb aliases"
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
@@ -439,6 +482,39 @@ class BoardDatabaseImporter(
                     FROM mb.climb_stats
                     """.trimIndent()
                 )
+                // Released clients never see this local projection: the
+                // Blossom snapshot itself keeps every legacy UUID listed.
+                // Restore aliases from an older import first, then replace the
+                // bridge authoritatively and hide only the newly verified
+                // exact duplicates in this app generation.
+                targetDb.beginTransaction()
+                try {
+                    targetDb.execSQL(
+                        "UPDATE climbs SET is_listed = 1 WHERE board_brand = 'moonboard' " +
+                            "AND uuid IN (SELECT alias_uuid FROM moonboard_climb_aliases) " +
+                            "AND is_deleted = 0",
+                    )
+                    targetDb.execSQL("DELETE FROM moonboard_climb_aliases")
+                    if (snapshotHasClimbAliases) {
+                        targetDb.execSQL(
+                            """
+                            INSERT INTO moonboard_climb_aliases(alias_uuid, canonical_uuid, match_kind)
+                            SELECT LOWER(TRIM(alias_uuid)), LOWER(TRIM(canonical_uuid)), match_kind
+                            FROM mb.climb_aliases
+                            """.trimIndent(),
+                        )
+                        targetDb.execSQL(
+                            """
+                            UPDATE climbs SET is_listed = 0
+                            WHERE board_brand = 'moonboard' AND is_deleted = 0
+                              AND uuid IN (SELECT alias_uuid FROM moonboard_climb_aliases)
+                            """.trimIndent(),
+                        )
+                    }
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
                 onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
             } finally {
                 runCatching { targetDb.execSQL("DETACH DATABASE mb") }
@@ -453,6 +529,80 @@ class BoardDatabaseImporter(
         val statCount = boardRepository.getStatCount()
         Log.i(TAG, "importMoonBoardSnapshot done: catalogue totals climbs=$climbCount stats=$statCount")
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
+     * Replace the optional MoonBoard beta-link cache from a separately signed
+     * snapshot. Validation and replacement share one SQLite transaction, so a
+     * malformed or interrupted import leaves the previous usable links intact.
+     */
+    @Synchronized
+    fun importMoonBoardBetaSnapshot(snapshotFile: File): Int {
+        val targetDb = openTargetDb()
+        var attached = false
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS mb_beta", arrayOf(snapshotFile.absolutePath))
+            attached = true
+            val tableCount = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM mb_beta.sqlite_master " +
+                    "WHERE type='table' AND name='moonboard_beta_links'"
+            )
+            require(tableCount == 1L) { "MoonBoard beta snapshot has no link table" }
+            val sourceCount = queryLong(targetDb, "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links")
+            val invalidCount = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links " +
+                    "WHERE problem_id <= 0 OR climb_uuid = '' OR video_id = '' OR provider = '' " +
+                    "OR TRIM(url) NOT LIKE 'https://%' OR TRIM(url) LIKE '% %' " +
+                    "OR (thumbnail IS NOT NULL AND TRIM(thumbnail) NOT LIKE 'https://%')"
+            )
+            require(invalidCount == 0L) { "MoonBoard beta snapshot contains invalid rows" }
+            val resolvableCount = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links b " +
+                    "INNER JOIN climbs c ON c.uuid = LOWER(b.climb_uuid) " +
+                    "WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0"
+            )
+            require(
+                sourceCount == 0L ||
+                    (resolvableCount > 0L &&
+                        (resolvableCount + 2 >= sourceCount || resolvableCount * 100 >= sourceCount * 99))
+            ) {
+                "MoonBoard beta snapshot does not match the installed catalogue"
+            }
+
+            targetDb.beginTransaction()
+            try {
+                targetDb.execSQL("DELETE FROM climb_beta_links WHERE board_brand='moonboard'")
+                // Old/deleted/ungraded problems may remain in Moon's media
+                // catalogue. Keep only links that resolve to a local Moon climb.
+                targetDb.execSQL(
+                    """
+                    INSERT INTO climb_beta_links(
+                        board_brand, climb_uuid, url, provider, media_id, thumbnail
+                    )
+                    SELECT 'moonboard', LOWER(b.climb_uuid), b.url, LOWER(b.provider),
+                           b.video_id, b.thumbnail
+                    FROM mb_beta.moonboard_beta_links b
+                    INNER JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
+                    WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0
+                    """.trimIndent()
+                )
+                targetDb.setTransactionSuccessful()
+            } finally {
+                targetDb.endTransaction()
+            }
+            val imported = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='moonboard'",
+            ).toInt()
+            Log.i(TAG, "importMoonBoardBetaSnapshot done: links=$imported source=$sourceCount")
+            return imported
+        } finally {
+            if (attached) runCatching { targetDb.execSQL("DETACH DATABASE mb_beta") }
+            targetDb.close()
+        }
     }
 
     /**
@@ -623,6 +773,7 @@ class BoardDatabaseImporter(
                         brand
                     )
                 }
+                replaceEmbeddedBetaLinks(targetDb, "ab", boardBrand)
             } finally {
                 runCatching { targetDb.execSQL("DETACH DATABASE ab") }
                 targetDb.close()
@@ -842,6 +993,7 @@ class BoardDatabaseImporter(
             } finally {
                 db.endTransaction()
             }
+            replaceEmbeddedBetaLinks(db, "qb", "quantum")
         } finally {
             runCatching { db.execSQL("DETACH DATABASE qb") }
             db.close()
@@ -850,6 +1002,94 @@ class BoardDatabaseImporter(
         val count = boardRepository.getClimbCountsByBrand()["quantum"] ?: 0L
         onProgress?.invoke(ImportStep.Done(count.toInt(), count.toInt(), 0, 0))
         Log.i(TAG, "importQuantumSnapshot done: climbs=$count")
+    }
+
+    /**
+     * Import an optional generic/legacy beta table from an attached catalogue.
+     * Absence means "transport does not own beta data" and leaves the slice
+     * untouched. Presence, including zero rows, is authoritative. Any malformed
+     * row aborts before the replacement transaction, preserving last-good data.
+     */
+    private fun replaceEmbeddedBetaLinks(
+        db: SQLiteDatabase,
+        sourceAlias: String,
+        boardBrand: String,
+    ): Int? {
+        val table = when {
+            queryLong(db, "SELECT COUNT(*) FROM $sourceAlias.sqlite_master WHERE type='table' AND name='climb_beta_links'") == 1L -> "climb_beta_links"
+            queryLong(db, "SELECT COUNT(*) FROM $sourceAlias.sqlite_master WHERE type='table' AND name='beta_links'") == 1L -> "beta_links"
+            else -> return null
+        }
+        val columns = mutableSetOf<String>()
+        db.rawQuery("PRAGMA $sourceAlias.table_info($table)", null).use { cursor ->
+            while (cursor.moveToNext()) columns += cursor.getString(1)
+        }
+        require("climb_uuid" in columns) { "$table has no climb_uuid" }
+        val urlColumn = when {
+            "url" in columns -> "url"
+            "link" in columns -> "link"
+            else -> error("$table has no url/link")
+        }
+        fun text(column: String, fallback: String = "NULL") =
+            if (column in columns) column else fallback
+        val providerExpr = if ("provider" in columns) {
+            "LOWER(TRIM(provider))"
+        } else {
+            "CASE WHEN LOWER($urlColumn) LIKE '%instagram.com/%' THEN 'instagram' ELSE 'unknown' END"
+        }
+        val brandMismatch = if ("board_brand" in columns) {
+            queryLong(
+                db,
+                "SELECT COUNT(*) FROM $sourceAlias.$table WHERE LOWER(TRIM(board_brand)) != ?",
+                arrayOf(boardBrand),
+            )
+        } else 0L
+        require(brandMismatch == 0L) { "$table contains another board brand" }
+        val invalid = queryLong(
+            db,
+            "SELECT COUNT(*) FROM $sourceAlias.$table WHERE TRIM(climb_uuid)='' " +
+                "OR TRIM($urlColumn) NOT LIKE 'https://%' OR TRIM($urlColumn) LIKE '% %' " +
+                (if ("provider" in columns) "OR TRIM(provider)='' " else "") +
+                (if ("thumbnail" in columns) {
+                    "OR (thumbnail IS NOT NULL AND (TRIM(thumbnail) NOT LIKE 'https://%' OR TRIM(thumbnail) LIKE '% %')) "
+                } else ""),
+        )
+        require(invalid == 0L) { "$table contains invalid beta links" }
+        val orphaned = queryLong(
+            db,
+            "SELECT COUNT(*) FROM $sourceAlias.$table b LEFT JOIN climbs c " +
+                "ON c.uuid=LOWER(TRIM(b.climb_uuid)) AND c.board_brand=? AND c.is_deleted=0 " +
+                "WHERE c.uuid IS NULL",
+            arrayOf(boardBrand),
+        )
+        require(orphaned == 0L) { "$table contains beta links for unknown climbs" }
+
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM climb_beta_links WHERE board_brand=?", arrayOf(boardBrand))
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO climb_beta_links(
+                    board_brand, climb_uuid, url, provider, media_id,
+                    foreign_username, angle, thumbnail, created_at
+                )
+                SELECT ?, LOWER(TRIM(climb_uuid)), TRIM($urlColumn), $providerExpr,
+                       ${text("media_id", text("video_id"))},
+                       ${text("foreign_username")}, ${text("angle")},
+                       ${text("thumbnail")}, ${text("created_at")}
+                FROM $sourceAlias.$table
+                """.trimIndent(),
+                arrayOf(boardBrand),
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        return queryLong(
+            db,
+            "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand=?",
+            arrayOf(boardBrand),
+        ).toInt()
     }
 
     /**
@@ -2096,8 +2336,12 @@ class BoardDatabaseImporter(
         return db
     }
 
-    private fun queryLong(db: SQLiteDatabase, sql: String): Long {
-        val cursor = db.rawQuery(sql, null)
+    private fun queryLong(
+        db: SQLiteDatabase,
+        sql: String,
+        args: Array<String>? = null,
+    ): Long {
+        val cursor = db.rawQuery(sql, args)
         return cursor.use { if (it.moveToFirst()) it.getLong(0) else 0L }
     }
 

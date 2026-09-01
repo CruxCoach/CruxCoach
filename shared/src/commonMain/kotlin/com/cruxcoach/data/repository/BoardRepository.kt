@@ -142,6 +142,18 @@ data class ClimbWithStats(
     }
 }
 
+data class ClimbBetaLink(
+    val boardBrand: String,
+    val climbUuid: String,
+    val url: String,
+    val provider: String,
+    val videoId: String? = null,
+    val foreignUsername: String? = null,
+    val angle: Int? = null,
+    val thumbnail: String? = null,
+    val createdAt: String? = null,
+)
+
 data class AscentWithClimb(
     val uuid: String,
     val userId: Long = 0L,
@@ -400,6 +412,13 @@ interface BoardClimbQueries {
     fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
     fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
+
+    /** Optional published beta videos, read only on the climb-detail path. */
+    fun getClimbBetaLinks(boardBrand: String, climbUuid: String, angle: Int): List<ClimbBetaLink> = emptyList()
+    /** Canonicalize exact, publisher-verified MoonBoard legacy aliases. */
+    fun canonicalizeClimbUuids(uuids: Collection<String>): Set<String> = uuids.toSet()
+    /** Canonical UUID plus every exact legacy alias, for secure user data. */
+    fun equivalentClimbUuids(uuid: String): Set<String> = setOf(uuid)
     /** Upstream route UUID used by the Quantum 2.0.14 BLE protocol. */
     fun getQuantumExternalRouteUuid(appUuid: String): String? = null
     /** Resolve a controller-reported Quantum route for one physical model.

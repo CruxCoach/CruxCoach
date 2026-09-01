@@ -103,6 +103,63 @@ CREATE TABLE quantum_route_refs (
 CREATE INDEX idx_quantum_route_refs_external
     ON quantum_route_refs(route_uuid, model);
 
+-- Optional board-scoped beta-video metadata. MoonBoard synchronizes this in
+-- an independent media lane; Aurora-family catalogues may carry it inline.
+CREATE TABLE climb_beta_links (
+    board_brand TEXT NOT NULL,
+    climb_uuid TEXT NOT NULL,
+    url TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    media_id TEXT,
+    foreign_username TEXT,
+    angle INTEGER,
+    thumbnail TEXT,
+    created_at TEXT,
+    PRIMARY KEY(board_brand, climb_uuid, url)
+);
+
+CREATE INDEX idx_climb_beta_links_detail
+    ON climb_beta_links(board_brand, climb_uuid, angle);
+
+-- Small, publisher-verified identity bridge for exact duplicate legacy
+-- MoonBoard rows. The catalogue keeps every legacy row listed for released
+-- clients; this generation can hide only these aliases locally and resolve
+-- secure user data without rewriting it.
+CREATE TABLE moonboard_climb_aliases (
+    alias_uuid TEXT NOT NULL PRIMARY KEY,
+    canonical_uuid TEXT NOT NULL,
+    match_kind TEXT NOT NULL
+);
+
+CREATE INDEX idx_moonboard_climb_aliases_canonical
+    ON moonboard_climb_aliases(canonical_uuid);
+
+getMoonBoardCanonicalUuid:
+SELECT canonical_uuid FROM moonboard_climb_aliases
+WHERE alias_uuid = :climbUuid
+LIMIT 1;
+
+getMoonBoardAliasesForCanonical:
+SELECT alias_uuid FROM moonboard_climb_aliases
+WHERE canonical_uuid = :canonicalUuid;
+
+getMoonBoardAliasMappings:
+SELECT alias_uuid, canonical_uuid FROM moonboard_climb_aliases
+WHERE alias_uuid IN :uuids;
+
+getClimbBetaLinks:
+SELECT board_brand, climb_uuid, url, provider, media_id, foreign_username,
+       angle, thumbnail, created_at
+FROM climb_beta_links
+WHERE board_brand = :boardBrand
+  AND climb_uuid = COALESCE(
+    (SELECT canonical_uuid FROM moonboard_climb_aliases
+     WHERE alias_uuid = :climbUuid AND :boardBrand = 'moonboard' LIMIT 1),
+    :climbUuid
+  )
+ORDER BY CASE WHEN angle = :angle THEN 0 WHEN angle IS NULL THEN 1 ELSE 2 END,
+         angle, provider, url;
+
 -- Lossless Quantum-only vendor metadata. Kept out of the generic climbs table
 -- so established board schemas and browse semantics stay unchanged. Boolean
 -- columns are positive facts from the eWalls payload; absence is not inferred
@@ -1482,6 +1539,9 @@ WHERE climb_uuid IN (
     SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
 );
 
+deleteClimbBetaLinksForBrand:
+DELETE FROM climb_beta_links WHERE board_brand = :boardBrand;
+
 deleteCatalogueClimbsForBrand:
 DELETE FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
 
@@ -1546,6 +1606,9 @@ DELETE FROM sync_states;
 
 deleteAllBetaLinks:
 DELETE FROM beta_links;
+
+deleteAllClimbBetaLinks:
+DELETE FROM climb_beta_links;
 
 
 -- LED grid with coordinates for animations (joins placement coords + LED positions)

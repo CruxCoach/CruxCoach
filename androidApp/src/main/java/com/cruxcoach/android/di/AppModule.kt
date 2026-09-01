@@ -46,6 +46,7 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
+import com.cruxcoach.android.data.MoonBoardBetaSync
 import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.data.QuantumCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
@@ -308,6 +309,19 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Named("moonboardBeta")
+    fun provideMoonBoardBetaBlossomSyncManager(
+        @ApplicationContext context: Context,
+        @Named("blossom") okHttpClient: OkHttpClient
+    ): BlossomSyncManager = BlossomSyncManager(
+        context,
+        okHttpClient,
+        manifestDTag = BlossomSyncManager.MOONBOARD_BETA_D_TAG,
+        prefsName = BlossomSyncManager.MOONBOARD_BETA_PREFS_NAME,
+    )
+
+    @Provides
+    @Singleton
     fun provideBoardSyncManager(
         importer: BoardDatabaseImporter,
         blossomSyncManager: BlossomSyncManager,
@@ -321,6 +335,7 @@ object AppModule {
         quantumCatalogueSync: QuantumCatalogueSync,
         integrityVerifier: com.cruxcoach.android.updater.IntegrityVerifier,
         moonBoardCsvImporter: MoonBoardCsvImporter,
+        moonBoardBetaSync: MoonBoardBetaSync,
     ): BoardSyncManager {
         return BoardSyncManager(
             importer,
@@ -335,6 +350,7 @@ object AppModule {
             quantumCatalogueSync,
             integrityVerifier,
             moonBoardCsvImporter,
+            moonBoardBetaSync = moonBoardBetaSync,
         )
     }
 

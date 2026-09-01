@@ -624,12 +624,14 @@ class BlossomSyncManager(
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
         const val MANIFEST_D_TAG = "cruxcoach/board-db"
         const val MOONBOARD_D_TAG = "cruxcoach/moonboard-db"
+        const val MOONBOARD_BETA_D_TAG = "cruxcoach/moonboard-beta-links"
         const val QUANTUM_D_TAG = "cruxcoach/quantum-db"
         // Per-board SharedPreferences files for chunk-hash state. Kilter
         // keeps the historical "blossom_sync" name so existing installs
         // do not lose their incremental-sync state on upgrade.
         const val DEFAULT_PREFS_NAME = "blossom_sync"
         const val MOONBOARD_PREFS_NAME = "blossom_sync_moonboard"
+        const val MOONBOARD_BETA_PREFS_NAME = "blossom_sync_moonboard_beta"
 
         /**
          * Applies the NIP-01 ordering rule for parameterized-replaceable events.

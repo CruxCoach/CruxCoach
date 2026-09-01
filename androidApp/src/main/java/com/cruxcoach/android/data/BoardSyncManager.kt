@@ -70,6 +70,7 @@ class BoardSyncManager(
     private val quantumCatalogueSync: QuantumCatalogueSync,
     private val integrityVerifier: IntegrityVerifier,
     private val moonBoardCsvImporter: MoonBoardCsvImporter? = null,
+    private val moonBoardBetaSync: MoonBoardBetaSync? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val discoverInitialShare: suspend () -> LocalShareDiscovery.Found? = {
         LocalShareDiscovery(appContext).discover()
@@ -1104,6 +1105,7 @@ class BoardSyncManager(
             val climbFiles = mutableListOf<File>()
             val statFiles = mutableListOf<File>()
             val locationFiles = mutableListOf<File>()
+            val betaFiles = mutableListOf<File>()
             for (chunk in chunksToDownload) {
                 val file = chunkFiles[chunk.name] ?: continue
                 val resolvedType = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() } ?: inferType(chunk.name)
@@ -1112,10 +1114,11 @@ class BoardSyncManager(
                     "climbs" -> climbFiles.add(file)
                     "stats" -> statFiles.add(file)
                     "locations" -> locationFiles.add(file)
+                    "beta" -> betaFiles.add(file)
                 }
             }
 
-            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
+            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}, beta=${betaFiles.size}")
             var kilterDone: ImportStep.Done? = null
             withBackgroundThreadPriority {
                 importer.importFromChunks(
@@ -1123,6 +1126,7 @@ class BoardSyncManager(
                     climbsDbFiles = climbFiles,
                     statsDbFiles = statFiles,
                     locationsDbFiles = locationFiles,
+                    betaDbFiles = betaFiles,
                     onProgress = { step ->
                         if (step is ImportStep.Done) kilterDone = step
                         _state.update { it.copy(importStep = step) }
@@ -1213,6 +1217,7 @@ class BoardSyncManager(
                     // No import ran — mark the section complete anyway so
                     // the user sees the MoonBoard catalogue is accounted for.
                     _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
+                    moonBoardBetaSync?.sync()
                     false
                 }
                 is MoonBoardCatalogueSync.Result.Imported -> {
@@ -1222,6 +1227,7 @@ class BoardSyncManager(
                     // the moment the browser's mask cache must re-ask it. Still
                     // inside the same sync run, so syncGeneration says nothing.
                     bumpCatalogueRevision()
+                    moonBoardBetaSync?.sync()
                     true
                 }
                 is MoonBoardCatalogueSync.Result.Failed -> {
@@ -1230,6 +1236,8 @@ class BoardSyncManager(
                     false
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "MoonBoard catalogue sync threw — Kilter board sync unaffected", e)
             _state.update { it.copy(
@@ -1440,6 +1448,7 @@ class BoardSyncManager(
         name.startsWith("climbs") -> "climbs"
         name.startsWith("stats") -> "stats"
         name.startsWith("locations") -> "locations"
+        name.startsWith("beta") -> "beta"
         else -> "unknown"
     }
 

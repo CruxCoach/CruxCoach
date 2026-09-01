@@ -2715,4 +2715,8 @@
         <item quantity="one">Already on the playlist once</item>
         <item quantity="other">Already on the playlist %1$d times</item>
     </plurals>
+    <string name="beta_videos">Beta videos (%1$d)</string>
+    <string name="beta_video_open">Open beta video %1$d</string>
+    <string name="beta_video_other_angle">%1$d° video</string>
+    <string name="beta_video_open_failed">No app or browser could open this beta video.</string>
 </resources>

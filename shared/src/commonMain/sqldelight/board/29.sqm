@@ -1,0 +1,28 @@
+CREATE TABLE climb_beta_links (
+    board_brand TEXT NOT NULL,
+    climb_uuid TEXT NOT NULL,
+    url TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    media_id TEXT,
+    foreign_username TEXT,
+    angle INTEGER,
+    thumbnail TEXT,
+    created_at TEXT,
+    PRIMARY KEY(board_brand, climb_uuid, url)
+);
+
+CREATE INDEX idx_climb_beta_links_detail
+    ON climb_beta_links(board_brand, climb_uuid, angle);
+
+-- Preserve the historical Aurora/Kilter cache. The old table deliberately
+-- remains in place for rollback/peer-schema compatibility; all new reads use
+-- the board-scoped store above.
+INSERT OR IGNORE INTO climb_beta_links(
+    board_brand, climb_uuid, url, provider, foreign_username, created_at
+)
+SELECT c.board_brand, LOWER(b.climb_uuid), b.link,
+       CASE WHEN LOWER(b.link) LIKE '%instagram.com/%' THEN 'instagram' ELSE 'unknown' END,
+       b.foreign_username, b.created_at
+FROM beta_links b
+JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
+WHERE b.link LIKE 'https://%';

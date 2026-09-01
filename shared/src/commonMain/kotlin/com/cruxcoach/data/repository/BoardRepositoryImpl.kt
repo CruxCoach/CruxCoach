@@ -96,7 +96,10 @@ class BoardRepositoryImpl(
     }
 
     override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
-        return q.getClimbByUuid(angle.toLong(), uuid).executeAsOneOrNull()?.let {
+        val normalizedUuid = uuid.lowercase()
+        val canonicalUuid = q.getMoonBoardCanonicalUuid(normalizedUuid).executeAsOneOrNull()
+            ?: uuid
+        return q.getClimbByUuid(angle.toLong(), canonicalUuid).executeAsOneOrNull()?.let {
             mapClimb(
                 it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count,
                 it.difficulty_average, it.quality_average, it.ascensionist_count, it.description,
@@ -113,6 +116,52 @@ class BoardRepositoryImpl(
                 boardBrand = it.board_brand,
                 method = it.method,
             )
+        }
+    }
+
+    override fun getClimbBetaLinks(
+        boardBrand: String,
+        climbUuid: String,
+        angle: Int,
+    ): List<ClimbBetaLink> {
+        val seen = hashSetOf<String>()
+        return q.getClimbBetaLinks(boardBrand, climbUuid.lowercase(), angle.toLong())
+            .executeAsList().mapNotNull {
+            val normalizedUrl = it.url.trim().removeSuffix("/").lowercase()
+            val identity = it.media_id?.takeIf(String::isNotBlank)
+                ?.let { mediaId -> "${it.provider.lowercase()}:$mediaId" }
+                ?: normalizedUrl
+            if (!seen.add(identity)) return@mapNotNull null
+            ClimbBetaLink(
+                boardBrand = it.board_brand,
+                climbUuid = it.climb_uuid,
+                url = it.url,
+                provider = it.provider,
+                videoId = it.media_id,
+                foreignUsername = it.foreign_username,
+                angle = it.angle?.toInt(),
+                thumbnail = it.thumbnail,
+                createdAt = it.created_at,
+            )
+        }
+    }
+
+    override fun canonicalizeClimbUuids(uuids: Collection<String>): Set<String> {
+        if (uuids.isEmpty()) return emptySet()
+        val aliases = moonBoardAliasMappings(uuids.map { it.lowercase() })
+        return uuids.mapTo(linkedSetOf()) { uuid -> aliases[uuid.lowercase()] ?: uuid }
+    }
+
+    override fun equivalentClimbUuids(uuid: String): Set<String> {
+        val normalized = uuid.lowercase()
+        val mappedCanonical = q.getMoonBoardCanonicalUuid(normalized).executeAsOneOrNull()
+            ?.lowercase()
+        val canonicalLookup = mappedCanonical ?: normalized
+        val aliases = q.getMoonBoardAliasesForCanonical(canonicalLookup).executeAsList()
+        val canonical = if (mappedCanonical != null || aliases.isNotEmpty()) canonicalLookup else uuid
+        return buildSet {
+            add(canonical)
+            aliases.forEach { add(it.lowercase()) }
         }
     }
 
@@ -331,33 +380,60 @@ class BoardRepositoryImpl(
     }
 
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {
-        if (uuids.isEmpty()) return emptyList()
-        return q.getClimbsByUuidsSimple(uuids, angle.toLong())
-            .executeAsList().map { mapBrowse(it) }
+        return resolveAliasesInRequestedOrder(uuids) { canonical ->
+            q.getClimbsByUuidsSimple(canonical, angle.toLong())
+                .executeAsList().map { mapBrowse(it) }
+        }
     }
     override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
-        if (uuids.isEmpty()) return emptyList()
-        return q.getClimbsByUuidsAnyAngle(uuids)
-            .executeAsList().map { mapBrowse(it) }
+        return resolveAliasesInRequestedOrder(uuids) { canonical ->
+            q.getClimbsByUuidsAnyAngle(canonical)
+                .executeAsList().map { mapBrowse(it) }
+        }
     }
 
     override fun getClimbsByUuidsForBoard(
         uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int
     ): List<ClimbWithStats> {
-        if (uuids.isEmpty()) return emptyList()
-        return q.getClimbsByUuidsForBoard(
-            uuids, angle.toLong(), boardBrand, layoutId.toLong(), selProductSizeId.toLong()
-        ).executeAsList().map { mapBrowse(it) }
+        return resolveAliasesInRequestedOrder(uuids) { canonical ->
+            q.getClimbsByUuidsForBoard(
+                canonical, angle.toLong(), boardBrand, layoutId.toLong(), selProductSizeId.toLong()
+            ).executeAsList().map { mapBrowse(it) }
+        }
     }
 
     override fun getClimbsByUuidsForBoardAnyAngle(
         uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int
     ): List<ClimbWithStats> {
-        if (uuids.isEmpty()) return emptyList()
-        return q.getClimbsByUuidsForBoardAnyAngle(
-            uuids, boardBrand, layoutId.toLong(), selProductSizeId.toLong()
-        ).executeAsList().map { mapBrowse(it) }
+        return resolveAliasesInRequestedOrder(uuids) { canonical ->
+            q.getClimbsByUuidsForBoardAnyAngle(
+                canonical, boardBrand, layoutId.toLong(), selProductSizeId.toLong()
+            ).executeAsList().map { mapBrowse(it) }
+        }
     }
+
+    private fun resolveAliasesInRequestedOrder(
+        uuids: Collection<String>,
+        fetch: (Set<String>) -> List<ClimbWithStats>,
+    ): List<ClimbWithStats> {
+        if (uuids.isEmpty()) return emptyList()
+        val requested = uuids.toList()
+        val aliases = moonBoardAliasMappings(requested.map { it.lowercase() })
+        val canonicalByRequested = requested.associateWith { aliases[it.lowercase()] ?: it }
+        val rows = fetch(canonicalByRequested.values.toSet())
+            .associateBy { it.uuid.lowercase() }
+        // Keep the secure/list UUID at the API boundary. Callers key their
+        // rows by that value for removal, playback and navigation; only the
+        // underlying catalogue lookup is canonicalized.
+        return requested.distinct().mapNotNull { requestedUuid ->
+            rows[canonicalByRequested.getValue(requestedUuid).lowercase()]?.copy(uuid = requestedUuid)
+        }
+    }
+
+    private fun moonBoardAliasMappings(uuids: Collection<String>): Map<String, String> =
+        uuids.distinct().chunked(500).flatMap { chunk ->
+            q.getMoonBoardAliasMappings(chunk).executeAsList()
+        }.associate { it.alias_uuid.lowercase() to it.canonical_uuid.lowercase() }
 
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
@@ -796,6 +872,7 @@ class BoardRepositoryImpl(
             q.deleteAllHoles()
             q.deleteAllSyncState()
             q.deleteAllBetaLinks()
+            q.deleteAllClimbBetaLinks()
             q.deleteAllQuantumRouteRefs()
             q.deleteAllQuantumRouteMetadata()
         }
@@ -809,6 +886,7 @@ class BoardRepositoryImpl(
                 // their subselect.
                 q.deleteCatalogueClimbStatsForBrand(brand)
                 q.deleteCatalogueBetaLinksForBrand(brand)
+                q.deleteClimbBetaLinksForBrand(brand)
                 q.deleteCatalogueClimbsForBrand(brand)
                 q.deleteHoldPositionsForBrand(brand)
                 q.deleteLedsForBrand(brand)

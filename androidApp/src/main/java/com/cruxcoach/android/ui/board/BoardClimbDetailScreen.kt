@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.annotation.ColorInt
 import androidx.annotation.StringRes
@@ -7,6 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +34,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -53,8 +59,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -68,6 +76,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import com.cruxcoach.data.repository.ClimbBetaLink
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.ble.BoardProjectionPolicy
@@ -960,6 +970,11 @@ fun BoardClimbDetailScreen(
                     onNavigateToSetter = onNavigateToSetter,
                     layerControlsAllowed = layerControlsAllowed,
                     onFixBoardMismatch = { showMismatchPicker = true },
+                    onBetaOpenFailed = {
+                        shareScope.launch {
+                            snackbarHostState.showSnackbar(resources.getString(R.string.beta_video_open_failed))
+                        }
+                    },
                 )
             }
         } else {
@@ -972,6 +987,11 @@ fun BoardClimbDetailScreen(
                 onNavigateToSetter = onNavigateToSetter,
                 layerControlsAllowed = layerControlsAllowed,
                 onFixBoardMismatch = { showMismatchPicker = true },
+                onBetaOpenFailed = {
+                    shareScope.launch {
+                        snackbarHostState.showSnackbar(resources.getString(R.string.beta_video_open_failed))
+                    }
+                },
                 modifier = Modifier.padding(padding)
             )
         }
@@ -1694,12 +1714,14 @@ private fun ClimbDetailPageContent(
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     layerControlsAllowed: Boolean,
     onFixBoardMismatch: () -> Unit,
+    onBetaOpenFailed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
+    var betaVideosExpanded by remember(state.climb?.uuid) { mutableStateOf(false) }
     var pendingLiveLayerRemoval by remember { mutableStateOf<BoardClimbLayer?>(null) }
     LaunchedEffect(state.personalNoteDraft, showDetails, state.climb?.uuid) {
         if (showDetails && state.personalNoteDraft.trim() != state.personalNote) {
@@ -1824,6 +1846,16 @@ private fun ClimbDetailPageContent(
                     onNavigateToSetter = onNavigateToSetter,
                     isSharingEnabled = isSharingEnabled,
                 )
+
+                if (state.betaLinks.isNotEmpty()) {
+                    BetaVideoSection(
+                        links = state.betaLinks,
+                        selectedAngle = state.angle,
+                        expanded = betaVideosExpanded,
+                        onToggle = { betaVideosExpanded = !betaVideosExpanded },
+                        onOpenFailed = onBetaOpenFailed,
+                    )
+                }
 
                 // Boards that hold several climbs at once get a legend for
                 // what is on the wall right above the wall itself. It is the
@@ -1957,6 +1989,121 @@ private fun ClimbDetailPageContent(
             }
         }
     }
+}
+
+@Composable
+private fun BetaVideoSection(
+    links: List<ClimbBetaLink>,
+    selectedAngle: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onOpenFailed: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilledTonalButton(
+            onClick = onToggle,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .testTag("beta_videos_toggle"),
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.beta_videos, links.size), maxLines = 2)
+        }
+        if (!expanded) return@Column
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(links, key = { _, link -> "${link.boardBrand}:${link.climbUuid}:${link.url}" }) { index, link ->
+                val openLabel = stringResource(R.string.beta_video_open, index + 1)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = 2.dp,
+                    modifier = Modifier
+                        .width(224.dp)
+                        .aspectRatio(16f / 9f)
+                        .clickable {
+                            if (!openBetaLink(context, link)) onOpenFailed()
+                        }
+                        .semantics {
+                            contentDescription = openLabel
+                            role = Role.Button
+                        }
+                        .testTag("beta_video_$index"),
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        link.thumbnail?.let {
+                            AsyncImage(
+                                model = it,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                        val angleLabel = link.angle?.let { videoAngle ->
+                            if (videoAngle == selectedAngle) "$videoAngle°"
+                            else stringResource(R.string.beta_video_other_angle, videoAngle)
+                        }
+                        val metadataLabel = listOfNotNull(link.foreignUsername, angleLabel)
+                            .joinToString(" · ")
+                        if (metadataLabel.isNotBlank()) {
+                            Text(
+                                text = metadataLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.65f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openBetaLink(
+    context: android.content.Context,
+    link: ClimbBetaLink,
+): Boolean {
+    return betaLinkIntents(link).any { intent ->
+        try {
+            context.startActivity(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+}
+
+internal fun betaLinkIntents(link: ClimbBetaLink): List<Intent> {
+    val uri = runCatching { Uri.parse(link.url) }.getOrNull()
+        ?.takeIf {
+            it.scheme.equals("https", ignoreCase = true) &&
+                !it.host.isNullOrBlank() &&
+                it.userInfo == null
+        }
+        ?: return emptyList()
+    val fallback = Intent(Intent.ACTION_VIEW, uri)
+    return if (link.provider.equals("instagram", ignoreCase = true)) {
+        listOf(Intent(Intent.ACTION_VIEW, uri).setPackage("com.instagram.android"), fallback)
+    } else listOf(fallback)
 }
 
 /**

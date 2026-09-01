@@ -1224,10 +1224,14 @@ class BoardBrowserViewModel @Inject constructor(
     private suspend fun ensureStatusLoaded() {
         if (!statusLoaded) {
             sentUuids = PerfLogger.traceQuery("getUserSentClimbUuids") {
-                personalBoardRepo.getUserSentClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getUserSentClimbUuids()
+                )
             }
             attemptedUuids = PerfLogger.traceQuery("getUserAttemptedClimbUuids") {
-                personalBoardRepo.getUserAttemptedClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getUserAttemptedClimbUuids()
+                )
             }
             statusLoaded = true
             PerfLogger.milestone("Status UUIDs loaded (sent=${sentUuids.size}, attempted=${attemptedUuids.size})")
@@ -1237,7 +1241,9 @@ class BoardBrowserViewModel @Inject constructor(
     private suspend fun ensureHiddenLoaded() {
         if (!hiddenLoaded) {
             hiddenUuids = PerfLogger.traceQuery("getIgnoredClimbUuids") {
-                personalBoardRepo.getIgnoredClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getIgnoredClimbUuids()
+                )
             }
             hiddenLoaded = true
             PerfLogger.milestone("Ignored UUIDs loaded (hidden=${hiddenUuids.size})")
