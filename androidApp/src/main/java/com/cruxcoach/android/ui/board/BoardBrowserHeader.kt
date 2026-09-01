@@ -76,7 +76,10 @@ internal fun boardBrowserHeaderContext(
         ?.takeIf(String::isNotBlank)
     return BoardBrowserHeaderContext(
         title = title,
-        subtitle = listOfNotNull(size, "$angle°").joinToString(" · "),
+        // The action rail leaves little title width on compact phones. Keep
+        // the angle first because it changes the meaning of every grade and
+        // must remain visible when a long official size label is ellipsized.
+        subtitle = listOfNotNull("$angle°", size).joinToString(" · "),
     )
 }
 

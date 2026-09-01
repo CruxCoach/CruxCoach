@@ -26,7 +26,7 @@ class BoardBrowserHeaderTest {
         )
 
         assertEquals("Kilter Original", context.title)
-        assertEquals("12x12, with Kickboard · 40°", context.subtitle)
+        assertEquals("40° · 12x12, with Kickboard", context.subtitle)
     }
 
     @Test
