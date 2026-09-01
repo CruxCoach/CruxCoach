@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -80,13 +80,15 @@ internal fun boardBrowserHeaderContext(
 }
 
 /**
- * Compact browser bar: the active board is the picker entry point, while the
- * existing destinations remain one-tap icon actions without a second label row.
+ * Compact browser bar: the logo opens the main menu and the adjacent active
+ * board context opens the picker. Existing destinations remain one-tap icon
+ * actions without a second label row.
  */
 @Composable
 internal fun BoardBrowserHeader(
     context: BoardBrowserHeaderContext,
     isBleConnected: Boolean,
+    onOpenMenu: () -> Unit,
     onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
     onFilter: () -> Unit,
@@ -106,30 +108,41 @@ internal fun BoardBrowserHeader(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Box(
+                modifier = Modifier
+                    .width(44.dp)
+                    .fillMaxSize()
+                    .clickable(
+                        onClickLabel = stringResource(R.string.cd_open_menu),
+                        role = Role.Button,
+                        onClick = onOpenMenu,
+                    )
+                    .testTag("board_browser_home"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxSize()
                     .clickable(onClick = onBoardPicker)
                     .testTag("board_browser_board_picker")
-                    .padding(start = 8.dp, end = 2.dp),
+                    .padding(start = 2.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black)
-                        .testTag("board_browser_home"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        contentDescription = stringResource(R.string.board_browser_title),
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Spacer(Modifier.width(6.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = context.title,

@@ -79,6 +79,7 @@ import com.cruxcoach.android.util.PerfLogger
 @Composable
 fun BoardBrowserScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+    onOpenMenu: () -> Unit = {},
     onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
@@ -330,6 +331,7 @@ fun BoardBrowserScreen(
                 boardSize = state.boardSize,
             ),
             isBleConnected = isBleConnected,
+            onOpenMenu = onOpenMenu,
             onBoardPicker = { showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
             onFilter = onNavigateToFilter,

@@ -10,6 +10,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -526,21 +528,36 @@ fun CruxCoachNavHost(
                 // one frame instead; the forward navigation may still animate.
                 popEnterTransition = { EnterTransition.None },
             ) {
-                BoardBrowserScreen(
-                    onNavigateToClimb = { climbUuid, angle ->
-                        navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val drawerScope = rememberCoroutineScope()
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    drawerContent = {
+                        BrowserMainDrawer { route ->
+                            drawerScope.launch { drawerState.close() }
+                            if (route != Routes.BOARD_BROWSER) {
+                                navController.navigate(route) { launchSingleTop = true }
+                            }
+                        }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
-                    onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
-                    onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
-                    onNavigateToSetter = { pubkey ->
-                        navController.navigate(Routes.setterDetail(pubkey))
-                    },
-                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
-                )
+                ) {
+                    BoardBrowserScreen(
+                        onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
+                        onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
+                        onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                        onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
+                        onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                        onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
+                    )
+                }
             }
 
             composable(Routes.BOARD_MAP) {
@@ -1049,6 +1066,55 @@ fun CruxCoachNavHost(
         },
     )
     } // CompositionLocalProvider
+}
+
+@Composable
+private fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+    ModalDrawerSheet {
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = stringResource(com.cruxcoach.android.R.string.main_menu_title),
+            modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.board_browser_nav_board)) },
+            selected = true,
+            onClick = { onSelect(Routes.BOARD_BROWSER) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_board"),
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.FitnessCenter, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.main_menu_training)) },
+            selected = false,
+            onClick = { onSelect(Routes.DASHBOARD) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_training"),
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.Create, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.bottom_nav_boulder)) },
+            selected = false,
+            onClick = { onSelect(Routes.CLIMB_LOG) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_boulder"),
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.nav_stats)) },
+            selected = false,
+            onClick = { onSelect(Routes.STATS) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_stats"),
+        )
+    }
 }
 
 /**
