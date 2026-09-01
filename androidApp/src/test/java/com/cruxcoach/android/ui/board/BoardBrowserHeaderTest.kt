@@ -8,7 +8,7 @@ import org.junit.Test
 
 class BoardBrowserHeaderTest {
     @Test
-    fun `kilter context exposes model size and angle`() {
+    fun `kilter context exposes model and physical subtype`() {
         val context = boardBrowserHeaderContext(
             boardBrand = BoardBrand.KILTER.wireValue,
             layoutId = BoardConstants.KILTER_ORIGINAL_LAYOUT,
@@ -22,23 +22,30 @@ class BoardBrowserHeaderTest {
                 edgeTop = 0,
                 imageFilename = null,
             ),
-            angle = 40,
         )
 
         assertEquals("Kilter Original", context.title)
-        assertEquals("40° · 12x12, with Kickboard", context.subtitle)
+        assertEquals("12x12, with Kickboard", context.subtitle)
     }
 
     @Test
-    fun `header still has useful context while board size loads`() {
+    fun `homewall subtype does not repeat the model name`() {
         val context = boardBrowserHeaderContext(
             boardBrand = BoardBrand.KILTER.wireValue,
             layoutId = BoardConstants.KILTER_HOMEWALL_LAYOUT,
-            boardSize = null,
-            angle = 30,
+            boardSize = BoardSize(
+                id = 17,
+                productId = 7,
+                name = "Homewall 10x7 — Full Ride",
+                edgeLeft = 0,
+                edgeRight = 0,
+                edgeBottom = 0,
+                edgeTop = 0,
+                imageFilename = null,
+            ),
         )
 
         assertEquals("Kilter Homewall", context.title)
-        assertEquals("30°", context.subtitle)
+        assertEquals("10x7 — Full Ride", context.subtitle)
     }
 }

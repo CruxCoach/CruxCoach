@@ -4,12 +4,10 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,12 +17,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,7 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -58,7 +57,6 @@ internal fun boardBrowserHeaderContext(
     boardBrand: String,
     layoutId: Int,
     boardSize: BoardSize?,
-    angle: Int,
 ): BoardBrowserHeaderContext {
     val brand = BoardBrand.fromWire(boardBrand)
     val title = when (brand) {
@@ -73,24 +71,23 @@ internal fun boardBrowserHeaderContext(
     }
     val size = boardSize
         ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
+        ?.removePrefix("Homewall ")
         ?.takeIf(String::isNotBlank)
     return BoardBrowserHeaderContext(
         title = title,
-        // The action rail leaves little title width on compact phones. Keep
-        // the angle first because it changes the meaning of every grade and
-        // must remain visible when a long official size label is ellipsized.
-        subtitle = listOfNotNull("$angle°", size).joinToString(" · "),
+        subtitle = size.orEmpty(),
     )
 }
 
 /**
- * Variant A: familiar destinations stay visible as a compact icon rail while
- * the active wall context replaces the anonymous logo-only app bar.
+ * Compact browser bar: the active board is the picker entry point, while the
+ * existing destinations remain one-tap icon actions without a second label row.
  */
 @Composable
 internal fun BoardBrowserHeader(
     context: BoardBrowserHeaderContext,
     isBleConnected: Boolean,
+    onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
     onFilter: () -> Unit,
     onLogbook: () -> Unit,
@@ -103,7 +100,7 @@ internal fun BoardBrowserHeader(
         shadowElevation = 1.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp),
+            .height(60.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -112,13 +109,15 @@ internal fun BoardBrowserHeader(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .padding(start = 10.dp, end = 4.dp),
+                    .fillMaxSize()
+                    .clickable(onClick = onBoardPicker)
+                    .testTag("board_browser_board_picker")
+                    .padding(start = 8.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(30.dp)
                         .clip(CircleShape)
                         .background(Color.Black)
                         .testTag("board_browser_home"),
@@ -130,7 +129,7 @@ internal fun BoardBrowserHeader(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = context.title,
@@ -139,25 +138,25 @@ internal fun BoardBrowserHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = context.subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Box(
-                        Modifier
-                            .width(30.dp)
-                            .height(2.dp)
-                            .background(OrangeAccent, CircleShape),
-                    )
+                    if (context.subtitle.isNotEmpty()) {
+                        Text(
+                            text = context.subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = stringResource(R.string.board_browser_change_board),
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(18.dp),
+                )
             }
             HeaderAction(
                 icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
-                label = R.string.board_browser_nav_board,
                 contentDescription = R.string.cd_bluetooth,
                 tag = "board_ble_button",
                 tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -165,28 +164,24 @@ internal fun BoardBrowserHeader(
             )
             HeaderAction(
                 icon = Icons.Default.Tune,
-                label = R.string.board_browser_nav_filter,
                 contentDescription = R.string.cd_filter,
                 tag = "board_filter_toggle",
                 onClick = onFilter,
             )
             HeaderAction(
                 icon = Icons.Default.Book,
-                label = R.string.board_browser_nav_logbook,
                 contentDescription = R.string.board_logbook_title,
                 tag = "board_logbook_icon",
                 onClick = onLogbook,
             )
             HeaderAction(
                 icon = Icons.AutoMirrored.Filled.FormatListBulleted,
-                label = R.string.board_browser_nav_lists,
                 contentDescription = R.string.board_lists_title,
                 tag = "board_lists_button",
                 onClick = onLists,
             )
             HeaderAction(
                 icon = Icons.Default.Settings,
-                label = R.string.board_browser_nav_more,
                 contentDescription = R.string.cd_settings,
                 tag = "board_settings_button",
                 onClick = onSettings,
@@ -198,35 +193,22 @@ internal fun BoardBrowserHeader(
 @Composable
 private fun HeaderAction(
     icon: ImageVector,
-    @StringRes label: Int,
     @StringRes contentDescription: Int,
     tag: String,
     onClick: () -> Unit,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
-    Column(
+    IconButton(
+        onClick = onClick,
         modifier = Modifier
-            .width(46.dp)
-            .fillMaxHeight()
-            .testTag(tag)
-            .clickable(onClick = onClick)
-            .padding(vertical = 9.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween,
+            .width(44.dp)
+            .testTag(tag),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = stringResource(contentDescription),
             tint = tint,
             modifier = Modifier.size(22.dp),
-        )
-        Text(
-            text = stringResource(label),
-            color = tint,
-            fontSize = 9.sp,
-            lineHeight = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

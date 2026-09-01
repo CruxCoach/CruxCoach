@@ -57,6 +57,7 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -95,6 +96,8 @@ fun BoardBrowserScreen(
     var showEndSessionDialog by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
     var showMismatchPicker by remember { mutableStateOf(false) }
+    var showBoardPicker by remember { mutableStateOf(false) }
+    var showGymSearch by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
@@ -214,6 +217,26 @@ fun BoardBrowserScreen(
             },
         )
     }
+    if (showBoardPicker) {
+        BoardPickerDialog(
+            onDismiss = { showBoardPicker = false },
+            onSelected = { showBoardPicker = false },
+            onFindViaGym = {
+                showBoardPicker = false
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardPicker = true
+            },
+            onDismiss = { showGymSearch = false },
+        )
+    }
     if (showMismatchPicker) {
         queueState.boardMismatch?.let { mismatch ->
             BoardPickerDialog(
@@ -305,9 +328,9 @@ fun BoardBrowserScreen(
                 boardBrand = state.filter.boardBrand,
                 layoutId = state.filter.layoutId,
                 boardSize = state.boardSize,
-                angle = state.filter.angle,
             ),
             isBleConnected = isBleConnected,
+            onBoardPicker = { showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
             onFilter = onNavigateToFilter,
             onLogbook = onNavigateToLogbook,
