@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -87,7 +86,6 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
-    onNavigateToMap: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -521,19 +519,6 @@ fun BoardBrowserScreen(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = onNavigateToMap,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("board_map_button")
-                    ) {
-                        Icon(
-                            Icons.Outlined.Map,
-                            contentDescription = stringResource(R.string.cd_map),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
                     }
                 }
             }

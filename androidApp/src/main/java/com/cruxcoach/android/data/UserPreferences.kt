@@ -453,6 +453,8 @@ object PreferenceKeys {
     val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
     // Board family filter (BoardBrand.wireValue CSV). Empty = all brands.
     val MAP_FILTER_BRANDS = stringPreferencesKey("map_filter_brands")
+    val MAP_FILTER_MOON_LAYOUT_IDS = stringPreferencesKey("map_filter_moon_layout_ids")
+    val MAP_FILTER_MOON_LED_STATES = stringPreferencesKey("map_filter_moon_led_states")
     // egym-Wellpass-only filter (FEAT-015 Phase 2). Off = no Wellpass gate.
     val MAP_FILTER_WELLPASS_ONLY = booleanPreferencesKey("map_filter_wellpass_only")
 }
@@ -715,7 +717,7 @@ class UserPreferences(
     }
 
     val mapFilterShowHomewalls: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: false
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: true
     }
 
     val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -762,6 +764,16 @@ class UserPreferences(
         parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
     }
 
+    val mapFilterMoonLayoutIds: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS])
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+    }
+
+    val mapFilterMoonLedStates: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_MOON_LED_STATES])
+    }
+
     /** egym-Wellpass-only filter. Off (false) = no Wellpass gate. */
     val mapFilterWellpassOnly: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] ?: false
@@ -786,6 +798,12 @@ class UserPreferences(
     suspend fun setMapFilterBrands(values: Set<String>) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_BRANDS] = values.joinToString(",") }
     }
+
+    suspend fun toggleMapFilterMoonLayoutId(layoutId: Int) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS, layoutId.toString())
+
+    suspend fun toggleMapFilterMoonLedState(state: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_MOON_LED_STATES, state)
 
     suspend fun setMapFilterWellpassOnly(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] = enabled }
@@ -847,6 +865,8 @@ class UserPreferences(
             prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
             prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
             prefs.remove(PreferenceKeys.MAP_FILTER_BRANDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MOON_LED_STATES)
             prefs.remove(PreferenceKeys.MAP_FILTER_WELLPASS_ONLY)
         }
     }

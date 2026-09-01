@@ -282,6 +282,10 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
+    <string name="map_search_open">Search map</string>
+    <string name="map_search_close">Close search</string>
+    <string name="map_search_hint">Gym, city or board</string>
+    <string name="map_search_no_results">No gyms or places found</string>
     <string name="cd_map">Discover boards on the map</string>
     <string name="map_filter_show_all">All</string>
     <string name="map_filter_show_original">Commercial gyms (Original)</string>
@@ -314,6 +318,10 @@
     <string name="map_filter_sheet_title">Filter map</string>
     <string name="map_filter_section_layout">Layout</string>
     <string name="map_filter_section_access">Access</string>
+    <string name="map_filter_section_moon_variant">MoonBoard variant</string>
+    <string name="map_filter_section_moon_type">MoonBoard setup</string>
+    <string name="map_filter_section_moon_led">MoonBoard hardware</string>
+    <string name="map_filter_moon_no_led">No LED</string>
     <string name="map_filter_section_adjustability">Adjustability</string>
     <string name="map_filter_section_size">Size</string>
     <string name="map_filter_section_country">Country</string>
@@ -897,6 +905,7 @@
     <string name="cd_open_menu">Open main menu</string>
     <string name="main_menu_title">Main menu</string>
     <string name="main_menu_training">Training</string>
+    <string name="main_menu_board_map">Board map</string>
     <string name="board_lists_delete_title">Delete list?</string>
     <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
     <string name="board_lists_empty_title">No lists yet</string>

@@ -282,6 +282,10 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
+    <string name="map_search_open">Karte durchsuchen</string>
+    <string name="map_search_close">Suche schließen</string>
+    <string name="map_search_hint">Halle, Ort oder Board</string>
+    <string name="map_search_no_results">Keine Hallen oder Orte gefunden</string>
     <string name="cd_map">Boards auf der Karte entdecken</string>
     <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
@@ -291,6 +295,10 @@
     <string name="map_filter_sheet_title">Karte filtern</string>
     <string name="map_filter_section_layout">Layout</string>
     <string name="map_filter_section_access">Zugang</string>
+    <string name="map_filter_section_moon_variant">MoonBoard-Variante</string>
+    <string name="map_filter_section_moon_type">MoonBoard-Setup</string>
+    <string name="map_filter_section_moon_led">MoonBoard-Hardware</string>
+    <string name="map_filter_moon_no_led">Keine LEDs</string>
     <string name="map_filter_section_adjustability">Verstellbarkeit</string>
     <string name="map_filter_section_size">Größe</string>
     <string name="map_filter_section_country">Land</string>
@@ -941,6 +949,7 @@
     <string name="cd_open_menu">Hauptmenü öffnen</string>
     <string name="main_menu_title">Hauptmenü</string>
     <string name="main_menu_training">Training</string>
+    <string name="main_menu_board_map">Board-Karte</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
     <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>

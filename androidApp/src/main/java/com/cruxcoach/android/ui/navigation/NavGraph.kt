@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -555,7 +553,6 @@ fun CruxCoachNavHost(
                         onNavigateToSetter = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
                         },
-                        onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
                     )
                 }
             }
@@ -1088,31 +1085,13 @@ private fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                 .testTag("menu_board"),
         )
         NavigationDrawerItem(
-            icon = { Icon(Icons.Default.FitnessCenter, contentDescription = null) },
-            label = { Text(stringResource(com.cruxcoach.android.R.string.main_menu_training)) },
+            icon = { Icon(Icons.Default.Map, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.main_menu_board_map)) },
             selected = false,
-            onClick = { onSelect(Routes.DASHBOARD) },
+            onClick = { onSelect(Routes.BOARD_MAP) },
             modifier = Modifier
                 .padding(NavigationDrawerItemDefaults.ItemPadding)
-                .testTag("menu_training"),
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Default.Create, contentDescription = null) },
-            label = { Text(stringResource(com.cruxcoach.android.R.string.bottom_nav_boulder)) },
-            selected = false,
-            onClick = { onSelect(Routes.CLIMB_LOG) },
-            modifier = Modifier
-                .padding(NavigationDrawerItemDefaults.ItemPadding)
-                .testTag("menu_boulder"),
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null) },
-            label = { Text(stringResource(com.cruxcoach.android.R.string.nav_stats)) },
-            selected = false,
-            onClick = { onSelect(Routes.STATS) },
-            modifier = Modifier
-                .padding(NavigationDrawerItemDefaults.ItemPadding)
-                .testTag("menu_stats"),
+                .testTag("menu_board_map"),
         )
     }
 }

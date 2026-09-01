@@ -112,3 +112,31 @@ fun groupIntoVenues(locations: List<BoardLocation>): List<MapVenue> {
             )
         }
 }
+
+/**
+ * The Pages snapshot owns venue identity and curation. Dynamic Blossom rows
+ * are appended only when they describe a board installation not present in
+ * that snapshot, so a newer upstream row can still appear without restoring
+ * a venue the Pages exclusion/merge policy deliberately corrected.
+ */
+fun mergeCanonicalMapLocations(
+    canonical: List<BoardLocation>,
+    dynamic: List<BoardLocation>,
+): List<BoardLocation> {
+    if (canonical.isEmpty()) return dynamic
+    if (dynamic.isEmpty()) return canonical
+    fun BoardLocation.mapMergeKey() = "${venueKey(lat, lng)}|${boardBrand.wireValue}"
+    val dynamicByKey = dynamic.groupBy { it.mapMergeKey() }
+    val enrichedCanonical = canonical.map { location ->
+        val live = dynamicByKey[location.mapMergeKey()]?.firstOrNull() ?: return@map location
+        location.copy(
+            phone = location.phone ?: live.phone,
+            email = location.email ?: live.email,
+            url = location.url ?: live.url,
+            instagram = location.instagram ?: live.instagram,
+            frameMaker = location.frameMaker ?: live.frameMaker,
+        )
+    }
+    val canonicalKeys = canonical.mapTo(hashSetOf()) { it.mapMergeKey() }
+    return enrichedCanonical + dynamic.filter { it.mapMergeKey() !in canonicalKeys }
+}

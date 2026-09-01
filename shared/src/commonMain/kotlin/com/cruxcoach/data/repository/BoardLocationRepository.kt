@@ -71,6 +71,11 @@ data class BoardLocation(
     /** egym Wellpass acceptance — true = accepts, false = explicitly not,
      *  null = unknown / not curated (the common case). */
     val wellpass: Boolean? = null,
+    /** MoonBoard LED hardware from the canonical public map snapshot. The
+     *  dynamic locations chunk predates this field and therefore yields null. */
+    val hasLed: Boolean? = null,
+    /** Curated/localized place aliases used only by offline map search. */
+    val alternateSearchTerms: List<String> = emptyList(),
 )
 
 data class BoardWall(
