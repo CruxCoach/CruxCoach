@@ -344,6 +344,41 @@ class MoonBoardBetaSnapshotImportTest {
         }
     }
 
+    @Test
+    fun freshCatalogImportDoesNotRewriteRowsItJustInserted() {
+        val snapshot = createCatalogSnapshot("fresh-catalog.sqlite3", includeAlias = false)
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM moonboard_climb_aliases")
+            db.execSQL(
+                "DELETE FROM climb_stats WHERE climb_uuid IN (?,?)",
+                arrayOf<Any?>(climbUuid, legacyAliasUuid),
+            )
+            db.execSQL(
+                "DELETE FROM climbs WHERE uuid IN (?,?)",
+                arrayOf<Any?>(climbUuid, legacyAliasUuid),
+            )
+            // A fresh insert must not be followed by the catalogue-refresh
+            // UPDATE. This guards the real-device regression where rewriting
+            // 277k newly inserted rows took roughly 26 minutes.
+            db.execSQL(
+                """
+                CREATE TRIGGER reject_redundant_fresh_moonboard_update
+                BEFORE UPDATE ON climbs
+                WHEN OLD.board_brand = 'moonboard'
+                BEGIN
+                    SELECT RAISE(ABORT, 'fresh MoonBoard row was redundantly updated');
+                END
+                """.trimIndent(),
+            )
+        }
+
+        importer.importMoonBoardSnapshot(snapshot)
+
+        openTarget().use { db ->
+            assertEquals(2L, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='moonboard'"))
+        }
+    }
+
     private fun openTarget(): SQLiteDatabase =
         SQLiteDatabase.openDatabase(targetPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
 

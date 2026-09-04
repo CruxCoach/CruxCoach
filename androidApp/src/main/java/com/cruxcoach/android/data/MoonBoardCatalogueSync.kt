@@ -105,7 +105,13 @@ class MoonBoardCatalogueSync @Inject constructor(
                                 cumulativeTotalBytes = chunk.size,
                             )
                         )
-                    }
+                    },
+                    onVerifying = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.VerifyingSnapshot)
+                    },
+                    onDecompressing = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.Extract)
+                    },
                 )
                 withBackgroundThreadPriority {
                     importer.importMoonBoardSnapshot(outFile) { step ->

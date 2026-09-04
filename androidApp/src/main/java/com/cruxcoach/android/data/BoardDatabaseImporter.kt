@@ -1162,6 +1162,21 @@ class BoardDatabaseImporter(
                 FROM $alias.climbs
                 """.trimIndent()
             )
+            // Capture this before INSERT: on a fresh board import every
+            // catalogue row below is new. Updating those same large rows again
+            // immediately afterwards is redundant and took ~26 minutes on a
+            // real low-end eMMC device for the 277k-row MoonBoard snapshot.
+            val hasExistingCatalogueRows = queryLong(
+                targetDb,
+                """
+                SELECT EXISTS(
+                    SELECT 1 FROM climbs c
+                    INNER JOIN snapshot_norm s ON s.uuid = c.uuid
+                    WHERE c.origin = 'kilter' AND s.is_listed = 1
+                    LIMIT 1
+                )
+                """.trimIndent(),
+            ) == 1L
             targetDb.execSQL(
                 """
                 INSERT OR IGNORE INTO climbs(
@@ -1180,23 +1195,25 @@ class BoardDatabaseImporter(
                 """.trimIndent(),
                 arrayOf<Any?>(boardBrand)
             )
-            targetDb.execSQL(
-                """
-                UPDATE climbs SET
-                    (layout_id, setter_username, name, frames,
-                     frames_count, is_listed, edge_left, edge_right,
-                     edge_bottom, edge_top, created_at, description,
-                     is_nomatch, frames_pace, hsm, move_count, method)
-                    = (SELECT layout_id, setter_username, name, frames,
-                              frames_count, is_listed, edge_left, edge_right,
-                              edge_bottom, edge_top, created_at, description,
-                              is_nomatch, frames_pace, hsm, move_count, method
-                       FROM snapshot_norm
-                       WHERE snapshot_norm.uuid = main.climbs.uuid)
-                WHERE origin = 'kilter'
-                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 1)
-                """.trimIndent()
-            )
+            if (hasExistingCatalogueRows) {
+                targetDb.execSQL(
+                    """
+                    UPDATE climbs SET
+                        (layout_id, setter_username, name, frames,
+                         frames_count, is_listed, edge_left, edge_right,
+                         edge_bottom, edge_top, created_at, description,
+                         is_nomatch, frames_pace, hsm, move_count, method)
+                        = (SELECT layout_id, setter_username, name, frames,
+                                  frames_count, is_listed, edge_left, edge_right,
+                                  edge_bottom, edge_top, created_at, description,
+                                  is_nomatch, frames_pace, hsm, move_count, method
+                           FROM snapshot_norm
+                           WHERE snapshot_norm.uuid = main.climbs.uuid)
+                    WHERE origin = 'kilter'
+                      AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 1)
+                    """.trimIndent()
+                )
+            }
             targetDb.execSQL(
                 """
                 UPDATE climbs SET is_listed = 0

@@ -61,11 +61,21 @@ class QuantumCatalogueSync @Inject constructor(
                 }
                 val output = File(context.cacheDir, "quantum_${chunk.name}.sqlite3")
                 try {
-                    blossom.downloadAndDecompressChunk(chunk, output) { done, total ->
-                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.DownloadChunk(
-                            chunk.name, 0, 1, done, total, done, chunk.size,
-                        ))
-                    }
+                    blossom.downloadAndDecompressChunk(
+                        chunk = chunk,
+                        outputFile = output,
+                        onProgress = { done, total ->
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.DownloadChunk(
+                                chunk.name, 0, 1, done, total, done, chunk.size,
+                            ))
+                        },
+                        onVerifying = {
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.VerifyingSnapshot)
+                        },
+                        onDecompressing = {
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.Extract)
+                        },
+                    )
                     var count = 0L
                     withBackgroundThreadPriority {
                         importer.importQuantumSnapshot(output) { step ->

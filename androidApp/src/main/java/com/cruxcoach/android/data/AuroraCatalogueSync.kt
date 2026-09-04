@@ -124,7 +124,13 @@ class AuroraCatalogueSync @Inject constructor(
                                 cumulativeTotalBytes = chunk.size,
                             )
                         )
-                    }
+                    },
+                    onVerifying = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.VerifyingSnapshot)
+                    },
+                    onDecompressing = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.Extract)
+                    },
                 )
                 withBackgroundThreadPriority {
                     importer.importAuroraSnapshot(outFile, board.wireValue) { step ->

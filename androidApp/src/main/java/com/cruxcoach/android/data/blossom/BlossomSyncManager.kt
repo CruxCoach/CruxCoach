@@ -30,6 +30,7 @@ import okhttp3.WebSocketListener
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -303,11 +304,15 @@ class BlossomSyncManager(
     suspend fun downloadAndDecompressChunk(
         chunk: BlossomChunk,
         outputFile: File,
-        onProgress: ((Long, Long) -> Unit)? = null
+        onProgress: ((Long, Long) -> Unit)? = null,
+        onVerifying: (() -> Unit)? = null,
+        onDecompressing: (() -> Unit)? = null,
     ): Unit = withContext(Dispatchers.IO) {
         val compressedFile = File(context.cacheDir, "blossom_${chunk.name}.zst")
+        ensureChunkStorageAvailable(chunk, outputFile)
         try {
-            downloadAndVerifyChunk(chunk, compressedFile, onProgress)
+            downloadAndVerifyChunk(chunk, compressedFile, onProgress, onVerifying)
+            onDecompressing?.invoke()
             decompressZstd(compressedFile, outputFile)
         } finally {
             compressedFile.delete()
@@ -326,7 +331,8 @@ class BlossomSyncManager(
     private suspend fun downloadAndVerifyChunk(
         chunk: BlossomChunk,
         targetFile: File,
-        onProgress: ((Long, Long) -> Unit)?
+        onProgress: ((Long, Long) -> Unit)?,
+        onVerifying: (() -> Unit)?,
     ) {
         // https-only: refuse cleartext URLs so a hostile manifest cannot
         // downgrade chunk transport to MITM-able http://.
@@ -344,8 +350,16 @@ class BlossomSyncManager(
             for ((mirrorIdx, url) in httpsUrls.withIndex()) {
                 try {
                     downloadChunkFromUrl(chunk, url, targetFile, onProgress)
+                    onVerifying?.invoke()
                     verifyHash(targetFile, chunk.sha256)
                     return
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: BlossomLocalStorageException) {
+                    // A different CDN cannot fix a local cache/open/write
+                    // failure. Retrying every mirror merely repeats an almost
+                    // complete download and makes the UI appear frozen.
+                    throw e
                 } catch (e: Exception) {
                     lastError = e
                     Log.w(
@@ -402,7 +416,14 @@ class BlossomSyncManager(
             var lastEmitMs = 0L
 
             body.byteStream().use { input ->
-                BufferedOutputStream(FileOutputStream(targetFile), DOWNLOAD_BUFFER_SIZE).use { output ->
+                val fileOutput = try {
+                    FileOutputStream(targetFile)
+                } catch (e: IOException) {
+                    throw BlossomLocalStorageException(
+                        "Cannot create local cache file for chunk ${chunk.name}", e
+                    )
+                }
+                BufferedOutputStream(fileOutput, DOWNLOAD_BUFFER_SIZE).use { output ->
                     val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
@@ -413,7 +434,13 @@ class BlossomSyncManager(
                                     "($bytesRead > $totalBytes + margin)"
                             )
                         }
-                        output.write(buffer, 0, read)
+                        try {
+                            output.write(buffer, 0, read)
+                        } catch (e: IOException) {
+                            throw BlossomLocalStorageException(
+                                "Cannot write local cache file for chunk ${chunk.name}", e
+                            )
+                        }
                         if (onProgress != null) {
                             val now = System.currentTimeMillis()
                             if (now - lastEmitMs >= PROGRESS_THROTTLE_MS) {
@@ -422,8 +449,35 @@ class BlossomSyncManager(
                             }
                         }
                     }
+                    try {
+                        output.flush()
+                    } catch (e: IOException) {
+                        throw BlossomLocalStorageException(
+                            "Cannot finish local cache file for chunk ${chunk.name}", e
+                        )
+                    }
                 }
             }
+            if (bytesRead != totalBytes) {
+                throw BlossomSyncException(
+                    "Chunk ${chunk.name} length mismatch: expected $totalBytes, got $bytesRead"
+                )
+            }
+            // The throttled loop can stop just below the declared size. Always
+            // publish the exact terminal byte count before entering hashing.
+            onProgress?.invoke(bytesRead, totalBytes)
+        }
+    }
+
+    private fun ensureChunkStorageAvailable(chunk: BlossomChunk, outputFile: File) {
+        val storageRoot = outputFile.parentFile ?: context.cacheDir
+        val available = storageRoot.usableSpace
+        val required = requiredFreeBytesForChunk(chunk.size)
+        if (available > 0L && available < required) {
+            throw BlossomLocalStorageException(
+                "Insufficient local storage for chunk ${chunk.name}: " +
+                    "need $required bytes, have $available bytes"
+            )
         }
     }
 
@@ -601,6 +655,21 @@ class BlossomSyncManager(
         private const val PROGRESS_THROTTLE_MS = 200L
         // Number of full passes through the mirror list before giving up.
         private const val DOWNLOAD_PASSES = 2
+        private const val DECOMPRESSED_SIZE_ESTIMATE_MULTIPLIER = 4L
+        private const val IMPORT_STORAGE_HEADROOM_BYTES = 128L * 1024 * 1024
+
+        /** Conservative cache + decompression + SQLite-import workspace. */
+        internal fun requiredFreeBytesForChunk(compressedBytes: Long): Long {
+            if (compressedBytes <= 0L) return IMPORT_STORAGE_HEADROOM_BYTES
+            val estimatedOutput = compressedBytes
+                .coerceAtMost(MAX_DECOMPRESSED_CHUNK_BYTES / DECOMPRESSED_SIZE_ESTIMATE_MULTIPLIER)
+                .times(DECOMPRESSED_SIZE_ESTIMATE_MULTIPLIER)
+            return compressedBytes
+                .coerceAtMost(Long.MAX_VALUE - estimatedOutput)
+                .plus(estimatedOutput)
+                .coerceAtMost(Long.MAX_VALUE - IMPORT_STORAGE_HEADROOM_BYTES)
+                .plus(IMPORT_STORAGE_HEADROOM_BYTES)
+        }
 
         /**
          * Full passes over the relay set before a manifest fetch is declared
@@ -707,5 +776,8 @@ class BlossomSyncManager(
     }
 }
 
-class BlossomSyncException(message: String, cause: Throwable? = null) :
+open class BlossomSyncException(message: String, cause: Throwable? = null) :
     Exception(message, cause)
+
+class BlossomLocalStorageException(message: String, cause: Throwable? = null) :
+    BlossomSyncException(message, cause)
