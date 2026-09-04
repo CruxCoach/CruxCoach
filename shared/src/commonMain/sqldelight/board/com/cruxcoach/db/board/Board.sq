@@ -1160,7 +1160,9 @@ SELECT COUNT(*) FROM climbs;
 -- scan; called on demand (sync-complete / sync screen open), not per-frame.
 -- Brands with no rows are simply absent from the result (= not loaded).
 countClimbsByBrand:
-SELECT board_brand AS boardBrand, COUNT(*) AS climbCount FROM climbs GROUP BY board_brand;
+SELECT board_brand AS boardBrand, COUNT(*) AS climbCount
+FROM climbs INDEXED BY idx_climbs_board_brand
+GROUP BY board_brand;
 
 -- O(1) "do we have any climbs at all" check. Use this anywhere the
 -- caller only needs a boolean — countClimbs is a full table-scan

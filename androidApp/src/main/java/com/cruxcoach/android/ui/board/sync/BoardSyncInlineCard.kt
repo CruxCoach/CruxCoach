@@ -89,15 +89,14 @@ fun BoardSyncInlineCard(
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
     // Automatic syncing failing has no other way to reach the user.
     LaunchedEffect(state.lastSyncTimestamp) { viewModel.refreshAutoSyncHealth() }
-    // Recompute per-board catalogue sizes on first show, after each sync
-    // completes, and after a board-data deletion (alreadyImported flips
-    // false), so the status list never shows pre-deletion counts.
-    LaunchedEffect(state.lastSyncCompletedAtMillis, state.alreadyImported) { viewModel.refreshBoardCounts() }
-    // Also recompute whenever any single board's step flips to Done mid-sync:
-    // during the all-boards sync each row must turn green with its count as
-    // soon as ITS import finishes, not only when the whole sync ends.
+    // Recompute on first show, after a sync/deletion, and whenever one board
+    // finishes mid-sync. Keep this as ONE effect: two independent effects
+    // both fire on first composition and used to run the same full grouped
+    // catalogue count concurrently.
     val doneBrands = state.boardSteps.filterValues { it is ImportStep.Done }.keys
-    LaunchedEffect(doneBrands) { viewModel.refreshBoardCounts() }
+    LaunchedEffect(state.lastSyncCompletedAtMillis, state.alreadyImported, doneBrands) {
+        viewModel.refreshBoardCounts()
+    }
     if (autoStartIfNeeded) {
         // One-shot on first composition. The VM's startInitialSyncIfNeeded
         // guards on alreadyImported + isSyncing so a re-entry to the
