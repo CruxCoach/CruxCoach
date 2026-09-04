@@ -410,6 +410,84 @@ class MoonBoardBetaSnapshotImportTest {
         }
     }
 
+    @Test
+    fun unchangedCatalogUpdateDoesNotRewriteExistingStats() {
+        val snapshot = createCatalogSnapshot("unchanged-stats.sqlite3", includeAlias = false)
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM moonboard_climb_aliases")
+            db.execSQL("UPDATE climbs SET is_listed=1 WHERE uuid IN (?,?)", arrayOf<Any?>(climbUuid, legacyAliasUuid))
+            db.execSQL(
+                """
+                CREATE TRIGGER reject_unchanged_moonboard_stat_insert
+                BEFORE INSERT ON climb_stats
+                WHEN EXISTS (
+                    SELECT 1 FROM climb_stats existing
+                    WHERE existing.climb_uuid = NEW.climb_uuid
+                      AND existing.angle = NEW.angle
+                )
+                BEGIN
+                    SELECT RAISE(ABORT, 'unchanged MoonBoard stat was rewritten');
+                END
+                """.trimIndent(),
+            )
+        }
+
+        importer.importMoonBoardSnapshot(snapshot)
+
+        openTarget().use { db ->
+            assertEquals(2L, count(db, "SELECT COUNT(*) FROM climb_stats WHERE climb_uuid IN ('$climbUuid','$legacyAliasUuid')"))
+        }
+    }
+
+    @Test
+    fun incrementalCatalogKeepsBrowseIndexesAndAppliesRealChanges() {
+        val snapshot = createCatalogSnapshot("changed-catalog.sqlite3", includeAlias = false)
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("UPDATE climbs SET name='Changed problem' WHERE uuid=?", arrayOf<Any?>(climbUuid))
+            db.execSQL("UPDATE climb_stats SET difficulty_average=7.0 WHERE climb_uuid=?", arrayOf<Any?>(climbUuid))
+        }
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM moonboard_climb_aliases")
+            db.execSQL("UPDATE climbs SET is_listed=1 WHERE uuid IN (?,?)", arrayOf<Any?>(climbUuid, legacyAliasUuid))
+            db.execSQL(
+                """
+                CREATE TRIGGER require_live_browse_index_during_moonboard_update
+                BEFORE UPDATE ON climbs
+                WHEN OLD.uuid = '$climbUuid'
+                BEGIN
+                    SELECT CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM sqlite_master
+                        WHERE type='index' AND name='idx_climbs_origin'
+                    ) THEN RAISE(ABORT, 'incremental MoonBoard import dropped browse indexes') END;
+                END
+                """.trimIndent(),
+            )
+        }
+
+        importer.importMoonBoardSnapshot(snapshot)
+
+        openTarget().use { db ->
+            assertEquals(
+                "Changed problem",
+                db.rawQuery("SELECT name FROM climbs WHERE uuid=?", arrayOf(climbUuid)).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getString(0)
+                },
+            )
+            assertEquals(
+                7.0,
+                db.rawQuery(
+                    "SELECT difficulty_average FROM climb_stats WHERE climb_uuid=? AND angle=40",
+                    arrayOf(climbUuid),
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    cursor.getDouble(0)
+                },
+                0.0,
+            )
+        }
+    }
+
     private fun openTarget(): SQLiteDatabase =
         SQLiteDatabase.openDatabase(targetPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
 

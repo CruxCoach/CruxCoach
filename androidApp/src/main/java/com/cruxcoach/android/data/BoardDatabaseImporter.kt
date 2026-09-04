@@ -385,7 +385,25 @@ class BoardDatabaseImporter(
         var snapshotHasMoveCount = false
         var snapshotHasMethod = false
         var snapshotHasClimbAliases = false
+        // A full first import benefits enormously from dropping the browse
+        // indexes while hundreds of thousands of rows are inserted.  An
+        // incremental MoonBoard refresh is the opposite: dropping those
+        // indexes makes the live browser perform unindexed catalogue scans
+        // while the importer compares the snapshot, starving progress UI and
+        // making an otherwise read-mostly update look hung for tens of
+        // minutes on slower devices.
+        val hasExistingMoonBoardRows = openTargetDb().let { db ->
+            try {
+                queryLong(
+                    db,
+                    "SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' LIMIT 1)",
+                ) == 1L
+            } finally {
+                db.close()
+            }
+        }
         withDeferredIndexes(
+            deferIndexes = !hasExistingMoonBoardRows,
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             val targetDb = openTargetDb()
@@ -469,19 +487,47 @@ class BoardDatabaseImporter(
                     targetDb, "SELECT COUNT(*) FROM mb.climb_stats"
                 ).toInt()
                 onProgress?.invoke(ImportStep.ImportStats(0, 0, statTotal))
+                val normalizedLayout =
+                    "COALESCE((SELECT c.layout_id FROM climbs c " +
+                        "WHERE c.uuid = LOWER(TRIM(incoming.climb_uuid))), 0)"
+                val unchangedFilter = if (hasExistingMoonBoardRows) {
+                    """
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM climb_stats existing
+                        WHERE existing.climb_uuid = LOWER(TRIM(incoming.climb_uuid))
+                          AND existing.angle = incoming.angle
+                          AND existing.display_difficulty IS incoming.display_difficulty
+                          AND existing.difficulty_average IS incoming.difficulty_average
+                          AND existing.quality_average IS incoming.quality_average
+                          AND existing.ascensionist_count IS incoming.ascensionist_count
+                          AND existing.benchmark_difficulty IS incoming.benchmark_difficulty
+                          AND existing.fa_username IS incoming.fa_username
+                          AND existing.fa_at IS incoming.fa_at
+                          AND existing.official_kilter_difficulty IS NULL
+                          AND existing.layout_id IS $normalizedLayout
+                    )
+                    """.trimIndent()
+                } else {
+                    ""
+                }
                 targetDb.execSQL(
                     """
                     INSERT OR REPLACE INTO climb_stats(
                         climb_uuid, angle, display_difficulty, difficulty_average,
                         quality_average, ascensionist_count, benchmark_difficulty,
                         fa_username, fa_at, official_kilter_difficulty, layout_id)
-                    SELECT LOWER(TRIM(climb_uuid)), angle, display_difficulty, difficulty_average,
-                           quality_average, ascensionist_count, benchmark_difficulty,
-                           fa_username, fa_at, NULL,
-                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(TRIM(climb_uuid))), 0)
-                    FROM mb.climb_stats
+                    SELECT LOWER(TRIM(incoming.climb_uuid)), incoming.angle,
+                           incoming.display_difficulty, incoming.difficulty_average,
+                           incoming.quality_average, incoming.ascensionist_count,
+                           incoming.benchmark_difficulty, incoming.fa_username,
+                           incoming.fa_at, NULL, $normalizedLayout
+                    FROM mb.climb_stats incoming
+                    $unchangedFilter
                     """.trimIndent()
                 )
+                if (hasExistingMoonBoardRows) {
+                    Log.i(TAG, "MoonBoard changed/new stats=${queryLong(targetDb, "SELECT changes()")}")
+                }
                 // Released clients never see this local projection: the
                 // Blossom snapshot itself keeps every legacy UUID listed.
                 // Restore aliases from an older import first, then replace the
@@ -1132,9 +1178,9 @@ class BoardDatabaseImporter(
     ) {
         // Stage with uuid pre-lowercased + PK-indexed so every pass below
         // is an O(log n) lookup, same rationale as the Kilter chunk_norm.
-        targetDb.execSQL(
-            """
-            CREATE TEMP TABLE IF NOT EXISTS snapshot_norm (
+            targetDb.execSQL(
+                """
+                CREATE TEMP TABLE IF NOT EXISTS snapshot_norm (
                 uuid TEXT PRIMARY KEY,
                 layout_id INTEGER, setter_username TEXT, name TEXT, frames TEXT,
                 frames_count INTEGER, is_listed INTEGER,
@@ -1145,11 +1191,19 @@ class BoardDatabaseImporter(
                 move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
                 method TEXT
             ) WITHOUT ROWID
-            """.trimIndent()
-        )
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                CREATE TEMP TABLE IF NOT EXISTS snapshot_changed (
+                    uuid TEXT PRIMARY KEY
+                ) WITHOUT ROWID
+                """.trimIndent()
+            )
         targetDb.beginTransaction()
         try {
             targetDb.execSQL("DELETE FROM snapshot_norm")
+            targetDb.execSQL("DELETE FROM snapshot_changed")
             targetDb.execSQL(
                 """
                 INSERT OR IGNORE INTO snapshot_norm
@@ -1196,6 +1250,42 @@ class BoardDatabaseImporter(
                 arrayOf<Any?>(boardBrand)
             )
             if (hasExistingCatalogueRows) {
+                // Materialize the delta once before UPDATE.  Leaving this join
+                // nested inside UPDATE allowed SQLite to choose a repeated-scan
+                // plan on a real Android database (31+ GB of logical reads for
+                // a 193 MB MoonBoard snapshot).  The PK-backed temp table makes
+                // the following update a bounded set of UUID lookups.
+                targetDb.execSQL(
+                    """
+                    INSERT OR IGNORE INTO snapshot_changed(uuid)
+                    SELECT s.uuid
+                    FROM snapshot_norm s
+                    JOIN climbs existing ON existing.uuid = s.uuid
+                    WHERE s.is_listed = 1
+                      AND existing.origin = 'kilter'
+                      AND (
+                          existing.layout_id IS NOT s.layout_id OR
+                          existing.setter_username IS NOT s.setter_username OR
+                          existing.name IS NOT s.name OR
+                          existing.frames IS NOT s.frames OR
+                          existing.frames_count IS NOT s.frames_count OR
+                          existing.is_listed IS NOT s.is_listed OR
+                          existing.edge_left IS NOT s.edge_left OR
+                          existing.edge_right IS NOT s.edge_right OR
+                          existing.edge_bottom IS NOT s.edge_bottom OR
+                          existing.edge_top IS NOT s.edge_top OR
+                          existing.created_at IS NOT s.created_at OR
+                          existing.description IS NOT s.description OR
+                          existing.is_nomatch IS NOT s.is_nomatch OR
+                          existing.frames_pace IS NOT s.frames_pace OR
+                          existing.hsm IS NOT s.hsm OR
+                          existing.move_count IS NOT s.move_count OR
+                          existing.method IS NOT s.method
+                      )
+                    """.trimIndent()
+                )
+                val changedClimbs = queryLong(targetDb, "SELECT COUNT(*) FROM snapshot_changed")
+                Log.i(TAG, "MoonBoard changed climbs=$changedClimbs")
                 targetDb.execSQL(
                     """
                     UPDATE climbs SET
@@ -1210,32 +1300,7 @@ class BoardDatabaseImporter(
                            FROM snapshot_norm
                            WHERE snapshot_norm.uuid = main.climbs.uuid)
                     WHERE origin = 'kilter'
-                      AND uuid IN (
-                          SELECT s.uuid
-                          FROM snapshot_norm s
-                          INNER JOIN climbs existing ON existing.uuid = s.uuid
-                          WHERE s.is_listed = 1
-                            AND existing.origin = 'kilter'
-                            AND (
-                                existing.layout_id IS NOT s.layout_id OR
-                                existing.setter_username IS NOT s.setter_username OR
-                                existing.name IS NOT s.name OR
-                                existing.frames IS NOT s.frames OR
-                                existing.frames_count IS NOT s.frames_count OR
-                                existing.is_listed IS NOT s.is_listed OR
-                                existing.edge_left IS NOT s.edge_left OR
-                                existing.edge_right IS NOT s.edge_right OR
-                                existing.edge_bottom IS NOT s.edge_bottom OR
-                                existing.edge_top IS NOT s.edge_top OR
-                                existing.created_at IS NOT s.created_at OR
-                                existing.description IS NOT s.description OR
-                                existing.is_nomatch IS NOT s.is_nomatch OR
-                                existing.frames_pace IS NOT s.frames_pace OR
-                                existing.hsm IS NOT s.hsm OR
-                                existing.move_count IS NOT s.move_count OR
-                                existing.method IS NOT s.method
-                            )
-                      )
+                      AND uuid IN (SELECT uuid FROM snapshot_changed)
                     """.trimIndent()
                 )
             }
@@ -2404,34 +2469,39 @@ class BoardDatabaseImporter(
      *  surface a "finalizing" status (rebuild can take 30s–2min on a fresh
      *  full sync). */
     private inline fun <R> withDeferredIndexes(
+        deferIndexes: Boolean = true,
         crossinline onRebuild: () -> Unit = {},
         block: () -> R,
     ): R {
-        val db = openTargetDb()
-        try {
-            dropIndexes(db, CLIMB_INDEXES)
-            dropIndexes(db, STAT_INDEXES)
-        } finally {
-            db.close()
+        if (deferIndexes) {
+            val db = openTargetDb()
+            try {
+                dropIndexes(db, CLIMB_INDEXES)
+                dropIndexes(db, STAT_INDEXES)
+            } finally {
+                db.close()
+            }
         }
         try {
             return block()
         } finally {
             onRebuild()
-            val db2 = openTargetDb()
-            try {
-                createIndexes(db2, CLIMB_INDEXES)
-                createIndexes(db2, STAT_INDEXES)
-                // Note: PRAGMA optimize used to run here but was dropped —
-                // on a fresh import it triggers a full ANALYZE pass over
-                // the freshly-built indexes (174k climbs + 290k stats),
-                // which takes the same 10-30s the user just waited
-                // through for the index rebuild. The SQLite query planner
-                // copes fine with fresh indexes that have no sqlite_stat1
-                // entries; ANALYZE can be re-introduced in an idle-time
-                // worker if a query-plan regression actually shows up.
-            } finally {
-                db2.close()
+            if (deferIndexes) {
+                val db2 = openTargetDb()
+                try {
+                    createIndexes(db2, CLIMB_INDEXES)
+                    createIndexes(db2, STAT_INDEXES)
+                    // Note: PRAGMA optimize used to run here but was dropped —
+                    // on a fresh import it triggers a full ANALYZE pass over
+                    // the freshly-built indexes (174k climbs + 290k stats),
+                    // which takes the same 10-30s the user just waited
+                    // through for the index rebuild. The SQLite query planner
+                    // copes fine with fresh indexes that have no sqlite_stat1
+                    // entries; ANALYZE can be re-introduced in an idle-time
+                    // worker if a query-plan regression actually shows up.
+                } finally {
+                    db2.close()
+                }
             }
         }
     }
