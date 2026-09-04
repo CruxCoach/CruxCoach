@@ -819,13 +819,54 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 browseByQualitySendsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
 
--- Random order over the filtered set. Pagination is independently random
--- per page (SQLite RANDOM() is non-deterministic across calls); scrolling
--- yields more random results rather than a stable shuffled list. Browse
--- mode bypasses this query via the VM's UUID-shuffle cache (see
--- [browseAllMatchingUuids]); only the search+random combo still hits it.
+-- Fast random page. ORDER BY RANDOM() materialized and sorted the complete
+-- filtered Kilter set before returning 50 rows (16-17s on the Nokia). UUIDs
+-- are hash-derived and uniformly distributed, so a random lexical pivot plus
+-- a primary-key scan gives an unbiased circular sample without a temp B-tree.
+-- INDEXED BY is intentional: otherwise SQLite prefers the frames-count index
+-- and sorts the full result again. The outer lookup materializes only the
+-- sampled rows in the canonical climb_browse shape.
 browseRandom:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
+WITH pivot(value) AS (SELECT LOWER(HEX(RANDOMBLOB(16)))),
+sampled(uuid) AS (
+  SELECT c.uuid
+  FROM climbs c INDEXED BY sqlite_autoindex_climbs_1
+  CROSS JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+  CROSS JOIN pivot
+  WHERE c.uuid >= pivot.value AND c.is_listed = 1
+    AND cs.layout_id = :layoutId AND c.board_brand = :boardBrand AND cs.angle = :angle
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  UNION ALL
+  SELECT c.uuid
+  FROM climbs c INDEXED BY sqlite_autoindex_climbs_1
+  CROSS JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+  CROSS JOIN pivot
+  WHERE c.uuid < pivot.value AND c.is_listed = 1
+    AND cs.layout_id = :layoutId AND c.board_brand = :boardBrand AND cs.angle = :angle
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  LIMIT :limit OFFSET :offset
+)
+SELECT climb_browse.*
+FROM sampled
+CROSS JOIN climb_browse ON climb_browse.uuid = sampled.uuid AND climb_browse.angle = :angle;
 
 -- UUID-only projection of the entire browse-filter match set, no order
 -- and no limit. Backs the Kotlin-side stable shuffle for RANDOM sort:
