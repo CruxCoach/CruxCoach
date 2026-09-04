@@ -98,8 +98,10 @@ fun SettingsScreen(
     LaunchedEffect(state.isLoading, state.boardBrand) {
         if (!state.isLoading && settingsBoardWire == null) settingsBoardWire = state.boardBrand
     }
-    LaunchedEffect(accountsDataExpanded) {
-        if (accountsDataExpanded) viewModel.loadKilterPublishQueueStats()
+    LaunchedEffect(accountsDataExpanded, state.kilterAccount.isConnected) {
+        if (accountsDataExpanded && state.kilterAccount.isConnected) {
+            viewModel.loadKilterPublishQueueStats()
+        }
     }
 
     Scaffold(
