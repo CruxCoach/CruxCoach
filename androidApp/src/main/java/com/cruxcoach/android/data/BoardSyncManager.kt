@@ -921,14 +921,16 @@ class BoardSyncManager(
 
         scope.launch {
             try {
-                performBlossomSync()
+                val catalogueChanged = performBlossomSync()
                 // Refresh SQLite query-planner stats now the catalogue may
                 // have grown substantially (Kilter + MoonBoard imports both
                 // skip ANALYZE inline to keep the "finalizing" phase short).
                 // Runs detached, after performBlossomSync already signalled
                 // syncComplete, so it never extends the visible sync.
-                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
-                    .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                if (catalogueChanged) {
+                    runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
+                        .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                }
                 // Optional media starts only after every catalogue writer and
                 // planner maintenance have released the database. Starting it
                 // from the MoonBoard step made its short replacement writer
@@ -969,7 +971,7 @@ class BoardSyncManager(
         }
     }
 
-    private suspend fun performBlossomSync() {
+    private suspend fun performBlossomSync(): Boolean {
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
         val prioritisedBrand = activeBrand.takeIf {
             it.isInteractive && it != BoardBrand.KILTER
@@ -983,7 +985,7 @@ class BoardSyncManager(
         // Make the board selected during onboarding useful first. Its lane is
         // isolated and idempotent, so a failure cannot prevent the complete
         // all-catalogue pass (Kilter remains the historical main lane).
-        prioritisedBrand?.let { syncCatalogue(it) }
+        val prioritisedCatalogueChanged = prioritisedBrand?.let { syncCatalogue(it) } ?: false
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
         val manifestAcceptable = blossomSyncManager.canApplyManifest(manifest)
@@ -1019,7 +1021,7 @@ class BoardSyncManager(
             )) }
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
-            syncRemainingCatalogues(activeBrand)
+            val remainingCatalogueChanged = syncRemainingCatalogues(activeBrand)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -1030,7 +1032,7 @@ class BoardSyncManager(
                 importStep = null,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
-            return
+            return prioritisedCatalogueChanged || remainingCatalogueChanged
         }
 
         // 3. Download and decompress changed chunks (semaphore-bounded parallel).
@@ -1199,6 +1201,7 @@ class BoardSyncManager(
                 importStep = null,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
+            return true
         } finally {
             chunkFiles.values.forEach { it.delete() }
         }
@@ -1281,17 +1284,22 @@ class BoardSyncManager(
      * unchanged boards short-circuit to AlreadyCurrent on every later run,
      * so repeat syncs stay cheap.
      */
-    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand) {
+    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand): Boolean {
+        var imported = false
         catalogueSyncOrder(activeBrand)
             .filter { it != BoardBrand.KILTER && it != activeBrand }
-            .forEach { syncCatalogue(it) }
+            .forEach { brand ->
+                if (syncCatalogue(brand)) imported = true
+            }
+        return imported
     }
 
-    private suspend fun syncCatalogue(brand: BoardBrand) {
-        when {
+    private suspend fun syncCatalogue(brand: BoardBrand): Boolean {
+        return when {
             brand == BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
             brand == BoardBrand.QUANTUM -> syncQuantumBoard()
             brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> syncAuroraBoard(brand)
+            else -> false
         }
     }
 
