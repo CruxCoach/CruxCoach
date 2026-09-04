@@ -435,16 +435,20 @@ class BoardDatabaseImporter(
                         "WHERE type='table' AND name='climb_aliases'",
                 ) == 1L
                 if (snapshotHasClimbAliases) {
+                    // Keep functions on the small alias-side values. Wrapping
+                    // the 286k-row climbs.uuid PK in LOWER() made SQLite scan
+                    // the complete catalogue for every alias (three nested
+                    // scans for ~5k aliases on the production snapshot).
                     val invalidAliases = queryLong(
                         targetDb,
                         """
                         SELECT COUNT(*) FROM mb.climb_aliases a
                         LEFT JOIN mb.climbs alias_climb
-                          ON LOWER(alias_climb.uuid) = LOWER(a.alias_uuid)
+                          ON alias_climb.uuid = LOWER(TRIM(a.alias_uuid))
                         LEFT JOIN mb.climbs canonical_climb
-                          ON LOWER(canonical_climb.uuid) = LOWER(a.canonical_uuid)
+                          ON canonical_climb.uuid = LOWER(TRIM(a.canonical_uuid))
                         LEFT JOIN mb.climb_aliases chained
-                          ON LOWER(chained.alias_uuid) = LOWER(a.canonical_uuid)
+                          ON chained.alias_uuid = a.canonical_uuid COLLATE NOCASE
                         WHERE TRIM(a.alias_uuid) = '' OR TRIM(a.canonical_uuid) = ''
                            OR LOWER(a.alias_uuid) = LOWER(a.canonical_uuid)
                            OR a.match_kind != 'legacy-exact-duplicate'
