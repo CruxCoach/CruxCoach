@@ -379,6 +379,37 @@ class MoonBoardBetaSnapshotImportTest {
         }
     }
 
+    @Test
+    fun unchangedCatalogUpdateDoesNotRewriteExistingRows() {
+        val snapshot = createCatalogSnapshot("unchanged-catalog.sqlite3", includeAlias = false)
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM moonboard_climb_aliases")
+            // createCatalogSnapshot deliberately restores both catalogue rows
+            // to listed=1. Mirror that state in the target so this test is a
+            // genuinely byte-equivalent refresh, not a legitimate delist flip.
+            db.execSQL(
+                "UPDATE climbs SET is_listed=1 WHERE uuid IN (?,?)",
+                arrayOf<Any?>(climbUuid, legacyAliasUuid),
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER reject_unchanged_moonboard_update
+                BEFORE UPDATE ON climbs
+                WHEN OLD.board_brand = 'moonboard'
+                BEGIN
+                    SELECT RAISE(ABORT, 'unchanged MoonBoard row was rewritten');
+                END
+                """.trimIndent(),
+            )
+        }
+
+        importer.importMoonBoardSnapshot(snapshot)
+
+        openTarget().use { db ->
+            assertEquals(2L, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='moonboard'"))
+        }
+    }
+
     private fun openTarget(): SQLiteDatabase =
         SQLiteDatabase.openDatabase(targetPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
 

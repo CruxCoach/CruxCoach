@@ -1210,7 +1210,32 @@ class BoardDatabaseImporter(
                            FROM snapshot_norm
                            WHERE snapshot_norm.uuid = main.climbs.uuid)
                     WHERE origin = 'kilter'
-                      AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 1)
+                      AND uuid IN (
+                          SELECT s.uuid
+                          FROM snapshot_norm s
+                          INNER JOIN climbs existing ON existing.uuid = s.uuid
+                          WHERE s.is_listed = 1
+                            AND existing.origin = 'kilter'
+                            AND (
+                                existing.layout_id IS NOT s.layout_id OR
+                                existing.setter_username IS NOT s.setter_username OR
+                                existing.name IS NOT s.name OR
+                                existing.frames IS NOT s.frames OR
+                                existing.frames_count IS NOT s.frames_count OR
+                                existing.is_listed IS NOT s.is_listed OR
+                                existing.edge_left IS NOT s.edge_left OR
+                                existing.edge_right IS NOT s.edge_right OR
+                                existing.edge_bottom IS NOT s.edge_bottom OR
+                                existing.edge_top IS NOT s.edge_top OR
+                                existing.created_at IS NOT s.created_at OR
+                                existing.description IS NOT s.description OR
+                                existing.is_nomatch IS NOT s.is_nomatch OR
+                                existing.frames_pace IS NOT s.frames_pace OR
+                                existing.hsm IS NOT s.hsm OR
+                                existing.move_count IS NOT s.move_count OR
+                                existing.method IS NOT s.method
+                            )
+                      )
                     """.trimIndent()
                 )
             }
