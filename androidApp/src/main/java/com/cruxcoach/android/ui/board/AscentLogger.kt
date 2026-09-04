@@ -429,6 +429,10 @@ internal class AscentLogger(
                     pendingQuickLog = pending
                     schedulePendingFinalization(pending)
                 }
+                // Callers use isQuickLogging=false as the completion boundary.
+                // Fire the immediate quick-log callback first so a completed
+                // save can never be observed before its rest-timer follow-up.
+                if (editUuid == null && isQuickLog) onQuickLogSaved(form.isSend)
                 state.update { current ->
                     val isSameVariant = current.climb?.uuid == climb.uuid &&
                         current.angle.toLong() == s.angle.toLong() &&
@@ -455,8 +459,7 @@ internal class AscentLogger(
                     climbNavState.changedClimbUuids.add(climbUuid)
                     if (form.isSend) sessionManager.recordAscent()
                     else sessionManager.recordBid()
-                    if (isQuickLog) onQuickLogSaved(form.isSend)
-                    else onAscentSaved(form.isSend)
+                    if (!isQuickLog) onAscentSaved(form.isSend)
                     zoneManager.recompute()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

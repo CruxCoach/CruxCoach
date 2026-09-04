@@ -2797,6 +2797,17 @@ class BoardDatabaseImporter(
             "placement_roles",
             setOf("id", "name", "led_color", "screen_color"),
         )
+        requireColumns(
+            "climb_beta_links",
+            setOf(
+                "board_brand", "climb_uuid", "url", "provider", "media_id",
+                "foreign_username", "angle", "thumbnail", "created_at",
+            ),
+        )
+        requireColumns(
+            "moonboard_climb_aliases",
+            setOf("alias_uuid", "canonical_uuid", "match_kind"),
+        )
 
         val statements = buildList {
             if (has("placements")) add(
@@ -2828,6 +2839,56 @@ class BoardDatabaseImporter(
                 "INSERT OR REPLACE INTO placement_roles(board_brand,id,name,led_color,screen_color) " +
                     "SELECT ${brand("placement_roles")},id,name,led_color,screen_color FROM src.placement_roles" +
                     legacyGeometryFilter("placement_roles")
+            )
+            if (has("climb_beta_links")) add(
+                """INSERT OR IGNORE INTO climb_beta_links(
+                       board_brand,climb_uuid,url,provider,media_id,
+                       foreign_username,angle,thumbnail,created_at)
+                   SELECT LOWER(TRIM(b.board_brand)),LOWER(TRIM(b.climb_uuid)),TRIM(b.url),
+                          LOWER(TRIM(b.provider)),NULLIF(TRIM(b.media_id),''),
+                          NULLIF(TRIM(b.foreign_username),''),b.angle,
+                          NULLIF(TRIM(b.thumbnail),''),NULLIF(TRIM(b.created_at),'')
+                   FROM src.climb_beta_links b
+                   JOIN main.climbs c
+                     ON c.uuid=LOWER(TRIM(b.climb_uuid))
+                    AND LOWER(c.board_brand)=LOWER(TRIM(b.board_brand))
+                   WHERE TRIM(b.board_brand)!='' AND TRIM(b.climb_uuid)!=''
+                     AND TRIM(b.provider)!=''
+                     AND LOWER(TRIM(b.url)) LIKE 'https://%'
+                     AND TRIM(b.url) NOT LIKE '% %'
+                     AND (b.thumbnail IS NULL OR
+                          (LOWER(TRIM(b.thumbnail)) LIKE 'https://%'
+                           AND TRIM(b.thumbnail) NOT LIKE '% %'))
+                     AND (b.angle IS NULL OR b.angle BETWEEN 0 AND 90)
+                     ${if (!includeQuantum) "AND LOWER(TRIM(b.board_brand))!='quantum'" else ""}""".trimIndent(),
+            )
+            // Alias tables are additive in 0.2.3. A migration-era fixture may
+            // carry the table next to an older brandless climbs shape; without
+            // the brand discriminator there is no safe way to prove that both
+            // ends are MoonBoard identities, so treat it like an older sender.
+            if (has("moonboard_climb_aliases") && "board_brand" in columns("climbs")) add(
+                """INSERT OR IGNORE INTO moonboard_climb_aliases(
+                       alias_uuid,canonical_uuid,match_kind)
+                   SELECT LOWER(TRIM(a.alias_uuid)),LOWER(TRIM(a.canonical_uuid)),a.match_kind
+                   FROM src.moonboard_climb_aliases a
+                   JOIN src.climbs alias_climb
+                     ON LOWER(TRIM(alias_climb.uuid))=LOWER(TRIM(a.alias_uuid))
+                   JOIN src.climbs canonical_climb
+                     ON LOWER(TRIM(canonical_climb.uuid))=LOWER(TRIM(a.canonical_uuid))
+                   JOIN main.climbs imported_canonical
+                     ON imported_canonical.uuid=LOWER(TRIM(a.canonical_uuid))
+                    AND LOWER(imported_canonical.board_brand)='moonboard'
+                   WHERE TRIM(a.alias_uuid)!='' AND TRIM(a.canonical_uuid)!=''
+                     AND LOWER(TRIM(a.alias_uuid))!=LOWER(TRIM(a.canonical_uuid))
+                     AND a.match_kind='legacy-exact-duplicate'
+                     AND LOWER(alias_climb.board_brand)='moonboard'
+                     AND LOWER(canonical_climb.board_brand)='moonboard'
+                     AND alias_climb.layout_id=canonical_climb.layout_id
+                     AND alias_climb.frames=canonical_climb.frames
+                     AND NOT EXISTS (
+                       SELECT 1 FROM src.moonboard_climb_aliases chained
+                       WHERE LOWER(TRIM(chained.alias_uuid))=LOWER(TRIM(a.canonical_uuid))
+                     )""".trimIndent(),
             )
             if (includeQuantum) {
                 val hasRefs = has("quantum_route_refs")

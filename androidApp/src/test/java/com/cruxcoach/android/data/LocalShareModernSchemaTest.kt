@@ -62,6 +62,7 @@ class LocalShareModernSchemaTest {
 
     private val kilterUuid = "11111111-1111-1111-1111-000000000001"
     private val moonUuid = "22222222-2222-2222-2222-000000000002"
+    private val moonAliasUuid = "22222222-2222-2222-2222-000000000099"
     private val communityUuid = "33333333-3333-3333-3333-000000000003"
     private val draftUuid = "44444444-4444-4444-4444-000000000004"
     private val tombstoneUuid = "55555555-5555-5555-5555-000000000005"
@@ -138,6 +139,10 @@ class LocalShareModernSchemaTest {
                 moonUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 1,
                 method = moonMethod,
             )
+            insertClimb(
+                moonAliasUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 0,
+                method = moonMethod,
+            )
             insertClimb(communityUuid, 1, "Community Proj", "kilter", "nostr", "cruxcoach", authorPubkey, 1)
             insertClimb(draftUuid, 100, "Secret Draft", "moonboard", "local", "cruxcoach", authorPubkey, 1)
             insertClimb(tombstoneUuid, 1, "Gone Climb", "kilter", "kilter", "kilter", null, 0)
@@ -168,6 +173,21 @@ class LocalShareModernSchemaTest {
             db.execSQL("INSERT INTO leds(board_brand, hole_id, product_size_id, position) VALUES ('moonboard', 5001, 15, 77)")
             db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('kilter', 12, 'start', '00FF00', '00FF00')")
             db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('moonboard', 1, 'start', '00DD00', '00DD00')")
+
+            db.execSQL(
+                """INSERT INTO climb_beta_links(
+                       board_brand,climb_uuid,url,provider,media_id,foreign_username,
+                       angle,thumbnail,created_at)
+                   VALUES ('moonboard',?,'https://www.instagram.com/reel/offline-share/',
+                           'instagram','offline-share','setter_beta',40,
+                           'https://example.com/thumb.jpg','2026-09-01 00:00:00')""".trimIndent(),
+                arrayOf<Any?>(moonUuid),
+            )
+            db.execSQL(
+                "INSERT INTO moonboard_climb_aliases(alias_uuid,canonical_uuid,match_kind) " +
+                    "VALUES (?,?,'legacy-exact-duplicate')",
+                arrayOf<Any?>(moonAliasUuid, moonUuid),
+            )
 
             db.execSQL("INSERT INTO sync_states(table_name, last_synchronized_at) VALUES ('climbs', '2026-07-01 00:00:00')")
 
@@ -225,6 +245,26 @@ class LocalShareModernSchemaTest {
 
             // Gym locations came along (replace-all via importLocations).
             assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-1'"))
+            // Public media and the verified exact-duplicate bridge remain
+            // available when the receiver has no internet connection.
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "climb_beta_links",
+                    "board_brand='moonboard' AND climb_uuid='$moonUuid' " +
+                        "AND media_id='offline-share' AND angle=40",
+                ),
+            )
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "moonboard_climb_aliases",
+                    "alias_uuid='$moonAliasUuid' AND canonical_uuid='$moonUuid' " +
+                        "AND match_kind='legacy-exact-duplicate'",
+                ),
+            )
         }
 
         // Modern sync-state table resolved (pre-fix: "no such table:
@@ -234,16 +274,18 @@ class LocalShareModernSchemaTest {
 
     @Test
     fun eachMissingAdditiveGeometryTableStillImportsTheGenericCatalogueAtomically() {
-        val additiveGeometryTables = listOf(
+        val additivePublicTables = listOf(
             "placements",
             "holes",
             "product_sizes",
             "board_images",
             "leds",
             "placement_roles",
+            "climb_beta_links",
+            "moonboard_climb_aliases",
         )
 
-        additiveGeometryTables.forEach { missingTable ->
+        additivePublicTables.forEach { missingTable ->
             recreateEmptyTarget()
             val parkedTable = "${missingTable}_pre022_parked"
             SQLiteDatabase.openDatabase(
