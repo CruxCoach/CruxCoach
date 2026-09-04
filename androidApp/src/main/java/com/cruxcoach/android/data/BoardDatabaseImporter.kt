@@ -583,8 +583,10 @@ class BoardDatabaseImporter(
 
     /**
      * Replace the optional MoonBoard beta-link cache from a separately signed
-     * snapshot. Validation and replacement share one SQLite transaction, so a
-     * malformed or interrupted import leaves the previous usable links intact.
+     * snapshot. The source is fully validated and resolved before the short
+     * replacement transaction starts, so a malformed or interrupted import
+     * leaves the previous usable links intact without holding the writer lock
+     * during the comparatively expensive catalogue join.
      */
     @Synchronized
     fun importMoonBoardBetaSnapshot(snapshotFile: File): Int {
@@ -592,6 +594,14 @@ class BoardDatabaseImporter(
         val targetDb = openTargetDb()
         var attached = false
         try {
+            // This optional lane commonly reaches the write phase while the
+            // freshly opened app is still persisting catalogue/UI state. Five
+            // seconds is deliberately enough for normal imports, but proved
+            // too short on slower eMMC: the last-good beta cache was retained
+            // even though the competing writer completed moments later. The
+            // longer timeout is connection-local and waits on this background
+            // worker only; it cannot stall the main thread.
+            targetDb.rawQuery("PRAGMA busy_timeout = 30000", null).use { it.moveToFirst() }
             var phaseStarted = System.nanoTime()
             targetDb.execSQL("ATTACH DATABASE ? AS mb_beta", arrayOf(snapshotFile.absolutePath))
             attached = true
@@ -616,17 +626,28 @@ class BoardDatabaseImporter(
             require(invalidCount == 0L) { "MoonBoard beta snapshot contains invalid rows" }
             logBetaPhase("validate-rows", phaseStarted)
             phaseStarted = System.nanoTime()
-            val resolvableCount = queryLong(
-                targetDb,
-                "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links b " +
-                    // CROSS JOIN fixes the loop order. On Android SQLite, the
-                    // board_brand index otherwise makes `climbs` the outer
-                    // loop and the expression on b.climb_uuid prevents an
-                    // indexed lookup into the beta snapshot. For the current
-                    // catalogue that degenerates into ~13.4B comparisons.
-                    "CROSS JOIN climbs c ON c.uuid = LOWER(b.climb_uuid) " +
-                    "WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0"
+            // Materialize the resolved rows once. The previous implementation
+            // repeated this join for validation and INSERT; on the Nokia that
+            // cost ~4.7 seconds per pass. A TEMP table keeps the validated set
+            // connection-local and makes the locked replacement a cheap copy.
+            // CROSS JOIN fixes the loop order. On Android SQLite, the
+            // board_brand index otherwise makes `climbs` the outer loop and
+            // the expression on b.climb_uuid prevents an indexed lookup into
+            // the beta snapshot (~13.4B comparisons for today's catalogue).
+            targetDb.execSQL(
+                """
+                CREATE TEMP TABLE resolved_moonboard_beta_links AS
+                SELECT LOWER(b.climb_uuid) AS climb_uuid,
+                       b.url AS url,
+                       LOWER(b.provider) AS provider,
+                       b.video_id AS video_id,
+                       b.thumbnail AS thumbnail
+                FROM mb_beta.moonboard_beta_links b
+                CROSS JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
+                WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0
+                """.trimIndent(),
             )
+            val resolvableCount = queryLong(targetDb, "SELECT COUNT(*) FROM resolved_moonboard_beta_links")
             require(
                 sourceCount == 0L ||
                     (resolvableCount > 0L &&
@@ -637,7 +658,10 @@ class BoardDatabaseImporter(
             logBetaPhase("resolve-links", phaseStarted, "resolved=$resolvableCount")
 
             phaseStarted = System.nanoTime()
-            targetDb.beginTransaction()
+            // Non-exclusive is the WAL-friendly transaction mode: existing
+            // browse readers remain responsive while this small replacement
+            // waits for (and then briefly owns) the single SQLite writer slot.
+            targetDb.beginTransactionNonExclusive()
             try {
                 targetDb.execSQL("DELETE FROM climb_beta_links WHERE board_brand='moonboard'")
                 // Old/deleted/ungraded problems may remain in Moon's media
@@ -647,11 +671,8 @@ class BoardDatabaseImporter(
                     INSERT INTO climb_beta_links(
                         board_brand, climb_uuid, url, provider, media_id, thumbnail
                     )
-                    SELECT 'moonboard', LOWER(b.climb_uuid), b.url, LOWER(b.provider),
-                           b.video_id, b.thumbnail
-                    FROM mb_beta.moonboard_beta_links b
-                    CROSS JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
-                    WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0
+                    SELECT 'moonboard', climb_uuid, url, provider, video_id, thumbnail
+                    FROM resolved_moonboard_beta_links
                     """.trimIndent()
                 )
                 targetDb.setTransactionSuccessful()

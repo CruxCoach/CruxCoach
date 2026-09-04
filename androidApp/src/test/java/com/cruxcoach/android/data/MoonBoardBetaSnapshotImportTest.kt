@@ -11,6 +11,9 @@ import com.cruxcoach.domain.board.FramesBinaryCodec
 import io.mockk.mockk
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -221,6 +224,58 @@ class MoonBoardBetaSnapshotImportTest {
         openTarget().use { db ->
             assertEquals(0L, count(db, "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='moonboard'"))
             assertEquals(1L, count(db, "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='kilter'"))
+        }
+    }
+
+    @Test
+    fun replacementWaitsForShortConcurrentWriterInsteadOfDroppingUpdate() {
+        val snapshot = createSnapshot(
+            "writer-contention.sqlite3",
+            listOf(
+                BetaRow(
+                    problemId = 101,
+                    climbUuid = climbUuid,
+                    videoId = "after-contention",
+                    provider = "instagram",
+                    url = "https://www.instagram.com/reel/after-contention/",
+                    thumbnail = null,
+                ),
+            ),
+        )
+        val writerStarted = CountDownLatch(1)
+        val writerFailure = AtomicReference<Throwable?>()
+        val writer = Thread {
+            try {
+                openTarget().use { db ->
+                    db.rawQuery("PRAGMA journal_mode=WAL", null).use { it.moveToFirst() }
+                    db.beginTransactionNonExclusive()
+                    try {
+                        db.execSQL("UPDATE climbs SET name=name WHERE uuid=?", arrayOf<Any?>(climbUuid))
+                        writerStarted.countDown()
+                        Thread.sleep(750)
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
+                    }
+                }
+            } catch (error: Throwable) {
+                writerFailure.set(error)
+                writerStarted.countDown()
+            }
+        }
+        writer.start()
+        assertTrue("concurrent writer did not start", writerStarted.await(5, TimeUnit.SECONDS))
+
+        assertEquals(1, importer.importMoonBoardBetaSnapshot(snapshot))
+
+        writer.join(5_000)
+        assertTrue("concurrent writer did not finish", !writer.isAlive)
+        writerFailure.get()?.let { throw AssertionError("concurrent writer failed", it) }
+        openTarget().use { db ->
+            assertEquals(
+                1L,
+                count(db, "SELECT COUNT(*) FROM climb_beta_links WHERE media_id='after-contention'"),
+            )
         }
     }
 
