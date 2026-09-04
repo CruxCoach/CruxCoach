@@ -98,6 +98,9 @@ fun SettingsScreen(
     LaunchedEffect(state.isLoading, state.boardBrand) {
         if (!state.isLoading && settingsBoardWire == null) settingsBoardWire = state.boardBrand
     }
+    LaunchedEffect(accountsDataExpanded) {
+        if (accountsDataExpanded) viewModel.loadKilterPublishQueueStats()
+    }
 
     Scaffold(
         topBar = {

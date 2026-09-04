@@ -2194,12 +2194,12 @@ LIMIT ?;
 -- table so a worker that ran since boot reflects in the UI.
 getKilterPublishQueueStats:
 SELECT
-    (SELECT COUNT(*) FROM climbs
+    (SELECT COUNT(*) FROM climbs INDEXED BY idx_climbs_origin
      WHERE origin = 'cruxcoach'
        AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
        AND (kilter_status IS NULL OR kilter_status = 'failed')) AS pending_count,
-    (SELECT COUNT(*) FROM climbs
+    (SELECT COUNT(*) FROM climbs INDEXED BY idx_climbs_origin
      WHERE origin = 'cruxcoach'
        AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
