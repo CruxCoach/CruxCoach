@@ -529,6 +529,7 @@ class BoardBrowserViewModel @Inject constructor(
     private var hiddenLoaded = false
     private var filtersLoaded = false
     private var searchJob: Job? = null
+    private var countJob: Job? = null
     private val browseRequestGate = BrowseRequestGate()
     // Latest-wins guard for refreshBoardData. A board switch fans out from
     // several pref/sync collectors and the user can switch rapidly; without
@@ -1401,6 +1402,7 @@ class BoardBrowserViewModel @Inject constructor(
             _state.update { it.copy(
                 isLoading = !hasExisting,
                 isLoadingMore = hasExisting,
+                filteredCount = -1,
                 error = null
             ) }
             try {
@@ -1428,16 +1430,29 @@ class BoardBrowserViewModel @Inject constructor(
                     PerfLogger.logMemory("first-content")
                     PerfLogger.reportStartupTimeline()
                 }
-                // Fire-and-forget: resolve count in separate coroutine (non-blocking)
-                viewModelScope.safeLaunch(TAG) {
-                    val count = resolveCount(filter, newDbOffset)
-                    if (browseRequestGate.accepts(requestGeneration)) {
-                        _state.update { it.copy(filteredCount = count) }
-                    }
-                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.update { it.copy(isLoading = false, isLoadingMore = false, error = e.message) }
+            }
+        }
+    }
+
+    /**
+     * Exact totals are useful on the filter screen, but counting a large
+     * catalogue can monopolize SQLDelight's Android connection for seconds on
+     * slower flash storage.  Keep it off the initial browse path and debounce
+     * it while the user is adjusting filters.
+     */
+    fun requestFilteredCount() {
+        val requestGeneration = browseRequestGate.current()
+        val filter = _state.value.filter
+        if (_state.value.filteredCount >= 0 || _state.value.isLoading || _state.value.isLoadingMore) return
+        countJob?.cancel()
+        countJob = viewModelScope.safeLaunch(TAG) {
+            delay(750)
+            val count = resolveCount(filter, _state.value.climbs.size)
+            if (browseRequestGate.accepts(requestGeneration) && _state.value.filter == filter) {
+                _state.update { it.copy(filteredCount = count) }
             }
         }
     }
@@ -1487,7 +1502,7 @@ class BoardBrowserViewModel @Inject constructor(
         // Build a key from count-affecting fields only (not sort).
         // ungradedOnly swaps the whole grade predicate (impossible range +
         // IS NULL leg), so it changes the count even at identical indices.
-        val countKey = "${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
+        val countKey = "${filter.boardBrand}|${filter.layoutId}|${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
             "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}|${filter.quantumRuleMask}"
 
         // Fetch DB count only if count-affecting filters changed
@@ -1943,20 +1958,20 @@ class BoardBrowserViewModel @Inject constructor(
             !f.myClimbsOnly &&
             !f.quantumOverlapFilter.active &&
             !(hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty())
-        val count = _state.value.filteredCount
-        if (plainMode && count > 0) {
+        if (plainMode) {
             viewModelScope.safeLaunch(TAG) {
                 val uuid = withContext(Dispatchers.IO) {
                     ensureHiddenLoaded()
+                    val randomized = f.copy(sortField = ClimbSortField.RANDOM)
                     var result: String? = null
                     var fallback: String? = null
-                    var rolls = 0
-                    while (rolls < RANDOM_PICK_MAX_ROLLS && result == null) {
-                        rolls++
-                        val candidate = pickOneAtOffset(f, Random.nextInt(count.toInt()))
-                        if (candidate != null) {
-                            fallback = candidate
-                            if (candidate !in hiddenUuids) result = candidate
+                    repeat(RANDOM_PICK_MAX_ROLLS) {
+                        if (result == null) {
+                            val candidate = pickOneAtOffset(randomized, 0)
+                            if (candidate != null) {
+                                fallback = candidate
+                                if (candidate !in hiddenUuids) result = candidate
+                            }
                         }
                     }
                     result ?: fallback

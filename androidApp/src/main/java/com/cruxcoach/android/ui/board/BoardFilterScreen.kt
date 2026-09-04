@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +81,11 @@ fun BoardFilterScreen(
     onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.filter, state.filteredCount, state.isLoading, state.isLoadingMore) {
+        if (state.filteredCount < 0 && !state.isLoading && !state.isLoadingMore) {
+            viewModel.requestFilteredCount()
+        }
+    }
     val activeBrand = BoardBrand.fromWire(state.filter.boardBrand)
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
