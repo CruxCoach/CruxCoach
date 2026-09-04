@@ -929,6 +929,14 @@ class BoardSyncManager(
                 // syncComplete, so it never extends the visible sync.
                 runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
                     .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                // Optional media starts only after every catalogue writer and
+                // planner maintenance have released the database. Starting it
+                // from the MoonBoard step made its short replacement writer
+                // contend with later board imports/ANALYZE and could stall
+                // first-browse queries even though the visible sync was done.
+                if (_state.value.moonBoardError == null) {
+                    moonBoardBetaSync?.sync()
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
                 // Distinguish network failures (where the "prüfe Internet"
@@ -1217,7 +1225,6 @@ class BoardSyncManager(
                     // No import ran — mark the section complete anyway so
                     // the user sees the MoonBoard catalogue is accounted for.
                     _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
-                    syncMoonBoardBetaInBackground()
                     false
                 }
                 is MoonBoardCatalogueSync.Result.Imported -> {
@@ -1227,7 +1234,6 @@ class BoardSyncManager(
                     // the moment the browser's mask cache must re-ask it. Still
                     // inside the same sync run, so syncGeneration says nothing.
                     bumpCatalogueRevision()
-                    syncMoonBoardBetaInBackground()
                     true
                 }
                 is MoonBoardCatalogueSync.Result.Failed -> {
@@ -1245,20 +1251,6 @@ class BoardSyncManager(
                 moonBoardError = e.message ?: e.javaClass.simpleName,
             ) }
             false
-        }
-    }
-
-    /**
-     * Beta videos are optional media, not part of catalogue readiness. Keep
-     * their independently signed lane outside the global board-sync slot so a
-     * slow media download can never pin the UI in "Finalizing" or prevent the
-     * remaining catalogues from loading. [MoonBoardBetaSync]'s mutex collapses
-     * overlapping requests and its importer replaces rows atomically.
-     */
-    private fun syncMoonBoardBetaInBackground() {
-        val betaSync = moonBoardBetaSync ?: return
-        scope.safeLaunch(TAG) {
-            betaSync.sync()
         }
     }
 
@@ -1396,7 +1388,7 @@ class BoardSyncManager(
         // FEAT-037B: refresh planner stats for the freshly-imported single
         // board. The full Blossom sync analyzes via startBlossomSync; this
         // on-demand path otherwise left stale stats → slow first browse.
-        analyzeAfterSingleBoardImport(imported)
+        runPostSingleBoardImportTasks(brand, imported)
     }
 
     /**
@@ -1423,7 +1415,7 @@ class BoardSyncManager(
                 finishSyncSlot()
             }
             // FEAT-037B: refresh planner stats for the freshly-imported board.
-            analyzeAfterSingleBoardImport(imported)
+            runPostSingleBoardImportTasks(brand, imported)
         }
     }
 
@@ -1439,20 +1431,22 @@ class BoardSyncManager(
     }
 
     /**
-     * FEAT-037B: refresh SQLite query-planner stats after a single-board
-     * on-demand catalogue import ([ensureActiveBoardCatalogue] / [loadBoardCatalogue]).
-     * The full Blossom sync already runs [BoardDatabaseImporter.analyzeDatabase]
-     * once after [performBlossomSync]; the single-board picker paths previously
-     * skipped it, leaving stale stats so the first browse of a freshly-imported
-     * Aurora/MoonBoard board mis-planned and ran slow. Detached on [scope] so it
-     * never extends the visible sync, and import-gated because ANALYZE is a full
-     * pass (10-30s) — pointless when the board was already current.
+     * Run database maintenance and optional MoonBoard media after a scoped
+     * catalogue load has released the visible sync slot. ANALYZE remains
+     * import-gated; MoonBoard beta still checks for changes when the catalogue
+     * itself was already current. Keeping both operations in one coroutine
+     * guarantees that their writers cannot contend with each other.
      */
-    private fun analyzeAfterSingleBoardImport(imported: Boolean) {
-        if (!imported) return
-        scope.launch {
-            runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
-                .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
+    private fun runPostSingleBoardImportTasks(brand: BoardBrand, imported: Boolean) {
+        if (!imported && brand != BoardBrand.MOONBOARD) return
+        scope.safeLaunch(TAG) {
+            if (imported) {
+                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
+                    .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
+            }
+            if (brand == BoardBrand.MOONBOARD) {
+                moonBoardBetaSync?.sync()
+            }
         }
     }
 
