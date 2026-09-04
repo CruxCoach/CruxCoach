@@ -1798,6 +1798,11 @@ class BoardBrowserViewModel @Inject constructor(
         }
 
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
+        Log.i(
+            TAG,
+            "browse page query start (brand=${f.boardBrand}, layout=${f.layoutId}, angle=${f.angle}, " +
+                "sort=${f.sortField}/${f.sortDirection}, offset=$offset, search=${f.searchQuery.isNotBlank()})",
+        )
         if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
             return fetchRandomPage(f, offset)
         }

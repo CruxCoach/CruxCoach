@@ -240,7 +240,39 @@ class BoardRepositoryImpl(
             ClimbSortField.HOLDS -> if (desc) q.browseByMovesDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByMovesAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.NEWEST -> if (desc) q.browseByNewestDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByNewestAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.browseRandom(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
-            else -> if (desc) q.browseByAscensionistsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
+            else -> if (desc) {
+                q.browseByAscensionistsDesc(
+                    layoutId = lay,
+                    angle = a,
+                    minAsc = asc,
+                    minDiff = minDifficulty,
+                    maxDiff = maxDifficulty,
+                    showUngraded = su,
+                    boardBrand = boardBrand,
+                    minFrames = mn,
+                    maxFrames = mx,
+                    hsmExcludedMask = hm,
+                    selProductSizeId = sel,
+                    limit = l,
+                    offset = o,
+                )
+            } else {
+                q.browseByAscensionistsAsc(
+                    layoutId = lay,
+                    angle = a,
+                    minAsc = asc,
+                    minDiff = minDifficulty,
+                    maxDiff = maxDifficulty,
+                    showUngraded = su,
+                    boardBrand = boardBrand,
+                    minFrames = mn,
+                    maxFrames = mx,
+                    hsmExcludedMask = hm,
+                    selProductSizeId = sel,
+                    limit = l,
+                    offset = o,
+                )
+            }
         }.executeAsList().map { mapBrowse(it) }
     }
 
