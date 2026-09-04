@@ -1217,7 +1217,7 @@ class BoardSyncManager(
                     // No import ran — mark the section complete anyway so
                     // the user sees the MoonBoard catalogue is accounted for.
                     _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
-                    moonBoardBetaSync?.sync()
+                    syncMoonBoardBetaInBackground()
                     false
                 }
                 is MoonBoardCatalogueSync.Result.Imported -> {
@@ -1227,7 +1227,7 @@ class BoardSyncManager(
                     // the moment the browser's mask cache must re-ask it. Still
                     // inside the same sync run, so syncGeneration says nothing.
                     bumpCatalogueRevision()
-                    moonBoardBetaSync?.sync()
+                    syncMoonBoardBetaInBackground()
                     true
                 }
                 is MoonBoardCatalogueSync.Result.Failed -> {
@@ -1245,6 +1245,20 @@ class BoardSyncManager(
                 moonBoardError = e.message ?: e.javaClass.simpleName,
             ) }
             false
+        }
+    }
+
+    /**
+     * Beta videos are optional media, not part of catalogue readiness. Keep
+     * their independently signed lane outside the global board-sync slot so a
+     * slow media download can never pin the UI in "Finalizing" or prevent the
+     * remaining catalogues from loading. [MoonBoardBetaSync]'s mutex collapses
+     * overlapping requests and its importer replaces rows atomically.
+     */
+    private fun syncMoonBoardBetaInBackground() {
+        val betaSync = moonBoardBetaSync ?: return
+        scope.safeLaunch(TAG) {
+            betaSync.sync()
         }
     }
 
