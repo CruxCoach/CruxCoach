@@ -588,11 +588,15 @@ class BoardDatabaseImporter(
      */
     @Synchronized
     fun importMoonBoardBetaSnapshot(snapshotFile: File): Int {
+        val importStarted = System.nanoTime()
         val targetDb = openTargetDb()
         var attached = false
         try {
+            var phaseStarted = System.nanoTime()
             targetDb.execSQL("ATTACH DATABASE ? AS mb_beta", arrayOf(snapshotFile.absolutePath))
             attached = true
+            logBetaPhase("attach", phaseStarted)
+            phaseStarted = System.nanoTime()
             val tableCount = queryLong(
                 targetDb,
                 "SELECT COUNT(*) FROM mb_beta.sqlite_master " +
@@ -600,6 +604,8 @@ class BoardDatabaseImporter(
             )
             require(tableCount == 1L) { "MoonBoard beta snapshot has no link table" }
             val sourceCount = queryLong(targetDb, "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links")
+            logBetaPhase("schema-and-count", phaseStarted, "source=$sourceCount")
+            phaseStarted = System.nanoTime()
             val invalidCount = queryLong(
                 targetDb,
                 "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links " +
@@ -608,10 +614,17 @@ class BoardDatabaseImporter(
                     "OR (thumbnail IS NOT NULL AND TRIM(thumbnail) NOT LIKE 'https://%')"
             )
             require(invalidCount == 0L) { "MoonBoard beta snapshot contains invalid rows" }
+            logBetaPhase("validate-rows", phaseStarted)
+            phaseStarted = System.nanoTime()
             val resolvableCount = queryLong(
                 targetDb,
                 "SELECT COUNT(*) FROM mb_beta.moonboard_beta_links b " +
-                    "INNER JOIN climbs c ON c.uuid = LOWER(b.climb_uuid) " +
+                    // CROSS JOIN fixes the loop order. On Android SQLite, the
+                    // board_brand index otherwise makes `climbs` the outer
+                    // loop and the expression on b.climb_uuid prevents an
+                    // indexed lookup into the beta snapshot. For the current
+                    // catalogue that degenerates into ~13.4B comparisons.
+                    "CROSS JOIN climbs c ON c.uuid = LOWER(b.climb_uuid) " +
                     "WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0"
             )
             require(
@@ -621,7 +634,9 @@ class BoardDatabaseImporter(
             ) {
                 "MoonBoard beta snapshot does not match the installed catalogue"
             }
+            logBetaPhase("resolve-links", phaseStarted, "resolved=$resolvableCount")
 
+            phaseStarted = System.nanoTime()
             targetDb.beginTransaction()
             try {
                 targetDb.execSQL("DELETE FROM climb_beta_links WHERE board_brand='moonboard'")
@@ -635,7 +650,7 @@ class BoardDatabaseImporter(
                     SELECT 'moonboard', LOWER(b.climb_uuid), b.url, LOWER(b.provider),
                            b.video_id, b.thumbnail
                     FROM mb_beta.moonboard_beta_links b
-                    INNER JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
+                    CROSS JOIN climbs c ON c.uuid = LOWER(b.climb_uuid)
                     WHERE c.board_brand = 'moonboard' AND c.is_deleted = 0
                     """.trimIndent()
                 )
@@ -643,17 +658,35 @@ class BoardDatabaseImporter(
             } finally {
                 targetDb.endTransaction()
             }
+            logBetaPhase("replace-links", phaseStarted)
+            phaseStarted = System.nanoTime()
             val imported = queryLong(
                 targetDb,
                 "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='moonboard'",
             ).toInt()
-            Log.i(TAG, "importMoonBoardBetaSnapshot done: links=$imported source=$sourceCount")
+            logBetaPhase("count-result", phaseStarted, "links=$imported")
+            Log.i(
+                TAG,
+                "MoonBoard beta phase=complete durationMs=${elapsedMs(importStarted)} " +
+                    "links=$imported source=$sourceCount",
+            )
             return imported
         } finally {
             if (attached) runCatching { targetDb.execSQL("DETACH DATABASE mb_beta") }
             targetDb.close()
         }
     }
+
+    private fun logBetaPhase(phase: String, started: Long, detail: String = "") {
+        Log.i(
+            TAG,
+            "MoonBoard beta phase=$phase durationMs=${elapsedMs(started)}" +
+                if (detail.isEmpty()) "" else " $detail",
+        )
+    }
+
+    private fun elapsedMs(started: Long): Long =
+        (System.nanoTime() - started) / 1_000_000L
 
     /**
      * Import a full Aurora-family board snapshot (FEAT-031): Tension,

@@ -26,12 +26,16 @@ class MoonBoardBetaSync @Inject constructor(
 
     suspend fun sync(): Boolean = mutex.withLock {
         withContext(Dispatchers.IO) {
+            val syncStarted = System.nanoTime()
             try {
+                var phaseStarted = System.nanoTime()
                 val manifest = blossomSync.fetchManifest()
+                logPhase("manifest", phaseStarted, "chunks=${manifest.chunks.size}")
                 if (!blossomSync.canApplyManifest(manifest)) return@withContext false
                 val changed = blossomSync.getChangedChunks(manifest)
                 if (changed.isEmpty()) {
                     blossomSync.saveAcceptedManifestTimestamp(manifest)
+                    logPhase("complete-unchanged", syncStarted)
                     return@withContext false
                 }
                 require(changed.size == 1) {
@@ -40,12 +44,19 @@ class MoonBoardBetaSync @Inject constructor(
                 val chunk = changed.single()
                 val output = File(context.cacheDir, "moonboard_beta_${chunk.name}.sqlite3")
                 try {
+                    phaseStarted = System.nanoTime()
                     blossomSync.downloadAndDecompressChunk(chunk, output)
+                    logPhase("download-decompress", phaseStarted, "bytes=${output.length()}")
+                    phaseStarted = System.nanoTime()
                     withBackgroundThreadPriority { importer.importMoonBoardBetaSnapshot(output) }
+                    logPhase("import", phaseStarted)
+                    phaseStarted = System.nanoTime()
                     blossomSync.saveCompletedManifest(manifest, changed)
+                    logPhase("persist-manifest", phaseStarted)
                 } finally {
                     output.delete()
                 }
+                logPhase("complete", syncStarted)
                 true
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -56,6 +67,11 @@ class MoonBoardBetaSync @Inject constructor(
                 false
             }
         }
+    }
+
+    private fun logPhase(phase: String, started: Long, detail: String = "") {
+        val durationMs = (System.nanoTime() - started) / 1_000_000L
+        Log.i(TAG, "phase=$phase durationMs=$durationMs" + if (detail.isEmpty()) "" else " $detail")
     }
 
     private companion object { const val TAG = "MoonBoardBetaSync" }
