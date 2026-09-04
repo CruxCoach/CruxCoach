@@ -1847,6 +1847,7 @@ class BoardBrowserViewModel @Inject constructor(
 
         if (offset == 0) {
             randomPage1?.let { return it }
+            Log.i(TAG, "random page 1 query start (key=$key)")
             val page1 = PerfLogger.traceQuery("randomPage1(sql)") {
                 boardRepository.searchClimbsSorted(
                     f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
@@ -1854,6 +1855,7 @@ class BoardBrowserViewModel @Inject constructor(
                     f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm, showUngraded = su
                 )
             }
+            Log.i(TAG, "random page 1 query done (${page1.size} climbs, key=$key)")
             randomPage1 = page1
             // The full-shuffle background load (getAllBrowseMatchingUuids — ~20s
             // over the big Kilter set, the single biggest board-DB hog on cold
