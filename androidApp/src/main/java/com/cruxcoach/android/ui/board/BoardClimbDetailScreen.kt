@@ -10,8 +10,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -59,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -76,7 +73,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
 import com.cruxcoach.data.repository.ClimbBetaLink
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
@@ -1851,6 +1847,7 @@ private fun ClimbDetailPageContent(
                     BetaVideoSection(
                         links = state.betaLinks,
                         selectedAngle = state.angle,
+                        climbName = climb.name,
                         expanded = betaVideosExpanded,
                         onToggle = { betaVideosExpanded = !betaVideosExpanded },
                         onOpenFailed = onBetaOpenFailed,
@@ -1991,92 +1988,7 @@ private fun ClimbDetailPageContent(
     }
 }
 
-@Composable
-private fun BetaVideoSection(
-    links: List<ClimbBetaLink>,
-    selectedAngle: Int,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onOpenFailed: () -> Unit,
-) {
-    val context = LocalContext.current
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilledTonalButton(
-            onClick = onToggle,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .testTag("beta_videos_toggle"),
-        ) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text(stringResource(R.string.beta_videos, links.size), maxLines = 2)
-        }
-        if (!expanded) return@Column
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(links, key = { _, link -> "${link.boardBrand}:${link.climbUuid}:${link.url}" }) { index, link ->
-                val openLabel = stringResource(R.string.beta_video_open, index + 1)
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    tonalElevation = 2.dp,
-                    modifier = Modifier
-                        .width(224.dp)
-                        .aspectRatio(16f / 9f)
-                        .clickable {
-                            if (!openBetaLink(context, link)) onOpenFailed()
-                        }
-                        .semantics {
-                            contentDescription = openLabel
-                            role = Role.Button
-                        }
-                        .testTag("beta_video_$index"),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        link.thumbnail?.let {
-                            AsyncImage(
-                                model = it,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                        val angleLabel = link.angle?.let { videoAngle ->
-                            if (videoAngle == selectedAngle) "$videoAngle°"
-                            else stringResource(R.string.beta_video_other_angle, videoAngle)
-                        }
-                        val metadataLabel = listOfNotNull(link.foreignUsername, angleLabel)
-                            .joinToString(" · ")
-                        if (metadataLabel.isNotBlank()) {
-                            Text(
-                                text = metadataLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                color = Color.White,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .fillMaxWidth()
-                                    .background(Color.Black.copy(alpha = 0.65f))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun openBetaLink(
+internal fun openBetaLink(
     context: android.content.Context,
     link: ClimbBetaLink,
 ): Boolean {

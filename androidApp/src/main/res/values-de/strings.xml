@@ -2718,4 +2718,8 @@
     <string name="beta_video_open">Beta-Video %1$d öffnen</string>
     <string name="beta_video_other_angle">Video bei %1$d°</string>
     <string name="beta_video_open_failed">Keine App und kein Browser konnte dieses Beta-Video öffnen.</string>
+    <string name="beta_video_external_hint">In der App des Anbieters oder im Browser ansehen.</string>
+    <string name="beta_video_number">Beta-Video %1$d</string>
+    <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
+    <string name="beta_video_close">Beta-Videos schließen</string>
 </resources>
