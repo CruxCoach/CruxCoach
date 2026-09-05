@@ -1371,7 +1371,8 @@ class BoardSyncManager(
         val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
         if (brand == BoardBrand.KILTER) return  // Kilter handled by the main lane
         val loaded = withContext(Dispatchers.IO) {
-            (boardRepository.getClimbCountsByBrand()[brand.wireValue] ?: 0L) > 0L
+            // Presence needs one indexed row, not totals for every loaded board.
+            boardRepository.hasClimbsForBrand(brand.wireValue)
         }
         if (loaded) return
         if (!isWifiConnected(appContext)) {
