@@ -38,7 +38,7 @@ import com.cruxcoach.data.repository.ClimbBetaLink
 internal fun BetaVideoAction(count: Int, onClick: () -> Unit) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier.size(48.dp).testTag("beta_videos_toggle"),
+        modifier = Modifier.size(40.dp).testTag("beta_videos_toggle"),
     ) {
         BadgedBox(badge = {
             Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer,

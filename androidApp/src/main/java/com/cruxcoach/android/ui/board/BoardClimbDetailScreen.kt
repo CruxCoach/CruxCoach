@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -2243,135 +2244,135 @@ private fun CompactClimbOverview(
         ),
         shape = RoundedCornerShape(14.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = climb.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    setter?.takeIf { it.isNotBlank() }?.let {
-                        val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            text = it,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .widthIn(max = 112.dp)
-                                .then(
-                                    if (climb.origin == "cruxcoach" && pubkey != null) {
-                                        Modifier.clickable { onNavigateToSetter(pubkey) }
-                                    }
-                                    else Modifier,
-                                ),
-                        )
-                    }
-                }
-                if (state.betaLinks.isNotEmpty()) {
-                    BetaVideoAction(count = state.betaLinks.size, onClick = onShowBetaVideos)
-                    Spacer(Modifier.width(6.dp))
-                }
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.board_detail_more_information),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                climb.difficultyAverage?.let { difficulty ->
-                    val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
-                    val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
-                    Surface(
-                        color = zoneColorForDifficulty(difficulty, state.zones),
-                        shape = RoundedCornerShape(8.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "$french / $vScale",
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            text = climb.name,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        setter?.takeIf { it.isNotBlank() }?.let {
+                            val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = it,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .widthIn(max = 112.dp)
+                                    .then(
+                                        if (climb.origin == "cruxcoach" && pubkey != null) {
+                                            Modifier.clickable { onNavigateToSetter(pubkey) }
+                                        }
+                                        else Modifier,
+                                    ),
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    climb.difficultyAverage?.let { difficulty ->
+                        val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
+                        val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
+                        Surface(
+                            color = zoneColorForDifficulty(difficulty, state.zones),
+                            shape = RoundedCornerShape(8.dp),
+                        ) {
+                            Text(
+                                "$french / $vScale",
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DarkBackground,
+                            )
+                        }
+                    }
+                    CompactAngleMenu(
+                        currentAngle = state.angle,
+                        availableAngles = state.availableAngles,
+                        onAngleSelected = onAngleSelected,
+                    )
+                    Text(
+                        text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (climb.benchmarkDifficulty > 0.0) {
+                        Icon(
+                            Icons.Default.Verified,
+                            contentDescription = stringResource(R.string.board_detail_benchmark),
+                            tint = OrangeAccent,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                    if (climb.isMatchStateKnown) {
+                        MatchIcon(
+                            crossed = climb.isNomatch,
+                            tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
+                            size = 15,
+                        )
+                    }
+                    // "This climb is going out over nearby-sharing right now" is
+                    // ambient state somebody needs to be able to see without
+                    // opening anything, so it sits with the other status icons.
+                    val advertisingLive = isSharingEnabled && state.nearby.isAdvertising &&
+                        state.ble.connectionState.let {
+                            it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+                        }
+                    if (advertisingLive) {
+                        Icon(
+                            Icons.Default.CellTower,
+                            contentDescription = stringResource(R.string.board_detail_climb_shared),
+                            tint = OrangeAccent,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .testTag("boarddetail_climb_shared_icon"),
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Groups,
+                            contentDescription = stringResource(R.string.board_sends),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            text = "${climb.ascensionistCount ?: 0}",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                CompactAngleMenu(
-                    currentAngle = state.angle,
-                    availableAngles = state.availableAngles,
-                    onAngleSelected = onAngleSelected,
-                )
-                Text(
-                    text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                if (climb.benchmarkDifficulty > 0.0) {
-                    Icon(
-                        Icons.Default.Verified,
-                        contentDescription = stringResource(R.string.board_detail_benchmark),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
-                if (climb.isMatchStateKnown) {
-                    MatchIcon(
-                        crossed = climb.isNomatch,
-                        tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
-                        size = 15,
-                    )
-                }
-                // "This climb is going out over nearby-sharing right now" is
-                // ambient state somebody needs to be able to see without
-                // opening anything, so it sits with the other status icons.
-                val advertisingLive = isSharingEnabled && state.nearby.isAdvertising &&
-                    state.ble.connectionState.let {
-                        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
-                    }
-                if (advertisingLive) {
-                    Icon(
-                        Icons.Default.CellTower,
-                        contentDescription = stringResource(R.string.board_detail_climb_shared),
-                        tint = OrangeAccent,
-                        modifier = Modifier
-                            .size(15.dp)
-                            .testTag("boarddetail_climb_shared_icon"),
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Groups,
-                        contentDescription = stringResource(R.string.board_sends),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        text = "${climb.ascensionistCount ?: 0}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            }
+            if (state.betaLinks.isNotEmpty()) {
+                Spacer(Modifier.width(6.dp))
+                BetaVideoAction(count = state.betaLinks.size, onClick = onShowBetaVideos)
             }
         }
     }
