@@ -36,22 +36,26 @@ import com.cruxcoach.data.repository.ClimbBetaLink
 /** Compact entry point in the existing climb header; never takes a board row. */
 @Composable
 internal fun BetaVideoAction(count: Int, onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(40.dp).testTag("beta_videos_toggle"),
-    ) {
-        BadgedBox(badge = {
-            Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
-                Text(if (count > 99) "99+" else count.toString())
-            }
-        }) {
+    // Keep the count outside IconButton's circular clip, but inside the same
+    // 40 dp footprint so neither the badge nor the card needs extra space.
+    Box(Modifier.size(40.dp)) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.matchParentSize().testTag("beta_videos_toggle"),
+        ) {
             Icon(
                 Icons.Default.PlayCircleOutline,
                 contentDescription = stringResource(R.string.beta_videos, count),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp),
             )
+        }
+        Badge(
+            modifier = Modifier.align(Alignment.TopEnd),
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ) {
+            Text(if (count > 99) "99+" else count.toString())
         }
     }
 }
