@@ -318,7 +318,9 @@ class BoardDatabaseImporter(
             val db = openTargetDb()
             try {
                 db.execSQL("ATTACH DATABASE ? AS beta_src", arrayOf(file.absolutePath))
-                replaceEmbeddedBetaLinks(db, "beta_src", "kilter")
+                requireNotNull(replaceEmbeddedBetaLinks(db, "beta_src", "kilter")) {
+                    "Kilter beta chunk has no beta link table"
+                }
             } finally {
                 runCatching { db.execSQL("DETACH DATABASE beta_src") }
                 db.close()

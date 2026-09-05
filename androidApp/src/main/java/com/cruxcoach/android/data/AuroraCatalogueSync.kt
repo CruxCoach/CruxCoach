@@ -90,7 +90,7 @@ class AuroraCatalogueSync @Inject constructor(
                 Log.w(TAG, "${board.wireValue} stale manifest rejected — keeping current catalogue")
                 return@withContext Result.AlreadyCurrent
             }
-            val changed = blossomSync.getChangedChunks(manifest)
+            val changed = blossomSync.getChangedChunks(manifest, BlossomSyncManager.BETA_IMPORT_VERSION)
             if (changed.isEmpty()) {
                 blossomSync.saveAcceptedManifestTimestamp(manifest)
                 Log.d(TAG, "${board.wireValue} catalogue already current — nothing to download")
@@ -142,7 +142,7 @@ class AuroraCatalogueSync @Inject constructor(
                 }
                 // Persist the hash and rollback watermark together only after
                 // the snapshot import has completed successfully.
-                blossomSync.saveCompletedManifest(manifest, changed)
+                blossomSync.saveCompletedManifest(manifest, changed, BlossomSyncManager.BETA_IMPORT_VERSION)
             } finally {
                 outFile.delete()
             }

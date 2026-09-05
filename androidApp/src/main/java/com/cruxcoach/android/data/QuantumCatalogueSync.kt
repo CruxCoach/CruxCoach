@@ -55,7 +55,7 @@ class QuantumCatalogueSync @Inject constructor(
                     return@withContext Result.AlreadyCurrent
                 }
                 val chunk = manifest.chunks.single()
-                if (blossom.getChangedChunks(manifest).isEmpty()) {
+                if (blossom.getChangedChunks(manifest, BlossomSyncManager.BETA_IMPORT_VERSION).isEmpty()) {
                     blossom.saveAcceptedManifestTimestamp(manifest)
                     return@withContext Result.AlreadyCurrent
                 }
@@ -83,7 +83,7 @@ class QuantumCatalogueSync @Inject constructor(
                             onProgress?.invoke(step)
                         }
                     }
-                    blossom.saveCompletedManifest(manifest, listOf(chunk))
+                    blossom.saveCompletedManifest(manifest, listOf(chunk), BlossomSyncManager.BETA_IMPORT_VERSION)
                     Result.Imported(count)
                 } finally {
                     output.delete()

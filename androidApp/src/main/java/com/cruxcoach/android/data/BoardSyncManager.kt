@@ -476,7 +476,11 @@ class BoardSyncManager(
                     return@safeLaunch
                 }
                 userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
-                val changedChunks = blossomSyncManager.getChangedChunks(manifest)
+                val changedChunks = blossomSyncManager.getChangedChunks(
+                    manifest,
+                    requiredImportVersion = BlossomSyncManager.BETA_IMPORT_VERSION,
+                    requiresImportVersion = { BlossomSyncManager.isBetaChunk(it) },
+                )
                 if (changedChunks.isEmpty()) {
                     blossomSyncManager.saveAcceptedManifestTimestamp(manifest)
                     Log.d(TAG, "All chunks up to date — skipping auto-sync")
@@ -1000,7 +1004,11 @@ class BoardSyncManager(
 
         // 2. Determine which chunks need downloading
         val chunksToDownload = if (manifestAcceptable) {
-            blossomSyncManager.getChangedChunks(manifest)
+            blossomSyncManager.getChangedChunks(
+                manifest,
+                requiredImportVersion = BlossomSyncManager.BETA_IMPORT_VERSION,
+                requiresImportVersion = { BlossomSyncManager.isBetaChunk(it) },
+            )
         } else {
             emptyList()
         }
@@ -1162,7 +1170,12 @@ class BoardSyncManager(
                 // re-download, no hard failure.
                 chunksToDownload.forEach { chunk ->
                     if (chunkFiles.containsKey(chunk.name)) {
-                        blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                        blossomSyncManager.saveChunkHash(
+                            chunk.name, chunk.sha256,
+                            importVersion = if (BlossomSyncManager.isBetaChunk(chunk)) {
+                                BlossomSyncManager.BETA_IMPORT_VERSION
+                            } else null,
+                        )
                     }
                 }
                 Log.w(
@@ -1175,7 +1188,9 @@ class BoardSyncManager(
                 // Persist all hashes and advance their manifest watermark in
                 // one preferences edit only after every changed chunk imported.
                 // A partial run above remains resumable from the same manifest.
-                blossomSyncManager.saveCompletedManifest(manifest, chunksToDownload)
+                blossomSyncManager.saveCompletedManifest(
+                    manifest, chunksToDownload, BlossomSyncManager.BETA_IMPORT_VERSION,
+                )
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.

@@ -370,6 +370,22 @@ class MoonBoardBetaSnapshotImportTest {
                 count(db, "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='kilter' AND media_id='kilter-one'"),
             )
         }
+
+        // A standalone beta chunk must actually own a beta table. Missing is
+        // not authoritative empty and must never acquire an imported hash.
+        val missingTable = createCatalogSnapshot("kilter-no-beta.sqlite3", includeAlias = false)
+        val missingFailure = runCatching {
+            importer.importFromChunks(
+                metaDbFiles = emptyList(),
+                climbsDbFiles = emptyList(),
+                statsDbFiles = emptyList(),
+                betaDbFiles = listOf(missingTable),
+            )
+        }.exceptionOrNull()
+        assertTrue(missingFailure is IllegalArgumentException)
+        openTarget().use { db ->
+            assertEquals(1L, count(db, "SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='kilter'"))
+        }
     }
 
     @Test

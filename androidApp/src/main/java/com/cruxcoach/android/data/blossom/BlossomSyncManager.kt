@@ -196,18 +196,27 @@ class BlossomSyncManager(
 
     /**
      * Returns chunk names that have changed compared to stored hashes.
-     * On first run, all chunks are returned.
+     * On first run, all chunks are returned. Optional import-version markers
+     * require an actual successful import with that capability, even if an
+     * older app already saved the same download hash while ignoring the data.
      *
      * A stale signed manifest is a normal no-update result: keep the verified
      * catalogue already on disk and do not expose any of its rollback hashes
      * to callers. Callers also check [canApplyManifest] before auxiliary
      * side-effects, but this guard keeps a future call site fail-safe.
      */
-    fun getChangedChunks(manifest: BlossomManifest): List<BlossomChunk> {
+    fun getChangedChunks(
+        manifest: BlossomManifest,
+        requiredImportVersion: String? = null,
+        requiresImportVersion: (BlossomChunk) -> Boolean = { true },
+    ): List<BlossomChunk> {
         if (!canApplyManifest(manifest)) return emptyList()
         return manifest.chunks.filter { chunk ->
             val storedHash = prefs.getString("chunk_sha256_${chunk.name}", null)
-            storedHash != chunk.sha256
+            storedHash != chunk.sha256 || (
+                requiredImportVersion != null && requiresImportVersion(chunk) &&
+                    prefs.getString(importHashKey(chunk.name, requiredImportVersion), null) != chunk.sha256
+                )
         }
     }
 
@@ -257,6 +266,7 @@ class BlossomSyncManager(
     fun saveCompletedManifest(
         manifest: BlossomManifest,
         importedChunks: Iterable<BlossomChunk>,
+        importVersion: String? = null,
     ) {
         val incoming = effectiveTimestamp(manifest)
         val lastAccepted = lastAcceptedManifestTimestamp()
@@ -270,6 +280,9 @@ class BlossomSyncManager(
             val editor = prefs.edit()
             importedChunks.forEach { chunk ->
                 editor.putString("chunk_sha256_${chunk.name}", chunk.sha256)
+                if (importVersion != null) {
+                    editor.putString(importHashKey(chunk.name, importVersion), chunk.sha256)
+                }
             }
             editor.putLong(KEY_LAST_MANIFEST_CREATED_AT, incoming).apply()
         } else {
@@ -506,9 +519,13 @@ class BlossomSyncManager(
     }
 
     /** Saves chunk hash after successful import so future syncs can skip unchanged chunks. */
-    fun saveChunkHash(chunkName: String, sha256: String) {
-        prefs.edit().putString("chunk_sha256_$chunkName", sha256).apply()
+    fun saveChunkHash(chunkName: String, sha256: String, importVersion: String? = null) {
+        val editor = prefs.edit().putString("chunk_sha256_$chunkName", sha256)
+        if (importVersion != null) editor.putString(importHashKey(chunkName, importVersion), sha256)
+        editor.apply()
     }
+
+    private fun importHashKey(chunkName: String, version: String) = "imported_${version}_sha256_$chunkName"
 
     /**
      * Clears chunk hashes and the coupled manifest watermark, forcing a full
@@ -524,6 +541,14 @@ class BlossomSyncManager(
     }
 
     companion object {
+        // Older apps stored download hashes even for chunk types/tables they
+        // ignored. Never treat those hashes as evidence of a beta import.
+        const val BETA_IMPORT_VERSION = "beta_links_v1"
+
+        fun isBetaChunk(chunk: BlossomChunk): Boolean =
+            if (chunk.type.isEmpty() || chunk.type == "unknown") chunk.name.startsWith("beta")
+            else chunk.type == "beta"
+
 
         /** One relay's answer to a manifest query: a hit, a miss, or a failure. */
         private data class RelayOutcome(

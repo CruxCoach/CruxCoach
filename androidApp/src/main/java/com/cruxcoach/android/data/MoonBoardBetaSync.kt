@@ -32,7 +32,7 @@ class MoonBoardBetaSync @Inject constructor(
                 val manifest = blossomSync.fetchManifest()
                 logPhase("manifest", phaseStarted, "chunks=${manifest.chunks.size}")
                 if (!blossomSync.canApplyManifest(manifest)) return@withContext false
-                val changed = blossomSync.getChangedChunks(manifest)
+                val changed = blossomSync.getChangedChunks(manifest, BlossomSyncManager.BETA_IMPORT_VERSION)
                 if (changed.isEmpty()) {
                     blossomSync.saveAcceptedManifestTimestamp(manifest)
                     logPhase("complete-unchanged", syncStarted)
@@ -51,7 +51,7 @@ class MoonBoardBetaSync @Inject constructor(
                     withBackgroundThreadPriority { importer.importMoonBoardBetaSnapshot(output) }
                     logPhase("import", phaseStarted)
                     phaseStarted = System.nanoTime()
-                    blossomSync.saveCompletedManifest(manifest, changed)
+                    blossomSync.saveCompletedManifest(manifest, changed, BlossomSyncManager.BETA_IMPORT_VERSION)
                     logPhase("persist-manifest", phaseStarted)
                 } finally {
                     output.delete()
