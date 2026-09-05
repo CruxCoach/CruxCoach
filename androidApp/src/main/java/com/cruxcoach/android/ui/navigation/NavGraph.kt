@@ -69,6 +69,7 @@ import com.cruxcoach.android.ui.bodystat.DataImportScreen
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
@@ -246,9 +247,12 @@ fun CruxCoachNavHost(
 
     val dest = startDestination ?: return
 
-    // Handle notification deep-links after NavHost is ready
-    LaunchedEffect(deepLinkRoute) {
+    // Scaffold subcomposes NavHost: this effect can run before its graph is set,
+    // especially on cold deep-link launches. Keep the route pending until the
+    // controller has an entry, then navigate and acknowledge it below.
+    LaunchedEffect(navController, deepLinkRoute) {
         val route = deepLinkRoute ?: return@LaunchedEffect
+        navController.currentBackStackEntryFlow.first()
         when {
             route.startsWith("board_climb_detail/") ->
                 // Replace an already-open climb detail. The detail VM reads its
