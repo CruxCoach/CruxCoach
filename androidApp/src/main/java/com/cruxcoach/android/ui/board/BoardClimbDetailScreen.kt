@@ -1838,13 +1838,14 @@ private fun ClimbDetailPageContent(
                 CompactClimbOverview(
                     state = state,
                     onShowDetails = { showDetails = true },
+                    onShowBetaVideos = { betaVideosExpanded = true },
                     onAngleSelected = viewModel::onAngleSelected,
                     onNavigateToSetter = onNavigateToSetter,
                     isSharingEnabled = isSharingEnabled,
                 )
 
                 if (state.betaLinks.isNotEmpty()) {
-                    BetaVideoSection(
+                    BetaVideoSheet(
                         links = state.betaLinks,
                         selectedAngle = state.angle,
                         climbName = climb.name,
@@ -2225,6 +2226,7 @@ private fun BoardDetailActionDock(
 private fun CompactClimbOverview(
     state: ClimbDetailState,
     onShowDetails: () -> Unit,
+    onShowBetaVideos: () -> Unit,
     onAngleSelected: (Int) -> Unit,
     onNavigateToSetter: (String) -> Unit,
     isSharingEnabled: Boolean,
@@ -2274,6 +2276,10 @@ private fun CompactClimbOverview(
                                 ),
                         )
                     }
+                }
+                if (state.betaLinks.isNotEmpty()) {
+                    BetaVideoAction(count = state.betaLinks.size, onClick = onShowBetaVideos)
+                    Spacer(Modifier.width(6.dp))
                 }
                 Icon(
                     Icons.Default.MoreVert,

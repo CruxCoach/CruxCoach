@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,10 +33,33 @@ import coil.compose.AsyncImage
 import com.cruxcoach.android.R
 import com.cruxcoach.data.repository.ClimbBetaLink
 
+/** Compact entry point in the existing climb header; never takes a board row. */
+@Composable
+internal fun BetaVideoAction(count: Int, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp).testTag("beta_videos_toggle"),
+    ) {
+        BadgedBox(badge = {
+            Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer) {
+                Text(if (count > 99) "99+" else count.toString())
+            }
+        }) {
+            Icon(
+                Icons.Default.PlayCircleOutline,
+                contentDescription = stringResource(R.string.beta_videos, count),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
 /** The gallery has its own scroll area so opening beta never shrinks the board. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun BetaVideoSection(
+internal fun BetaVideoSheet(
     links: List<ClimbBetaLink>,
     selectedAngle: Int,
     climbName: String,
@@ -44,15 +68,6 @@ internal fun BetaVideoSection(
     onOpenFailed: () -> Unit,
 ) {
     val context = LocalContext.current
-    OutlinedButton(
-        onClick = onToggle,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        modifier = Modifier.heightIn(min = 48.dp).testTag("beta_videos_toggle"),
-    ) {
-        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(stringResource(R.string.beta_videos, links.size))
-    }
     if (!expanded) return
     var openFailed by remember { mutableStateOf(false) }
     ModalBottomSheet(
