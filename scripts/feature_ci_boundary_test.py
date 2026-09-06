@@ -30,6 +30,9 @@ class FeatureCIBoundaryTest(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/feature-publish.yml').read_text()
         self.assertEqual(workflow.count(digest), 2)
         self.assertNotIn('WHEEL_URL:', workflow)
+        self.assertEqual(workflow.count('--require-hashes --only-binary=:all:'), 2)
+        lock = (ROOT / '.github/vendor/apktrack-ci-requirements.txt').read_text()
+        self.assertIn('--hash=sha256:' + digest, lock)
 
 
 if __name__ == '__main__':

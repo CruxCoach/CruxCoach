@@ -44,8 +44,8 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
       - name: Install reviewed APKTrack CI client
         run: |
-          echo "c962a2007a36dc4078e6e647a9875e1bd7df2f7a5f405fc7baaad016617aa5ce  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
-          python3 -m pip install .github/vendor/apktrack-0.3.0-py3-none-any.whl
+          echo "219c80d987152d93800752e0776bd129d3df68ac3c93a918d66c6124840cb4a5  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install --require-hashes --only-binary=:all: -r .github/vendor/apktrack-ci-requirements.txt
       - name: Reserve the next APKTrack development version
         id: reserve
         env:
@@ -165,8 +165,8 @@ jobs:
             = "$RESERVED_VERSION_CODE"
       - name: Install reviewed APKTrack CI client
         run: |
-          echo "c962a2007a36dc4078e6e647a9875e1bd7df2f7a5f405fc7baaad016617aa5ce  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
-          python3 -m pip install .github/vendor/apktrack-0.3.0-py3-none-any.whl
+          echo "219c80d987152d93800752e0776bd129d3df68ac3c93a918d66c6124840cb4a5  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install --require-hashes --only-binary=:all: -r .github/vendor/apktrack-ci-requirements.txt
       - name: Recheck current developer authorization
         run: |
           python3 scripts/feature_authorization.py \
