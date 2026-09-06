@@ -20,4 +20,14 @@ class BetaThumbnailUrlsTest {
         val signed = "https://nostr.download/" + "a".repeat(64) + "?signature=example"
         assertEquals(listOf(signed), betaThumbnailUrls(signed))
     }
+    @Test fun imageBytesMustMatchSignedHashBeforeCachingOrDisplay() {
+        val bytes = "known bytes".toByteArray()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        assertTrue(validBetaThumbnailBytes(bytes, hash))
+        org.junit.Assert.assertFalse(validBetaThumbnailBytes("tampered".toByteArray(), hash))
+        org.junit.Assert.assertFalse(validBetaThumbnailBytes(ByteArray(512 * 1024 + 1), hash))
+        assertEquals(hash, betaThumbnailHash("https://nostr.download/$hash"))
+        assertEquals(null, betaThumbnailHash("https://attacker.example/$hash"))
+        assertEquals(null, betaThumbnailHash("https://nostr.download/$hash?x=1"))
+    }
 }
