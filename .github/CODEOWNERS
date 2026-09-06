@@ -13,3 +13,5 @@
 /SECURITY.md @CruxCoach
 
 /scripts/feature_authorization* @CruxCoach
+
+/.github/vendor/ @CruxCoach

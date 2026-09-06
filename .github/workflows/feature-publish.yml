@@ -16,6 +16,10 @@ jobs:
       startsWith(github.event.workflow_run.head_branch, 'feat/')
     runs-on: ubuntu-latest
     environment: apktrack-feature-publishing
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     outputs:
       version_code: ${{ steps.reserve.outputs.version_code }}
       track: ${{ steps.identity.outputs.track }}
@@ -38,53 +42,22 @@ jobs:
           python3 scripts/feature_identity.py \
             --branch "$BRANCH" \
             --github-output "$GITHUB_OUTPUT"
+      - name: Install reviewed APKTrack CI client
+        run: |
+          echo "c962a2007a36dc4078e6e647a9875e1bd7df2f7a5f405fc7baaad016617aa5ce  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install .github/vendor/apktrack-0.3.0-py3-none-any.whl
       - name: Reserve the next APKTrack development version
         id: reserve
         env:
-          APKTRACK_FEATURE_TOKEN: ${{ secrets.APKTRACK_FEATURE_TOKEN }}
-          APKTRACK_FIPS_TOKEN: ${{ secrets.APKTRACK_FIPS_TOKEN }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMIT: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
           TRACK: ${{ steps.identity.outputs.track }}
         run: |
-          if [ "$TRACK" = fips ]; then
-            APKTRACK_AGENT_TOKEN="$APKTRACK_FIPS_TOKEN"
-          else
-            APKTRACK_AGENT_TOKEN="$APKTRACK_FEATURE_TOKEN"
-          fi
-          test -n "$APKTRACK_AGENT_TOKEN"
-          export APKTRACK_AGENT_TOKEN
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.parse
-          import urllib.request
-
-          project = "cruxcoach"
-          track = os.environ["TRACK"]
-          branch = os.environ["BRANCH"]
-          commit = os.environ["COMMIT"].lower()
-          query = urllib.parse.urlencode({
-              "branch": branch,
-              "commit": commit,
-              "idempotency_key": f"{project}-{track}-{commit}",
-              "minimum": 1_000_013,
-          })
-          url = (
-              "https://stats.cruxcoach.org/apktrack/v2/versions/"
-              f"{project}/{track}/reservations?{query}"
-          )
-          request = urllib.request.Request(
-              url,
-              method="POST",
-              headers={"X-APKTrack-Token": os.environ["APKTRACK_AGENT_TOKEN"]},
-          )
-          with urllib.request.urlopen(request, timeout=30) as response:
-              reservation = json.load(response)
-          code = int(reservation["version_code"])
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"version_code={code}\n")
-          PY
+          code="$(apktrack reserve-version --config .apktrack/project.toml \
+            --track "$TRACK" --branch "$BRANCH" --commit "$COMMIT" \
+            --github-ci-run "$SOURCE_RUN")"
+          echo "version_code=$code" >> "$GITHUB_OUTPUT"
 
   build:
     needs: reserve
@@ -161,6 +134,10 @@ jobs:
     needs: [reserve, build]
     runs-on: ubuntu-latest
     environment: apktrack-feature-publishing
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     steps:
       # Never execute code or files from the feature checkout in this job.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -186,34 +163,23 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
           test "$(python3 -c 'import json; print(json.load(open("feature-artifact/publication.json"))["version_code"])')" \
             = "$RESERVED_VERSION_CODE"
-      - name: Install pinned APKTrack CLI
-        env:
-          WHEEL_URL: https://npub1uux22z2rhhcvk9fs9dp60k3uc5f7frdqy5chrsemsxwgnyl0y9dqhx0gem.nsite.lol/downloads/apktrack-0.2.0-py3-none-any.whl
-          # Reproduced twice from reviewed APKTrack source at
-          # 9bbb995b6968349b885a9d41d291835ffd97fd23 and
-          # matched byte-for-byte against the public nsite artifact.
-          WHEEL_SHA256: d8f40e6481ada6582290793a6f4759d236f3a0f5b95501ea5f52f7416bb4d736
+      - name: Install reviewed APKTrack CI client
         run: |
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-            --output "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" "$WHEEL_URL"
-          echo "$WHEEL_SHA256  $RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl" | sha256sum --check --strict
-          python3 -m pip install "$RUNNER_TEMP/apktrack-0.2.0-py3-none-any.whl"
+          echo "c962a2007a36dc4078e6e647a9875e1bd7df2f7a5f405fc7baaad016617aa5ce  .github/vendor/apktrack-0.3.0-py3-none-any.whl" | sha256sum --check --strict
+          python3 -m pip install .github/vendor/apktrack-0.3.0-py3-none-any.whl
+      - name: Recheck current developer authorization
+        run: |
+          python3 scripts/feature_authorization.py \
+            --registry .github/authorized-feature-identities.json \
+            --event "$GITHUB_EVENT_PATH"
       - name: Publish through APKTrack
         id: publish
         env:
-          APKTRACK_FEATURE_TOKEN: ${{ secrets.APKTRACK_FEATURE_TOKEN }}
-          APKTRACK_FIPS_TOKEN: ${{ secrets.APKTRACK_FIPS_TOKEN }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMIT: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
           TRACK: ${{ steps.identity.outputs.track }}
         run: |
-          if [ "$TRACK" = fips ]; then
-            APKTRACK_AGENT_TOKEN="$APKTRACK_FIPS_TOKEN"
-          else
-            APKTRACK_AGENT_TOKEN="$APKTRACK_FEATURE_TOKEN"
-          fi
-          test -n "$APKTRACK_AGENT_TOKEN"
-          export APKTRACK_AGENT_TOKEN
           set -o pipefail
           apktrack publish-build \
             feature-artifact/androidApp/build/outputs/apk/debug/androidApp-debug.apk \
@@ -221,6 +187,7 @@ jobs:
             --track "$TRACK" \
             --branch "$BRANCH" \
             --commit "$COMMIT" \
+            --github-ci-run "$SOURCE_RUN" \
             --wait-timeout 2700 \
             | tee "$RUNNER_TEMP/apktrack-job.json"
           python3 - "$RUNNER_TEMP/apktrack-job.json" "$GITHUB_OUTPUT" <<'PY'

@@ -20,9 +20,10 @@ These rules apply to every human-assisted coding agent in this repository.
 - Feature branches build unsigned/debug transport APKs. GitHub and contributors never receive an
   Android signing key. APKTrack applies the central development signature and verifies the final
   package, certificate, branch, track, version, and hash against the Root policy.
-- Feature code never receives `APKTRACK_FEATURE_TOKEN` or `APKTRACK_FIPS_TOKEN`. Only the
-  trusted-main `workflow_run` publisher may read them, and that publisher must never execute the
-  downloaded feature artifact.
+- Feature code receives no publication credentials or OIDC permission. Only the
+  reviewed main publisher exchanges GitHub job identity for a short-lived, exact-APK
+  upload grant. Never introduce long-lived upload tokens, nsecs, bunker connections,
+  or signing keys in CI. The publisher never executes downloaded feature artifacts.
 - `stable` is production/manual-only. Never publish it from a remote agent or CI feature workflow.
 - A queued APKTrack job is not success. Success requires `status="published"` and
   `receipt_delivered=true`.
