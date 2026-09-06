@@ -263,7 +263,7 @@ class UpdaterRepositoryFallbackTest {
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
         every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returns IntegrityVerifier.Result.Ok
         var completed = false
         var duplicateCompleted = false
         val repository = repository()
@@ -275,7 +275,7 @@ class UpdaterRepositoryFallbackTest {
         assertEquals(true, duplicateCompleted)
         assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
         assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
-        verify(exactly = 1) { verifier.verify(apk, info.apkSha256) }
+        verify(exactly = 1) { verifier.verify(apk, info.apkSha256, info.versionName) }
         verify(exactly = 1) {
             verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "codeberg")
         }
@@ -291,7 +291,7 @@ class UpdaterRepositoryFallbackTest {
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
         every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returns IntegrityVerifier.Result.Ok
         every { installer.canRequestPackageInstalls() } returns true
         every { installer.install(apk, deferUserConfirmation = true) } returns
             ApkInstaller.InstallResult.Committed(77)
@@ -309,7 +309,7 @@ class UpdaterRepositoryFallbackTest {
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
         every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returns IntegrityVerifier.Result.Ok
 
         repository().onDownloadManagerCompleted(42L)
 
@@ -327,7 +327,7 @@ class UpdaterRepositoryFallbackTest {
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
         every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returns IntegrityVerifier.Result.Ok
 
         repository().onDownloadManagerCompleted(42L)
 
@@ -343,7 +343,7 @@ class UpdaterRepositoryFallbackTest {
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
         every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returns IntegrityVerifier.Result.Ok
         every {
             verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "codeberg")
         } throws IllegalStateException("test-only failure")
@@ -363,7 +363,7 @@ class UpdaterRepositoryFallbackTest {
         every { downloader.query(42L) } returns status(apk)
         every { downloader.query(43L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
-        every { verifier.verify(apk, info.apkSha256) } returnsMany listOf(
+        every { verifier.verify(apk, info.apkSha256, info.versionName) } returnsMany listOf(
             IntegrityVerifier.Result.PayloadMismatch,
             IntegrityVerifier.Result.Ok,
         )
@@ -380,7 +380,7 @@ class UpdaterRepositoryFallbackTest {
         assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
         assertEquals(1, state.value.pendingDownloadSourceIndex)
         assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
-        verify(exactly = 2) { verifier.verify(apk, info.apkSha256) }
+        verify(exactly = 2) { verifier.verify(apk, info.apkSha256, info.versionName) }
         verify(exactly = 1) {
             verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "zapstore")
         }

@@ -120,7 +120,7 @@ object Routes {
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
-    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
+    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -627,6 +627,11 @@ fun CruxCoachNavHost(
 
             composable(
                 Routes.BOARD_CLIMB_DETAIL,
+                arguments = listOf(navArgument("author") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }),
                 // Pair with BOARD_BROWSER's no-animation pop enter.  Disposing
                 // the photo-backed board renderer immediately prevents it from
                 // competing with the restored LazyColumn on constrained OEMs.

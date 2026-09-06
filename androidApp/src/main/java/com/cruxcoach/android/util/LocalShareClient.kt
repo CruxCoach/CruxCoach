@@ -199,6 +199,16 @@ class LocalShareClient {
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): File {
         val partial = File(target.path + ".part")
+        val started = System.nanoTime()
+        val maximum = if (artifact.path == LocalShareProtocol.APK_PATH) {
+            LocalTransferLimits.MAX_APK_BYTES
+        } else LocalTransferLimits.MAX_COMPRESSED_DB_BYTES
+        try {
+            LocalTransferLimits.requireSize(artifact.sizeBytes, maximum)
+        } catch (error: LocalTransferLimits.LimitExceeded) {
+            partial.delete()
+            throw error
+        }
         target.parentFile?.mkdirs()
         if (target.exists() && target.length() == artifact.sizeBytes) {
             onVerifying()
@@ -210,6 +220,7 @@ class LocalShareClient {
         target.delete()
         if (partial.length() > artifact.sizeBytes) partial.delete()
 
+        LocalTransferLimits.requireSpace(target.parentFile!!, artifact.sizeBytes - partial.length())
         var failures = 0
         while (partial.length() < artifact.sizeBytes) {
             try {
@@ -218,11 +229,15 @@ class LocalShareClient {
                     baseUrl,
                     artifact,
                     partial,
+                    started,
                     protocolVersion,
                     expectedSessionId,
                     onProgress,
                 )
                 failures = 0
+            } catch (error: LocalTransferLimits.LimitExceeded) {
+                // A timeout/space shortage can be resumed after user recovery.
+                throw error
             } catch (error: ShareSessionChangedException) {
                 throw error
             } catch (error: IOException) {
@@ -255,10 +270,12 @@ class LocalShareClient {
         baseUrl: String,
         artifact: LocalShareProtocol.Artifact,
         partial: File,
+        started: Long,
         protocolVersion: Int,
         expectedSessionId: String?,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ) {
+        LocalTransferLimits.requireTime(started)
         var offset = partial.length()
         val url = URL(LocalShareProtocol.artifactUrl(baseUrl, artifact.path))
         require(protocolVersion == LocalShareProtocol.VERSION ||
@@ -300,6 +317,10 @@ class LocalShareClient {
                 val buffer = ByteArray(TRANSFER_BUFFER_SIZE)
                 var downloaded = offset
                 while (downloaded < artifact.sizeBytes) {
+                    LocalTransferLimits.requireTime(started)
+                    if (downloaded - offset < buffer.size || downloaded % (4 * 1024 * 1024) < buffer.size) {
+                        LocalTransferLimits.requireSpace(partial.parentFile!!, artifact.sizeBytes - downloaded)
+                    }
                     val wanted = minOf(buffer.size.toLong(), artifact.sizeBytes - downloaded).toInt()
                     val read = response.input.read(buffer, 0, wanted)
                     if (read < 0) {

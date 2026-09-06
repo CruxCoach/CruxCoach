@@ -34,7 +34,7 @@ class IntegrityVerifier(
      * Verifies the APK at [apkFile] against [expectedSha256Hex] and the
      * pinned signing cert. Returns a typed [Result]. Never throws.
      */
-    fun verify(apkFile: File, expectedSha256Hex: String): Result {
+    fun verify(apkFile: File, expectedSha256Hex: String, expectedVersionName: String? = null): Result {
         if (!apkFile.exists() || apkFile.length() == 0L) {
             return Result.PayloadMissing
         }
@@ -93,6 +93,12 @@ class IntegrityVerifier(
             "event=signer_ok certsInApk=${signerHashes.size} " +
                 "pin=${pin.certSha256Hex.redactHash()}",
         )
+        val archive = runCatching {
+            context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+        }.getOrNull() ?: return Result.PayloadError("APK metadata unavailable")
+        if (!archiveMatchesUpdate(archive, context.packageName, expectedVersionName)) {
+            return Result.PayloadError("APK package or version does not match the requested update")
+        }
         return Result.Ok
     }
 
@@ -257,3 +263,10 @@ class IntegrityVerifier(
             if (length >= 16) "${take(8)}…${takeLast(8)}" else "…"
     }
 }
+
+internal fun archiveMatchesUpdate(
+    archive: android.content.pm.PackageInfo,
+    expectedPackage: String,
+    expectedVersionName: String?,
+): Boolean = archive.packageName == expectedPackage &&
+    (expectedVersionName == null || archive.versionName == expectedVersionName)

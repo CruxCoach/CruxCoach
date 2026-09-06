@@ -357,6 +357,11 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
     val initialClimbUuid: String = savedStateHandle["climbUuid"] ?: ""
+    private val requiredLinkAuthor: String? = savedStateHandle["author"]
+    private fun matchesLinkAuthor(uuid: String, author: String?): Boolean =
+        !uuid.replace("-", "").equals(initialClimbUuid.replace("-", ""), ignoreCase = true) ||
+            requiredLinkAuthor == null || author.equals(requiredLinkAuthor, ignoreCase = true)
+
     private var currentClimbUuid: String = initialClimbUuid
     private var currentAngle: Int = savedStateHandle.get<String>("angle")?.toIntOrNull() ?: 40
 
@@ -898,7 +903,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // doesn't block auto-send for the new climb.
         val currentConn = bleConnection.connectionState.value
         // Use cached page state if available to avoid loading flash during pager swipe
-        val cached = _pageCache.value[uuid]
+        val cached = _pageCache.value[uuid]?.takeIf { matchesLinkAuthor(uuid, it.climb?.createdByPubkey) }
         if (cached != null) {
             _state.update { current -> cached.withLiveDeviceState(current).copy(
                 ascent = AscentFormState(),
@@ -1029,6 +1034,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                             ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
                             ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
                             ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
+                    }?.takeIf {
+                        matchesLinkAuthor(uuid, it.createdByPubkey)
                     }
                     if (climb != null) {
                         // FEAT-027: a MoonBoard climb has no Aurora
@@ -1259,7 +1266,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val climb = boardRepository.getClimbByUuid(uuid, angle) ?: return@withContext
+                    val climb = boardRepository.getClimbByUuid(uuid, angle)
+                        ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)

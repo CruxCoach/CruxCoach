@@ -1176,6 +1176,13 @@ class SessionGattBridge(
             }
         }
 
+        if (receivedCommand !is SessionCommand.Leave && !commandGate.allowMutation(deviceAddress)) {
+            request.requestId?.let {
+                sendCommandResult(deviceAddress, it, SessionCommandResult.CONFLICT)
+            }
+            return
+        }
+
         val cmd = if (request.context == null) {
             // Compatibility with older clients: their index command retains
             // its historical behavior, while upgraded peers get safe rebase.

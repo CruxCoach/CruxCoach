@@ -1585,4 +1585,20 @@ class LocalShareModernSchemaTest {
             assertEquals(0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
         }
     }
+    @Test
+    fun peerCannotReplaceOrExtendInstalledGeometryButCanImportMissingBrand() {
+        openTarget().use { db ->
+            db.execSQL("INSERT INTO placements(board_brand,placement_id,hole_id,set_id,x,y) VALUES ('kilter',1100,77,1,7,8)")
+            db.execSQL("INSERT INTO leds(board_brand,hole_id,product_size_id,position) VALUES ('kilter',77,1,99)")
+        }
+        importer.importFromLocalDb(srcPath)
+        openTarget().use { db ->
+            assertEquals(1, countWhere(db, "placements", "board_brand='kilter' AND placement_id=1100 AND hole_id=77 AND x=7"))
+            assertEquals(1, countWhere(db, "leds", "board_brand='kilter' AND position=99"))
+            assertEquals(1, countWhere(db, "leds", "board_brand='kilter'"))
+            assertEquals(0, countWhere(db, "holes", "board_brand='kilter'"))
+            assertEquals(1, countWhere(db, "placements", "board_brand='moonboard'"))
+            assertEquals(1, countWhere(db, "holes", "board_brand='moonboard'"))
+        }
+    }
 }

@@ -2007,15 +2007,9 @@ internal fun openBetaLink(
 }
 
 internal fun betaLinkIntents(link: ClimbBetaLink): List<Intent> {
-    val uri = runCatching { Uri.parse(link.url) }.getOrNull()
-        ?.takeIf {
-            it.scheme.equals("https", ignoreCase = true) &&
-                !it.host.isNullOrBlank() &&
-                it.userInfo == null
-        }
-        ?: return emptyList()
+    val uri = betaVideoUri(link.url) ?: return emptyList()
     val fallback = Intent(Intent.ACTION_VIEW, uri)
-    return if (link.provider.equals("instagram", ignoreCase = true)) {
+    return if (betaVideoProviderLabel(link) == "Instagram") {
         listOf(Intent(Intent.ACTION_VIEW, uri).setPackage("com.instagram.android"), fallback)
     } else listOf(fallback)
 }

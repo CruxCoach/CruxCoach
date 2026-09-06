@@ -1,5 +1,6 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.util.LocalTransferLimits
 import android.content.Context
 import android.net.Network
 import android.util.Log
@@ -1588,6 +1589,7 @@ class BoardSyncManager(
         try {
             updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
             raw.delete()
+            LocalTransferLimits.requireSpace(appContext.cacheDir, board.uncompressedSizeBytes)
             require(board.compression == "gzip") { "Unsupported share compression" }
             ShareCompression.gunzip(
                 inputFile = compressed,
@@ -1927,12 +1929,20 @@ class BoardSyncManager(
                     kotlinx.coroutines.delay(retryAfterSec * 1000)
                 }
                 val totalBytes = connection.contentLengthLong
+                if (totalBytes >= 0) LocalTransferLimits.requireSize(totalBytes, LocalTransferLimits.MAX_DB_BYTES)
+                LocalTransferLimits.requireSpace(appContext.cacheDir, totalBytes.coerceAtLeast(0))
+                val transferStarted = System.nanoTime()
                 var bytesRead = 0L
                 connection.inputStream.use { input ->
                     java.io.FileOutputStream(tempFile).use { output ->
                         val buffer = ByteArray(65536)
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
+                            LocalTransferLimits.requireTime(transferStarted)
+                            LocalTransferLimits.requireSize(bytesRead + read, LocalTransferLimits.MAX_DB_BYTES)
+                            if (bytesRead % (4 * 1024 * 1024) < buffer.size) {
+                                LocalTransferLimits.requireSpace(appContext.cacheDir, read.toLong())
+                            }
                             output.write(buffer, 0, read)
                             bytesRead += read
                             _state.update { it.copy(

@@ -464,19 +464,21 @@ class MainActivity : AppCompatActivity() {
 
         // Expected dTag: "cruxcoach:climb:<pubkey-prefix-8>:<uuid>"
         val dParts = nAddress.dTag.split(":")
-        if (dParts.size < 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
+        if (dParts.size != 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
             android.util.Log.w("MainActivity", "App link dTag doesn't look like cruxcoach climb: ${nAddress.dTag}")
             return null
         }
         val uuid = dParts.last()
-        if (uuid.isBlank()) return null
+        if (!uuid.matches(Regex("[0-9a-fA-F-]{8,64}")) ||
+            !nAddress.author.matches(Regex("[0-9a-fA-F]{64}")) ||
+            !dParts[2].equals(nAddress.author.take(8), ignoreCase = true)) return null
 
         // Angle: best-effort lookup at runtime would require Hilt-injected
         // prefs reachable from the deep-link helper. Default to 40 (the
         // user-preferences default) — the detail screen exposes an angle
         // selector if the user wants a different angle.
         val angle = 40
-        return "board_climb_detail/$uuid/$angle"
+        return "board_climb_detail/$uuid/$angle?author=${nAddress.author.lowercase()}"
     }
 
 

@@ -33,7 +33,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Named
@@ -52,11 +51,7 @@ class NostrRelayPool @Inject constructor(
     private fun updateConnectedRelayCount() {
         _connectedRelayCount.value = connections.values.count { it.isConnected }
     }
-    private val seenEventIds: MutableMap<String, Boolean> = Collections.synchronizedMap(
-        object : LinkedHashMap<String, Boolean>(100, 0.75f, true) {
-            override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>) = size > MAX_SEEN_IDS
-        }
-    )
+
 
     /**
      * The resolved relay list, pushed here by
@@ -111,6 +106,10 @@ class NostrRelayPool @Inject constructor(
                 }
 
                 override fun onMessage(ws: WebSocket, text: String) {
+                    if (!RelayInputGuard.accepts(text)) {
+                        ws.cancel()
+                        return
+                    }
                     handleMessage(text)
                 }
 
@@ -156,7 +155,7 @@ class NostrRelayPool @Inject constructor(
                         // app-side bug.
                         val reason = arr.getOrNull(3)?.let { el ->
                             runCatching { el.jsonPrimitive.content }.getOrNull()
-                        }.orEmpty()
+                        }.orEmpty().take(512)
                         if (!accepted) {
                             Log.w(
                                 TAG,
@@ -182,7 +181,7 @@ class NostrRelayPool @Inject constructor(
                         val subId = arr[1].jsonPrimitive.content
                         subscriptionFlows[subId]?.tryEmit(EOSE_SENTINEL)
                     }
-                    "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content}")
+                    "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content.take(512)}")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to parse relay message from $url", e)
@@ -395,7 +394,7 @@ class NostrRelayPool @Inject constructor(
     /**
      * Fetch stored events even when another screen already observed their ids.
      *
-     * The process-wide dedup cache protects long-lived live subscriptions from
+     * The subscription-local dedup cache protects long-lived live subscriptions from
      * duplicate delivery across relays. It must not turn an explicit historical
      * lookup into an empty result merely because discovery saw the event first.
      */
@@ -405,13 +404,10 @@ class NostrRelayPool @Inject constructor(
         closeOnEose = true,
     )
 
-    internal fun shouldDeliverEvent(eventId: String?, skipDedup: Boolean): Boolean =
-        skipDedup || (eventId != null && seenEventIds.putIfAbsent(eventId, true) == null)
-
     /**
      * Subscribe to events matching [filter].
      *
-     * @param skipDedup If true, bypass the [seenEventIds] cache. Use this for
+     * @param skipDedup If true, bypass the subscription-local cache. Use this for
      *   background poll workers that need to re-fetch events the foreground
      *   subscription may have already seen.
      * @param closeOnEose If true, the flow completes after all relays have sent
@@ -423,6 +419,7 @@ class NostrRelayPool @Inject constructor(
         skipDedup: Boolean = false,
         closeOnEose: Boolean = false
     ): Flow<String> = callbackFlow {
+        val deliveryGate = VerifiedEventDeliveryGate()
         val subId = java.util.UUID.randomUUID().toString()
         val readRelays = readRelays()
         val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
@@ -437,7 +434,7 @@ class NostrRelayPool @Inject constructor(
                     }
                     return@collect
                 }
-                if (shouldDeliverEvent(extractEventId(eventJson), skipDedup)) trySend(eventJson)
+                if (deliveryGate.accepts(eventJson, skipDedup)) send(eventJson)
             }
         }
 
@@ -501,7 +498,6 @@ class NostrRelayPool @Inject constructor(
 
     companion object {
         private const val TAG = "NostrRelayPool"
-        private const val MAX_SEEN_IDS = 10_000
         /** Sentinel value emitted by EOSE handler — never valid JSON. */
         internal const val EOSE_SENTINEL = "__EOSE__"
     }

@@ -200,9 +200,22 @@ internal fun BetaVideoSheet(
     }
 }
 
-internal fun betaVideoProviderLabel(link: ClimbBetaLink): String = when (link.provider.lowercase()) {
-    "instagram" -> "Instagram"
-    "kaya", "kayaclimb", "app.kayaclimb.com" -> "KAYA"
-    "youtube", "youtube.com", "www.youtube.com", "youtu.be" -> "YouTube"
-    else -> Uri.parse(link.url).host?.removePrefix("www.") ?: link.provider
+/** A peer's provider string is metadata, never an authority for the destination. */
+internal fun betaVideoUri(url: String): Uri? {
+    if (url.any { it.isWhitespace() || it.isISOControl() } || '\\' in url) return null
+    val parsed = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    if (!parsed.scheme.equals("https", ignoreCase = true) || parsed.host.isNullOrBlank() ||
+        parsed.rawUserInfo != null) return null
+    return Uri.parse(parsed.toASCIIString())
+}
+
+internal fun betaVideoProviderLabel(link: ClimbBetaLink): String {
+    val host = betaVideoUri(link.url)?.host?.lowercase()?.removePrefix("www.") ?: return "—"
+    fun belongsTo(domain: String) = host == domain || host.endsWith(".$domain")
+    return when {
+        belongsTo("instagram.com") -> "Instagram"
+        belongsTo("youtube.com") || host == "youtu.be" -> "YouTube"
+        belongsTo("kayaclimb.com") -> "KAYA"
+        else -> host
+    }
 }

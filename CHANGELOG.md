@@ -12,6 +12,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Blossom previews are checked against their SHA-256 hash before display and
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
+### Fixed
+- Unverified local shares preserve existing board geometry and LED mappings while
+  keeping historical first-import formats and resumable transfers supported.
+- Relay events are authenticated before subscription-local duplicate suppression;
+  oversized and excessively nested messages are rejected before JSON parsing.
+- Video provider labels follow the actual destination, and addressed community
+  links retain their author when resolving a climb.
+- Local transfers and legacy APK extraction have resource limits. Session commands
+  have a generous burst allowance and a sustained rate limit for joined peers.
+- App updates verify the archive package and version name as well as its hash and
+  signing history.
+
 ## [0.2.2] - 2026-08-29
 
 Training playlists you can actually play — climb by climb, with rests,

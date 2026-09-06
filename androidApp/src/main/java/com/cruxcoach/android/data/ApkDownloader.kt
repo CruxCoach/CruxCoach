@@ -6,11 +6,11 @@ import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.SupportedBoard
 import java.io.File
+import com.cruxcoach.android.util.LocalTransferLimits
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.zip.ZipInputStream
 
 /**
  * Handles APK download, version checking, and database extraction from
@@ -154,13 +154,21 @@ class ApkDownloader(
             if (conn.responseCode != HttpURLConnection.HTTP_OK) {
                 throw Exception("Download fehlgeschlagen: HTTP ${conn.responseCode}")
             }
-            val totalBytes = conn.contentLength.toLong()
+            val totalBytes = conn.contentLengthLong
+            if (totalBytes >= 0) LocalTransferLimits.requireSize(totalBytes, LocalTransferLimits.MAX_APK_BYTES)
+            LocalTransferLimits.requireSpace(target.parentFile!!, totalBytes.coerceAtLeast(0))
+            val started = System.nanoTime()
             var bytesRead = 0L
             val buffer = ByteArray(8192)
             conn.inputStream.use { input ->
                 FileOutputStream(target).use { output ->
                     var len: Int
                     while (input.read(buffer).also { len = it } != -1) {
+                        LocalTransferLimits.requireTime(started)
+                        LocalTransferLimits.requireSize(bytesRead + len, LocalTransferLimits.MAX_APK_BYTES)
+                        if (bytesRead % (4 * 1024 * 1024) < buffer.size) {
+                            LocalTransferLimits.requireSpace(target.parentFile!!, len.toLong())
+                        }
                         output.write(buffer, 0, len)
                         bytesRead += len
                         onProgress?.invoke(bytesRead, totalBytes)
@@ -178,38 +186,48 @@ class ApkDownloader(
      * the actual DB is inside that inner APK.
      */
     private fun extractDatabase(apkBundle: File, target: File) {
-        var found = false
-        ZipInputStream(apkBundle.inputStream().buffered()).use { outerZip ->
-            var entry = outerZip.nextEntry
-            while (entry != null) {
-                if (entry.name.endsWith(".apk") && entry.name.startsWith("com.auroraclimbing.")) {
-                    found = extractDbFromApk(outerZip, target)
-                    break
+        val nested = File(context.cacheDir, "aurora_nested.apk")
+        try {
+            java.util.zip.ZipFile(apkBundle).use { outer ->
+                val direct = outer.getEntry("assets/db.sqlite3")
+                if (direct != null) {
+                    outer.getInputStream(direct).use { boundedCopy(it, target) }
+                    return
                 }
-                if (entry.name == "assets/db.sqlite3") {
-                    FileOutputStream(target).use { out -> outerZip.copyTo(out) }
-                    found = true
-                    break
-                }
-                entry = outerZip.nextEntry
+                val entry = outer.entries().asSequence().take(100_000).firstOrNull {
+                    it.name.endsWith(".apk") && it.name.startsWith("com.auroraclimbing.")
+                } ?: throw java.io.IOException("db.sqlite3 not found in APK")
+                outer.getInputStream(entry).use { boundedCopy(it, nested) }
             }
-        }
-        if (!found) {
-            throw Exception("db.sqlite3 nicht im APK gefunden")
+            java.util.zip.ZipFile(nested).use { inner ->
+                val entry = inner.getEntry("assets/db.sqlite3")
+                    ?: throw java.io.IOException("db.sqlite3 not found in APK")
+                inner.getInputStream(entry).use { boundedCopy(it, target) }
+            }
+        } catch (error: Exception) {
+            target.delete()
+            throw error
+        } finally {
+            nested.delete()
         }
     }
 
-    private fun extractDbFromApk(apkStream: InputStream, target: File): Boolean {
-        ZipInputStream(apkStream).use { innerZip ->
-            var entry = innerZip.nextEntry
-            while (entry != null) {
-                if (entry.name == "assets/db.sqlite3") {
-                    FileOutputStream(target).use { out -> innerZip.copyTo(out) }
-                    return true
+    private fun boundedCopy(input: InputStream, target: File) {
+        val started = System.nanoTime()
+        FileOutputStream(target).use { output ->
+            val buffer = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                LocalTransferLimits.requireTime(started)
+                LocalTransferLimits.requireSize(total + count, LocalTransferLimits.MAX_DB_BYTES)
+                if (total % (4 * 1024 * 1024) < buffer.size) {
+                    LocalTransferLimits.requireSpace(target.parentFile!!, count.toLong())
                 }
-                entry = innerZip.nextEntry
+                output.write(buffer, 0, count)
+                total += count
             }
         }
-        return false
     }
 }

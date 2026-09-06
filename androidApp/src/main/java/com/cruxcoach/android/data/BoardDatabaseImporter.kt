@@ -50,8 +50,8 @@ class BoardDatabaseImporter(
 
         /**
          * Explicit local/WiFi share: climb rows are additive only and cannot
-         * assert community authorship. Public stats and geometry remain part
-         * of the catalogue payload the user explicitly chose to import.
+         * assert community authorship. Geometry is accepted only for brands with no receiver geometry.
+         * Existing board mappings never inherit peer-controlled additions.
          */
         UNVERIFIED_LOCAL_SHARE(
             acceptsCommunityProvenance = false,
@@ -2891,7 +2891,9 @@ class BoardDatabaseImporter(
         includeQuantum: Boolean,
         onProgress: ((step: ImportStep) -> Unit)?,
     ): ModernImportResult {
-        val statements = modernCopyStatements(rawDb, includeQuantum)
+        val statements = modernCopyStatements(
+            rawDb, includeQuantum, protectExistingGeometry = policy == ClimbImportPolicy.UNVERIFIED_LOCAL_SHARE,
+        )
         // Once the source is ATTACHed under a write transaction, Android's
         // separate rawDb connection can block on even sqlite_master/PRAGMA
         // reads. Capture every source-schema fact before that lock boundary.
@@ -2925,6 +2927,16 @@ class BoardDatabaseImporter(
                 // community sync could otherwise create a colliding target row
                 // before the peer's first write.
                 validateQuantumTargetBridge(targetDb, quantumRows)
+                // Snapshot all existing geometry brands before ANY peer writes.
+                // Filtering per table/row would still allow a peer to inject new
+                // IDs into an installed board or suppress later first-import tables.
+                targetDb.execSQL("CREATE TEMP TABLE peer_existing_geometry_brands(board_brand TEXT PRIMARY KEY)")
+                for (table in listOf("placements", "holes", "product_sizes", "board_images", "leds", "placement_roles")) {
+                    targetDb.execSQL(
+                        "INSERT OR IGNORE INTO temp.peer_existing_geometry_brands " +
+                            "SELECT DISTINCT LOWER(TRIM(board_brand)) FROM main.$table",
+                    )
+                }
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
                 val climbs = importClimbs(
                     rawDb = rawDb,
@@ -2980,7 +2992,11 @@ class BoardDatabaseImporter(
      * the current brand-namespaced target. Missing additive tables are skipped;
      * pre-multiboard geometry is Kilter by definition and is stamped as such.
      */
-    private fun modernCopyStatements(source: SQLiteDatabase, includeQuantum: Boolean): List<String> {
+    private fun modernCopyStatements(
+        source: SQLiteDatabase,
+        includeQuantum: Boolean,
+        protectExistingGeometry: Boolean = false,
+    ): List<String> {
         fun columns(table: String): Set<String> = source.rawQuery(
             "PRAGMA table_info($table)", null,
         ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(1)) } }
@@ -2993,12 +3009,18 @@ class BoardDatabaseImporter(
             }
         }
         fun brand(table: String) = if ("board_brand" in columns(table)) "board_brand" else "'kilter'"
-        fun legacyGeometryFilter(table: String): String =
-            if (!includeQuantum && "board_brand" in columns(table)) {
-                " WHERE LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'"
-            } else {
-                ""
+        fun legacyGeometryFilter(table: String): String {
+            val conditions = buildList {
+                if (!includeQuantum && "board_brand" in columns(table)) {
+                    add("LOWER(TRIM(COALESCE(board_brand,'kilter')))!='quantum'")
+                }
+                if (protectExistingGeometry) {
+                    add("LOWER(TRIM(COALESCE(${brand(table)},'kilter'))) NOT IN " +
+                        "(SELECT board_brand FROM temp.peer_existing_geometry_brands)")
+                }
             }
+            return if (conditions.isEmpty()) "" else " WHERE " + conditions.joinToString(" AND ")
+        }
 
         requireColumns("placements", setOf("placement_id", "hole_id", "set_id", "x", "y"))
         requireColumns("holes", setOf("id", "product_size_id", "x", "y", "mirrored_hole_id"))

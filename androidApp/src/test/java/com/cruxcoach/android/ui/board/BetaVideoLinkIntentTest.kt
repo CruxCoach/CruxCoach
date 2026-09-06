@@ -46,4 +46,18 @@ class BetaVideoLinkIntentTest {
         assertEquals(1, generic.size)
         assertNull(generic.single().`package`)
     }
+    @Test
+    fun peerProviderCannotDisguiseDestinationOrForceInstagramPackage() {
+        for (url in listOf("https://youtube.com.attacker.example/watch", "https://instagram.com.attacker.example/reel/a")) {
+            val link = ClimbBetaLink("kilter", "climb", url, "instagram")
+            assertEquals(android.net.Uri.parse(url).host, betaVideoProviderLabel(link))
+            assertEquals(1, betaLinkIntents(link).size)
+            assertNull(betaLinkIntents(link).single().`package`)
+        }
+        val historical = ClimbBetaLink("kilter", "climb", "https://youtu.be/a", "unknown")
+        assertEquals("YouTube", betaVideoProviderLabel(historical))
+        for (url in listOf("https://instagram.com@attacker.example/x", "https://instagram.com\\@attacker.example/x", "https://example.com/\nvideo")) {
+            assertEquals(emptyList<Intent>(), betaLinkIntents(historical.copy(url = url)))
+        }
+    }
 }

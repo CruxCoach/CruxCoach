@@ -103,6 +103,10 @@ class BlossomSyncManager(
                     }
 
                     override fun onMessage(ws: WebSocket, text: String) {
+                        if (!com.cruxcoach.android.nostr.RelayInputGuard.accepts(text)) {
+                            ws.cancel()
+                            return
+                        }
                         try {
                             val arr = json.parseToJsonElement(text).jsonArray
                             when (arr[0].jsonPrimitive.content) {
