@@ -1,7 +1,7 @@
 # Development and production permissions
 
 Hostinger is the owner’s development host. The existing production host keeps
-runtime services, the private release runner, signing material and publisher
+runtime services, existing release infrastructure, signing material and publisher
 credentials. Feature builds execute on hosted CI without those credentials.
 
 ## Feature contributor approval
@@ -41,13 +41,19 @@ Amber still needs the owner’s personal confirmation; no unattended signature
 or migration of a signing key is introduced. Existing published artifacts stay
 available while a new release is pending.
 
-The `release` environment is configured with the owner as its required reviewer
-and main as its only deployment branch. Keep these settings in place. Environment
-approval complements main branch protection; it does not distinguish a human
-from an agent if both can access the same owner API credential. Owner API
-credentials and unrestricted production SSH access must therefore stay outside
-the development security boundary. Existing Hostinger owner-account SSH keys
-must be replaced after active sessions are handed over, not copied to contributors.
+The `release` environment permits main only. The job also requires the owner's
+numeric GitHub actor ID, including manual dispatch. The personal main merge is
+the release go; there is no additional environment approval click. These checks
+do not distinguish a human from an agent sharing the same owner credential.
+Existing Hostinger owner-account SSH keys must be replaced after active sessions
+are handed over, and must never be distributed to contributors.
+
+Executor prerequisite: the infrastructure audit found no registered GitHub
+self-hosted runner for this repository. Do not merge this draft until a separate
+trusted release controller/executor is available. A signing-capable runner must
+not be directly available to arbitrary workflows written by contributors;
+this job's environment and actor gates cannot constrain a different workflow.
+Existing production services and the Forgejo runner remain in operation.
 
 Pages and Blossom Sync retain their own deployment mechanisms. This PR changes
 neither their live deployment nor their approval policy. Their agents may merge
