@@ -323,6 +323,34 @@ class MoonBoardBetaSnapshotImportTest {
     }
 
     @Test
+    fun betaOrderingPrioritizesAngleThenPreviewThenParsedDate() {
+        openTarget().use { db ->
+            fun add(id: String, angle: Int?, thumbnail: String?, date: String?) {
+                db.execSQL(
+                    "INSERT INTO climb_beta_links(board_brand,climb_uuid,url,provider,media_id,angle,thumbnail,created_at) " +
+                        "VALUES('kilter',?,?,'instagram',?,?,?,?)",
+                    arrayOf<Any?>(kilterClimbUuid, "https://www.instagram.com/p/$id/", id, angle, thumbnail, date),
+                )
+            }
+            add("matching_no_image", 40, null, "2026-09-06T00:00:00Z")
+            add("matching_old", 40, "https://example.org/a.jpg", "2026-09-01T00:00:00Z")
+            add("matching_new", 40, "https://example.org/b.jpg", "2026-09-02T00:00:00Z")
+            add("matching_invalid_date", 40, "https://example.org/c.jpg", "not a date")
+            add("unknown_angle", null, "https://example.org/d.jpg", "2026-09-06T00:00:00Z")
+            add("other_angle", 35, "https://example.org/e.jpg", "2026-09-06T00:00:00Z")
+        }
+        AndroidSqliteDriver(BoardDatabase.Schema, context, "cruxcoach.db").use { driver ->
+            val repository = BoardRepositoryImpl(
+                BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter))
+            )
+            assertEquals(
+                listOf("matching_new", "matching_old", "matching_invalid_date", "matching_no_image", "unknown_angle", "other_angle"),
+                repository.getClimbBetaLinks("kilter", kilterClimbUuid, 40).map { it.videoId },
+            )
+        }
+    }
+
+    @Test
     fun kilterBetaChunkImportsAndAuthoritativeOrMalformedReplacementIsBoardScoped() {
         val valid = createGenericBetaSnapshot(
             "kilter-valid.sqlite3",

@@ -158,6 +158,8 @@ WHERE board_brand = :boardBrand
     :climbUuid
   )
 ORDER BY CASE WHEN angle = :angle THEN 0 WHEN angle IS NULL THEN 1 ELSE 2 END,
+         CASE WHEN NULLIF(TRIM(thumbnail), '') IS NOT NULL THEN 0 ELSE 1 END,
+         julianday(created_at) DESC,
          angle, provider, url;
 
 -- Lossless Quantum-only vendor metadata. Kept out of the generic climbs table
