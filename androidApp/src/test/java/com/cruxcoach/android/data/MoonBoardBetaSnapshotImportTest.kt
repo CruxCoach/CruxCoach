@@ -87,6 +87,49 @@ class MoonBoardBetaSnapshotImportTest {
         runCatching { targetPath.delete() }
     }
 
+    private fun genericSnapshot(board: String, uuid: String): File {
+        val file = File(snapshotDir, "generic-${System.nanoTime()}.sqlite3")
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            db.execSQL("CREATE TABLE climb_beta_links(board_brand TEXT,climb_uuid TEXT,url TEXT,provider TEXT,media_id TEXT,foreign_username TEXT,angle INTEGER,thumbnail TEXT,created_at TEXT)")
+            db.execSQL("INSERT INTO climb_beta_links VALUES(?,?,?,'instagram','ABC','setter',40,?,NULL)",
+                arrayOf(board, uuid, "https://www.instagram.com/p/ABC/", "https://nostr.download/" + "a".repeat(64)))
+            // An unexpected source table must never be imported into the app.
+            db.execSQL("CREATE TABLE climbs(uuid TEXT,name TEXT)")
+            db.execSQL("INSERT INTO climbs VALUES('malicious','must not import')")
+        }
+        return file
+    }
+
+    @Test
+    fun standaloneMediaOnlyChangesRequestedBetaSliceAndPreservesCatalogue() {
+        val source = genericSnapshot("kilter", kilterClimbUuid)
+        val before = source.readBytes()
+        openTarget().use { db ->
+            db.execSQL("INSERT INTO climb_beta_links(board_brand,climb_uuid,url,provider) VALUES('moonboard',?,'https://example.com/old','other')", arrayOf(climbUuid))
+        }
+        assertEquals(1, importer.importBoardBetaMediaSnapshot(source, "kilter"))
+        assertTrue(before.contentEquals(source.readBytes()))
+        openTarget().use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM climbs", null).use { it.moveToFirst(); assertEquals(3, it.getInt(0)) }
+            db.rawQuery("SELECT COUNT(*) FROM climb_stats", null).use { it.moveToFirst(); assertEquals(2, it.getInt(0)) }
+            db.rawQuery("SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='moonboard'", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+        }
+    }
+
+    @Test
+    fun standaloneWrongBoardAndOrphansCannotReplaceLastGoodBeta() {
+        importer.importBoardBetaMediaSnapshot(genericSnapshot("kilter", kilterClimbUuid), "kilter")
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            importer.importBoardBetaMediaSnapshot(genericSnapshot("moonboard", climbUuid), "kilter")
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            importer.importBoardBetaMediaSnapshot(genericSnapshot("kilter", "unknown"), "kilter")
+        }
+        openTarget().use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM climb_beta_links WHERE board_brand='kilter'", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+        }
+    }
+
     @Test
     fun importsMoonLinksIntoGenericStoreAndRepositoryResolvesAlias() {
         val snapshot = createSnapshot(

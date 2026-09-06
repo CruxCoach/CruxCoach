@@ -1110,6 +1110,55 @@ class BoardDatabaseImporter(
         Log.i(TAG, "importQuantumSnapshot done: climbs=$count")
     }
 
+    /** Standalone beta-media import: validate first; never touch catalogue/user rows. */
+    @Synchronized
+    fun importBoardBetaMediaSnapshot(snapshotFile: File, board: String): Int {
+        require(board in BoardBetaMediaSync.BOARDS)
+        val db = openTargetDb()
+        try {
+            db.rawQuery("PRAGMA busy_timeout=30000", null).close()
+            db.execSQL("ATTACH DATABASE ? AS bm", arrayOf(snapshotFile.absolutePath))
+            require(queryLong(db, "SELECT COUNT(*) FROM bm.climb_beta_links") > 0L)
+            val invalid = queryLong(db,
+                "SELECT COUNT(*) FROM bm.climb_beta_links WHERE board_brand IS NULL OR board_brand<>? " +
+                    "OR climb_uuid IS NULL OR TRIM(climb_uuid)='' OR provider IS NULL OR TRIM(provider)='' " +
+                    "OR url IS NULL OR url NOT LIKE 'https://%' OR url LIKE '% %' " +
+                    "OR (thumbnail IS NOT NULL AND (thumbnail NOT LIKE 'https://%' OR thumbnail LIKE '% %'))",
+                arrayOf(board))
+            require(invalid == 0L) { "Invalid beta media rows" }
+            // Resolve once without holding the writer lock. A small fraction of
+            // deleted/unlisted upstream climbs may be absent in the catalogue.
+            db.execSQL("""
+                CREATE TEMP TABLE resolved_beta_media AS
+                SELECT b.* FROM bm.climb_beta_links b
+                CROSS JOIN main.climbs c ON c.uuid=LOWER(b.climb_uuid)
+                WHERE c.board_brand=? AND c.is_deleted=0
+            """.trimIndent(), arrayOf(board))
+            val total = queryLong(db, "SELECT COUNT(*) FROM bm.climb_beta_links")
+            val resolved = queryLong(db, "SELECT COUNT(*) FROM resolved_beta_media")
+            require(resolved > 0 && (resolved == total || resolved * 100 >= total * 99)) {
+                "Beta media does not match installed catalogue"
+            }
+            require(queryLong(db, "SELECT COUNT(*) FROM (SELECT climb_uuid,url FROM resolved_beta_media GROUP BY climb_uuid,url HAVING COUNT(*)>1)") == 0L)
+            db.beginTransactionNonExclusive()
+            try {
+                db.execSQL("DELETE FROM main.climb_beta_links WHERE board_brand=?", arrayOf(board))
+                db.execSQL("""
+                    INSERT INTO main.climb_beta_links(
+                        board_brand,climb_uuid,url,provider,media_id,foreign_username,angle,thumbnail,created_at)
+                    SELECT board_brand,LOWER(climb_uuid),url,provider,media_id,foreign_username,angle,thumbnail,created_at
+                    FROM resolved_beta_media
+                """.trimIndent())
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+            return resolved.toInt()
+        } finally {
+            runCatching { db.execSQL("DROP TABLE IF EXISTS temp.resolved_beta_media") }
+            runCatching { db.execSQL("DETACH DATABASE bm") }
+            db.close()
+        }
+    }
+
     /**
      * Import an optional generic/legacy beta table from an attached catalogue.
      * Absence means "transport does not own beta data" and leaves the slice

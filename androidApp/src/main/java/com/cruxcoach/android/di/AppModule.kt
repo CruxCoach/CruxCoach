@@ -46,6 +46,7 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
+import com.cruxcoach.android.data.BoardBetaMediaSync
 import com.cruxcoach.android.data.MoonBoardBetaSync
 import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.data.QuantumCatalogueSync
@@ -336,6 +337,7 @@ object AppModule {
         integrityVerifier: com.cruxcoach.android.updater.IntegrityVerifier,
         moonBoardCsvImporter: MoonBoardCsvImporter,
         moonBoardBetaSync: MoonBoardBetaSync,
+        boardBetaMediaSync: BoardBetaMediaSync,
     ): BoardSyncManager {
         return BoardSyncManager(
             importer,
@@ -351,6 +353,7 @@ object AppModule {
             integrityVerifier,
             moonBoardCsvImporter,
             moonBoardBetaSync = moonBoardBetaSync,
+            boardBetaMediaSync = boardBetaMediaSync,
         )
     }
 

@@ -139,8 +139,13 @@ internal fun BetaVideoSheet(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (link.thumbnail != null) {
+                                    val thumbnailUrls = remember(link.thumbnail) { link.thumbnail?.let(::betaThumbnailUrls).orEmpty() }
+                                    var thumbnailIndex by remember(link.thumbnail) { mutableStateOf(0) }
                                     AsyncImage(
-                                        model = link.thumbnail,
+                                        model = thumbnailUrls.getOrNull(thumbnailIndex),
+                                        onError = {
+                                            if (thumbnailIndex + 1 < thumbnailUrls.size) thumbnailIndex += 1
+                                        },
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),

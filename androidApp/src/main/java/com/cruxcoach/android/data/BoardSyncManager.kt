@@ -71,6 +71,7 @@ class BoardSyncManager(
     private val integrityVerifier: IntegrityVerifier,
     private val moonBoardCsvImporter: MoonBoardCsvImporter? = null,
     private val moonBoardBetaSync: MoonBoardBetaSync? = null,
+    private val boardBetaMediaSync: BoardBetaMediaSync? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val discoverInitialShare: suspend () -> LocalShareDiscovery.Found? = {
         LocalShareDiscovery(appContext).discover()
@@ -940,8 +941,11 @@ class BoardSyncManager(
                 // from the MoonBoard step made its short replacement writer
                 // contend with later board imports/ANALYZE and could stall
                 // first-browse queries even though the visible sync was done.
-                if (_state.value.moonBoardError == null) {
-                    moonBoardBetaSync?.sync()
+                for (board in boardRepository.getClimbCountsByBrand().filterValues { it > 0 }.keys) {
+                    val mediaAvailable = boardBetaMediaSync?.sync(board, forceImport = catalogueChanged) == true
+                    if (board == "moonboard" && !mediaAvailable && _state.value.moonBoardError == null) {
+                        moonBoardBetaSync?.sync()
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
@@ -1462,13 +1466,13 @@ class BoardSyncManager(
      * guarantees that their writers cannot contend with each other.
      */
     private fun runPostSingleBoardImportTasks(brand: BoardBrand, imported: Boolean) {
-        if (!imported && brand != BoardBrand.MOONBOARD) return
         scope.safeLaunch(TAG) {
             if (imported) {
                 runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
                     .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
             }
-            if (brand == BoardBrand.MOONBOARD) {
+            val mediaAvailable = boardBetaMediaSync?.sync(brand.wireValue, forceImport = imported) == true
+            if (brand == BoardBrand.MOONBOARD && !mediaAvailable) {
                 moonBoardBetaSync?.sync()
             }
         }
