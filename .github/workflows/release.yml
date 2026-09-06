@@ -13,26 +13,13 @@ name: Release
 # $CRUXCOACH_SECRETS_DIR and is never uploaded anywhere. No secret in this
 # workflow, and none configured in the repository, is load-bearing.
 
-# MANUAL TRIGGER ONLY, and that is a consequence of how this pipeline signs.
-#
-# The Zapstore signer is an Amber NIP-46 bunker that prompts the maintainer's
-# phone, twice per release: once for the signer proof before the build, once
-# for the publish. A push-triggered release therefore only completes if someone
-# is holding the phone at the moment of the merge. Worse, the second prompt
-# falls *after* the GitHub release is created, so an unattended run can leave
-# the release and its tag public while Zapstore has nothing — recoverable
-# through the repair path below, but publicly inconsistent until someone
-# notices.
-#
-# Making the trigger explicit puts the release at a moment the maintainer
-# chose, which is also the moment the phone is to hand. It further means a
-# merge to main by anyone else cannot start a run that needs the release
-# signing key.
-#
-# `paths-ignore` went with the push trigger — it only ever existed to stop
-# documentation commits from firing a build, and nothing fires this by itself
-# any more.
+# A reviewed main merge is the production release request. The repository
+# owner personally performs that merge; agents prepare PRs only. The private
+# runner retains all signing material. Amber confirmations remain personal.
+# Manual dispatch is retained for an explicitly approved repair/retry.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Nothing here writes through the automatic GITHUB_TOKEN. GitHub and Codeberg
@@ -55,7 +42,7 @@ jobs:
   release:
     # Evaluated by Actions before a self-hosted runner is assigned. A manual
     # dispatch on a feature ref must never reach the signing host.
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.actor_id == '280668240' && github.triggering_actor == 'CruxCoach'
     # The server-side environment deployment policy independently permits
     # only main. Keep this environment load-bearing: its policy is configured
     # in GitHub, outside repository-controlled workflow code.
@@ -75,8 +62,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Never follow the dispatcher's selectable ref on the signing host.
-          ref: refs/heads/main
+          # Use the exact approved main commit, even if main advances while queued.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           # The publisher authenticates with the maintainer token kept on this
           # host.  Leaving checkout's read-only Actions token in git's
