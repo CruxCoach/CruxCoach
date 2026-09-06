@@ -4,6 +4,14 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - Unreleased
+
+### Changed
+- Beta videos open from a compact play button in the climb detail card.
+- Supported boards synchronize optional beta media separately from their catalogues.
+- Blossom previews are checked against their SHA-256 hash before display and
+  local caching, with mirror fallback and a stable placeholder when unavailable.
+
 ## [0.2.2] - 2026-08-29
 
 Training playlists you can actually play — climb by climb, with rests,
