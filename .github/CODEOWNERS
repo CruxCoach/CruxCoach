@@ -11,3 +11,5 @@
 /scripts/*release* @CruxCoach
 /zapstore.yaml @CruxCoach
 /SECURITY.md @CruxCoach
+
+/scripts/feature_authorization* @CruxCoach

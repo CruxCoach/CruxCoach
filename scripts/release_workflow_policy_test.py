@@ -29,7 +29,8 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
         self.assertIn("if: github.ref == 'refs/heads/main'", job)
         self.assertIn("environment: release", job)
-        self.assertIn("ref: refs/heads/main", job)
+        self.assertIn("ref: ${{ github.sha }}", job)
+        self.assertIn("on:\n  push:\n    branches: [main]", workflow)
         self.assertIn("persist-credentials: false", job)
 
         publisher = (ROOT / "scripts/publish-github-release.sh").read_text()

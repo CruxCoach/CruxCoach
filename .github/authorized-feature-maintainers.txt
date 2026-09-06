@@ -1,3 +1,4 @@
+# Legacy reference only; authorization is now in authorized-feature-identities.json.
 # One exact GitHub login per line. This trusted main-branch file controls who
 # may cause a merged feat/* push to be published on APKTrack.
 CruxCoach

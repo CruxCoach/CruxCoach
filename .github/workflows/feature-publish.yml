@@ -25,10 +25,11 @@ jobs:
         with:
           ref: main
           fetch-depth: 1
-      - name: Authorize feature maintainer
-        env:
-          ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
-        run: python3 scripts/authorized_feature_maintainer.py --actor "$ACTOR"
+      - name: Authorize reviewed feature identity
+        run: |
+          python3 scripts/feature_authorization.py \
+            --registry .github/authorized-feature-identities.json \
+            --event "$GITHUB_EVENT_PATH"
       - name: Derive immutable feature identity
         id: identity
         env:

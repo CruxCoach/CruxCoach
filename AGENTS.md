@@ -5,9 +5,10 @@ These rules apply to every human-assisted coding agent in this repository.
 ## Contributions and branches
 
 - Work on a focused `feat/*`, `fix/*`, `docs/*`, or `chore/*` branch. Never push directly to
-  `main`. A human review and the required GitHub checks own merge authority.
-- Anyone may propose a pull request. Only logins in `.github/authorized-feature-maintainers.txt`
-  may cause merged `feat/*` commits to be published. Never weaken that check from feature code.
+  `main`. Only the owner personally merges CruxCoach main, after the required GitHub checks.
+  Agents prepare PRs and never merge or approve production releases on the owner's behalf.
+- Anyone may propose a pull request. Only the operator and enabled npub/account bindings in
+  `.github/authorized-feature-identities.json` may cause `feat/*` pushes to be published. Never weaken that check from feature code.
 - Files below `.github/`, `.apktrack/`, Gradle/release configuration, signing scripts, `AGENTS.md`,
   and `SECURITY.md` are trust-boundary files and require the project owner's review.
 
