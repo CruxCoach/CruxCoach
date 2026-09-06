@@ -29,6 +29,7 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
 
         self.assertIn("if: github.ref == 'refs/heads/main'", job)
         self.assertIn("github.actor_id == '280668240'", job)
+        self.assertIn("github.triggering_actor == 'CruxCoach'", job)
         self.assertIn("environment: release", job)
         self.assertIn("ref: ${{ github.sha }}", job)
         self.assertIn("on:\n  push:\n    branches: [main]", workflow)

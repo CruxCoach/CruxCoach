@@ -42,7 +42,8 @@ or migration of a signing key is introduced. Existing published artifacts stay
 available while a new release is pending.
 
 The `release` environment permits main only. The job also requires the owner's
-numeric GitHub actor ID, including manual dispatch. The personal main merge is
+numeric GitHub actor ID and the owner's triggering login, including manual
+dispatch and reruns. The personal main merge is
 the release go; there is no additional environment approval click. These checks
 do not distinguish a human from an agent sharing the same owner credential.
 Existing Hostinger owner-account SSH keys must be replaced after active sessions
