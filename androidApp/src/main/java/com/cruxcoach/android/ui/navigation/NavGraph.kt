@@ -10,13 +10,13 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -69,6 +69,7 @@ import com.cruxcoach.android.ui.bodystat.DataImportScreen
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
@@ -119,7 +120,7 @@ object Routes {
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
-    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
+    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -246,9 +247,12 @@ fun CruxCoachNavHost(
 
     val dest = startDestination ?: return
 
-    // Handle notification deep-links after NavHost is ready
-    LaunchedEffect(deepLinkRoute) {
+    // Scaffold subcomposes NavHost: this effect can run before its graph is set,
+    // especially on cold deep-link launches. Keep the route pending until the
+    // controller has an entry, then navigate and acknowledge it below.
+    LaunchedEffect(navController, deepLinkRoute) {
         val route = deepLinkRoute ?: return@LaunchedEffect
+        navController.currentBackStackEntryFlow.first()
         when {
             route.startsWith("board_climb_detail/") ->
                 // Replace an already-open climb detail. The detail VM reads its
@@ -526,21 +530,35 @@ fun CruxCoachNavHost(
                 // one frame instead; the forward navigation may still animate.
                 popEnterTransition = { EnterTransition.None },
             ) {
-                BoardBrowserScreen(
-                    onNavigateToClimb = { climbUuid, angle ->
-                        navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val drawerScope = rememberCoroutineScope()
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    drawerContent = {
+                        BrowserMainDrawer { route ->
+                            drawerScope.launch { drawerState.close() }
+                            if (route != Routes.BOARD_BROWSER) {
+                                navController.navigate(route) { launchSingleTop = true }
+                            }
+                        }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
-                    onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
-                    onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
-                    onNavigateToSetter = { pubkey ->
-                        navController.navigate(Routes.setterDetail(pubkey))
-                    },
-                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
-                )
+                ) {
+                    BoardBrowserScreen(
+                        onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
+                        onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
+                        onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                        onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
+                        onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
             }
 
             composable(Routes.BOARD_MAP) {
@@ -623,6 +641,11 @@ fun CruxCoachNavHost(
 
             composable(
                 Routes.BOARD_CLIMB_DETAIL,
+                arguments = listOf(navArgument("author") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }),
                 // Pair with BOARD_BROWSER's no-animation pop enter.  Disposing
                 // the photo-backed board renderer immediately prevents it from
                 // competing with the restored LazyColumn on constrained OEMs.
@@ -1049,6 +1072,37 @@ fun CruxCoachNavHost(
         },
     )
     } // CompositionLocalProvider
+}
+
+@Composable
+private fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+    ModalDrawerSheet {
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = stringResource(com.cruxcoach.android.R.string.main_menu_title),
+            modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.board_browser_nav_board)) },
+            selected = true,
+            onClick = { onSelect(Routes.BOARD_BROWSER) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_board"),
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.Map, contentDescription = null) },
+            label = { Text(stringResource(com.cruxcoach.android.R.string.main_menu_board_map)) },
+            selected = false,
+            onClick = { onSelect(Routes.BOARD_MAP) },
+            modifier = Modifier
+                .padding(NavigationDrawerItemDefaults.ItemPadding)
+                .testTag("menu_board_map"),
+        )
+    }
 }
 
 /**

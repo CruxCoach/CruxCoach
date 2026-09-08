@@ -159,7 +159,7 @@ object LocalShareProtocol {
             boardStatus = boardStatus,
         ).also { manifest ->
             require(manifest.apkVersionCode > 0L)
-            require(manifest.apk.sizeBytes > 0L)
+            LocalTransferLimits.requireSize(manifest.apk.sizeBytes, LocalTransferLimits.MAX_APK_BYTES)
             manifest.board?.let {
                 val expectedBoardPath = when (manifest.protocolVersion) {
                     VERSION -> BOARD_PATH
@@ -169,8 +169,8 @@ object LocalShareProtocol {
                 require(it.artifact.path == expectedBoardPath) {
                     "Board artifact does not match share protocol"
                 }
-                require(it.artifact.sizeBytes > 0L)
-                require(it.uncompressedSizeBytes > 0L)
+                LocalTransferLimits.requireSize(it.artifact.sizeBytes, LocalTransferLimits.MAX_COMPRESSED_DB_BYTES)
+                LocalTransferLimits.requireSize(it.uncompressedSizeBytes, LocalTransferLimits.MAX_DB_BYTES)
                 require(it.schemaVersion >= 0)
             }
         }

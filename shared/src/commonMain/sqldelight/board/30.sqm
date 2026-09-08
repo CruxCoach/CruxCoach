@@ -1,0 +1,8 @@
+CREATE TABLE moonboard_climb_aliases (
+    alias_uuid TEXT NOT NULL PRIMARY KEY,
+    canonical_uuid TEXT NOT NULL,
+    match_kind TEXT NOT NULL
+);
+
+CREATE INDEX idx_moonboard_climb_aliases_canonical
+    ON moonboard_climb_aliases(canonical_uuid);

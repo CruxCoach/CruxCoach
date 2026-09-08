@@ -158,6 +158,13 @@ internal object BrowserOriginFilter {
     }
 }
 
+/** Keep one row per Compose/navigation identity, preserving the visible order.
+ * OFFSET pages can overlap when catalogue rows change between requests. */
+internal fun mergeBrowseClimbs(
+    existing: List<ClimbWithStats>,
+    incoming: List<ClimbWithStats>,
+): List<ClimbWithStats> = (existing + incoming).distinctBy { it.uuid }
+
 /** Page-refill loop for the browse list, extracted from
  *  [BoardBrowserViewModel.searchClimbs] so it is plain-JVM testable.
  *
@@ -174,13 +181,13 @@ internal suspend fun refillBrowsePages(
     fetchPage: suspend (dbOffset: Int) -> Triple<List<ClimbWithStats>, Int, Boolean>,
 ): Triple<List<ClimbWithStats>, Int, Boolean> {
     var (results, offset, exhausted) = fetchPage(0)
+    results = mergeBrowseClimbs(emptyList(), results)
     while (results.size < targetSize && !exhausted) {
         val (more, nextOffset, nextExhausted) = fetchPage(offset)
-        // Safety: a fetcher that neither produces rows nor advances its
-        // offset would loop forever — every real branch does one or the
-        // other (or reports exhaustion), so this is belt-and-braces.
-        if (more.isEmpty() && nextOffset <= offset) break
-        results = results + more
+        // Even a non-empty duplicate page must advance the source cursor;
+        // otherwise deduplication could leave this refill spinning forever.
+        if (nextOffset <= offset && !nextExhausted) break
+        results = mergeBrowseClimbs(results, more)
         offset = nextOffset
         exhausted = nextExhausted
     }
@@ -529,6 +536,7 @@ class BoardBrowserViewModel @Inject constructor(
     private var hiddenLoaded = false
     private var filtersLoaded = false
     private var searchJob: Job? = null
+    private var countJob: Job? = null
     private val browseRequestGate = BrowseRequestGate()
     // Latest-wins guard for refreshBoardData. A board switch fans out from
     // several pref/sync collectors and the user can switch rapidly; without
@@ -1224,10 +1232,14 @@ class BoardBrowserViewModel @Inject constructor(
     private suspend fun ensureStatusLoaded() {
         if (!statusLoaded) {
             sentUuids = PerfLogger.traceQuery("getUserSentClimbUuids") {
-                personalBoardRepo.getUserSentClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getUserSentClimbUuids()
+                )
             }
             attemptedUuids = PerfLogger.traceQuery("getUserAttemptedClimbUuids") {
-                personalBoardRepo.getUserAttemptedClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getUserAttemptedClimbUuids()
+                )
             }
             statusLoaded = true
             PerfLogger.milestone("Status UUIDs loaded (sent=${sentUuids.size}, attempted=${attemptedUuids.size})")
@@ -1237,7 +1249,9 @@ class BoardBrowserViewModel @Inject constructor(
     private suspend fun ensureHiddenLoaded() {
         if (!hiddenLoaded) {
             hiddenUuids = PerfLogger.traceQuery("getIgnoredClimbUuids") {
-                personalBoardRepo.getIgnoredClimbUuids()
+                boardRepository.canonicalizeClimbUuids(
+                    personalBoardRepo.getIgnoredClimbUuids()
+                )
             }
             hiddenLoaded = true
             PerfLogger.milestone("Ignored UUIDs loaded (hidden=${hiddenUuids.size})")
@@ -1395,6 +1409,7 @@ class BoardBrowserViewModel @Inject constructor(
             _state.update { it.copy(
                 isLoading = !hasExisting,
                 isLoadingMore = hasExisting,
+                filteredCount = -1,
                 error = null
             ) }
             try {
@@ -1422,16 +1437,29 @@ class BoardBrowserViewModel @Inject constructor(
                     PerfLogger.logMemory("first-content")
                     PerfLogger.reportStartupTimeline()
                 }
-                // Fire-and-forget: resolve count in separate coroutine (non-blocking)
-                viewModelScope.safeLaunch(TAG) {
-                    val count = resolveCount(filter, newDbOffset)
-                    if (browseRequestGate.accepts(requestGeneration)) {
-                        _state.update { it.copy(filteredCount = count) }
-                    }
-                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.update { it.copy(isLoading = false, isLoadingMore = false, error = e.message) }
+            }
+        }
+    }
+
+    /**
+     * Exact totals are useful on the filter screen, but counting a large
+     * catalogue can monopolize SQLDelight's Android connection for seconds on
+     * slower flash storage.  Keep it off the initial browse path and debounce
+     * it while the user is adjusting filters.
+     */
+    fun requestFilteredCount() {
+        val requestGeneration = browseRequestGate.current()
+        val filter = _state.value.filter
+        if (_state.value.filteredCount >= 0 || _state.value.isLoading || _state.value.isLoadingMore) return
+        countJob?.cancel()
+        countJob = viewModelScope.safeLaunch(TAG) {
+            delay(750)
+            val count = resolveCount(filter, _state.value.climbs.size)
+            if (browseRequestGate.accepts(requestGeneration) && _state.value.filter == filter) {
+                _state.update { it.copy(filteredCount = count) }
             }
         }
     }
@@ -1481,7 +1509,7 @@ class BoardBrowserViewModel @Inject constructor(
         // Build a key from count-affecting fields only (not sort).
         // ungradedOnly swaps the whole grade predicate (impossible range +
         // IS NULL leg), so it changes the count even at identical indices.
-        val countKey = "${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
+        val countKey = "${filter.boardBrand}|${filter.layoutId}|${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
             "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}|${filter.quantumRuleMask}"
 
         // Fetch DB count only if count-affecting filters changed
@@ -1506,11 +1534,11 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun loadMore() {
         val s = _state.value
-        if (!s.hasBoardData || s.isLoadingMore || !s.canLoadMore) return
+        if (!s.hasBoardData || s.isLoading || s.isLoadingMore || !s.canLoadMore) return
         val requestGeneration = browseRequestGate.current()
 
+        _state.update { it.copy(isLoadingMore = true) }
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoadingMore = true) }
             try {
                 val (nextFiltered, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
                     fetchFiltered(s.filter, dbOffset = s.dbOffset)
@@ -1518,13 +1546,15 @@ class BoardBrowserViewModel @Inject constructor(
                 if (!browseRequestGate.accepts(requestGeneration)) return@safeLaunch
                 _state.update { it.copy(
                     isLoadingMore = false,
-                    climbs = it.climbs + nextFiltered,
+                    climbs = mergeBrowseClimbs(it.climbs, nextFiltered),
                     dbOffset = newDbOffset,
                     canLoadMore = !dbExhausted
                 ) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.update { it.copy(isLoadingMore = false, error = e.message) }
+                if (browseRequestGate.accepts(requestGeneration)) {
+                    _state.update { it.copy(isLoadingMore = false, error = e.message) }
+                }
             }
         }
     }
@@ -1792,7 +1822,12 @@ class BoardBrowserViewModel @Inject constructor(
         }
 
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
-        if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
+        Log.i(
+            TAG,
+            "browse page query start (brand=${f.boardBrand}, layout=${f.layoutId}, angle=${f.angle}, " +
+                "sort=${f.sortField}/${f.sortDirection}, offset=$offset, search=${f.searchQuery.isNotBlank()})",
+        )
+        if (f.sortField == ClimbSortField.RANDOM) {
             return fetchRandomPage(f, offset)
         }
         return if (f.searchQuery.isNotBlank()) {
@@ -1830,7 +1865,7 @@ class BoardBrowserViewModel @Inject constructor(
         // the bounds, which together also encode the ungraded-only mode (it
         // swaps the result set to exactly the NULL-grade rows, so toggling it
         // must re-roll the shuffle).
-        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel|$hm|$su"
+        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel|$hm|$su|${f.searchQuery}"
 
         if (key != randomKey) {
             randomKey = key
@@ -1841,13 +1876,21 @@ class BoardBrowserViewModel @Inject constructor(
 
         if (offset == 0) {
             randomPage1?.let { return it }
+            Log.i(TAG, "random page 1 query start")
             val page1 = PerfLogger.traceQuery("randomPage1(sql)") {
-                boardRepository.searchClimbsSorted(
+                if (f.searchQuery.isNotBlank()) {
+                    boardRepository.searchClimbsByName(
+                        f.searchQuery, f.angle, f.layoutId, f.boardBrand,
+                        ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
+                        f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm,
+                    )
+                } else boardRepository.searchClimbsSorted(
                     f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                     ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
                     f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm, showUngraded = su
                 )
             }
+            Log.i(TAG, "random page 1 query done (${page1.size} climbs, key=$key)")
             randomPage1 = page1
             // The full-shuffle background load (getAllBrowseMatchingUuids — ~20s
             // over the big Kilter set, the single biggest board-DB hog on cold
@@ -1866,13 +1909,18 @@ class BoardBrowserViewModel @Inject constructor(
             val page1Uuids = randomPage1?.mapTo(HashSet()) { it.uuid } ?: emptySet()
             randomCacheJob = viewModelScope.async(Dispatchers.IO) {
                 val all = PerfLogger.traceQuery("randomUuids(bg load)") {
-                    boardRepository.getAllBrowseMatchingUuids(
+                    if (f.searchQuery.isNotBlank()) {
+                        boardRepository.getAllSearchMatchingUuids(
+                            f.searchQuery, f.angle, f.layoutId, f.boardBrand,
+                            f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm,
+                        )
+                    } else boardRepository.getAllBrowseMatchingUuids(
                         f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                         f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm, showUngraded = su
                     )
                 }
-                val rest = all.filterNot { it in page1Uuids }.shuffled(Random.Default)
-                Log.i("BoardBrowserVM", "random sort: bg shuffle ready (lazy), ${rest.size} climbs after page 1 (key=$key)")
+                val rest = all.distinct().filterNot { it in page1Uuids }.shuffled(Random.Default)
+                Log.i("BoardBrowserVM", "random sort: bg shuffle ready (lazy), ${rest.size} climbs after page 1")
                 rest
             }
         }
@@ -1930,20 +1978,20 @@ class BoardBrowserViewModel @Inject constructor(
             !f.myClimbsOnly &&
             !f.quantumOverlapFilter.active &&
             !(hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty())
-        val count = _state.value.filteredCount
-        if (plainMode && count > 0) {
+        if (plainMode) {
             viewModelScope.safeLaunch(TAG) {
                 val uuid = withContext(Dispatchers.IO) {
                     ensureHiddenLoaded()
+                    val randomized = f.copy(sortField = ClimbSortField.RANDOM)
                     var result: String? = null
                     var fallback: String? = null
-                    var rolls = 0
-                    while (rolls < RANDOM_PICK_MAX_ROLLS && result == null) {
-                        rolls++
-                        val candidate = pickOneAtOffset(f, Random.nextInt(count.toInt()))
-                        if (candidate != null) {
-                            fallback = candidate
-                            if (candidate !in hiddenUuids) result = candidate
+                    repeat(RANDOM_PICK_MAX_ROLLS) {
+                        if (result == null) {
+                            val candidate = pickOneAtOffset(randomized, 0)
+                            if (candidate != null) {
+                                fallback = candidate
+                                if (candidate !in hiddenUuids) result = candidate
+                            }
                         }
                     }
                     result ?: fallback

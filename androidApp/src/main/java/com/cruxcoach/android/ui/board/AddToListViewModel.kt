@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.Climb_lists
+import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -34,6 +35,7 @@ data class AddToListState(
 @HiltViewModel
 class AddToListViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
+    private val boardRepository: BoardRepository,
     private val queueManager: SessionQueueManager,
     private val playback: PlaylistPlaybackCoordinator,
 ) : ViewModel() {
@@ -42,6 +44,7 @@ class AddToListViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     private var climbUuid: String = ""
+    private var identityUuids: Set<String> = emptySet()
     private var angle: Int = 40
 
     /** Load lists + membership for the climb the dialog is about. */
@@ -52,7 +55,8 @@ class AddToListViewModel @Inject constructor(
             val (lists, inIds) = withContext(Dispatchers.IO) {
                 personalBoardRepo.ensureFavoritesListExists()
                 val lists = personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
-                lists to personalBoardRepo.getListIdsForClimb(climbUuid)
+                identityUuids = boardRepository.equivalentClimbUuids(climbUuid)
+                lists to identityUuids.flatMap(personalBoardRepo::getListIdsForClimb).toSet()
             }
             _state.update {
                 AddToListState(
@@ -69,7 +73,9 @@ class AddToListViewModel @Inject constructor(
             val currentlyIn = _state.value.climbInListIds.contains(listId)
             withContext(Dispatchers.IO) {
                 if (currentlyIn) {
-                    personalBoardRepo.removeClimbFromList(listId, climbUuid)
+                    identityUuids.forEach { identity ->
+                        personalBoardRepo.removeClimbFromList(listId, identity)
+                    }
                 } else {
                     personalBoardRepo.addClimbToListAndExtendPlayback(
                         listId = listId,

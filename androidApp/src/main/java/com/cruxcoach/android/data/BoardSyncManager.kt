@@ -1,5 +1,6 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.util.LocalTransferLimits
 import android.content.Context
 import android.net.Network
 import android.util.Log
@@ -70,6 +71,8 @@ class BoardSyncManager(
     private val quantumCatalogueSync: QuantumCatalogueSync,
     private val integrityVerifier: IntegrityVerifier,
     private val moonBoardCsvImporter: MoonBoardCsvImporter? = null,
+    private val moonBoardBetaSync: MoonBoardBetaSync? = null,
+    private val boardBetaMediaSync: BoardBetaMediaSync? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val discoverInitialShare: suspend () -> LocalShareDiscovery.Found? = {
         LocalShareDiscovery(appContext).discover()
@@ -475,7 +478,11 @@ class BoardSyncManager(
                     return@safeLaunch
                 }
                 userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
-                val changedChunks = blossomSyncManager.getChangedChunks(manifest)
+                val changedChunks = blossomSyncManager.getChangedChunks(
+                    manifest,
+                    requiredImportVersion = BlossomSyncManager.BETA_IMPORT_VERSION,
+                    requiresImportVersion = { BlossomSyncManager.isBetaChunk(it) },
+                )
                 if (changedChunks.isEmpty()) {
                     blossomSyncManager.saveAcceptedManifestTimestamp(manifest)
                     Log.d(TAG, "All chunks up to date — skipping auto-sync")
@@ -920,14 +927,27 @@ class BoardSyncManager(
 
         scope.launch {
             try {
-                performBlossomSync()
+                val catalogueChanged = performBlossomSync()
                 // Refresh SQLite query-planner stats now the catalogue may
                 // have grown substantially (Kilter + MoonBoard imports both
                 // skip ANALYZE inline to keep the "finalizing" phase short).
                 // Runs detached, after performBlossomSync already signalled
                 // syncComplete, so it never extends the visible sync.
-                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
-                    .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                if (catalogueChanged) {
+                    runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
+                        .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                }
+                // Optional media starts only after every catalogue writer and
+                // planner maintenance have released the database. Starting it
+                // from the MoonBoard step made its short replacement writer
+                // contend with later board imports/ANALYZE and could stall
+                // first-browse queries even though the visible sync was done.
+                for (board in boardRepository.getClimbCountsByBrand().filterValues { it > 0 }.keys) {
+                    val mediaAvailable = boardBetaMediaSync?.sync(board, forceImport = catalogueChanged) == true
+                    if (board == "moonboard" && !mediaAvailable && _state.value.moonBoardError == null) {
+                        moonBoardBetaSync?.sync()
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
                 // Distinguish network failures (where the "prüfe Internet"
@@ -960,7 +980,7 @@ class BoardSyncManager(
         }
     }
 
-    private suspend fun performBlossomSync() {
+    private suspend fun performBlossomSync(): Boolean {
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
         val prioritisedBrand = activeBrand.takeIf {
             it.isInteractive && it != BoardBrand.KILTER
@@ -974,7 +994,7 @@ class BoardSyncManager(
         // Make the board selected during onboarding useful first. Its lane is
         // isolated and idempotent, so a failure cannot prevent the complete
         // all-catalogue pass (Kilter remains the historical main lane).
-        prioritisedBrand?.let { syncCatalogue(it) }
+        val prioritisedCatalogueChanged = prioritisedBrand?.let { syncCatalogue(it) } ?: false
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
         val manifestAcceptable = blossomSyncManager.canApplyManifest(manifest)
@@ -989,7 +1009,11 @@ class BoardSyncManager(
 
         // 2. Determine which chunks need downloading
         val chunksToDownload = if (manifestAcceptable) {
-            blossomSyncManager.getChangedChunks(manifest)
+            blossomSyncManager.getChangedChunks(
+                manifest,
+                requiredImportVersion = BlossomSyncManager.BETA_IMPORT_VERSION,
+                requiresImportVersion = { BlossomSyncManager.isBetaChunk(it) },
+            )
         } else {
             emptyList()
         }
@@ -1010,7 +1034,7 @@ class BoardSyncManager(
             )) }
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
-            syncRemainingCatalogues(activeBrand)
+            val remainingCatalogueChanged = syncRemainingCatalogues(activeBrand)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -1021,7 +1045,7 @@ class BoardSyncManager(
                 importStep = null,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
-            return
+            return prioritisedCatalogueChanged || remainingCatalogueChanged
         }
 
         // 3. Download and decompress changed chunks (semaphore-bounded parallel).
@@ -1104,6 +1128,7 @@ class BoardSyncManager(
             val climbFiles = mutableListOf<File>()
             val statFiles = mutableListOf<File>()
             val locationFiles = mutableListOf<File>()
+            val betaFiles = mutableListOf<File>()
             for (chunk in chunksToDownload) {
                 val file = chunkFiles[chunk.name] ?: continue
                 val resolvedType = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() } ?: inferType(chunk.name)
@@ -1112,10 +1137,11 @@ class BoardSyncManager(
                     "climbs" -> climbFiles.add(file)
                     "stats" -> statFiles.add(file)
                     "locations" -> locationFiles.add(file)
+                    "beta" -> betaFiles.add(file)
                 }
             }
 
-            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
+            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}, beta=${betaFiles.size}")
             var kilterDone: ImportStep.Done? = null
             withBackgroundThreadPriority {
                 importer.importFromChunks(
@@ -1123,6 +1149,7 @@ class BoardSyncManager(
                     climbsDbFiles = climbFiles,
                     statsDbFiles = statFiles,
                     locationsDbFiles = locationFiles,
+                    betaDbFiles = betaFiles,
                     onProgress = { step ->
                         if (step is ImportStep.Done) kilterDone = step
                         _state.update { it.copy(importStep = step) }
@@ -1148,7 +1175,12 @@ class BoardSyncManager(
                 // re-download, no hard failure.
                 chunksToDownload.forEach { chunk ->
                     if (chunkFiles.containsKey(chunk.name)) {
-                        blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                        blossomSyncManager.saveChunkHash(
+                            chunk.name, chunk.sha256,
+                            importVersion = if (BlossomSyncManager.isBetaChunk(chunk)) {
+                                BlossomSyncManager.BETA_IMPORT_VERSION
+                            } else null,
+                        )
                     }
                 }
                 Log.w(
@@ -1161,7 +1193,9 @@ class BoardSyncManager(
                 // Persist all hashes and advance their manifest watermark in
                 // one preferences edit only after every changed chunk imported.
                 // A partial run above remains resumable from the same manifest.
-                blossomSyncManager.saveCompletedManifest(manifest, chunksToDownload)
+                blossomSyncManager.saveCompletedManifest(
+                    manifest, chunksToDownload, BlossomSyncManager.BETA_IMPORT_VERSION,
+                )
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.
@@ -1187,6 +1221,7 @@ class BoardSyncManager(
                 importStep = null,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
+            return true
         } finally {
             chunkFiles.values.forEach { it.delete() }
         }
@@ -1230,6 +1265,8 @@ class BoardSyncManager(
                     false
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "MoonBoard catalogue sync threw — Kilter board sync unaffected", e)
             _state.update { it.copy(
@@ -1267,17 +1304,22 @@ class BoardSyncManager(
      * unchanged boards short-circuit to AlreadyCurrent on every later run,
      * so repeat syncs stay cheap.
      */
-    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand) {
+    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand): Boolean {
+        var imported = false
         catalogueSyncOrder(activeBrand)
             .filter { it != BoardBrand.KILTER && it != activeBrand }
-            .forEach { syncCatalogue(it) }
+            .forEach { brand ->
+                if (syncCatalogue(brand)) imported = true
+            }
+        return imported
     }
 
-    private suspend fun syncCatalogue(brand: BoardBrand) {
-        when {
+    private suspend fun syncCatalogue(brand: BoardBrand): Boolean {
+        return when {
             brand == BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
             brand == BoardBrand.QUANTUM -> syncQuantumBoard()
             brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> syncAuroraBoard(brand)
+            else -> false
         }
     }
 
@@ -1349,7 +1391,8 @@ class BoardSyncManager(
         val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
         if (brand == BoardBrand.KILTER) return  // Kilter handled by the main lane
         val loaded = withContext(Dispatchers.IO) {
-            (boardRepository.getClimbCountsByBrand()[brand.wireValue] ?: 0L) > 0L
+            // Presence needs one indexed row, not totals for every loaded board.
+            boardRepository.hasClimbsForBrand(brand.wireValue)
         }
         if (loaded) return
         if (!isWifiConnected(appContext)) {
@@ -1374,7 +1417,7 @@ class BoardSyncManager(
         // FEAT-037B: refresh planner stats for the freshly-imported single
         // board. The full Blossom sync analyzes via startBlossomSync; this
         // on-demand path otherwise left stale stats → slow first browse.
-        analyzeAfterSingleBoardImport(imported)
+        runPostSingleBoardImportTasks(brand, imported)
     }
 
     /**
@@ -1401,7 +1444,7 @@ class BoardSyncManager(
                 finishSyncSlot()
             }
             // FEAT-037B: refresh planner stats for the freshly-imported board.
-            analyzeAfterSingleBoardImport(imported)
+            runPostSingleBoardImportTasks(brand, imported)
         }
     }
 
@@ -1417,20 +1460,22 @@ class BoardSyncManager(
     }
 
     /**
-     * FEAT-037B: refresh SQLite query-planner stats after a single-board
-     * on-demand catalogue import ([ensureActiveBoardCatalogue] / [loadBoardCatalogue]).
-     * The full Blossom sync already runs [BoardDatabaseImporter.analyzeDatabase]
-     * once after [performBlossomSync]; the single-board picker paths previously
-     * skipped it, leaving stale stats so the first browse of a freshly-imported
-     * Aurora/MoonBoard board mis-planned and ran slow. Detached on [scope] so it
-     * never extends the visible sync, and import-gated because ANALYZE is a full
-     * pass (10-30s) — pointless when the board was already current.
+     * Run database maintenance and optional MoonBoard media after a scoped
+     * catalogue load has released the visible sync slot. ANALYZE remains
+     * import-gated; MoonBoard beta still checks for changes when the catalogue
+     * itself was already current. Keeping both operations in one coroutine
+     * guarantees that their writers cannot contend with each other.
      */
-    private fun analyzeAfterSingleBoardImport(imported: Boolean) {
-        if (!imported) return
-        scope.launch {
-            runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
-                .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
+    private fun runPostSingleBoardImportTasks(brand: BoardBrand, imported: Boolean) {
+        scope.safeLaunch(TAG) {
+            if (imported) {
+                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
+                    .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
+            }
+            val mediaAvailable = boardBetaMediaSync?.sync(brand.wireValue, forceImport = imported) == true
+            if (brand == BoardBrand.MOONBOARD && !mediaAvailable) {
+                moonBoardBetaSync?.sync()
+            }
         }
     }
 
@@ -1440,6 +1485,7 @@ class BoardSyncManager(
         name.startsWith("climbs") -> "climbs"
         name.startsWith("stats") -> "stats"
         name.startsWith("locations") -> "locations"
+        name.startsWith("beta") -> "beta"
         else -> "unknown"
     }
 
@@ -1543,6 +1589,7 @@ class BoardSyncManager(
         try {
             updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
             raw.delete()
+            LocalTransferLimits.requireSpace(appContext.cacheDir, board.uncompressedSizeBytes)
             require(board.compression == "gzip") { "Unsupported share compression" }
             ShareCompression.gunzip(
                 inputFile = compressed,
@@ -1882,12 +1929,20 @@ class BoardSyncManager(
                     kotlinx.coroutines.delay(retryAfterSec * 1000)
                 }
                 val totalBytes = connection.contentLengthLong
+                if (totalBytes >= 0) LocalTransferLimits.requireSize(totalBytes, LocalTransferLimits.MAX_DB_BYTES)
+                LocalTransferLimits.requireSpace(appContext.cacheDir, totalBytes.coerceAtLeast(0))
+                val transferStarted = System.nanoTime()
                 var bytesRead = 0L
                 connection.inputStream.use { input ->
                     java.io.FileOutputStream(tempFile).use { output ->
                         val buffer = ByteArray(65536)
                         var read: Int
                         while (input.read(buffer).also { read = it } != -1) {
+                            LocalTransferLimits.requireTime(transferStarted)
+                            LocalTransferLimits.requireSize(bytesRead + read, LocalTransferLimits.MAX_DB_BYTES)
+                            if (bytesRead % (4 * 1024 * 1024) < buffer.size) {
+                                LocalTransferLimits.requireSpace(appContext.cacheDir, read.toLong())
+                            }
                             output.write(buffer, 0, read)
                             bytesRead += read
                             _state.update { it.copy(

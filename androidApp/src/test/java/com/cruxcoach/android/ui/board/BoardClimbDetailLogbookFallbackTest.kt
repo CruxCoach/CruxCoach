@@ -112,9 +112,9 @@ class BoardClimbDetailLogbookFallbackTest {
         Dispatchers.resetMain()
     }
 
-    private fun buildViewModel(): BoardClimbDetailViewModel {
+    private fun buildViewModel(author: String? = null): BoardClimbDetailViewModel {
         val savedState = SavedStateHandle(
-            mapOf("climbUuid" to missingUuid, "angle" to angle.toString())
+            mapOf("climbUuid" to missingUuid, "angle" to angle.toString(), "author" to author)
         )
         return BoardClimbDetailViewModel(
             savedStateHandle = savedState,
@@ -137,6 +137,21 @@ class BoardClimbDetailLogbookFallbackTest {
             climbNavState = mockk(relaxed = true),
             context = context,
         )
+    }
+
+    @Test
+    fun addressedLinkDoesNotDisplayAnotherAuthorsClimb() = runTest {
+        val wrong = mockk<com.cruxcoach.data.repository.ClimbWithStats>(relaxed = true)
+        every { wrong.createdByPubkey } returns "bb".repeat(32)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns wrong
+        coEvery { personalBoardRepo.getUserHistoryForClimb(any()) } returns emptyList()
+        val vm = buildViewModel(author = "aa".repeat(32))
+        vm.state.test {
+            var state = awaitItem()
+            while (state.isLoading) state = awaitItem()
+            assertNull(state.climb)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     private fun ascent(uuid: String) = AscentWithClimb(

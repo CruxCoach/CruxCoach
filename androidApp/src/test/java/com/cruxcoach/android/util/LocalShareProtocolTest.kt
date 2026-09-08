@@ -757,6 +757,31 @@ class LocalShareProtocolTest {
         assertFalse(File(target.path + ".part").exists())
     }
 
+    @Test
+    fun receiverRejectsOversizedManifestBeforeRequestingArtifact() {
+        val json = manifestJson(LocalShareProtocol.APK_PATH, "aa".repeat(32))
+        assertEquals(42L, LocalShareProtocol.parseManifest(json).apk.sizeBytes)
+        assertFailsWith<LocalTransferLimits.LimitExceeded> {
+            LocalShareProtocol.parseManifest(json.replace("\"sizeBytes\": 42", "\"sizeBytes\": ${LocalTransferLimits.MAX_APK_BYTES + 1}"))
+        }
+    }
+
+    @Test
+    fun directOversizedArtifactCannotBypassManifestGuardOrKeepItsPartial() = runBlocking {
+        val target = File(tempDir, "oversize.apk")
+        val part = File(target.path + ".part").apply { writeText("partial") }
+        val network = mockk<Network>() // no request is allowed to reach this mock
+        assertFailsWith<LocalTransferLimits.LimitExceeded> {
+            LocalShareClient().downloadResumable(
+                network, "http://192.168.1.1:8080",
+                LocalShareProtocol.Artifact(LocalShareProtocol.APK_PATH, LocalTransferLimits.MAX_APK_BYTES + 1, "aa".repeat(32)),
+                target,
+            ) { _, _ -> error("oversized transfer made progress") }
+        }
+        assertFalse(part.exists())
+        assertFalse(target.exists())
+    }
+
     private fun manifestJson(apkPath: String, hash: String): String = """
         {
           "protocolVersion": 1,

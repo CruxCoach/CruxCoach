@@ -103,6 +103,65 @@ CREATE TABLE quantum_route_refs (
 CREATE INDEX idx_quantum_route_refs_external
     ON quantum_route_refs(route_uuid, model);
 
+-- Optional board-scoped beta-video metadata. MoonBoard synchronizes this in
+-- an independent media lane; Aurora-family catalogues may carry it inline.
+CREATE TABLE climb_beta_links (
+    board_brand TEXT NOT NULL,
+    climb_uuid TEXT NOT NULL,
+    url TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    media_id TEXT,
+    foreign_username TEXT,
+    angle INTEGER,
+    thumbnail TEXT,
+    created_at TEXT,
+    PRIMARY KEY(board_brand, climb_uuid, url)
+);
+
+CREATE INDEX idx_climb_beta_links_detail
+    ON climb_beta_links(board_brand, climb_uuid, angle);
+
+-- Small, publisher-verified identity bridge for exact duplicate legacy
+-- MoonBoard rows. The catalogue keeps every legacy row listed for released
+-- clients; this generation can hide only these aliases locally and resolve
+-- secure user data without rewriting it.
+CREATE TABLE moonboard_climb_aliases (
+    alias_uuid TEXT NOT NULL PRIMARY KEY,
+    canonical_uuid TEXT NOT NULL,
+    match_kind TEXT NOT NULL
+);
+
+CREATE INDEX idx_moonboard_climb_aliases_canonical
+    ON moonboard_climb_aliases(canonical_uuid);
+
+getMoonBoardCanonicalUuid:
+SELECT canonical_uuid FROM moonboard_climb_aliases
+WHERE alias_uuid = :climbUuid
+LIMIT 1;
+
+getMoonBoardAliasesForCanonical:
+SELECT alias_uuid FROM moonboard_climb_aliases
+WHERE canonical_uuid = :canonicalUuid;
+
+getMoonBoardAliasMappings:
+SELECT alias_uuid, canonical_uuid FROM moonboard_climb_aliases
+WHERE alias_uuid IN :uuids;
+
+getClimbBetaLinks:
+SELECT board_brand, climb_uuid, url, provider, media_id, foreign_username,
+       angle, thumbnail, created_at
+FROM climb_beta_links
+WHERE board_brand = :boardBrand
+  AND climb_uuid = COALESCE(
+    (SELECT canonical_uuid FROM moonboard_climb_aliases
+     WHERE alias_uuid = :climbUuid AND :boardBrand = 'moonboard' LIMIT 1),
+    :climbUuid
+  )
+ORDER BY CASE WHEN angle = :angle THEN 0 WHEN angle IS NULL THEN 1 ELSE 2 END,
+         CASE WHEN NULLIF(TRIM(thumbnail), '') IS NOT NULL THEN 0 ELSE 1 END,
+         julianday(created_at) DESC,
+         angle, provider, url;
+
 -- Lossless Quantum-only vendor metadata. Kept out of the generic climbs table
 -- so established board schemas and browse semantics stay unchanged. Boolean
 -- columns are positive facts from the eWalls payload; absence is not inferred
@@ -620,10 +679,52 @@ browseByDifficultyAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY difficulty_average IS NULL, difficulty_average ASC LIMIT :limit OFFSET :offset;
 
 browseByAscensionistsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+WITH sampled(uuid) AS (
+  SELECT cs.climb_uuid
+  FROM climb_stats cs INDEXED BY idx_climb_stats_by_popularity
+  CROSS JOIN climbs c INDEXED BY sqlite_autoindex_climbs_1 ON c.uuid = cs.climb_uuid
+  WHERE cs.layout_id = :layoutId AND cs.angle = :angle
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND c.board_brand = :boardBrand AND c.is_listed = 1
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  ORDER BY cs.ascensionist_count DESC
+  LIMIT :limit OFFSET :offset
+)
+SELECT climb_browse.* FROM sampled
+CROSS JOIN climb_browse ON climb_browse.uuid = sampled.uuid AND climb_browse.angle = :angle
+ORDER BY climb_browse.ascensionist_count DESC;
 
 browseByAscensionistsAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+WITH sampled(uuid) AS (
+  SELECT cs.climb_uuid
+  FROM climb_stats cs INDEXED BY idx_climb_stats_by_popularity
+  CROSS JOIN climbs c INDEXED BY sqlite_autoindex_climbs_1 ON c.uuid = cs.climb_uuid
+  WHERE cs.layout_id = :layoutId AND cs.angle = :angle
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND c.board_brand = :boardBrand AND c.is_listed = 1
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  ORDER BY cs.ascensionist_count ASC
+  LIMIT :limit OFFSET :offset
+)
+SELECT climb_browse.* FROM sampled
+CROSS JOIN climb_browse ON climb_browse.uuid = sampled.uuid AND climb_browse.angle = :angle
+ORDER BY climb_browse.ascensionist_count ASC;
 
 -- Newest-first: ORDER BY climbs.created_at (exposed by climb_browse since
 -- 23.sqm). created_at is TEXT in two shapes — catalogue rows
@@ -762,13 +863,57 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 browseByQualitySendsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
 
--- Random order over the filtered set. Pagination is independently random
--- per page (SQLite RANDOM() is non-deterministic across calls); scrolling
--- yields more random results rather than a stable shuffled list. Browse
--- mode bypasses this query via the VM's UUID-shuffle cache (see
--- [browseAllMatchingUuids]); only the search+random combo still hits it.
+-- Fast random page. ORDER BY RANDOM() materialized and sorted the complete
+-- filtered Kilter set before returning 50 rows (16-17s on the Nokia). Starting
+-- at a random climb_stats rowid gives a circular sample without a temp B-tree.
+-- Scan the narrow stats table first: a UUID scan needs one random stats-index
+-- lookup per rejected climb and is just as slow for selective filters. NOT
+-- INDEXED is intentional so SQLite uses a rowid range seek, then reads stats
+-- sequentially and only looks up climb metadata for candidates. The fixed
+-- angle makes each matching climb unique in this scan. The outer lookup
+-- materializes only the sampled rows in the canonical climb_browse shape.
 browseRandom:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
+WITH pivot(value) AS (
+  SELECT (RANDOM() & 9223372036854775807)
+    % ((SELECT IFNULL(MAX(rowid), 0) FROM climb_stats) + 1)
+),
+sampled(uuid) AS (
+  SELECT cs.climb_uuid
+  FROM climb_stats cs NOT INDEXED
+  CROSS JOIN climbs c INDEXED BY sqlite_autoindex_climbs_1 ON c.uuid = cs.climb_uuid
+  WHERE cs.rowid >= (SELECT value FROM pivot) AND c.is_listed = 1
+    AND cs.layout_id = :layoutId AND c.board_brand = :boardBrand AND cs.angle = :angle
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  UNION ALL
+  SELECT cs.climb_uuid
+  FROM climb_stats cs NOT INDEXED
+  CROSS JOIN climbs c INDEXED BY sqlite_autoindex_climbs_1 ON c.uuid = cs.climb_uuid
+  WHERE cs.rowid < (SELECT value FROM pivot) AND c.is_listed = 1
+    AND cs.layout_id = :layoutId AND c.board_brand = :boardBrand AND cs.angle = :angle
+    AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+    AND ((cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff)
+         OR (:showUngraded = 1 AND cs.difficulty_average IS NULL))
+    AND COALESCE(cs.ascensionist_count, 0) >= :minAsc
+    AND (c.hsm & :hsmExcludedMask) = 0
+    AND (:selProductSizeId <= 0 OR EXISTS (
+      SELECT 1 FROM product_sizes ps
+      WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand
+        AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right
+          AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))))
+  LIMIT :limit OFFSET :offset
+)
+SELECT climb_browse.*
+FROM sampled
+CROSS JOIN climb_browse ON climb_browse.uuid = sampled.uuid AND climb_browse.angle = :angle;
 
 -- UUID-only projection of the entire browse-filter match set, no order
 -- and no limit. Backs the Kotlin-side stable shuffle for RANDOM sort:
@@ -1017,7 +1162,9 @@ SELECT COUNT(*) FROM climbs;
 -- scan; called on demand (sync-complete / sync screen open), not per-frame.
 -- Brands with no rows are simply absent from the result (= not loaded).
 countClimbsByBrand:
-SELECT board_brand AS boardBrand, COUNT(*) AS climbCount FROM climbs GROUP BY board_brand;
+SELECT board_brand AS boardBrand, COUNT(*) AS climbCount
+FROM climbs INDEXED BY idx_climbs_board_brand
+GROUP BY board_brand;
 
 -- O(1) "do we have any climbs at all" check. Use this anywhere the
 -- caller only needs a boolean — countClimbs is a full table-scan
@@ -1482,6 +1629,9 @@ WHERE climb_uuid IN (
     SELECT uuid FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
 );
 
+deleteClimbBetaLinksForBrand:
+DELETE FROM climb_beta_links WHERE board_brand = :boardBrand;
+
 deleteCatalogueClimbsForBrand:
 DELETE FROM climbs WHERE board_brand = :boardBrand AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'));
 
@@ -1546,6 +1696,9 @@ DELETE FROM sync_states;
 
 deleteAllBetaLinks:
 DELETE FROM beta_links;
+
+deleteAllClimbBetaLinks:
+DELETE FROM climb_beta_links;
 
 
 -- LED grid with coordinates for animations (joins placement coords + LED positions)
@@ -2045,12 +2198,12 @@ LIMIT ?;
 -- table so a worker that ran since boot reflects in the UI.
 getKilterPublishQueueStats:
 SELECT
-    (SELECT COUNT(*) FROM climbs
+    (SELECT COUNT(*) FROM climbs INDEXED BY idx_climbs_origin
      WHERE origin = 'cruxcoach'
        AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
        AND (kilter_status IS NULL OR kilter_status = 'failed')) AS pending_count,
-    (SELECT COUNT(*) FROM climbs
+    (SELECT COUNT(*) FROM climbs INDEXED BY idx_climbs_origin
      WHERE origin = 'cruxcoach'
        AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
@@ -2630,3 +2783,7 @@ SELECT
     COUNT(*) AS total_count,
     SUM(CASE WHEN retry_count >= :maxRetries THEN 1 ELSE 0 END) AS abandoned_count
 FROM community_climb_dead_letters;
+
+-- Same search predicates as searchRandom; shuffle these identities once per query.
+searchAllMatchingUuids:
+SELECT uuid FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))));

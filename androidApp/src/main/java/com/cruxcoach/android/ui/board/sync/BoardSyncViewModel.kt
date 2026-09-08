@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
@@ -65,7 +66,11 @@ class BoardSyncViewModel @Inject constructor(
      *  composition and whenever a sync completes. */
     fun refreshBoardCounts() {
         viewModelScope.launch {
-            _boardCounts.value = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
+            _boardCounts.value = withContext(Dispatchers.IO) {
+                PerfLogger.traceQuery("boardSync.countClimbsByBrand") {
+                    boardRepository.getClimbCountsByBrand()
+                }
+            }
         }
     }
 

@@ -256,6 +256,9 @@ class FakeBoardRepository : BoardRepository {
     ): List<ClimbWithStats> =
         climbs.filter { it.uuid in uuids && matchesBoardScope(it, boardBrand, layoutId) }.distinctBy { it.uuid }
 
+    override fun getAllSearchMatchingUuids(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): List<String> =
+        searchClimbsByName(query, angle, layoutId, boardBrand, ClimbSortField.NAME, SortDirection.ASC, Int.MAX_VALUE, 0, climbType, selProductSizeId, hsmExcludedMask).map { it.uuid }
+
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,

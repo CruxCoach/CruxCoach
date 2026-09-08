@@ -1,0 +1,132 @@
+{
+  "generated_at": "2026-09-01T15:39:30.570Z",
+  "venue_features": 2866,
+  "raw_entries": 3176,
+  "venues_with_multiple_boards": 155,
+  "country_from_coder": 2866,
+  "country_from_fallback": 0,
+  "country_missing": 0,
+  "city_from_upstream": 1161,
+  "city_from_nearest": 1582,
+  "city_missing": 123,
+  "nearest_city_max_km": 25,
+  "exclusions": {
+    "defined": 101,
+    "matched_venues": 35,
+    "excluded_entries": 36,
+    "unmatched": 66
+  },
+  "overrides": {
+    "defined": 132,
+    "applied": 132,
+    "unmatched": 0,
+    "conflicts": 220
+  },
+  "wellpass": {
+    "defined": 88,
+    "applied": 88,
+    "unmatched": 0
+  },
+  "venue_links": {
+    "defined": 1836,
+    "applied": 1836,
+    "matched_by_proximity": 0,
+    "unmatched": 0,
+    "ambiguous": 0,
+    "private_refused": 0,
+    "rejected": 0,
+    "countries": 64,
+    "by_provenance": {
+      "official-chain-page": 121,
+      "official-location-page": 669,
+      "official-site": 1046
+    }
+  },
+  "venue_hours": {
+    "defined": 1351,
+    "applied": 1351,
+    "matched_by_proximity": 0,
+    "unmatched": 0,
+    "ambiguous": 0,
+    "private_refused": 0,
+    "rejected": 0,
+    "countries": 60,
+    "open_24h_days": 36,
+    "by_provenance": {
+      "official-chain-page": 110,
+      "official-location-page": 528,
+      "official-site": 713
+    }
+  },
+  "per_board": {
+    "kilter": 1154,
+    "tension": 371,
+    "grasshopper": 42,
+    "decoy": 24,
+    "soill": 12,
+    "touchstone": 5,
+    "aurora": 3,
+    "moonboard": 1546,
+    "12climb": 7,
+    "quantum": 12
+  },
+  "per_source": {
+    "hangtime": 3050,
+    "curated": 114,
+    "quantum": 12
+  },
+  "sources": {
+    "hangtime": {
+      "package": "@hangtime/climbing-boards",
+      "version": "1.0.93",
+      "counts": {
+        "kilter": {
+          "kept": 1126,
+          "dropped": 0
+        },
+        "tension": {
+          "kept": 368,
+          "dropped": 0
+        },
+        "grasshopper": {
+          "kept": 42,
+          "dropped": 0
+        },
+        "decoy": {
+          "kept": 24,
+          "dropped": 0
+        },
+        "soill": {
+          "kept": 12,
+          "dropped": 0
+        },
+        "touchstone": {
+          "kept": 5,
+          "dropped": 0
+        },
+        "aurora": {
+          "kept": 3,
+          "dropped": 0
+        },
+        "moonboard": {
+          "kept": 1502,
+          "dropped": 12
+        },
+        "12climb": {
+          "kept": 4,
+          "dropped": 31
+        }
+      }
+    },
+    "curated": {
+      "entries": 114,
+      "verified_on": "2026-09-01",
+      "policy": "official-venue-pages"
+    },
+    "quantum": {
+      "kind": "curated-primary-source-allowlist",
+      "checked_at": "2026-09-01",
+      "locations": 12
+    }
+  }
+}

@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -126,7 +127,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
         // Delivers gift-wrapped DMs with sub-3-second latency while the
         // process is alive; NotificationPollWorker (15 min) remains the
         // backstop for when the process gets killed.
-        PerfLogger.trace("NostrPushCoordinator.start") { pushCoordinator.get().start() }
+        // Constructing the message graph opens SQLCipher. On older phones that
+        // can take seconds; only lifecycle registration belongs on the UI thread.
+        appScope.launch {
+            val coordinator = PerfLogger.trace("NostrPushCoordinator.create") { pushCoordinator.get() }
+            withContext(Dispatchers.Main.immediate) {
+                PerfLogger.trace("NostrPushCoordinator.start") { coordinator.start() }
+            }
+        }
 
         // Auto-recovery from "reconnect attempts exhausted" after long
         // offline periods — re-triggers reconnect on every new Network.

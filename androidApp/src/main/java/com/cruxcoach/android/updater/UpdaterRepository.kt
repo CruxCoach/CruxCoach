@@ -537,7 +537,7 @@ class UpdaterRepository @Inject constructor(
             "event=download_complete version=${info.versionName} " +
                 "source=$sourceIndex bytes=${apk.length()}",
         )
-        when (val result = verifier.verify(apk, info.apkSha256)) {
+        when (val result = verifier.verify(apk, info.apkSha256, info.versionName)) {
             IntegrityVerifier.Result.Ok -> {
                 Log.i(
                     TAG,

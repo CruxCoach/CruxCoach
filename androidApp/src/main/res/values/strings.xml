@@ -282,6 +282,10 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
+    <string name="map_search_open">Search map</string>
+    <string name="map_search_close">Close search</string>
+    <string name="map_search_hint">Gym, city or board</string>
+    <string name="map_search_no_results">No gyms or places found</string>
     <string name="cd_map">Discover boards on the map</string>
     <string name="map_filter_show_all">All</string>
     <string name="map_filter_show_original">Commercial gyms (Original)</string>
@@ -314,6 +318,10 @@
     <string name="map_filter_sheet_title">Filter map</string>
     <string name="map_filter_section_layout">Layout</string>
     <string name="map_filter_section_access">Access</string>
+    <string name="map_filter_section_moon_variant">MoonBoard variant</string>
+    <string name="map_filter_section_moon_type">MoonBoard setup</string>
+    <string name="map_filter_section_moon_led">MoonBoard hardware</string>
+    <string name="map_filter_moon_no_led">No LED</string>
     <string name="map_filter_section_adjustability">Adjustability</string>
     <string name="map_filter_section_size">Size</string>
     <string name="map_filter_section_country">Country</string>
@@ -888,6 +896,18 @@
 
     <!-- Board: Lists -->
     <string name="board_lists_title">Lists</string>
+    <string name="board_browser_nav_board">Board</string>
+    <string name="board_browser_nav_filter">Filter</string>
+    <string name="board_browser_nav_logbook">Logbook</string>
+    <string name="board_browser_nav_lists">Lists</string>
+    <string name="board_browser_nav_more">More</string>
+    <string name="board_browser_change_board">Change active board</string>
+    <string name="cd_open_menu">Open main menu</string>
+    <string name="main_menu_title">Main menu</string>
+    <string name="main_menu_training">Training</string>
+    <string name="main_menu_board_map">Board map</string>
+    <string name="board_browser_connect">Connect board</string>
+    <string name="board_browser_connected">Board connected</string>
     <string name="board_lists_delete_title">Delete list?</string>
     <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
     <string name="board_lists_empty_title">No lists yet</string>
@@ -907,13 +927,18 @@
     <!-- Board: Ascent Logging -->
     <string name="board_ascent_edit_title">Edit ascent</string>
     <string name="board_ascent_log_title">Log ascent</string>
-    <string name="board_ascent_type">Type:</string>
-    <string name="board_ascent_benchmark_label">Benchmark:</string>
-    <string name="board_ascent_benchmark_attempt">Benchmark attempt</string>
-    <string name="board_ascent_attempts">Attempts: %d</string>
+    <string name="board_ascent_type">Result</string>
+    <string name="board_ascent_benchmark_label">Benchmark</string>
+    <string name="board_ascent_benchmark_attempt">Mark as benchmark</string>
+    <string name="board_ascent_attempts">Attempts</string>
+    <string name="board_ascent_attempt_count">Attempt count: %d</string>
+    <string name="cd_decrease_attempt_count">Decrease attempt count</string>
+    <string name="cd_increase_attempt_count">Increase attempt count</string>
     <string name="board_ascent_first_try">Sent · 1st try</string>
     <string name="board_ascent_open_one">Open · 1 attempt</string>
-    <string name="board_ascent_quality">Quality:</string>
+    <string name="board_ascent_quality">Quality</string>
+    <string name="board_ascent_quality_none">No quality rating</string>
+    <string name="board_ascent_quality_selected">%d of 5 stars</string>
     <string name="board_ascent_comment">Comment (optional)</string>
 
     <!-- Board: Session Summary -->
@@ -2715,4 +2740,12 @@
         <item quantity="one">Already on the playlist once</item>
         <item quantity="other">Already on the playlist %1$d times</item>
     </plurals>
+    <string name="beta_videos">Beta videos (%1$d)</string>
+    <string name="beta_video_open">Open beta video %1$d</string>
+    <string name="beta_video_other_angle">%1$d° video</string>
+    <string name="beta_video_open_failed">No app or browser could open this beta video.</string>
+    <string name="beta_video_external_hint">Watch in the provider’s app or browser.</string>
+    <string name="beta_video_number">Beta video %1$d</string>
+    <string name="beta_video_current_angle">%1$d° · Current angle</string>
+    <string name="beta_video_close">Close beta videos</string>
 </resources>

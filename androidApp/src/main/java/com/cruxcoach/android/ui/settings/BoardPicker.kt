@@ -120,8 +120,16 @@ class BoardPickerViewModel @Inject constructor(
             }
             if (sizes.isNotEmpty()) productSizes.value = sizes
             // Which boards are actually loaded — hides the download hint for them.
+            // A grouped COUNT over the full catalogue used to monopolize the
+            // database connection for several seconds on slower devices.  We
+            // only need presence here, and board_brand has an index, so one
+            // early-exit EXISTS probe per known brand is both exact and cheap.
             val loaded = withContext(Dispatchers.IO) {
-                boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
+                BoardBrand.entries
+                    .asSequence()
+                    .filter { boardRepository.hasClimbsForBrand(it.wireValue) }
+                    .map { it.wireValue }
+                    .toSet()
             }
             loadedBrands.value = loaded
             // Picker-ready (deduped) product sizes for every interactive Aurora

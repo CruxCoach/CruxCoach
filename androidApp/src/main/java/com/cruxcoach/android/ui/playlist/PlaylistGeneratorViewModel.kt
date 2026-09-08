@@ -562,28 +562,30 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 val result = PerfLogger.traceSuspend("playlist.generate total") {
                     withContext(Dispatchers.IO) {
                         val ignored = PerfLogger.traceQuery("playlist.ignored") {
-                            personalBoardRepo.getIgnoredClimbUuids()
+                            boardRepository.canonicalizeClimbUuids(
+                                personalBoardRepo.getIgnoredClimbUuids()
+                            )
                         }
                         val logbook = PerfLogger.traceQuery("playlist.logbookSnapshot") {
                             personalBoardRepo.getUserLogbookAllLight()
                         }
-                        val sent = logbook.asSequence()
+                        val sent = boardRepository.canonicalizeClimbUuids(logbook.asSequence()
                             .filter { it.isSend }
                             .map { it.climbUuid }
-                            .toSet()
-                        val attempted = logbook.asSequence()
-                            .filter { !it.isSend && it.climbUuid !in sent }
+                            .toSet())
+                        val attempted = boardRepository.canonicalizeClimbUuids(logbook.asSequence()
+                            .filter { !it.isSend }
                             .map { it.climbUuid }
-                            .toSet()
+                            .toSet()) - sent
                         // Fresh-stimulus bias: anything logged in the last ~2 weeks
                         // ranks behind untouched material of equal quality.
                         val recentCutoff = java.time.LocalDate.now()
                             .minusDays(RECENT_REPEAT_DAYS)
                             .toString()
-                        val recentUuids = logbook.asSequence()
+                        val recentUuids = boardRepository.canonicalizeClimbUuids(logbook.asSequence()
                             .filter { it.climbedAt.take(10) >= recentCutoff }
                             .map { it.climbUuid }
-                            .toSet()
+                            .toSet())
 
                         fun loadCandidates(
                             minDiff: Double,

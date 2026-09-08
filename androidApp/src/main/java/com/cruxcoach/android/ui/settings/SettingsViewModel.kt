@@ -163,6 +163,7 @@ class SettingsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
+    private var kilterPublishQueueStatsLoaded = false
 
     init {
         loadSettings()
@@ -237,9 +238,6 @@ class SettingsViewModel @Inject constructor(
                 val unreadAnnouncements = announcementRepository.getUnreadCount().toInt()
                 val darkMode = userPreferences.darkMode.first()
                 val advertisingSupported = climbAdvertiser.checkSupported()
-                val queueStats = runCatching { boardRepository.getKilterPublishQueueStats() }
-                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
-
                 val profileForm = if (profile != null) {
                     val gradeIndex = GradeConverter.gradeToIndex(profile.maxBoulderGrade)
                         .let { if (it < 0) 6 else it }
@@ -308,9 +306,6 @@ class SettingsViewModel @Inject constructor(
                         lastSync = userPreferences.kilterLastSync.first(),
                         pushEnabled = userPreferences.kilterPushEnabled.first(),
                         climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
-                        publishPendingCount = queueStats.pendingCount,
-                        publishFailedCount = queueStats.failedCount,
-                        publishLastAttemptAtMs = queueStats.lastAttemptAtMs,
                     )
                 )
             }
@@ -384,6 +379,29 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.announcementCatGeneral.collect { v -> _state.update { it.copy(announcementCatGeneral = v) } } }
             launch { queueManager.queuedCount.collect { v -> _state.update { it.copy(queuedCount = v) } } }
             launch { queueManager.refreshCount() }
+        }
+    }
+
+    /**
+     * Load the Kilter publish-queue card only when its collapsed settings
+     * section is opened.  The values are irrelevant to initial Settings and
+     * used to make that screen wait on two catalogue COUNTs on slower phones.
+     */
+    fun loadKilterPublishQueueStats() {
+        if (kilterPublishQueueStatsLoaded) return
+        kilterPublishQueueStatsLoaded = true
+        viewModelScope.launch {
+            val stats = withContext(Dispatchers.IO) {
+                runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
+            }
+            _state.update {
+                it.copy(kilterAccount = it.kilterAccount.copy(
+                    publishPendingCount = stats.pendingCount,
+                    publishFailedCount = stats.failedCount,
+                    publishLastAttemptAtMs = stats.lastAttemptAtMs,
+                ))
+            }
         }
     }
 

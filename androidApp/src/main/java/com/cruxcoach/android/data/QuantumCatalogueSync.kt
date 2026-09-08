@@ -55,17 +55,27 @@ class QuantumCatalogueSync @Inject constructor(
                     return@withContext Result.AlreadyCurrent
                 }
                 val chunk = manifest.chunks.single()
-                if (blossom.getChangedChunks(manifest).isEmpty()) {
+                if (blossom.getChangedChunks(manifest, BlossomSyncManager.BETA_IMPORT_VERSION).isEmpty()) {
                     blossom.saveAcceptedManifestTimestamp(manifest)
                     return@withContext Result.AlreadyCurrent
                 }
                 val output = File(context.cacheDir, "quantum_${chunk.name}.sqlite3")
                 try {
-                    blossom.downloadAndDecompressChunk(chunk, output) { done, total ->
-                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.DownloadChunk(
-                            chunk.name, 0, 1, done, total, done, chunk.size,
-                        ))
-                    }
+                    blossom.downloadAndDecompressChunk(
+                        chunk = chunk,
+                        outputFile = output,
+                        onProgress = { done, total ->
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.DownloadChunk(
+                                chunk.name, 0, 1, done, total, done, chunk.size,
+                            ))
+                        },
+                        onVerifying = {
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.VerifyingSnapshot)
+                        },
+                        onDecompressing = {
+                            onProgress?.invoke(BoardDatabaseImporter.ImportStep.Extract)
+                        },
+                    )
                     var count = 0L
                     withBackgroundThreadPriority {
                         importer.importQuantumSnapshot(output) { step ->
@@ -73,7 +83,7 @@ class QuantumCatalogueSync @Inject constructor(
                             onProgress?.invoke(step)
                         }
                     }
-                    blossom.saveCompletedManifest(manifest, listOf(chunk))
+                    blossom.saveCompletedManifest(manifest, listOf(chunk), BlossomSyncManager.BETA_IMPORT_VERSION)
                     Result.Imported(count)
                 } finally {
                     output.delete()

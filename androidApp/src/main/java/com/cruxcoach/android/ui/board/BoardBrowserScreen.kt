@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -57,6 +56,7 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -78,6 +78,7 @@ import com.cruxcoach.android.util.PerfLogger
 @Composable
 fun BoardBrowserScreen(
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+    onOpenMenu: () -> Unit = {},
     onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
@@ -85,7 +86,6 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
-    onNavigateToMap: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -95,6 +95,8 @@ fun BoardBrowserScreen(
     var showEndSessionDialog by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
     var showMismatchPicker by remember { mutableStateOf(false) }
+    var showBoardPicker by remember { mutableStateOf(false) }
+    var showGymSearch by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
@@ -214,6 +216,26 @@ fun BoardBrowserScreen(
             },
         )
     }
+    if (showBoardPicker) {
+        BoardPickerDialog(
+            onDismiss = { showBoardPicker = false },
+            onSelected = { showBoardPicker = false },
+            onFindViaGym = {
+                showBoardPicker = false
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardPicker = true
+            },
+            onDismiss = { showGymSearch = false },
+        )
+    }
     if (showMismatchPicker) {
         queueState.boardMismatch?.let { mismatch ->
             BoardPickerDialog(
@@ -300,81 +322,20 @@ fun BoardBrowserScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            // The title wrapped to two lines on a narrow screen and pushed the
-            // whole row of actions down with it. The logo says the same thing
-            // in a quarter of the width, and it is the natural place to hang a
-            // drawer off later.
-            title = {},
-            navigationIcon = {
-                // The same two layers the splash screen uses (see ic_splash.xml):
-                // a black disc, then the launcher foreground on top. The logo's
-                // centre is transparent, so without the disc the X would sit on
-                // whatever is behind and the ring would read as a broken shape.
-                //
-                // Not R.mipmap.ic_launcher_round — that is an <adaptive-icon>,
-                // which Compose cannot load at all and which took the whole
-                // browser down on open. Not the monochrome vector either: that
-                // is the flat themed-icon variant and loses the gradient.
-                //
-                // Placed in a plain Box rather than an IconButton so it can sit
-                // close to the edge and fill the bar; a drawer click target can
-                // be added here later without moving it.
-                Box(
-                    modifier = Modifier
-                        .padding(start = 10.dp)
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black)
-                        .testTag("board_browser_home"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        contentDescription = stringResource(R.string.board_browser_title),
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            },
-            actions = {
-                IconButton(
-                    onClick = { showBleSheet = true },
-                    modifier = Modifier.testTag("board_ble_button")
-                ) {
-                    Icon(
-                        if (isBleConnected) Icons.Default.BluetoothConnected
-                        else Icons.Default.Bluetooth,
-                        contentDescription = stringResource(R.string.cd_bluetooth),
-                        tint = if (isBleConnected) SuccessGreen
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(
-                    onClick = onNavigateToFilter,
-                    modifier = Modifier.testTag("board_filter_toggle")
-                ) {
-                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.cd_filter))
-                }
-                IconButton(
-                    onClick = onNavigateToLogbook,
-                    modifier = Modifier.testTag("board_logbook_icon")
-                ) {
-                    Icon(Icons.Default.Book, contentDescription = stringResource(R.string.board_logbook_title))
-                }
-                IconButton(
-                    onClick = onNavigateToLists,
-                    modifier = Modifier.testTag("board_lists_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
-                }
-                IconButton(
-                    onClick = onNavigateToSettings,
-                    modifier = Modifier.testTag("board_settings_button")
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.cd_settings))
-                }
-            },
-            windowInsets = WindowInsets(0.dp)
+        BoardBrowserHeader(
+            context = boardBrowserHeaderContext(
+                boardBrand = state.filter.boardBrand,
+                layoutId = state.filter.layoutId,
+                boardSize = state.boardSize,
+            ),
+            isBleConnected = isBleConnected,
+            onOpenMenu = onOpenMenu,
+            onBoardPicker = { showBoardPicker = true },
+            onBluetooth = { showBleSheet = true },
+            onFilter = onNavigateToFilter,
+            onLogbook = onNavigateToLogbook,
+            onLists = onNavigateToLists,
+            onSettings = onNavigateToSettings,
         )
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
@@ -558,19 +519,6 @@ fun BoardBrowserScreen(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = onNavigateToMap,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("board_map_button")
-                    ) {
-                        Icon(
-                            Icons.Outlined.Map,
-                            contentDescription = stringResource(R.string.cd_map),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
                     }
                 }
             }
