@@ -9,6 +9,9 @@
 
 Open-source multi-board climbing and training app for Android.
 
+**Primary repository, issues and pull requests:** [GitHub](https://github.com/CruxCoach/CruxCoach).
+[Codeberg](https://codeberg.org/CruxCoach/CruxCoach) is the secondary source and release mirror.
+
 Browse climbs, control supported LED boards over Bluetooth, play training playlists, import your Kilter or MoonBoard logbook and track your progress — with no mandatory account, no ads and full control over your data.
 
 ## 📲 Get the app
@@ -18,12 +21,12 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
     <img src="https://img.shields.io/badge/Zapstore-recommended-7c3aed?style=for-the-badge&logo=android&logoColor=white" alt="Install via Zapstore">
   </a>
   &nbsp;
-  <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">
-    <img src="https://img.shields.io/badge/Codeberg-latest_APK-2185d0?style=for-the-badge&logo=codeberg&logoColor=white" alt="Download latest APK from Codeberg">
+  <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">
+    <img src="https://img.shields.io/badge/GitHub-latest_APK-24292f?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download latest APK from GitHub (primary)">
   </a>
   &nbsp;
-  <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">
-    <img src="https://img.shields.io/badge/GitHub-latest_APK-24292f?style=for-the-badge&logo=github&logoColor=white" alt="Download latest APK from GitHub">
+  <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">
+    <img src="https://img.shields.io/badge/Codeberg-APK_mirror-2185d0?style=for-the-badge&amp;logo=codeberg&amp;logoColor=white" alt="Download APK from the Codeberg mirror">
   </a>
   &nbsp;
   <a href="#building-from-source">
@@ -38,8 +41,8 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 <p align="center">
   <em>
     <a href="https://zapstore.dev/apps/com.cruxcoach.android">Zapstore</a> auto-updates, Nostr-native, verifiable builds &middot;
-    <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">Codeberg</a> and
-    <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">GitHub</a> carry the identical APK and <code>.apk.sha256</code> sidecar &middot;
+    <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">GitHub</a> is the primary release source;
+    <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">Codeberg</a> mirrors the identical APK and <code>.apk.sha256</code> sidecar &middot;
     <a href="#building-from-source">Source build</a> from a chosen tag or commit<br>
     Project site: <a href="https://cruxcoach.org/">cruxcoach.org</a> &middot;
     <a href="https://cruxcoach.org/boards/">board locations map</a>
@@ -53,7 +56,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
   <img src="docs/screenshots/heatmap.png" alt="Heatmap" width="220">
 </p>
 
-> **First-time sideload from Codeberg or GitHub?** Android Settings → Apps → *Special app access* → *Install unknown apps* → enable for your browser or file manager. The signing certificate is stable across releases, so future updates install on top without re-enabling.
+> **First-time sideload from GitHub or Codeberg?** Android Settings → Apps → *Special app access* → *Install unknown apps* → enable for your browser or file manager. The signing certificate is stable across releases, so future updates install on top without re-enabling.
 
 ---
 
@@ -99,13 +102,13 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 | Channel | When to pick it | Trade-off |
 |---|---|---|
 | **[Zapstore](https://zapstore.dev/apps/com.cruxcoach.android)** | You already use Zapstore, want hands-off auto-updates and Nostr-native verifiable builds | Requires the Zapstore client app installed |
-| **[Codeberg release APK](https://codeberg.org/CruxCoach/CruxCoach/releases/latest)** | You want a direct sideload, no app-store dependency, full SHA-256 transparency | Manual install + updates (or opt into the in-app updater under *Settings → Updates*) |
-| **[GitHub release APK](https://github.com/CruxCoach/CruxCoach/releases/latest)** | Codeberg is unavailable or GitHub is your preferred forge | Identical signed APK and SHA-256 sidecar |
+| **[GitHub release APK](https://github.com/CruxCoach/CruxCoach/releases/latest)** | Primary direct download, no app-store dependency, full SHA-256 transparency | Manual install + updates (or opt into the in-app updater under *Settings → Updates*) |
+| **[Codeberg release mirror](https://codeberg.org/CruxCoach/CruxCoach/releases/latest)** | Secondary download when GitHub is unavailable or you prefer Codeberg | Identical signed APK and SHA-256 sidecar |
 | **[Source build](#building-from-source)** | You want to read / patch the code first | Requires Android SDK + NDK and a few minutes |
 
 ### Verifying the APK
 
-Each Codeberg and GitHub release ships an `*.apk.sha256` sidecar next to the identical APK asset. After downloading both into the same folder:
+Each GitHub release and its Codeberg mirror ships an `*.apk.sha256` sidecar next to the identical APK asset. After downloading both into the same folder:
 
 ```bash
 sha256sum -c CruxCoach-v*.apk.sha256
@@ -116,7 +119,7 @@ Expected output: `CruxCoach-v0.2.2.apk: OK`. The signing certificate is the same
 ### Updating
 
 - **Zapstore**: handled by the Zapstore client.
-- **Codeberg/GitHub APK + in-app updater**: open *Settings → Updates → Check for updates*. CruxCoach checks the configured release sources and verified mirrors, then installs only an APK whose SHA-256 and signing certificate match.
+- **GitHub/Codeberg APK + in-app updater**: open *Settings → Updates → Check for updates*. CruxCoach checks the configured release sources and verified mirrors, then installs only an APK whose SHA-256 and signing certificate match.
 - **Source build**: choose the intended tag or commit and follow [contributor setup](CONTRIBUTING.md#development-setup). A local build is not an official signed release.
 
 ---
@@ -124,7 +127,7 @@ Expected output: `CruxCoach-v0.2.2.apk: OK`. The signing certificate is the same
 ## Building from Source
 
 ```bash
-git clone https://codeberg.org/CruxCoach/CruxCoach.git
+git clone https://github.com/CruxCoach/CruxCoach.git
 cd CruxCoach
 bash scripts/setup_dev_env.sh   # installs JDK 17, Android SDK, NDK, CMake (Debian/Ubuntu)
 source ~/.bashrc                # or ~/.zshrc
@@ -203,7 +206,7 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
 
 ## Support
 
-- **Bug Reports**: [Codeberg Issues](https://codeberg.org/CruxCoach/CruxCoach/issues) or in-app via Settings
+- **Bug Reports**: [GitHub Issues](https://github.com/CruxCoach/CruxCoach/issues) or in-app via Settings
 - **Donate** (upstream maintainer): Lightning `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash`
 
   <img src="docs/lightning-qr.png" alt="Lightning: npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash" width="220">

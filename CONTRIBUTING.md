@@ -12,7 +12,7 @@ Thank you for your interest in contributing to CruxCoach! This document explains
 
 ## Reporting Bugs
 
-1. Check [existing issues](https://codeberg.org/CruxCoach/CruxCoach/issues) to avoid duplicates.
+1. Check [existing issues](https://github.com/CruxCoach/CruxCoach/issues) to avoid duplicates.
 2. Open a new issue with:
    - **Device** (model, Android version)
    - **Steps to reproduce**
