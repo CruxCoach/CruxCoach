@@ -82,9 +82,31 @@ import com.cruxcoach.android.util.safeLaunch
  *
  *  The browser status filter is a multi-select [Set] of these: an **empty
  *  set means "no status constraint"** (the "Alle" chip). The legacy
- *  single-select preset "Offen" (= unsent) is just {NEW, ATTEMPTED} and
- *  "Alle" is the empty set, so both drop out as redundant chips. */
+ *  single-select preset "Offen" (= unsent) is just {NEW, ATTEMPTED}.
+ *  The exclude-sent control edits this same set; it is not a second filter. */
 enum class ClimbStatusFilter { NEW, ATTEMPTED, SENT }
+
+internal fun statusFilterExcludesSent(statuses: Set<ClimbStatusFilter>): Boolean =
+    statuses.isNotEmpty() && ClimbStatusFilter.SENT !in statuses
+
+/** Change the existing status selection, preserving narrower unsent choices.
+ * Empty means all statuses; excluding the only selected SENT bucket therefore
+ * selects both unsent buckets instead of accidentally resetting to all. */
+internal fun statusFilterWithSentExcluded(
+    statuses: Set<ClimbStatusFilter>,
+    exclude: Boolean,
+): Set<ClimbStatusFilter> {
+    val effective = statuses.ifEmpty { ClimbStatusFilter.entries.toSet() }
+    return if (exclude) {
+        (effective - ClimbStatusFilter.SENT).ifEmpty {
+            setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.ATTEMPTED)
+        }
+    } else {
+        (effective + ClimbStatusFilter.SENT).let {
+            if (it.size == ClimbStatusFilter.entries.size) emptySet() else it
+        }
+    }
+}
 
 /** Parse the persisted status-filter preference into a [Set]. Accepts the
  *  current comma-joined form ("NEW,SENT"), an empty string ("" = Alle), and
@@ -1132,15 +1154,17 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
-    /** Toggle one status bucket in/out of the multi-select status filter. */
-    fun toggleStatusFilter(status: ClimbStatusFilter) {
-        _state.update { s ->
-            val cur = s.filter.statusFilter
-            val next = if (status in cur) cur - status else cur + status
-            s.copy(filter = s.filter.copy(statusFilter = next))
-        }
+    fun updateStatusFilter(statuses: Set<ClimbStatusFilter>) {
+        if (_state.value.filter.statusFilter == statuses) return
+        _state.update { it.copy(filter = it.filter.copy(statusFilter = statuses)) }
         persistFilters()
         searchClimbs()
+    }
+
+    /** Toggle one status bucket in/out of the multi-select status filter. */
+    fun toggleStatusFilter(status: ClimbStatusFilter) {
+        val current = _state.value.filter.statusFilter
+        updateStatusFilter(if (status in current) current - status else current + status)
     }
 
     /** Reset every result-hiding browse filter to its default in one tap,
@@ -1184,12 +1208,7 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     /** Clear the status filter (the "Alle" chip) — empty set = no constraint. */
-    fun clearStatusFilter() {
-        if (_state.value.filter.statusFilter.isEmpty()) return
-        _state.update { it.copy(filter = it.filter.copy(statusFilter = emptySet())) }
-        persistFilters()
-        searchClimbs()
-    }
+    fun clearStatusFilter() = updateStatusFilter(emptySet())
 
     fun updateClimbTypeFilter(filter: ClimbTypeFilter) {
         _state.update { it.copy(filter = it.filter.copy(climbTypeFilter = filter)) }

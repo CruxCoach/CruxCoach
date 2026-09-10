@@ -2751,4 +2751,6 @@
     <string name="board_stats_problem_outcomes_hint">Each problem counts once in the selected period: Flash, otherwise Sent, otherwise Attempted. Repeated tries do not increase these counts.</string>
     <string name="whatsnew_023_title">New in 0.2.3</string>
     <string name="whatsnew_023_body">• Statistics count distinct problems as Flash, Sent or Attempt. Total tries remain visible.\n\n• Filter totals match the list, including results beyond the first 50.\n\n• Random search is more reliable while scrolling.\n\n• Switch boards from the compact header and open beta videos from climb details.</string>
+    <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
+    <string name="board_filter_exclude_sent">Exclude sent problems</string>
 </resources>

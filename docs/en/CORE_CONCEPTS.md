@@ -80,6 +80,14 @@ raw catalogue count as the number visible. Own-climb browsing deliberately
 keeps drafts discoverable across angles; check the dedicated path before
 changing its filters.
 
+The **Exclude sent problems** switch edits this same status selection. From
+All or Sent-only it selects New + Attempted; a narrower unsent choice remains
+narrow when toggling sent visibility. There is no separate hidden status rule.
+
+MoonBoard preview rings retain green/blue/red role colours with light and dark
+outlines. These are display strokes; the MoonBoard encoder still transmits role
+tokens rather than customizable RGB values.
+
 ## Lists and playable playlists
 
 A list is a unique set of climb memberships. Favourites are a built-in list.

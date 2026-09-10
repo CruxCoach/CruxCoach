@@ -81,6 +81,16 @@ Ergebnisse einschließlich der nach der SQL-Abfrage angewandten Filter.
 Eigene Entwürfe bleiben absichtlich winkelübergreifend auffindbar; vor einer
 Änderung muss dieser eigene Abfragepfad berücksichtigt werden.
 
+**Geschaffte ausschließen** verändert dieselbe Statusauswahl wie die Chips.
+Ausgehend von Alle oder nur Geschafft werden Neu + Versucht ausgewählt. Eine
+engere Auswahl wie nur Neu bleibt beim Umschalten entsprechend eingeschränkt.
+Es gibt keine zusätzliche versteckte Statusregel.
+
+MoonBoard-Markierungen behalten ihre grünen, blauen und roten Rollenfarben;
+helle und dunkle Konturen verbessern die Sichtbarkeit auf den Griffen. Diese
+Konturen betreffen die Anzeige. Der MoonBoard-Encoder überträgt weiterhin
+Rollenkennungen statt frei wählbarer RGB-Farben.
+
 ## Listen und abspielbare Playlists
 
 Eine Liste enthält jedes Problem höchstens einmal. Favoriten sind eine

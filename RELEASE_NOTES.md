@@ -3,6 +3,10 @@
 This release focuses on reliable browsing, clearer statistics and quicker board navigation.
 
 ## Highlights
+- **Exclude sent problems directly.** The filter switch selects unsent problems;
+  status chips stay synchronized and show checkmarks for your selection.
+- **Clearer MoonBoard markings.** Light and dark outlines make the coloured rings
+  easier to see, including on the blue holds of the MoonBoard 2024.
 - **Statistics count problems.** Flash, Sent and Attempt each count distinct problems
   using the best outcome in the selected period. Ten unsuccessful tries on one
   problem count as one attempted problem. Sending it moves it into Sent; a true

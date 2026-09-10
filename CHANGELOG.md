@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Changed
+- The status filter has a direct "Exclude sent problems" switch synchronized
+  with the existing multi-select statuses. Checkmarks and wrapping chips make
+  the selection visible on narrow screens.
+- MoonBoard hold markers have light and dark outlines for contrast over blue,
+  light and dark holds, while preserving the familiar role colours.
 - Android 9 (API 28) is now the minimum supported version, as announced in 0.2.2.
 - A compact board picker and main menu simplify navigation; header actions move
   into an overflow menu on narrow screens.
