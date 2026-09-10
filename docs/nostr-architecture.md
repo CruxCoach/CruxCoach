@@ -1,5 +1,10 @@
 # Nostr-Architektur
 
+> Einordnung: technische Referenz mit historischem Kontext. Für den aktuellen
+> Release-Geltungsbereich und die Trennung von Implementierung, Veröffentlichung
+> und Entwurf siehe [Dokumentationsübersicht](README.md). Externe Pipeline-
+> Details sind hier nicht als erneut geprüfter Produktionsstand zu verstehen.
+
 Referenz für alle Features, die Nostr benutzen — über beide Repos hinweg:
 
 - **`CruxCoach/`** (diese App) — publiziert und konsumiert
@@ -18,9 +23,9 @@ Speicher-, Volumen- und Retention-Fragen stehen nicht hier, sondern in
 4. [Feature: Board-DB-Manifest](#4-feature-board-db-manifest)
 5. [Feature: Community-Climbs](#5-feature-community-climbs)
 6. [Feature: Auto-Note](#6-feature-auto-note)
-7. [Feature: Backup-Sync](#7-feature-backup-sync)
+7. [Feature: Backup-Sync](#7-feature-backup-sync-feat-002)
 8. [Feature: Profil](#8-feature-profil)
-9. [Feature: Relay-Discovery](#9-feature-relay-discovery)
+9. [Feature: Relay-Discovery](#9-feature-relay-discovery-nip-65)
 10. [Feature: DMs und Announcements](#10-feature-dms-und-announcements)
 11. [Feature: Zaps](#11-feature-zaps)
 12. [Feature: Updater](#12-feature-updater)

@@ -1,5 +1,9 @@
 # iOS Board Access Without a CruxCoach App Store Release
 
+> **Scope:** historical research / separate experimental branch, not integrated
+> into the 0.2.3 preparation line or published 0.2.2. Hardware procedures and
+> implementation claims below apply to that experiment. [Current scope](README.md).
+
 Status: **architecture note and feasibility plan, not an implemented iOS
 client.** Platform facts and distribution terms were last checked on
 2026-08-15 and must be revalidated before committing to a release channel.

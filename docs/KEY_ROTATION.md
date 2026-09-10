@@ -1,12 +1,18 @@
 # Android Signing Key Rotation
 
+> **Release scope (2026-09-10):** published app 0.2.2; 0.2.3 is in
+> preparation. Lineage acceptance in code is not evidence that a production
+> signing key was rotated. The procedures below require separate owner
+> authorization; this documentation authorizes no rotation or publication.
+> See [release status](RELEASE_GITHUB.md).
+
 > Audience: CruxCoach end users and the maintainer team. This document
 > describes both what users see if the signing key ever changes, and the
 > developer procedure for rotating it.
 >
 > Status: written 2026-04-21 alongside FEAT-004 (in-app auto-updater).
-> This document is a release blocker for v0.1.2 — the in-app updater
-> refers users here when it detects a signing-cert mismatch.
+> Originally a release blocker for v0.1.2, the updater still refers users
+> here when it detects a signing-cert mismatch.
 
 ## What is a signing key?
 
@@ -188,7 +194,7 @@ Both variants were verified:
 | `33` (apksigner default) | old key | old key | new key | Android 13+ only |
 | `28` | not applicable¹ | new key | new key | every supported device |
 
-¹ From 0.2.3 `minSdk` is 28, so Android 8.0/8.1 are not offered the
+¹ The 0.2.3 release preparation targets `minSdk=28`, so Android 8.0/8.1 are not offered the
 release at all — 0.2.2 tells those users it is their last version
 (`DeviceSupportGate`). Without that minSdk bump, `28` would leave them
 with a rejected update instead.
@@ -251,7 +257,7 @@ would break every existing install irrecoverably.
    reinstall manually".
 
 Consequence for sequencing: **0.2.2 has to be widely installed before
-0.2.3 rotates the key.** Rotating earlier does not fail loudly; it
+a future release rotates the key.** Rotating earlier does not fail loudly; it
 strands users quietly.
 
 ### 3. Hold the old key

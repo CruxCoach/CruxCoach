@@ -1,5 +1,11 @@
 # Contributing to CruxCoach
 
+Start with the [documentation index](docs/README.md) and
+[core concepts/source map](docs/en/CORE_CONCEPTS.md). Read [AGENTS.md](AGENTS.md)
+before working; it applies to human-assisted coding agents. On the development
+host, also read the applicable parent instructions and `~/SERVER-SPLIT-STATUS.md`.
+Never use a historical server path as authority to operate production.
+
 Thank you for your interest in contributing to CruxCoach! This document explains how to get started.
 
 ---
@@ -48,6 +54,10 @@ source ~/.bashrc   # or ~/.zshrc
 
 ### Building
 
+The commands below describe build tasks for contributor environments. Under
+[AGENTS.md](AGENTS.md), full APK builds, full test suites and Android lint run
+in CI; locally run only checks focused on your change. Do not duplicate CI.
+
 ```bash
 # Debug APK
 ./gradlew :androidApp:assembleDebug
@@ -73,6 +83,11 @@ which keys the build expects without reading the Gradle scripts:
 Both target files are gitignored — never commit populated copies.
 
 ### Release signing
+
+This subsection is background for independent fork owners on their own
+machines. Contributors and remote agents do not need upstream signing keys.
+Upstream stable signing/publication requires the owner’s authorization for
+the exact release; see [current release status](docs/RELEASE_GITHUB.md).
 
 Debug builds need no signing setup — AGP uses the built-in debug keystore
 automatically. Release builds (`./gradlew :androidApp:assembleRelease`)
@@ -111,49 +126,36 @@ off shared machines and out of version control.
 
 ### Project Structure
 
-```
-shared/                    # Kotlin Multiplatform module
-├── domain/model/          # Data classes (pure Kotlin)
-├── domain/board/          # Board protocol, frame codec, grade system
+```text
+shared/src/commonMain/
+├── kotlin/com/cruxcoach/domain/           # Models, board codecs, domain logic
+├── kotlin/com/cruxcoach/data/repository/  # Repository interfaces and implementations
 └── sqldelight/
-    ├── board/             # Board DB schema: climbs, stats, layouts (unencrypted)
-    └── secure/            # Personal data schema: logbook, body stats, Nostr (SQLCipher)
+    ├── board/                            # Catalogue and local drafts, unencrypted
+    └── secure/                           # Personal records, SQLCipher on Android
 
-androidApp/                # Android app (Jetpack Compose)
-├── ui/                    # Screens + ViewModels
-├── data/                  # Repositories, Kilter API client
-├── ble/                   # Bluetooth board communication (Nordic UART)
-└── nostr/                 # Nostr relay pool, sync, announcements
+androidApp/src/main/java/com/cruxcoach/android/
+├── ui/          # Compose screens and ViewModels
+├── data/        # Android storage, imports, sync and playback coordination
+├── ble/         # Controller protocols and nearby sessions
+├── community/   # Draft authoring and public climb publication
+├── nostr/       # Signers, relays, backup and messaging
+└── updater/     # Discovery, integrity verification and installation
 ```
 
 ### Releases & CI (maintainer only)
 
-The release workflow is `.github/workflows/release.yml`, and it runs **exclusively** on the maintainer's self-hosted runner — which is the whole reason GitHub Actions is acceptable for a signed release at all: the keystore stays on our own filesystem and never enters GitHub's secret store. It builds and signs once, publishes those bytes to GitHub, then mirrors the exact same APK and SHA-256 sidecar to Codeberg. The former Forgejo fallback was retired because its in-file branch guards were not an immutable server-side trust boundary. The manual publishing scripts remain the forge-independent break-glass path. Full rationale and migration order: [`docs/RELEASE_GITHUB.md`](docs/RELEASE_GITHUB.md).
+Pull requests targeting `main` or `feat/**` have hosted checks in
+[pr-ci.yml](.github/workflows/pr-ci.yml): Python tooling tests, shared/Android
+unit tests and debug APK compilation. Android lint is advisory. The workflow
+file establishes configured behavior, not the result of any particular run.
 
-Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review. Keep the self-hosted runner off pull-request triggers: it executes whatever a push contains, on the host that holds the signing key.
-
-The runner expects these environment variables in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
-
-| Variable | Purpose |
-|----------|---------|
-| `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
-| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
-| `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
-| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/cruxcoach-pages` |
-
-Files the runner reads off its own filesystem, none of which is a forge secret:
-
-| Path | Purpose |
-|------|---------|
-| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
-| `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
-| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](.env.example) |
-| `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
-| `~/.config/cruxcoach/codeberg-release-token` | Mode 600, repository write access on `CruxCoach/CruxCoach`. Pushes the identical tag and mirrors the already-built GitHub APK plus sidecar to Codeberg. Override with `CODEBERG_TOKEN` / `CODEBERG_TOKEN_FILE` |
-
-**No GitHub repository secret is required, and none is load-bearing** — that is deliberate, so a GitHub-side compromise cannot reach the signing key or the publisher identity.
-
-Forks running their own runner can reproduce the workflow by providing the equivalent directories and an `ANDROID_SDK_ROOT`; the workflows themselves contain no host-specific paths.
+Feature artifacts use a separate trusted-main APKTrack publisher; never give
+feature code signing keys or upload tokens. Stable publication belongs to the
+private operator plane. The repository's self-hosted release workflow and the
+OIDC/private-signing migration must not be described as an activated production
+service. See [release status and historical procedure](docs/RELEASE_GITHUB.md)
+for the source files, handoff evidence and remaining activation work.
 
 ### Customizing for forks
 
@@ -196,12 +198,13 @@ that sets `ANONYMOUS_METRICS_ENDPOINT` must keep its own disclosure and backend
 contract accurate; leaving the property empty disables the feature completely.
 
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
-handles updates itself). For direct installs it walks an **ordered list of
-release sources** (FEAT-050), stopping at the first that answers and moving on
-only when one fails — so the healthy case still costs a single request. The
-list comes from `UPDATE_SOURCES_URLS` at runtime, falling back to the
-compiled-in defaults: the configured forge, publisher-signed Zapstore/Nostr
-events, the website's release pointer, and content-addressed Blossom stores.
+handles updates itself). For direct installs, [UpdateChecker](androidApp/src/main/java/com/cruxcoach/android/updater/UpdateChecker.kt)
+queries the configured discovery sources and selects the highest newer
+version; source order breaks ties. This is distinct from fetching the runtime
+source-list manifest: [UpdateSourceRegistry](androidApp/src/main/java/com/cruxcoach/android/updater/UpdateSourceRegistry.kt)
+uses the first usable manifest host, then cached/compiled defaults when
+needed. Blossom stores can provide download fallbacks without independently
+discovering a release.
 
 Because that list is data rather than code, a release host can be added,
 reordered or retired for installs **already in the field**. This matters:
@@ -211,23 +214,24 @@ without a runtime list would strand every existing direct install.
 The APK may be downloaded from any source on the list, but its SHA-256 and
 signing certificate must match before it is handed to Android — the transport
 is untrusted by construction, which is what makes an open-ended source list
-safe. Note the corollary: with several sources, the **signing-certificate pin
-carries the entire security load**, because a hostile source could serve a
-matching APK *and* sidecar. Do not weaken `IntegrityVerifier`.
+safe. Note the corollary: with several sources, the **signing identity is the trust anchor**, because a hostile source could
+serve a matching APK *and* sidecar. Hash matching alone is insufficient. Do not weaken `IntegrityVerifier`.
 
 Changing the forge does **not** invalidate the trust-on-first-use pin — that
-pin is on the APK signing certificate, not on the host. Signing with a
-different key does.
+pin is on the APK signing certificate, not on the host. An unrelated
+signing key does; an accepted rotation lineage has a separate verification
+path.
 
 Forks need to upload two assets per release:
 
 - `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
 - `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
 
-The first install pins the signing certificate (trust-on-first-use); the
-updater refuses any future release whose signing cert doesn't match.
+The first install pins the signing certificate (trust-on-first-use); later
+updates require that identity or an accepted signing lineage. See
+[key rotation](docs/KEY_ROTATION.md).
 
-The auto-updater also requires two runtime permissions declared in the
+The auto-updater also uses three permissions declared in the
 manifest:
 
 - `android.permission.REQUEST_INSTALL_PACKAGES` — hands the downloaded APK to
@@ -289,7 +293,7 @@ These are non-negotiable for all contributions.
 
 - `feat/<short-description>` for new features
 - `fix/<short-description>` for bug fixes
-- `refactor/<short-description>` for refactoring
+- `chore/<short-description>` for maintenance or refactoring
 - `docs/<short-description>` for documentation
 
 ### Commit Messages
@@ -306,9 +310,11 @@ refactor(engine): extract periodization into standalone class
 
 Before submitting a PR:
 
-- [ ] Code compiles: `./gradlew :androidApp:assembleDebug`
-- [ ] Shared tests pass: `./gradlew :shared:testDebugUnitTest`
-- [ ] Android tests pass: `./gradlew :androidApp:testDebugUnitTest`
+- [ ] Focused local checks match the change; record their result and limits
+- [ ] Required CI unit tests and debug compilation pass before merge
+- [ ] Lint report reviewed; its advisory job is not proof of zero findings
+- [ ] Only task-owned hunks staged; unrelated changes preserved
+- [ ] Trust-boundary changes flagged for project-owner review
 - [ ] `values/strings.xml` (en) and `values-de/strings.xml` both updated (if UI strings changed)
 - [ ] No new warnings introduced
 - [ ] No files exceed ~500 lines
@@ -323,15 +329,19 @@ Include:
 
 ## Architecture Decisions
 
+For the running data flow and exact source paths, see the
+[architecture guide](docs/en/CORE_CONCEPTS.md). The notes below explain design
+motivation, not a promise of support on additional platforms.
+
 ### Why KMP?
 Domain logic (grade calculations, frame codec, board protocol) is pure Kotlin in `shared/`. This keeps the door open for iOS and Wear OS without rewriting business logic.
 
 ### Why SQLDelight + SQLCipher?
 - SQLDelight: SQL-first, type-safe, cross-platform. Not Android-only like Room.
-- Two databases: board data (community climbs, unencrypted, public) and personal data (logbook, body stats, Nostr keys, encrypted with SQLCipher).
+- Two databases: BoardDB (catalogue and local drafts, unencrypted) and SecureDB (logbook and personal records, SQLCipher). Local Nostr key storage has its own protection; see [SECURITY.md](SECURITY.md).
 
 ### Why Nostr?
-Decentralized sync and communication without running a server. Users control their own keys. Board database distributed via Blossom (content-addressed blobs). Crash reports and dev contact via encrypted DMs (NIP-17).
+Decentralized sync and communication without requiring users to run their own server. Users control their own keys. Board database distributed via Blossom (content-addressed blobs). Crash reports and dev contact via encrypted DMs (NIP-17).
 
 ### Why not Room?
 Room is Android-only. SQLDelight generates code for all KMP targets from a single `.sq` schema.

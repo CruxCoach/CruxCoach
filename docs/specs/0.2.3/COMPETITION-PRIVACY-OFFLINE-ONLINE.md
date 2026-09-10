@@ -1,5 +1,10 @@
 # Competition data boundary
 
+> **Release scope (2026-09-10):** retained proposal / separate-branch design.
+> Competitions and BoardCell/FIPS are not integrated into this 0.2.3 line
+> and do not ship in published 0.2.2. Original decisions below are preserved.
+> [Current documentation scope](../../README.md).
+
 Status: implemented Android contract for the FIPS competition mesh. The website
 implementation lives in the separate `cruxcoach-pages` repository and must use
 the same boundary.

@@ -1,49 +1,24 @@
 # Testing Workflow
 
-CruxCoach has two complementary test layers, both runnable from the
-dev server. **Always use both** when verifying a behaviour change —
-each catches a different class of regression, and either alone has
-known blind spots.
+Choose checks that exercise the behavior changed. Follow [AGENTS.md](../AGENTS.md):
+full Gradle suites, full APK builds and Android lint belong in CI. Locally run
+only focused tests or selected device flows; documentation needs link/reference
+checks, not an APK build. The two layers below are complementary, not a demand
+to run every test twice.
 
-## Architecture
+## Device access and environment
 
-The dev server has no Android device of its own. A physical phone is
-attached via USB to a separate machine ("VM host"). An SSH-reverse-
-tunnel from VM host → dev server exposes the VM host's `adb` daemon
-on the dev server's `localhost:6037`, and a tiny Python forwarder
-maps `localhost:5037 → localhost:6037` so every adb-aware tool finds
-the device on the default port.
+The old direct reverse-tunnel/port-6037 setup is historical. The 2026-09-06
+handoff describes a transitional loopback ADB bridge on `localhost:5037`
+through a restricted production proxy; `dadb devices` is the starting check.
+On the development host, read `~/SERVER-SPLIT-STATUS.md` and parent agent rules
+before using it. Do not expose ADB publicly, replace the bridge or stop the
+original device tunnel. These are operator-owned dependencies.
 
-```
-   VM host (phone via USB)                  dev server (Claude Code)
-   ┌──────────┐                            ┌──────────────────────────┐
-   │ phone    │ adbd                       │  adb / maestro / gradle  │
-   │ adbd     │←─────────┐                 │  via 127.0.0.1:5037      │
-   └──────────┘  :5037   │                 │            ↓             │
-                          │ SSH -R 6037:.. │      Python bridge       │
-                          │   tunnel       │      :5037 → :6037       │
-                          └────────────────│            ↓             │
-                                           │      :6037 (tunneled)    │
-                                           └──────────────────────────┘
-```
-
-Two systemd-user services keep this alive:
-
-| Host | Service | Purpose |
-|---|---|---|
-| VM host | `adb-server.service` | keeps the local adb daemon up |
-| VM host | `cruxcoach-adb-tunnel.service` | maintains the SSH `-R 6037:localhost:5037` tunnel to the dev server |
-| dev server | `cruxcoach-adb-bridge.service` | Python TCP forwarder: `localhost:5037 → localhost:6037` |
-
-`loginctl enable-linger $USER` is set on both hosts so the services
-survive logout/reboot.
-
-Wrappers on the dev server:
-
-| Command | What it does |
-|---|---|
-| `dadb` | `adb` with `ANDROID_ADB_SERVER_PORT=6037` (kept around for explicit-tunnel use; default-port `adb` works through the bridge too) |
-| `dmaestro` | Maestro CLI; same env override |
+The transferred emulator/AVD was listed successfully, but an operational
+emulator without KVM was not confirmed. A physical device remains necessary
+for meaningful BLE tests. Device tests can change application state: use the
+agreed test device and document setup/cleanup.
 
 ## Two test layers
 
@@ -58,9 +33,7 @@ Run via Gradle. No device required. Fast (seconds). Covers:
 - Compose snapshot assertions (when needed).
 
 ```
-./gradlew :androidApp:testDebugUnitTest        # all JVM tests
 ./gradlew :androidApp:testDebugUnitTest --tests "com.cruxcoach.android.ui.board.BrowserOriginFilterTest"
-./gradlew :shared:testDebugUnitTest             # shared module
 ```
 
 Test-stack dependencies are already in `gradle/libs.versions.toml`:
@@ -69,10 +42,9 @@ Hilt-android-testing, sqldelight-sqlite-driver, OkHttp MockWebServer.
 
 ### Layer 2 — Maestro UI flows (real device + logcat)
 
-Run via the wrapper:
+Run selected flows via the wrapper (inspect device-state effects first):
 
 ```
-flows/run.sh                   # all flows
 flows/run.sh smoke             # one flow
 flows/run.sh smoke detail-open # several
 ```
@@ -210,47 +182,20 @@ These calls cost nothing measurable and feed both this test
 infrastructure and the in-app `PerfLogger.reportStartupTimeline()`
 diagnostics.
 
-## Quick-reference command summary
+## Quick reference
 
 ```sh
-# Build APK + install on the tunneled phone
-./gradlew :androidApp:assembleRelease
-dadb install -r -d androidApp/build/outputs/apk/release/androidApp-release.apk
+# Confirm the agreed test device is available
+dadb devices
 
-# Run Maestro UI flows
-flows/run.sh                                # all
-flows/run.sh smoke                          # only smoke
-flows/run.sh detail-open detail-favorite-toggle
-
-# Run JVM tests
-./gradlew :androidApp:testDebugUnitTest
+# Focused JVM test; full suites/build/lint run in CI
 ./gradlew :androidApp:testDebugUnitTest --tests "*BrowserOriginFilterTest*"
 
-# Inspect a Maestro run's artifacts
-ls /tmp/cruxcoach-flows-<timestamp>/
-# maestro.log    — full Maestro stdout
-# logcat-perf.txt — post-run PERF-tag snapshot
-
-# Debug a single flow with screenshot capture on failure
-~/.maestro/bin/maestro test --debug-output /tmp/dbg flows/$flow.yaml
+# Selected device flow against an already available test APK
+flows/run.sh smoke
 ```
 
-## Health-checks if a run is failing in unexpected ways
-
-```sh
-# Is the tunnel up?
-nc -z 127.0.0.1 6037 && echo OK
-nc -z 127.0.0.1 5037 && echo OK
-adb devices                                # phone listed?
-
-# Is the dev-server bridge running?
-systemctl --user status cruxcoach-adb-bridge.service
-
-# Reinstall Maestro's driver app on the phone
-~/.maestro/bin/maestro test --reinstall-driver flows/smoke.yaml
-
-# Reset the phone to the Browser screen (workaround for sticky last-
-# screen restore)
-dadb shell am force-stop com.cruxcoach.android
-dadb shell am start -W --activity-clear-task -n com.cruxcoach.android/.MainActivity
-```
+The wrapper leaves artifacts under `/tmp/cruxcoach-flows-<timestamp>/`.
+Inspect its log and PERF snapshot together. If the device is unavailable,
+report that limit; do not repair shared infrastructure or substitute a full
+local build for missing device evidence.

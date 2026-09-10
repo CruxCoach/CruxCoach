@@ -1,5 +1,11 @@
 # FEAT Spec Registry
 
+> **Release-line clarification (2026-09-10):** 0.2.2 is published; this
+> 0.2.3 line is in preparation. Historical target/status rows below are not
+> a release manifest. Competitions and BoardCell/FIPS remain unintegrated;
+> their `0.2.3/` paths preserve design history, not a delivery commitment.
+> See [current scope](../README.md) and [spec conventions](README.md).
+
 Canonical registry of FEAT-IDs across the project. **Always allocate
 the next free ID from this file** before creating a new spec on a
 feature branch — prevents the ID collisions that surface at merge
@@ -91,7 +97,7 @@ Myco/nsite boundary, is [`../IOS_BOARD_ACCESS.md`](../IOS_BOARD_ACCESS.md).
 Implementation plan for FEAT-043/045/046:
 `0.2.2/IMPLEMENTATION-PLAN-convergence-player.md`.
 
-FEAT-058 ships as four documents: the user-level feature spec
+The retained FEAT-058 design consists of four documents: the user-level feature spec
 `0.2.3/FEAT-058-competitions.md`, the wire contract
 `0.2.3/FEAT-058-competition-protocol.md`, the cross-client conformance matrix
 `0.2.3/FEAT-058-conformance.md`, and the decision register
@@ -110,8 +116,9 @@ FEAT-058 and FEAT-059 returned to `planned` on 2026-08-23. Both were carried
 as `implementation` on the branch this release line was cut from, and their
 code is not in this build: 0.2.2 ships neither competitions nor the
 BoardCell/FIPS mesh, and a table that says `implementation` would claim the
-release contains something it does not. The specs stay under `0.2.3/` — they
-are what 0.2.3 is built from, and nothing about them was decided wrong.
+release contains something it does not. The specs stay under `0.2.3/` — their
+location preserves the original target and decisions. They are not included
+in this 0.2.3 preparation line; future integration needs separate review.
 
 FEAT-044/045/047/049 marked shipped on 2026-08-12, ahead of the 0.2.2 release.
 All four are in the build and described in the changelog for the version, so
@@ -148,7 +155,7 @@ not the number.
 | FEAT-015 | Kilter Board Locations Map (v0.1.5, shipped) | `backlog/FEAT-015-profile-image-crop.md` |
 | FEAT-041 | Tombstone Delisted Community Climbs *(inferred)* (v0.2.1, shipped) | `backlog/FEAT-041-holistic-athlete-data-assistant.md` |
 | FEAT-043 | Reach Metric (ReachAnalyzer) (v0.2.3, design-locked) | `backlog/FEAT-043-competitions-and-leaderboards.md` |
-| FEAT-045 | Lists ⇄ Playlists Full Convergence (v0.2.2, implementation) | `backlog/FEAT-045-hall-directory-communities-and-handover.md` |
+| FEAT-045 | Lists ⇄ Playlists Full Convergence (v0.2.2, shipped) | `backlog/FEAT-045-hall-directory-communities-and-handover.md` |
 
 The four backlog specs are vision-tier or small UI items with no commits;
 renumbering those is likely cheaper than renumbering the shipped side.

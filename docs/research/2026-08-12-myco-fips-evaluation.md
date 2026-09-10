@@ -1,5 +1,9 @@
 # Myco/FIPS für CruxCoach: technische Bewertung und Handlungsempfehlung
 
+> **Scope:** historical research / separate experimental branch, not integrated
+> into the 0.2.3 preparation line or published 0.2.2. Hardware procedures and
+> implementation claims below apply to that experiment. [Current scope](../README.md).
+
 **Stand:** 12. August 2026
 **Ergebnis in einem Satz:** Myco/FIPS sollte derzeit nicht als Ganzes in CruxCoach eingebaut werden; die wertvollsten Konzepte — kryptografische Geräteidentität, authentifizierte Einladungen, versionierte Nearby-Nachrichten, Trennung von Discovery und Datentransport sowie signierte Manifeste mit content-addressed Blobs — lassen sich kleiner und zielgenauer in die vorhandene Architektur übernehmen.
 

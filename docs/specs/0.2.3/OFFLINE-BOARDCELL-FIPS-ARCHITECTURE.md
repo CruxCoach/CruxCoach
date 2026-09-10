@@ -1,5 +1,10 @@
 # Offline BoardCell Mesh over FIPS
 
+> **Release scope (2026-09-10):** retained proposal / separate-branch design.
+> Competitions and BoardCell/FIPS are not integrated into this 0.2.3 line
+> and do not ship in published 0.2.2. Original decisions below are preserved.
+> [Current documentation scope](../../README.md).
+
 Status: **Variant A is the selected MVP architecture.** Variant B is a possible
 future alternative that has not been approved, evaluated, or implemented.
 

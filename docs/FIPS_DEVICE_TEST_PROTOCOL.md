@@ -1,5 +1,9 @@
 # FIPS / BoardCell device test protocol
 
+> **Scope:** historical research / separate experimental branch, not integrated
+> into the 0.2.3 preparation line or published 0.2.2. Hardware procedures and
+> implementation claims below apply to that experiment. [Current scope](README.md).
+
 This is the hardware acceptance gate for FEAT-059. Use three API-29+ arm64
 phones (A/B/C), two physical boards in radio range, and optionally a fourth
 phone as load generator. Install the same debug APK on every phone without
