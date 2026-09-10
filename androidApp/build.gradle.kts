@@ -75,6 +75,10 @@ val developmentBranchSlug = developmentFeatureName
     .trim('_')
     .ifEmpty { "detached" }
     .take(48)
+    // Release branches such as feat/0.2.3-release must also produce a valid
+    // Java package segment for ordinary local/PR debug checks. Published
+    // feature packages still use the canonical feature_identity.py mapping.
+    .let { if (it.first() in 'a'..'z') it else "f_$it" }
 val developmentAppIdSuffix = ".dev.$developmentBranchKind.$developmentBranchSlug"
 val developmentLabelBranch = developmentFeatureName.take(40)
 
@@ -110,14 +114,14 @@ android {
     defaultConfig {
         applicationId = "com.cruxcoach.android"
         manifestPlaceholders["appLabel"] = "@string/app_name"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 35
-        versionCode = featureVersionCode ?: 8
+        versionCode = featureVersionCode ?: 9
         versionName = "0.2.3"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
-        // a few small libs). minSdk=26 (Android 8.0+) already targets the
+        // a few small libs). minSdk=28 (Android 9+) already targets the
         // 64-bit ARM era; 32-bit-only Android 8+ devices are <1% in DE
         // (mostly Android Go on entry-level SoCs, almost absent here).
         // Affected devices simply can't install (clean "incompatible"
@@ -227,18 +231,10 @@ android {
         buildConfigField("String", "APP_SHARE_DOWNLOAD_URL",
             "\"${localProps.getProperty("APP_SHARE_DOWNLOAD_URL", "https://cruxcoach.org/get.html")}\"")
 
-        // minSdk of the NEXT release, so this build can tell a device that it
-        // is about to fall out of support and say so while it still can.
-        //
-        // 0.2.3 raises minSdk from 26 to 28: v3 signing — and with it the
-        // certificate lineage that makes a key rotation installable — does not
-        // exist before API 28, and a rotation that leaves the old key valid on
-        // 26/27 would not actually retire a compromised key.
-        //
-        // Deliberately NOT equal to this build's own minSdk: the warning has to
-        // reach the devices that can still run this release but not the next,
-        // which is exactly the ones the next minSdk excludes. Bump this in the
-        // release BEFORE bumping minSdk, never in the same one.
+        // 0.2.2 warned Android 8 users before the announced 0.2.3 move to
+        // API 28. This release now requires Android 9; no further increase
+        // is announced. Keep this at 28 until a later release deliberately
+        // warns still-supported devices ahead of another minimum-SDK change.
         buildConfigField("int", "MIN_SDK_NEXT_RELEASE",
             localProps.getProperty("MIN_SDK_NEXT_RELEASE", "28"))
 

@@ -1,11 +1,32 @@
 package com.cruxcoach.android.ui.playlist
 
+import com.cruxcoach.domain.playlist.PlaylistCandidate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PlaylistGeneratorBoardScopeTest {
+    @Test
+    fun `generation snapshot is filtered in memory by plan and browser ranges`() {
+        val candidates = (10..24).map { difficulty ->
+            PlaylistCandidate("climb-$difficulty", difficulty.toDouble())
+        }
+
+        val selected = playlistCandidatesInBand(
+            candidates = candidates,
+            minDifficulty = 12.0,
+            maxDifficulty = 22.0,
+            targetMinDifficulty = 14.0,
+            targetMaxDifficulty = 20.0,
+            browserMinDifficulty = 16.0,
+            browserMaxDifficulty = 24.0,
+            limit = 3,
+        )
+
+        assertEquals(listOf(16.0, 17.0, 18.0), selected.map { it.difficulty })
+    }
+
     @Test
     fun `moonboard ignores stale aurora product size`() {
         assertEquals(0, playlistProductSizeFilter("moonboard", 12))

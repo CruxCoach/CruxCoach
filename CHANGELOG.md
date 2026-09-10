@@ -7,12 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Changed
+- Android 9 (API 28) is now the minimum supported version, as announced in 0.2.2.
+- A compact board picker and main menu simplify navigation; header actions move
+  into an overflow menu on narrow screens.
+- Logbook statistics count distinct problems by their best outcome in the selected
+  period: Flash, Sent, then Attempt. Total attempts remain available as training volume.
+- Quick logging and playlist generation respect the selected board and browser filters.
 - Beta videos open from a compact play button in the climb detail card.
 - Supported boards synchronize optional beta media separately from their catalogues.
 - Blossom previews are checked against their SHA-256 hash before display and
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
 ### Fixed
+- Randomized search uses one stable shuffled result set across pages. Duplicate
+  problem IDs are removed before display, preventing duplicate-key list crashes.
+- Filter counts use the same restrictions as the result list, including hidden
+  problems, logged status, hold selection, source and Quantum occupancy filters.
+  Fully filtered results are no longer truncated after the first 50 problems.
+- MoonBoard legacy problem IDs resolve consistently for videos and logged status.
+- Playlist generation publishes the board selection before profile loading and
+  reuses candidate pools for planned grade bands.
+- The floating action button no longer covers the last playlist card's actions.
 - Unverified local shares preserve existing board geometry and LED mappings while
   keeping historical first-import formats and resumable transfers supported.
 - Relay events are authenticated before subscription-local duplicate suppression;

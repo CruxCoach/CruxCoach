@@ -8,6 +8,15 @@ import org.junit.Test
 
 class BoardBrowserHeaderTest {
     @Test
+    fun `header actions collapse in priority order while preserving board picker width`() {
+        assertEquals(5, directHeaderActionCount(360))
+        assertEquals(3, directHeaderActionCount(320))
+        assertEquals(2, directHeaderActionCount(300))
+        assertEquals(1, directHeaderActionCount(260))
+        assertEquals(0, directHeaderActionCount(220))
+    }
+
+    @Test
     fun `kilter context exposes model and physical subtype`() {
         val context = boardBrowserHeaderContext(
             boardBrand = BoardBrand.KILTER.wireValue,

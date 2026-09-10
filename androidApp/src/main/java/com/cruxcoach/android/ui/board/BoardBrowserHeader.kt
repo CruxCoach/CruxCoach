@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,14 +21,21 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +59,33 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 internal data class BoardBrowserHeaderContext(
     val title: String,
     val subtitle: String,
+)
+
+private const val HEADER_HOME_WIDTH_DP = 44
+private const val HEADER_BOARD_MIN_WIDTH_DP = 96
+private const val HEADER_ACTION_WIDTH_DP = 44
+private const val HEADER_ACTION_COUNT = 5
+
+/**
+ * Keep enough room for a useful board picker, then expose actions in priority
+ * order. As soon as any action is hidden, one action slot is reserved for the
+ * overflow menu that still makes every destination reachable.
+ */
+internal fun directHeaderActionCount(availableWidthDp: Int): Int {
+    val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
+    if (actionSpace >= HEADER_ACTION_WIDTH_DP * HEADER_ACTION_COUNT) {
+        return HEADER_ACTION_COUNT
+    }
+    val availableSlots = (actionSpace / HEADER_ACTION_WIDTH_DP).coerceAtLeast(0)
+    return (availableSlots - 1).coerceIn(0, HEADER_ACTION_COUNT - 1)
+}
+
+private data class HeaderActionSpec(
+    val icon: ImageVector,
+    @StringRes val contentDescription: Int,
+    val tag: String,
+    val tint: Color? = null,
+    val onClick: () -> Unit,
 )
 
 internal fun boardBrowserHeaderContext(
@@ -96,109 +131,143 @@ internal fun BoardBrowserHeader(
     onLists: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        shadowElevation = 1.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(60.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(44.dp)
-                    .fillMaxSize()
-                    .clickable(
-                        onClickLabel = stringResource(R.string.cd_open_menu),
-                        role = Role.Button,
-                        onClick = onOpenMenu,
-                    )
-                    .testTag("board_browser_home"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxSize()
-                    .clickable(onClick = onBoardPicker)
-                    .testTag("board_browser_board_picker")
-                    .padding(start = 2.dp, end = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = context.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (context.subtitle.isNotEmpty()) {
-                        Text(
-                            text = context.subtitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Icon(
-                    imageVector = Icons.Default.ArrowDropDown,
-                    contentDescription = stringResource(R.string.board_browser_change_board),
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            HeaderAction(
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val actions = listOf(
+            HeaderActionSpec(
                 icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
                 contentDescription = R.string.cd_bluetooth,
                 tag = "board_ble_button",
                 tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                 onClick = onBluetooth,
-            )
-            HeaderAction(
-                icon = Icons.Default.Tune,
-                contentDescription = R.string.cd_filter,
-                tag = "board_filter_toggle",
-                onClick = onFilter,
-            )
-            HeaderAction(
-                icon = Icons.Default.Book,
-                contentDescription = R.string.board_logbook_title,
-                tag = "board_logbook_icon",
-                onClick = onLogbook,
-            )
-            HeaderAction(
-                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
-                contentDescription = R.string.board_lists_title,
-                tag = "board_lists_button",
+            ),
+            HeaderActionSpec(Icons.Default.Tune, R.string.cd_filter, "board_filter_toggle", onClick = onFilter),
+            HeaderActionSpec(Icons.Default.Settings, R.string.cd_settings, "board_settings_button", onClick = onSettings),
+            HeaderActionSpec(Icons.Default.Book, R.string.board_logbook_title, "board_logbook_icon", onClick = onLogbook),
+            HeaderActionSpec(
+                Icons.AutoMirrored.Filled.FormatListBulleted,
+                R.string.board_lists_title,
+                "board_lists_button",
                 onClick = onLists,
-            )
-            HeaderAction(
-                icon = Icons.Default.Settings,
-                contentDescription = R.string.cd_settings,
-                tag = "board_settings_button",
-                onClick = onSettings,
-            )
+            ),
+        )
+        val directCount = directHeaderActionCount(maxWidth.value.toInt())
+        val overflowActions = actions.drop(directCount)
+        var overflowExpanded by remember { mutableStateOf(false) }
+
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            shadowElevation = 1.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(44.dp)
+                        .fillMaxSize()
+                        .clickable(
+                            onClickLabel = stringResource(R.string.cd_open_menu),
+                            role = Role.Button,
+                            onClick = onOpenMenu,
+                        )
+                        .testTag("board_browser_home"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.mipmap.ic_launcher_foreground),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clickable(onClick = onBoardPicker)
+                        .testTag("board_browser_board_picker")
+                        .padding(start = 2.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = context.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (context.subtitle.isNotEmpty()) {
+                            Text(
+                                text = context.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = stringResource(R.string.board_browser_change_board),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                actions.take(directCount).forEach { action ->
+                    HeaderAction(
+                        icon = action.icon,
+                        contentDescription = action.contentDescription,
+                        tag = action.tag,
+                        tint = action.tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = action.onClick,
+                    )
+                }
+                if (overflowActions.isNotEmpty()) {
+                    Box {
+                        HeaderAction(
+                            icon = Icons.Default.MoreVert,
+                            contentDescription = R.string.action_more_options,
+                            tag = "board_header_overflow",
+                            onClick = { overflowExpanded = true },
+                        )
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false },
+                        ) {
+                            overflowActions.forEach { action ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(action.contentDescription)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = action.icon,
+                                            contentDescription = null,
+                                            tint = action.tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        overflowExpanded = false
+                                        action.onClick()
+                                    },
+                                    modifier = Modifier.testTag(action.tag),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

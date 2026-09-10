@@ -158,7 +158,17 @@ fun BoardListsScreen(
         // of thing: not your lists, but the broader CruxCoach community."
         LazyColumn(
             modifier = Modifier.padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            // Scaffold overlays its FAB on the content instead of including it
+            // in [padding]. Reserve a full FAB + margin at the end so the last
+            // card can always scroll above it; this also fixes the short-list
+            // case where the FAB covered the card's delete action but there was
+            // previously no remaining content to scroll.
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = 88.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "community-banner") {
