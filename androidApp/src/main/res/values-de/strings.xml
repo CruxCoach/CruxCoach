@@ -2748,4 +2748,6 @@
     <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
     <string name="beta_video_close">Beta-Videos schließen</string>
     <string name="board_stats_problem_outcomes_hint">Jedes Problem zählt im gewählten Zeitraum einmal: Flash, sonst Send, sonst versucht. Weitere Versuche erhöhen diese Zahlen nicht.</string>
+    <string name="whatsnew_023_title">Neu in 0.2.3</string>
+    <string name="whatsnew_023_body">• Statistiken zählen unterschiedliche Probleme als Flash, Sent oder Attempt. Die Gesamtzahl deiner Versuche bleibt sichtbar.\n\n• Filterzahlen passen zur Liste, auch bei mehr als 50 Ergebnissen.\n\n• Die zufällige Suche läuft beim Scrollen zuverlässiger.\n\n• Wechsle Boards über die kompakte Kopfzeile und öffne Beta-Videos in den Climb-Details.</string>
 </resources>

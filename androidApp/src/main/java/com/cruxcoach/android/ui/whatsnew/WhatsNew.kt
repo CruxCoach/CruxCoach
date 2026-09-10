@@ -68,6 +68,9 @@ object WhatsNewItems {
     val RELEASE_022 = WhatsNewItem(id = "release-0.2.2", sinceVersionCode = 8)
 
 
+    /** 0.2.3: reliable browsing, distinct-problem statistics and compact navigation. */
+    val RELEASE_023 = WhatsNewItem(id = "release-0.2.3", sinceVersionCode = 9)
+
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
@@ -99,6 +102,7 @@ object WhatsNewItems {
         AURORA_JSON_IMPORT,
         RELEASE_021,
         RELEASE_022,
+        RELEASE_023,
     )
 }
 
@@ -193,6 +197,8 @@ fun WhatsNewHost(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToSettings = onNavigateToSettings,
             )
+        WhatsNewItems.RELEASE_023.id ->
+            Release023WhatsNewDialog(onDismiss = { vm.dismissCurrent() })
         WhatsNewItems.RELEASE_022.id ->
             Release022WhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
