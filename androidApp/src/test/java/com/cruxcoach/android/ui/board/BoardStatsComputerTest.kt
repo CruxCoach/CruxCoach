@@ -543,7 +543,7 @@ class BoardStatsComputerTest {
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.outcomeDistribution.flashes)
         assertEquals(1, stats.outcomeDistribution.redpoints)
-        assertEquals(6, stats.outcomeDistribution.attempts)
+        assertEquals(1, stats.outcomeDistribution.attempts)
     }
 
     @Test
@@ -681,4 +681,50 @@ class BoardStatsComputerTest {
         assertEquals(1, out.size)
         assertEquals("kilter", out[0].boardBrand)
     }
+    @Test
+    fun `outcomes count each problem once and keep total tries as volume`() {
+        val logs = listOf(
+            ascent(uuid = "a1", climbUuid = "project", isSend = false, bidCount = 8),
+            ascent(uuid = "a2", climbUuid = "project", isSend = false, bidCount = 6,
+                climbedAt = "2026-03-06T18:00:00"),
+            ascent(uuid = "b1", climbUuid = "topped", isSend = false, bidCount = 4),
+            ascent(uuid = "b2", climbUuid = "topped", isSend = true, bidCount = 2,
+                climbedAt = "2026-03-06T18:00:00"),
+            ascent(uuid = "b3", climbUuid = "topped", isSend = true,
+                climbedAt = "2026-03-07T18:00:00"),
+            ascent(uuid = "f1", climbUuid = "flash", isSend = true),
+            ascent(uuid = "f2", climbUuid = "flash", isSend = true,
+                climbedAt = "2026-03-07T18:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(OutcomeDistribution(1, 1, 1), stats.outcomeDistribution)
+        assertEquals(1, stats.gradeOutcomes.single().attemptCount)
+        assertEquals(3, stats.gradeOutcomes.single().total)
+        assertEquals(23, stats.totalAttempts)
+        assertEquals(4, stats.totalSends)
+    }
+
+    @Test
+    fun `outcomes are scoped to period but earlier attempts still prevent a flash`() {
+        val logs = listOf(
+            ascent(uuid = "old", isSend = false, bidCount = 5, climbedAt = "2026-02-01T12:00:00"),
+            ascent(uuid = "new", isSend = true, climbedAt = "2026-03-05T12:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE,
+            customFrom = LocalDate.parse("2026-03-01"), customTo = LocalDate.parse("2026-03-10"))
+        assertEquals(OutcomeDistribution(0, 1, 0), stats.outcomeDistribution)
+    }
+
+    @Test
+    fun `ungraded attempts count once in donut and same ids on different boards stay separate`() {
+        val logs = listOf(
+            ascent(uuid = "one", isSend = false, difficulty = null, bidCount = 7),
+            ascent(uuid = "two", isSend = false, difficulty = null, angle = 30),
+            ascent(uuid = "moon", isSend = false, difficulty = null, boardBrand = "moonboard"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(2, stats.outcomeDistribution.attempts)
+        assertTrue(stats.gradeOutcomes.isEmpty())
+    }
+
 }

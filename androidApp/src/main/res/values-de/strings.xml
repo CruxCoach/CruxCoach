@@ -1447,7 +1447,7 @@
     <string name="board_list_default_name">Liste</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>
-    <string name="board_logbook_attempts">Attempts</string>
+    <string name="board_logbook_attempts">Versuche gesamt</string>
     <string name="board_logbook_filters">Logbook filtern</string>
     <string name="board_logbook_filter_outcome">Ergebnis</string>
     <string name="board_logbook_filter_board">Board</string>
@@ -2747,4 +2747,5 @@
     <string name="beta_video_number">Beta-Video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
     <string name="beta_video_close">Beta-Videos schließen</string>
+    <string name="board_stats_problem_outcomes_hint">Jedes Problem zählt im gewählten Zeitraum einmal: Flash, sonst Send, sonst versucht. Weitere Versuche erhöhen diese Zahlen nicht.</string>
 </resources>

@@ -1404,7 +1404,7 @@
     <string name="board_list_default_name">List</string>
     <string name="board_list_empty_message">Add climbs from the browser</string>
     <string name="board_list_empty_title">List is empty</string>
-    <string name="board_logbook_attempts">Attempts</string>
+    <string name="board_logbook_attempts">Total attempts</string>
     <string name="board_logbook_filters">Filter logbook</string>
     <string name="board_logbook_filter_outcome">Result</string>
     <string name="board_logbook_filter_board">Board</string>
@@ -2748,4 +2748,5 @@
     <string name="beta_video_number">Beta video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Current angle</string>
     <string name="beta_video_close">Close beta videos</string>
+    <string name="board_stats_problem_outcomes_hint">Each problem counts once in the selected period: Flash, otherwise Sent, otherwise Attempted. Repeated tries do not increase these counts.</string>
 </resources>

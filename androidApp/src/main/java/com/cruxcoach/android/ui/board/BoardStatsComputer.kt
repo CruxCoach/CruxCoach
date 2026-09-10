@@ -59,7 +59,6 @@ object BoardStatsComputer {
         if (filtered.isEmpty()) return BoardLogbookStats()
 
         val sends = filtered.filter { it.isSend }
-        val bids = filtered.filter { !it.isSend }
         val totalSends = sends.size
         val boulderSends = sends.count { it.framesCount <= 1L }
         val routeSends = sends.count { it.framesCount > 1L }
@@ -81,8 +80,11 @@ object BoardStatsComputer {
         val activityMap = computeActivityMap(filtered)
 
         // New extended stats
-        val gradeOutcomes = computeGradeOutcomes(sends, bids, gradeScale, flashUuids)
-        val outcomeDistribution = computeOutcomeDistribution(sends, bids, flashUuids)
+        val problemOutcomes = distinctProblemOutcomes(filtered, flashUuids)
+        val outcomeSends = problemOutcomes.filter { it.isSend }
+        val outcomeBids = problemOutcomes.filterNot { it.isSend }
+        val gradeOutcomes = computeGradeOutcomes(outcomeSends, outcomeBids, gradeScale, flashUuids)
+        val outcomeDistribution = computeOutcomeDistribution(outcomeSends, outcomeBids, flashUuids)
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
@@ -248,6 +250,25 @@ object BoardStatsComputer {
 
     // --- New extended stats ---
 
+    /** One problem per board, regardless of repeat sessions or angle changes.
+     * Choose its best result within the interval; flash eligibility still uses full history. */
+    private fun distinctProblemOutcomes(
+        entries: List<AscentWithClimb>,
+        flashUuids: Set<String>,
+    ): List<AscentWithClimb> = entries
+        .groupBy { it.boardBrand to it.climbUuid }
+        .values.map { problem ->
+            problem.minWith(
+                compareByDescending<AscentWithClimb> {
+                    when {
+                        it.uuid in flashUuids -> 2
+                        it.isSend -> 1
+                        else -> 0
+                    }
+                }.thenBy { it.climbedAt }.thenBy { it.uuid },
+            )
+        }
+
     private fun computeGradeOutcomes(
         sends: List<AscentWithClimb>,
         bids: List<AscentWithClimb>,
@@ -264,10 +285,7 @@ object BoardStatsComputer {
             val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
             val flashes = entries.count { it.isSend && it.uuid in flashUuids }
             val redpoints = entries.count { it.isSend && it.uuid !in flashUuids }
-            val attempts = entries.sumOf {
-                if (it.isSend) (it.bidCount - 1L).coerceAtLeast(0L)
-                else it.bidCount.coerceAtLeast(1L)
-            }.toInt()
+            val attempts = entries.count { !it.isSend }
             GradeOutcomeEntry(
                 grade = grade,
                 difficultyInt = diffInt,
@@ -285,12 +303,10 @@ object BoardStatsComputer {
     ): OutcomeDistribution {
         val flashes = sends.count { it.uuid in flashUuids }
         val redpoints = sends.count { it.uuid !in flashUuids }
-        val failedAttempts = sends.sumOf { (it.bidCount - 1L).coerceAtLeast(0L) } +
-            bids.sumOf { it.bidCount.coerceAtLeast(1L) }
         return OutcomeDistribution(
             flashes = flashes,
             redpoints = redpoints,
-            attempts = failedAttempts.toInt(),
+            attempts = bids.size,
         )
     }
 
@@ -494,7 +510,7 @@ object BoardStatsComputer {
      */
     fun trueFlashUuids(allAscents: List<AscentWithClimb>): Set<String> {
         return allAscents
-            .groupBy { it.climbUuid to it.angle }
+            .groupBy { Triple(it.boardBrand, it.climbUuid, it.angle) }
             .mapNotNull { (_, entries) ->
                 val first = entries.minByOrNull { it.climbedAt } ?: return@mapNotNull null
                 first.uuid.takeIf { first.isSend && first.bidCount <= 1L }

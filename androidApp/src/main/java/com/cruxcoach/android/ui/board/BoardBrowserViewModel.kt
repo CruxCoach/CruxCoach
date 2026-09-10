@@ -50,6 +50,8 @@ import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.util.GradeConverter
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -164,6 +166,28 @@ internal fun mergeBrowseClimbs(
     existing: List<ClimbWithStats>,
     incoming: List<ClimbWithStats>,
 ): List<ClimbWithStats> = (existing + incoming).distinctBy { it.uuid }
+
+/** Whole-set query results must not advertise a continuation after discarding rows. */
+internal fun completeBrowseResults(climbs: List<ClimbWithStats>): Triple<List<ClimbWithStats>, Int, Boolean> {
+    val unique = climbs.distinctBy { it.uuid }
+    return Triple(unique, unique.size, true)
+}
+
+/** Count exactly the same filtered identities as browsing, even across empty or overlapping pages. */
+internal suspend fun countBrowseMatches(
+    fetchPage: suspend (Int) -> Triple<List<ClimbWithStats>, Int, Boolean>,
+): Long {
+    val uuids = HashSet<String>()
+    var offset = 0
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val (page, nextOffset, exhausted) = fetchPage(offset)
+        page.forEach { uuids.add(it.uuid) }
+        if (exhausted) return uuids.size.toLong()
+        check(nextOffset > offset) { "Browse count source did not advance" }
+        offset = nextOffset
+    }
+}
 
 /** Page-refill loop for the browse list, extracted from
  *  [BoardBrowserViewModel.searchClimbs] so it is plain-JVM testable.
@@ -547,10 +571,6 @@ class BoardBrowserViewModel @Inject constructor(
     // refresh means only the newest board's queries run to completion.
     private var refreshJob: Job? = null
 
-    // Cached count: only re-fetch from DB when count-affecting filters change
-    private var cachedDbCount: Long = -1
-    private var cachedCountKey: String = ""
-
     // RANDOM sort, browse mode. SQL ORDER BY RANDOM() re-shuffles per page →
     // duplicates and gaps when scrolling. Instead: page 1 is a fast SQL
     // random sample served immediately; the full shuffle of every *other*
@@ -901,7 +921,6 @@ class BoardBrowserViewModel @Inject constructor(
         // Invalidate caches so new ascents/bids + ignore-toggles are picked up
         statusLoaded = false
         hiddenLoaded = false
-        cachedCountKey = ""
         // Latest-wins: cancel any in-flight refresh so a rapid board switch
         // doesn't stack multiple full query sets on the single DB connection.
         refreshJob?.cancel()
@@ -1320,9 +1339,6 @@ class BoardBrowserViewModel @Inject constructor(
         } else null
     }
 
-    private fun placementsOf(frames: String): Set<Int> =
-        BoardClimbParser.parseFrames(frames).mapTo(HashSet()) { it.placementId }
-
     private suspend fun applyQuantumOverlapFilter(
         climbs: List<ClimbWithStats>,
         f: BrowserFilterState,
@@ -1354,41 +1370,8 @@ class BoardBrowserViewModel @Inject constructor(
             previous.layerCount == next.layerCount &&
             previous.complete == next.complete
         ) return
-        overlapCountKey = null
-        overlapCountValue = -1
         _state.update { it.copy(quantumLayers = next) }
         if (_state.value.filter.quantumOverlapFilter.active) searchClimbs()
-    }
-
-    private var overlapCountKey: String? = null
-    private var overlapCountValue: Long = -1
-
-    private fun overlapCountIsExact(f: BrowserFilterState): Boolean =
-        f.statusFilter.isEmpty() && !f.ungradedOnly && !f.benchmarkOnly && !f.myClimbsOnly &&
-            f.originFilter == OriginFilter.ALL && f.searchQuery.isBlank() &&
-            !_state.value.holdSearch.holdFilterActive
-
-    private suspend fun quantumOverlapCount(
-        f: BrowserFilterState,
-        index: QuantumOverlapIndex,
-    ): Long {
-        val gb = gradeBounds(f)
-        val key = listOf(
-            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff,
-            f.minAscensionists, f.climbTypeFilter, hsmMask(), f.quantumOverlapFilter,
-            index.litPlacements.sorted().joinToString(","),
-        ).joinToString("|")
-        if (key == overlapCountKey) return overlapCountValue
-        val count = boardRepository.getAllFramesForHeatmap(
-            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff,
-            f.minAscensionists, f.climbTypeFilter, hsmExcludedMask = hsmMask(),
-        ).count { row ->
-            index.matches(placementsOf(row.frames), f.quantumOverlapFilter)
-        }.toLong()
-        overlapCountKey = key
-        overlapCountValue = count
-        _state.update { it.copy(quantumLayers = it.quantumLayers.copy(matchCount = count)) }
-        return count
     }
 
     private var firstContentReported = false
@@ -1401,6 +1384,7 @@ class BoardBrowserViewModel @Inject constructor(
     fun searchClimbs(preserveDepth: Boolean = false) {
         if (!_state.value.hasBoardData) return
 
+        countJob?.cancel()
         val requestGeneration = browseRequestGate.invalidate()
         val targetSize = if (preserveDepth) _state.value.climbs.size else 0
         searchJob?.cancel()
@@ -1457,79 +1441,35 @@ class BoardBrowserViewModel @Inject constructor(
         countJob?.cancel()
         countJob = viewModelScope.safeLaunch(TAG) {
             delay(750)
-            val count = resolveCount(filter, _state.value.climbs.size)
+            val snapshot = _state.value
+            val count = if (!snapshot.canLoadMore) snapshot.climbs.size.toLong() else {
+                withContext(Dispatchers.IO) { resolveCount(filter) }
+            }
             if (browseRequestGate.accepts(requestGeneration) && _state.value.filter == filter) {
-                _state.update { it.copy(filteredCount = count) }
+                _state.update { it.copy(
+                    filteredCount = count,
+                    quantumLayers = if (filter.quantumOverlapFilter.active) {
+                        it.quantumLayers.copy(matchCount = count)
+                    } else it.quantumLayers,
+                ) }
             }
         }
     }
 
-    /**
-     * Returns the filtered count, using cache when possible.
-     * - Sort field/direction don't affect count → cache hit
-     * - SENT/ATTEMPTED: [directCount] = total matching climbs from direct UUID query
-     * - NEW/UNSENT: estimate from DB count minus in-memory sets
-     * - Only angle/grade/ascensionists/searchQuery/climbType trigger a DB COUNT
-     */
-    private suspend fun resolveCount(filter: BrowserFilterState, directCount: Int = 0): Long {
-        // MY-CLIMBS FILTER: directCount is the total after client-side
-        // filtering in the my-climbs branch of fetchFiltered.
-        if (filter.myClimbsOnly) {
-            return directCount.toLong()
-        }
+    /** Use SQL's fast count only when it describes the entire displayed set.
+     * All client-side restrictions are counted through the browse pipeline. */
+    private suspend fun resolveCount(filter: BrowserFilterState): Long {
+        ensureHiddenLoaded()
+        if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
+        val plain = filter.statusFilter.isEmpty() &&
+            filter.originFilter == OriginFilter.ALL && !filter.myClimbsOnly &&
+            !_state.value.holdSearch.holdFilterActive &&
+            !filter.quantumOverlapFilter.active && hiddenUuids.isEmpty()
+        if (plain) return fetchDbCount(filter)
 
-        overlapIndex(filter)?.takeIf { overlapCountIsExact(filter) }?.let { index ->
-            return quantumOverlapCount(filter, index)
-        }
-
-        // HOLD FILTER: directCount is accurate from getClimbsByUuids
-        val hs = _state.value.holdSearch
-        if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {
-            return directCount.toLong()
-        }
-
-        // ORIGIN SHORT-CIRCUITS (CRUXCOACH / BOARDSESH): fetchFiltered pulls
-        // the whole origin-scoped set and returns its exact size as
-        // directCount. Without this the count falls through to the
-        // unconstrained DB count below (~190K) instead of the handful of
-        // origin-scoped rows actually shown.
-        if (filter.originFilter == OriginFilter.CRUXCOACH ||
-            filter.originFilter == OriginFilter.BOARDSESH ||
-            (filter.originFilter == OriginFilter.KILTER &&
-                BoardBrand.fromWire(filter.boardBrand) == BoardBrand.QUANTUM)) {
-            return directCount.toLong()
-        }
-
-        // DIRECT-UUID statuses (subset of {SENT, ATTEMPTED}): directCount is the
-        // exact total from getClimbsByUuids over the unioned UUID set.
-        if (isDirectUuidStatus(filter.statusFilter)) {
-            return directCount.toLong()
-        }
-
-        // Build a key from count-affecting fields only (not sort).
-        // ungradedOnly swaps the whole grade predicate (impossible range +
-        // IS NULL leg), so it changes the count even at identical indices.
-        val countKey = "${filter.boardBrand}|${filter.layoutId}|${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
-            "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}|${filter.quantumRuleMask}"
-
-        // Fetch DB count only if count-affecting filters changed
-        if (countKey != cachedCountKey) {
-            cachedDbCount = withContext(Dispatchers.IO) { fetchDbCount(filter) }
-            cachedCountKey = countKey
-        }
-
-        // Reaching here means the selection is empty (Alle) or includes NEW
-        // (the direct-UUID early-return above handled the rest). The three
-        // buckets are disjoint, so the count is the sum of the selected ones.
-        // (NEW is approximated as DB-count minus the global logged sets — the
-        // same estimate the single-select NEW/UNSENT presets always used.)
-        val statuses = filter.statusFilter
-        if (statuses.isEmpty()) return cachedDbCount
-        var count = 0L
-        if (ClimbStatusFilter.SENT in statuses) count += sentUuids.size
-        if (ClimbStatusFilter.ATTEMPTED in statuses) count += attemptedUuids.size
-        if (ClimbStatusFilter.NEW in statuses) count += (cachedDbCount - sentUuids.size - attemptedUuids.size)
-        return count
+        // Counting must not reroll or mutate the random browse cache.
+        val ordered = filter.copy(sortField = ClimbSortField.NAME, sortDirection = SortDirection.ASC)
+        return countBrowseMatches { offset -> fetchFiltered(ordered, offset, pageSize = 500) }
     }
 
     fun loadMore() {
@@ -1566,7 +1506,7 @@ class BoardBrowserViewModel @Inject constructor(
      * For SENT/ATTEMPTED: queries climb_browse directly by UUID set (small, fast).
      * For ALL/NEW/UNSENT: page-scans (high hit rate, most climbs match).
      */
-    private suspend fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<ClimbWithStats>, Int, Boolean> {
+    private suspend fun fetchFiltered(f: BrowserFilterState, dbOffset: Int, pageSize: Int = PAGE_SIZE): Triple<List<ClimbWithStats>, Int, Boolean> {
         // MY-CLIMBS FILTER: short-circuit the paginated browse path. We pull
         // every climb authored by the local pubkey on this layout in one
         // call and apply remaining filters client-side. Drafts (source=
@@ -1587,7 +1527,7 @@ class BoardBrowserViewModel @Inject constructor(
                 applyQuantumOverlapFilter(applyHiddenFilter(originFiltered), f),
                 f.sortField, f.sortDirection,
             )
-            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+            return completeBrowseResults(sorted)
         }
 
         // CRUXCOACH ORIGIN FILTER: short-circuit pagination. The default
@@ -1616,7 +1556,7 @@ class BoardBrowserViewModel @Inject constructor(
                 ),
                 f.sortField, f.sortDirection,
             )
-            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+            return completeBrowseResults(sorted)
         }
 
         // BOARDSESH ORIGIN FILTER: same short-circuit as CRUXCOACH above.
@@ -1646,7 +1586,7 @@ class BoardBrowserViewModel @Inject constructor(
                 ),
                 f.sortField, f.sortDirection,
             )
-            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+            return completeBrowseResults(sorted)
         }
 
         // Exact eWalls/Quantum provenance filtering must happen before
@@ -1677,12 +1617,13 @@ class BoardBrowserViewModel @Inject constructor(
             // The query intentionally returned the complete official set; do
             // not truncate it and then advertise a continuation that cannot
             // page the already-consumed Kotlin list.
-            return Triple(sorted, sorted.size, true)
+            return completeBrowseResults(sorted)
         }
 
         // HOLD FILTER: direct UUID query with hold-matched UUIDs
         val hs = _state.value.holdSearch
-        if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {
+        if (hs.holdFilterActive) {
+            if (hs.holdFilterUuids.isEmpty()) return Triple(emptyList(), 0, true)
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
             // getClimbsByUuids carries the plain range predicate (no
             // :showUngraded escape): in ungraded-only mode the impossible
@@ -1697,7 +1638,7 @@ class BoardBrowserViewModel @Inject constructor(
                 applyQuantumOverlapFilter(applyHiddenFilter(filtered), f),
                 f.sortField, f.sortDirection,
             )
-            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+            return completeBrowseResults(sorted)
         }
 
         // DIRECT-UUID statuses (non-empty subset of {SENT, ATTEMPTED}): query
@@ -1717,12 +1658,12 @@ class BoardBrowserViewModel @Inject constructor(
                 applyQuantumOverlapFilter(applyHiddenFilter(filtered), f),
                 f.sortField, f.sortDirection,
             )
-            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+            return completeBrowseResults(sorted)
         }
 
         // ALLE (empty selection): no client-side status filtering (benchmark/origin only)
         if (f.statusFilter.isEmpty()) {
-            val rawPage = fetchPage(f, dbOffset)
+            val rawPage = fetchPage(f, dbOffset, pageSize)
             val filtered = applyQuantumOverlapFilter(
                 applyHiddenFilter(
                     applyQuantumRuleFilter(
@@ -1731,7 +1672,7 @@ class BoardBrowserViewModel @Inject constructor(
                 ),
                 f,
             )
-            return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
+            return Triple(filtered, dbOffset + rawPage.size, rawPage.size < pageSize)
         }
 
         // Selection includes NEW (the unbounded complement of the logged sets):
@@ -1739,7 +1680,8 @@ class BoardBrowserViewModel @Inject constructor(
         val collected = mutableListOf<ClimbWithStats>()
         var currentOffset = dbOffset
         repeat(MAX_STATUS_SCAN_PAGES) {
-            val page = fetchPage(f, currentOffset)
+            currentCoroutineContext().ensureActive()
+            val page = fetchPage(f, currentOffset, pageSize)
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
             collected.addAll(
@@ -1763,8 +1705,8 @@ class BoardBrowserViewModel @Inject constructor(
             // overflow, so truncating here would drop those climbs forever
             // (loadMore resumes from currentOffset). Callers tolerate
             // >PAGE_SIZE results (searchClimbs assigns, loadMore appends).
-            if (collected.size >= PAGE_SIZE) return Triple(collected, currentOffset, false)
-            if (page.size < PAGE_SIZE) return Triple(collected, currentOffset, true)
+            if (collected.size >= pageSize) return Triple(collected, currentOffset, false)
+            if (page.size < pageSize) return Triple(collected, currentOffset, true)
         }
         // Scan cap hit mid-DB: a continuation, not exhaustion — deeper pages
         // may still match. dbExhausted=false keeps infinite scroll alive (the
@@ -1821,7 +1763,7 @@ class BoardBrowserViewModel @Inject constructor(
             }
         }
 
-    private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
+    private suspend fun fetchPage(f: BrowserFilterState, offset: Int, pageSize: Int = PAGE_SIZE): List<ClimbWithStats> {
         Log.i(
             TAG,
             "browse page query start (brand=${f.boardBrand}, layout=${f.layoutId}, angle=${f.angle}, " +
@@ -1832,12 +1774,12 @@ class BoardBrowserViewModel @Inject constructor(
         }
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
-                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
+                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, pageSize, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         } else {
             val gb = gradeBounds(f)
             PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
-                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
+                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.sortField, f.sortDirection, pageSize, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
             }
         }
     }
@@ -1970,7 +1912,7 @@ class BoardBrowserViewModel @Inject constructor(
         val f = _state.value.filter
         val hs = _state.value.holdSearch
         // "Plain" mode = no client-side narrowing. Only then does filteredCount
-        // (= cachedDbCount) match the offset query's row set exactly, so we can
+        // matches the offset query's row set before ignore filtering, so we can
         // pick uniformly across the WHOLE catalogue match (not just loaded
         // pages); ignored climbs are skipped via the bounded re-roll.
         val plainMode = f.statusFilter.isEmpty() &&
@@ -2001,10 +1943,8 @@ class BoardBrowserViewModel @Inject constructor(
             return
         }
         // Every other mode (Neu/Offen/Gesendet/Versucht/Herkunft/Eigene/Hold):
-        // filteredCount is an estimate (Neu/Offen subtract the GLOBAL logbook
-        // from a filter-scoped count, so it can go <= 0 and silently kill the
-        // dice on a full list) and the offset query ignores the client-side
-        // filter anyway. Pick from the already-loaded list, which is fully
+        // The offset query ignores client-side restrictions. Pick from the
+        // already-loaded list, which is fully
         // filtered and has ignored climbs removed — no count gate, always
         // respects the active filters.
         _state.value.climbs.randomOrNull()?.uuid?.let(onResult)

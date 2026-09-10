@@ -294,6 +294,16 @@ internal fun BoardStatsSheet(
                     onSelect = onGradeChartViewSelect,
                     labelOf = { gradeChartViewLabel(it) }
                 ) {
+                    if (gradeChartView == GradeChartView.FLASH_SEND_ATTEMPT ||
+                        gradeChartView == GradeChartView.OUTCOME_DONUT
+                    ) {
+                        Text(
+                            text = stringResource(R.string.board_stats_problem_outcomes_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     when (gradeChartView) {
                         GradeChartView.PYRAMID -> {
                             BoardGradePyramidChart(

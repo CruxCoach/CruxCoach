@@ -1,6 +1,6 @@
 package com.cruxcoach.android.ui.board
 
-/** Outcome breakdown per grade: flash / redpoint / attempt counts */
+/** Distinct problems per grade, classified by best outcome: flash / sent / attempted. */
 data class GradeOutcomeEntry(
     val grade: String,
     val difficultyInt: Int,
@@ -11,7 +11,7 @@ data class GradeOutcomeEntry(
     val total: Int get() = flashCount + redpointCount + attemptCount
 }
 
-/** Overall outcome distribution across all grades */
+/** Distinct problem outcomes across all grades, including ungraded problems. */
 data class OutcomeDistribution(
     val flashes: Int,
     val redpoints: Int,
