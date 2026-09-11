@@ -63,9 +63,9 @@ tags:
 - assertVisible: "Automatisch prüfen"
 - pressKey: Back
 - scrollUntilVisible:
-    element: { text: "Kontakt & Rückmeldungen" }
+    element: { text: "Fehler & Funktionswünsche" }
     direction: DOWN
-- tapOn: "Kontakt & Rückmeldungen"
+- tapOn: "Fehler & Funktionswünsche"
 - assertVisible: "Nachrichten"
 - assertVisible: "Ankündigungen"
 - pressKey: Back

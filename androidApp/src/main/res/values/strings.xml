@@ -2775,8 +2775,8 @@
     <string name="settings_page_delete">Delete local data</string>
     <string name="settings_summary_delete">Remove catalogues or personal board data</string>
     <string name="settings_summary_updates">App version, update checks and installation</string>
-    <string name="settings_page_support">Contact &amp; feedback</string>
-    <string name="settings_summary_support">Messages, news, reports and support</string>
+    <string name="settings_page_support">Bugs &amp; feature requests</string>
+    <string name="settings_summary_support">Report bugs, suggest features and contact the developer</string>
     <string name="settings_page_about">About CruxCoach</string>
     <string name="settings_summary_about">Version, app information and sharing</string>
     <string name="settings_theme_system">System</string>
