@@ -1,0 +1,108 @@
+--- a/crates/cgka-engine/src/engine.rs
++++ b/crates/cgka-engine/src/engine.rs
+@@ -3003,6 +3003,30 @@
+     ) -> Result<R, EngineError> {
+         self.ensure_group_live(group_id)?;
+         self.with_mls_group(group_id, f)
++    }
++
++    /// CruxCoach adapter: authenticated canonical context and ALL account-device
++    /// leaves. No account projection or transport hint is used for attribution.
++    /// The caller holds its session coordinator across use of this snapshot.
++    pub fn cruxcoach_leaf_snapshot(&self, group_id: &GroupId)
++        -> Result<(Vec<u8>, u32, Vec<(u32, Vec<u8>, Vec<u8>)>), EngineError>
++    {
++        self.with_live_mls_group(group_id, |group| {
++            // Export only a domain-separated commitment, never the authenticator.
++            let mut hash = Sha256::new();
++            hash.update(b"cruxcoach.marmot.session.v1");
++            hash.update(group_id.as_slice());
++            hash.update(group.epoch().as_u64().to_be_bytes());
++            hash.update(group.epoch_authenticator().as_slice());
++            let context = hash.finalize().to_vec();
++            let mut leaves = Vec::new();
++            for member in group.members() {
++                let credential = openmls::prelude::BasicCredential::try_from(member.credential)
++                    .map_err(|_| EngineError::Backend("invalid leaf credential".into()))?;
++                leaves.push((member.index.u32(), credential.identity().to_vec(), member.signature_key));
++            }
++            Ok((context, group.own_leaf_index().u32(), leaves))
++        })
+     }
+ 
+     /// Return the current Marmot admin policy keys mirrored from signed MLS
+--- a/crates/cgka-session/src/lib.rs
++++ b/crates/cgka-session/src/lib.rs
+@@ -588,6 +588,14 @@
+     pub fn put_group_evolution(&self, record: &DurableGroupEvolution) -> SessionResult<()> {
+         Ok(self.engine.put_group_evolution(record)?)
+     }
++
++    /// CruxCoach host journal shares the engine SQLCipher transaction rail.
++    /// Never expose this handle over FFI or to untrusted application payloads.
++    pub fn cruxcoach_storage(&self) -> SqliteAccountStorage { self.storage.clone() }
++
++    pub fn cruxcoach_leaf_snapshot(&self, group_id: &GroupId)
++        -> SessionResult<(Vec<u8>, u32, Vec<(u32, Vec<u8>, Vec<u8>)>)>
++    { Ok(self.engine.cruxcoach_leaf_snapshot(group_id)?) }
+ 
+     pub fn own_leaf_hash(&self, group_id: &GroupId) -> SessionResult<Vec<u8>> {
+         Ok(self.engine.own_leaf_hash(group_id)?)
+--- a/crates/storage-sqlite/src/lib.rs
++++ b/crates/storage-sqlite/src/lib.rs
+@@ -91,3 +91,5 @@
+     optional_u64_to_i64, serialize, tags_from_json, u64_to_i64, unix_now_ms, unix_now_seconds,
+     unix_now_seconds_i64, usize_to_i64,
+ };
++
++mod cruxcoach_journal;
+--- /dev/null
++++ b/crates/storage-sqlite/src/cruxcoach_journal.rs
+@@ -0,0 +1,47 @@
++//! Bounded opaque host journal on the existing SQLCipher transaction rail.
++//! It neither interprets permissions nor modifies MDK's schema version.
++use crate::{SqliteAccountStorage, SqliteResultExt};
++use cgka_traits::storage::{StorageError, StorageResult};
++use rusqlite::{params, OptionalExtension};
++
++impl SqliteAccountStorage {
++    pub fn cruxcoach_init(&self) -> StorageResult<()> {
++        self.lock()?.execute_batch("CREATE TABLE IF NOT EXISTS cruxcoach_journal_v1 (
++            key TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL
++        )").storage()
++    }
++
++    pub fn cruxcoach_get(&self, key: &str) -> StorageResult<Option<Vec<u8>>> {
++        self.lock()?.query_row("SELECT value FROM cruxcoach_journal_v1 WHERE key=?1",
++            [key], |row| row.get(0)).optional().storage()
++    }
++
++    pub fn cruxcoach_put(&self, key: &str, value: &[u8]) -> StorageResult<()> {
++        if key.len() > 256 || value.len() > 1_048_576 {
++            return Err(StorageError::Backend("host journal row limit".into()));
++        }
++        let conn = self.lock()?;
++        let (count, bytes): (i64, i64) = conn.query_row(
++            "SELECT count(*), coalesce(sum(length(value)),0) FROM cruxcoach_journal_v1 WHERE key != ?1",
++            [key], |r| Ok((r.get(0)?, r.get(1)?))).storage()?;
++        if count >= 4096 || bytes + value.len() as i64 > 33_554_432 {
++            return Err(StorageError::Backend("host journal capacity".into()));
++        }
++        conn.execute("INSERT INTO cruxcoach_journal_v1(key,value) VALUES(?1,?2)
++            ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key, value]).storage()?;
++        Ok(())
++    }
++
++    pub fn cruxcoach_delete(&self, key: &str) -> StorageResult<()> {
++        self.lock()?.execute("DELETE FROM cruxcoach_journal_v1 WHERE key=?1", [key]).storage()?;
++        Ok(())
++    }
++
++    pub fn cruxcoach_keys(&self, prefix: &str) -> StorageResult<Vec<String>> {
++        let conn = self.lock()?;
++        let mut query = conn.prepare("SELECT key FROM cruxcoach_journal_v1
++            WHERE substr(key,1,length(?1))=?1 ORDER BY key").storage()?;
++        query.query_map([prefix], |row| row.get(0)).storage()?
++            .collect::<Result<Vec<_>,_>>().storage()
++    }
++}
