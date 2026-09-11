@@ -46,7 +46,7 @@ tags:
     element: { text: "Board-Konten & Importe" }
     direction: DOWN
 - tapOn: "Board-Konten & Importe"
-- assertVisible: "Kilter Account verbinden"
+- assertVisible: "Kilter-Konto verbinden"
 - pressKey: Back
 - scrollUntilVisible:
     element: { text: "Board-Kataloge" }
