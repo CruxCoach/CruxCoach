@@ -1,252 +1,252 @@
-# Permission-System: Funktionen und Architekturentscheidungen
+# Private Daten mit Freunden aktuell teilen
 
-Stand: 11. September 2026. Beschriebene Implementierung: `0d25e4f90` auf
-`feat/marmot-permissions-v023`, einschließlich des integrierten 0.2.3-Release-Quellstands.
-Diese Übersicht beschreibt Feature-Code, keine veröffentlichte App. Vollständige CI
-und reale Android-/Amber-/Keystore-Gerätetests stehen zu diesem Stand noch aus.
+Stand: lokaler Produktdurchgang auf `feat/marmot-permissions-v023`, ausgehend vom
+linearisierten Dateibaum `4fd3ed337a3cc665cc5d248d5d472ca8e652cee4` am 11. September
+2026. Feature-Code, keine veröffentlichte App. Vollständige CI und tatsächliche
+Android-/Amber-/Keystore-Geräteabnahme sind gesonderte Nachweise.
 
-Das System bestimmt, **wer welche persönlichen Daten unter welchen Bedingungen
-bekommen und innerhalb der App weiter öffnen darf**. Die beteiligten Konten und
-Geräte prüfen die Regeln selbst. Nutzerfreigaben benötigen keinen zentralen
-CruxCoach-Server.
+**Freundschaft anfragen → annehmen und eigene Daten auswählen → fertig.**
+Anfrage und Annahme bestätigen die Freundschaft beidseitig und das allgemeine
+Interesse am fortlaufenden Empfang. Jede Person bestimmt ausschließlich, welche
+**eigenen** Daten sie preisgibt. Auch keine eigene Freigabe ist eine gültige Wahl.
+Später bewusst ergänzte Kategorien und normale Änderungen benötigen innerhalb
+dieser aktiven Freundschaft keine weitere Empfängerannahme.
 
-Technische Details, Abhängigkeiten und Sicherheitsgrenzen stehen in der
-[Architekturbeschreibung](marmot-permissions.md). Diese Übersicht erklärt deren
-Entscheidungen und unterscheidet das allgemeine Regelmodell vom bereits
-integrierten Austauschumfang.
+Empfangene Daten erscheinen als zusammenhängender, schreibgeschützter Bestand mit
+Herkunft und Zeitstand. Dafür sind weder CruxCoach-Backend noch CruxCoach-Relay nötig.
+Alte Einmalfreigaben und das vorherige Kategorie-Abonnement begründen diese weiter
+reichende Freundschaft **nicht**: Eine neue ausdrückliche Anfrage und Annahme sind
+notwendig. Eine Nostr-Follow-Liste ist kein Freundschaftsnachweis.
 
-## 1. Was Nutzer damit machen können
+## Was tatsächlich geteilt werden kann
 
-Drei Entscheidungen sind getrennt: **eine Person verbinden, Datenkategorien
-freigeben und einen konkreten Inhalt austauschen**. Eine angenommene Einladung
-allein gibt keinen Zugriff auf persönliche Inhalte.
+| Auswahl | Tatsächliche Quelle und Inhalte | Nicht enthalten |
+|---|---|---|
+| Profil und Ziele | Aktives App-Profil: Name, Klettergrade, Erfahrung, Trainingshäufigkeit, Ausrüstung, Ziele | Alter, Gewicht, Körpermaße, Verletzungen, Messwerte |
+| Trainingsverlauf | Tatsächliche Begehungen und Versuche: Route, Board, Winkel, Datum, Versuche, Ergebnis und gespeicherte Schwierigkeit | Private Kommentare, Standort, externe Importkennungen, Synchronisationsfelder |
+| Private Notizen | Vorhandene Notizen zu Routen, einschließlich späterer Bearbeitung und Löschung | Frühere Textversionen; Notizen gehören nicht automatisch zum Trainingsverlauf |
 
-| Funktion | Bedeutung |
-|---|---|
-| Person hinzufügen | Empfänger über öffentlichen Nostr-Schlüssel beziehungsweise `npub` auswählen. |
-| Kreis zuordnen | Eine Person als Freunde, Bekannte oder Alle anderen Nutzer einordnen. |
-| Kategorien freigeben | Regeln für Profil und Ziele, Trainingsverlauf, Videos, Gesundheitsdaten und private Notizen festlegen. |
-| Persönliche Ausnahme | Einer bestimmten Person eine Kategorie ausdrücklich erlauben oder sperren. |
-| Einzelne Ausnahme | Eine Regel für ein bestimmtes Objekt innerhalb einer Kategorie setzen. |
-| Zustimmung einholen | Der Empfänger nimmt angebotene Kategorien ausdrücklich an. |
-| Inhalt senden | Eine konkrete Textkopie anbieten, die der Empfänger nochmals ausdrücklich annimmt. |
-| Ablauf und Widerruf | Freigaben zeitlich begrenzen oder zurückziehen. |
-| Geräte verwalten | Eigene Geräte mit unterschiedlichen Verwaltungsrechten ausstatten oder sperren. |
-| Sichern und wiederherstellen | Verschlüsselte Sicherungen nutzen, ohne alte Zugriffsrechte automatisch zu reaktivieren. |
+Das sind Adapter für die vorhandenen App-Repositories und Schreibpfade. Die
+Vorschau, die erste Übernahme und spätere Änderungen lesen dieselben Originaldaten.
+Geplante Trainingseinheiten werden nicht als absolvierte Trainings ausgegeben.
+Gesundheitsdaten und private Videos werden hier nicht übertragen. Eine öffentliche
+Blossom-URL wäre keine Verschlüsselung privater Medien.
 
-**Aktueller Austauschumfang:** private Textnotizen als unveränderliche Snapshots
-zwischen zwei Teilnehmern. Ein Snapshot ist eine festgehaltene Kopie; Änderungen
-am Original aktualisieren sie nicht automatisch. Technische Grenze: **32 KiB
-UTF-8 und höchstens sieben Tage Gültigkeit**. Die Android-Oberfläche erstellt
-Angebote mit **24 Stunden Laufzeit**, kürzer bei früher ablaufender Freigabe.
+Beim Trainingsverlauf entscheidest du zwischen **ab heute**, **30 Tagen** oder
+**90 Tagen** Vorgeschichte, jeweils einschließlich späterer Einträge. Die konkrete
+UTC-Datumsgrenze wird angezeigt. Profil und Notizen bedeuten den aktuellen und
+zukünftigen Stand; frühere Versionen werden nicht nachgeliefert. Ein neuer Freund
+bekommt keine alte Freigabe oder komplette Vergangenheit automatisch.
 
-Die fünf Kategorien gehören bereits zum Regelmodell. Automatisches Teilen des
-gesamten Trainingsverlaufs, Videoübertragung, beliebige Dateien und
-Gruppenaustausch sind durch diesen Snapshot-Pfad noch nicht umgesetzt.
-
-## 2. Wie Regeln zusammenwirken
-
-Jede eingetragene Person gehört genau einem Kreis an. Eine Kategorie, die für
-einen weiteren Kreis erlaubt ist, gilt grundsätzlich auch für engere Kreise:
-
-`Alle anderen Nutzer → Bekannte → Freunde`
-
-„Alle anderen Nutzer“ ist eine Grundeinstellung für entsprechend eingeordnete
-Personen. Sie veröffentlicht sensible Inhalte nicht für sämtliche Nostr-Nutzer.
-
-| Vorrang | Regel |
-|---|---|
-| 1 | Ausnahme für das konkrete Objekt und seine Kategorie |
-| 2 | Persönliche Regel für die Kategorie |
-| 3 | Grundeinstellung des Kreises einschließlich Vererbung |
-| 4 | Ohne passende Erlaubnis: gesperrt |
-
-Eine ausdrücklich erlaubte Objektausnahme kann eine allgemeinere Kategoriesperre
-übersteuern. Die Oberfläche zeigt den Grund einer Entscheidung an.
-
-Beispiel: Du erlaubst Freunden private Notizen, sperrst die Kategorie aber für
-Alex. Dann gilt für Alex die persönliche Sperre. Erlaubst du Alex ausdrücklich
-eine bestimmte Notiz, kann diese Objektausnahme greifen. **Zusätzlich müssen
-Zustimmung, Geräteberechtigung, Gültigkeit und aktueller Sitzungszustand passen.**
-Ein Widerruf lässt sich nicht durch eine solche Ausnahme umgehen.
-
-## 3. Der Ablauf einer Freigabe
+## Der Produktablauf
 
 1. Beide Personen verwenden ihr eigenes Konto und ein autorisiertes Gerät.
-2. Sie aktivieren ausdrücklich die Auffindbarkeit über die konfigurierten Relays.
-3. Eine Person fügt den öffentlichen Schlüssel der anderen hinzu und lädt sie
-   ein. Die Gegenseite nimmt die Verbindung an.
-4. Der Eigentümer bietet Kategorien an. Der Empfänger bestätigt die gewünschten
-   Kategorien. Eine Erweiterung benötigt passende neue Zustimmung.
-5. Der Eigentümer bietet eine konkrete Textnotiz an. Der Empfänger nimmt genau
-   dieses Angebot an.
-6. Die App überträgt den Inhalt verschlüsselt. Die Empfänger-App prüft und
-   speichert ihn verschlüsselt, bevor sie den Empfang bestätigt.
+   Der Empfänger aktiviert die Auffindbarkeit bewusst. Eine Anfrage des Senders
+   aktiviert seine Auffindbarkeit und bereitet die private Verbindung vor. Die App
+   bündelt Schlüsselsuche und Verbindungsannahme; sie ersetzen keine Freundschaft.
+   Vollständige öffentliche Kontokennungen bleiben zur Identitätsprüfung sichtbar.
+2. A wählt B beziehungsweise aktuelle Mitglieder eines Kreises, seine eigenen
+   Datenbereiche und Trainingsvorgeschichte. Die Vorschau liest die tatsächlich
+   ausgewählten Daten unter Berücksichtigung bestehender Objektsperren.
+3. B sieht die Anfrage und As angebotenen Umfang. B bestätigt die Freundschaft und
+   wählt ausschließlich **Bs eigene ausgehende** Daten, optional keine. Bei einem
+   Server bestätigt jede Seite dessen eigenständige Rolle ausdrücklich.
+4. Beide Apps übernehmen die jeweils erlaubten aktuellen Daten und danach
+   Änderungen und Löschungen automatisch. Fremddaten überschreiben weder eigene
+   Profile und Notizen noch Trainingsstatistiken oder Sicherungen.
+5. Jede Person kann ihre eigene Auswahl ändern. Eine Erweiterung wird von ihrem
+   Konto signiert; der Freund braucht keinen neuen Dialog. Entfernte Kategorien,
+   Objekte oder Vorgeschichte werden in der normalen Empfänger-App nach dem
+   authentisierten Abgleich tatsächlich gelöscht. Andere erlaubte Daten bleiben.
+6. „Eigene Daten stoppen“ leert nur die eigene ausgehende Auswahl. Eine Abstufung
+   ändert ebenfalls nur die eigenen ausgehenden Rechte. Persönliche Ausnahmen
+   werden ausdrücklich angeboten: behalten oder gemeinsam mit dem Kreiswechsel
+   entfernen. Die Auswahl der Gegenseite verändert sich dadurch nicht.
+7. **Freundschaft beenden wirkt immer in beide Richtungen.** Die auslösende App
+   löscht sofort alle aus dieser Freundschaft erhaltenen Daten und stoppt Exporte
+   und wartende Sendungen. Die Gegenstelle löscht beim Empfang des authentisierten
+   Endes ohne neue Zustimmung. Eine neue Freundschaft hat eine neue Generation;
+   alte Nachrichten und Annahmen können sie nicht wiederbeleben.
 
-Der Inhaltsaustausch folgt `Angebot → Zustimmung → Inhalt → Empfangsbestätigung`.
-„Vorgemerkt“, „vom Relay angenommen“ und „vom Empfänger bestätigt“ sind
-unterschiedliche Zustände. Die letzte Bestätigung bedeutet keine menschliche
-Lesebestätigung und ist kein Beweis gegen einen böswilligen Empfänger.
+Eine aktive Freundschaft benötigt keine regelmäßige neue Zustimmung. Begrenzte
+Aufbewahrung, technische Geräteprüfungen und sichere Wiederherstellung gelten
+weiterhin; eine unterbrochene Internetverbindung allein beendet keine Freundschaft.
 
-Geöffnete Freigabeansichten synchronisieren alle **15 Sekunden**. Beim Verlassen
-endet das regelmäßige Abfragen. Ein durchgehend laufender Hintergrunddienst ist
-nicht Teil dieser Umsetzung.
+## Warum getrennte Verbindungen pro Freund?
 
-## 4. Serverunabhängigkeit und Relays
-
-Der Transportweg lautet:
-
-`App A → Ende-zu-Ende-verschlüsselte Marmot-Nachrichten → Nostr-Relays → App B`
-
-Das ist dezentrale Kommunikation über Relays, keine direkte Netzwerkverbindung
-zwischen zwei Handys. Relays transportieren verschlüsselte Inhalte, entscheiden
-aber nicht über deren Zugriffsrechte.
-
-| Austausch | Rolle des eigenen Servers |
+| Variante | Entscheidung |
 |---|---|
-| Nutzer A teilt mit Nutzer B | Keine erforderlich |
-| Server stellt einem Nutzer Daten bereit | Eigenständiger Absender mit eigener Identität |
-| Nutzer teilt Daten mit dem Server | Explizit berechtigter Empfänger |
-| Server betreibt ein Relay | Optionaler Transportweg |
+| Paarweiser Versand | Nutzt die tatsächlich integrierten authentisierten Sitzungen. Jede Person kann nur ihren ausgewählten Inhalt entschlüsseln. Mehrere Freunde verursachen mehrere verschlüsselte Übertragungen. |
+| Gruppe pro identischem Umfang | Könnte Nachrichten sparen, benötigt aber identische ausgehende Rechte, Vorgeschichte und Geräte sowie sichere Gruppenteilung bei Änderungen. Das ist in der qualifizierten Anbindung nicht vorhanden. |
+| Ein Gruppenchat für alle Freunde | Eignet sich bei verschiedenen Rechten nicht: Bereits an alle entschlüsselbar gesendete Felder lassen sich nicht durch Ausblenden schützen. |
 
-Die Kennzeichnung `SERVER` verleiht keine Sonderrechte und keine automatische
-Gegenfreigabe. Der lokale Serveradapter wurde mit Testidentitäten geprüft.
-Produktiver Betrieb und Schlüsselverwahrung sind noch nicht eingerichtet.
+Deshalb verwendet die App paarweise Verbindungen. Sie fasst Änderungen zusammen,
+sendet Deltas zum zuletzt vom Empfänger bestätigten Stand und begrenzt Arbeit und
+Warteschlangen. Unbekannte Formate und unprüfbare Zustände bleiben gesperrt.
 
-Alle sechs aus Blossom-Sync übernommenen Relays sind konfigurierbare Defaults.
-Die begrenzten Integrationsproben am 11. September 2026 ergaben:
+## Was „aktuell“ bedeutet
 
-| Relay | Beobachtetes Ergebnis |
+Die Automatik hängt am **App-Lebenszyklus, Netzwerk-Reconnect und tatsächlichen
+Datenänderungen**, unabhängig vom geöffneten Sharing-Screen. Schreibvorgänge lösen
+erst nach einer abgeschlossenen Datenbanktransaktion Arbeit aus. Kurze Änderungs-
+serien werden zusammengefasst. Bei aktiver App läuft zusätzlich ungefähr alle
+30 Sekunden ein Abgleich. Android WorkManager übernimmt netzgebundene Arbeit und
+einen periodischen Rückhalt von mindestens 15 Minuten.
+
+Android kann Arbeit wegen Doze, fehlendem Netz, beendeter beziehungsweise
+zwangsbeendeter App oder ausstehender Signer-Genehmigung verzögern. Es gibt daher
+keine Zusage „immer in Echtzeit“. Sichtbare Zustände sind unter anderem:
+
+- **Stand von …**: Zeitpunkt des zuletzt vollständig übernommenen Eigentümerstands.
+- **Änderungen ausstehend**: Es gibt noch keine passende Empfängerbestätigung.
+- **Zuletzt bestätigt …**: Die Empfänger-App hat genau diese Übernahme bestätigt.
+- **Offline / erneut versuchen**: Die Arbeit bleibt dauerhaft vorgemerkt.
+- **App für Genehmigung öffnen**: Eine erforderliche Hintergrund-Signer-Anfrage
+  wurde nicht bereits erlaubt; es öffnet sich kein unerwarteter Hintergrunddialog.
+- **Stand abgelaufen**: Seit sieben Tagen kam keine frische Eigentümerbestätigung;
+  die Inhalte werden lokal gelöscht. Eine Vollübernahme des aktuell erlaubten Bestands kann ohne neue Freundschaftsannahme folgen.
+- **Freigabe beendet / Verbindung erneuern**: Keine automatische Wiederbelebung.
+
+Bereits erlaubte Amber-Anfragen können über dessen Content Provider automatisch
+laufen. Die Anbindung verwendet dafür die echte API der gepinnten Quartz-Version
+und keinen Dialog-Fallback. Eine unveränderte Freigabe bekommt etwa täglich einen
+kleinen Aktualitätsnachweis unter derselben Zustimmung. Tatsächliches Verhalten
+auf Android/Amber muss weiterhin auf Geräten geprüft werden.
+
+Ein Relay-Ack ist **keine Empfängerbestätigung**. Auch ein erfolgreicher Abgleich
+beweist nicht, dass sämtliche Relays alle Nachrichten oder Widerrufe gezeigt haben.
+
+## Regeln, Identitäten und Änderungen
+
+Kontoschlüssel, autorisiertes Permission-Gerät und tatsächlicher Marmot-/MLS-
+Teilnehmer bleiben getrennte Identitäten. Signierte Nachweise binden sie an die
+reale Sitzung. Gruppenmitgliedschaft allein gibt keine Daten frei. Die vorhandene
+signierte Regelhistorie, Objektausnahmen, Geräteberechtigung, beide ursprünglichen
+Freundschaftsbestätigungen und die eigene Auswahl müssen zusammenpassen. Die
+bisherige Kategorie-Zustimmung gilt weiterhin nur für alte Einmalfreigaben.
+
+Die Rechteprüfung findet beim Lesen der Quelle, unmittelbar vor dem tatsächlichen
+Versand, beim Empfang und beim Öffnen statt. Der Eigentümer bleibt für seine Daten
+maßgeblich. Empfangszeitpunkte lösen keine Mehrgeräte-Konflikte. Ein Geräte-,
+Gruppen-, Epoch- oder Autoritätswechsel kann alte Freigaben schließen und verlangt
+eine bewusste neue Verbindung/Freigabe. Die bestehende Kontowechsel-Funktion startet
+die App neu; bis dahin verweigern Objekte des alten Kontos den Zugriff.
+
+Ein Angebot benennt Eigentümer, Empfänger, Geräte, Rolle, Freigabe-ID, Datenquelle,
+Umfang und Auswahlrevision. Beide ursprünglichen Kontosignaturen binden die
+Freundschaft. Auch eine erste Datenantwort vor der separat zugestellten Annahme
+kann nur anhand dieser beiden Nachweise zur bereits gestellten Anfrage gehören. Vollübernahmen und Änderungen tragen Version, Basisversion,
+Quellrevision, Inhaltsbindung und Seitennummern. Empfangene Seiten werden erst
+nach vollständiger Prüfung gemeinsam sichtbar. Fehlende Basen lösen eine neue
+Vollübernahme aus; doppelte oder ungeordnet empfangene Seiten überschreiben keinen
+neueren Bestand. Eine fremde Person kann auch durch eine kollidierende Freigabe-ID
+keine andere Freigabe verändern.
+
+Nach Neustart bleiben Quelle, Warteschlange, Seiten und Bestätigungsstand erhalten.
+Veraltete wartende Daten verlieren beim Widerruf ihre Exportberechtigung. Bestätigte
+native Inbox-Payloads können entfernt werden, während Herkunft und Sitzungsbindung
+für spätere Rücknahmen begrenzt prüfbar bleiben. Sicherheitsregeln werden bei
+Speicherknappheit nicht gelockert.
+
+## Grenzen und Wiederherstellung
+
+Pro Konto sind derzeit 16 aktive Freundschaften und 512 insgesamt aufbewahrte Richtungs-/Generationsdatensätze vorgesehen.
+Ein aktueller Umfang darf höchstens 1.000 Datensätze beziehungsweise 1 MiB enthalten,
+ein Datensatz höchstens 8 KiB. Größere Umfänge werden vollständig abgelehnt und als
+Limit angezeigt; es wird keine stillschweigend unvollständige Erstübernahme gesendet.
+Nachrichten und Hintergrundarbeit sind ebenfalls begrenzt. Einzelne Datensätze
+brauchen keine neue Vollübertragung des gesamten Bestands pro Tastendruck.
+
+Ungewöhnliche Uhrsprünge sperren das Teilen. Die bewusste Uhrwiederherstellung
+beendet zuerst Freigaben, bewahrt deren signierte Ende-Nachrichten für die spätere
+Zustellung und bereinigt native Restinhalte nach dem sicheren Entsperren. Native Speicher-Recovery zieht Rechte zurück und
+archiviert den alten verschlüsselten Zustand; neue Sitzungen und Zustimmungen sind
+nötig. Aufräumen erfolgt, wenn das jeweilige Konto beziehungsweise die App ausgeführt
+wird; bei gestoppter App gibt es keine physische Löschfrist auf die Sekunde.
+Das ist kein unbeschränkter Langzeitspeicher und keine Lösung für einen
+vollständig zurückgerollten oder kompromittierten Rechner.
+
+Schema 33 ergänzt die bisherigen Daten um Änderungsrevisionen und getrennte
+Freundschaftstabellen. Migration 32→33 löscht nur die bisherigen fortlaufenden
+Fremdkopien und Zustimmungen; sie deutet sie nicht in Freundschaften um. Originale,
+alte Snapshot-Zustimmungen, Widerrufe und Uhrschutz bleiben erhalten.
+
+Der normale Client löscht beim Entzug tatsächliche empfangene Datensätze sowie
+unvollständige Übernahmen, native Klartext-Inbox und überholte Anwendungs-Outbox.
+Es gibt für diese Fremddaten keinen Suchindex, Thumbnailbestand oder Binärtransfer.
+Minimale Generationstombstones und Herkunftsnachweise verhindern Wiederbelebung.
+Native verschlüsselte MLS-Transkripte können zur sicheren Zustandsverarbeitung
+verbleiben; das ist kein weiterhin lesbarer Datenbestand. Strukturierte App-Backups
+enthalten keine Fremdkopien. Unterstützte Permission-Recovery leert Fremdinhalte
+und vorgemerkte Anfragen; alte IDs bleiben geschlossen.
+
+Der Status unterscheidet **lokal beendet**, **Gegenstelle noch ausstehend** und
+**Bereinigung bestätigt**. Letzteres verlangt die Bestätigung der Empfänger-App,
+nicht bloß Relay-OK. Offline kann die Gegenstelle ihren alten Stand bis zum
+Abgleich beziehungsweise der lokalen Aufbewahrungsgrenze behalten. Eine solche
+Bestätigung belegt kooperatives Client-Verhalten, keine Sicherheit gegen eine
+veränderte App. Bereits exportierte Kopien und Screenshots sind nicht rückholbar.
+Physische Flash-/SQLite-Löschung und beliebig zurückgerollte komplette Geräteabbilder
+werden nicht garantiert.
+
+Relays sehen weiterhin Verbindungsadressen, Zeiten und Größen. Auffindbarkeit zeigt
+öffentliche Identität und Relay-Auswahl; private Nutzdaten werden nicht im Klartext
+publiziert. Herkunftsnachweise konsumierter Nachrichten bleiben im nativen Transport acht
+Tage unter festen Speichergrenzen erhalten. Payloadfreie geschlossene Generationen bleiben
+begrenzt erhalten, damit Replay nichts wiederherstellt.
+
+## Server und die sechs Relays
+
+Ein eigener Server ist nur ein optionaler Datenanbieter/-empfänger mit eigener
+isolierter Identität und expliziten Freigaben. Er ist weder zentraler Validator
+noch Voraussetzung für Nutzer–Nutzer. Der lokale synthetische Testendpunkt führt
+dieselben Freundschaftsabläufe aus; er installiert keinen Produktionsdienst.
+
+| Konfigurierbarer Standard-Relay | Begrenzte Beobachtung aus dem vorherigen Integrationsdurchgang am 11. September 2026 |
 |---|---|
-| `wss://relay.primal.net` | Alle benötigten Nachrichtentypen funktionierten |
-| `wss://nostr-pub.wellorder.net` | Alle benötigten Nachrichtentypen funktionierten |
-| `wss://nos.lol` | Alle benötigten Nachrichtentypen funktionierten |
-| `wss://nostr.oxtr.dev` | Alle benötigten Nachrichtentypen funktionierten |
-| `wss://relay.damus.io` | Einschränkungen bei Gruppennachrichten, Einladungen und teilweise Schlüsseldaten |
-| `wss://blossom.cruxcoach.org/nostr` | Die benötigten Nachrichtentypen wurden abgelehnt |
+| `wss://relay.primal.net` | Benötigte Transporttypen angenommen und wieder gelesen |
+| `wss://relay.damus.io` | Einschränkungen bei Gruppen, Einladungen und teilweise Schlüsseldaten |
+| `wss://nostr-pub.wellorder.net` | Benötigte Transporttypen angenommen und wieder gelesen |
+| `wss://nos.lol` | Benötigte Transporttypen angenommen und wieder gelesen |
+| `wss://nostr.oxtr.dev` | Benötigte Transporttypen angenommen und wieder gelesen |
+| `wss://blossom.cruxcoach.org/nostr` | Benötigte Transporttypen abgelehnt |
 
-Das sind Momentaufnahmen, keine Verfügbarkeitsgarantie. Die App zeigt Fehler und
-Authentifizierungsanforderungen an und ergänzt keine unbekannten Ersatzrelays.
-Beide Teilnehmer brauchen einen nutzbaren gemeinsamen Transportweg. Hinweise zur
-Auffindbarkeit dürfen den authentisierten Relay-Zustand einer Gruppe nicht ersetzen.
+Im neuen Produktdurchgang wurden ausschließlich 30 öffentliche Leseabfragen mit
+frischen synthetischen Filtern wiederholt, ohne Treffer und ohne Veröffentlichung.
+Die vier nutzbaren Relays beantworteten alle fünf Typen; Damus verlangte für
+Einladungen Authentifizierung und war bei Gruppennachrichten nicht erreichbar;
+Blossom lehnte erneut alle Typen ab. Das ist kein neuer öffentlicher Nachweis
+fortlaufender Zustellung.
 
-Redundante Übertragung, Duplikaterkennung, dauerhafte Warteschlangen und
-Wiederholungen reduzieren Ausfallabhängigkeiten. Bei vollständigem Ausfall bleibt
-der Versand ausstehend. Mehrere Relays garantieren jedoch nicht, dass niemand
-Nachrichten oder Zustandsänderungen zurückhält.
+Diese Momentaufnahme wird nicht als neue Verfügbarkeitsgarantie ausgegeben. Die
+App zeigt tatsächliche Ablehnung, Limits, Auth-Anforderungen und Ausfälle. Es gibt
+keinen heimlichen Ersatzpool und keine automatische Auth-Offenlegung. Relay-Hinweise
+ersetzen keinen authentisierten Gruppenzustand. Der lokale Ausfalltest ordnet den
+CruxCoach-Relay ausdrücklich einem unerreichbaren Test-Port zu; die übrigen lokalen
+Relays liefern Duplikate und ungeordnete Nachrichten.
 
-## 5. Technische Architektur
+## Nachweise richtig einordnen
 
-| Schicht | Verantwortung |
-|---|---|
-| Android-Oberfläche | Regeln, Einladungen, Zustimmungen, Inhalte und Fehlerzustände bedienen; Englisch und Deutsch. |
-| Permission-Kern in Kotlin | Aus signierten Regeln und Zustimmungen den aktuell erlaubten Zugriff berechnen. |
-| Verschlüsselter Datenspeicher | Inhalte, Freigabeverläufe, Widerrufe und Wiederherstellungszustände verwahren. |
-| Austauschdienst | Angebote, Zustimmung, Versand, Empfang und Widerruf zusammenführen. |
-| Native Rust-Anbindung über JNI | Kotlin mit Marmot verbinden; dauerhafte Ein- und Ausgangswarteschlangen verwalten. |
-| MDK/OpenMLS | Verschlüsselte Sitzungen, authentische Teilnehmerzuordnung und kryptografische Zustandswechsel. |
-| Nostr-Transport | Auffindbarkeit, Einladungen und verschlüsselte Nachrichten über die gewählten Relays. |
+Der neue Produktdurchgang prüft reale Quell-Repositories, Schema-Migration,
+beidseitige Freundschaft, unabhängige ausgehende Auswahlen, Vollübernahme, Änderung,
+Löschung, Replay, Widerruf, Quellen-/Gerätewechsel, Offline-Neustart und Arbeit ohne
+CruxCoach-Backend. `scripts/marmot_continuous_e2e.py` betreibt einen Eigentümer und
+zwei unabhängige JVM-Teilnehmer mit echter nativer MDK-Kryptographie, zusätzlich
+mit einem Server als gewöhnlichem Eigentümer sowie einem Server als Empfänger.
+Der abschließende Lauf v4 hat alle drei Pfade bestanden, einschließlich tatsächlich
+verschlüsselter wartender Inhalte beim Relay-Ausfall und gemessener Speicherlöschung.
+Die beiden Drei-Teilnehmer-Läufe bestanden jeweils 22 benannte Prüfschritte.
+Zusätzlich sind 15 native Transport-/Relay-/Speichertests und alle acht bisherigen
+nativen Snapshot-Integrationstests grün. Die fokussierten Quell-, Migrations-,
+Backup-, Recovery-, Signer-, UI- und Automatikprüfungen sowie behobene Zwischenfehler
+sind im Run-Verzeichnis `friendship-sharing/verification.md` einzeln belegt.
 
-Die Regeln liegen als **signierte Änderungshistorien** vor. Daraus berechnet die
-App den gültigen Zustand. Ein veränderter Anzeige-Cache darf keine Rechte erzeugen.
-Lokale Inhalte sind durch den vorhandenen AES-GCM-Tresor geschützt; Datenbanken
-verwenden SQLCipher. Die native Datenbank liegt im privaten Android-Bereich.
-Kontosignaturen erfolgen über die bestehende Signer-Anbindung, etwa Amber;
-der private Kontoschlüssel wird nicht an JNI exportiert.
+Fokussierte Host-JVM/native Prüfungen belegen keine vollständige CI, keinen
+Android-arm64-Lauf und keine echte Amber-/Keystore-/Doze-Geräteabnahme. Andere
+Marmot-Clients benötigen die CruxCoach-Anwendungskonventionen für diesen Austausch.
+Der native Build ist quellen- und versionsgebunden; bitgleiche Reproduktion setzt
+wegen OpenSSL-Metadaten auch gleiche Build-Pfade voraus.
 
-Drei Identitäten bleiben getrennt: **Nostr-Konto**, **autorisiertes
-Permission-Gerät** und **kryptografischer Marmot-Sitzungsteilnehmer**. Signierte
-Nachweise binden sie aneinander. Sitzungsmitgliedschaft allein erlaubt keinen
-Inhaltszugriff. Der native Adapter verwendet tatsächliche MDK-Zustände und eine
-lokale Erweiterung; deren Quellen und Abhängigkeiten sind versions- und hashgebunden.
-
-Das System prüft Berechtigungen beim Lesen des Originals, unmittelbar vor der
-Netzwerkveröffentlichung, beim Empfang und beim späteren Öffnen. Ein angebotener
-Inhalt ist an Empfänger, Gerät, Kategorie, Datenversion, Sitzung, Inhaltshash und
-Ablauf gebunden. Unbekannte Formate, falsche Signaturen oder widersprüchliche
-Zustände bleiben gesperrt.
-
-## 6. Geräte, Neustarts und Wiederherstellung
-
-| Eigene Geräterolle | Verwaltungsrechte |
-|---|---|
-| Hauptgerät | Volle Verwaltung einschließlich Geräteaufnahme und grundlegender Wiederherstellung |
-| Vertrauenswürdiges Gerät | Freigaben ändern, aber nicht die Geräteliste verwalten |
-| Nur lesendes Gerät | Berechtigungszustand einsehen, nichts ändern |
-| Gesperrtes Gerät | Keine Autorität mehr |
-
-Das Verwaltungsmodell bedeutet noch keinen nahtlosen Austausch über beliebig
-viele Geräte. Der aktuelle Transport unterstützt ein Paar aus jeweils einem
-Konto und Gerät. Gruppen-, Sitzungs- oder Gerätewechsel schließen bestehende
-Snapshot-Bindungen. Neue Snapshots brauchen neue Zustimmung; eine unveränderte
-Kategorie-Zustimmung kann für dasselbe weiterhin autorisierte Gerät fortbestehen.
-
-Inbox und Outbox sind dauerhaft gespeichert. Bei einem Neustart werden
-Nachrichten nicht unkontrolliert neu erzeugt. Wiederholungen verwenden die
-zugeordnete Operation; auch ein alter Versandauftrag braucht weiterhin aktuelle
-Autorisierung. Eine nachträglich ungültige Nachrichtenquelle darf keine alten
-Zugriffe aufrechterhalten.
-
-Wiederherstellung öffnet keine alten Freigaben automatisch. Unklare Zustände
-bleiben gesperrt. Bei größeren Uhränderungen stoppt das Teilen; eine ausdrückliche
-Uhrwiederherstellung entzieht zuerst bestehende Freigaben. Native Recovery
-archiviert alte verschlüsselte Zustände und erfordert neue Sitzungen. Speicher-
-und Netzwerkgrenzen verhindern unbegrenztes Anwachsen; Überlast wird sichtbar
-behandelt und führt nicht zu großzügigeren Berechtigungen.
-
-## 7. Bedeutung und Grenzen eines Widerrufs
-
-Widerruf beendet weitere zulässige Zugriffe und verhindert insbesondere, dass
-eine alte lokale Warteschlange später ohne aktuelle Erlaubnis veröffentlicht.
-Ein offline befindlicher Empfänger erfährt Remote-Widerruf erst bei der nächsten
-authentisierten Synchronisation; alternativ endet sein Zugriff mit dem Ablaufdatum.
-
-**Bereits kopierter Klartext, Screenshots oder anderweitig gespeicherte Inhalte
-lassen sich nicht zurückholen.** Empfangene Kopien werden durch diesen Dienst
-nicht automatisch weiterfreigegeben; ein Empfänger kann gelesene Informationen
-außerhalb des Dienstes trotzdem weitergeben.
-
-Relays sehen weiterhin Verbindungsadressen, Zeitpunkte und Nachrichtengrößen.
-Aktivierte Auffindbarkeit macht öffentliche Kontoidentität und Relay-Auswahl
-sichtbar. Ein kompromittiertes Gerät oder gestohlener Kontoschlüssel wird nicht
-allein durch dieses Permission-Protokoll abgesichert.
-
-## 8. Die wesentlichen Architekturentscheidungen
-
-| Entscheidung | Zweck und Konsequenz |
-|---|---|
-| Dezentrale Autorisierung | Nutzerfreigaben funktionieren ohne zentralen CruxCoach-Validator. |
-| Server als optionaler Peer | Serverdaten können geteilt werden, ohne dem Server allgemeine Kontrolle zu geben. |
-| Verbindung, Kategorie und Inhalt getrennt bestätigen | Ein Kontakt oder eine Sitzung gibt nicht automatisch sensible Inhalte frei. |
-| Signierte Historien statt vertrauenswürdiger Caches | Nachvollziehbare Regeln; manipulierte Projektionen erzeugen keine Rechte. |
-| Zugriff standardmäßig sperren | Unbekannte, veraltete oder unprüfbare Zustände öffnen nichts. |
-| Bewährte Kryptographie über MDK/OpenMLS | Keine selbst entworfenen Verschlüsselungsverfahren; native Abhängigkeiten bleiben gezielt prüfbar. |
-| Mehrere konfigurierbare Relays | Weniger Abhängigkeit von einzelnen Betreibern; keine automatische Freigabe der Relay-Auswahl. |
-| Dauerhafte Zustellung und getrennte Empfangsbestätigung | Neustarts und Relay-Annahme werden nicht mit erfolgreichem Empfang verwechselt. |
-| Begrenzter Snapshot-Umfang | Konkreter überprüfbarer Austauschpfad; größere Dateien und Gruppen brauchen zusätzliche Integration. |
-
-## 9. Nachweise und noch offene Abnahme
-
-Dokumentiert sind **1.193 fokussierte Shared-/Android-Tests**, zwölf native Tests,
-16 Python-Prüfungen und sechs Upstream-Regressionstests. Getrennte Teilnehmerprozesse
-wurden mit echter Kryptographie einschließlich Ausfall, Neustart und Widerruf
-geprüft. Nutzer–Nutzer und synthetischer Server–Nutzer sind abgedeckt.
-
-Öffentliche verschlüsselte Roundtrips bestanden mit und ohne CruxCoach-Relay auf
-MDK v0.9.21. Die finale Revision ergänzt einen offiziellen Upstream-Fix; sie hat
-separate lokale Native-/JNI-Prüfungen und eine erneute öffentliche Leseprobe.
-Die vollständige öffentliche Ende-zu-Ende-Probe wurde nicht als auf diesem
-abschließenden Pin wiederholt dokumentiert.
-
-Offen bleiben vollständige CI inklusive APK-Bau und tatsächliche Android-arm64-,
-Amber-, Keystore- und Geräte-Prozesswechsel-Tests. Eine bitgleiche native
-Reproduktion wurde bei identischen Build-Pfaden belegt; Pfadunabhängigkeit wird
-wegen eingebetteter OpenSSL-Buildmetadaten nicht behauptet. Andere Marmot-Clients
-müssen die CruxCoach-spezifischen Nachrichtenkonventionen implementieren, um am
-Permission-Austausch teilzunehmen.
-
-Quellennavigation: [technische Architektur](marmot-permissions.md),
-[Native-Build und Abhängigkeiten](../../native/marmot/README.md),
-[Regelmodell](../../shared/src/commonMain/kotlin/com/cruxcoach/domain/sharing/SharingModel.kt),
-[Android-Abläufe](../../androidApp/src/main/java/com/cruxcoach/android/sharing/SharingController.kt)
-und [Dokumentationsindex](../README.md).
+Weiterlesen: [technische Architektur und Primärquellen](marmot-permissions.md),
+[Native-Build und Testendpunkt](../../native/marmot/README.md),
+[Dokumentationsindex](../README.md).
