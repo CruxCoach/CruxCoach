@@ -630,6 +630,33 @@ class MoonBoardBetaSnapshotImportTest {
         }
     }
 
+    @Test
+    fun firstMoonBoardImportPreservesAnExistingKilterCatalogue() {
+        val snapshot = createCatalogSnapshot("first-moon-with-kilter.sqlite3", includeAlias = false)
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM moonboard_climb_aliases")
+            db.execSQL("DELETE FROM climb_stats")
+            db.execSQL("DELETE FROM climbs WHERE board_brand='moonboard'")
+            db.execSQL(
+                """
+                CREATE TRIGGER require_indexes_for_existing_kilter
+                BEFORE INSERT ON climbs
+                BEGIN
+                    SELECT CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM sqlite_master
+                        WHERE type='index' AND name='idx_climb_stats_by_popularity'
+                    ) THEN RAISE(ABORT, 'MoonBoard import dropped the Kilter browse index') END;
+                END
+                """.trimIndent(),
+            )
+        }
+        importer.importMoonBoardSnapshot(snapshot)
+        openTarget().use { db ->
+            assertEquals(1L, count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='kilter'"))
+            assertTrue(count(db, "SELECT COUNT(*) FROM climbs WHERE board_brand='moonboard'") > 0)
+        }
+    }
+
     private fun openTarget(): SQLiteDatabase =
         SQLiteDatabase.openDatabase(targetPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
 

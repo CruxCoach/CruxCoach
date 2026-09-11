@@ -1152,18 +1152,20 @@ class BoardSyncManager(
 
             Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}, beta=${betaFiles.size}")
             var kilterDone: ImportStep.Done? = null
-            withBackgroundThreadPriority {
-                importer.importFromChunks(
-                    metaDbFiles = metaFiles,
-                    climbsDbFiles = climbFiles,
-                    statsDbFiles = statFiles,
-                    locationsDbFiles = locationFiles,
-                    betaDbFiles = betaFiles,
-                    onProgress = { step ->
-                        if (step is ImportStep.Done) kilterDone = step
-                        _state.update { it.copy(importStep = step) }
-                    }
-                )
+            retryBoardImport {
+                withBackgroundThreadPriority {
+                    importer.importFromChunks(
+                        metaDbFiles = metaFiles,
+                        climbsDbFiles = climbFiles,
+                        statsDbFiles = statFiles,
+                        locationsDbFiles = locationFiles,
+                        betaDbFiles = betaFiles,
+                        onProgress = { step ->
+                            if (step is ImportStep.Done) kilterDone = step
+                            _state.update { it.copy(importStep = step) }
+                        }
+                    )
+                }
             }
             Log.d(TAG, "Import completed successfully")
             bumpCatalogueRevision()

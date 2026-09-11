@@ -24,6 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
 ### Fixed
+- Board catalogue imports preserve the indexes used by existing boards, repair
+  missing indexes, and roll back interrupted index preparation. Temporary SQLite
+  locks retry the local import with the already verified downloads.
 - The browser toolbar retains the familiar Bluetooth, Filter, Logbook, Lists,
   Settings order. Compact-screen priorities independently choose which actions
   remain visible; both the toolbar and overflow menu preserve that visual order.

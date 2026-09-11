@@ -9,6 +9,7 @@ import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -232,6 +233,66 @@ class BoardChunkImportOriginUpgradeTest {
                     arrayOf(sharedUuid.uppercase()),
                 ).use { if (it.moveToFirst()) it.getString(0) else null },
             )
+        }
+    }
+
+    @Test
+    fun firstKilterImportPreservesTheExistingMoonBoardBrowseIndexes() {
+        openTarget().use { db ->
+            db.execSQL("DELETE FROM climbs")
+            db.execSQL("INSERT INTO climbs(uuid,layout_id,name,frames,board_brand) VALUES('existing-moon',2,'Moon problem','','moonboard')")
+        }
+        var observedImport = false
+        importer.importFromChunks(
+            metaDbFiles = emptyList(),
+            climbsDbFiles = listOf(chunkFile),
+            statsDbFiles = emptyList(),
+            onProgress = { step ->
+                if (step is BoardDatabaseImporter.ImportStep.ImportClimbs && !observedImport) {
+                    observedImport = true
+                    // A separate browser connection must still be able to
+                    // prepare its index-bound queries as the import starts.
+                    openTarget().use { db ->
+                        db.rawQuery(
+                            "SELECT COUNT(*) FROM climb_stats INDEXED BY idx_climb_stats_by_popularity",
+                            null,
+                        ).use { assertTrue(it.moveToFirst()) }
+                        db.rawQuery("SELECT COUNT(*) FROM climbs INDEXED BY idx_climbs_origin", null).use {
+                            assertTrue(it.moveToFirst())
+                        }
+                    }
+                }
+            },
+        )
+        assertTrue(observedImport)
+    }
+
+    @Test
+    fun retryAfterCommittedClimbsPreservesIdentityAndDoesNotDuplicateRows() = kotlinx.coroutines.test.runTest {
+        var attempts = 0
+        retryBoardImport {
+            attempts++
+            importer.importFromChunks(
+                metaDbFiles = emptyList(),
+                climbsDbFiles = listOf(chunkFile),
+                statsDbFiles = emptyList(),
+                onProgress = { step ->
+                    if (attempts == 1 && step is BoardDatabaseImporter.ImportStep.Finalizing) {
+                        // The chunk has already committed. A busy finalization
+                        // must be safe to recover by importing the same file.
+                        openTarget().use { db ->
+                            assertEquals("cruxcoach", queryRow(db, sharedUuid).origin)
+                        }
+                        throw android.database.sqlite.SQLiteDatabaseLockedException("busy after committed chunk")
+                    }
+                },
+            )
+        }
+        assertEquals(2, attempts)
+        openTarget().use { db ->
+            assertEquals(Row(1, "cruxcoach", authorPubkey), queryRow(db, sharedUuid))
+            assertEquals(1, queryRow(db, ownedUuid).count)
+            assertEquals(existingOwnerPubkey, queryRow(db, ownedUuid).pubkey)
         }
     }
 
