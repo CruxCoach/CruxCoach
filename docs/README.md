@@ -9,6 +9,7 @@ permission work. Its continuation adds native MDK/JNI snapshot exchange,
 authenticated permission/consent transport, the six configured relays, Android
 sender/recipient UI and a local synthetic server endpoint. No server deployment,
 release or production publisher activation is included.
+Start with the German [permission-system overview and architecture decisions](architecture/marmot-permissions-overview.de.md).
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
 current behavior, migration rules, threat model, measured relay compatibility and
 remaining CI/device qualification.
