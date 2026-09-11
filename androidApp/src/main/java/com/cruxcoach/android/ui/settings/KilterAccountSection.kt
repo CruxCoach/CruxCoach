@@ -2,6 +2,8 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -192,7 +194,7 @@ internal fun KilterAccountSection(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun KilterLoginSheet(
+internal fun KilterLoginSheet(
     email: String,
     password: String,
     error: String?,
@@ -204,11 +206,15 @@ private fun KilterLoginSheet(
 ) {
     // A stray scrim tap / back press must not dismiss the sheet while the
     // login runs — a late error would land in state nothing renders.
-    ModalBottomSheet(onDismissRequest = { if (!isLoading) onDismiss() }) {
+    ModalBottomSheet(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(
             modifier = Modifier
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(bottom = 32.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
@@ -301,7 +307,10 @@ private fun KilterImportPreviewDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
         title = { Text(stringResource(R.string.kilter_preview_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(stringResource(
                     R.string.kilter_preview_found,
                     preview.totalLogs,
