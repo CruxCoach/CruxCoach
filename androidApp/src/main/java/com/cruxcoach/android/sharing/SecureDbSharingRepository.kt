@@ -124,6 +124,7 @@ class SecureDbSharingRepository(
     private val localDeviceIdentity: () -> DeviceIdentity? = { null },
     private val currentOwner: () -> String? = { ownerNpub },
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    internal val permissionClock: SharingPermissionClock? = null,
 ) {
 
     internal val accountIdentity: String get() = ownerNpub
@@ -131,10 +132,36 @@ class SecureDbSharingRepository(
     fun isCurrentAccount(): Boolean = currentOwner() == ownerNpub
 
     internal fun canUseSnapshots(capability: DeviceCapability): Boolean {
-        if (!isCurrentAccount()) return false
+        if (!isCurrentAccount() || !sharingClockHealthy()) return false
         val identity = localDeviceIdentity() ?: return false
         val authority = loadDeviceAuthority()
         return authority.devices[identity.device]?.publicKey == identity.publicKey && authority.can(identity.device, capability)
+    }
+
+    fun sharingClockHealthy(): Boolean = permissionClock?.healthy() ?: true
+
+    internal fun recoverSharingClock(): Boolean = database.transactionWithResult {
+        if (!isCurrentAccount() || administrativeWritesLocked() || permissionClock == null) return@transactionWithResult false
+        val identity = localDeviceIdentity() ?: return@transactionWithResult false
+        if (!loadDeviceAuthority().can(identity.device, DeviceCapability.MUTATE_PERMISSIONS)) return@transactionWithResult false
+        if (loadProjection().relationships.values.any { !it.status.isTerminal && it.offeredCategories.isNotEmpty() }) return@transactionWithResult false
+        database.snapshotQueries.invalidateSnapshots(ownerNpub)
+        database.sharingTransportQueries.clearIncomingPolicies(ownerNpub)
+        database.sharingTransportQueries.clearOutgoingPolicies(ownerNpub)
+        permissionClock.resetAfterWithdrawal()
+        true
+    }
+
+    internal fun discardExpiredSnapshotItem(item: String, owner: String, snapshot: String) = database.transaction {
+        val handle = when {
+            owner == ownerNpub && item.startsWith("snapshot-draft:") -> SharingKeyHandles.ownerObject(ObjectId(item))
+            owner != ownerNpub && item == "snapshot:$snapshot" -> SharingKeyHandles.recipientObject(PeerId(owner), ObjectId(item))
+            else -> return@transaction // Never delete an original owner resource.
+        }
+        val row = queries.selectSealedItem(item).executeAsOneOrNull() ?: return@transaction
+        if (row.key_scope != handle.scope.name || row.key_id != handle.id) return@transaction
+        destroyKey(handle)
+        queries.deleteSealedItemsFor(handle.scope.name, handle.id)
     }
 
     private fun hasAuthenticatedOwner(): Boolean = loadDeviceAuthority().let {

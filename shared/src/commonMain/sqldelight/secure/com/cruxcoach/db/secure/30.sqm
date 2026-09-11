@@ -1,0 +1,15 @@
+CREATE TABLE sharing_policy_inbox (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    proposal TEXT NOT NULL,
+    consent TEXT,
+    state TEXT NOT NULL,
+    PRIMARY KEY(account, peer)
+);
+CREATE TABLE sharing_policy_outbox (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    proposal TEXT NOT NULL,
+    PRIMARY KEY(account, peer)
+);

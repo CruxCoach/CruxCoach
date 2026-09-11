@@ -49,3 +49,8 @@ VALUES (:account,
 
 invalidateSnapshots:
 UPDATE sharing_snapshot SET state = 'INVALIDATED' WHERE account = ?;
+
+deleteExpiredSnapshot:
+DELETE FROM sharing_snapshot WHERE account = ? AND snapshot_id = ?;
+resetClock:
+UPDATE sharing_snapshot_clock SET high_water = ?, locked = 0 WHERE account = ?;

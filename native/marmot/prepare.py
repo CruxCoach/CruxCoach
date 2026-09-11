@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent
 def source_digest(destination):
     digest = hashlib.sha256()
     for path in sorted(destination.rglob("*")):
-        if path.name == ".cruxcoach-source":
+        if path == destination / ".cruxcoach-source":
             continue
         if path.is_symlink():
             if not path.resolve().is_relative_to(destination.resolve()):
@@ -44,7 +44,8 @@ def main():
     destination = ROOT / ".mdk"
     marker = destination / ".cruxcoach-source"
     if destination.exists():
-        if marker.exists() and marker.read_text() == fingerprint:
+        if (marker.is_file() and not marker.is_symlink() and marker.stat().st_size == len(fingerprint)
+                and marker.read_text() == fingerprint):
             verify_tree(destination)
             return
         raise SystemExit("Source cache differs; inspect and remove native/marmot/.mdk explicitly.")

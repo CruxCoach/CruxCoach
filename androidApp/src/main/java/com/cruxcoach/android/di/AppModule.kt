@@ -206,7 +206,14 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun providePermissionClock(database: SecureDatabase, nostrSigner: NostrSigner) =
+        com.cruxcoach.android.sharing.SharingPermissionClock(database, nostrSigner.getPublicKeyHex(),
+            elapsed = android.os.SystemClock::elapsedRealtime)
+
+    @Provides
+    @Singleton
     fun provideSharingRepository(
+        clock: com.cruxcoach.android.sharing.SharingPermissionClock,
         database: SecureDatabase,
         vault: com.cruxcoach.domain.sharing.SharingKeyVault,
         signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
@@ -224,6 +231,7 @@ object AppModule {
             ownerPolicyVerifier = ownerPolicySigner.verifier(),
             ownerNpub = nostrSigner.getPublicKeyHex(),
             currentOwner = { nostrSigner.getPublicKeyHex() },
+            permissionClock = clock, nowEpochMillis = clock::now,
             deviceManifestVerifier = com.cruxcoach.domain.sharing.AsyncDeviceManifestSigner(
                 ledgerCrypto(
                     com.cruxcoach.domain.sharing.SigningDomain.DEVICE_MANIFEST,
@@ -251,16 +259,39 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideMarmotFactory(
+        @ApplicationContext context: Context,
+        keyManager: com.cruxcoach.android.data.SqlCipherKeyManager,
+        nostrSigner: NostrSigner,
+        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
+        identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
+        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
+        verifier: com.cruxcoach.android.sharing.QuartzBip340Verifier,
+    ) = com.cruxcoach.android.sharing.AndroidMarmotFactory(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, repository, identity, eventSigner, verifier)
+
+    @Provides
+    @Singleton
     fun provideSnapshotExchange(
         database: SecureDatabase,
         repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
         nostrSigner: NostrSigner,
+        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
     ): com.cruxcoach.android.sharing.SharingSnapshotExchange =
         com.cruxcoach.android.sharing.SharingSnapshotExchange(
             database, repository, nostrSigner.getPublicKeyHex(),
             com.cruxcoach.android.sharing.SnapshotEndpointRole.USER,
-            com.cruxcoach.android.sharing.BlockedMarmotSnapshotPort(),
+            marmot.port, nowEpochMillis = repository.permissionClock!!::now,
         )
+
+    @Provides
+    @Singleton
+    fun provideSharingPolicyTransport(
+        database: SecureDatabase,
+        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
+        nostrSigner: NostrSigner,
+        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
+        signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
+    ) = com.cruxcoach.android.sharing.SharingPolicyTransport(database, repository, nostrSigner.getPublicKeyHex(), marmot.port, signer, now = repository.permissionClock!!::now)
 
     @Provides
     @Singleton
@@ -274,8 +305,12 @@ object AppModule {
         identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
         attestationSigner: com.cruxcoach.domain.sharing.AsyncAuthorityAttestationSigner?,
         nostrSigner: NostrSigner,
+        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
+        policyTransport: com.cruxcoach.android.sharing.SharingPolicyTransport,
     ): com.cruxcoach.android.sharing.SharingController =
         com.cruxcoach.android.sharing.SharingController(
+            marmot = marmot,
+            policyTransport = policyTransport,
             snapshotExchange = snapshotExchange,
             repository = repository,
             signer = signer,

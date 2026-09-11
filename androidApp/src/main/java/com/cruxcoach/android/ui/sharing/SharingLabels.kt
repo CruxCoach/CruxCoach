@@ -94,6 +94,10 @@ object SharingLabels {
         SharingWriteError.NOT_AUTHORISED -> R.string.sharing_write_error_not_authorised
         SharingWriteError.RECOVERY_LOCKED -> R.string.sharing_write_error_recovery_locked
         SharingWriteError.NATIVE_UNAVAILABLE -> R.string.sharing_snapshot_unavailable
+        SharingWriteError.TRANSPORT_LIMIT -> R.string.marmot_transport_limit
+        SharingWriteError.SESSION_UNAVAILABLE -> R.string.marmot_session_unavailable
+        SharingWriteError.DISCOVERY_REQUIRED -> R.string.marmot_discovery_required
+        SharingWriteError.PEER_UNAVAILABLE -> R.string.marmot_peer_unavailable
     }
 
     @StringRes

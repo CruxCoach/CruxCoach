@@ -79,8 +79,11 @@ class SecureDbDeviceIdentity(
     fun loadOrCreate(): DeviceIdentity? {
         queries.selectDeviceIdentity().executeAsOneOrNull()?.let { row ->
             val opened = open(row.wrapped_key, row.sealed_private_key) ?: return null
-            return DeviceIdentity(AuthorityDeviceId(row.device_id), row.public_key)
-                .takeIf { opened.isNotEmpty() }
+            return try {
+                DeviceIdentity(AuthorityDeviceId(row.device_id), row.public_key).takeIf {
+                    row.device_id == row.public_key && keys.publicKeyOf(opened)?.toHex() == row.public_key
+                }
+            } finally { opened.fill(0) }
         }
         return mint()
     }
@@ -88,12 +91,13 @@ class SecureDbDeviceIdentity(
     /** Signs with this device's key. `null` when there is no usable identity. */
     fun crypto(): LedgerCrypto? {
         val row = queries.selectDeviceIdentity().executeAsOneOrNull() ?: return null
-        val privateKey = open(row.wrapped_key, row.sealed_private_key) ?: return null
-        return DeviceCrypto(privateKey, keys)
+        if (loadOrCreate() == null) return null
+        return DeviceCrypto({ open(row.wrapped_key, row.sealed_private_key) }, keys)
     }
 
     private fun mint(): DeviceIdentity? {
         val privateKey = keys.newPrivateKey() ?: return null
+        try {
         val publicKey = keys.publicKeyOf(privateKey)?.toHex() ?: return null
         // The data key is minted once and kept, wrapped, next to what it
         // sealed. Calling createDataKey again would produce a *different* key,
@@ -108,6 +112,7 @@ class SecureDbDeviceIdentity(
             sealed_private_key = sealed.bytes.toHex(),
         )
         return DeviceIdentity(AuthorityDeviceId(publicKey), publicKey)
+        } finally { privateKey.fill(0) }
     }
 
     private fun open(wrappedHex: String, sealedHex: String): ByteArray? {
@@ -120,10 +125,17 @@ class SecureDbDeviceIdentity(
 
     /** Signs with this device's private key. */
     private class DeviceCrypto(
-        private val privateKey: ByteArray,
+        private val openKey: () -> ByteArray?,
         private val keys: DeviceKeys,
     ) : LedgerCrypto {
-        override fun sign(hash: ByteArray): ByteArray? = keys.sign(hash, privateKey)
+        override fun hash(canonical: ByteArray): ByteArray =
+            java.security.MessageDigest.getInstance("SHA-256").digest(canonical)
+
+        override fun sign(hash: ByteArray): ByteArray? {
+            if (hash.size != 32) return null
+            val privateKey = openKey() ?: return null
+            return try { keys.sign(hash, privateKey) } finally { privateKey.fill(0) }
+        }
 
         override fun verify(signature: ByteArray, hash: ByteArray, signerNpub: String): Boolean {
             val publicKey = signerNpub.fromHexOrNull() ?: return false

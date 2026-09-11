@@ -93,6 +93,32 @@ class SharingViewModel @Inject constructor(
     val snapshots = _snapshots.asStateFlow()
     private val _snapshotText = MutableStateFlow<String?>(null)
     val snapshotText = _snapshotText.asStateFlow()
+    private val _nativePeers = MutableStateFlow<List<com.cruxcoach.android.sharing.MarmotPeerStatus>>(emptyList())
+    val nativePeers = _nativePeers.asStateFlow()
+    private val _nativeRelays = MutableStateFlow(com.cruxcoach.android.sharing.MarmotRelayDefaults.urls)
+    val nativeRelays = _nativeRelays.asStateFlow()
+    private val _relayStatus = MutableStateFlow<Map<String, String>>(emptyMap())
+    val relayStatus = _relayStatus.asStateFlow()
+    private val _incomingPolicy = MutableStateFlow<com.cruxcoach.android.sharing.IncomingSharingPolicy?>(null)
+    val incomingPolicy = _incomingPolicy.asStateFlow()
+    private val _clockHealthy = MutableStateFlow(true)
+    val clockHealthy = _clockHealthy.asStateFlow()
+    private val _snapshotCapacity = MutableStateFlow(false)
+    val snapshotCapacity = _snapshotCapacity.asStateFlow()
+    fun recoverSharingTransport() = mutateReporting { controller.recoverSharingClock(archiveTransport = true) }
+    fun recoverSharingClock() = mutateReporting { controller.recoverSharingClock() }
+    fun collectExpiredSnapshots() = mutateReporting { controller.collectExpiredSnapshots() }
+    suspend fun synchronizeWhileVisible() {
+        if (!_signing.value && withContext(ioContext) { controller.discoveryEnabled() && controller.sharingClockHealthy() }) {
+            synchronizeSnapshots().join()
+        }
+    }
+    fun bootstrapMarmot() = mutateReporting { controller.bootstrapMarmot() }
+    fun configureMarmotRelays(text: String) = mutateReporting { controller.configureMarmotRelays(text.lines().map(String::trim).filter(String::isNotEmpty)) }
+    fun connectMarmot(peer: PeerId, accept: Boolean, group: String? = null) = mutateReporting { controller.connectMarmot(peer, accept, group) }
+    fun resetMarmotPeer(peer: PeerId) = mutateReporting { controller.resetMarmotPeer(peer) }
+    fun acceptRemotePolicy(peer: PeerId, categories: Set<SharingCategory>) = mutateReporting { controller.acceptRemotePolicy(peer, categories) }
+
 
     fun pinSnapshotPeer(peer: PeerId, server: Boolean) = mutateReporting {
         controller.pinSnapshotPeer(peer, if (server) com.cruxcoach.android.sharing.SnapshotEndpointRole.SERVER
@@ -170,9 +196,15 @@ class SharingViewModel @Inject constructor(
         val snapshot = withContext(ioContext) { controller.snapshot() }
         _state.value = snapshot
         _estate.value = withContext(ioContext) { controller.deviceEstate() }
+        _nativePeers.value = withContext(ioContext) { controller.nativePeers() }
+        _nativeRelays.value = controller.nativeRelays()
+        _relayStatus.value = withContext(ioContext) { controller.nativeRelayStatus() }
+        _clockHealthy.value = withContext(ioContext) { controller.sharingClockHealthy() }
+        _snapshotCapacity.value = withContext(ioContext) { controller.snapshotCapacityReached() }
         _detail.value?.peer?.let { peer ->
             _detail.value = withContext(ioContext) { controller.peerDetail(peer) }
             _snapshots.value = withContext(ioContext) { controller.snapshotViews(peer) }
+            _incomingPolicy.value = withContext(ioContext) { controller.incomingPolicy(peer) }
         }
     }
 
@@ -213,9 +245,10 @@ class SharingViewModel @Inject constructor(
     fun openPeer(peer: PeerId) = viewModelScope.launch {
         _detail.value = withContext(ioContext) { controller.peerDetail(peer) }
         _snapshots.value = withContext(ioContext) { controller.snapshotViews(peer) }
+        _incomingPolicy.value = withContext(ioContext) { controller.incomingPolicy(peer) }
     }
 
-    fun closePeer() { _detail.value = null; _snapshots.value = emptyList(); clearSnapshotText() }
+    fun closePeer() { _incomingPolicy.value = null; _detail.value = null; _snapshots.value = emptyList(); clearSnapshotText() }
 
     fun setBaseline(circle: SharingCircle, category: SharingCategory, granted: Boolean) =
         mutateReporting { controller.setBaseline(circle, category, granted) }

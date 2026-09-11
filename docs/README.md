@@ -2,13 +2,16 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
-## Permission feature branch overlay (2026-09-10)
+## Permission feature branch overlay (2026-09-11)
 
 `feat/marmot-permissions-v023` merges release source `2788a6fa4` into the retained
-permission work and adds a tested local permission/snapshot foundation. Live
-Marmot sharing is still blocked; no runtime SDK or server deployment is included.
+permission work. Its continuation adds native MDK/JNI snapshot exchange,
+authenticated permission/consent transport, the six configured relays, Android
+sender/recipient UI and a local synthetic server endpoint. No server deployment,
+release or production publisher activation is included.
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
-current behavior, migration rules, threat model and native integration requirements.
+current behavior, migration rules, threat model, measured relay compatibility and
+remaining CI/device qualification.
 The release-line inventory below describes the imported release source, before
 this feature overlay. It is not evidence of publication or production activation.
 

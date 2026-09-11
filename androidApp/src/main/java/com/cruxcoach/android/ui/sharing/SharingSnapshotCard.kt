@@ -59,9 +59,9 @@ internal fun SharingSnapshotCard(detail: PeerDetail, viewModel: SharingViewModel
             Text(stringResource(R.string.sharing_snapshot_title), style = MaterialTheme.typography.titleMedium)
             Text(peer.value, style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.sharing_snapshot_explanation), style = MaterialTheme.typography.bodySmall)
-            if (!app.gate.isLive) Text(stringResource(R.string.sharing_snapshot_unavailable))
+            if (!app.nativeAvailable) Text(stringResource(R.string.sharing_snapshot_unavailable))
             OutlinedTextField(text, onValueChange = { if (it.encodeToByteArray().size <= 32_768) text = it },
-                enabled = enabled && app.gate.isLive, modifier = Modifier.fillMaxWidth(),
+                enabled = enabled && app.nativeAvailable, modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.sharing_snapshot_note)) })
             Row {
                 Checkbox(server, onCheckedChange = { server = it }, enabled = enabled)
@@ -74,11 +74,11 @@ internal fun SharingSnapshotCard(detail: PeerDetail, viewModel: SharingViewModel
                 Text(stringResource(if (savedRole == SnapshotEndpointRole.SERVER) R.string.sharing_snapshot_server
                     else R.string.sharing_snapshot_user))
             }
-            Button(enabled = enabled && app.gate.isLive && text.isNotBlank(), onClick = {
+            Button(enabled = enabled && app.nativeAvailable && text.isNotBlank(), onClick = {
                 val submitted = text
                 viewModel.shareNoteSnapshot(peer, submitted, server) { if (text == submitted) text = "" }
             }) { Text(stringResource(R.string.sharing_snapshot_offer)) }
-            OutlinedButton(enabled = enabled && app.gate.isLive, onClick = { viewModel.synchronizeSnapshots() }) {
+            OutlinedButton(enabled = enabled && app.nativeAvailable, onClick = { viewModel.synchronizeSnapshots() }) {
                 Text(stringResource(R.string.sharing_snapshot_sync))
             }
             snapshots.forEach { snapshot ->

@@ -132,6 +132,16 @@ class SecureDbDeviceIdentityTest {
     }
 
     @Test
+    fun `device attestations hash canonical data with SHA256 before BIP340`() {
+        assertNotNull(identity.loadOrCreate())
+        val crypto = assertNotNull(identity.crypto())
+        val canonical = "synthetic attestation with a canonical preimage longer than thirty two bytes".encodeToByteArray()
+        assertTrue(crypto.hash(canonical).contentEquals(java.security.MessageDigest.getInstance("SHA-256").digest(canonical)))
+        assertNull(crypto.sign(canonical))
+        assertNotNull(crypto.sign(crypto.hash(canonical)))
+    }
+
+    @Test
     fun `it signs and its own verifier accepts`() {
         val minted = assertNotNull(identity.loadOrCreate())
         val crypto = assertNotNull(identity.crypto())
