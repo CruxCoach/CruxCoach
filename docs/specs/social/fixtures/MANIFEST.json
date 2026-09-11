@@ -1,0 +1,84 @@
+{
+  "bundle": {
+    "files": [
+      {
+        "path": "docs/specs/INDEX.md",
+        "sha256": "66fef9d3e0b7bbda39579647de570bae93bf062204dba2fbab4b56e817e13018",
+        "size": 16056
+      },
+      {
+        "path": "docs/specs/0.2.3/FEAT-062-personal-information-sharing.md",
+        "sha256": "fc30a47277bd7f9d8e63f33ba9770e05bac1c0d2507c2824ba804819c18cc697",
+        "size": 91691
+      },
+      {
+        "path": "docs/specs/social/README.md",
+        "sha256": "62809255b50538549aa7c0681d21ae020bb592a7071762f45b95fc03a0ad8e23",
+        "size": 42787
+      },
+      {
+        "path": "docs/specs/social/PRIVATE-SHARING-WIRE-V1.md",
+        "sha256": "579b4b6bb9d9d1245895a90ed54774a5905ab62fe4c2962bbd0e3ae8965b279e",
+        "size": 118013
+      },
+      {
+        "path": "docs/specs/social/PRIVATE-SHARING-THREAT-MODEL.md",
+        "sha256": "d5046915ef5f4bffdbd0b2665b67024cd1abeb0987d4db467eb02ce16c2ec980",
+        "size": 32701
+      },
+      {
+        "path": "docs/specs/social/PRIVATE-SHARING-GOLDEN-VECTORS.md",
+        "sha256": "c7152eff37fbf0fe7a9aca345487813b55bba783633af98db8c417dd220f7dc9",
+        "size": 95302
+      }
+    ],
+    "sha256": "2d69f956b9f8f1a247d5746c259f8276db059c0df6343253c14d506a0e5325f6"
+  },
+  "evidence": {
+    "files": [
+      {
+        "path": "docs/specs/social/fixtures/negative-corpus.json",
+        "sha256": "e71d047703021dbe073b6e20e02471684fef549f74b20ae646164da39a230eeb",
+        "size": 351724
+      },
+      {
+        "path": "docs/specs/social/fixtures/positive-vectors.json",
+        "sha256": "634e185b88476bbd0ddd32c678e638231453b262ceaa2c85ea2902d6358413c4",
+        "size": 38498
+      },
+      {
+        "path": "docs/specs/social/fixtures/reducer-scenarios.json",
+        "sha256": "67c139ab5afd31d5650027331a75e40884459e82a55d21957f50e5a2d8568a7e",
+        "size": 164293
+      },
+      {
+        "path": "docs/specs/social/scripts/build_fixtures.py",
+        "sha256": "1ee7c8b26af8b4d3cf1fbe3a2f5cfb9b9df04e5a655d45c6005f410146510f05",
+        "size": 25099
+      },
+      {
+        "path": "docs/specs/social/scripts/negative_corpus.py",
+        "sha256": "d355404d98b6775f15e5889141e60c55fada4b6873cd1c9d3ad7a93b4a4cf6c6",
+        "size": 54452
+      },
+      {
+        "path": "docs/specs/social/scripts/private_sharing_oracle.py",
+        "sha256": "aecd24ce79040d172d8624ac1b96c13042daf3f8ba243a176af1a16b1ea0c75a",
+        "size": 218806
+      },
+      {
+        "path": "docs/specs/social/scripts/reducer_scenarios.py",
+        "sha256": "903743edae8e3c1dbd906a0ae0fd4d84be9ca579302bf1b3e322c1680a00bd0f",
+        "size": 144573
+      },
+      {
+        "path": "docs/specs/social/scripts/verify_private_sharing.py",
+        "sha256": "e8f6ca8844eada4be77bfe822deb08c0a07aa279533fab70a139305e13106783",
+        "size": 261321
+      }
+    ],
+    "sha256": "35a7f55ec3d7d681702eb77c830de0b7539a34aa3b9a7e216f6625bceb807e41"
+  },
+  "rule": "For each set, in the listed order: sha256 of the file bytes. The set digest is SHA-256 over the concatenation of UTF8(path) || 0x00 || u32be(byte length) || file bytes for every entry in that order. MANIFEST.json itself is excluded from both sets.",
+  "schema": "cc.manifest.v1"
+}

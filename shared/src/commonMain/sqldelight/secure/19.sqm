@@ -1,0 +1,18 @@
+-- Migration 16 -> 17: whether a recovery has locked administrative writes.
+--
+-- FEAT-062 §11. A stale backup gives a read-only Recovery Preview, and that
+-- lock has to outlive the process — a lock a restart forgets is not a lock,
+-- and forgetting it is exactly how a stale restore ends up writing.
+--
+-- An install that upgrades starts unlocked, because nothing has previewed a
+-- backup on it yet. The row is seeded here so a reader never has to decide
+-- what an absent row means.
+CREATE TABLE sharing_recovery_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    admin_writes_locked INTEGER NOT NULL,
+    reason TEXT,
+    preview_generation INTEGER
+);
+
+INSERT OR IGNORE INTO sharing_recovery_state(id, admin_writes_locked, reason, preview_generation)
+VALUES (1, 0, NULL, NULL);

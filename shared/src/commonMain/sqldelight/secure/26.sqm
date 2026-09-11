@@ -1,0 +1,12 @@
+-- Migration 23 -> 24: a recovery authorisation is spendable once.
+--
+-- FEAT-062 §11. The root challenge is signed over the file, the code, the
+-- device key, the generation and the reset flag — all of which stay the same
+-- from one attempt to the next. So one captured signature was a standing
+-- licence to redo the recovery, for ever. The challenge now carries a nonce
+-- that is fresh per attempt, and the nonce is recorded here when it is spent,
+-- so replaying the same authorisation finds it already used.
+CREATE TABLE sharing_recovery_attempt (
+    attempt_nonce TEXT NOT NULL PRIMARY KEY,
+    consumed_at INTEGER NOT NULL
+);

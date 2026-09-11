@@ -1,0 +1,430 @@
+-- FEAT-062 personal-information sharing — retention-independent projection.
+--
+-- This schema is the durable CruxCoach-side authority. It is deliberately
+-- independent of any transport's retention: nothing here is derived from, or
+-- expires with, a relay, an MLS group or a native message store.
+--
+-- Foreign keys are declared and *enforced* (see SecureDatabasePragmas). Two
+-- tables deliberately carry no foreign key:
+--
+--   * sharing_circle_baseline — owner-global, not per peer;
+--   * sharing_tombstone       — must survive the cascade that a purge triggers,
+--                               because a tombstone that a purge deletes is not
+--                               a tombstone.
+
+-- One row per peer: the reduced state of that peer's ledger.
+CREATE TABLE sharing_relationship (
+    peer_npub TEXT NOT NULL PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN (
+        'PENDING','ACCEPTED','DECLINED','DELIVERY_UNCLEAR',
+        'REVOKED','PURGE_PENDING','PURGED','FAIL_CLOSED'
+    )),
+    circle TEXT NOT NULL CHECK (circle IN ('ALL_OTHER_USERS','ACQUAINTANCES','FRIENDS')),
+    -- Comma-separated category names. Sets, not ordered lists.
+    offered_categories TEXT NOT NULL DEFAULT '',
+    consented_categories TEXT NOT NULL DEFAULT '',
+    pending_consent_categories TEXT NOT NULL DEFAULT '',
+    resource_epoch INTEGER NOT NULL DEFAULT 1,
+    authority_generation INTEGER NOT NULL DEFAULT 1,
+    device_generation INTEGER NOT NULL DEFAULT 1,
+    last_sequence INTEGER NOT NULL DEFAULT 0,
+    -- Carried, versioned, and deliberately not enforced or shown in v1.
+    expires_at INTEGER,
+    awaiting_revoke_sync INTEGER NOT NULL DEFAULT 0,
+    fail_closed_reason TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+-- The append-only signed ledger. One sequence number per peer, enforced.
+CREATE TABLE sharing_ledger_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    peer_npub TEXT NOT NULL,
+    policy_sequence INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    authority_generation INTEGER NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    device_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Deliberately not unique. Two of the owner's devices offline both build on
+-- the same entry and both claim the next number; a unique index here threw the
+-- second branch away, so whichever reached the database first won. That is
+-- arrival order deciding who can see what.
+CREATE INDEX idx_sharing_ledger_peer_sequence
+    ON sharing_ledger_entry(peer_npub, policy_sequence);
+
+-- Every device of a peer is authorised and revoked on its own.
+CREATE TABLE sharing_device (
+    peer_npub TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    authorised INTEGER NOT NULL DEFAULT 0,
+    device_generation INTEGER NOT NULL DEFAULT 1,
+    authorised_at INTEGER,
+    revoked_at INTEGER,
+    PRIMARY KEY (peer_npub, device_id),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Per-person category exception.
+CREATE TABLE sharing_peer_rule (
+    peer_npub TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+    PRIMARY KEY (peer_npub, category),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Per-object exception. Wins over the person rule, deny before allow.
+CREATE TABLE sharing_object_rule (
+    peer_npub TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+    PRIMARY KEY (peer_npub, object_id),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Owner-global circle baselines. Inheritance is derived, never stored.
+CREATE TABLE sharing_circle_baseline (
+    circle TEXT NOT NULL CHECK (circle IN ('ALL_OTHER_USERS','ACQUAINTANCES','FRIENDS')),
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    PRIMARY KEY (circle, category)
+);
+
+-- Wrapped data keys. The unwrapped key is never stored anywhere.
+CREATE TABLE sharing_wrapped_key (
+    key_scope TEXT NOT NULL CHECK (key_scope IN (
+        'CATEGORY','OBJECT','RECIPIENT_CATEGORY','RECIPIENT_OBJECT'
+    )),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    wrapped_key BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (key_scope, key_id, resource_epoch)
+);
+
+-- Sensitive sharing payloads, ciphertext only. There is no plaintext column.
+CREATE TABLE sharing_sealed_item (
+    item_id TEXT NOT NULL PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    key_scope TEXT NOT NULL CHECK (key_scope IN (
+        'CATEGORY','OBJECT','RECIPIENT_CATEGORY','RECIPIENT_OBJECT'
+    )),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    ciphertext BLOB NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+
+-- The owner's own devices: which exist, in what role, under which authority.
+-- Append-only and chained; `parent_entry_id` is what makes a fork detectable
+-- rather than merge-able.
+CREATE TABLE sharing_device_manifest_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    manifest_sequence INTEGER NOT NULL,
+    authority_generation INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+-- Sticky safety-lowering markers. No foreign key, on purpose.
+CREATE TABLE sharing_authority_attestation (
+    attestation_id TEXT NOT NULL PRIMARY KEY,
+    scope TEXT NOT NULL,
+    subject_entry_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    parent_attestation_id TEXT,
+    manifest_head_entry_id TEXT,
+    manifest_context TEXT,
+    authority_generation INTEGER NOT NULL,
+    capability TEXT NOT NULL,
+    effect TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+CREATE INDEX sharing_authority_attestation_scope ON sharing_authority_attestation(scope);
+
+-- One act per entry, enforced here rather than only in admission.
+--
+-- Admission is a read followed by a write. Two of them interleaving — a sync
+-- and a tap, or the same import running twice — both see nothing and both
+-- insert, and the ledger then holds two claims of authority over one change.
+-- The database is the only place that can decide that, so it does.
+CREATE UNIQUE INDEX idx_sharing_attestation_subject
+    ON sharing_authority_attestation(subject_entry_id);
+
+-- Nonces already spent, so one signed authorisation cannot be replayed.
+CREATE TABLE sharing_recovery_attempt (
+    attempt_nonce TEXT NOT NULL PRIMARY KEY,
+    consumed_at INTEGER NOT NULL
+);
+
+CREATE TABLE sharing_recovery_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    admin_writes_locked INTEGER NOT NULL,
+    reason TEXT,
+    preview_generation INTEGER
+);
+
+INSERT OR IGNORE INTO sharing_recovery_state(id, admin_writes_locked, reason, preview_generation)
+VALUES (1, 0, NULL, NULL);
+
+CREATE TABLE sharing_device_identity (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    device_id TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    wrapped_key TEXT NOT NULL,
+    sealed_private_key TEXT NOT NULL
+);
+
+CREATE TABLE sharing_tombstone (
+    peer_npub TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('DEVICE_REVOKED','RELATIONSHIP_REVOKED','PURGED')),
+    subject TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (peer_npub, kind, subject)
+);
+
+-- The owner's own policy ledger: baselines and per-person/per-object
+-- exceptions. Signed and append-only for the same reason the relationship
+-- ledger is — these decide who sees what, so they are permissions rather than
+-- settings. The three projection tables above are caches rewritten from this.
+-- The policy is a DAG, so policy_sequence is deliberately not UNIQUE: two of
+-- the owner's devices offline both change the same baseline and both claim the
+-- next number. A unique index threw the second away, so a denial made on a
+-- phone lost to a grant made on a laptop because of network timing.
+CREATE TABLE sharing_owner_policy_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    policy_sequence INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    authority_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+-- ───────────────────────────── queries ─────────────────────────────
+
+-- Deliberately an INSERT and an UPDATE rather than one `INSERT OR REPLACE`.
+-- REPLACE deletes the conflicting row before inserting the new one, and the
+-- ledger's ON DELETE CASCADE would take the entire signed history with it on
+-- every projection rewrite. Same row, updated in place, keeps the history.
+insertRelationship:
+INSERT INTO sharing_relationship(
+    peer_npub, status, circle, offered_categories, consented_categories,
+    pending_consent_categories, resource_epoch, authority_generation,
+    device_generation, last_sequence, expires_at, awaiting_revoke_sync,
+    fail_closed_reason, updated_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+
+updateRelationship:
+UPDATE sharing_relationship SET
+    status = ?, circle = ?, offered_categories = ?, consented_categories = ?,
+    pending_consent_categories = ?, resource_epoch = ?, authority_generation = ?,
+    device_generation = ?, last_sequence = ?, expires_at = ?,
+    awaiting_revoke_sync = ?, fail_closed_reason = ?, updated_at = ?
+WHERE peer_npub = ?;
+
+selectAllRelationships:
+SELECT * FROM sharing_relationship ORDER BY peer_npub;
+
+selectRelationship:
+SELECT * FROM sharing_relationship WHERE peer_npub = ?;
+
+deleteRelationship:
+DELETE FROM sharing_relationship WHERE peer_npub = ?;
+
+-- Deliberately not `OR IGNORE`: that would also swallow a foreign-key or
+-- unique-sequence violation, turning a corrupt append into a silently shorter
+-- history. Duplicate ids are filtered by the caller instead.
+insertLedgerEntry:
+INSERT INTO sharing_ledger_entry(
+    entry_id, peer_npub, policy_sequence, parent_entry_id, authority_generation, resource_epoch,
+    device_generation, signer_npub, signature, body_kind, body_json, received_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?);
+
+selectLedgerEntry:
+SELECT * FROM sharing_ledger_entry WHERE entry_id = ?;
+
+selectLedgerForPeer:
+SELECT * FROM sharing_ledger_entry WHERE peer_npub = ? ORDER BY policy_sequence;
+
+selectWholeLedger:
+SELECT * FROM sharing_ledger_entry ORDER BY peer_npub, policy_sequence;
+
+upsertDevice:
+INSERT OR REPLACE INTO sharing_device(
+    peer_npub, device_id, authorised, device_generation, authorised_at, revoked_at
+) VALUES (?,?,?,?,?,?);
+
+selectDevices:
+SELECT * FROM sharing_device WHERE peer_npub = ? ORDER BY device_id;
+
+upsertPeerRule:
+INSERT OR REPLACE INTO sharing_peer_rule(peer_npub, category, effect) VALUES (?,?,?);
+
+deletePeerRule:
+DELETE FROM sharing_peer_rule WHERE peer_npub = ? AND category = ?;
+
+selectPeerRules:
+SELECT * FROM sharing_peer_rule WHERE peer_npub = ?;
+
+upsertObjectRule:
+INSERT OR REPLACE INTO sharing_object_rule(peer_npub, object_id, category, effect)
+VALUES (?,?,?,?);
+
+deleteObjectRule:
+DELETE FROM sharing_object_rule WHERE peer_npub = ? AND object_id = ?;
+
+selectObjectRules:
+SELECT * FROM sharing_object_rule WHERE peer_npub = ?;
+
+insertBaseline:
+INSERT OR IGNORE INTO sharing_circle_baseline(circle, category) VALUES (?,?);
+
+deleteBaseline:
+DELETE FROM sharing_circle_baseline WHERE circle = ? AND category = ?;
+
+selectBaselines:
+SELECT * FROM sharing_circle_baseline;
+
+upsertWrappedKey:
+INSERT OR REPLACE INTO sharing_wrapped_key(key_scope, key_id, resource_epoch, wrapped_key, created_at)
+VALUES (?,?,?,?,?);
+
+selectWrappedKey:
+SELECT * FROM sharing_wrapped_key WHERE key_scope = ? AND key_id = ? AND resource_epoch = ?;
+
+deleteWrappedKeysFor:
+DELETE FROM sharing_wrapped_key WHERE key_scope = ? AND key_id = ?;
+
+insertSealedItem:
+INSERT OR REPLACE INTO sharing_sealed_item(
+    item_id, category, key_scope, key_id, resource_epoch, ciphertext, created_at
+) VALUES (?,?,?,?,?,?,?);
+
+selectSealedItemsByCategory:
+SELECT * FROM sharing_sealed_item WHERE category = ? ORDER BY created_at;
+
+selectSealedItem:
+SELECT * FROM sharing_sealed_item WHERE item_id = ?;
+
+deleteSealedItemsFor:
+DELETE FROM sharing_sealed_item WHERE key_scope = ? AND key_id = ?;
+
+insertTombstone:
+INSERT OR IGNORE INTO sharing_tombstone(peer_npub, kind, subject, created_at)
+VALUES (?,?,?,?);
+
+selectTombstones:
+SELECT * FROM sharing_tombstone WHERE peer_npub = ?;
+
+countTombstones:
+SELECT COUNT(*) FROM sharing_tombstone;
+
+insertOwnerPolicyEntry:
+INSERT INTO sharing_owner_policy_entry(
+    entry_id, policy_sequence, parent_entry_id, authority_generation, signer_npub, signature,
+    body_kind, body_json, received_at
+) VALUES (?,?,?,?,?,?,?,?,?);
+
+selectOwnerPolicyEntry:
+SELECT * FROM sharing_owner_policy_entry WHERE entry_id = ?;
+
+selectOwnerPolicyLedger:
+SELECT * FROM sharing_owner_policy_entry ORDER BY policy_sequence;
+
+countOwnerPolicyEntries:
+SELECT COUNT(*) FROM sharing_owner_policy_entry;
+
+deleteAllBaselines:
+DELETE FROM sharing_circle_baseline;
+
+deleteAllPeerRules:
+DELETE FROM sharing_peer_rule;
+
+deleteAllObjectRules:
+DELETE FROM sharing_object_rule;
+
+selectAllWrappedKeys:
+SELECT * FROM sharing_wrapped_key;
+
+selectAllSealedItems:
+SELECT * FROM sharing_sealed_item;
+
+selectAllTombstones:
+SELECT * FROM sharing_tombstone;
+
+-- ---------------------------------------------------------- device manifest
+
+selectDeviceManifest:
+SELECT * FROM sharing_device_manifest_entry ORDER BY manifest_sequence ASC;
+
+insertDeviceManifestEntry:
+INSERT INTO sharing_device_manifest_entry(
+    entry_id, manifest_sequence, authority_generation, parent_entry_id,
+    signer_npub, signature, body_kind, body_json, received_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteDeviceManifest:
+DELETE FROM sharing_device_manifest_entry;
+
+selectAttestations:
+SELECT * FROM sharing_authority_attestation ORDER BY attestation_id;
+
+-- Deliberately not `OR IGNORE`: it reported success for a write that never
+-- happened, so a caller that had already decided the act was admissible carried
+-- on as if it were stored.
+insertAttestation:
+INSERT INTO sharing_authority_attestation(
+    attestation_id, scope, subject_entry_id, device_id, parent_attestation_id,
+    manifest_context, authority_generation, capability, effect, signature, received_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAttestations:
+DELETE FROM sharing_authority_attestation;
+
+selectRecoveryAttempt:
+SELECT * FROM sharing_recovery_attempt WHERE attempt_nonce = ?;
+
+consumeRecoveryAttempt:
+INSERT INTO sharing_recovery_attempt(attempt_nonce, consumed_at) VALUES (?, ?);
+
+selectRecoveryState:
+SELECT * FROM sharing_recovery_state WHERE id = 1;
+
+upsertRecoveryState:
+INSERT OR REPLACE INTO sharing_recovery_state(id, admin_writes_locked, reason, preview_generation)
+VALUES (1, ?, ?, ?);
+
+selectDeviceIdentity:
+SELECT * FROM sharing_device_identity WHERE id = 1;
+
+upsertDeviceIdentity:
+INSERT OR REPLACE INTO sharing_device_identity(id, device_id, public_key, wrapped_key, sealed_private_key)
+VALUES (1, ?, ?, ?, ?);
+
+selectAllLedgerEntryIds:
+SELECT entry_id FROM sharing_ledger_entry;

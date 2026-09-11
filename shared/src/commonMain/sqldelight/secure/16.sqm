@@ -1,0 +1,54 @@
+-- Migration version 16 → 17 (secure/personal DB): recipient key scopes.
+--
+-- `key_scope` only admitted 'CATEGORY' and 'OBJECT', both of which name the
+-- *owner's* keys. Whether a key belonged to one recipient was decided by
+-- reading a prefix out of `key_id`, which is free-form — so a row carrying a
+-- recipient-shaped id under an owner scope was indistinguishable from a real
+-- recipient key, and removing that person destroyed the owner's own data.
+--
+-- The distinction now lives in the scope, where the contents of a row cannot
+-- forge it. SQLite cannot alter a CHECK constraint in place, so both tables are
+-- rebuilt. Every existing row is an owner key by definition — nothing has ever
+-- written a recipient key — so the copy is a straight one and needs no mapping.
+
+CREATE TABLE sharing_wrapped_key_v14 (
+    key_scope TEXT NOT NULL CHECK (key_scope IN (
+        'CATEGORY','OBJECT','RECIPIENT_CATEGORY','RECIPIENT_OBJECT'
+    )),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    wrapped_key BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (key_scope, key_id, resource_epoch)
+);
+
+INSERT INTO sharing_wrapped_key_v14 (key_scope, key_id, resource_epoch, wrapped_key, created_at)
+SELECT key_scope, key_id, resource_epoch, wrapped_key, created_at FROM sharing_wrapped_key;
+
+DROP TABLE sharing_wrapped_key;
+
+ALTER TABLE sharing_wrapped_key_v14 RENAME TO sharing_wrapped_key;
+
+CREATE TABLE sharing_sealed_item_v14 (
+    item_id TEXT NOT NULL PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    key_scope TEXT NOT NULL CHECK (key_scope IN (
+        'CATEGORY','OBJECT','RECIPIENT_CATEGORY','RECIPIENT_OBJECT'
+    )),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    ciphertext BLOB NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+INSERT INTO sharing_sealed_item_v14 (
+    item_id, category, key_scope, key_id, resource_epoch, ciphertext, created_at
+)
+SELECT item_id, category, key_scope, key_id, resource_epoch, ciphertext, created_at
+FROM sharing_sealed_item;
+
+DROP TABLE sharing_sealed_item;
+
+ALTER TABLE sharing_sealed_item_v14 RENAME TO sharing_sealed_item;

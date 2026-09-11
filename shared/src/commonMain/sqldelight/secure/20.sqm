@@ -1,0 +1,16 @@
+-- Migration 17 -> 18: this install's own device signing identity.
+--
+-- FEAT-062 §11. A device signs its administrative acts with a key nobody else
+-- holds; the manifest records the public half. The private half is stored
+-- sealed, and the row is unique so an install can never hold two identities and
+-- have to guess which one the manifest enrolled.
+--
+-- An upgrade starts with no identity. The first launch mints one, and it is
+-- enrolled the same way any other device is: signed by the owner's root key.
+CREATE TABLE sharing_device_identity (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    device_id TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    wrapped_key TEXT NOT NULL,
+    sealed_private_key TEXT NOT NULL
+);

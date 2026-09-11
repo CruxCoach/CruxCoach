@@ -83,6 +83,7 @@ spec file so other branches see the reservation.
 | FEAT-049 | MoonBoard Hold-Set Selection (issue #9) | v0.2.2 | shipped | `0.2.2/FEAT-049-moonboard-hold-set-selection.md` |
 | FEAT-050 | Survivable Database Downgrade | backlog | backlog | `backlog/FEAT-050-database-downgrade-safety.md` |
 | FEAT-051 | Blossom Manifest Rollback Guard | v0.2.3 | planned | `0.2.3/FEAT-051-blossom-manifest-rollback-guard.md` |
+| FEAT-062 | Personal Information Sharing | v0.2.3 | hands-on preview (native transport gated) | `0.2.3/FEAT-062-personal-information-sharing.md` |
 | FEAT-058 | CruxCoach Competitions (app + web + protocol) | v0.2.3 | planned | `0.2.3/FEAT-058-competitions.md` |
 | FEAT-059 | Offline BoardCell over FIPS | v0.2.3 | planned | `0.2.3/FEAT-059-offline-board-cell-fips-mesh.md` |
 | FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |

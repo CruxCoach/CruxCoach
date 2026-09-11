@@ -1,0 +1,17 @@
+-- Migration 19 -> 20: one act per entry, enforced by the schema.
+--
+-- FEAT-062 §11. Admission already refuses a second attestation for a subject
+-- that is already authorised, but admission reads and then writes. Two of them
+-- interleaving both see nothing and both insert, and the ledger ends up holding
+-- two claims of authority over one permission change — which is exactly the
+-- shape a weaker claim needs to ride in on a valid one.
+--
+-- Any duplicates already stored are removed first, keeping the lowest id so the
+-- choice is deterministic rather than whichever the query happened to return.
+DELETE FROM sharing_authority_attestation
+WHERE attestation_id NOT IN (
+    SELECT MIN(attestation_id) FROM sharing_authority_attestation GROUP BY subject_entry_id
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sharing_attestation_subject
+    ON sharing_authority_attestation(subject_entry_id);

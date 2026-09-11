@@ -1,0 +1,138 @@
+-- Migration version 14 → 15 (secure/personal DB): FEAT-062 sharing projection.
+--
+-- Purely additive: it creates new tables and touches no existing one, so an
+-- installed 0.2.2 database migrates without rewriting or reinterpreting a
+-- single existing row. The DDL is kept byte-identical to Sharing.sq so a
+-- migrated database and a freshly created one have the same shape.
+
+-- FEAT-062 personal-information sharing — retention-independent projection.
+--
+-- This schema is the durable CruxCoach-side authority. It is deliberately
+-- independent of any transport's retention: nothing here is derived from, or
+-- expires with, a relay, an MLS group or a native message store.
+--
+-- Foreign keys are declared and *enforced* (see SecureDatabasePragmas). Two
+-- tables deliberately carry no foreign key:
+--
+--   * sharing_circle_baseline — owner-global, not per peer;
+--   * sharing_tombstone       — must survive the cascade that a purge triggers,
+--                               because a tombstone that a purge deletes is not
+--                               a tombstone.
+
+-- One row per peer: the reduced state of that peer's ledger.
+CREATE TABLE sharing_relationship (
+    peer_npub TEXT NOT NULL PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN (
+        'PENDING','ACCEPTED','DECLINED','DELIVERY_UNCLEAR',
+        'REVOKED','PURGE_PENDING','PURGED','FAIL_CLOSED'
+    )),
+    circle TEXT NOT NULL CHECK (circle IN ('ALL_OTHER_USERS','ACQUAINTANCES','FRIENDS')),
+    -- Comma-separated category names. Sets, not ordered lists.
+    offered_categories TEXT NOT NULL DEFAULT '',
+    consented_categories TEXT NOT NULL DEFAULT '',
+    pending_consent_categories TEXT NOT NULL DEFAULT '',
+    resource_epoch INTEGER NOT NULL DEFAULT 1,
+    authority_generation INTEGER NOT NULL DEFAULT 1,
+    device_generation INTEGER NOT NULL DEFAULT 1,
+    last_sequence INTEGER NOT NULL DEFAULT 0,
+    -- Carried, versioned, and deliberately not enforced or shown in v1.
+    expires_at INTEGER,
+    awaiting_revoke_sync INTEGER NOT NULL DEFAULT 0,
+    fail_closed_reason TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+-- The append-only signed ledger. One sequence number per peer, enforced.
+CREATE TABLE sharing_ledger_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    peer_npub TEXT NOT NULL,
+    policy_sequence INTEGER NOT NULL,
+    authority_generation INTEGER NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    device_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_sharing_ledger_peer_sequence
+    ON sharing_ledger_entry(peer_npub, policy_sequence);
+
+-- Every device of a peer is authorised and revoked on its own.
+CREATE TABLE sharing_device (
+    peer_npub TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    authorised INTEGER NOT NULL DEFAULT 0,
+    device_generation INTEGER NOT NULL DEFAULT 1,
+    authorised_at INTEGER,
+    revoked_at INTEGER,
+    PRIMARY KEY (peer_npub, device_id),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Per-person category exception.
+CREATE TABLE sharing_peer_rule (
+    peer_npub TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+    PRIMARY KEY (peer_npub, category),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Per-object exception. Wins over the person rule, deny before allow.
+CREATE TABLE sharing_object_rule (
+    peer_npub TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+    PRIMARY KEY (peer_npub, object_id),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+-- Owner-global circle baselines. Inheritance is derived, never stored.
+CREATE TABLE sharing_circle_baseline (
+    circle TEXT NOT NULL CHECK (circle IN ('ALL_OTHER_USERS','ACQUAINTANCES','FRIENDS')),
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    PRIMARY KEY (circle, category)
+);
+
+-- Wrapped data keys. The unwrapped key is never stored anywhere.
+CREATE TABLE sharing_wrapped_key (
+    key_scope TEXT NOT NULL CHECK (key_scope IN ('CATEGORY','OBJECT')),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    wrapped_key BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (key_scope, key_id, resource_epoch)
+);
+
+-- Sensitive sharing payloads, ciphertext only. There is no plaintext column.
+CREATE TABLE sharing_sealed_item (
+    item_id TEXT NOT NULL PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    key_scope TEXT NOT NULL CHECK (key_scope IN ('CATEGORY','OBJECT')),
+    key_id TEXT NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    ciphertext BLOB NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+-- Sticky safety-lowering markers. No foreign key, on purpose.
+CREATE TABLE sharing_tombstone (
+    peer_npub TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('DEVICE_REVOKED','RELATIONSHIP_REVOKED','PURGED')),
+    subject TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (peer_npub, kind, subject)
+);

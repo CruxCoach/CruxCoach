@@ -1,0 +1,23 @@
+-- Migration 15 -> 16: the device-signed record of administrative acts.
+--
+-- FEAT-062 §11. Every administrative permission change now carries an
+-- attestation naming the device that performed it and the act it was built on.
+--
+-- An install that upgrades has no acts on record, which is the fail-closed
+-- direction: nothing is retroactively attributed to a device that never signed
+-- for it. The rows already in the permission ledger keep their owner signature
+-- and stay valid; only new administrative changes require an attestation.
+CREATE TABLE sharing_authority_attestation (
+    attestation_id TEXT NOT NULL PRIMARY KEY,
+    scope TEXT NOT NULL,
+    subject_entry_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    parent_attestation_id TEXT,
+    authority_generation INTEGER NOT NULL,
+    capability TEXT NOT NULL,
+    effect TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+CREATE INDEX sharing_authority_attestation_scope ON sharing_authority_attestation(scope);

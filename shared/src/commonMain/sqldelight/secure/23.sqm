@@ -1,0 +1,33 @@
+-- Migration 20 -> 21: the owner policy becomes a DAG.
+--
+-- FEAT-062 §11. The relationship ledger was made a DAG and this one was left
+-- linear, which put arrival order back in charge of baselines and rules: two of
+-- the owner's devices offline both change the same baseline, both claim the
+-- next policy_sequence, the UNIQUE index rejects the second, and whichever
+-- reached the database first wins.
+--
+-- Existing rows keep parent_entry_id NULL rather than being given an invented
+-- chain: their links were never recorded, and asserting a history nobody signed
+-- would be worse than admitting there is none.
+CREATE TABLE sharing_owner_policy_entry_new (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    policy_sequence INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    authority_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+INSERT INTO sharing_owner_policy_entry_new(
+    entry_id, policy_sequence, parent_entry_id, authority_generation,
+    signer_npub, signature, body_kind, body_json, received_at
+)
+SELECT entry_id, policy_sequence, NULL, authority_generation,
+       signer_npub, signature, body_kind, body_json, received_at
+FROM sharing_owner_policy_entry;
+
+DROP TABLE sharing_owner_policy_entry;
+ALTER TABLE sharing_owner_policy_entry_new RENAME TO sharing_owner_policy_entry;
