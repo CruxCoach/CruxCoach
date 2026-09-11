@@ -1,0 +1,29 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "cruxcoach-feature-gradle",
+      "pattern": [
+        { "regexp": "^\\* What went wrong:$" },
+        { "regexp": "^[ \\t]*(\\S[^\\r\\n]{0,1500})", "message": 1, "loop": true }
+      ]
+    },
+    {
+      "owner": "cruxcoach-feature-compiler",
+      "pattern": [
+        {
+          "regexp": "^\\s*((?:error(?:\\[[A-Z0-9]+\\])?:|e: |CMake Error|LLVM ERROR:|fatal error:)[^\\r\\n]{1,1500})",
+          "message": 1
+        }
+      ]
+    },
+    {
+      "owner": "cruxcoach-feature-resources",
+      "pattern": [
+        {
+          "regexp": "((?:No space left on device|out of memory|OutOfMemoryError|SIGKILL|fatal error:)[^\\r\\n]{0,512})",
+          "message": 1
+        }
+      ]
+    }
+  ]
+}
