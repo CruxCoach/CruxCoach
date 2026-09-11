@@ -194,7 +194,7 @@ class SharingBackupRoundTripTest {
         assertTrue(controller.importRecovery(file.readBytes(), code, sovereignReset = true).applied)
 
         val restoredKey = assertNotNull(repo.readWrappedKey(handle))
-        assertEquals("Schulter schont sich", repo.readSealedItem("note-1", restoredKey)?.decodeToString())
+        assertEquals("Schulter schont sich", repo.readOwnerSealedItem("note-1", restoredKey)?.decodeToString())
     }
 
     @Test

@@ -85,6 +85,7 @@ enum class SharingWriteError {
      * it cannot show to be current.
      */
     RECOVERY_LOCKED,
+    NATIVE_UNAVAILABLE,
 }
 
 /**
@@ -145,6 +146,8 @@ data class PeerDetail(
     val pendingConsentCategories: Set<SharingCategory>,
     val awaitingRevokeSync: Boolean,
     val failClosedReason: String?,
+    val expiresAt: Long? = null,
+    val snapshotRole: SnapshotEndpointRole? = null,
 )
 
 data class SharingUiState(
@@ -232,6 +235,8 @@ class SharingController(
     private val rootCrypto: AsyncLedgerCrypto? = null,
     private val gate: NativeSharingGateState = NativeSharingGate.current(),
     private val random: SecureRandom = SecureRandom(),
+    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val snapshotExchange: SharingSnapshotExchange? = null,
 ) {
 
     /** Held for the whole of every mutation, signing included. */
@@ -259,6 +264,7 @@ class SharingController(
      * external signer that prompt is a whole other app.
      */
     private fun isAuthorised(capability: DeviceCapability): Boolean {
+        if (!repository.isCurrentAccount()) return false
         val device = authorityDevice ?: return false
         if (attestationSigner == null) return false
         if (repository.administrativeWritesLocked()) return false
@@ -485,7 +491,9 @@ class SharingController(
         if (repository.administrativeWritesLocked()) {
             return@withLock SharingWriteResult.Failed(SharingWriteError.RECOVERY_LOCKED)
         }
-        body()
+        body().also { result ->
+            if (result.isSuccess && gate.isLive) runCatching { snapshotExchange?.synchronize() }
+        }
     }
 
     /**
@@ -543,14 +551,16 @@ class SharingController(
                     effectiveDecision = effective(policy, state, category),
                 )
             },
-            objectRules = peerPolicy?.objectRules.orEmpty().map { (objectId, effect) ->
-                ObjectRuleRow(objectId, categoryOf(peer, objectId), effect)
+            objectRules = peerPolicy?.objectRules.orEmpty().map { (key, effect) ->
+                ObjectRuleRow(key.objectId, key.category, effect)
             }.sortedBy { it.objectId.value },
             devices = deviceRows(state),
             consentedCategories = state.consentedCategories,
             pendingConsentCategories = state.pendingConsentCategories,
             awaitingRevokeSync = state.awaitingRevokeSync,
             failClosedReason = state.failClosedReason,
+            expiresAt = state.expiresAt,
+            snapshotRole = snapshotExchange?.pinnedRole(peer.value),
         )
     }
 
@@ -577,6 +587,7 @@ class SharingController(
             objectId = null,
             device = state.authorisedDevices.firstOrNull(),
             localResourceEpoch = state.resourceEpoch,
+            nowEpochMillis = nowEpochMillis(),
         )
 
     /**
@@ -594,6 +605,68 @@ class SharingController(
             val (kind, payload) = SharingLedgerCodec.encodeBody(entry.body)
             "$kind$payload"
         }
+
+    private suspend fun snapshotWrite(body: suspend () -> SharingWriteResult): SharingWriteResult = administrativeWrite {
+        try { body() } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { SharingWriteResult.Failed(SharingWriteError.REJECTED) }
+    }
+
+    suspend fun pinSnapshotPeer(peer: PeerId, role: SnapshotEndpointRole): SharingWriteResult = snapshotWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        if (snapshotExchange?.pinPeer(peer.value, role) == true) SharingWriteResult.Ok
+        else SharingWriteResult.Failed(SharingWriteError.REJECTED)
+    }
+
+    fun snapshotViews(peer: PeerId): List<SharingSnapshotView> =
+        runCatching { snapshotExchange?.views()?.filter { it.peer == peer.value }.orEmpty() }.getOrDefault(emptyList())
+
+    fun readSnapshot(id: String): String? = runCatching { snapshotExchange?.read(id) }.getOrNull()
+
+    suspend fun shareNoteSnapshot(peer: PeerId, text: String, peerRole: SnapshotEndpointRole): SharingWriteResult = snapshotWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        if (!gate.isLive) return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        val exchange = snapshotExchange ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        val bytes = text.encodeToByteArray()
+        try {
+            if (text.isBlank() || bytes.size > SharingSnapshotExchange.MAX_CONTENT_BYTES) {
+                return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+            }
+            val state = repository.loadProjection().relationships[peer]
+                ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+            if (!exchange.pinPeer(peer.value, peerRole)) return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+            val item = "snapshot-draft:${newEntryId()}"
+            val handle = com.cruxcoach.domain.sharing.SharingKeyHandles.ownerObject(ObjectId(item))
+            val key = repository.createDataKey(handle, state.resourceEpoch)
+            repository.storeSealedItem(item, SharingCategory.PRIVATE_NOTES, handle, key, bytes, state.resourceEpoch)
+            val expiresAt = minOf(nowEpochMillis() + 86_400_000L, state.expiresAt ?: Long.MAX_VALUE)
+            val id = runCatching { exchange.offer(peer.value, item, state.resourceEpoch, expiresAt) }.getOrNull()
+            if (id == null) {
+                repository.discardSnapshotDraft(handle)
+                SharingWriteResult.Failed(SharingWriteError.REJECTED)
+            } else SharingWriteResult.Ok // Post-commit synchronization is handled by administrativeWrite.
+        } finally { bytes.fill(0) }
+    }
+
+    suspend fun acceptSnapshot(id: String): SharingWriteResult = snapshotWrite {
+        val exchange = snapshotExchange ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!exchange.accept(id)) SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        else SharingWriteResult.Ok
+    }
+
+    suspend fun revokeSnapshot(id: String): SharingWriteResult = snapshotWrite {
+        val exchange = snapshotExchange ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!exchange.revoke(id)) SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        else SharingWriteResult.Ok
+    }
+
+    suspend fun synchronizeSnapshots(): SharingWriteResult = mutex.withLock {
+        if (!gate.isLive) SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        else runCatching {
+            val exchange = snapshotExchange ?: return@withLock SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+            exchange.synchronize()
+            SharingWriteResult.Ok
+        }.getOrElse { SharingWriteResult.Failed(SharingWriteError.REJECTED) }
+    }
 
     // ------------------------------------------------------------- writing
 
@@ -775,6 +848,18 @@ class SharingController(
     suspend fun changeGrant(peer: PeerId, categories: Set<SharingCategory>): SharingWriteResult =
         administrativeWrite { appended(append(peer, SharingLedgerBody.GrantChanged(categories))) }
 
+    /** Millisecond Unix expiry; shortening is immediate, extension needs fresh consent. */
+    suspend fun setExpiry(peer: PeerId, expiresAt: Long?): SharingWriteResult = administrativeWrite {
+        if (expiresAt != null && expiresAt <= nowEpochMillis()) {
+            return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        }
+        val state = repository.loadProjection().relationships[peer]
+            ?: return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        if (state.status.isTerminal) return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        if (state.expiresAt == expiresAt) return@administrativeWrite SharingWriteResult.NoChange
+        appended(append(peer, SharingLedgerBody.RelationshipOffered(state.offeredCategories, expiresAt)))
+    }
+
     suspend fun revokeDevice(peer: PeerId, device: DeviceId): SharingWriteResult =
         administrativeWrite { appended(append(peer, SharingLedgerBody.DeviceRevoked(device))) }
 
@@ -823,16 +908,20 @@ class SharingController(
      * derive the file key and is never written into the file.
      */
     suspend fun exportBackup(recoveryCode: String): SharingBackupWriteOutcome = mutex.withLock {
+        if (!repository.isCurrentAccount()) return@withLock SharingBackupWriteOutcome.Failed(SharingBackupError.WRONG_IDENTITY)
         val crypto = backupCrypto
             ?: return@withLock SharingBackupWriteOutcome.Failed(SharingBackupError.SIGNER_UNAVAILABLE)
-        val payload = repository.collectBackupPayload()
+        val payload = runCatching { repository.collectBackupPayload() }.getOrElse {
+            return@withLock SharingBackupWriteOutcome.Failed(SharingBackupError.WRONG_IDENTITY)
+        }
         try {
             // The envelope is signed by the same identity as the ledgers, which
             // for an external signer means one more approval prompt — with the
             // exported data keys sitting in memory until it comes back, hence
             // the `finally`.
             when (val written = SharingBackupEnvelope.write(payload, recoveryCode, ownerNpub, crypto)) {
-                is SharingBackupWriteResult.Written -> SharingBackupWriteOutcome.Written(written.bytes)
+                is SharingBackupWriteResult.Written -> if (repository.isCurrentAccount()) SharingBackupWriteOutcome.Written(written.bytes)
+                    else { written.bytes.fill(0); SharingBackupWriteOutcome.Failed(SharingBackupError.WRONG_IDENTITY) }
                 is SharingBackupWriteResult.Failed -> SharingBackupWriteOutcome.Failed(written.error)
             }
         } finally {

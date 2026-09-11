@@ -190,7 +190,7 @@ class SharingPurgeScopeTest {
         val key = assertNotNull(repo.readWrappedKey(ownerCategoryKey), "its wrapped key row must survive")
         assertEquals(
             "the owner's own video",
-            assertNotNull(repo.readSealedItem("owner-video", key)).decodeToString(),
+            assertNotNull(repo.readOwnerSealedItem("owner-video", key)).decodeToString(),
             "the owner's own data must still open",
         )
     }
@@ -205,7 +205,7 @@ class SharingPurgeScopeTest {
         val key = assertNotNull(repo.readWrappedKey(ownerObjectKey))
         assertEquals(
             "one particular video",
-            assertNotNull(repo.readSealedItem("owner-object", key)).decodeToString(),
+            assertNotNull(repo.readOwnerSealedItem("owner-object", key)).decodeToString(),
         )
     }
 
@@ -303,7 +303,7 @@ class SharingPurgeScopeTest {
         val key = assertNotNull(repo.readWrappedKey(bobCategory))
         assertEquals(
             "delivered to bob",
-            assertNotNull(repo.readSealedItem("delivery-bob", key)).decodeToString(),
+            assertNotNull(repo.readOwnerSealedItem("delivery-bob", key)).decodeToString(),
         )
     }
 
@@ -377,7 +377,7 @@ class SharingPurgeScopeTest {
 
         assertNotNull(keyStore.get(legacy), "an owner-scoped key is never a recipient's, whatever its id")
         val key = assertNotNull(repo.readWrappedKey(legacy))
-        assertEquals("owner data", assertNotNull(repo.readSealedItem("legacy-object", key)).decodeToString())
+        assertEquals("owner data", assertNotNull(repo.readOwnerSealedItem("legacy-object", key)).decodeToString())
     }
 
     @Test

@@ -111,7 +111,7 @@ class Nip55LedgerCrypto(
             throw cancelled
         } catch (e: Exception) {
             // Refused, not installed, read-only: all the same to us.
-            Log.w(TAG, "external signer did not sign a $domain entry", e)
+            Log.w(TAG, "external signer did not sign a $domain entry")
             return null
         } ?: return null
 
@@ -142,7 +142,7 @@ class Nip55LedgerCrypto(
         bip340.verify(signature, message32, pubKey)
     } catch (e: Exception) {
         // A signature that cannot be checked is not a signature.
-        Log.w(TAG, "signature check failed", e)
+        Log.w(TAG, "signature check failed")
         false
     }
 

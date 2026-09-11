@@ -29,7 +29,7 @@ object SharingPolicyResolver {
             ?: return AccessDecision(AccessEffect.DENY, DecisionSource.PEER_UNKNOWN_FAIL_CLOSED)
 
         objectId?.let { id ->
-            when (peerPolicy.objectRules[id]) {
+            when (peerPolicy.objectRules[ObjectRuleKey(id, category)]) {
                 AccessEffect.DENY -> return AccessDecision(AccessEffect.DENY, DecisionSource.OBJECT_DENY)
                 AccessEffect.ALLOW -> return AccessDecision(AccessEffect.ALLOW, DecisionSource.OBJECT_ALLOW)
                 null -> Unit

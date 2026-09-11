@@ -172,6 +172,16 @@ actual class SecureDriverFactory(
             // repeats it for the connection this factory itself opens; setting
             // it twice is a no-op, missing it once is a silent fail-open.
             callback = object : AndroidSqliteDriver.Callback(SecureDatabase.Schema) {
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                    val tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
+                        buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) }
+                    }
+                    // Refuse before any DDL. Never reset or misinterpret an old
+                    // unpublished feature database that reuses release versions.
+                    SecureSchemaLineage.requireSupported(tables)
+                    super.onUpgrade(db, oldVersion, newVersion)
+                }
+
                 override fun onConfigure(db: SupportSQLiteDatabase) {
                     super.onConfigure(db)
                     db.setForeignKeyConstraintsEnabled(true)

@@ -1,0 +1,15 @@
+-- Preserve category identity in the derived object-rule cache. The signed
+-- ledger already carries category; it is replayed without rewriting signatures.
+CREATE TABLE sharing_object_rule_scoped (
+    peer_npub TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
+    )),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
+    PRIMARY KEY (peer_npub, category, object_id),
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+INSERT INTO sharing_object_rule_scoped SELECT peer_npub, object_id, category, effect FROM sharing_object_rule;
+DROP TABLE sharing_object_rule;
+ALTER TABLE sharing_object_rule_scoped RENAME TO sharing_object_rule;

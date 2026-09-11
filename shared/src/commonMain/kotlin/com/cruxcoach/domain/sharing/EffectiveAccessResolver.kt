@@ -27,6 +27,7 @@ object EffectiveAccessResolver {
         objectId: ObjectId? = null,
         device: DeviceId?,
         localResourceEpoch: Long,
+        nowEpochMillis: Long? = null,
     ): AccessDecision {
         val decision = SharingPolicyResolver.resolve(policy, peer, category, objectId)
         if (decision.effect == AccessEffect.DENY) return decision
@@ -34,6 +35,7 @@ object EffectiveAccessResolver {
         if (relationship == null) {
             return deny(DecisionSource.RELATIONSHIP_UNKNOWN_FAIL_CLOSED)
         }
+        if (relationship.peer != peer) return deny(DecisionSource.RELATIONSHIP_IDENTITY_MISMATCH)
         if (relationship.failClosedReason != null || relationship.status == RelationshipStatus.FAIL_CLOSED) {
             return deny(DecisionSource.LEDGER_FAIL_CLOSED)
         }
@@ -57,16 +59,22 @@ object EffectiveAccessResolver {
             return deny(DecisionSource.DELIVERY_UNCLEAR)
         }
 
-        if (device == null || device !in relationship.authorisedDevices) {
+        relationship.expiresAt?.let { expiry ->
+            if (expiry <= 0) return deny(DecisionSource.RELATIONSHIP_EXPIRED)
+            if (nowEpochMillis == null || nowEpochMillis < 0) return deny(DecisionSource.CLOCK_UNAVAILABLE)
+            if (nowEpochMillis >= expiry) return deny(DecisionSource.RELATIONSHIP_EXPIRED)
+        }
+
+        if (device == null || device !in relationship.authorisedDevices || device in relationship.revokedDevices) {
             return deny(DecisionSource.DEVICE_NOT_AUTHORISED)
         }
 
         // Offline, only data of the locally valid epoch may be read.
-        if (localResourceEpoch < relationship.resourceEpoch) {
+        if (localResourceEpoch <= 0 || localResourceEpoch != relationship.resourceEpoch) {
             return deny(DecisionSource.RESOURCE_EPOCH_STALE)
         }
 
-        if (category !in relationship.consentedCategories) {
+        if (category !in relationship.consentedCategories || category !in relationship.offeredCategories) {
             return deny(DecisionSource.CONSENT_EXPANSION_PENDING)
         }
 

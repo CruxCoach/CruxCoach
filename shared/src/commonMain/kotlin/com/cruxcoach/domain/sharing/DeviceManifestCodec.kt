@@ -52,13 +52,14 @@ object DeviceManifestCodec {
         val unknown = DeviceManifestBody.Unknown(kind)
         if (kind == "SovereignReset") return DeviceManifestBody.SovereignReset
 
+        if (payload.length > 65_536) return unknown
         val obj = try {
             json.parseToJsonElement(payload) as? JsonObject ?: return unknown
         } catch (e: Exception) {
             return unknown
         }
 
-        return try {
+        val decoded = try {
             when (kind) {
                 "DeviceEnrolled" -> DeviceManifestBody.DeviceEnrolled(
                     device = obj.device() ?: return unknown,
@@ -83,6 +84,9 @@ object DeviceManifestCodec {
         } catch (e: Exception) {
             unknown
         }
+        // Only the exact storage encoding is understood. Extra restrictions, duplicate
+        // fields and lossy coercions must not vanish before signature reconstruction.
+        return if (encodeBody(decoded) == (kind to payload)) decoded else unknown
     }
 
     private fun JsonObject.text(key: String): String? =

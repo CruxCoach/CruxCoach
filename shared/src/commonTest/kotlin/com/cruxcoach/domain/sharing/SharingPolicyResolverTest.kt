@@ -139,7 +139,7 @@ class SharingPolicyResolverTest {
                 alice to PeerPolicy(
                     circle = SharingCircle.FRIENDS,
                     categoryRules = mapOf(SharingCategory.VIDEOS to AccessEffect.ALLOW),
-                    objectRules = mapOf(video to AccessEffect.DENY),
+                    objectRules = mapOf(ObjectRuleKey(video, SharingCategory.VIDEOS) to AccessEffect.DENY),
                 )
             ),
         )
@@ -161,7 +161,7 @@ class SharingPolicyResolverTest {
                 alice to PeerPolicy(
                     circle = SharingCircle.FRIENDS,
                     categoryRules = mapOf(SharingCategory.PRIVATE_NOTES to AccessEffect.DENY),
-                    objectRules = mapOf(note to AccessEffect.ALLOW),
+                    objectRules = mapOf(ObjectRuleKey(note, SharingCategory.PRIVATE_NOTES) to AccessEffect.ALLOW),
                 )
             ),
         )
@@ -183,7 +183,7 @@ class SharingPolicyResolverTest {
             peers = mapOf(
                 alice to PeerPolicy(
                     circle = SharingCircle.FRIENDS,
-                    objectRules = mapOf(note to AccessEffect.DENY),
+                    objectRules = mapOf(ObjectRuleKey(note, SharingCategory.PRIVATE_NOTES) to AccessEffect.DENY),
                 )
             ),
         )

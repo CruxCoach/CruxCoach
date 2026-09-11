@@ -243,7 +243,7 @@ class OwnerPolicyBranchTest {
         listOf(entries to acts, entries.reversed() to acts.reversed()).forEach { (e, a) ->
             val reduced = reduce(e, a, state)
             assertEquals(AccessEffect.DENY, reduced.peerRules[ALICE]?.get(SharingCategory.VIDEOS))
-            assertEquals(AccessEffect.ALLOW, reduced.objectRules[ALICE]?.get(video)?.second)
+            assertEquals(AccessEffect.ALLOW, reduced.objectRules[ALICE]?.get(ObjectRuleKey(video, SharingCategory.VIDEOS)))
         }
     }
 
@@ -295,7 +295,7 @@ class OwnerPolicyBranchTest {
         val acts = listOf(actFor(root, LAPTOP), actFor(allow, LAPTOP), actFor(deny, PHONE))
 
         listOf(entries to acts, entries.reversed() to acts.reversed()).forEach { (e, a) ->
-            assertEquals(AccessEffect.DENY, reduce(e, a, state).objectRules[ALICE]?.get(video)?.second)
+            assertEquals(AccessEffect.DENY, reduce(e, a, state).objectRules[ALICE]?.get(ObjectRuleKey(video, SharingCategory.VIDEOS)))
         }
     }
 

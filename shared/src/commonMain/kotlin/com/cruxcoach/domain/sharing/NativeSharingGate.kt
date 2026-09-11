@@ -10,7 +10,9 @@ package com.cruxcoach.domain.sharing
  * asserted in a test.
  *
  * See `docs/specs/0.2.3/FEAT-062-personal-information-sharing.md` for how each
- * field of [recordedEvidence] was established.
+ * field of [recordedEvidence] was established. That evidence is historical;
+ * the September upstream survey does not certify this app's native integration.
+ * See docs/architecture/marmot-permissions.md for the current boundary.
  */
 data class NativeUpstreamEvidence(
     val repository: String,

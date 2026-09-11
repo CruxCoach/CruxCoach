@@ -1,0 +1,51 @@
+CREATE TABLE sharing_snapshot_peer (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('USER','SERVER')),
+    PRIMARY KEY(account, peer)
+);
+CREATE TABLE sharing_snapshot (
+    account TEXT NOT NULL,
+    snapshot_id TEXT NOT NULL,
+    offer_json TEXT NOT NULL,
+    local_item TEXT,
+    state TEXT NOT NULL,
+    attempted INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(account, snapshot_id)
+);
+CREATE TABLE sharing_snapshot_clock (
+    account TEXT NOT NULL PRIMARY KEY,
+    high_water INTEGER NOT NULL,
+    locked INTEGER NOT NULL DEFAULT 0
+);
+
+pinPeer:
+INSERT OR REPLACE INTO sharing_snapshot_peer(account, peer, role) VALUES (?,?,?);
+peerRole:
+SELECT role FROM sharing_snapshot_peer WHERE account = ? AND peer = ?;
+insertSnapshot:
+INSERT INTO sharing_snapshot(account, snapshot_id, offer_json, local_item, state, attempted)
+VALUES (?,?,?,?,?,0);
+selectSnapshot:
+SELECT * FROM sharing_snapshot WHERE account = ? AND snapshot_id = ?;
+selectSnapshots:
+SELECT * FROM sharing_snapshot WHERE account = ? ORDER BY snapshot_id;
+setSnapshotState:
+UPDATE sharing_snapshot SET state = ? WHERE account = ? AND snapshot_id = ?;
+setLocalItem:
+UPDATE sharing_snapshot SET local_item = ? WHERE account = ? AND snapshot_id = ?;
+markAttempted:
+UPDATE sharing_snapshot SET attempted = attempted | ? WHERE account = ? AND snapshot_id = ?;
+selectClock:
+SELECT * FROM sharing_snapshot_clock WHERE account = ?;
+observeClock:
+INSERT OR REPLACE INTO sharing_snapshot_clock(account, high_water, locked)
+VALUES (:account,
+    MAX(:high_water, COALESCE((SELECT high_water FROM sharing_snapshot_clock WHERE account = :account), 0)),
+    CASE WHEN :locked != 0
+        OR COALESCE((SELECT locked FROM sharing_snapshot_clock WHERE account = :account), 0) != 0
+        OR :high_water < COALESCE((SELECT high_water FROM sharing_snapshot_clock WHERE account = :account), 0)
+        THEN 1 ELSE 0 END);
+
+invalidateSnapshots:
+UPDATE sharing_snapshot SET state = 'INVALIDATED' WHERE account = ?;

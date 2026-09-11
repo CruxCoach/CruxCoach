@@ -71,6 +71,9 @@ object SharingLabels {
         DecisionSource.RESOURCE_EPOCH_STALE -> R.string.sharing_source_epoch_stale
         DecisionSource.CONSENT_EXPANSION_PENDING -> R.string.sharing_source_consent_expansion
         DecisionSource.AWAITING_REVOKE_SYNC -> R.string.sharing_source_awaiting_revoke_sync
+        DecisionSource.RELATIONSHIP_IDENTITY_MISMATCH -> R.string.sharing_source_identity_mismatch
+        DecisionSource.RELATIONSHIP_EXPIRED -> R.string.sharing_source_expired
+        DecisionSource.CLOCK_UNAVAILABLE -> R.string.sharing_source_clock_unavailable
     }
 
     /** These two read "from the circle X", so they need the circle's name. */
@@ -90,6 +93,7 @@ object SharingLabels {
         SharingWriteError.REJECTED -> R.string.sharing_write_error_rejected
         SharingWriteError.NOT_AUTHORISED -> R.string.sharing_write_error_not_authorised
         SharingWriteError.RECOVERY_LOCKED -> R.string.sharing_write_error_recovery_locked
+        SharingWriteError.NATIVE_UNAVAILABLE -> R.string.sharing_snapshot_unavailable
     }
 
     @StringRes

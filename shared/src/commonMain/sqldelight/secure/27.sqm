@@ -1,0 +1,3 @@
+-- Existing ciphertext remains owner-readable with the legacy AAD. It is never
+-- released to a peer until explicitly re-sealed with the complete v2 binding.
+ALTER TABLE sharing_sealed_item ADD COLUMN aad_version INTEGER NOT NULL DEFAULT 1;

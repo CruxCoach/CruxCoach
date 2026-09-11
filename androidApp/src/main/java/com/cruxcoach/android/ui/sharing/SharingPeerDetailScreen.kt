@@ -105,6 +105,8 @@ fun SharingPeerDetailScreen(
             SharingSigningBanner(signing)
             writeError?.let { SharingWriteErrorMessage(it) }
             StatusCard(current)
+            SharingExpiryCard(current, viewModel, !signing)
+            SharingSnapshotCard(current, viewModel, !signing)
             // Permission changes are taken one at a time, so while a
             // signer prompt is open every control that would start
             // another one is switched off rather than silently ignored.
@@ -215,6 +217,7 @@ private fun ObjectRulesCard(detail: PeerDetail, viewModel: SharingViewModel, ena
             )
 
             detail.objectRules.forEach { rule ->
+                val objectLabel = "${stringResource(SharingLabels.category(rule.category))} · ${rule.objectId.value}"
                 val effectLabel = stringResource(
                     if (rule.effect == AccessEffect.ALLOW) {
                         R.string.sharing_source_object_allow
@@ -226,16 +229,16 @@ private fun ObjectRulesCard(detail: PeerDetail, viewModel: SharingViewModel, ena
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics(mergeDescendants = true) {
-                            contentDescription = "${rule.objectId.value}: $effectLabel"
+                            contentDescription = "$objectLabel: $effectLabel"
                         },
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        stringResource(R.string.sharing_object_row, rule.objectId.value, effectLabel),
+                        stringResource(R.string.sharing_object_row, objectLabel, effectLabel),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                     )
-                    val remove = stringResource(R.string.sharing_object_remove, rule.objectId.value)
+                    val remove = stringResource(R.string.sharing_object_remove, objectLabel)
                     OutlinedButton(
                         onClick = { viewModel.removeObjectRule(detail.peer, rule.objectId, rule.category) },
                         enabled = enabled,

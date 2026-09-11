@@ -3,6 +3,7 @@ package com.cruxcoach.android.sharing
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.data.SecureDatabasePragmas
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.sharing.ObjectRuleKey
 import com.cruxcoach.domain.sharing.AccessEffect
 import com.cruxcoach.domain.sharing.CryptoEraseStep
 import com.cruxcoach.domain.sharing.DeviceId
@@ -301,7 +302,7 @@ class SecureDbSharingRepositoryTest {
         val peer = assertNotNull(policy.peers[alice])
         assertEquals(SharingCircle.FRIENDS, peer.circle)
         assertEquals(AccessEffect.DENY, peer.categoryRules[SharingCategory.VIDEOS])
-        assertEquals(AccessEffect.ALLOW, peer.objectRules[ObjectId("v-1")])
+        assertEquals(AccessEffect.ALLOW, peer.objectRules[ObjectRuleKey(ObjectId("v-1"), SharingCategory.VIDEOS)])
     }
 
     @Test
@@ -389,7 +390,7 @@ class SecureDbSharingRepositoryTest {
 
         repo.storeSealedItem("n1", SharingCategory.PRIVATE_NOTES, handle, key, plaintext)
 
-        val roundTripped = repo.readSealedItem("n1", key)
+        val roundTripped = repo.readOwnerSealedItem("n1", key)
         assertEquals("Schulter schont sich noch", roundTripped?.decodeToString())
     }
 
@@ -401,7 +402,7 @@ class SecureDbSharingRepositoryTest {
 
         repo.destroyKey(handle)
 
-        assertNull(repo.readSealedItem("n1", key), "no key, no plaintext")
+        assertNull(repo.readOwnerSealedItem("n1", key), "no key, no plaintext")
     }
 
     // ------------------------- offline policy branches, through the database
@@ -597,7 +598,7 @@ class SecureDbSharingRepositoryTest {
             "root", 2, other,
         )
 
-        assertEquals(AccessEffect.DENY, repo.loadOwnerPolicyState().objectRules[alice]?.get(video)?.second)
+        assertEquals(AccessEffect.DENY, repo.loadOwnerPolicyState().objectRules[alice]?.get(ObjectRuleKey(video, SharingCategory.VIDEOS)))
     }
 
     /** Mandatory matrix: PRIMARY outranks TRUSTED on the same effect. */
@@ -686,7 +687,7 @@ class SecureDbSharingRepositoryTest {
 
         val policy = repo.loadOwnerPolicyState()
         assertEquals(AccessEffect.DENY, policy.peerRules[alice]?.get(SharingCategory.VIDEOS))
-        assertEquals(AccessEffect.ALLOW, policy.objectRules[alice]?.get(video)?.second)
+        assertEquals(AccessEffect.ALLOW, policy.objectRules[alice]?.get(ObjectRuleKey(video, SharingCategory.VIDEOS)))
     }
 
     /**

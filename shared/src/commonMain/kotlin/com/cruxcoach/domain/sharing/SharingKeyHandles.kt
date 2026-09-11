@@ -95,6 +95,7 @@ object SharingKeyHandles {
         if (length < 0) return null
 
         val start = colon + 1
+        if (length > text.length - start - 1) return null
         val end = start + length
         // The separator has to be there, which also bounds the read.
         if (end >= text.length || text[end] != FIELD[0]) return null

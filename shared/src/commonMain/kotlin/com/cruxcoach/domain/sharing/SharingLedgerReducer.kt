@@ -216,12 +216,23 @@ class SharingLedgerReducer(
         return when (val body = e.body) {
             is SharingLedgerBody.PeerCircleAssigned -> state.copy(circle = body.circle)
 
-            is SharingLedgerBody.RelationshipOffered -> state.copy(
-                status = if (state.status == RelationshipStatus.ACCEPTED) state.status else RelationshipStatus.PENDING,
-                offeredCategories = body.categories,
-                pendingConsentCategories = body.categories - state.consentedCategories,
-                expiresAt = body.expiresAt,
-            )
+            is SharingLedgerBody.RelationshipOffered -> {
+                if (body.expiresAt != null && body.expiresAt <= 0) return null
+                // Extending a time limit requires fresh consent. Re-offering a
+                // narrower set must also remove consent for the removed data.
+                val extended = state.expiresAt?.let { previous ->
+                    body.expiresAt == null || body.expiresAt > previous
+                } ?: false
+                val consented = if (extended) emptySet() else state.consentedCategories intersect body.categories
+                state.copy(
+                    status = if (!extended && state.status == RelationshipStatus.ACCEPTED) state.status
+                        else RelationshipStatus.PENDING,
+                    offeredCategories = body.categories,
+                    consentedCategories = consented,
+                    pendingConsentCategories = body.categories - consented,
+                    expiresAt = body.expiresAt,
+                )
+            }
 
             is SharingLedgerBody.RecipientAccepted -> {
                 // A recipient can only ever consent to what was actually offered.

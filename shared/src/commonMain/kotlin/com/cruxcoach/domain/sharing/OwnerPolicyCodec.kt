@@ -44,12 +44,13 @@ object OwnerPolicyCodec {
     @Suppress("TooGenericExceptionCaught", "ReturnCount")
     fun decodeBody(kind: String, payload: String): OwnerPolicyBody {
         val unknown = OwnerPolicyBody.Unknown(kind)
+        if (payload.length > 65_536) return unknown
         val obj = try {
             json.parseToJsonElement(payload) as? JsonObject ?: return unknown
         } catch (e: Exception) {
             return unknown
         }
-        return try {
+        val decoded = try {
             when (kind) {
                 "CircleBaselineSet" -> OwnerPolicyBody.CircleBaselineSet(
                     circle = obj.circle() ?: return unknown,
@@ -84,6 +85,9 @@ object OwnerPolicyCodec {
         } catch (e: Exception) {
             unknown
         }
+        // Only the exact storage encoding is understood. Extra restrictions, duplicate
+        // fields and lossy coercions must not vanish before signature reconstruction.
+        return if (encodeBody(decoded) == (kind to payload)) decoded else unknown
     }
 
     private const val CLEARED = "CLEARED"
