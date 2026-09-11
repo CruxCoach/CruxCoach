@@ -18,6 +18,27 @@ Alte Einmalfreigaben und das vorherige Kategorie-Abonnement begründen diese wei
 reichende Freundschaft **nicht**: Eine neue ausdrückliche Anfrage und Annahme sind
 notwendig. Eine Nostr-Follow-Liste ist kein Freundschaftsnachweis.
 
+## Quartz und Amethyst: warum diese Integration?
+
+Quartz 1.05.1 übernimmt unsere Nostr-Kontosignaturen und Amber-Anbindung. Marmot
+selbst läuft im gepinnten nativen MDK-/OpenMLS-Host. Amethyst unterstützt Marmot
+tatsächlich, verwendet dafür aber eine eigene Kotlin-MLS-Implementierung in Quartz.
+Das veröffentlichte Quartz 1.14.0 und die neueren Protokollanpassungen auf Amethysts
+Hauptzweig sind unterschiedliche Stände. Sie sind kein austauschbarer MDK-Wrapper.
+
+Der kritische Vergleich entscheidet für Beibehalten mit gezielter Bereinigung:
+Ein gemeinsamer Quartz-Signierpfad ersetzt drei bisher getrennte Aufrufwege.
+Offizielle MDK-Android-Bindings gibt es ebenfalls, einschließlich externem Signieren;
+ihr vollständiger App-Laufzeitkern liefert jedoch nicht unmittelbar unsere atomare
+Freigabe-/Quellenbindung und gezielte Datenbereinigung. Ein Umstieg bleibt möglich,
+wenn eine veröffentlichte Variante die gleichen Prüfungen und eine sichere
+Migration nachweist. Die zusätzliche native Buildlast ist ein echtes Gegenargument,
+kein übersehener Nachteil. [Belege und Vergleich](marmot-dependencies.md).
+
+Der Eigentümer hat für diesen folgenden Durchgang normalen Feature-Push und
+APKTrack-Feature-Veröffentlichung autorisiert. Tatsächliche CI-/Receipt-Nachweise
+werden gesondert erfasst; damit sind weder Main-Merge noch Stable autorisiert.
+
 ## Was tatsächlich geteilt werden kann
 
 | Auswahl | Tatsächliche Quelle und Inhalte | Nicht enthalten |
