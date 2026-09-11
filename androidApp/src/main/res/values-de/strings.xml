@@ -1781,12 +1781,12 @@
     <string name="settings_group_appearance">Darstellung &amp; Sprache</string>
     <string name="settings_group_training_playback">Training &amp; Wiedergabe</string>
     <string name="settings_group_all_boards">Alle Boards</string>
-    <string name="settings_group_selected_board">Ausgewähltes Board</string>
+    <string name="settings_group_selected_board">Einstellungen je Board</string>
     <string name="settings_group_board_accounts_imports">Board-Konten &amp; Logbuchimporte</string>
     <string name="settings_group_board_catalogs">Board-Kataloge</string>
     <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
     <string name="settings_group_delete_data">Daten löschen</string>
-    <string name="settings_board_hub_desc">Wähle eine Board-Karte, um Modell und verfügbare Optionen anzusehen. Das ändert nur, welche Einstellungen du gerade bearbeitest. Zum Wechseln deines aktiven Boards nutze die Board-Auswahl. Die Optionen unter „Alle Boards“ gelten boardübergreifend.</string>
+    <string name="settings_board_hub_desc">Wähle eine Board-Karte, um Modell und verfügbare Optionen anzusehen. Das ändert nur, welche Einstellungen du gerade bearbeitest. Zum Wechseln nutze „Aktives Board“ ganz oben auf dieser Seite. Die Optionen unter „Alle Boards“ gelten boardübergreifend.</string>
     <string name="settings_board_active_badge">Aktiv</string>
     <string name="settings_board_viewing">Einstellungen für %1$s</string>
     <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>
@@ -2786,4 +2786,6 @@
     <string name="settings_account_key_reminder">Dein Schlüssel ermöglicht den Zugang zu deinem Konto und verschlüsselten Backups. Bewahre ihn sicher auf: Ein verlorener Schlüssel kann nicht zurückgesetzt werden.</string>
     <string name="settings_account_explanation_show">Wie funktioniert mein Nostr-Konto?</string>
     <string name="settings_account_explanation_hide">Konto-Erklärung ausblenden</string>
+    <string name="settings_active_board_title">Aktives Board</string>
+    <string name="settings_active_board_desc">Legt fest, welches Board CruxCoach für die Boulder-Auswahl und Board-Ansicht verwendet. Mit „Ändern“ wählst du Marke und passendes Modell. Die Karten darunter öffnen Einstellungen für einzelne Boards; ihr Aufruf wechselt das aktive Board nicht.</string>
 </resources>

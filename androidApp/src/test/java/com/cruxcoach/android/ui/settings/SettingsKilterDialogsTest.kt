@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.test.core.app.ApplicationProvider
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.KilterDataInfoButton
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -19,14 +21,16 @@ class SettingsKilterDialogsTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun `all data exchange consequences are reachable and the dialog survives recreation`() {
+        val finalParagraph = ApplicationProvider.getApplicationContext<Application>()
+            .getString(R.string.kilter_data_info_publish)
         val restoration = StateRestorationTester(compose)
         restoration.setContent { MaterialTheme { KilterDataInfoButton() } }
         compose.onNodeWithContentDescription("Kilter-Datenaustausch — Info").performClick()
-        compose.onNodeWithText("Was du aktivierst", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(finalParagraph).performScrollTo().assertIsDisplayed()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("Was du aktivierst", substring = true).assertIsDisplayed()
+        compose.onNodeWithText(finalParagraph).assertIsDisplayed()
         compose.onNodeWithText("OK").performClick()
-        compose.onNodeWithText("Was du aktivierst", substring = true).assertDoesNotExist()
+        compose.onNodeWithText(finalParagraph).assertDoesNotExist()
     }
 
     @Test fun `login explanation and button remain reachable in a short window without submitting`() {

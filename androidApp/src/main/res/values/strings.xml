@@ -1738,12 +1738,12 @@
     <string name="settings_group_appearance">Appearance &amp; language</string>
     <string name="settings_group_training_playback">Training &amp; playback</string>
     <string name="settings_group_all_boards">All boards</string>
-    <string name="settings_group_selected_board">Selected board</string>
+    <string name="settings_group_selected_board">Settings for each board</string>
     <string name="settings_group_board_accounts_imports">Board accounts &amp; logbook imports</string>
     <string name="settings_group_board_catalogs">Board catalogs</string>
     <string name="settings_group_backup_transfer">Backup &amp; transfer</string>
     <string name="settings_group_delete_data">Delete data</string>
-    <string name="settings_board_hub_desc">Select a board card to view its model and available options. This only changes which settings you are viewing. Use the board switcher to change the board you climb on. The controls under “All boards” apply across boards.</string>
+    <string name="settings_board_hub_desc">Select a board card to view its model and available options. This only changes which settings you are viewing. To switch boards, use “Active board” at the top of this page. The controls under “All boards” apply across boards.</string>
     <string name="settings_board_active_badge">Active</string>
     <string name="settings_board_viewing">Viewing settings for %1$s</string>
     <string name="settings_board_make_active">Configure and set active</string>
@@ -2787,4 +2787,6 @@
     <string name="settings_account_key_reminder">Your key gives access to your account and encrypted backups. Keep it safe: a lost key cannot be reset.</string>
     <string name="settings_account_explanation_show">How does my Nostr account work?</string>
     <string name="settings_account_explanation_hide">Hide account explanation</string>
+    <string name="settings_active_board_title">Active board</string>
+    <string name="settings_active_board_desc">Selects the board CruxCoach uses for browsing and viewing climbs. Use “Change” to choose its brand and model. The cards below open settings for individual boards; viewing a card does not change the active board.</string>
 </resources>

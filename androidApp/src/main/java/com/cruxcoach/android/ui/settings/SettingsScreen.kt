@@ -60,6 +60,8 @@ fun SettingsScreen(
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
     var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
+    // The global active-board picker must not inherit the card being inspected.
+    var boardPickerWire by rememberSaveable { mutableStateOf<String?>(null) }
     val updaterVm: UpdaterSettingsViewModel = hiltViewModel()
     val updaterDialogRequested by updaterVm.downloadDialogRequested.collectAsStateWithLifecycle()
     LaunchedEffect(state.isLoading, state.boardBrand) {
@@ -76,12 +78,15 @@ fun SettingsScreen(
         // updates reactively from the prefs.
         BoardPickerDialog(
             onDismiss = { showBoardModelDialog = false },
-            onSelected = { showBoardModelDialog = false },
+            onSelected = {
+                showBoardModelDialog = false
+                settingsBoardWire = null
+            },
             onFindViaGym = {
                 showBoardModelDialog = false
                 showGymSearch = true
             },
-            prefill = settingsBoardWire
+            prefill = boardPickerWire
                 ?.let(BoardBrand::fromWire)
                 ?.takeIf { it.wireValue != state.boardBrand }
                 ?.let {
@@ -135,6 +140,32 @@ fun SettingsScreen(
                 val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
                 val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
                 SettingsSectionCard {
+                    BoardModelSection(
+                        titleRes = R.string.settings_active_board_title,
+                        descriptionRes = R.string.settings_active_board_desc,
+                        boardModelName = run {
+                            val brand = activeBoardBrand
+                            val detail = when {
+                                brand == BoardBrand.MOONBOARD ->
+                                    state.moonBoardVariant?.displayName ?: ""
+                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
+                                    val boardName = BoardConstants
+                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
+                                        ?: brand.displayName
+                                    if (state.boardProductSizeName.isNotBlank())
+                                        "$boardName · ${state.boardProductSizeName}" else boardName
+                                }
+                                else -> state.boardProductSizeName
+                            }
+                            boardSelectionLabel(brand, state.boardLayoutId, detail)
+                        },
+                        onChangeModel = {
+                            boardPickerWire = null
+                            showBoardModelDialog = true
+                        },
+                    )
+                }
+                SettingsSectionCard {
                     SettingsInfoHeading(
                         title = stringResource(R.string.settings_group_selected_board),
                         description = stringResource(R.string.settings_board_hub_desc),
@@ -164,52 +195,15 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Button(
-                            onClick = { showBoardModelDialog = true },
+                            onClick = {
+                                boardPickerWire = settingsBoardBrand.wireValue
+                                showBoardModelDialog = true
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         ) {
                             Text(stringResource(R.string.settings_board_make_active))
                         }
                     }
-                    val hasSelectedBoardSettings =
-                        settingsBoardBrand == activeBoardBrand ||
-                            settingsBoardBrand == BoardBrand.MOONBOARD ||
-                            showsKilterLedColors(settingsBoardBrand)
-                    if (hasSelectedBoardSettings) {
-                        SettingsGroupHeader(
-                            stringResource(
-                                if (settingsBoardBrand == activeBoardBrand) {
-                                    R.string.settings_board_active_connection
-                                } else {
-                                    R.string.settings_board_specific
-                                },
-                            ),
-                        )
-                    }
-                    // FEAT-027: for a MoonBoard show the variant name; else the
-                    // Kilter board-size label. (0.1.5 dropped the standalone
-                    // Original/Homewall toggle — the picker resolves layout.)
-                    if (settingsBoardBrand == activeBoardBrand) BoardModelSection(
-                        // Always show WHICH board it is, not just the size
-                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
-                        // shows its name/variant + size; Kilter shows the size.
-                        boardModelName = run {
-                            val brand = activeBoardBrand
-                            val detail = when {
-                                brand == BoardBrand.MOONBOARD ->
-                                    state.moonBoardVariant?.displayName ?: ""
-                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
-                                    val boardName = BoardConstants
-                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
-                                        ?: brand.displayName
-                                    if (state.boardProductSizeName.isNotBlank())
-                                        "$boardName · ${state.boardProductSizeName}" else boardName
-                                }
-                                else -> state.boardProductSizeName
-                            }
-                            boardSelectionLabel(brand, state.boardLayoutId, detail)
-                        },
-                        onChangeModel = { showBoardModelDialog = true },
-                    )
                     // FEAT-049: which of the variant's hold sets are actually
                     // mounted. Renders nothing for any other brand, and none
                     // for MoonBoard 2010 (one set, no choice).

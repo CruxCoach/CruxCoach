@@ -15,7 +15,9 @@ tags:
 - assertVisible: "Schwierigkeitsskala"
 - pressKey: Back
 - tapOn: "Board & Bluetooth"
-- assertVisible: "Ausgewähltes Board"
+- assertVisible: "Aktives Board"
+- assertVisible: "Ändern"
+- assertVisible: "Einstellungen je Board"
 - pressKey: Back
 - tapOn: "Timer & Wiedergabe"
 - assertVisible: "Pausentimer"

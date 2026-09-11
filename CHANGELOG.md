@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Settings show compact titles and controls, with optional explanations behind
   labelled info buttons. Help opens in a scrollable dialog; current status,
   prerequisites and destructive-action warnings remain visible.
+- Board & Bluetooth starts with a separate active-board selector, followed by
+  settings for individual boards. Inspecting another board does not change the
+  active-board picker context.
 - Settings help explains the available choices and their actual triggers in
   English and German, including automatic versus explicit board sending,
   controller connections, timers, imports, backups and data sharing.

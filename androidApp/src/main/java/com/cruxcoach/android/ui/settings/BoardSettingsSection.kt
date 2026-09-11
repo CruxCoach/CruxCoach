@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -93,12 +94,21 @@ internal fun BoardSyncSection(
 internal fun BoardModelSection(
     boardModelName: String,
     onChangeModel: () -> Unit,
+    @StringRes titleRes: Int = R.string.settings_board_model_title,
+    @StringRes descriptionRes: Int? = null,
 ) {
-    Text(
-        stringResource(R.string.settings_board_model_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
+    if (descriptionRes != null) {
+        SettingsInfoHeading(
+            title = stringResource(titleRes),
+            description = stringResource(descriptionRes),
+        )
+    } else {
+        Text(
+            stringResource(titleRes),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -110,7 +120,7 @@ internal fun BoardModelSection(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
-        TextButton(onClick = onChangeModel) {
+        TextButton(onClick = onChangeModel, modifier = Modifier.testTag("settings_change_active_board")) {
             Text(stringResource(R.string.settings_board_model_change), color = MaterialTheme.colorScheme.primary)
         }
     }
