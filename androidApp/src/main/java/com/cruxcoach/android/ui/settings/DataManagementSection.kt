@@ -8,7 +8,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -26,8 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.OrangeAccent
-import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 
 @Composable
@@ -35,55 +32,19 @@ internal fun BoardLogbookImportSection(
     onNavigateToAuroraMigration: () -> Unit,
     onNavigateToMoonBoardCsvImport: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onNavigateToMoonBoardCsvImport() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(stringResource(R.string.settings_moon_csv_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.settings_moon_csv_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    // Aurora migration — for users coming from the old Kilter / Tension /
-    // Aurora-shared logbook.
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToAuroraMigration() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(
-                    stringResource(R.string.settings_aurora_migration_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.settings_aurora_migration_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
+    SettingsDestinationRow(
+        title = stringResource(R.string.settings_moon_csv_title),
+        summary = stringResource(R.string.settings_moon_csv_desc),
+        icon = Icons.Default.FolderOpen,
+        onClick = onNavigateToMoonBoardCsvImport,
+    )
+    HorizontalDivider()
+    SettingsDestinationRow(
+        title = stringResource(R.string.settings_aurora_migration_title),
+        summary = stringResource(R.string.settings_aurora_migration_desc),
+        icon = Icons.Default.SwapHoriz,
+        onClick = onNavigateToAuroraMigration,
+    )
 }
 
 /** File-based whole-app import/export, kept beside encrypted backup. */
@@ -94,88 +55,30 @@ internal fun AppDataTransferSection(
     onNavigateToExport: () -> Unit,
     onDismissDeleteSuccess: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToImport() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(
-                    stringResource(R.string.settings_data_import),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.settings_data_import_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
+    SettingsDestinationRow(
+        title = stringResource(R.string.settings_data_import),
+        summary = stringResource(R.string.settings_data_import_desc),
+        icon = Icons.Default.FolderOpen,
+        onClick = onNavigateToImport,
+    )
+    HorizontalDivider()
+    SettingsDestinationRow(
+        title = stringResource(R.string.settings_data_export),
+        summary = stringResource(R.string.settings_data_export_desc),
+        icon = Icons.Default.Save,
+        onClick = onNavigateToExport,
+    )
+    DataResultMessage(deleteSuccess, onDismissDeleteSuccess)
+}
 
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onNavigateToExport() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(Icons.Default.Save, contentDescription = null, tint = OrangeAccent)
-            Column {
-                Text(
-                    stringResource(R.string.settings_data_export),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    stringResource(R.string.settings_data_export_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    // Success banner — shown for both Import/Export results and Delete
-    // completions. Kept in the Import/Export section so the feedback
-    // is near the action the user just took; a successful delete does
-    // surface through this same state but is rare enough that putting
-    // it up here is fine.
-    deleteSuccess?.let { message ->
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = SuccessGreen.copy(alpha = 0.15f))
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen)
-                Text(message, style = MaterialTheme.typography.bodyMedium, color = SuccessGreen, modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismissDeleteSuccess) {
-                    Text(stringResource(R.string.action_ok), color = SuccessGreen)
-                }
-            }
+/** Keep completion feedback visible at the action, including the deletion page. */
+@Composable
+internal fun DataResultMessage(message: String?, onDismiss: () -> Unit) {
+    if (message == null) return
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(message, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_ok)) }
         }
     }
 }
@@ -207,13 +110,13 @@ internal fun DataDeletionSection(
         enabled = !isDeletingBoardData,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
     ) {
         if (isDeletingBoardData) {
             CircularProgressIndicator(
                 modifier = Modifier.size(16.dp),
                 strokeWidth = 2.dp,
-                color = OrangeAccent
+                color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(stringResource(R.string.settings_data_delete_board_progress))
@@ -239,7 +142,7 @@ internal fun DataDeletionSection(
     Text(
         stringResource(R.string.settings_data_delete_user_desc),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+        color = MaterialTheme.colorScheme.error
     )
 
     // Confirmation dialogs — both destructive actions are board-scoped:
@@ -251,7 +154,7 @@ internal fun DataDeletionSection(
             message = stringResource(R.string.settings_data_delete_board_dialog_message),
             note = null,
             confirmLabel = stringResource(R.string.action_delete),
-            confirmColor = OrangeAccent,
+            confirmColor = MaterialTheme.colorScheme.primary,
             selectedBrands = selectedBrands,
             onToggleBrand = onToggleBrand,
             onToggleSelectAll = onToggleSelectAll,

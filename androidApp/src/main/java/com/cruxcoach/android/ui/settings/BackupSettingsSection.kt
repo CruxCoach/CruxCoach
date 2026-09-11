@@ -2,7 +2,6 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,7 +14,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,7 +39,7 @@ internal fun BackupSettingsSection(
 ) {
     if (!state.featureEnabled) return
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             stringResource(R.string.settings_backup_title),
             style = MaterialTheme.typography.titleMedium,
@@ -90,21 +88,13 @@ internal fun BackupSettingsSection(
         Spacer(Modifier.height(12.dp))
 
         // Toggle row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                stringResource(R.string.settings_backup_enable),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Switch(
-                checked = state.backupEnabled,
-                onCheckedChange = onSetBackupEnabled,
-                enabled = state.hasNostrKey,
-            )
-        }
+        SettingsToggleRow(
+            title = stringResource(R.string.settings_backup_enable),
+            description = "",
+            checked = state.backupEnabled,
+            onCheckedChange = onSetBackupEnabled,
+            enabled = state.hasNostrKey,
+        )
 
         if (!state.hasNostrKey) {
             Text(
@@ -136,15 +126,11 @@ internal fun BackupSettingsSection(
                 stringResource(R.string.settings_backup_interval),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SyncInterval.entries.forEach { interval ->
-                    FilterChip(
-                        selected = state.interval == interval,
-                        onClick = { onSetInterval(interval) },
-                        label = { Text(stringResource(interval.labelRes)) },
-                    )
-                }
-            }
+            SettingsChoices(
+                options = SyncInterval.entries.map { it to stringResource(it.labelRes) },
+                selected = state.interval,
+                onSelect = onSetInterval,
+            )
 
             // "Letzte Sicherung" / "Noch keine Sicherung" has moved up
             // into the always-visible status line above the toggle, so

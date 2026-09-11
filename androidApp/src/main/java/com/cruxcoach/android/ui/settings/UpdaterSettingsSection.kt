@@ -190,7 +190,7 @@ internal fun UpdaterSettingsSection(
             }
         }
 
-        ToggleSettingRow(
+        SettingsToggleRow(
             title = stringResource(R.string.updater_settings_auto_check),
             description = stringResource(R.string.updater_settings_auto_check_desc),
             checked = state.autoCheckEnabled,
@@ -229,7 +229,7 @@ internal fun UpdaterSettingsSection(
             )
 
             if (state.automationMode != UpdateAutomationMode.NOTIFY) {
-                ToggleSettingRow(
+                SettingsToggleRow(
                     title = stringResource(R.string.updater_settings_auto_mobile),
                     description = stringResource(R.string.updater_settings_auto_mobile_desc),
                     checked = state.autoDownloadOnMobile,
@@ -255,7 +255,7 @@ internal fun UpdaterSettingsSection(
         }
 
         if (viewModel.anonymousUpdateMetricsAvailable) {
-            ToggleSettingRow(
+            SettingsToggleRow(
                 title = stringResource(R.string.updater_settings_anonymous_metrics),
                 description = stringResource(R.string.updater_settings_anonymous_metrics_desc),
                 checked = state.anonymousUpdateMetricsEnabled,
@@ -327,30 +327,6 @@ internal fun UpdaterSettingsSection(
                 },
             )
         }
-    }
-}
-
-@Composable
-private fun ToggleSettingRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(text = title, fontWeight = FontWeight.Medium)
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

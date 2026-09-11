@@ -5,8 +5,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -20,7 +20,6 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SyncInterval
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardLedMode
 
@@ -33,70 +32,33 @@ internal fun DisplaySection(
     onDarkModeChange: (DarkModeSetting) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit,
 ) {
-    Text(
-        stringResource(R.string.settings_display_appearance),
-        style = MaterialTheme.typography.bodyMedium
+    SettingsGroupHeader(stringResource(R.string.settings_display_appearance))
+    SettingsChoices(
+        options = DarkModeSetting.entries.map { mode -> mode to stringResource(
+            when (mode) {
+                DarkModeSetting.SYSTEM -> R.string.settings_theme_system
+                DarkModeSetting.LIGHT -> R.string.settings_theme_light
+                DarkModeSetting.DARK -> R.string.settings_theme_dark
+            },
+        ) },
+        selected = darkMode,
+        onSelect = onDarkModeChange,
     )
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        DarkModeSetting.entries.forEach { mode ->
-            FilterChip(
-                selected = darkMode == mode,
-                onClick = { onDarkModeChange(mode) },
-                label = { Text(mode.label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
-
-    Text(
-        stringResource(R.string.settings_display_grade_scale),
-        style = MaterialTheme.typography.bodyMedium
+    HorizontalDivider()
+    SettingsGroupHeader(stringResource(R.string.settings_display_grade_scale))
+    SettingsChoices(
+        options = GradeScale.entries.map { it to it.label },
+        selected = gradeScale,
+        onSelect = onGradeScaleChange,
+        modifier = Modifier.testTag("settings_grade_scale"),
     )
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.testTag("settings_grade_scale")
-    ) {
-        GradeScale.entries.forEach { scale ->
-            FilterChip(
-                selected = gradeScale == scale,
-                onClick = { onGradeScaleChange(scale) },
-                label = { Text(scale.label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_ble_keep_screen_on), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_ble_keep_screen_on_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = keepScreenOn,
-            onCheckedChange = onKeepScreenOnChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+    HorizontalDivider()
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_ble_keep_screen_on),
+        description = stringResource(R.string.settings_ble_keep_screen_on_desc),
+        checked = keepScreenOn,
+        onCheckedChange = onKeepScreenOnChange,
+    )
 }
 
 @Composable
@@ -117,22 +79,12 @@ internal fun BoardSyncSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.testTag("settings_sync_interval")
-    ) {
-        SyncInterval.entries.forEach { interval ->
-            FilterChip(
-                selected = syncInterval == interval,
-                onClick = { onSyncIntervalChange(interval) },
-                label = { Text(stringResource(interval.labelRes)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
+    SettingsChoices(
+        options = SyncInterval.entries.map { it to stringResource(it.labelRes) },
+        selected = syncInterval,
+        onSelect = onSyncIntervalChange,
+        modifier = Modifier.testTag("settings_sync_interval"),
+    )
 
     // Actual download card (progress, re-sync, errors, board-model picker)
     // lives below this section in SettingsScreen, embedded inline via
@@ -161,7 +113,7 @@ internal fun BoardModelSection(
             modifier = Modifier.weight(1f)
         )
         TextButton(onClick = onChangeModel) {
-            Text(stringResource(R.string.settings_board_model_change), color = OrangeAccent)
+            Text(stringResource(R.string.settings_board_model_change), color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -182,33 +134,18 @@ internal fun MoonBoardLedPositionSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    SingleChoiceSegmentedButtonRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("settings_moonboard_led_position"),
-    ) {
-        MoonBoardLedMode.entries.forEachIndexed { index, mode ->
-            SegmentedButton(
-                selected = ledMode == mode,
-                onClick = { onModeChange(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index, MoonBoardLedMode.entries.size),
-                label = {
-                    Text(
-                        stringResource(
-                            when (mode) {
-                                MoonBoardLedMode.BELOW ->
-                                    R.string.settings_moonboard_led_position_below
-                                MoonBoardLedMode.ABOVE ->
-                                    R.string.settings_moonboard_led_position_above
-                                MoonBoardLedMode.BOTH ->
-                                    R.string.settings_moonboard_led_position_both
-                            },
-                        ),
-                    )
-                },
-            )
-        }
-    }
+    SettingsChoices(
+        options = MoonBoardLedMode.entries.map { mode -> mode to stringResource(
+            when (mode) {
+                MoonBoardLedMode.BELOW -> R.string.settings_moonboard_led_position_below
+                MoonBoardLedMode.ABOVE -> R.string.settings_moonboard_led_position_above
+                MoonBoardLedMode.BOTH -> R.string.settings_moonboard_led_position_both
+            },
+        ) },
+        selected = ledMode,
+        onSelect = onModeChange,
+        modifier = Modifier.testTag("settings_moonboard_led_position"),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -269,30 +206,15 @@ private fun BoardSendModePicker(
     testTag: String,
 ) {
     Text(label, style = MaterialTheme.typography.bodyMedium)
-    SingleChoiceSegmentedButtonRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(testTag),
-    ) {
-        BoardSendMode.entries.forEachIndexed { index, option ->
-            SegmentedButton(
-                selected = mode == option,
-                onClick = { onModeChange(option) },
-                shape = SegmentedButtonDefaults.itemShape(index, BoardSendMode.entries.size),
-                label = {
-                    Text(
-                        stringResource(
-                            if (option == BoardSendMode.AUTOMATIC) {
-                                R.string.settings_board_send_mode_automatic
-                            } else {
-                                R.string.settings_board_send_mode_explicit
-                            },
-                        ),
-                    )
-                },
-            )
-        }
-    }
+    SettingsChoices(
+        options = BoardSendMode.entries.map { option -> option to stringResource(
+            if (option == BoardSendMode.AUTOMATIC) R.string.settings_board_send_mode_automatic
+            else R.string.settings_board_send_mode_explicit,
+        ) },
+        selected = mode,
+        onSelect = onModeChange,
+        modifier = Modifier.testTag(testTag),
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -329,56 +251,35 @@ internal fun BleAutoDisconnectSection(
         lastEnabledSeconds = bleAutoDisconnectSeconds
     }
 
-    // Switch and stepper belong together — the enclosing settings Column
-    // spaces its children 16.dp apart, which pushed them into two islands
-    // with a lot of dead air around the toggle. Own Column, own spacing.
+    // Keep the switch and its conditional duration control together.
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Row(
-        modifier = Modifier.fillMaxWidth().testTag("ble_auto_disconnect_toggle"),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.settings_ble_auto_disconnect_enable),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (!autoDisconnectEnabled) {
-                Text(
-                    stringResource(R.string.settings_ble_auto_disconnect_off_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Switch(
+        SettingsToggleRow(
+            title = stringResource(R.string.settings_ble_auto_disconnect_enable),
+            description = if (autoDisconnectEnabled) "" else stringResource(R.string.settings_ble_auto_disconnect_off_hint),
             checked = autoDisconnectEnabled,
-            onCheckedChange = { on ->
-                onAutoDisconnectChange(if (on) lastEnabledSeconds else 0)
-            },
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
+            onCheckedChange = { on -> onAutoDisconnectChange(if (on) lastEnabledSeconds else 0) },
+            modifier = Modifier.testTag("ble_auto_disconnect_toggle"),
         )
-    }
 
-    // Single source of truth for the duration: shared DurationStepper.
-    // The stepper renders its own current value (Min / Sec ± buttons), so
-    // a separate "Or set exactly:" label and a "Duration: …" line above
-    // it would only repeat what's already visible. Keep the title + desc
-    // (settings_ble_auto_disconnect_*) as the user-facing label and let
-    // the stepper own the value display. minSeconds is 1 now: zero is the
-    // switch's job, and leaving it reachable here would let the stepper
-    // silently contradict the switch. Max 60 min matches the longest old
-    // preset × 2 — any larger value is almost certainly a typo.
-    if (autoDisconnectEnabled) {
-        DurationStepper(
-            seconds = bleAutoDisconnectSeconds,
-            onChange = onAutoDisconnectChange,
-            minSeconds = 1,
-            maxSeconds = 3600,
-            minuteLabel = stringResource(R.string.settings_duration_minutes_label),
-            secondLabel = stringResource(R.string.settings_duration_seconds_label),
-        )
-    }
+        // Single source of truth for the duration: shared DurationStepper.
+        // The stepper renders its own current value (Min / Sec ± buttons), so
+        // a separate "Or set exactly:" label and a "Duration: …" line above
+        // it would only repeat what's already visible. Keep the title + desc
+        // (settings_ble_auto_disconnect_*) as the user-facing label and let
+        // the stepper own the value display. minSeconds is 1 now: zero is the
+        // switch's job, and leaving it reachable here would let the stepper
+        // silently contradict the switch. Max 60 min matches the longest old
+        // preset × 2 — any larger value is almost certainly a typo.
+        if (autoDisconnectEnabled) {
+            DurationStepper(
+                seconds = bleAutoDisconnectSeconds,
+                onChange = onAutoDisconnectChange,
+                minSeconds = 1,
+                maxSeconds = 3600,
+                minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+                secondLabel = stringResource(R.string.settings_duration_seconds_label),
+            )
+        }
     }
 }
 
@@ -411,7 +312,7 @@ internal fun AssessmentSection(
         modifier = Modifier.fillMaxWidth().testTag("settings_assessment_button"),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (hasAssessment) MaterialTheme.colorScheme.secondaryContainer
-            else OrangeAccent
+            else MaterialTheme.colorScheme.primary
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -427,20 +328,10 @@ internal fun AccountKeysSection(
     onNavigateToKeyManagement: () -> Unit,
     onNavigateToNostrProfile: () -> Unit = {},
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(
-            stringResource(R.string.key_section_nostr_intro),
-            modifier = Modifier.padding(12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+    Text(
+        stringResource(R.string.settings_account_key_reminder),
+        style = MaterialTheme.typography.bodyMedium,
+    )
     Text(
         stringResource(R.string.key_section_description),
         style = MaterialTheme.typography.bodyMedium,
@@ -459,5 +350,19 @@ internal fun AccountKeysSection(
         shape = RoundedCornerShape(12.dp)
     ) {
         Text(stringResource(R.string.key_button_manage))
+    }
+    var showExplanation by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { showExplanation = !showExplanation }) {
+        Text(stringResource(
+            if (showExplanation) R.string.settings_account_explanation_hide
+            else R.string.settings_account_explanation_show,
+        ))
+    }
+    if (showExplanation) {
+        Text(
+            stringResource(R.string.key_section_nostr_intro),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

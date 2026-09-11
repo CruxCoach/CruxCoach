@@ -362,8 +362,8 @@
     <string name="settings_language_title">Sprache</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_display_title">Anzeige</string>
-    <string name="settings_display_appearance">Erscheinungsbild:</string>
-    <string name="settings_display_grade_scale">Grad-Skala:</string>
+    <string name="settings_display_appearance">Design</string>
+    <string name="settings_display_grade_scale">Schwierigkeitsskala</string>
     <string name="settings_board_title">Board-Einstellungen</string>
     <string name="settings_board_collapse">Einklappen</string>
     <string name="settings_board_expand">Ausklappen</string>
@@ -441,19 +441,19 @@
     <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
 
     <!-- Settings: Playback -->
-    <string name="settings_playback_title">Routen</string>
-    <string name="settings_playback_desc">Einstellungen für die Wiedergabe von Multi-Frame-Routen.</string>
-    <string name="settings_playback_setter_speed">Setter-Geschwindigkeit</string>
-    <string name="settings_playback_setter_speed_desc">Vom Ersteller festgelegte Speed verwenden</string>
-    <string name="settings_playback_frame_speed">Frame-Geschwindigkeit: %s</string>
-    <string name="settings_playback_frame_speed_desc">Eigene Geschwindigkeit für alle Routen</string>
-    <string name="settings_playback_fallback_speed">Fallback-Geschwindigkeit: %s</string>
-    <string name="settings_playback_fallback_speed_desc">Wird verwendet wenn keine Setter-Speed vorhanden</string>
+    <string name="settings_playback_title">Routenwiedergabe</string>
+    <string name="settings_playback_desc">Lege das Tempo für Routen mit mehreren Schritten (Frames) fest.</string>
+    <string name="settings_playback_setter_speed">Tempo des Erstellers verwenden</string>
+    <string name="settings_playback_setter_speed_desc">Verwendet das in der Route gespeicherte Tempo.</string>
+    <string name="settings_playback_frame_speed">Zeit pro Schritt: %s</string>
+    <string name="settings_playback_frame_speed_desc">Dein Tempo für alle Routen.</string>
+    <string name="settings_playback_fallback_speed">Zeit pro Schritt ohne Ersteller-Tempo: %s</string>
+    <string name="settings_playback_fallback_speed_desc">Wird verwendet, wenn in der Route kein Tempo hinterlegt ist.</string>
     <string name="settings_playback_countdown">Countdown</string>
-    <string name="settings_playback_countdown_desc">Countdown vor Auto-Play</string>
+    <string name="settings_playback_countdown_desc">Wartezeit vor dem automatischen Start der Wiedergabe.</string>
     <string name="settings_playback_countdown_duration">Countdown-Dauer: %ds</string>
-    <string name="settings_playback_auto_loop">Auto-Loop</string>
-    <string name="settings_playback_auto_loop_desc">Automatisch wiederholen</string>
+    <string name="settings_playback_auto_loop">Route wiederholen</string>
+    <string name="settings_playback_auto_loop_desc">Startet die Wiedergabe am Ende automatisch erneut.</string>
 
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Datenverwaltung</string>
@@ -2752,4 +2752,36 @@
     <string name="whatsnew_023_body">• Statistiken zählen unterschiedliche Probleme als Flash, Sent oder Attempt. Die Gesamtzahl deiner Versuche bleibt sichtbar.\n\n• Filterzahlen passen zur Liste, auch bei mehr als 50 Ergebnissen.\n\n• Die zufällige Suche läuft beim Scrollen zuverlässiger.\n\n• Wechsle Boards über die kompakte Kopfzeile und öffne Beta-Videos in den Climb-Details.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
     <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
+
+    <!-- Task-based settings navigation (0.2.3). -->
+    <string name="settings_group_climbing">Beim Klettern</string>
+    <string name="settings_group_app_help">App &amp; Hilfe</string>
+    <string name="settings_page_display">Darstellung &amp; Sprache</string>
+    <string name="settings_summary_display">Sprache, Design, Grade und Bildschirm</string>
+    <string name="settings_page_board">Board &amp; Bluetooth</string>
+    <string name="settings_summary_board">Board einrichten, LEDs und Verbindung</string>
+    <string name="settings_page_timers">Timer &amp; Wiedergabe</string>
+    <string name="settings_summary_timers">Pausenzeit, Routentempo und Countdown</string>
+    <string name="settings_page_sharing">Teilen in der Nähe</string>
+    <string name="settings_summary_sharing">Aktuellen Boulder teilen und CruxRelay steuern</string>
+    <string name="settings_page_account">CruxCoach-Konto</string>
+    <string name="settings_summary_account">Profil, Kontoschlüssel und Amber</string>
+    <string name="settings_page_imports">Board-Konten &amp; Importe</string>
+    <string name="settings_summary_imports">Kilter verbinden oder Board-Logbuch importieren</string>
+    <string name="settings_summary_catalogues">Boulder herunterladen und Aktualisierung festlegen</string>
+    <string name="settings_page_backup">Sichern &amp; übertragen</string>
+    <string name="settings_summary_backup">Verschlüsselte Sicherung, Wiederherstellung und Dateien</string>
+    <string name="settings_page_delete">Lokale Daten löschen</string>
+    <string name="settings_summary_delete">Kataloge oder persönliche Board-Daten entfernen</string>
+    <string name="settings_summary_updates">App-Version, Update-Prüfung und Installation</string>
+    <string name="settings_page_support">Kontakt &amp; Rückmeldungen</string>
+    <string name="settings_summary_support">Nachrichten, Neuigkeiten, Berichte und Unterstützung</string>
+    <string name="settings_page_about">Über CruxCoach</string>
+    <string name="settings_summary_about">Version, App-Informationen und Teilen</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Hell</string>
+    <string name="settings_theme_dark">Dunkel</string>
+    <string name="settings_account_key_reminder">Dein Schlüssel ermöglicht den Zugang zu deinem Konto und verschlüsselten Backups. Bewahre ihn sicher auf: Ein verlorener Schlüssel kann nicht zurückgesetzt werden.</string>
+    <string name="settings_account_explanation_show">Wie funktioniert mein Nostr-Konto?</string>
+    <string name="settings_account_explanation_hide">Konto-Erklärung ausblenden</string>
 </resources>

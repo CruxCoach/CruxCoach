@@ -361,8 +361,8 @@
     <string name="settings_language_title">Language</string>
     <string name="settings_title">Settings</string>
     <string name="settings_display_title">Display</string>
-    <string name="settings_display_appearance">Appearance:</string>
-    <string name="settings_display_grade_scale">Grade scale:</string>
+    <string name="settings_display_appearance">Theme</string>
+    <string name="settings_display_grade_scale">Grade scale</string>
     <string name="settings_board_title">Board settings</string>
     <string name="settings_board_collapse">Collapse</string>
     <string name="settings_board_expand">Expand</string>
@@ -440,19 +440,19 @@
     <string name="settings_timer_auto_start_desc">Timer starts automatically after logging</string>
 
     <!-- Settings: Playback -->
-    <string name="settings_playback_title">Routes</string>
-    <string name="settings_playback_desc">Settings for multi-frame route playback.</string>
-    <string name="settings_playback_setter_speed">Setter speed</string>
-    <string name="settings_playback_setter_speed_desc">Use speed set by the creator</string>
-    <string name="settings_playback_frame_speed">Frame speed: %s</string>
-    <string name="settings_playback_frame_speed_desc">Custom speed for all routes</string>
-    <string name="settings_playback_fallback_speed">Fallback speed: %s</string>
-    <string name="settings_playback_fallback_speed_desc">Used when no setter speed is available</string>
+    <string name="settings_playback_title">Route playback</string>
+    <string name="settings_playback_desc">Control the timing of routes with multiple steps (frames).</string>
+    <string name="settings_playback_setter_speed">Use the setter’s timing</string>
+    <string name="settings_playback_setter_speed_desc">Use the timing stored with the route.</string>
+    <string name="settings_playback_frame_speed">Time per step: %s</string>
+    <string name="settings_playback_frame_speed_desc">Your timing for all routes.</string>
+    <string name="settings_playback_fallback_speed">Time per step without setter timing: %s</string>
+    <string name="settings_playback_fallback_speed_desc">Used when the route has no stored timing.</string>
     <string name="settings_playback_countdown">Countdown</string>
-    <string name="settings_playback_countdown_desc">Countdown before auto-play</string>
+    <string name="settings_playback_countdown_desc">Wait before automatic playback starts.</string>
     <string name="settings_playback_countdown_duration">Countdown duration: %ds</string>
-    <string name="settings_playback_auto_loop">Auto-loop</string>
-    <string name="settings_playback_auto_loop_desc">Repeat automatically</string>
+    <string name="settings_playback_auto_loop">Repeat the route</string>
+    <string name="settings_playback_auto_loop_desc">Restart playback automatically at the end.</string>
 
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Data management</string>
@@ -2753,4 +2753,36 @@
     <string name="whatsnew_023_body">• Statistics count distinct problems as Flash, Sent or Attempt. Total tries remain visible.\n\n• Filter totals match the list, including results beyond the first 50.\n\n• Random search is more reliable while scrolling.\n\n• Switch boards from the compact header and open beta videos from climb details.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
+
+    <!-- Task-based settings navigation (0.2.3). -->
+    <string name="settings_group_climbing">Climbing</string>
+    <string name="settings_group_app_help">App &amp; help</string>
+    <string name="settings_page_display">Appearance &amp; language</string>
+    <string name="settings_summary_display">Language, theme, grades and screen</string>
+    <string name="settings_page_board">Board &amp; Bluetooth</string>
+    <string name="settings_summary_board">Board setup, LEDs and connection</string>
+    <string name="settings_page_timers">Timers &amp; playback</string>
+    <string name="settings_summary_timers">Rest time, route speed and countdown</string>
+    <string name="settings_page_sharing">Sharing nearby</string>
+    <string name="settings_summary_sharing">Share the current climb and control CruxRelay</string>
+    <string name="settings_page_account">CruxCoach account</string>
+    <string name="settings_summary_account">Profile, account key and Amber</string>
+    <string name="settings_page_imports">Board accounts &amp; imports</string>
+    <string name="settings_summary_imports">Connect Kilter or import a board logbook</string>
+    <string name="settings_summary_catalogues">Download climbs and manage updates</string>
+    <string name="settings_page_backup">Back up &amp; transfer</string>
+    <string name="settings_summary_backup">Encrypted backup, restore and files</string>
+    <string name="settings_page_delete">Delete local data</string>
+    <string name="settings_summary_delete">Remove catalogues or personal board data</string>
+    <string name="settings_summary_updates">App version, update checks and installation</string>
+    <string name="settings_page_support">Contact &amp; feedback</string>
+    <string name="settings_summary_support">Messages, news, reports and support</string>
+    <string name="settings_page_about">About CruxCoach</string>
+    <string name="settings_summary_about">Version, app information and sharing</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_account_key_reminder">Your key gives access to your account and encrypted backups. Keep it safe: a lost key cannot be reset.</string>
+    <string name="settings_account_explanation_show">How does my Nostr account work?</string>
+    <string name="settings_account_explanation_hide">Hide account explanation</string>
 </resources>

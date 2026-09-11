@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -18,10 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.cruxcoach.android.ui.theme.OrangeAccent
+import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.R
 
 /**
- * Two-column minute + second stepper for fine-tuning a duration in
+ * Minute + second stepper with wrapping columns for fine-tuning a duration in
  * seconds. Surfaces next to the FilterChip preset row in both the
  * BLE auto-disconnect and rest-timer settings so users can dial in
  * values the presets don't cover (e.g. 1m 47s) without bouncing
@@ -36,6 +39,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
  * @param contentDescriptionDecMinute a11y label for the "−1 min"
  *   button (in the two local languages we support).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DurationStepper(
     seconds: Int,
@@ -44,10 +48,10 @@ internal fun DurationStepper(
     maxSeconds: Int = 60 * 60,
     minuteLabel: String,
     secondLabel: String,
-    contentDescriptionDecMinute: String = "−1",
-    contentDescriptionIncMinute: String = "+1",
-    contentDescriptionDecSecond: String = "−1",
-    contentDescriptionIncSecond: String = "+1",
+    contentDescriptionDecMinute: String = stringResource(R.string.playlist_rest_decrease_minute),
+    contentDescriptionIncMinute: String = stringResource(R.string.playlist_rest_increase_minute),
+    contentDescriptionDecSecond: String = stringResource(R.string.playlist_rest_decrease_second),
+    contentDescriptionIncSecond: String = stringResource(R.string.playlist_rest_increase_second),
 ) {
     val clamped = seconds.coerceIn(minSeconds, maxSeconds)
     val minutes = clamped / 60
@@ -55,9 +59,9 @@ internal fun DurationStepper(
 
     fun commit(newTotal: Int) = onChange(newTotal.coerceIn(minSeconds, maxSeconds))
 
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(20.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         StepperColumn(
             label = minuteLabel,
@@ -103,12 +107,12 @@ private fun StepperColumn(
             IconButton(
                 onClick = onDec,
                 enabled = decEnabled,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     Icons.Default.Remove,
                     contentDescription = decContentDescription,
-                    tint = if (decEnabled) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    tint = if (decEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 )
             }
             Text(
@@ -121,12 +125,12 @@ private fun StepperColumn(
             IconButton(
                 onClick = onInc,
                 enabled = incEnabled,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     Icons.Default.Add,
                     contentDescription = incContentDescription,
-                    tint = if (incEnabled) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    tint = if (incEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 )
             }
         }
