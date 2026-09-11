@@ -58,6 +58,7 @@ class AndroidMarmotFactory(
     private val identity: SecureDbDeviceIdentity,
     private val eventSigner: QuartzNip01EventSigner,
     private val verifier: QuartzBip340Verifier,
+    private val database: com.cruxcoach.db.secure.SecureDatabase,
 ) {
     private val account = nostrSigner.getPublicKeyHex()
     private val relayConfiguration = MarmotRelayConfiguration(context.getSharedPreferences("marmot-relays-v1", Context.MODE_PRIVATE), account)
@@ -77,21 +78,60 @@ class AndroidMarmotFactory(
         return MarmotNative.archive(File(context.noBackupFilesDir, "marmot-v1/$account.db").absolutePath)
     }
 
+    @Volatile private var unattended = false
+    @Volatile var unattendedSignerRequired: Boolean = false
+        private set
+
+    /** Automatic work must not launch an external approval UI. Cached MLS
+     * sessions can still exchange ordinary data without a new account signature. */
+    fun <T> withoutInteractiveSigning(block: () -> T): T = SharingSessionCoordination.withTransport(database, port::exclusively) {
+        unattendedSignerRequired = false
+        unattended = true
+        try { block() } finally { unattended = false }
+    }
+    private fun <T> providerOnly(block: () -> T): T = try { block() } catch (_: Exception) {
+        unattendedSignerRequired = true
+        error("open_app_for_signer")
+    }
+
+    /** Root friendship selections/END retries must use the same unattended
+     * boundary as native transport signatures, including pending bootstrap. */
+    val permissionEventSigner: Nip01EventSigner = PrivateApplicationSigner(
+        foreground = eventSigner,
+        unattended = { unattended },
+        provider = Nip01EventSigner { time, kind, tags, content ->
+            check(nostrSigner.getPublicKeyHex() == account)
+            val external = nostrSigner.signer as? com.vitorpamplona.quartz.nip55AndroidSigner.client.NostrSignerExternal
+            val signed = if (external == null) eventSigner.sign(time, kind, tags, content)
+            else providerOnly { QuartzBackgroundSigner.sign(external, time, kind, tags, content) }.let { e ->
+                com.cruxcoach.domain.sharing.Nip01SignedEvent(e.id, e.pubKey, e.createdAt, e.kind, e.tags.map { it.toList() }, e.content, e.sig)
+            }
+            check(nostrSigner.getPublicKeyHex() == account)
+            signed
+        },
+    )
+
     private val callback = MarmotAccountCallback { operation, argument ->
         runBlocking {
             check(nostrSigner.getPublicKeyHex() == account && repository.canUseSnapshots(DeviceCapability.READ))
             val activeSigner = nostrSigner.signer
+            val external = if (unattended) activeSigner as? com.vitorpamplona.quartz.nip55AndroidSigner.client.NostrSignerExternal else null
             val request = Json.parseToJsonElement(argument).jsonObject
             val result = when (operation) {
                 "sign" -> {
                     require(request["pubkey"]!!.jsonPrimitive.content == account)
-                    val event: com.vitorpamplona.quartz.nip01Core.core.Event = activeSigner.sign(request["created_at"]!!.jsonPrimitive.long, request["kind"]!!.jsonPrimitive.int,
+                    val event: com.vitorpamplona.quartz.nip01Core.core.Event = if (external != null) providerOnly {
+                        QuartzBackgroundSigner.sign(external, request["created_at"]!!.jsonPrimitive.long, request["kind"]!!.jsonPrimitive.int,
+                            request["tags"]!!.jsonArray.map { tag -> tag.jsonArray.map { it.jsonPrimitive.content } }, request["content"]!!.jsonPrimitive.content)
+                    } else activeSigner.sign(request["created_at"]!!.jsonPrimitive.long, request["kind"]!!.jsonPrimitive.int,
                         request["tags"]!!.jsonArray.map { tag -> tag.jsonArray.map { it.jsonPrimitive.content }.toTypedArray() }.toTypedArray(),
                         request["content"]!!.jsonPrimitive.content)
                     event.toJson()
                 }
-                "nip44_encrypt" -> activeSigner.nip44Encrypt(request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content)
-                "nip44_decrypt" -> activeSigner.nip44Decrypt(request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content)
+                "nip44_encrypt" -> if (external != null) providerOnly { QuartzBackgroundSigner.encrypt(external, request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content) }
+                    else activeSigner.nip44Encrypt(request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content)
+                "nip44_decrypt" -> if (external != null) providerOnly { QuartzBackgroundSigner.decrypt(external, request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content) }
+                    else activeSigner.nip44Decrypt(request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content)
                 else -> error("unsupported_native_signer_operation")
             }
             check(nostrSigner.getPublicKeyHex() == account && repository.canUseSnapshots(DeviceCapability.READ))
@@ -115,7 +155,15 @@ class AndroidMarmotFactory(
             } finally { key.fill(0) }
         },
         invoke = MarmotNative::call, close = MarmotNative::close,
-        accountSign = { time, kind, tags, content -> runBlocking { eventSigner.sign(time, kind, tags, content) } },
+        accountSign = { time, kind, tags, content ->
+            check(nostrSigner.getPublicKeyHex() == account)
+            val external = if (unattended) nostrSigner.signer as? com.vitorpamplona.quartz.nip55AndroidSigner.client.NostrSignerExternal else null
+            if (external == null) runBlocking { eventSigner.sign(time, kind, tags, content) }
+            else providerOnly { QuartzBackgroundSigner.sign(external, time, kind, tags, content) }.let { e ->
+                check(nostrSigner.getPublicKeyHex() == account)
+                com.cruxcoach.domain.sharing.Nip01SignedEvent(e.id, e.pubKey, e.createdAt, e.kind, e.tags.map { it.toList() }, e.content, e.sig)
+            }
+        },
         deviceSign = { digest -> identity.crypto()?.sign(digest) }, verify = verifier,
         now = { repository.permissionClock?.now() ?: System.currentTimeMillis() },
     )

@@ -30,7 +30,7 @@ import java.util.UUID
     val head: LedgerWire, val categories: Set<SharingCategory>, val expiresAt: Long,
     val consent: LedgerWire? = null,
 )
-data class IncomingSharingPolicy(val peer: String, val categories: Set<SharingCategory>, val expiresAt: Long, val accepted: Boolean)
+data class IncomingSharingPolicy(val peer: String, val categories: Set<SharingCategory>, val expiresAt: Long, val accepted: Boolean, val headId: String = "")
 
 /** Transports a current owner proposal and a peer-signed ledger acceptance.
  * Both directions are MLS-authenticated and session-bound; the owner admits the
@@ -44,7 +44,7 @@ class SharingPolicyTransport(
     private val signer: AsyncSharingLedgerSigner,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    private val lock = Any()
+    private val lock = SharingSessionCoordination.forDatabase(database)
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
     private val q get() = database.sharingTransportQueries
     private val tags = listOf(listOf("l", "cc.sharing.policy.v1", "cruxcoach.private"))
@@ -68,7 +68,12 @@ class SharingPolicyTransport(
                     val prior = previous?.proposal?.let(::decode)
                     if (prior != null && prior.binding == proposal.binding && prior.head.sequence > proposal.head.sequence) return@transaction
                     if (prior != null && prior.binding == proposal.binding && prior.head.sequence == proposal.head.sequence) {
-                        if (prior != proposal) q.putIncomingPolicy(account, proposal.owner, session.binding, raw, null, "CONFLICT")
+                        if (prior != proposal) {
+                            // An expired request can be re-offered with the same
+                            // signed head; this never reuses its old acceptance.
+                            val renewal = prior.expiresAt <= now() && proposal.expiresAt > prior.expiresAt && prior.copy(expiresAt = proposal.expiresAt) == proposal
+                            q.putIncomingPolicy(account, proposal.owner, session.binding, raw, null, if (renewal) "PENDING" else "CONFLICT")
+                        }
                         return@transaction
                     }
                     q.putIncomingPolicy(account, proposal.owner, session.binding, raw, null, "PENDING")
@@ -130,7 +135,7 @@ class SharingPolicyTransport(
         val proposal = decode(row.proposal) ?: return@synchronized null
         if (row.state !in setOf("PENDING", "ACCEPTED") || proposal.expiresAt <= now()) return@synchronized null
         port.withSession(peer) { session ->
-            if (session.binding != row.binding) null else IncomingSharingPolicy(peer, proposal.categories, proposal.expiresAt, row.state == "ACCEPTED")
+            if (session.binding != row.binding) null else IncomingSharingPolicy(peer, proposal.categories, proposal.expiresAt, row.state == "ACCEPTED", proposal.head.id)
         }
     }
 

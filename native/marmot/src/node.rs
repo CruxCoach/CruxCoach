@@ -164,6 +164,21 @@ pub struct PendingApplication {
     pub expires_at: u64,
 }
 
+/// Payload-free provenance survives the bounded replica lease plus wire overlap.
+/// Buckets keep the existing journal row/byte quotas useful for frequent deltas.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetainedSource {
+    source: String,
+    until: u64,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AcknowledgedSources {
+    fence: Fence,
+    sources: Vec<RetainedSource>,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Scan {
@@ -317,6 +332,17 @@ impl Node {
             self.poisoned = true;
         }
         result
+    }
+
+    /// Definite canonical retirement, independent of temporary connectivity.
+    /// Application replicas can delete payloads even when no live fence exists.
+    pub fn binding_retired(&self, binding: &str) -> Result<bool> {
+        if binding.len() != 64 || !binding.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Error("binding_format"));
+        }
+        Ok(self
+            .get::<bool>(&format!("retired/{binding}"))?
+            .unwrap_or(false))
     }
 
     pub fn own_binding(&self, binding: &str) -> Result<Option<(u64, String)>> {
@@ -890,7 +916,7 @@ impl Node {
         content: String,
         expires_at: u64,
     ) -> Result<String> {
-        if ![1220, 1221, 1222].contains(&kind)
+        if ![1220, 1221, 1222, 1223].contains(&kind)
             || content.len() > 220_000
             || tags.len() > 8
             || tags
@@ -1108,17 +1134,163 @@ impl Node {
             .map(|key| self.get(key)?.ok_or(Error("inbox_missing")))
             .collect()
     }
+    fn acknowledged_key(source: &str, fence: &Fence) -> Result<String> {
+        if source.len() != 64 || !source.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Error("source_format"));
+        }
+        Ok(format!("acked/{}/{}", fence.binding, &source[..1]))
+    }
     pub fn acknowledge(&mut self, source: &str, expected: &Fence) -> Result<()> {
         if self.fence(&expected.peer_account)? != *expected {
             return Err(Error("stale_fence"));
         }
         let key = format!("in/{source}");
-        let mut row: Inbox = self.get(&key)?.ok_or(Error("inbox_missing"))?;
+        let bucket_key = Self::acknowledged_key(source, expected)?;
+        let Some(mut row) = self.get::<Inbox>(&key)? else {
+            return if self
+                .get::<AcknowledgedSources>(&bucket_key)?
+                .is_some_and(|b| {
+                    b.fence == *expected && b.sources.iter().any(|s| s.source == source)
+                }) {
+                Ok(())
+            } else {
+                Err(Error("inbox_missing"))
+            };
+        };
         if row.invalidated || row.fence != *expected {
             return Err(Error("source_invalidated"));
         }
+        if row.kind == 1223 {
+            return self.discard_continuous_inbox(source, expected);
+        }
         row.acknowledged = true;
         self.put(&key, &row)
+    }
+
+    /// Local logical deletion needs no current peer cooperation/fence. Match
+    /// the exact stored source/fence and kind; preserve canonical provenance.
+    pub fn discard_continuous_inbox(&mut self, source: &str, expected: &Fence) -> Result<()> {
+        let key = format!("in/{source}");
+        let Some(row) = self.get::<Inbox>(&key)? else {
+            return Ok(());
+        };
+        if row.kind != 1223 || row.fence != *expected {
+            return Err(Error("source_fence"));
+        }
+        let bucket_key = Self::acknowledged_key(source, expected)?;
+        self.atomic(|node| {
+            let mut bucket =
+                node.get::<AcknowledgedSources>(&bucket_key)?
+                    .unwrap_or(AcknowledgedSources {
+                        fence: expected.clone(),
+                        sources: vec![],
+                    });
+            if bucket.fence != *expected {
+                return Err(Error("source_fence"));
+            }
+            if !bucket.sources.iter().any(|s| s.source == source) {
+                if bucket.sources.len() >= 1024 {
+                    // Deletion must still succeed at provenance quota. Keep a
+                    // payload-free acknowledged source in its existing row;
+                    // ordinary row limits then backpressure further ingest.
+                    let mut cleared = row.clone();
+                    cleared.content.clear();
+                    cleared.tags.clear();
+                    cleared.acknowledged = true;
+                    return node.put(&key, &cleared);
+                }
+                bucket.sources.push(RetainedSource {
+                    source: source.into(),
+                    until: row.retained_until,
+                });
+            }
+            node.store.cruxcoach_delete(&key)?;
+            node.put(&bucket_key, &bucket)?;
+            Ok(())
+        })
+    }
+
+    /// Test-only inspection of actual durable payload locations, returning only
+    /// counts. No key or stored plaintext is emitted. SDK canonical messages are
+    /// retained encrypted MLS wires; app_events/timeline are not used by Node.
+    #[cfg(feature = "local-harness")]
+    pub fn private_storage_matches(&self, marker: &str) -> Result<usize> {
+        use cgka_traits::storage::OutboundIntentStorage;
+        if marker.len() < 8 || marker.len() > 256 {
+            return Err(Error("marker_limit"));
+        }
+        let contains = |bytes: &[u8]| bytes.windows(marker.len()).any(|w| w == marker.as_bytes());
+        let mut count = 0;
+        for key in self.store.cruxcoach_keys("")? {
+            if let Some(value) = self.store.cruxcoach_get(&key)? {
+                count += usize::from(contains(&value));
+            }
+        }
+        for event in self.store.list_pending_application_events()? {
+            count += usize::from(contains(&checked(
+                serde_json::to_vec(&event),
+                "test_encode",
+            )?));
+        }
+        for group in self.store.list_groups()? {
+            for message in self.store.list_messages(&group, cgka_traits::EpochId(0))? {
+                count += usize::from(contains(&message.payload));
+            }
+            for intent in self.store.list_queued_outbound_intents(&group)? {
+                count += usize::from(contains(&checked(
+                    serde_json::to_vec(&intent),
+                    "test_encode",
+                )?));
+            }
+        }
+        // Node never opts into MDK's chat projection. A future integration must
+        // extend deletion coverage before enabling that additional plaintext store.
+        if self.store.app_message_count()? != 0 {
+            return Err(Error("unexpected_chat_store"));
+        }
+        Ok(count)
+    }
+
+    fn canonical_source(&self, source: &str, fence: &Fence) -> Result<bool> {
+        let source = MessageId::new(checked(hex::decode(source), "source")?);
+        Ok(self.store.get_message(&source).is_ok_and(|m| {
+            m.state == MessageState::Processed
+                && hex::encode(m.group_id.as_slice()) == fence.group
+                && m.epoch.0 == fence.epoch
+        }))
+    }
+
+    /// Only the application that durably owns its subscription state retires
+    /// an obsolete/completed private operation. Never touches MDK core fanouts.
+    pub fn discard_continuous_handoff(&mut self, event_id: &str, expected: &Fence) -> Result<()> {
+        let key = format!("out/{event_id}");
+        let Some(out) = self.get::<Outbox>(&key)? else {
+            return Ok(());
+        };
+        let app = out.application.as_ref().ok_or(Error("handoff_mismatch"))?;
+        if out.core_fanout || app.kind != 1223 || app.fence != *expected {
+            return Err(Error("handoff_mismatch"));
+        }
+        let operation = id(&checked(
+            serde_json::to_vec(&(expected.binding.clone(), app.kind, &app.tags, &app.content)),
+            "encode",
+        )?);
+        self.atomic(|node| {
+            node.store.cruxcoach_delete(&key)?;
+            let operation_key = format!("operation/{operation}");
+            if node.get::<String>(&operation_key)?.as_deref() == Some(event_id) {
+                node.store.cruxcoach_delete(&operation_key)?;
+            }
+            Ok(())
+        })
+    }
+    pub fn continuous_obligations(&self) -> Result<Vec<PendingApplication>> {
+        Ok(self
+            .outbox()?
+            .into_iter()
+            .filter_map(|o| o.application)
+            .filter(|a| a.kind == 1223)
+            .collect())
     }
 
     fn reconcile(&mut self) -> Result<()> {
@@ -1182,7 +1354,9 @@ impl Node {
                     {
                         let app = checked(MarmotAppEvent::decode(&payload), "inner_event")?;
                         checked(app.validate_sender(&fence.peer_account), "inner_sender")?;
-                        if app.content.len() <= 220_000 && [1220, 1221, 1222].contains(&app.kind) {
+                        if app.content.len() <= 220_000
+                            && [1220, 1221, 1222, 1223].contains(&app.kind)
+                        {
                             self.put(
                                 &key,
                                 &Inbox {
@@ -1193,9 +1367,20 @@ impl Node {
                                     content: app.content,
                                     acknowledged: false,
                                     invalidated: false,
-                                    retained_until: now_ms() + 691_200_000,
+                                    retained_until: now_ms() + 8 * 86_400_000,
                                 },
                             )?;
+                        }
+                    }
+                    // Replayed engine events already consumed/deleted by the
+                    // host must not recreate a plaintext inbox row.
+                    if let Some(row) = self.get::<Inbox>(&key)? {
+                        let bucket_key = Self::acknowledged_key(&source, &row.fence)?;
+                        if self
+                            .get::<AcknowledgedSources>(&bucket_key)?
+                            .is_some_and(|b| b.sources.iter().any(|s| s.source == source))
+                        {
+                            self.store.cruxcoach_delete(&key)?;
                         }
                     }
                     // Our durable source-aware journal now owns the effect.
@@ -1203,6 +1388,23 @@ impl Node {
                         .delete_pending_application_events(&[message_id])?;
                 }
                 _ => {}
+            }
+        }
+        for key in self.store.cruxcoach_keys("acked/")? {
+            let bucket: AcknowledgedSources = self.get(&key)?.ok_or(Error("source_missing"))?;
+            let mut canonical =
+                self.raw_fence(&bucket.fence.group).ok().as_ref() == Some(&bucket.fence);
+            if canonical {
+                for source in &bucket.sources {
+                    if !self.canonical_source(&source.source, &bucket.fence)? {
+                        canonical = false;
+                        break;
+                    }
+                }
+            }
+            if !canonical {
+                self.put(&format!("retired/{}", bucket.fence.binding), &true)?;
+                self.store.cruxcoach_delete(&key)?;
             }
         }
         for key in self.store.cruxcoach_keys("in/")? {
@@ -1270,7 +1472,14 @@ impl Node {
                 ));
             }
         }
-        for (relays, filter) in routes {
+        // Ordinary Android workers have a finite execution window. Persist a
+        // round-robin cursor; an unvisited route never receives a fresh-read fence.
+        routes.sort_by_key(|(_, filter)| filter.to_string());
+        let cursor = self.get::<usize>("meta/route_cursor")?.unwrap_or(0) % routes.len();
+        routes.rotate_left(cursor);
+        let count = routes.len().min(4);
+        self.put("meta/route_cursor", &((cursor + count) % routes.len()))?;
+        for (relays, filter) in routes.into_iter().take(count) {
             let jobs = relays
                 .iter()
                 .map(|relay| self.scan_request(relay, filter.clone()))
@@ -1497,6 +1706,16 @@ impl Node {
                     node.store.cruxcoach_delete(&key)?;
                 }
             }
+            for key in node.store.cruxcoach_keys("acked/")? {
+                let mut bucket: AcknowledgedSources =
+                    node.get(&key)?.ok_or(Error("source_missing"))?;
+                bucket.sources.retain(|s| s.until > now);
+                if bucket.sources.is_empty() {
+                    node.store.cruxcoach_delete(&key)?;
+                } else {
+                    node.put(&key, &bucket)?;
+                }
+            }
             for key in node.store.cruxcoach_keys("hello/")? {
                 if node.get::<(u64, String)>(&key)?.is_some_and(|r| r.0 <= now) {
                     node.store.cruxcoach_delete(&key)?;
@@ -1519,15 +1738,39 @@ impl Node {
     }
 
     pub fn pending_applications(&self) -> Result<Vec<PendingApplication>> {
-        Ok(self
+        let mut rows: Vec<_> = self
             .outbox()?
             .into_iter()
             .filter(|o| {
                 !o.cancelled
                     && o.expires_at > now_ms()
-                    && o.targets.iter().any(|t| t.status != RelayStatus::Accepted)
+                    && o.targets.iter().any(|t| {
+                        t.status != RelayStatus::Accepted
+                            && (o.application.as_ref().is_none_or(|a| a.kind != 1223)
+                                || t.next_attempt <= now_ms())
+                    })
             })
+            .collect();
+        // Durable attempt times provide fairness across grants and restarts.
+        rows.sort_by_key(|o| {
+            o.targets
+                .iter()
+                .filter(|t| t.status != RelayStatus::Accepted)
+                .map(|t| t.next_attempt)
+                .min()
+                .unwrap_or(u64::MAX)
+        });
+        let mut continuous = 0;
+        Ok(rows
+            .into_iter()
             .filter_map(|o| o.application)
+            .filter(|a| {
+                if a.kind != 1223 {
+                    return true;
+                }
+                continuous += 1;
+                continuous <= 8
+            })
             .collect())
     }
 
@@ -1573,7 +1816,11 @@ impl Node {
 
     fn publish_ready(&mut self, permit_application: Option<&str>) -> Result<()> {
         let keys = self.store.cruxcoach_keys("out/")?;
+        let mut network_budget = 8usize;
         for key in keys {
+            if network_budget == 0 {
+                break;
+            }
             let mut out: Outbox = self.get(&key)?.ok_or(Error("outbox_missing"))?;
             if out.cancelled {
                 continue;
@@ -1637,6 +1884,9 @@ impl Node {
                     Ok(())
                 })?; // durable attempt BEFORE the socket side effect
                 attempts.push(index);
+            }
+            if !attempts.is_empty() {
+                network_budget -= 1;
             }
             let results =
                 self.runtime
@@ -1786,4 +2036,81 @@ pub fn archive_storage(path: &Path) -> Result<()> {
         "archive_failed",
     )?;
     Ok(())
+}
+
+#[cfg(all(test, feature = "local-harness"))]
+mod deletion_tests {
+    use super::*;
+
+    #[test]
+    fn full_provenance_bucket_cannot_prevent_payload_deletion() {
+        let keys = nostr::Keys::generate();
+        let directory = tempfile::tempdir().unwrap();
+        let mut node = Node::open(
+            &directory.path().join("session.db"),
+            SqlCipherKey::new(nostr::Keys::generate().public_key().to_hex()).unwrap(),
+            Config {
+                account: keys.public_key().to_hex(),
+                relays: vec!["ws://127.0.0.1:9".into()],
+                local_test: true,
+            },
+            Arc::new(keys.clone()),
+            Arc::new(LocalProofSigner(keys)),
+        )
+        .unwrap();
+        // This is a storage test: no network or authority is asserted by the
+        // fixture fence. Disposal must match the exact pre-existing row.
+        let fence = Fence {
+            group: "synthetic-group".into(),
+            binding: "b".repeat(64),
+            epoch: 1,
+            local_account: "a".repeat(64),
+            local_leaf: "c".repeat(64),
+            peer_account: "d".repeat(64),
+            peer_leaf: "e".repeat(64),
+        };
+        let source = "f".repeat(64);
+        let key = format!("in/{source}");
+        node.put(
+            &key,
+            &Inbox {
+                source: source.clone(),
+                fence: fence.clone(),
+                kind: 1223,
+                tags: vec![vec!["synthetic private metadata".into()]],
+                content: "synthetic private payload".into(),
+                acknowledged: false,
+                invalidated: false,
+                retained_until: now_ms() + 60_000,
+            },
+        )
+        .unwrap();
+        node.put(
+            &Node::acknowledged_key(&source, &fence).unwrap(),
+            &AcknowledgedSources {
+                fence: fence.clone(),
+                sources: (0..1024)
+                    .map(|n| RetainedSource {
+                        source: format!("{n:064x}"),
+                        until: now_ms() + 60_000,
+                    })
+                    .collect(),
+            },
+        )
+        .unwrap();
+        node.discard_continuous_inbox(&source, &fence).unwrap();
+        let retained = node.get::<Inbox>(&key).unwrap().unwrap();
+        assert!(retained.content.is_empty() && retained.tags.is_empty());
+        assert!(retained.acknowledged);
+        assert_eq!(retained.source, source);
+        assert_eq!(retained.fence, fence);
+        // The deliberately noncanonical fixture is retired during reconcile.
+        // Repeating disposal may now remove its row entirely; in either case
+        // no payload or tags can return.
+        node.discard_continuous_inbox(&source, &fence).unwrap();
+        assert_eq!(
+            node.private_storage_matches("synthetic private").unwrap(),
+            0
+        );
+    }
 }

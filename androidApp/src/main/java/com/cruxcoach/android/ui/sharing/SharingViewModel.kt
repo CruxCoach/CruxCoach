@@ -89,6 +89,47 @@ class SharingViewModel @Inject constructor(
     private val _detail = MutableStateFlow<PeerDetail?>(null)
     val detail: StateFlow<PeerDetail?> = _detail.asStateFlow()
 
+    private val _continuous = MutableStateFlow<List<com.cruxcoach.android.sharing.ContinuousView>>(emptyList())
+    val continuous = _continuous.asStateFlow()
+    private val _pendingFriendships = MutableStateFlow<List<com.cruxcoach.android.sharing.PendingFriendshipView>>(emptyList())
+    val pendingFriendships = _pendingFriendships.asStateFlow()
+    fun cancelFriendshipRequest(peer: String) = mutateReporting { controller.cancelFriendshipRequest(peer) }
+    private val _continuousRoles = MutableStateFlow<Map<PeerId, com.cruxcoach.android.sharing.SnapshotEndpointRole>>(emptyMap())
+    val continuousRoles = _continuousRoles.asStateFlow()
+    private val _continuousPreview = MutableStateFlow<Map<PeerId, List<com.cruxcoach.android.sharing.ContinuousRecord>>>(emptyMap())
+    val continuousPreview = _continuousPreview.asStateFlow()
+    private val _continuousPreviewScope = MutableStateFlow<com.cruxcoach.android.sharing.ContinuousScope?>(null)
+    val continuousPreviewScope = _continuousPreviewScope.asStateFlow()
+    init {
+        viewModelScope.launch {
+            controller.continuousChanges().collect {
+                _continuous.value = withContext(ioContext) { controller.continuousViews() }
+                _pendingFriendships.value = withContext(ioContext) { controller.pendingFriendships() }
+                _continuousRoles.value = withContext(ioContext) { controller.continuousPeerRoles() }
+            }
+        }
+    }
+    private var previewGeneration = 0L
+    fun clearContinuousPreview() { previewGeneration++; _continuousPreview.value = emptyMap(); _continuousPreviewScope.value = null }
+    fun previewContinuous(peers: Set<PeerId>, scope: com.cruxcoach.android.sharing.ContinuousScope) = viewModelScope.launch {
+        clearContinuousPreview()
+        val requested = previewGeneration
+        runCatching { withContext(ioContext) { peers.associateWith { controller.continuousPreview(it, scope) } } }
+            .onSuccess { if (requested == previewGeneration) { _continuousPreviewScope.value = scope; _continuousPreview.value = it } }
+            .onFailure { _writeError.value = SharingWriteError.TRANSPORT_LIMIT }
+    }
+    fun offerContinuous(peers: Set<PeerId>, scope: com.cruxcoach.android.sharing.ContinuousScope,
+                        roles: Map<PeerId, com.cruxcoach.android.sharing.SnapshotEndpointRole>) = mutateReporting {
+        controller.offerContinuous(peers, scope, roles)
+    }
+    fun acceptContinuous(id: String, server: Boolean, ownScope: com.cruxcoach.android.sharing.ContinuousScope = com.cruxcoach.android.sharing.ContinuousScope(emptySet(), "1970-01-01")) = mutateReporting {
+        controller.acceptContinuous(id, if (server) com.cruxcoach.android.sharing.SnapshotEndpointRole.SERVER else com.cruxcoach.android.sharing.SnapshotEndpointRole.USER, ownScope)
+    }
+    fun endContinuous(id: String, pause: Boolean = false) = mutateReporting { controller.endContinuous(id, pause) }
+    fun refreshContinuousView() = viewModelScope.launch {
+        _continuous.value = withContext(ioContext) { controller.continuousViews() }
+    }
+
     private val _snapshots = MutableStateFlow<List<com.cruxcoach.android.sharing.SharingSnapshotView>>(emptyList())
     val snapshots = _snapshots.asStateFlow()
     private val _snapshotText = MutableStateFlow<String?>(null)
@@ -97,6 +138,8 @@ class SharingViewModel @Inject constructor(
     val nativePeers = _nativePeers.asStateFlow()
     private val _nativeRelays = MutableStateFlow(com.cruxcoach.android.sharing.MarmotRelayDefaults.urls)
     val nativeRelays = _nativeRelays.asStateFlow()
+    private val _discoveryEnabled = MutableStateFlow(false)
+    val discoveryEnabled = _discoveryEnabled.asStateFlow()
     private val _relayStatus = MutableStateFlow<Map<String, String>>(emptyMap())
     val relayStatus = _relayStatus.asStateFlow()
     private val _incomingPolicy = MutableStateFlow<com.cruxcoach.android.sharing.IncomingSharingPolicy?>(null)
@@ -110,7 +153,8 @@ class SharingViewModel @Inject constructor(
     fun collectExpiredSnapshots() = mutateReporting { controller.collectExpiredSnapshots() }
     suspend fun synchronizeWhileVisible() {
         if (!_signing.value && withContext(ioContext) { controller.discoveryEnabled() && controller.sharingClockHealthy() }) {
-            synchronizeSnapshots().join()
+            withContext(ioContext) { controller.synchronizeContinuousAutomatically() }
+            reload().join()
         }
     }
     fun bootstrapMarmot() = mutateReporting { controller.bootstrapMarmot() }
@@ -198,6 +242,7 @@ class SharingViewModel @Inject constructor(
         _estate.value = withContext(ioContext) { controller.deviceEstate() }
         _nativePeers.value = withContext(ioContext) { controller.nativePeers() }
         _nativeRelays.value = controller.nativeRelays()
+        _discoveryEnabled.value = withContext(ioContext) { controller.discoveryEnabled() }
         _relayStatus.value = withContext(ioContext) { controller.nativeRelayStatus() }
         _clockHealthy.value = withContext(ioContext) { controller.sharingClockHealthy() }
         _snapshotCapacity.value = withContext(ioContext) { controller.snapshotCapacityReached() }
@@ -293,8 +338,8 @@ class SharingViewModel @Inject constructor(
 
     fun clearObjectRuleError() { _objectRuleError.value = null }
 
-    fun setPeerCircle(peer: PeerId, circle: SharingCircle) =
-        mutateReporting { controller.setPeerCircle(peer, circle) }
+    fun setPeerCircle(peer: PeerId, circle: SharingCircle, clearPersonalExceptions: Boolean = false) =
+        mutateReporting { controller.setPeerCircle(peer, circle, clearPersonalExceptions) }
 
     private val _inviteError = MutableStateFlow<PeerIdParseError?>(null)
     val inviteError: StateFlow<PeerIdParseError?> = _inviteError.asStateFlow()

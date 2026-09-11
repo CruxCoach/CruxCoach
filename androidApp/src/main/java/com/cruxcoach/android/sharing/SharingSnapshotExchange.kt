@@ -72,7 +72,7 @@ class SharingSnapshotExchange(
     // Every exchange over the app's shared database uses one coordinator.
     // Otherwise one instance's clock write can collide with another instance's
     // authorization transaction after its durable handoff reservation.
-    private val coordinator = synchronized(coordinators) { coordinators.getOrPut(database) { Any() } }
+    private val coordinator = SharingSessionCoordination.forDatabase(database)
     private inline fun <T> coordinated(block: () -> T): T = synchronized(coordinator, block)
     private val q get() = database.snapshotQueries
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
@@ -151,10 +151,10 @@ class SharingSnapshotExchange(
      * is reserved durably before handoff and attempted at most once. Unclear
      * delivery remains unclear across restart instead of minting a new MLS event.
      */
-    fun synchronize() = coordinated {
+    fun synchronize(refreshTransport: Boolean = true) = coordinated {
         collectExpired()
         if (!ready()) return@coordinated
-        port.refresh()
+        if (refreshTransport) port.refresh()
         port.drain(KIND, TAGS) { session, content -> receive(session, content) }
         // Narrowing the signed policy or removing a device also withdraws
         // existing snapshots, including ones already acknowledged by the peer.
@@ -418,7 +418,6 @@ class SharingSnapshotExchange(
     private fun digest(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).hex()
 
     companion object {
-        private val coordinators = java.util.WeakHashMap<SecureDatabase, Any>()
         const val KIND = 1220
         val TAGS = listOf(listOf("l", "cc.sharing.snapshot.v1", "cruxcoach.private"))
         const val MAX_CONTENT_BYTES = 32_768

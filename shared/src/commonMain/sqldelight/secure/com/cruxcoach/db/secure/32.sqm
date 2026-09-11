@@ -1,0 +1,10 @@
+-- Continuous-v1 category consent is NOT friendship authority. Remove only its
+-- foreign/current/staging projections; canonical owner sources and legacy
+-- snapshot/policy ledgers are preserved. Native v1 inbox/outbox is drained by
+-- the new exchange without accepting/importing its payload.
+DELETE FROM sharing_continuous_grant;
+
+CREATE TABLE sharing_continuous_request (
+    account TEXT NOT NULL, peer TEXT NOT NULL, body TEXT NOT NULL,
+    PRIMARY KEY(account, peer)
+);

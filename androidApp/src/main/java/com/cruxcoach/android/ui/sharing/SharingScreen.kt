@@ -96,8 +96,20 @@ fun SharingScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (!state.nativeAvailable) SharingGateBanner(state.gate)
-            MarmotTransportCard(viewModel, onOpenPeer = onOpenPeer)
             SharingSigningBanner(signing)
+            ContinuousSharingCard(viewModel)
+            writeError?.let { SharingWriteErrorMessage(it) }
+            SectionHeading(stringResource(R.string.sharing_people_title))
+            state.peers.forEach { peer ->
+                OutlinedButton(onClick = { onOpenPeer(peer.peer) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(SharingDemoData.displayName(peer.peer))
+                }
+            }
+            var settings by rememberSaveable { mutableStateOf(false) }
+            OutlinedButton(onClick = { settings = !settings }) { Text(stringResource(R.string.friendship_settings)) }
+            if (settings) {
+            Text(stringResource(R.string.friendship_legacy_explanation), style = MaterialTheme.typography.bodySmall)
+            MarmotTransportCard(viewModel, onOpenPeer = onOpenPeer)
 
             SectionHeading(stringResource(R.string.sharing_circles_title))
             Text(
@@ -149,10 +161,10 @@ fun SharingScreen(
                 }
             }
 
-            SharingDeviceSection(viewModel)
-
             SharingRecoverySection(viewModel)
+            }
 
+            SharingDeviceSection(viewModel)
             SharingExternalCopiesCard()
             Spacer(Modifier.height(24.dp))
         }

@@ -1,5 +1,8 @@
 package com.cruxcoach.android.sharing
 
+import com.cruxcoach.domain.sharing.ObjectRuleKey
+import com.cruxcoach.domain.sharing.SharingPolicyResolver
+
 import com.cruxcoach.domain.sharing.AccessDecision
 import com.cruxcoach.domain.sharing.AccessEffect
 import com.cruxcoach.domain.sharing.AsyncLedgerCrypto
@@ -244,6 +247,8 @@ class SharingController(
     private val snapshotExchange: SharingSnapshotExchange? = null,
     private val marmot: AndroidMarmotFactory? = null,
     private val policyTransport: SharingPolicyTransport? = null,
+    private val continuous: ContinuousSharingExchange? = null,
+    private val onContinuousChange: () -> Unit = {},
 ) {
     private val transportAvailable get() = gate.isLive || snapshotExchange?.nativeAvailable == true
 
@@ -390,6 +395,16 @@ class SharingController(
             return true
         }
 
+        suspend fun signPolicy(body: OwnerPolicyBody): Boolean {
+            val head = policy.lastOrNull() ?: repository.authorisedPolicyHead()
+            val unsigned = OwnerPolicyEntry(LedgerEntryId(newEntryId()), (head?.policySequence ?: 0L) + 1,
+                head?.id, repository.loadOwnerPolicyState().authorityGeneration, ownerNpub, "", body)
+            val signed = ownerPolicySigner.sign(unsigned) ?: return false
+            if (!policyVerifier(signed)) return false
+            val required = AuthorityPairing.requiredFor(body) ?: return false
+            return addPolicy(signed, required)
+        }
+
         private fun storedHead(scope: AuthorityScope): LedgerEntryId? =
             repository.currentAuthority()[scope]?.id
 
@@ -501,8 +516,12 @@ class SharingController(
         }
         body().also { result ->
             if (result.isSuccess && transportAvailable) runCatching {
+                prepareFriendshipTransport()
                 policyTransport?.synchronize()
                 snapshotExchange?.synchronize()
+                prepareFriendshipTransport()
+                continuous?.synchronize()
+                onContinuousChange()
             }
         }
     }
@@ -683,11 +702,119 @@ class SharingController(
         if (!transportAvailable) SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
         else runCatching {
             val exchange = snapshotExchange ?: return@withLock SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+            prepareFriendshipTransport()
             marmot?.port?.refresh()
+            prepareFriendshipTransport()
             policyTransport?.synchronize()
-            exchange.synchronize()
+            exchange.synchronize(refreshTransport = marmot == null)
+            continuous?.synchronize()
             SharingWriteResult.Ok
         }.getOrElse { if (it is MarmotTransportFailure) nativeFailure(it) else SharingWriteResult.Failed(SharingWriteError.REJECTED) }
+    }
+
+    fun pendingFriendships(): List<PendingFriendshipView> = continuous?.pendingRequests().orEmpty()
+    suspend fun cancelFriendshipRequest(peer: String): SharingWriteResult = administrativeWrite {
+        continuous?.cancelRequest(peer); SharingWriteResult.Ok
+    }
+    private fun prepareFriendshipTransport() {
+        val adapter = marmot ?: return
+        FriendshipTransportPreparation.run(adapter.port, continuous?.pendingRequests().orEmpty())
+    }
+    fun continuousViews(): List<ContinuousView> = runCatching { continuous?.views().orEmpty() }.getOrDefault(emptyList())
+    fun continuousPeerRoles(): Map<PeerId, SnapshotEndpointRole> = repository.loadProjection().relationships.keys.associateWith {
+        snapshotExchange?.pinnedRole(it.value) ?: SnapshotEndpointRole.USER
+    }
+    fun continuousChanges(): kotlinx.coroutines.flow.Flow<Unit> = continuous?.changes() ?: kotlinx.coroutines.flow.emptyFlow()
+    fun continuousHasWork(): Boolean = runCatching { continuous?.hasWork() == true || discoveryEnabled() }.getOrDefault(false)
+    fun continuousPreview(peer: PeerId, scope: ContinuousScope): List<ContinuousRecord> {
+        val policy = repository.loadPolicy().peers[peer]
+        return continuous?.preview(scope).orEmpty().filter {
+            policy?.objectRules?.get(ObjectRuleKey(ObjectId(it.id), it.category)) != AccessEffect.DENY
+        }
+    }
+
+    /** A reviewed selection of current peers; future circle members are not
+     * subscribed. Existing snapshots and category consent grant no subscription. */
+    suspend fun offerContinuous(peers: Set<PeerId>, scope: ContinuousScope, roles: Map<PeerId, SnapshotEndpointRole>): SharingWriteResult = administrativeWrite {
+        val exchange = continuous ?: return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS) || peers.isEmpty() || peers.size > ContinuousCodec.MAX_ACTIVE ||
+            !ContinuousCodec.valid(scope)) return@administrativeWrite notSigned()
+        val states = repository.loadProjection().relationships
+        if (roles.keys != peers)
+            return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.SESSION_UNAVAILABLE)
+        try { peers.forEach { continuousPreview(it, scope) } } catch (_: IllegalArgumentException) {
+            return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.TRANSPORT_LIMIT)
+        }
+        val parentJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        exchange.selectionTransaction {
+            kotlinx.coroutines.runBlocking(parentJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                for (peer in peers) {
+                    if (snapshotExchange?.pinPeer(peer.value, roles.getValue(peer)) != true)
+                        return@runBlocking SharingWriteResult.Failed(SharingWriteError.REJECTED)
+                    for (category in scope.categories) {
+                        if (SharingPolicyResolver.resolve(repository.loadPolicy(), peer, category).isAllowed) continue
+                        val result = appendPolicy(OwnerPolicyBody.PeerRuleSet(peer, category, AccessEffect.ALLOW), onlyPeer = peer)
+                        if (!result.isSuccess) return@runBlocking result
+                    }
+                    val result = offerLocked(peer, states[peer]?.circle ?: SharingCircle.FRIENDS, emptySet())
+                    if (!result.isSuccess) return@runBlocking result
+                    if (exchange.offer(peer.value, scope) == null)
+                        return@runBlocking SharingWriteResult.Failed(SharingWriteError.REJECTED)
+                }
+                SharingWriteResult.Ok
+            }
+        }
+    }
+    suspend fun acceptContinuous(id: String, ownerRole: SnapshotEndpointRole,
+        ownScope: ContinuousScope = ContinuousScope(emptySet(), "1970-01-01")): SharingWriteResult = administrativeWrite {
+        val view = continuous?.views()?.firstOrNull { it.offer.id == id && !it.outgoing && it.status == "INVITED" }
+            ?: return@administrativeWrite SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        val parentJob = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        continuous.selectionTransaction {
+            kotlinx.coroutines.runBlocking(parentJob ?: kotlin.coroutines.EmptyCoroutineContext) {
+                val peer = PeerId(view.offer.owner)
+                if (!ContinuousCodec.valid(ownScope) || ownerRole != view.offer.ownerRole || snapshotExchange?.pinPeer(peer.value, ownerRole) != true)
+                    return@runBlocking SharingWriteResult.Failed(SharingWriteError.REJECTED)
+                // Only this account's outgoing policy is changed by its selection.
+                for (category in ownScope.categories) {
+                    val result = appendPolicy(OwnerPolicyBody.PeerRuleSet(peer, category, AccessEffect.ALLOW), onlyPeer = peer)
+                    if (!result.isSuccess) return@runBlocking result
+                }
+                val result = offerLocked(peer, repository.loadProjection().relationships[peer]?.circle ?: SharingCircle.FRIENDS, emptySet())
+                if (!result.isSuccess) return@runBlocking result
+                if (!continuous.accept(id, ownScope)) return@runBlocking SharingWriteResult.Failed(SharingWriteError.REJECTED)
+                SharingWriteResult.Ok
+            }
+        }
+    }
+    suspend fun endContinuous(id: String, pause: Boolean = false): SharingWriteResult = administrativeWrite {
+        if (continuous?.end(id, pause) == true) { onContinuousChange(); SharingWriteResult.Ok }
+        else SharingWriteResult.Failed(SharingWriteError.REJECTED)
+    }
+
+    /** Called off the UI thread by lifecycle/reconnect/WorkManager. Only prior
+     * discovery/request opt-in permits connectivity preparation. Friendship
+     * acceptance and an interactive signer fallback never occur here. */
+    suspend fun synchronizeContinuousAutomatically(): Boolean = mutex.withLock {
+        val adapter = marmot ?: return@withLock false
+        if (!continuousHasWork()) return@withLock true
+        try {
+            val success = adapter.withoutInteractiveSigning {
+                prepareFriendshipTransport()
+                adapter.port.refresh()
+                prepareFriendshipTransport()
+                policyTransport?.synchronize()
+                continuous?.synchronize()
+                !adapter.unattendedSignerRequired && adapter.port.relaySummary().values.any { it == "accepted" }
+            }
+            continuous?.automationResult(if (adapter.unattendedSignerRequired) "NEEDS_OPEN" else if (!success) "OFFLINE" else null)
+            success
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            continuous?.automationResult(if (adapter.unattendedSignerRequired) "NEEDS_OPEN" else
+                if (failure is MarmotTransportFailure && failure.code in setOf("native_storage_quota", "native_ingest_quota", "source_quota", "native_output_limit")) "CAPACITY" else "RETRY")
+            false
+        }
     }
 
     fun discoveryEnabled(): Boolean = runCatching { marmot?.port?.discoveryEnabled() == true }.getOrDefault(false)
@@ -698,6 +825,7 @@ class SharingController(
     }
     suspend fun recoverSharingClock(archiveTransport: Boolean = false): SharingWriteResult = administrativeWrite {
         if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@administrativeWrite notSigned()
+        continuous?.endAll()
         val batch = Batch()
         for ((peer, state) in repository.loadProjection().relationships) {
             if (!state.status.isTerminal && state.offeredCategories.isNotEmpty() &&
@@ -705,14 +833,21 @@ class SharingController(
         }
         val result = if (batch.isEmpty) SharingWriteResult.Ok else commit(batch)
         if (!result.isSuccess) result
-        else if (repository.recoverSharingClock() && (!archiveTransport || marmot?.archiveAfterWithdrawal() == true)) SharingWriteResult.Ok
-        else SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        else if (!repository.recoverSharingClock()) SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        else try {
+            // Rehydrate a native engine poisoned by an earlier rolled-back
+            // operation. Actual disposal must succeed before archiving it.
+            marmot?.port?.shutdown()
+            continuous?.discardRetiredPayloads()
+            if (!archiveTransport || marmot?.archiveAfterWithdrawal() == true) SharingWriteResult.Ok
+            else SharingWriteResult.Failed(SharingWriteError.REJECTED)
+        } catch (failure: MarmotTransportFailure) { nativeFailure(failure) }
     }
 
     fun nativePeers(): List<MarmotPeerStatus> = runCatching { marmot?.port?.peers().orEmpty() }.getOrDefault(emptyList())
     fun nativeRelays(): List<String> = marmot?.relayPool() ?: MarmotRelayDefaults.urls
     fun nativeRelayStatus(): Map<String, String> = runCatching { marmot?.port?.relaySummary().orEmpty() }.getOrDefault(emptyMap())
-    fun incomingPolicy(peer: PeerId): IncomingSharingPolicy? = runCatching { policyTransport?.incoming(peer.value) }.getOrNull()
+    fun incomingPolicy(peer: PeerId): IncomingSharingPolicy? = runCatching { if (continuous?.views()?.any { it.offer.owner == peer.value || it.offer.recipient == peer.value } == true) null else policyTransport?.incoming(peer.value) }.getOrNull()
     suspend fun bootstrapMarmot(): SharingWriteResult = snapshotWrite {
         val adapter = marmot ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
         if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
@@ -826,20 +961,19 @@ class SharingController(
      * what the policy allows — leaving the offer behind would reproduce exactly
      * the mismatch this synchronisation exists to prevent.
      */
-    suspend fun setPeerCircle(peer: PeerId, circle: SharingCircle): SharingWriteResult = administrativeWrite {
+    suspend fun setPeerCircle(peer: PeerId, circle: SharingCircle, clearPersonalExceptions: Boolean = false): SharingWriteResult = administrativeWrite {
         val batch = Batch()
-        if (!batch.sign(peer, SharingLedgerBody.PeerCircleAssigned(circle))) {
-            return@administrativeWrite notSigned()
+        var policy = repository.loadOwnerPolicyState()
+        if (clearPersonalExceptions) {
+            for (category in policy.peerRules[peer].orEmpty().keys)
+                if (!batch.signPolicy(OwnerPolicyBody.PeerRuleSet(peer, category, null))) return@administrativeWrite notSigned()
+            for (key in policy.objectRules[peer].orEmpty().keys)
+                if (!batch.signPolicy(OwnerPolicyBody.ObjectRuleSet(peer, key.objectId, key.category, null))) return@administrativeWrite notSigned()
+            policy = policy.copy(peerRules = policy.peerRules - peer, objectRules = policy.objectRules - peer)
         }
-        // Planned against the circle this action is *about to* establish: the
-        // assignment is not stored yet, so the projection still says the old one.
-        val synced = planOfferSync(
-            batch = batch,
-            policy = repository.loadOwnerPolicyState(),
-            onlyPeer = peer,
-            movedTo = peer to circle,
-        )
-        if (!synced) return@administrativeWrite notSigned()
+        if (!batch.sign(peer, SharingLedgerBody.PeerCircleAssigned(circle))) return@administrativeWrite notSigned()
+        if (!planOfferSync(batch, policy, onlyPeer = peer, movedTo = peer to circle)) return@administrativeWrite notSigned()
+        // No partial clearing (especially of a DENY) if any later signature is refused.
         commit(batch)
     }
 
@@ -939,7 +1073,10 @@ class SharingController(
         administrativeWrite { appended(append(peer, SharingLedgerBody.DeviceRevoked(device))) }
 
     suspend fun revoke(peer: PeerId): SharingWriteResult =
-        administrativeWrite { appended(append(peer, SharingLedgerBody.RelationshipRevoked)) }
+        administrativeWrite {
+            continuous?.endPeer(peer.value)
+            appended(append(peer, SharingLedgerBody.RelationshipRevoked))
+        }
 
     suspend fun markDeliveryUnclear(peer: PeerId, device: DeviceId): SharingWriteResult =
         administrativeWrite { appended(append(peer, SharingLedgerBody.KeyDeliveryUnclear(device))) }
@@ -964,6 +1101,7 @@ class SharingController(
      */
     suspend fun purge(peer: PeerId, onStep: (CryptoEraseStep) -> Unit = {}): SharingWriteResult =
         administrativeWrite {
+            continuous?.endPeer(peer.value)
             if (!append(peer, SharingLedgerBody.PurgeRequested)) return@administrativeWrite notSigned()
             val outcome = repository.purgeLocalRelationshipData(peer, onStep)
             if (outcome.completed) {
@@ -1927,6 +2065,9 @@ class SharingController(
         movedTo: Pair<PeerId, SharingCircle>? = null,
     ): Boolean {
         repository.loadProjection().relationships.values.forEach { state ->
+            // Friendships carry their own mutually signed reception authority.
+            // Do not generate a competing legacy category-consent invitation.
+            if (continuous?.hasFriendshipPeer(state.peer.value) == true) return@forEach
             if (state.status.isTerminal) return@forEach
             if (onlyPeer != null && state.peer != onlyPeer) return@forEach
 

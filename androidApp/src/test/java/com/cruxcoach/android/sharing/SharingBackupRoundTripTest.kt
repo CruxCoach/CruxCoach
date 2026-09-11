@@ -198,6 +198,30 @@ class SharingBackupRoundTripTest {
     }
 
     @Test
+    fun `supported root recovery physically removes foreign replicas and pending intents without restoring them`() = runTest {
+        val original = SecureDatabase(driver).continuousSharingQueries
+        original.putGrant(OWNER, "prior-generation", alice.value, alice.value, Long.MAX_VALUE, "synthetic foreign backup marker")
+        original.putRequest(OWNER, alice.value, "synthetic pending request marker")
+        val file = exportToFile()
+        freshInstall()
+        val target = SecureDatabase(driver).continuousSharingQueries
+        assertTrue(target.grants(OWNER).executeAsList().isEmpty())
+        target.putGrant(OWNER, "retired-generation", alice.value, alice.value, Long.MAX_VALUE, "synthetic foreign restore marker")
+        target.putRequest(OWNER, alice.value, "synthetic pending request marker")
+        target.putGrant("other-account", "unrelated", alice.value, alice.value, Long.MAX_VALUE, "unrelated account content")
+        assertTrue(controller.importRecovery(file.readBytes(), code, sovereignReset = true).applied)
+        assertEquals(listOf("retired-generation"), target.grants(OWNER).executeAsList().map { it.grant_id })
+        assertTrue(target.grants(OWNER).executeAsList().all { it.body.isEmpty() })
+        assertTrue(target.requests(OWNER).executeAsList().isEmpty())
+        assertEquals("unrelated account content", target.grants("other-account").executeAsOne().body)
+        // Import the older supported backup again: it never contained the
+        // foreign table and cannot replace the retained closed generation.
+        controller.importRecovery(file.readBytes(), code, sovereignReset = true)
+        assertTrue(target.grants(OWNER).executeAsList().all { it.body.isEmpty() })
+        assertTrue(target.grants(OWNER).executeAsList().none { it.grant_id == "prior-generation" })
+    }
+
+    @Test
     fun `the restored install mints a new device generation and stays closed`() = runTest {
         val file = exportToFile()
         freshInstall()

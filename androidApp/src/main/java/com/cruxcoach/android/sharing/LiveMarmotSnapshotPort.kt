@@ -70,12 +70,19 @@ class LiveMarmotSnapshotPort(
         val response = runCatching { json.decodeFromString<NativeResponse>(invoke(id, request.toString())) }
             .getOrElse { throw MarmotTransportFailure("native_format") }
         check(currentAccount() == account && authorised()) { "native_account_changed" }
-        if (!response.ok) throw MarmotTransportFailure(response.error ?: "native_failed")
+        if (!response.ok) {
+            // A rolled-back native transaction cannot reuse an advanced
+            // in-memory ratchet. The next attempt rehydrates the durable state;
+            // it still has to pass the original authorization/fence checks.
+            if (response.error == "reopen_required") { handle = null; close(id) }
+            throw MarmotTransportFailure(response.error ?: "native_failed")
+        }
         return response.value ?: JsonNull
     }
     private inline fun <reified T> nativeValue(value: JsonElement): T =
         runCatching { json.decodeFromJsonElement<T>(value) }
             .getOrElse { throw MarmotTransportFailure("native_format") }
+    fun <T> exclusively(block: () -> T): T = synchronized(lock, block)
     fun shutdown() = synchronized(lock) { handle?.let(close); handle = null }
     fun bootstrap() = synchronized(lock) { command("bootstrap") { put("refresh", true) }; command("sync"); Unit }
     fun discoveryEnabled(): Boolean = synchronized(lock) { command("discovery_enabled").jsonPrimitive.boolean }
@@ -104,6 +111,29 @@ class LiveMarmotSnapshotPort(
             }
         }
     }
+    override fun discardSupersededContinuous(retain: (String) -> Boolean) = synchronized(lock) {
+        var after: String? = null
+        do {
+            val page: List<NativePending> = nativeValue(command("continuous_obligations") { after?.let { put("after", it) } })
+            for (row in page) if (row.kind == ContinuousSharingExchange.KIND && !retain(row.content)) {
+                command("discard_continuous") {
+                    put("event_id", row.event_id); put("fence", json.encodeToJsonElement(row.fence))
+                }
+            }
+            after = page.lastOrNull()?.event_id
+        } while (page.size == 16)
+    }
+
+    override fun discardContinuousInbox(retain: (String) -> Boolean) = synchronized(lock) {
+        for (row in inbox(ContinuousSharingExchange.KIND)) if (!retain(row.content)) {
+            command("discard_continuous_inbox") { put("source", row.source); put("fence", json.encodeToJsonElement(row.fence)) }
+        }
+    }
+
+    override fun bindingRetired(binding: String): Boolean = synchronized(lock) {
+        command("retired_binding") { put("binding", binding) }.jsonPrimitive.boolean
+    }
+
     override fun refresh() = synchronized(lock) {
         command("sync")
         peers().filter { it.accepted }.forEach { peer -> runCatching { sendHello(peer.account) } }
@@ -223,7 +253,7 @@ class LiveMarmotSnapshotPort(
         val current = fence(session.peer.account)
         check(session(current) == session) { "native_stale_session" }
         val expiry = if (kind == 1220) json.parseToJsonElement(content).jsonObject["offer"]!!.jsonObject["expiresAt"]!!.jsonPrimitive.long
-            else if (kind == 1222) json.parseToJsonElement(content).jsonObject["expiresAt"]!!.jsonPrimitive.long
+            else if (kind == 1222 || kind == ContinuousSharingExchange.KIND) json.parseToJsonElement(content).jsonObject["expiresAt"]!!.jsonPrimitive.long
             else now() + 24 * 60 * 60 * 1000
         send(current, kind, tags, content, expiry)
         Unit

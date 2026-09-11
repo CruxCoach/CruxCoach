@@ -268,6 +268,20 @@ class SharingCompositeMutationTest {
         assertTrue(SharingCategory.VIDEOS in (offeredOf(alice) ?: emptySet()))
     }
 
+    @Test
+    fun `downgrade refuses all exception removal when a later circle signature is declined`() = runTest {
+        controller.invite(alice, SharingCircle.FRIENDS)
+        assertTrue(controller.setPeerRule(alice, SharingCategory.PRIVATE_NOTES, com.cruxcoach.domain.sharing.AccessEffect.DENY).isSuccess)
+        val before = repo.loadPolicy()
+        val ledgerBefore = policyEntries().size
+        // Clear-rule signature succeeds; circle assignment is then refused.
+        open(PromptCrypto(OWNER, refuse = setOf(1)))
+        assertIs<SharingWriteResult.Failed>(controller.setPeerCircle(alice, SharingCircle.ACQUAINTANCES, clearPersonalExceptions = true))
+        assertEquals(before, repo.loadPolicy())
+        assertEquals(ledgerBefore, policyEntries().size)
+        assertEquals(SharingCircle.FRIENDS, circleOf(alice))
+    }
+
     // ----------------------------------------------------------- cancellation
 
     /**

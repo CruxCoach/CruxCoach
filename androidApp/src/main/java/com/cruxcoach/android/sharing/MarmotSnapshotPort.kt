@@ -28,6 +28,11 @@ interface MarmotSnapshotPort {
     /** Exact-content handoffs are durably idempotent only on the native adapter. */
     val durableIdempotentHandoff: Boolean get() = false
     fun refresh() = Unit
+    /** Native canonical retirement is distinct from an unavailable session. */
+    fun bindingRetired(binding: String): Boolean = false
+    /** Retire only continuous operations made obsolete by committed app state. */
+    fun discardSupersededContinuous(retain: (String) -> Boolean) = Unit
+    fun discardContinuousInbox(retain: (String) -> Boolean) = Unit
     /** Hold current DB authorization through publish. Reconnect alone must
      * never publish queued private data after the local policy changes. */
     fun flush(kind: Int, tags: List<List<String>>, authorize: (MarmotSnapshotSession, String, () -> Unit) -> Unit) = Unit
@@ -58,4 +63,17 @@ class BlockedMarmotSnapshotPort : MarmotSnapshotPort {
     override fun handoff(session: MarmotSnapshotSession, kind: Int, tags: List<List<String>>, content: String) =
         error("native sharing is unavailable")
     override fun drain(kind: Int, tags: List<List<String>>, consume: (MarmotSnapshotSession, String) -> Unit) = Unit
+}
+
+/** One lock ordering for services over the same database: coordination, native
+ * session, then short DB transactions. A port callback can safely consult roles. */
+internal object SharingSessionCoordination {
+    private val locks = java.util.WeakHashMap<com.cruxcoach.db.secure.SecureDatabase, Any>()
+    fun forDatabase(database: com.cruxcoach.db.secure.SecureDatabase): Any = synchronized(locks) {
+        locks.getOrPut(database) { Any() }
+    }
+    fun <T> withTransport(database: com.cruxcoach.db.secure.SecureDatabase,
+                          exclusive: (() -> T) -> T, work: () -> T): T =
+        synchronized(forDatabase(database)) { exclusive(work) }
+
 }
