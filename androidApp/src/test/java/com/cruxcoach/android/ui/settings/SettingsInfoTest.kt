@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -16,6 +17,9 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.ui.common.InfoButton
 import org.junit.Assert.*
 import org.junit.Rule
@@ -120,5 +124,47 @@ class SettingsInfoTest {
         compose.onNodeWithText("Backup details").assertIsDisplayed()
         compose.onNodeWithText("Close").assertIsDisplayed().performClick()
         compose.onNodeWithText("Backup details").assertDoesNotExist()
+    }
+
+    @Test fun `board send help formats both actual option labels without changing the selection`() {
+        verifyBoardSendHelp()
+    }
+
+    @Test
+    @Config(qualifiers = "en")
+    fun `English board send help formats both actual option labels`() {
+        verifyBoardSendHelp()
+    }
+
+    private fun verifyBoardSendHelp() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val automatic = app.getString(R.string.settings_board_send_mode_automatic)
+        val explicit = app.getString(R.string.settings_board_send_mode_explicit)
+        var changes = 0
+        compose.setContent {
+            MaterialTheme {
+                Column {
+                    BoardSendModeSection(
+                        BoardSendMode.AUTOMATIC, BoardSendMode.EXPLICIT,
+                        { changes++ }, { changes++ },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription(app.getString(
+            R.string.action_show_info, app.getString(R.string.settings_board_send_mode_title),
+        )).performTouchInput { click() }
+        val body = compose.onNodeWithTag("info_dialog_content")
+            .onChildren().filter(hasText(automatic, substring = true)).onFirst()
+            .fetchSemanticsNode().config[SemanticsProperties.Text].joinToString { it.text }
+        assertTrue("Automatic choice must introduce its explanation", body.startsWith(automatic + "\n"))
+        assertTrue("Manual choice must have its own explanation", body.contains("\n\n$explicit\n"))
+        assertFalse("Resource placeholders must be formatted", body.contains("%1\$s"))
+        compose.onNodeWithText(app.getString(R.string.action_close)).performClick()
+        compose.onNodeWithTag("settings_board_send_mode_single")
+            .onChildren().filter(hasText(automatic)).onFirst().assertIsSelected()
+        compose.onNodeWithTag("settings_board_send_mode_multi")
+            .onChildren().filter(hasText(explicit)).onFirst().assertIsSelected()
+        compose.runOnIdle { assertEquals(0, changes) }
     }
 }

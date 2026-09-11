@@ -264,10 +264,10 @@
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter-Datenaustausch — Info</string>
     <string name="kilter_data_info_title">Kilter-Account: Was passiert mit deinen Daten?</string>
-    <string name="kilter_data_info_login">Melde dich an, um deine Sends und Projekte von Kilter zu importieren. „Einmalig importieren“ importiert sie und verwirft danach deine Zugangsdaten; „Dauerhaft synchronisieren“ lädt fortlaufend neue Kilter-Begehungen herunter.</string>
-    <string name="kilter_data_info_offline">Kein Account? Importiere offline per Aurora-JSON-Export aus der alten Kilter-App.</string>
-    <string name="kilter_data_info_local">Alles, was ZU Kilter geht, ist optional (standardmäßig aus): „Zu Kilter hochladen“ spielt deine Begehungen zurück, „Eigene Climbs auf Kilter veröffentlichen“ teilt selbst erstellte Climbs. Lässt du beides aus, bleibt CruxCoach lokal.</string>
-    <string name="kilter_data_info_publish">Was du aktivierst, betrifft nur DEINEN eigenen Kilter-Account — niemals fremde Daten.</string>
+    <string name="kilter_data_info_login">Nach der Anmeldung importierst du dein Kilter-Logbuch, deine Circuits und eigenen Boulder. Ein einmaliger Import entfernt danach die gespeicherten Anmeldetokens; die importierten Daten bleiben erhalten. Bei dauerhafter Synchronisierung kann CruxCoach später neue Logbucheinträge abrufen.</string>
+    <string name="kilter_data_info_offline">Ohne Anmeldung kannst du eine Aurora-JSON-Exportdatei auf der Seite zum Logbuch-Import verwenden.</string>
+    <string name="kilter_data_info_local">Uploads zu Kilter sind standardmäßig aus. „Zu Kilter hochladen“ überträgt lokale Begehungen und Versuche in dein verbundenes Konto, auch ältere noch nicht synchronisierte Einträge. Für das Veröffentlichen eigener Boulder auf Kilter gibt es einen eigenen Schalter.</string>
+    <string name="kilter_data_info_publish">Diese Auswahl steuert den Datenaustausch mit Kilter. Cloud-Backups und Veröffentlichungen in der CruxCoach-Community haben eigene Einstellungen; ausgeschaltete Kilter-Uploads schalten diese nicht mit aus.</string>
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
@@ -410,23 +410,23 @@
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
-    <string name="settings_board_auto_download_desc">Lädt aktuelle Board-Kataloge im Hintergrund über WLAN (derzeit etwa 130 MB; wächst mit den Katalogen).</string>
+    <string name="settings_board_auto_download_desc">Täglich oder wöchentlich: Prüft auf neuere Board-Kataloge und lädt sie im Hintergrund über eine nicht getaktete Verbindung, meist WLAN. Android kann den geplanten Lauf verschieben.\n\nManuell: Schaltet die geplanten Katalog-Updates aus. Starte den Download bei Bedarf auf dieser Seite. Die Datenmenge kann groß sein und hängt davon ab, welche Katalogdateien sich geändert haben.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Optional für exklusive Kilter-/Aurora- und Quantum-Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. MoonBoard-, Multi-Connect- und unbekannte Controller bleiben immer verbunden.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Gibt die Bluetooth-Verbindung nach der eingestellten Zeit ohne Senden frei, damit sich jemand anderes verbinden kann. Erneutes Senden ans Board startet die Wartezeit neu.\n\nGilt für Controller, die als Einzelverbindung behandelt werden und deren Beleuchtung nach dem Trennen erhalten bleibt. Bei MoonBoard, erkannten Mehrfachverbindungen oder solange etwa CruxRelay die Verbindung benötigt, greift der Timer nicht.</string>
     <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
     <string name="settings_ble_auto_disconnect_enable">Automatisch trennen</string>
-    <string name="settings_ble_auto_disconnect_off_hint">Die Verbindung bleibt bestehen, bis du sie selbst trennst.</string>
+    <string name="settings_ble_auto_disconnect_off_hint">Ausgeschaltet trennt CruxCoach nicht wegen Inaktivität. Du kannst die Verbindung weiterhin im Verbindungsmenü selbst trennen.</string>
     <string name="settings_ble_auto_disconnect_multi_mode">Im Mesh-, Gruppen-, Relay- oder Multi-Connect-Modus nicht verfügbar. Deine eingestellte Dauer bleibt erhalten.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
-    <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
+    <string name="settings_ble_keep_screen_on_desc">Hält das Display wach, solange eine Board-Ansicht geöffnet ist, etwa ein Boulder. Ausgeschaltet gilt wieder die normale Bildschirm-Zeitbegrenzung von Android.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">Kilter LED-Farben</string>
-    <string name="settings_led_desc">Farben, die Kilter-Boards für die einzelnen Griffrollen verwenden.</string>
+    <string name="settings_led_desc">Wähle für Start-, Hand-, Top- und Fußgriffe jeweils eine Farbe. Deine Auswahl ändert die Kilter-Ansicht und kann ein bereits beleuchtetes Board aktualisieren. Beim Senden eines weiteren Boulders haben Rollenfarben aus dem Board-Katalog Vorrang, falls vorhanden. Mit den beiden Vorlagen stellst du das CruxCoach- oder Kilter-Farbschema wieder her.</string>
     <string name="settings_led_role_start">Start</string>
     <string name="settings_led_role_hand">Hand</string>
     <string name="settings_led_role_foot">Fuß</string>
@@ -438,31 +438,31 @@
 
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
-    <string name="settings_timer_desc">Timer zwischen Boulder-Versuchen. Startet nach dem Loggen einer Begehung.</string>
+    <string name="settings_timer_desc">Legt die Länge deiner Pause zwischen Versuchen fest. Du kannst den Timer in der Boulder-Ansicht starten. Der Schalter darunter bestimmt, ob er auch nach dem Speichern einer Begehung oder eines Versuchs automatisch startet.</string>
     <string name="settings_timer_auto_start">Auto-Start</string>
-    <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
+    <string name="settings_timer_auto_start_desc">Eingeschaltet startet der Pausentimer nach dem Speichern einer Begehung oder eines Versuchs mit deiner eingestellten Dauer, auch beim Schnellloggen. Ausgeschaltet startest du ihn selbst in der Boulder-Ansicht.</string>
 
     <!-- Settings: Playback -->
     <string name="settings_playback_title">Routenwiedergabe</string>
-    <string name="settings_playback_desc">Lege das Tempo für Routen mit mehreren Schritten (Frames) fest.</string>
+    <string name="settings_playback_desc">Bei Routen mit mehreren Schritten (Frames) wechselt die Wiedergabe die angezeigten Griffe im eingestellten Tempo. Hier legst du Tempo, Countdown und Wiederholung fest. Du startest die Wiedergabe in der Routen-Ansicht.</string>
     <string name="settings_playback_setter_speed">Tempo des Erstellers verwenden</string>
-    <string name="settings_playback_setter_speed_desc">Verwendet das in der Route gespeicherte Tempo.</string>
+    <string name="settings_playback_setter_speed_desc">Eingeschaltet gilt das vom Routenschrauber gespeicherte Tempo. Fehlt es, wird die Ersatzzeit darunter verwendet. Ausgeschaltet gilt deine eigene Zeit pro Schritt für jede Route.</string>
     <string name="settings_playback_frame_speed">Zeit pro Schritt: %s</string>
-    <string name="settings_playback_frame_speed_desc">Dein Tempo für alle Routen.</string>
+    <string name="settings_playback_frame_speed_desc">Zeit zwischen zwei Schritten der Routenwiedergabe. Ein größerer Wert gibt dir mehr Zeit bis zum nächsten Griffwechsel. Das Tempo des Erstellers ist gerade ausgeschaltet; deshalb ist dies deine Vorgabe für jede Route.</string>
     <string name="settings_playback_fallback_speed">Zeit pro Schritt ohne Ersteller-Tempo: %s</string>
-    <string name="settings_playback_fallback_speed_desc">Wird verwendet, wenn in der Route kein Tempo hinterlegt ist.</string>
+    <string name="settings_playback_fallback_speed_desc">Zeit zwischen zwei Schritten, wenn die Route kein gespeichertes Tempo des Erstellers hat. Routen mit eigenem Tempo verwenden dieses, solange „Tempo des Erstellers verwenden“ eingeschaltet ist.</string>
     <string name="settings_playback_countdown">Countdown</string>
-    <string name="settings_playback_countdown_desc">Wartezeit vor dem automatischen Start der Wiedergabe.</string>
+    <string name="settings_playback_countdown_desc">Eingeschaltet läuft nach dem Start der Routenwiedergabe zunächst ein Countdown, damit du dich vorbereiten kannst. Seine Dauer stellst du darunter ein. Ausgeschaltet beginnt die Wiedergabe ohne diesen zusätzlichen Countdown.</string>
     <string name="settings_playback_countdown_duration">Countdown-Dauer: %ds</string>
     <string name="settings_playback_auto_loop">Route wiederholen</string>
-    <string name="settings_playback_auto_loop_desc">Startet die Wiedergabe am Ende automatisch erneut.</string>
+    <string name="settings_playback_auto_loop_desc">Eingeschaltet springt die Routenwiedergabe nach dem letzten Schritt zum ersten zurück und wiederholt sich, bis du sie stoppst. Ausgeschaltet endet sie am Routenende.</string>
 
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Datenverwaltung</string>
     <string name="settings_data_export">Daten exportieren</string>
-    <string name="settings_data_export_desc">Ausgewählte CruxCoach-Daten als JSON, CSV-ZIP oder gut lesbare Excel-Datei speichern oder teilen</string>
+    <string name="settings_data_export_desc">Wähle, welche CruxCoach-Daten du als Datei speichern oder teilen möchtest. JSON und CSV-ZIP kannst du wieder in CruxCoach importieren; Excel ist zum Lesen und Auswerten gedacht. Bewahre Dateien mit persönlichen Daten entsprechend sicher auf.</string>
     <string name="settings_data_import">Daten importieren</string>
-    <string name="settings_data_import_desc">CruxCoach-Daten aus JSON oder einem CSV-ZIP importieren</string>
+    <string name="settings_data_import_desc">Übernimm Daten aus einem CruxCoach-Export als JSON oder CSV-ZIP. Wähle die Datei, prüfe ihren Inhalt und entscheide, was du importieren möchtest. Für Exporte aus Kilter oder MoonBoard nutze die Seite zum Logbuch-Import.</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
     <string name="settings_data_delete_board_desc">Entfernt heruntergeladene Climbs, Statistiken und Layout-Daten — für alle Boards oder nur ausgewählte. Können jederzeit neu synchronisiert werden. Eigene und Community-Climbs bleiben erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
@@ -516,7 +516,7 @@
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">In der Nähe</string>
     <string name="settings_sharing_enable">Aktuellen Boulder teilen</string>
-    <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden — und erlaubt ihnen umgekehrt, dich um das Trennen vom Board zu bitten.</string>
+    <string name="settings_sharing_enable_desc">Macht den gerade von dir beleuchteten Boulder für CruxCoach-Nutzer in Bluetooth-Reichweite sichtbar. Sie können ihn in ihrer App öffnen. Außerdem ermöglicht es Anfragen, eine Board-Verbindung freizugeben. Eine empfangene Anfrage trennt dich nicht automatisch.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth ist ausgeschaltet. Schalte Bluetooth ein, um Climb-Teilen nutzen zu können.</string>
     <string name="settings_sharing_no_ble_advertising">Dieses Gerät unterstützt kein BLE Advertising. Das Feature ist nicht verfügbar.</string>
     <string name="settings_sharing_remote_disconnect">Remote-Disconnect erlauben</string>
@@ -824,10 +824,10 @@
     <string name="announcements_badge_issue">Problem</string>
     <string name="announcements_badge_tip">Tipp</string>
     <string name="announcements_badge_general">Allgemein</string>
-    <string name="announcement_cat_release_desc">Neue Versionen</string>
-    <string name="announcement_cat_issue_desc">Bekannte Bugs</string>
-    <string name="announcement_cat_tip_desc">Nutzungstipps</string>
-    <string name="announcement_cat_general_desc">Sonstige Mitteilungen</string>
+    <string name="announcement_cat_release_desc">Benachrichtigungen zu Entwickler-Ankündigungen über neue Versionen und ihre Änderungen. Automatische App-Updates stellst du separat unter Updates ein.</string>
+    <string name="announcement_cat_issue_desc">Benachrichtigungen zu Entwickler-Ankündigungen über bekannte Probleme und mögliche Abhilfen.</string>
+    <string name="announcement_cat_tip_desc">Benachrichtigungen zu Tipps des Entwicklers für die Bedienung von CruxCoach und seinen Funktionen.</string>
+    <string name="announcement_cat_general_desc">Benachrichtigungen zu sonstigen Entwickler-Ankündigungen außerhalb von Versionen, bekannten Problemen und Tipps.</string>
     <string name="announcements_notification_release">Neue Version verfügbar</string>
     <string name="announcements_notification_issue">Bekanntes Problem</string>
     <string name="announcements_notification_tip">Tipp vom Entwickler</string>
@@ -1122,12 +1122,12 @@
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>
     <string name="kilter_connect_button">Kilter Account verbinden</string>
-    <string name="kilter_connect_desc">Importiere deine Begehungen aus der offiziellen Kilter App</string>
+    <string name="kilter_connect_desc">Melde dich an, um dein Kilter-Logbuch und deine Circuits zu importieren. Wähle einen einmaligen Import oder lasse das Konto verbunden, um neue Einträge abzurufen. Das Hochladen deiner CruxCoach-Einträge und das Veröffentlichen von Bouldern auf Kilter aktivierst du jeweils separat.</string>
     <string name="kilter_connected_as">Verbunden als: %s</string>
     <string name="kilter_last_sync">Letzter Sync: %s</string>
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
-    <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
+    <string name="kilter_push_desc">Eingeschaltet lädt die Synchronisierung auch noch nicht synchronisierte lokale Begehungen und Versuche in das verbundene Kilter-Konto hoch. Dazu können ältere Einträge gehören. Ausgeschaltet kannst du weiterhin neue Kilter-Einträge herunterladen. Eigene Boulder zu veröffentlichen ist eine separate Option.</string>
     <string name="kilter_climb_publish_label">Eigene Climbs auf Kilter veröffentlichen</string>
     <string name="kilter_climb_publish_disconnected_hint">Verbinde deinen Kilter-Account, um Climbs auch dort zu spiegeln.</string>
     <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
@@ -1318,16 +1318,16 @@
     <string name="updater_settings_status_never">Zuletzt geprüft: noch nie</string>
     <string name="updater_settings_check_now">Jetzt prüfen</string>
     <string name="updater_settings_auto_check">Automatisch prüfen</string>
-    <string name="updater_settings_auto_check_desc">Prüft beim App-Start, nach Netzrückkehr und regelmäßig im Hintergrund.</string>
+    <string name="updater_settings_auto_check_desc">Eingeschaltet prüft die App beim Start, nach der Netzrückkehr und regelmäßig im Hintergrund auf eine neuere Version. Das Update-Verhalten darunter bestimmt, was bei einem Fund passiert. Ausgeschaltet kannst du weiterhin „Jetzt prüfen“ nutzen.</string>
     <string name="updater_settings_automation_title">Wenn ein Update verfügbar ist</string>
     <string name="updater_mode_notify">Hinweis</string>
     <string name="updater_mode_auto_update">Automatisch</string>
-    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Du entscheidest, ob du es herunterladen und installieren möchtest.</string>
-    <string name="updater_mode_auto_update_desc">Lädt und prüft Updates automatisch und stößt anschließend die Installation an. Du kannst sie in Android bestätigen oder ablehnen.</string>
+    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Du entscheidest, wann du das Update herunterlädst und installierst.</string>
+    <string name="updater_mode_auto_update_desc">Lädt und prüft neue Versionen über eine erlaubte Verbindung automatisch und öffnet anschließend den Android-Installationsablauf. Du kannst die Installation bestätigen oder ablehnen.</string>
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
-    <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
+    <string name="updater_settings_auto_mobile_desc">Erlaubt automatische App-Update-Downloads auch über mobile Daten und andere getaktete Verbindungen. Ausgeschaltet warten automatische Downloads auf eine nicht getaktete Verbindung. Die Dateien können viel Datenvolumen verbrauchen.</string>
     <string name="updater_settings_anonymous_metrics">Anonymer Zähler verifizierter Updates</string>
-    <string name="updater_settings_anonymous_metrics_desc">Nachdem ein Update-Download sowohl Hash- als auch Signaturprüfung bestanden hat, wird pro Zielversion höchstens ein Best-Effort-Zählversuch unternommen. Er enthält nur die Zielversion und welche konfigurierte Download-Quelle die Datei geliefert hat, aber keine Nutzer-, Geräte-, Installations-, Account-, Nostr- oder Session-Kennung. Schalte dies aus, um nichts zu senden. Update-Prüfung, Download und Installation bleiben immer unbeeinflusst.</string>
+    <string name="updater_settings_anonymous_metrics_desc">Hilft, erfolgreich heruntergeladene und geprüfte App-Updates zu zählen. Übermittelt werden nur die heruntergeladene Version und die Download-Quelle, ohne Konto- oder Gerätekennung. Pro Version wird höchstens ein Sendeversuch unternommen.\n\nAusgeschaltet werden diese Meldungen nicht gesendet. Die Suche, der Download und die Installation von Updates funktionieren unabhängig davon.</string>
     <string name="updater_auto_update_info_title">Bestätigte Installation</string>
     <string name="updater_auto_update_ready_desc">Nach Download und Prüfung fordert Android deine Bestätigung für die Installation an. CruxCoach installiert Updates nicht still.</string>
     <string name="updater_auto_update_permission_desc">Erlaube CruxCoach einmalig, den Android-Installationsdialog für eigene geprüfte Updates zu öffnen. Jede Installation kannst du weiterhin bestätigen oder ablehnen.</string>
@@ -1661,9 +1661,9 @@
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
     <string name="devcontact_notifications">Ankündigungen im Hintergrund</string>
-    <string name="devcontact_notifications_desc">Ankündigungen automatisch abrufen und melden. Ausgeschaltet bleibt das Öffnen der Ankündigungen eine manuelle Aktualisierung.</string>
+    <string name="devcontact_notifications_desc">Eingeschaltet ruft die App Entwickler-Ankündigungen im Hintergrund ab und benachrichtigt dich für die unten gewählten Kategorien. Ausgeschaltet aktualisiert sich die Ankündigungsseite weiterhin, wenn du sie öffnest. Zusätzlich muss Android Benachrichtigungen für CruxCoach erlauben.</string>
     <string name="devcontact_send_crash_reports">Crash-Berichte senden</string>
-    <string name="devcontact_send_crash_reports_desc">Verschlüsselte Crash-Berichte automatisch an den Entwickler senden, verknüpft mit deinem öffentlichen CruxCoach-Nostr-Schlüssel</string>
+    <string name="devcontact_send_crash_reports_desc">Eingeschaltet sendet die App nach dem nächsten Start einen gespeicherten Absturzbericht automatisch an den Entwickler. Er enthält Fehlerverlauf, Zeitpunkt, App- und Android-Version, Sprache und eine allgemeine Geräte-Leistungsklasse.\n\nDie Berichte sind Ende-zu-Ende-verschlüsselt, aber mit deinem öffentlichen CruxCoach-Kontoschlüssel verknüpft und daher nicht anonym. Ausgeschaltet entfällt der automatische Versand; du kannst weiterhin selbst einen Fehler melden.</string>
     <string name="devcontact_send_failed">Senden fehlgeschlagen</string>
     <string name="devcontact_status_delivered">✓ Zugestellt · %1$s</string>
     <string name="devcontact_status_not_delivered">✗ Nicht zugestellt</string>
@@ -1786,7 +1786,7 @@
     <string name="settings_group_board_catalogs">Board-Kataloge</string>
     <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
     <string name="settings_group_delete_data">Daten löschen</string>
-    <string name="settings_board_hub_desc">Tippe eine Karte an, um die Einstellungen dieses Boards anzusehen. Dadurch ändert sich das aktive Board nicht.</string>
+    <string name="settings_board_hub_desc">Wähle eine Board-Karte, um Modell und verfügbare Optionen anzusehen. Das ändert nur, welche Einstellungen du gerade bearbeitest. Zum Wechseln deines aktiven Boards nutze die Board-Auswahl. Die Optionen unter „Alle Boards“ gelten boardübergreifend.</string>
     <string name="settings_board_active_badge">Aktiv</string>
     <string name="settings_board_viewing">Einstellungen für %1$s</string>
     <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>
@@ -1801,21 +1801,21 @@
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_moonboard_led_position_title">LED-Position</string>
-    <string name="settings_moonboard_led_position_desc">Wähle, welche vorhandenen LEDs den Griff markieren. Topgriffe und Positionen ohne obere LED bleiben von unten beleuchtet.</string>
+    <string name="settings_moonboard_led_position_desc">„Darunter“, „Darüber“ oder „Beide“ legt fest, welche vorhandenen LEDs einen Griff am echten MoonBoard markieren. „Beide“ beleuchtet ihn von oben und unten. Topgriffe und Positionen ohne obere LED verwenden immer die untere LED. Dies ändert die LED-Positionen, nicht ihre Farben.</string>
     <string name="settings_moonboard_led_position_below">Darunter</string>
     <string name="settings_moonboard_led_position_above">Darüber</string>
     <string name="settings_moonboard_led_position_both">Beide</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
-    <string name="settings_board_send_mode_desc">Öffnen, Wischen oder Neuverbinden in der Climb-Detailansicht ändert die Wand nie; tippe ausdrücklich auf die Lampe. Diese Einstellung steuert den automatischen Playlist-/Wiedergabefortschritt für Controller mit einer oder mehreren möglichen App-Verbindungen. Klettern über einen Relay zählt als mehrere App-Verbindungen.</string>
+    <string name="settings_board_send_mode_desc">%1$s\nDas verbundene Board folgt dem Boulder, den du öffnest oder zu dem du wischst. Auch beim Verbinden wird der geöffnete Boulder gesendet. Beim Weiterschalten einer Playlist leuchtet der nächste Boulder automatisch.\n\n%2$s\nBeim Stöbern bleibt die Beleuchtung unverändert. Tippe auf die Lampe, um deine Auswahl zu senden, auch nach dem Weiterschalten einer Playlist.\n\nVerbindungen\nDie beiden Zeilen beziehen sich darauf, wie viele Apps der Controller gleichzeitig zulässt, nicht auf die Zahl gerade verbundener Handys. CruxCoach erkennt den Controller und verwendet die passende Einstellung. CruxRelay zählt als mehrere Verbindungen.\n\nBesonderheiten\nQuantum benötigt in der Boulder-Detailansicht immer die Lampe. In einer gemeinsamen Session fügst du Boulder per Warteschlangen-Taste hinzu. Das ausdrückliche Starten einer Playlist oder Routenwiedergabe kann in beiden Modi senden.</string>
     <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
     <string name="settings_board_capacity_recheck_desc">CruxCoach merkt sich, ob ein Controller eine App oder mehrere zulässt. Nutze das, wenn ein Board getauscht oder umgestellt wurde — beim nächsten Verbinden wird neu gemessen.</string>
     <string name="settings_board_capacity_recheck_done">Wird beim nächsten Verbinden neu gemessen</string>
     <string name="settings_board_send_mode_single">Nur eine Verbindung</string>
     <string name="settings_board_send_mode_multi">Mehrere Verbindungen</string>
-    <string name="settings_board_send_mode_automatic">Automatische Wiedergabe</string>
+    <string name="settings_board_send_mode_automatic">Automatisch</string>
     <string name="settings_board_send_mode_explicit">Per Taste</string>
-    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard akzeptiert mehrere Verbindungen. Die Beleuchtung bleibt bis zur letzten Trennung erhalten.</string>
-    <string name="settings_board_projection_lifecycle_retained">Moderne Controller akzeptieren mehrere Verbindungen; verifizierte ältere Controller lassen sich über CruxCoach Relay teilen.</string>
+    <string name="settings_board_projection_lifecycle_moonboard">Beim MoonBoard erlischt die Beleuchtung, wenn die letzte Verbindung endet. Deshalb verwendet CruxCoach hier den Timer zum automatischen Trennen nicht.\n\nOb sich weitere Handys gleichzeitig verbinden können, hängt vom Controller ab. CruxCoach erkennt dies nach dem Verbinden; das Board-Jahr allein entscheidet darüber nicht.</string>
+    <string name="settings_board_projection_lifecycle_retained">Bei diesen Controllern bleibt die letzte Beleuchtung nach dem Trennen erhalten. Gib die Verbindung im Verbindungsmenü oder über den Timer zum automatischen Trennen frei, damit sich jemand anderes verbinden kann.\n\nCruxCoach erkennt, ob der Controller mehrere Verbindungen zulässt. Wenn unterstützt, können andere über CruxRelay durch dein Handy senden, falls nur eine direkte Verbindung möglich ist.</string>
     <string name="cd_add_climb_to_shared_queue">Boulder zur gemeinsamen Warteschlange hinzufügen</string>
     <string name="cd_light_climb_on_board">Climb am Board beleuchten</string>
     <string name="cd_restore_queue_climb">Aktuellen Queue-Boulder erneut beleuchten</string>
@@ -1933,8 +1933,8 @@
 
     <!-- Key Management: Screen -->
     <string name="key_section_account_keys">CruxCoach Account</string>
-    <string name="key_section_nostr_intro">Dein CruxCoach Account funktioniert grundlegend anders als herkömmliche Accounts: Statt E-Mail und Passwort bei einer Firma zu hinterlegen, besitzt du einen kryptographischen Schlüssel. Dieser Schlüssel ist dein Account — wer ihn hat, hat Zugang. Kein Unternehmen kann deinen Account sperren, löschen oder deine Daten einsehen. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt. Dafür liegt die Verantwortung bei dir: Geht der Schlüssel verloren, kann ihn niemand zurücksetzen. Technisch basiert dein Account auf dem offenen Nostr-Protokoll.</string>
-    <string name="key_section_description">Hier kannst du deinen Account sichern, auf ein neues Gerät übertragen oder die externe Signer-App Amber verwenden.</string>
+    <string name="key_section_nostr_intro">Dein CruxCoach-Konto nutzt das offene Nostr-Protokoll. Der öffentliche Schlüssel identifiziert dein Konto; der private Schlüssel ermöglicht den Zugang. Halte den privaten Schlüssel geheim und sichere ihn. Bei Verlust gibt es kein Zurücksetzen wie bei einem Passwort. Mit Amber verwaltest du den Schlüsselzugriff in dieser App.\n\nDein veröffentlichtes Profil und deine Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Cloud-Backups werden vor dem Hochladen verschlüsselt. Wer Zugriff auf deinen privaten Schlüssel hat, kann als du handeln und damit geschützte Daten öffnen.</string>
+    <string name="key_section_description">Hier bearbeitest du dein öffentliches Profil. In der Schlüsselverwaltung kannst du deinen Kontoschlüssel sichern, ein vorhandenes Konto auf diesem Gerät verwenden oder die externe Signer-App Amber verbinden.</string>
     <string name="key_button_manage">Account verwalten</string>
     <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
     <string name="key_label_not_backed_up_desc">Ohne ihn kann weder dein Account noch dein Cloud-Backup wiederhergestellt werden, wenn du dieses Gerät verlierst.</string>
@@ -2003,8 +2003,8 @@
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
     <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
-    <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
-    <string name="settings_backup_device_local_note">Board-Auswahl und Browse-/Karten-Filter bleiben auf diesem Gerät und werden nicht aus einem Backup wiederhergestellt.</string>
+    <string name="settings_backup_description">Sichert deine CruxCoach-Daten, darunter Logbuch, Versuche, Listen, Notizen, eigene Boulder und Trainingsdaten. Das Backup wird auf diesem Gerät verschlüsselt und anschließend auf öffentliche Speicherserver geladen. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nAktiviere das Cloud-Backup für den gewählten Zeitplan oder „Jetzt sichern“. Ein vorhandenes Backup kannst du auch suchen und wiederherstellen, wenn die automatische Sicherung ausgeschaltet ist.</string>
+    <string name="settings_backup_device_local_note">Board-Auswahl und Filter der Boulder-Liste und Karte bleiben auf diesem Gerät und werden nicht wiederhergestellt. Heruntergeladene öffentliche Board-Kataloge lädst du bei Bedarf separat erneut.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
     <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
@@ -2263,7 +2263,7 @@
     <string name="whatsnew_gym_picker_action_later">Später</string>
 
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
-    <string name="settings_aurora_migration_desc">Begehungen, Versuche und Playlists aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
+    <string name="settings_aurora_migration_desc">Importiere Begehungen, Versuche und Playlists aus dem Aurora-JSON-Export, den du auf Anfrage per E-Mail erhältst. Wähle die Datei, um den Import zu starten. Das Ergebnis zeigt, was übernommen wurde. Für den Datei-Import ist keine Kontoverbindung nötig.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
     <string name="aurora_migration_what_happened_title">Was ist mit Aurora passiert?</string>
     <string name="aurora_migration_what_happened_body">Aurora Climbing hat Anfang 2026 die API abgeschaltet, und die offizielle Kilter-App ist auf ein neues Backend umgezogen. Aurora bedient einmalige Datenexport-Anfragen per E-Mail — die Datei, die sie zurückschicken, liest dieser Importer.</string>
@@ -2453,7 +2453,7 @@
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
     <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
-    <string name="settings_relay_manual_start_desc">Standardmäßig aus: CruxRelay startet und endet mit der Board-Verbindung. Nur aktivieren, wenn du es manuell starten möchtest.</string>
+    <string name="settings_relay_manual_start_desc">Über CruxRelay können Kletterer in der Nähe durch dein Handy an ein unterstütztes Board senden, wenn der Controller nur eine direkte Verbindung zulässt.\n\nAus: Nach der ersten Freigabe startet und endet der Relay mit einer geeigneten Board-Verbindung. Ein: Du startest ihn selbst im Verbindungsmenü. Beim Trennen vom Board endet er in beiden Fällen.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
     <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxCoach…\". Andere Board-Apps können Climbs über CruxCoach senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
@@ -2537,7 +2537,7 @@
          übersetzt sie ebenfalls nicht) — sie kommen aus MoonBoardHoldSets,
          nicht von hier. -->
     <string name="moonboard_hold_sets_title">Griffsets</string>
-    <string name="moonboard_hold_sets_subtitle">Welche Griffe an deinem Board hängen</string>
+    <string name="moonboard_hold_sets_subtitle">Wähle die Griffsets, die tatsächlich an deinem MoonBoard hängen. Die Boulder-Liste berücksichtigt diese Auswahl und zeigt passende Boulder. Wähle das vollständige Setup, wenn alle Sets montiert sind.</string>
     <string name="moonboard_setup_complete">Komplettes %1$s Setup</string>
     <string name="moonboard_setup_complete_hint">Das Bundle wie verkauft — alle Griffsets</string>
     <string name="moonboard_setup_partial">Mir fehlen Griffe</string>
@@ -2550,7 +2550,7 @@
     <string name="cd_back">Zurück</string>
     <string name="ble_mesh_climb">Im Mesh auf dem Board</string>
     <string name="settings_moon_csv_title">MoonBoard-Logbuch importieren</string>
-    <string name="settings_moon_csv_desc">Übernimm dein Logbuch aus der installierten Moon-App oder importiere ihre CSV.</string>
+    <string name="settings_moon_csv_desc">Übernimm dein MoonBoard-Logbuch aus der installierten Moon-App oder wähle eine zuvor exportierte CSV-Datei. Das Ergebnis zeigt, welche Einträge übernommen wurden und ob etwas nicht zugeordnet werden konnte.</string>
     <string name="moon_csv_title">MoonBoard-Logbuchimport</string>
     <string name="moon_csv_intro">Übernimm deinen vorhandenen MoonBoard-Verlauf in CruxCoach. Die direkte Übertragung auf dem Gerät ist am schnellsten; CSV bleibt als Ausweichweg verfügbar.</string>
     <string name="moon_device_title">Aus der installierten Moon-App übernehmen</string>
@@ -2759,27 +2759,27 @@
     <string name="settings_group_climbing">Beim Klettern</string>
     <string name="settings_group_app_help">App &amp; Hilfe</string>
     <string name="settings_page_display">Darstellung &amp; Sprache</string>
-    <string name="settings_summary_display">Sprache, Design, Grade und Bildschirm</string>
+    <string name="settings_summary_display">Wähle App-Sprache, Design und Gradskala und lege fest, ob das Display in Board-Ansichten wach bleibt.</string>
     <string name="settings_page_board">Board &amp; Bluetooth</string>
-    <string name="settings_summary_board">Board einrichten, LEDs und Verbindung</string>
+    <string name="settings_summary_board">Richte Board-Modelle, verfügbare LED-Optionen sowie Sende- und Trennverhalten ein. Jedes Board zeigt die dafür unterstützten Optionen.</string>
     <string name="settings_page_timers">Timer &amp; Wiedergabe</string>
-    <string name="settings_summary_timers">Pausenzeit, Routentempo und Countdown</string>
+    <string name="settings_summary_timers">Lege Pausendauer und automatischen Timerstart fest sowie Tempo, Countdown und Wiederholung der Routenwiedergabe.</string>
     <string name="settings_page_sharing">Teilen in der Nähe</string>
-    <string name="settings_summary_sharing">Aktuellen Boulder teilen und CruxRelay steuern</string>
+    <string name="settings_summary_sharing">Lass Kletterer in der Nähe deinen beleuchteten Boulder über Bluetooth sehen und wähle, ob CruxRelay automatisch oder manuell startet.</string>
     <string name="settings_page_account">CruxCoach-Konto</string>
-    <string name="settings_summary_account">Profil, Kontoschlüssel und Amber</string>
+    <string name="settings_summary_account">Bearbeite dein öffentliches Profil und verwalte den Kontoschlüssel für deine Identität und verschlüsselten Backups, auch mit Amber.</string>
     <string name="settings_page_imports">Board-Konten &amp; Importe</string>
-    <string name="settings_summary_imports">Kilter verbinden oder Board-Logbuch importieren</string>
-    <string name="settings_summary_catalogues">Boulder herunterladen und Aktualisierung festlegen</string>
+    <string name="settings_summary_imports">Verbinde ein Kilter-Konto oder übernimm ein Logbuch aus MoonBoard oder einem Aurora-Export. Jeder Import zeigt sein Ergebnis, auch übersprungene Einträge.</string>
+    <string name="settings_summary_catalogues">Lade öffentliche Board-Kataloge herunter, prüfe ihren Download-Status und wähle das Intervall für automatische Aktualisierungen.</string>
     <string name="settings_page_backup">Sichern &amp; übertragen</string>
-    <string name="settings_summary_backup">Verschlüsselte Sicherung, Wiederherstellung und Dateien</string>
+    <string name="settings_summary_backup">Richte verschlüsselte Cloud-Backups ein und stelle gesicherte Daten wieder her oder importiere und exportiere CruxCoach-Daten als Dateien.</string>
     <string name="settings_page_delete">Lokale Daten löschen</string>
-    <string name="settings_summary_delete">Kataloge oder persönliche Board-Daten entfernen</string>
-    <string name="settings_summary_updates">App-Version, Update-Prüfung und Installation</string>
+    <string name="settings_summary_delete">Entferne heruntergeladene Kataloge oder persönliche Board-Daten. Wähle die Boards und prüfe die Folgen, bevor du das Löschen bestätigst.</string>
+    <string name="settings_summary_updates">Prüfe auf eine neuere CruxCoach-Version und lege fest, wie Update-Suche, Download und Installationsaufforderungen ablaufen.</string>
     <string name="settings_page_support">Fehler &amp; Funktionswünsche</string>
-    <string name="settings_summary_support">Fehler melden, Funktionen vorschlagen und den Entwickler kontaktieren</string>
+    <string name="settings_summary_support">Melde einen Fehler, schlage eine Funktion vor oder schreibe dem Entwickler. Hier findest du auch Ankündigungen und die Auswahl für automatische Berichte und Benachrichtigungen.</string>
     <string name="settings_page_about">Über CruxCoach</string>
-    <string name="settings_summary_about">Version, App-Informationen und Teilen</string>
+    <string name="settings_summary_about">Finde die installierte Version, Informationen zu App und Projekt sowie Möglichkeiten, CruxCoach mit anderen zu teilen.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>

@@ -123,10 +123,10 @@ enum class BoardSendMode {
         /**
          * Unknown or absent reads as [EXPLICIT].
          *
-         * Sending is manual by default on every board, single- or
-         * multi-connection: the wall changing is a thing somebody asked for,
-         * not a side effect of looking at a climb. AUTOMATIC is an opt-in and
-         * only reacts to explicit shared board/playlist events.
+         * This fallback is for invalid wire values. Fresh preference defaults
+         * are chosen below: AUTOMATIC for single connections, EXPLICIT for
+         * multiple connections. BoardDeliveryPolicy and QueueDeliveryPolicy
+         * apply that choice to browsing and playlist progression respectively.
          */
         fun fromWire(value: String?): BoardSendMode =
             entries.firstOrNull { it.name == value } ?: EXPLICIT

@@ -150,7 +150,11 @@ internal fun BoardSendModeSection(
 ) {
     SettingsInfoHeading(
         title = stringResource(R.string.settings_board_send_mode_title),
-        description = stringResource(R.string.settings_board_send_mode_desc),
+        description = stringResource(
+            R.string.settings_board_send_mode_desc,
+            stringResource(R.string.settings_board_send_mode_automatic),
+            stringResource(R.string.settings_board_send_mode_explicit),
+        ),
     )
 
     BoardSendModePicker(

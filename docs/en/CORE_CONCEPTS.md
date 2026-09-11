@@ -159,6 +159,15 @@ Dialogs use readable, scrollable text and can be closed to return to the same
 page. Current errors, missing prerequisites, backup status and warnings before
 destructive actions stay visible where they matter.
 
+Help explains what each choice does, when it takes effect and any relevant
+prerequisites. It must not describe an optional behaviour as always active.
+Check the call site and implementation when updating both English and German:
+for example, automatic board sending can follow browsing and reconnecting,
+while explicit sending waits for a lamp action. Shared sessions, running
+playlists and Quantum layer selection add their own delivery rules. Keep
+account privacy explanations specific to public profiles/climbs, encrypted
+messages and encrypted backups.
+
 Use `SettingsDestinationRow`, `SettingsToggleRow` and `SettingsInfoHeading` in
 `ui/settings/SettingsLayout.kt`, with `ui/common/InfoButton.kt` for shared help.
 

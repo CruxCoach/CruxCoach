@@ -165,6 +165,15 @@ und löst keine Aktion aus. Die Dialoge sind gut lesbar, scrollbar und führen b
 Schließen zur gleichen Seite zurück. Aktuelle Fehler, fehlende Voraussetzungen,
 Backup-Status und Warnungen vor Löschaktionen bleiben am passenden Ort sichtbar.
 
+Hilfen erklären die Wirkung der Auswahl, ihren Auslöser und relevante
+Voraussetzungen. Optionales Verhalten darf nicht als immer aktiv beschrieben
+werden. Prüfe beim Aktualisieren beider Sprachen den Aufrufort und den Code:
+Automatisches Senden kann etwa dem Stöbern und Neuverbinden folgen, während
+manuelles Senden auf die Lampe wartet. Gemeinsame Sessions, laufende Playlists
+und die Quantum-Ebenenauswahl haben zusätzliche Senderegeln. Erkläre den
+Datenschutz getrennt für öffentliche Profile/Boulder, verschlüsselte Nachrichten
+und verschlüsselte Backups.
+
 Gemeinsame Bausteine sind `SettingsDestinationRow`, `SettingsToggleRow` und
 `SettingsInfoHeading` in `ui/settings/SettingsLayout.kt` sowie
 `ui/common/InfoButton.kt` für die Hilfe.
