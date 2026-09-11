@@ -107,6 +107,14 @@ if (featureBranch != null) {
     }
 }
 
+// Owner review: annotate compiler/Gradle failures from the credential-free
+// feature APK build, including the trusted publisher's separate build job.
+// Do not enable this for test output, local builds or production signing.
+if (featureBranch != null && providers.environmentVariable("GITHUB_ACTIONS").orNull == "true" &&
+    gradle.startParameter.taskNames.singleOrNull().let { it == "assembleDebug" || it == ":androidApp:assembleDebug" }) {
+    println("::add-matcher::${rootProject.file(".github/feature-build-problems.json").absolutePath}")
+}
+
 android {
     namespace = "com.cruxcoach.android"
     compileSdk = 36

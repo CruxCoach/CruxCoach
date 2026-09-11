@@ -125,3 +125,12 @@ acceptance as PR CI before the trusted-main publisher may reserve/build/publish.
 Only the trusted publisher holds upload credentials; the local CLI must not obtain
 them from production. Reservation uses the canonical branch/track/commit identity
 before a publishable build. Full APK/Gradle/lint work belongs in CI.
+
+Feature `assembleDebug` in GitHub Actions registers the bounded compiler/Gradle
+[problem matchers](../../.github/feature-build-problems.json), including when
+the trusted publisher runs its separate credential-free build job. This makes
+build causes visible as public check annotations when full logs require login.
+The original process exit status remains authoritative. Registration excludes
+local builds, test or combined task invocations, and production signing. The
+matcher and its Gradle registration require owner review; no publisher workflow,
+credentials or signing policy are changed.
