@@ -40,6 +40,7 @@ class SharingBackupSealedItem(
     val keyId: String,
     val resourceEpoch: Long,
     val ciphertext: ByteArray,
+    val aadVersion: Long = 1,
 ) {
     override fun toString(): String = "SharingBackupSealedItem($itemId, ${ciphertext.size} bytes, redacted)"
 }
@@ -450,6 +451,7 @@ object SharingBackupEnvelope {
                     put("item", it.itemId); put("category", it.category.name)
                     put("scope", it.keyScope.name); put("keyId", it.keyId)
                     put("epoch", it.resourceEpoch); put("ct", it.ciphertext.toHex())
+                    put("aadVersion", it.aadVersion)
                 })
             }
         })
@@ -540,6 +542,7 @@ object SharingBackupEnvelope {
                     keyId = o.str("keyId"),
                     resourceEpoch = o.num("epoch"),
                     ciphertext = o.str("ct").fromHex(),
+                    aadVersion = o["aadVersion"]?.jsonPrimitive?.long ?: 1L,
                 )
             },
         )

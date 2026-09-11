@@ -1,11 +1,11 @@
 ---
 status: hands-on-preview
 queue: active
-implementation_status: PRODUCTION_READY_BEHIND_NATIVE_GATE
+implementation_status: LOCAL_FOUNDATION_NATIVE_BLOCKED
 base: auto
 depends_on: []
 created: 2026-08-11
-revised: 2026-08-17
+revised: 2026-09-10
 review_round: goal-judge-round-1
 upstream_repo: https://github.com/marmot-protocol/mdk
 upstream_revision_checked: 3fc4eb83974eb64ecb298856b0db70cc3055af57
@@ -30,9 +30,25 @@ superseded_pin: 101d79946cff6c82d2b849d3b70902a7af7bac08
 
 ## 0. Status: hands-on preview, native transport gated shut
 
-`IMPLEMENTATION_STATUS: PRODUCTION_READY_BEHIND_NATIVE_GATE`
+`IMPLEMENTATION_STATUS: LOCAL_FOUNDATION_NATIVE_BLOCKED`
 
-### 0.0 What that status claims, and what it does not
+### 0.0 Current feature overlay and historical evidence
+
+The current `feat/marmot-permissions-v023` source integrates the 0.2.3 release
+line and fixes the permission/data boundaries described in the
+[current architecture](../../architecture/marmot-permissions.md). It implements
+an immutable text-snapshot service with explicit USER/SERVER identity pins,
+per-snapshot consent, bounded persistence and real vault access checks. Its
+production port remains blocked. No live MLS or server execution is claimed.
+
+The following August test counts, build observations, upstream findings and
+configuration statements are **historical evidence only**, not validation of
+the September tree. In particular, release signing configuration follows the
+imported 0.2.3 branch; no release build or signing was run for this overlay.
+The earlier production-ready label was too strong and has been removed.
+Current protocol references and verification limits are in the architecture.
+
+### 0.1 Historical August verification
 
 It claims the **code** is finished for this slice and verified as far as this
 environment can verify it: on 2026-08-17 the suite is **3 031** unit tests
@@ -253,8 +269,11 @@ build all decode to `Unknown`, which fails the relationship closed. Dropping the
 entry instead would look like a shorter, *valid* history — the exact silent
 fail-open this design exists to prevent.
 
-`expiresAt` is carried and versioned in the model and deliberately not enforced
-or shown in v1, so a later release can add it without a ledger migration.
+`expiresAt` is enforced at the effective-access boundary and shown in the UI.
+Missing clock evidence for an expiring relationship denies access; extending or
+removing an existing expiry requires fresh recipient consent. The snapshot
+service additionally detects clock rollback across restart. Wall-clock trust
+limitations are documented in the current architecture.
 
 ### 2.1 Signing
 
@@ -799,9 +818,11 @@ local, and the honest statements are:
   keys. The Keystore binding itself is NOT TESTED here (§4.3).
 - **Crypto erase** destroys keys first, then rows, then the derived local
   surfaces. A cleanup killed part-way leaves ciphertext nobody holds a key for.
-- **Ciphertext relocation** is prevented by feeding the key handle in as
-  associated data: a payload cannot be replayed into another category or object
-  even by someone holding the right key.
+- **Ciphertext relocation**: new AAD v2 binds owner, item ID, category, key
+  handle and resource epoch. The older handle-only encoding did not bind every
+  row field. Legacy rows remain owner-readable but cannot be exported until
+  explicitly re-sealed. Neither encoding protects against an actor who already
+  holds the plaintext data key and can create a new authentication tag.
 - **Secrets in logs** — secret-bearing types redact `toString`; the AEAD failure
   path throws a deliberately vague message rather than echoing key or plaintext.
 - **What is not defended**: a compromised unlocked device, an OS-level attacker,
@@ -819,7 +840,7 @@ local, and the honest statements are:
 | Ship the product model anyway? | **Yes** | it is independently valuable and fully testable without a transport |
 | Circle visible to recipient? | **No** | local-only ledger entry, filtered from export |
 | Unknown ledger entry kind? | **Fail closed** | a dropped entry is a silently shorter valid history |
-| Enforce `expiresAt` in v1? | **No** | carried and versioned in the model, not in the UI |
+| Enforce `expiresAt` in v1? | **Yes, in the September overlay** | exact access-time check; extension requires consent; EN/DE UI |
 | Enable `PRAGMA foreign_keys`? | **Yes** | the cascades are load-bearing; enabled after migrations run |
 | Demo data in release? | **Never** | `BuildConfig.DEBUG` only, seeded through the ordinary signed-entry API |
 

@@ -90,7 +90,7 @@ CREATE TABLE sharing_object_rule (
         'PROFILE_AND_GOALS','TRAINING_HISTORY','VIDEOS','HEALTH_INFORMATION','PRIVATE_NOTES'
     )),
     effect TEXT NOT NULL CHECK (effect IN ('ALLOW','DENY')),
-    PRIMARY KEY (peer_npub, object_id),
+    PRIMARY KEY (peer_npub, category, object_id),
     FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
 );
 
@@ -127,7 +127,8 @@ CREATE TABLE sharing_sealed_item (
     key_id TEXT NOT NULL,
     resource_epoch INTEGER NOT NULL,
     ciphertext BLOB NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    aad_version INTEGER NOT NULL DEFAULT 1
 );
 
 
@@ -296,7 +297,7 @@ INSERT OR REPLACE INTO sharing_object_rule(peer_npub, object_id, category, effec
 VALUES (?,?,?,?);
 
 deleteObjectRule:
-DELETE FROM sharing_object_rule WHERE peer_npub = ? AND object_id = ?;
+DELETE FROM sharing_object_rule WHERE peer_npub = ? AND category = ? AND object_id = ?;
 
 selectObjectRules:
 SELECT * FROM sharing_object_rule WHERE peer_npub = ?;
@@ -322,8 +323,8 @@ DELETE FROM sharing_wrapped_key WHERE key_scope = ? AND key_id = ?;
 
 insertSealedItem:
 INSERT OR REPLACE INTO sharing_sealed_item(
-    item_id, category, key_scope, key_id, resource_epoch, ciphertext, created_at
-) VALUES (?,?,?,?,?,?,?);
+    item_id, category, key_scope, key_id, resource_epoch, ciphertext, created_at, aad_version
+) VALUES (?,?,?,?,?,?,?,?);
 
 selectSealedItemsByCategory:
 SELECT * FROM sharing_sealed_item WHERE category = ? ORDER BY created_at;

@@ -1,6 +1,10 @@
 package com.cruxcoach.android.sharing
 
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.sharing.SharingPayloadBinding
+import com.cruxcoach.domain.sharing.SharingLedgerBody
+import com.cruxcoach.domain.sharing.EffectiveAccessResolver
+import com.cruxcoach.domain.sharing.DeviceId
 import com.cruxcoach.domain.sharing.AccessEffect
 import com.cruxcoach.domain.sharing.AuthorityAttestation
 import com.cruxcoach.domain.sharing.AuthorityAttestationAdmission
@@ -118,7 +122,24 @@ class SecureDbSharingRepository(
      * which device it is cannot be the device a recovery re-enrols.
      */
     private val localDeviceIdentity: () -> DeviceIdentity? = { null },
+    private val currentOwner: () -> String? = { ownerNpub },
+    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
 ) {
+
+    internal val accountIdentity: String get() = ownerNpub
+
+    fun isCurrentAccount(): Boolean = currentOwner() == ownerNpub
+
+    internal fun canUseSnapshots(capability: DeviceCapability): Boolean {
+        if (!isCurrentAccount()) return false
+        val identity = localDeviceIdentity() ?: return false
+        val authority = loadDeviceAuthority()
+        return authority.devices[identity.device]?.publicKey == identity.publicKey && authority.can(identity.device, capability)
+    }
+
+    private fun hasAuthenticatedOwner(): Boolean = loadDeviceAuthority().let {
+        it.head != null && it.failClosedReason == null
+    }
 
     private val queries get() = database.sharingQueries
     private val reducer = SharingLedgerReducer(verifier, ownerNpub)
@@ -132,6 +153,7 @@ class SecureDbSharingRepository(
      * offline branch set a baseline.
      */
     private fun reducedOwnerPolicy(): OwnerPolicyState {
+        if (!isCurrentAccount()) return OwnerPolicyState(failClosedReason = "sharing identity changed")
         estateFailure()?.let { return OwnerPolicyState(failClosedReason = it) }
         return ownerPolicyReducer.reduce(loadOwnerPolicyLedger(), trustedAttestations())
     }
@@ -264,7 +286,12 @@ class SecureDbSharingRepository(
      * A purged peer is not resurrected: its tombstone is checked first, so a
      * replayed pre-purge entry cannot quietly recreate an active relationship.
      */
-    fun appendEntry(entry: SharingLedgerEntry) {
+    fun appendEntry(entry: SharingLedgerEntry) = database.transaction {
+        check(isCurrentAccount()) { "sharing identity changed" }
+        appendEntryLocked(entry)
+    }
+
+    private fun appendEntryLocked(entry: SharingLedgerEntry) {
         if (isPurged(entry.peer)) return
         // Every door, not just the inbound one. A local caller that could write
         // an unattested entry is the same hole as a remote one — the row looks
@@ -284,7 +311,11 @@ class SecureDbSharingRepository(
      * fails admission leaves no row and no projection change, so one bad
      * inbound message cannot permanently fail-close the relationship.
      */
-    fun tryAppendEntry(entry: SharingLedgerEntry): Boolean {
+    fun tryAppendEntry(entry: SharingLedgerEntry): Boolean = database.transactionWithResult {
+        isCurrentAccount() && tryAppendEntryLocked(entry)
+    }
+
+    private fun tryAppendEntryLocked(entry: SharingLedgerEntry): Boolean {
         if (isPurged(entry.peer)) return false
         // An owner-signed entry arriving from outside with no act behind it is
         // what a replayed pre-revocation message looks like. Only the peer's
@@ -315,6 +346,9 @@ class SecureDbSharingRepository(
     private fun persist(entry: SharingLedgerEntry) {
         val (kind, payload) = SharingLedgerCodec.encodeBody(entry.body)
         queries.transaction {
+            if (entry.body is SharingLedgerBody.RestoreCompleted) {
+                database.snapshotQueries.invalidateSnapshots(ownerNpub)
+            }
             ensureRelationshipRow(entry.peer)
             queries.insertLedgerEntry(
                 entry_id = entry.id.value,
@@ -404,6 +438,7 @@ class SecureDbSharingRepository(
 
     /** Reduces straight from the stored ledger — never from the projection row. */
     fun loadProjection(): SharingProjection {
+        if (!isCurrentAccount()) return SharingProjection(emptyMap())
         val peers = queries.selectAllRelationships().executeAsList().map { PeerId(it.peer_npub) }
         val states = mutableMapOf<PeerId, RelationshipState>()
         peers.forEach { peer -> states[peer] = reduceAuthorised(peer) }
@@ -456,7 +491,11 @@ class SecureDbSharingRepository(
         OwnerPolicyAdmission.check(loadOwnerPolicyLedger(), entry, ownerPolicyVerifier, ownerNpub)
 
     /** Reports rather than throwing, for anything that did not originate here. */
-    fun tryAppendOwnerPolicyEntry(entry: OwnerPolicyEntry): Boolean =
+    fun tryAppendOwnerPolicyEntry(entry: OwnerPolicyEntry): Boolean = database.transactionWithResult {
+        isCurrentAccount() && tryAppendOwnerPolicyEntryLocked(entry)
+    }
+
+    private fun tryAppendOwnerPolicyEntryLocked(entry: OwnerPolicyEntry): Boolean =
         when (admitOwnerPolicy(entry)) {
             is LedgerAdmission.AlreadyPresent -> true
             is LedgerAdmission.Reject -> false
@@ -464,7 +503,12 @@ class SecureDbSharingRepository(
         }
 
     /** Hard failure: a local entry that is refused is our own broken invariant. */
-    fun appendOwnerPolicyEntry(entry: OwnerPolicyEntry) {
+    fun appendOwnerPolicyEntry(entry: OwnerPolicyEntry) = database.transaction {
+        check(isCurrentAccount()) { "sharing identity changed" }
+        appendOwnerPolicyEntryLocked(entry)
+    }
+
+    private fun appendOwnerPolicyEntryLocked(entry: OwnerPolicyEntry) {
         when (val verdict = admitOwnerPolicy(entry)) {
             is LedgerAdmission.AlreadyPresent -> return
             is LedgerAdmission.Reject -> error("refusing to store owner policy entry: ${verdict.reason}")
@@ -515,10 +559,10 @@ class SecureDbSharingRepository(
         }
         state.objectRules.forEach { (peer, rules) ->
             if (peer.value !in known) return@forEach
-            rules.forEach { (objectId, categoryAndEffect) ->
+            rules.forEach { (key, effect) ->
                 queries.upsertObjectRule(
-                    peer.value, objectId.value,
-                    categoryAndEffect.first.name, categoryAndEffect.second.name,
+                    peer.value, key.objectId.value,
+                    key.category.name, effect.name,
                 )
             }
         }
@@ -529,8 +573,7 @@ class SecureDbSharingRepository(
      * with the circles the relationship ledger assigned.
      */
     fun loadPolicy(): SharingPolicy {
-        val circles = queries.selectAllRelationships().executeAsList()
-            .associate { PeerId(it.peer_npub) to SharingCircle.valueOf(it.circle) }
+        val circles = loadProjection().relationships.mapValues { (_, state) -> state.circle }
         return loadOwnerPolicyState().toPolicy(circles)
     }
 
@@ -540,24 +583,31 @@ class SecureDbSharingRepository(
 
     // ------------------------------------------------------------ key vault
 
-    fun createDataKey(handle: KeyHandle, resourceEpoch: Long = 1L): WrappedKey {
+    internal fun createDataKey(handle: KeyHandle, resourceEpoch: Long = 1L): WrappedKey {
+        check(isCurrentAccount()) { "sharing identity changed" }
         val key = vault.createDataKey(handle)
         queries.upsertWrappedKey(handle.scope.name, handle.id, resourceEpoch, key.wrappedBytes, 0L)
         return key
     }
 
     /** The stored wrapped key, or `null` once it has been destroyed. */
-    fun readWrappedKey(handle: KeyHandle, resourceEpoch: Long = 1L): WrappedKey? =
+    internal fun readWrappedKey(handle: KeyHandle, resourceEpoch: Long = 1L): WrappedKey? =
         queries.selectWrappedKey(handle.scope.name, handle.id, resourceEpoch)
             .executeAsOneOrNull()
             ?.let { WrappedKey(handle, it.wrapped_key) }
 
-    fun destroyKey(handle: KeyHandle) {
+    internal fun destroyKey(handle: KeyHandle) {
         vault.destroy(handle)
         queries.deleteWrappedKeysFor(handle.scope.name, handle.id)
     }
 
-    fun storeSealedItem(
+    internal fun discardSnapshotDraft(handle: KeyHandle) = database.transaction {
+        require(handle.scope == KeyScope.OBJECT && handle.id.startsWith("snapshot-draft:"))
+        destroyKey(handle)
+        queries.deleteSealedItemsFor(handle.scope.name, handle.id)
+    }
+
+    internal fun storeSealedItem(
         itemId: String,
         category: SharingCategory,
         handle: KeyHandle,
@@ -565,7 +615,10 @@ class SecureDbSharingRepository(
         plaintext: ByteArray,
         resourceEpoch: Long = 1L,
     ) {
-        val sealed = vault.seal(key, plaintext, aad = handle.aad())
+        check(currentOwner() == ownerNpub) { "sharing identity changed" }
+        require(key.handle == handle && resourceEpoch > 0)
+        val sealed = vault.seal(key, plaintext,
+            aad = SharingPayloadBinding.bytes(ownerNpub, itemId, category, handle, resourceEpoch))
         queries.insertSealedItem(
             item_id = itemId,
             category = category.name,
@@ -574,19 +627,65 @@ class SecureDbSharingRepository(
             resource_epoch = resourceEpoch,
             ciphertext = sealed.bytes,
             created_at = 0L,
+            aad_version = SharingPayloadBinding.VERSION,
         )
     }
 
     /** `null` when the item is gone, or when its key has been destroyed. */
     @Suppress("TooGenericExceptionCaught")
-    fun readSealedItem(itemId: String, key: WrappedKey): ByteArray? {
+    internal fun readOwnerSealedItem(itemId: String, key: WrappedKey): ByteArray? {
+        if (currentOwner() != ownerNpub) return null
         val row = queries.selectSealedItem(itemId).executeAsOneOrNull() ?: return null
-        val handle = KeyHandle(KeyScope.valueOf(row.key_scope), row.key_id)
         return try {
-            vault.open(key, SealedPayload(row.ciphertext), aad = handle.aad())
+            val handle = KeyHandle(KeyScope.valueOf(row.key_scope), row.key_id)
+            if (key.handle != handle) return null
+            val aad = when (row.aad_version) {
+                1L -> {
+                    if (!hasAuthenticatedOwner()) return null
+                    handle.aad() // Owner-only compatibility, never an export fallback.
+                }
+                SharingPayloadBinding.VERSION -> SharingPayloadBinding.bytes(ownerNpub, row.item_id,
+                    SharingCategory.valueOf(row.category), handle, row.resource_epoch)
+                else -> return null
+            }
+            vault.open(key, SealedPayload(row.ciphertext), aad = aad)
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Recipient access and local handoff are one DB transaction. Authentication
+     * belongs to the Marmot adapter; callers must use its verified peer/leaf.
+     * No caller supplies a key, category, owner, policy snapshot or clock.
+     */
+    internal fun <T> withPeerSnapshot(
+        peer: PeerId, device: DeviceId, itemId: String, expectedEpoch: Long,
+        notAfter: Long,
+        consume: (SharingCategory, ByteArray) -> T,
+    ): T? = database.transactionWithResult {
+        if (!canUseSnapshots(DeviceCapability.READ) || administrativeWritesLocked()) return@transactionWithResult null
+        val row = queries.selectSealedItem(itemId).executeAsOneOrNull() ?: return@transactionWithResult null
+        if (row.aad_version != SharingPayloadBinding.VERSION || row.resource_epoch != expectedEpoch) {
+            return@transactionWithResult null
+        }
+        val handle = runCatching { KeyHandle(KeyScope.valueOf(row.key_scope), row.key_id) }.getOrNull()
+            ?: return@transactionWithResult null
+        // Receiving a copy gives no right to forward somebody else's content.
+        if (handle.scope.isRecipient) return@transactionWithResult null
+        val category = SharingCategory.entries.firstOrNull { it.name == row.category }
+            ?: return@transactionWithResult null
+        val relationship = loadProjection().relationships[peer]
+        // An offer must not promise access beyond an already known owner limit.
+        if (notAfter <= nowEpochMillis() || relationship?.expiresAt?.let { notAfter > it } == true) {
+            return@transactionWithResult null
+        }
+        val decision = EffectiveAccessResolver.resolve(loadPolicy(), relationship, peer, category,
+            ObjectId(row.item_id), device, row.resource_epoch, nowEpochMillis())
+        if (!decision.isAllowed) return@transactionWithResult null
+        val key = readWrappedKey(handle, row.resource_epoch) ?: return@transactionWithResult null
+        val bytes = readOwnerSealedItem(itemId, key) ?: return@transactionWithResult null
+        try { if (isCurrentAccount()) consume(category, bytes) else null } finally { bytes.fill(0) }
     }
 
     // --------------------------------------------------------------- backup
@@ -599,7 +698,9 @@ class SecureDbSharingRepository(
      * The caller must zeroize the payload's keys as soon as they are written —
      * inside the envelope they are protected only by its own encryption.
      */
-    fun collectBackupPayload(): SharingBackupPayload {
+    internal fun collectBackupPayload(): SharingBackupPayload {
+        check(isCurrentAccount()) { "sharing identity changed" }
+        check(hasAuthenticatedOwner()) { "sharing owner authority is unavailable" }
         val relationships = queries.selectAllRelationships().executeAsList().map { PeerId(it.peer_npub) }
         val keys = queries.selectAllWrappedKeys().executeAsList().mapNotNull { row ->
             val handle = KeyHandle(KeyScope.valueOf(row.key_scope), row.key_id)
@@ -607,7 +708,7 @@ class SecureDbSharingRepository(
                 SharingBackupDataKey(handle.scope, handle.id, row.resource_epoch, raw)
             }
         }
-        return SharingBackupPayload(
+        val payload = SharingBackupPayload(
             deviceManifest = loadDeviceManifest(),
             attestations = loadAttestations(),
             authorityGeneration = loadDeviceAuthority().authorityGeneration,
@@ -626,9 +727,15 @@ class SecureDbSharingRepository(
                     keyId = it.key_id,
                     resourceEpoch = it.resource_epoch,
                     ciphertext = it.ciphertext,
+                    aadVersion = it.aad_version,
                 )
             },
         )
+        if (!isCurrentAccount()) {
+            payload.zeroizeKeys()
+            error("sharing identity changed")
+        }
+        return payload
     }
 
     /**
@@ -841,6 +948,7 @@ class SecureDbSharingRepository(
                     resource_epoch = it.resourceEpoch,
                     ciphertext = it.ciphertext,
                     created_at = 0L,
+                    aad_version = it.aadVersion,
                 )
             }
         }
@@ -998,7 +1106,10 @@ class SecureDbSharingRepository(
         private set
 
     private fun runBatch(body: () -> Unit): Boolean = try {
-        queries.transaction { body() }
+        queries.transaction {
+            if (!isCurrentAccount()) throw BatchRejected("sharing identity changed")
+            body()
+        }
         lastBatchRejection = null
         true
     } catch (rejected: BatchRejected) {
@@ -1156,7 +1267,11 @@ class SecureDbSharingRepository(
         )
 
     /** Reports rather than throwing, for anything that did not originate here. */
-    fun tryAppendDeviceManifestEntry(entry: DeviceManifestEntry): Boolean =
+    fun tryAppendDeviceManifestEntry(entry: DeviceManifestEntry): Boolean = database.transactionWithResult {
+        isCurrentAccount() && tryAppendDeviceManifestEntryLocked(entry)
+    }
+
+    private fun tryAppendDeviceManifestEntryLocked(entry: DeviceManifestEntry): Boolean =
         when (admitDeviceManifest(entry)) {
             is LedgerAdmission.AlreadyPresent -> true
             is LedgerAdmission.Reject -> false
@@ -1164,7 +1279,12 @@ class SecureDbSharingRepository(
         }
 
     /** Hard failure: a local entry that is refused is our own broken invariant. */
-    fun appendDeviceManifestEntry(entry: DeviceManifestEntry) {
+    fun appendDeviceManifestEntry(entry: DeviceManifestEntry) = database.transaction {
+        check(isCurrentAccount()) { "sharing identity changed" }
+        appendDeviceManifestEntryLocked(entry)
+    }
+
+    private fun appendDeviceManifestEntryLocked(entry: DeviceManifestEntry) {
         when (val verdict = admitDeviceManifest(entry)) {
             is LedgerAdmission.AlreadyPresent -> return
             is LedgerAdmission.Reject -> error("refusing to store manifest entry: ${verdict.reason}")
@@ -1307,14 +1427,23 @@ class SecureDbSharingRepository(
         )
     }
 
-    fun tryAppendAttestation(candidate: AuthorityAttestation): Boolean =
+    fun tryAppendAttestation(candidate: AuthorityAttestation): Boolean = database.transactionWithResult {
+        isCurrentAccount() && tryAppendAttestationLocked(candidate)
+    }
+
+    private fun tryAppendAttestationLocked(candidate: AuthorityAttestation): Boolean =
         when (admitAttestation(candidate)) {
             is LedgerAdmission.AlreadyPresent -> true
             is LedgerAdmission.Reject -> false
             is LedgerAdmission.Accept -> { persistAttestation(candidate); true }
         }
 
-    fun appendAttestation(candidate: AuthorityAttestation) {
+    fun appendAttestation(candidate: AuthorityAttestation) = database.transaction {
+        check(isCurrentAccount()) { "sharing identity changed" }
+        appendAttestationLocked(candidate)
+    }
+
+    private fun appendAttestationLocked(candidate: AuthorityAttestation) {
         when (val verdict = admitAttestation(candidate)) {
             is LedgerAdmission.AlreadyPresent -> return
             is LedgerAdmission.Reject -> error("refusing to store attestation: ${verdict.reason}")
@@ -1600,6 +1729,9 @@ class SecureDbSharingRepository(
         // that resolves a preview, so it is never refused by it.
         if (!rootAuthorised && administrativeWritesLocked()) {
             throw BatchRejected("a recovery preview is open, so this install authors nothing")
+        }
+        if (rootAuthorised || relationshipEntries.any { it.body is com.cruxcoach.domain.sharing.SharingLedgerBody.RestoreCompleted }) {
+            database.snapshotQueries.invalidateSnapshots(ownerNpub)
         }
         if (!rootAuthorised) manifestEntries.forEach { requirePairing(it, attestations) }
         relationshipEntries.forEach { requirePairing(it, attestations) }

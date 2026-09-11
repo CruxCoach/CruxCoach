@@ -223,6 +223,7 @@ object AppModule {
             verifier = signer.verifier(),
             ownerPolicyVerifier = ownerPolicySigner.verifier(),
             ownerNpub = nostrSigner.getPublicKeyHex(),
+            currentOwner = { nostrSigner.getPublicKeyHex() },
             deviceManifestVerifier = com.cruxcoach.domain.sharing.AsyncDeviceManifestSigner(
                 ledgerCrypto(
                     com.cruxcoach.domain.sharing.SigningDomain.DEVICE_MANIFEST,
@@ -250,7 +251,21 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideSnapshotExchange(
+        database: SecureDatabase,
+        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
+        nostrSigner: NostrSigner,
+    ): com.cruxcoach.android.sharing.SharingSnapshotExchange =
+        com.cruxcoach.android.sharing.SharingSnapshotExchange(
+            database, repository, nostrSigner.getPublicKeyHex(),
+            com.cruxcoach.android.sharing.SnapshotEndpointRole.USER,
+            com.cruxcoach.android.sharing.BlockedMarmotSnapshotPort(),
+        )
+
+    @Provides
+    @Singleton
     fun provideSharingController(
+        snapshotExchange: com.cruxcoach.android.sharing.SharingSnapshotExchange,
         repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
         signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
         ownerPolicySigner: com.cruxcoach.domain.sharing.AsyncOwnerPolicySigner,
@@ -261,6 +276,7 @@ object AppModule {
         nostrSigner: NostrSigner,
     ): com.cruxcoach.android.sharing.SharingController =
         com.cruxcoach.android.sharing.SharingController(
+            snapshotExchange = snapshotExchange,
             repository = repository,
             signer = signer,
             ownerPolicySigner = ownerPolicySigner,

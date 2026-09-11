@@ -73,6 +73,22 @@ class SharingProjectionSchemaTest {
             { c -> c.next(); QueryResult.Value(c.getLong(0) ?: 0L) }, 0,
         ).value
 
+    @Test
+    fun `ambiguous unpublished permission lineage is refused before any migration`() {
+        driver.exec("CREATE TABLE sharing_relationship (peer_npub TEXT)")
+        driver.exec("INSERT INTO sharing_relationship VALUES ('synthetic-owner')")
+        val tables = driver.executeQuery(null, "SELECT name FROM sqlite_master WHERE type='table'", { cursor ->
+            val names = mutableSetOf<String>()
+            while (cursor.next().value) names += requireNotNull(cursor.getString(0))
+            QueryResult.Value(names)
+        }, 0).value
+        assertFailsWith<IllegalStateException> { com.cruxcoach.data.SecureSchemaLineage.requireSupported(tables) }
+        assertEquals(1L, count("sharing_relationship"), "refusal preserves the original file")
+        com.cruxcoach.data.SecureSchemaLineage.requireSupported(emptySet())
+        com.cruxcoach.data.SecureSchemaLineage.requireSupported(setOf("climb_notes", "moon_import_staging"))
+        com.cruxcoach.data.SecureSchemaLineage.requireSupported(tables + setOf("climb_notes", "moon_import_staging"))
+    }
+
     // ------------------------------------------------------------- creation
 
     @Test
@@ -97,6 +113,21 @@ class SharingProjectionSchemaTest {
         val violations = driver.executeQuery(null, "PRAGMA foreign_key_check",
             { c -> QueryResult.Value(c.next().value) }, 0).value
         assertEquals(false, violations)
+    }
+
+    @Test
+    fun `category scoped rule migration preserves old denial and permits distinct category rows`() {
+        val ddl = requireNotNull(javaClass.getResource("/sharing/release-secure-v14.sql")).readText()
+        ddl.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+            .split(';').filter { it.isNotBlank() }.forEach { driver.exec(it) }
+        SecureDatabase.Schema.migrate(driver, 14, 29)
+        seedRelationship()
+        driver.exec("INSERT INTO sharing_object_rule VALUES ('npub1alice','same-id','PRIVATE_NOTES','DENY')")
+        SecureDatabase.Schema.migrate(driver, 29, SecureDatabase.Schema.version)
+        driver.exec("INSERT INTO sharing_object_rule VALUES ('npub1alice','same-id','VIDEOS','ALLOW')")
+        driver.close(); driver = openDriver()
+        assertEquals(2L, count("sharing_object_rule"))
+        assertEquals(1L, count("sharing_object_rule", "category='PRIVATE_NOTES' AND effect='DENY'"))
     }
 
     @Test

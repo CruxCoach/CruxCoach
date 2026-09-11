@@ -1,0 +1,22 @@
+-- Snapshot transport state is local to this installation and is never restored
+-- from a permission backup. An unknown/missing session never resumes a grant.
+CREATE TABLE sharing_snapshot_peer (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('USER','SERVER')),
+    PRIMARY KEY(account, peer)
+);
+CREATE TABLE sharing_snapshot (
+    account TEXT NOT NULL,
+    snapshot_id TEXT NOT NULL,
+    offer_json TEXT NOT NULL,
+    local_item TEXT,
+    state TEXT NOT NULL,
+    attempted INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(account, snapshot_id)
+);
+CREATE TABLE sharing_snapshot_clock (
+    account TEXT NOT NULL PRIMARY KEY,
+    high_water INTEGER NOT NULL,
+    locked INTEGER NOT NULL DEFAULT 0
+);

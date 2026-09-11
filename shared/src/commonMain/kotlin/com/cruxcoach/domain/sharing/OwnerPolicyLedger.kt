@@ -72,7 +72,7 @@ data class OwnerPolicyEntry(
 data class OwnerPolicyState(
     val baselines: CircleBaselines = CircleBaselines(),
     val peerRules: Map<PeerId, Map<SharingCategory, AccessEffect>> = emptyMap(),
-    val objectRules: Map<PeerId, Map<ObjectId, Pair<SharingCategory, AccessEffect>>> = emptyMap(),
+    val objectRules: Map<PeerId, Map<ObjectRuleKey, AccessEffect>> = emptyMap(),
     val authorityGeneration: Long = 1,
     val lastSequence: Long = 0,
     val appliedCount: Int = 0,
@@ -87,7 +87,7 @@ data class OwnerPolicyState(
             PeerPolicy(
                 circle = circles[peer] ?: SharingCircle.ALL_OTHER_USERS,
                 categoryRules = peerRules[peer].orEmpty(),
-                objectRules = objectRules[peer].orEmpty().mapValues { (_, v) -> v.second },
+                objectRules = objectRules[peer].orEmpty(),
             )
         }
         return SharingPolicy(baselines = baselines, peers = peers)
@@ -108,8 +108,8 @@ data class OwnerPolicyState(
         if (failClosedReason != null) return emptySet()
         val policy = toPolicy(mapOf(peer to circle))
         val objectAllowed = objectRules[peer].orEmpty()
-            .filterValues { it.second == AccessEffect.ALLOW }
-            .map { (_, categoryAndEffect) -> categoryAndEffect.first }
+            .filterValues { it == AccessEffect.ALLOW }
+            .map { (key, _) -> key.category }
             .toSet()
         return SharingCategory.entries.filterTo(mutableSetOf()) { category ->
             category in objectAllowed ||
@@ -119,7 +119,7 @@ data class OwnerPolicyState(
 
     /** The category an object exception was recorded against. */
     fun objectRuleCategory(peer: PeerId, objectId: ObjectId): SharingCategory? =
-        objectRules[peer]?.get(objectId)?.first
+        objectRules[peer]?.keys?.filter { it.objectId == objectId }?.map { it.category }?.singleOrNull()
 }
 
 /**
@@ -223,9 +223,9 @@ class OwnerPolicyReducer(
         is OwnerPolicyBody.ObjectRuleSet -> {
             val current = state.objectRules[body.peer].orEmpty()
             val next = if (body.effect == null) {
-                current - body.objectId
+                current - ObjectRuleKey(body.objectId, body.category)
             } else {
-                current + (body.objectId to (body.category to body.effect))
+                current + (ObjectRuleKey(body.objectId, body.category) to body.effect)
             }
             state.copy(objectRules = state.objectRules + (body.peer to next))
         }

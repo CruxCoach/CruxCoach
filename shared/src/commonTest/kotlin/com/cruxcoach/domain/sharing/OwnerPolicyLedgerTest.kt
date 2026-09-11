@@ -77,7 +77,24 @@ class OwnerPolicyLedgerTest {
             entry("e2", 2, OwnerPolicyBody.ObjectRuleSet(alice, video, SharingCategory.VIDEOS, AccessEffect.ALLOW)),
         )
         assertEquals(AccessEffect.DENY, s.peerRules[alice]?.get(SharingCategory.VIDEOS))
-        assertEquals(AccessEffect.ALLOW, s.objectRules[alice]?.get(video)?.second)
+        assertEquals(AccessEffect.ALLOW, s.objectRules[alice]?.get(ObjectRuleKey(video, SharingCategory.VIDEOS)))
+    }
+
+    @Test
+    fun category_collisions_and_removal_cannot_erase_another_categories_deny() {
+        val noteRule = entry("n", 2, OwnerPolicyBody.ObjectRuleSet(alice, video, SharingCategory.PRIVATE_NOTES, AccessEffect.DENY))
+        val videoRule = entry("v", 3, OwnerPolicyBody.ObjectRuleSet(alice, video, SharingCategory.VIDEOS, AccessEffect.ALLOW))
+        val base = baseline("base", 1, SharingCircle.FRIENDS, SharingCategory.PRIVATE_NOTES, true)
+        val s = reduce(base, noteRule, videoRule)
+        assertNull(s.failClosedReason)
+        val policy = s.toPolicy(mapOf(alice to SharingCircle.FRIENDS))
+        assertEquals(AccessEffect.DENY, SharingPolicyResolver.resolve(policy, alice, SharingCategory.PRIVATE_NOTES, video).effect)
+        assertEquals(AccessEffect.ALLOW, SharingPolicyResolver.resolve(policy, alice, SharingCategory.VIDEOS, video).effect)
+        val removed = reduce(base, noteRule, videoRule,
+            entry("remove", 4, OwnerPolicyBody.ObjectRuleSet(alice, video, SharingCategory.VIDEOS, null)))
+        assertEquals(AccessEffect.DENY, SharingPolicyResolver.resolve(removed.toPolicy(mapOf(alice to SharingCircle.FRIENDS)),
+            alice, SharingCategory.PRIVATE_NOTES, video).effect)
+        assertEquals(1, removed.objectRules[alice]?.size)
     }
 
     @Test

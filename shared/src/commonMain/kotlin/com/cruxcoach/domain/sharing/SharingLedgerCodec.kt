@@ -69,12 +69,13 @@ object SharingLedgerCodec {
     @Suppress("TooGenericExceptionCaught", "ReturnCount")
     fun decodeBody(kind: String, payload: String): SharingLedgerBody {
         val unknown = SharingLedgerBody.Unknown(kind)
+        if (payload.length > 65_536) return unknown
         val obj = try {
             json.parseToJsonElement(payload) as? JsonObject ?: return unknown
         } catch (e: Exception) {
             return unknown
         }
-        return try {
+        val decoded = try {
             when (kind) {
                 "PeerCircleAssigned" -> SharingLedgerBody.PeerCircleAssigned(
                     circle = obj.circle() ?: return unknown,
@@ -118,6 +119,9 @@ object SharingLedgerCodec {
         } catch (e: Exception) {
             unknown
         }
+        // Only the exact storage encoding is understood. Extra restrictions, duplicate
+        // fields and lossy coercions must not vanish before signature reconstruction.
+        return if (encodeBody(decoded) == (kind to payload)) decoded else unknown
     }
 
     private fun deviceJson(id: DeviceId) = buildJsonObject { put("deviceId", id.value) }.toString()

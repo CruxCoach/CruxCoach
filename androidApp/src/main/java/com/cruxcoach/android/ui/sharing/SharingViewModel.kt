@@ -89,6 +89,43 @@ class SharingViewModel @Inject constructor(
     private val _detail = MutableStateFlow<PeerDetail?>(null)
     val detail: StateFlow<PeerDetail?> = _detail.asStateFlow()
 
+    private val _snapshots = MutableStateFlow<List<com.cruxcoach.android.sharing.SharingSnapshotView>>(emptyList())
+    val snapshots = _snapshots.asStateFlow()
+    private val _snapshotText = MutableStateFlow<String?>(null)
+    val snapshotText = _snapshotText.asStateFlow()
+
+    fun pinSnapshotPeer(peer: PeerId, server: Boolean) = mutateReporting {
+        controller.pinSnapshotPeer(peer, if (server) com.cruxcoach.android.sharing.SnapshotEndpointRole.SERVER
+            else com.cruxcoach.android.sharing.SnapshotEndpointRole.USER)
+    }
+    fun setExpiry(peer: PeerId, expiresAt: Long?) = mutateReporting { controller.setExpiry(peer, expiresAt) }
+    fun shareNoteSnapshot(peer: PeerId, text: String, server: Boolean, onSaved: () -> Unit) = viewModelScope.launch {
+        val result = exclusively<SharingWriteResult?>(null) {
+            withContext(ioContext) {
+                controller.shareNoteSnapshot(peer, text, if (server) com.cruxcoach.android.sharing.SnapshotEndpointRole.SERVER
+                    else com.cruxcoach.android.sharing.SnapshotEndpointRole.USER)
+            }
+        } ?: return@launch
+        _writeError.value = (result as? SharingWriteResult.Failed)?.error
+        if (result.isSuccess) onSaved()
+        reload()
+    }
+    fun acceptSnapshot(id: String) = mutateReporting { controller.acceptSnapshot(id) }
+    fun revokeSnapshot(id: String) = mutateReporting { controller.revokeSnapshot(id) }
+    fun synchronizeSnapshots() = mutateReporting { controller.synchronizeSnapshots() }
+    private var snapshotReadJob: Job? = null
+    fun readSnapshot(id: String) {
+        clearSnapshotText()
+        snapshotReadJob = viewModelScope.launch {
+            val expiry = _snapshots.value.firstOrNull { it.id == id }?.expiresAt ?: return@launch
+            _snapshotText.value = withContext(ioContext) { controller.readSnapshot(id) }
+            if (_snapshotText.value == null) _writeError.value = SharingWriteError.REJECTED
+            kotlinx.coroutines.delay((expiry - System.currentTimeMillis()).coerceAtLeast(0))
+            _snapshotText.value = null
+        }
+    }
+    fun clearSnapshotText() { snapshotReadJob?.cancel(); snapshotReadJob = null; _snapshotText.value = null }
+
     private val _recoveryCode = MutableStateFlow<String?>(null)
     val recoveryCode: StateFlow<String?> = _recoveryCode.asStateFlow()
 
@@ -129,11 +166,13 @@ class SharingViewModel @Inject constructor(
     fun refresh() = run { _state.value = _state.value; reload() }
 
     private fun reload(): kotlinx.coroutines.Job = viewModelScope.launch {
+        clearSnapshotText()
         val snapshot = withContext(ioContext) { controller.snapshot() }
         _state.value = snapshot
         _estate.value = withContext(ioContext) { controller.deviceEstate() }
         _detail.value?.peer?.let { peer ->
             _detail.value = withContext(ioContext) { controller.peerDetail(peer) }
+            _snapshots.value = withContext(ioContext) { controller.snapshotViews(peer) }
         }
     }
 
@@ -173,9 +212,10 @@ class SharingViewModel @Inject constructor(
 
     fun openPeer(peer: PeerId) = viewModelScope.launch {
         _detail.value = withContext(ioContext) { controller.peerDetail(peer) }
+        _snapshots.value = withContext(ioContext) { controller.snapshotViews(peer) }
     }
 
-    fun closePeer() { _detail.value = null }
+    fun closePeer() { _detail.value = null; _snapshots.value = emptyList(); clearSnapshotText() }
 
     fun setBaseline(circle: SharingCircle, category: SharingCategory, granted: Boolean) =
         mutateReporting { controller.setBaseline(circle, category, granted) }

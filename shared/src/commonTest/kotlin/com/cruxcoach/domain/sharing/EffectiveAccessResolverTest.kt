@@ -166,7 +166,7 @@ class EffectiveAccessResolverTest {
                 peers = mapOf(
                     alice to PeerPolicy(
                         circle = SharingCircle.FRIENDS,
-                        objectRules = mapOf(ObjectId("v1") to AccessEffect.DENY),
+                        objectRules = mapOf(ObjectRuleKey(ObjectId("v1"), SharingCategory.VIDEOS) to AccessEffect.DENY),
                     )
                 )
             ),

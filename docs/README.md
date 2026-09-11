@@ -2,6 +2,16 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
+## Permission feature branch overlay (2026-09-10)
+
+`feat/marmot-permissions-v023` merges release source `2788a6fa4` into the retained
+permission work and adds a tested local permission/snapshot foundation. Live
+Marmot sharing is still blocked; no runtime SDK or server deployment is included.
+See [Marmot permissions architecture](architecture/marmot-permissions.md) for
+current behavior, migration rules, threat model and native integration requirements.
+The release-line inventory below describes the imported release source, before
+this feature overlay. It is not evidence of publication or production activation.
+
 ## What state does this describe?
 
 This audit describes source at `4fc067e87` on the **0.2.3 preparation line**,

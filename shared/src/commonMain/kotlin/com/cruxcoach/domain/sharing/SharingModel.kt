@@ -123,6 +123,10 @@ enum class DecisionSource {
 
     /** Restored install: closed until revocations have been re-synced. */
     AWAITING_REVOKE_SYNC,
+
+    RELATIONSHIP_IDENTITY_MISMATCH,
+    RELATIONSHIP_EXPIRED,
+    CLOCK_UNAVAILABLE,
 }
 
 /**
@@ -161,11 +165,14 @@ data class CircleBaselines(
     }
 }
 
+/** Category and object ID together identify a permission exception. */
+data class ObjectRuleKey(val objectId: ObjectId, val category: SharingCategory)
+
 /** What the owner decided about one specific peer. */
 data class PeerPolicy(
     val circle: SharingCircle,
     val categoryRules: Map<SharingCategory, AccessEffect> = emptyMap(),
-    val objectRules: Map<ObjectId, AccessEffect> = emptyMap(),
+    val objectRules: Map<ObjectRuleKey, AccessEffect> = emptyMap(),
 )
 
 /** The complete owner-side sharing policy. */
