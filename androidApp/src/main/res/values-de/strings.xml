@@ -2787,5 +2787,5 @@
     <string name="settings_account_explanation_show">Wie funktioniert mein Nostr-Konto?</string>
     <string name="settings_account_explanation_hide">Konto-Erklärung ausblenden</string>
     <string name="settings_active_board_title">Aktives Board</string>
-    <string name="settings_active_board_desc">Legt fest, welches Board CruxCoach für die Boulder-Auswahl und Board-Ansicht verwendet. Mit „Ändern“ wählst du Marke und passendes Modell. Die Karten darunter öffnen Einstellungen für einzelne Boards; ihr Aufruf wechselt das aktive Board nicht.</string>
+    <string name="settings_active_board_desc">Legt fest, welches Board CruxCoach für die Boulder-Auswahl und Board-Ansicht verwendet. Mit „Ändern“ wählst du Marke und passendes Modell. Die Markenkarten unter „Einstellungen je Board“ wählen nur die angezeigten Optionen; ihr Aufruf wechselt das aktive Board nicht.</string>
 </resources>

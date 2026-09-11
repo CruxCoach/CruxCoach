@@ -2788,5 +2788,5 @@
     <string name="settings_account_explanation_show">How does my Nostr account work?</string>
     <string name="settings_account_explanation_hide">Hide account explanation</string>
     <string name="settings_active_board_title">Active board</string>
-    <string name="settings_active_board_desc">Selects the board CruxCoach uses for browsing and viewing climbs. Use “Change” to choose its brand and model. The cards below open settings for individual boards; viewing a card does not change the active board.</string>
+    <string name="settings_active_board_desc">Selects the board CruxCoach uses for browsing and viewing climbs. Use “Change” to choose its brand and model. The brand cards under “Settings for each board” only select which options you are viewing; they do not change the active board.</string>
 </resources>

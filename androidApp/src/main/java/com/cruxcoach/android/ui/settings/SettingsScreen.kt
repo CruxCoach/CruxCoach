@@ -166,6 +166,22 @@ fun SettingsScreen(
                     )
                 }
                 SettingsSectionCard {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
+                    BoardSendModeSection(
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
+                    )
+                    HorizontalDivider()
+                    BleAutoDisconnectSection(
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
+                }
+                SettingsSectionCard {
                     SettingsInfoHeading(
                         title = stringResource(R.string.settings_group_selected_board),
                         description = stringResource(R.string.settings_board_hub_desc),
@@ -228,22 +244,6 @@ fun SettingsScreen(
                             onKilterColors = { viewModel.setKilterColors() }
                         )
                     }
-                }
-                SettingsSectionCard {
-                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
-                    BoardSendModeSection(
-                        singleConnectionMode = state.singleConnectionBoardSendMode,
-                        multiConnectionMode = state.multiConnectionBoardSendMode,
-                        onSingleConnectionModeChange =
-                            viewModel::updateSingleConnectionBoardSendMode,
-                        onMultiConnectionModeChange =
-                            viewModel::updateMultiConnectionBoardSendMode,
-                    )
-                    HorizontalDivider()
-                    BleAutoDisconnectSection(
-                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                    )
                 }
             }
             SettingsPage.TIMERS -> {

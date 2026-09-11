@@ -159,8 +159,8 @@ Dialogs use readable, scrollable text and can be closed to return to the same
 page. Current errors, missing prerequisites, backup status and warnings before
 destructive actions stay visible where they matter.
 
-“Board & Bluetooth” starts with the global active-board selection in its own
-card. The brand cards below select which settings to inspect. Opening the
+“Board & Bluetooth” shows “Active board”, “All boards”, then “Settings for each
+board”. The brand cards select which settings to inspect. Opening the
 active-board picker always starts from the active board, even while inspecting
 another brand; activating that other brand remains a separate explicit action.
 

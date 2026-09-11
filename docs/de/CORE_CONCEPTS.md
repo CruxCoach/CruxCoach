@@ -165,8 +165,8 @@ und löst keine Aktion aus. Die Dialoge sind gut lesbar, scrollbar und führen b
 Schließen zur gleichen Seite zurück. Aktuelle Fehler, fehlende Voraussetzungen,
 Backup-Status und Warnungen vor Löschaktionen bleiben am passenden Ort sichtbar.
 
-„Board & Bluetooth“ beginnt mit der globalen Auswahl des aktiven Boards in einer
-eigenen Karte. Die Markenkarten darunter wählen nur die angezeigten Einstellungen.
+„Board & Bluetooth“ zeigt zuerst „Aktives Board“, dann „Alle Boards“ und danach
+„Einstellungen je Board“. Die Markenkarten wählen nur die angezeigten Einstellungen.
 Die Auswahl für das aktive Board startet immer beim aktiven Board, auch wenn du
 gerade eine andere Marke ansiehst. Diese andere Marke zu aktivieren bleibt eine
 separate ausdrückliche Aktion.
