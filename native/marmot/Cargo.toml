@@ -1,0 +1,40 @@
+[package]
+name = "cruxcoach-marmot"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-only"
+
+[features]
+local-harness = []
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+cgka-engine = { path = ".mdk/crates/cgka-engine" }
+cgka-session = { path = ".mdk/crates/cgka-session" }
+fs-private = { path = ".mdk/crates/fs-private" }
+cgka-traits = { path = ".mdk/crates/traits" }
+storage-sqlite = { path = ".mdk/crates/storage-sqlite" }
+transport-nostr-peeler = { path = ".mdk/crates/transport-nostr-peeler" }
+transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter" }
+nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip59"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.149"
+tokio = { version = "=1.52.1", features = ["rt", "time", "net", "macros"] }
+sha2 = "=0.10.9"
+hex = "=0.4.3"
+jni = "=0.21.1"
+zeroize = "=1.9.0"
+futures-util = "=0.3.32"
+rustls = { version = "=0.23.40", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "=0.26.11"
+tokio-tungstenite = { version = "=0.26.2", features = ["rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[patch.crates-io]
+hax-lib-macros = { git = "https://github.com/cryspen/hax.git", rev = "8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7" }
+libsqlite3-sys = { git = "https://github.com/rusqlite/rusqlite.git", rev = "5ae7fdf83085c595fd54f977b3a56ccacabaf16b" }

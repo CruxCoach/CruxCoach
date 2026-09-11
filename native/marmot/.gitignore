@@ -1,0 +1,5 @@
+.mdk/
+target/
+!tests/
+!tests/**
+__pycache__/
