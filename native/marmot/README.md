@@ -14,7 +14,7 @@ replace it with an unlocked dependency resolution.
 ```sh
 python3 native/marmot/prepare.py
 cargo +1.97.1 fmt --manifest-path native/marmot/Cargo.toml --check
-cargo +1.97.1 test --locked --manifest-path native/marmot/Cargo.toml --features local-harness --test native_transport --test relay_boundary --test storage_boundary
+cargo +1.97.1 test --locked --manifest-path native/marmot/Cargo.toml --features local-harness --lib --test native_transport --test relay_boundary --test storage_boundary
 python3 native/marmot/build.py --output /tmp/cc-marmot-host
 python3 native/marmot/build.py --android-ndk /path/to/ndk/27.2.12479018 --output /tmp/cc-marmot-android
 ```
@@ -29,7 +29,12 @@ Reproducing the same binary therefore also requires the same absolute source,
 Cargo, NDK and target paths. The manifest pins source/toolchain inputs; it does
 not claim path-independent binary reproducibility. A full same-path arm64 rebuild was byte-identical. The final adapter-only clean
 rebuild with those unchanged qualified dependencies also matched, SHA-256
-`67fcf53886c417c0322950c18398547f31370f9c7a8a9a60aaf1de698ee67545`. Android static dependency
+`67fcf53886c417c0322950c18398547f31370f9c7a8a9a60aaf1de698ee67545` for the earlier snapshot adapter.
+The friendship adapter's same-source/same-path clean adapter rebuild also matches,
+SHA-256 `ca6557f7f2b3ca9083319004a0dd35e9a0b4967a85ac307133c4a3be7f8fbe67`.
+Its four production JNI exports contain no synthetic-identity harness exports.
+These hashes identify source-built library artifacts, not APK/device execution.
+Android static dependency
 symbols are hidden; the shared object's load segments use 16 KiB alignment.
 Gradle packages only the arm64 library, consistent with the existing app ABI.
 No binary is checked in. Changing native pins, Gradle or CI requires owner review.
@@ -45,6 +50,7 @@ fix is upstream code, not a local policy bypass.
 ./gradlew :androidApp:writeMarmotEndpointClasspath --console=plain
 cargo +1.97.1 build --locked --manifest-path native/marmot/Cargo.toml --example local_relay
 python3 scripts/marmot_network_e2e.py
+python3 scripts/marmot_continuous_e2e.py
 # Interactive optional endpoint; defaults to SERVER and the requested six relays:
 python3 scripts/marmot_endpoint.py --prepared --role SERVER
 ```
@@ -64,6 +70,30 @@ never arguments or logs; cleanup removes the owned temporary directory. The
 ordinary interactive adapter is ephemeral. `local-harness` JNI symbols are absent
 from the Android build, and `build.py` rejects combining that feature with Android.
 This adapter is an executable protocol reference, not a production server install.
+
+The continuous process test uses three independent JVMs (owner plus two friends),
+with separate USER and SERVER owner runs. `source_profile`, `source_training` and
+`source_note` mutate the actual app repositories; `offer_continuous` names peers,
+roles, category scope and history. `accept_continuous` confirms friendship and
+selects only the acceptor’s own outgoing data;
+`deny_category`/`end_continuous` narrow/end it. `automatic` opts into a local
+headless polling runner using the same source/policy/exchange services. It does
+not run an Android Worker or install a background server. `continuous_status` and
+`source_hashes` report hashes/counts instead of private text. `rotate_transport`
+exercises the real MDK epoch transition. `--unreachable-cruxcoach` is accepted
+only with loopback fixtures and maps the canonical CruxCoach relay to a closed
+local port; production builds contain no such facility.
+
+Continuous kind 1223 adds source-preserving ACK compaction and an exact-fenced
+outbox retirement API for completed/superseded application transfers. It cannot
+delete core MDK fanouts or another kind's obligations. Source provenance survives
+eight days in bounded buckets, while current payloads live in the independent app
+replica. Read/ingest byte and row limits are unchanged. Native scans use a durable
+four-route round-robin budget and continuous publication uses oldest-due bounded
+batches. Ending either side deletes both received directions. Root-signed
+generation evidence and real peer cleanup acknowledgements survive independently
+of plaintext. See the architecture for friendship authority, metadata retention
+and recovery limits.
 
 Public probes are manual, bounded and **not CI steps**. `public_e2e` requires
 `--synthetic-public-probe`; the optional `--six-relay-compat` uses all requested

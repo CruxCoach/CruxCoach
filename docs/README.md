@@ -4,11 +4,16 @@ Start with [the app overview](../README.md), then choose a guide below.
 
 ## Permission feature branch overlay (2026-09-11)
 
-`feat/marmot-permissions-v023` merges release source `2788a6fa4` into the retained
-permission work. Its continuation adds native MDK/JNI snapshot exchange,
-authenticated permission/consent transport, the six configured relays, Android
-sender/recipient UI and a local synthetic server endpoint. No server deployment,
-release or production publisher activation is included.
+`feat/marmot-permissions-v023` retains the integrated release source and native
+MDK/JNI permission work in the owner's linearized base `4fd3ed337`. The current
+product adds mutually confirmed friendships with independently chosen outgoing
+profile/goals, training log and climb notes, automatic changes/deletions and
+read-only current-data views. Friendship needs one explicit mutual confirmation;
+later owner-chosen scopes need no new recipient acceptance. Ending friendship
+removes both received directions. Legacy consent remains separate. The same
+six relays and optional synthetic server endpoint remain; no backend is required.
+This local continuation includes no merge, push, deployment, release or publisher
+activation. Complete CI and actual Android device qualification remain separate.
 Start with the German [permission-system overview and architecture decisions](architecture/marmot-permissions-overview.de.md).
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
 current behavior, migration rules, threat model, measured relay compatibility and
