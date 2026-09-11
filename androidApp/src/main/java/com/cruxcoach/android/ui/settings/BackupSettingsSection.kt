@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -224,7 +226,11 @@ internal fun DeleteRemoteBackupsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_title)) },
-        text = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_body)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.settings_backup_delete_remote_dialog_body))
+            }
+        },
         confirmButton = {
             Button(
                 onClick = onConfirm,
@@ -254,7 +260,7 @@ internal fun BackupRestoreDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_backup_restore_dialog_title)) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     stringResource(
                         R.string.settings_backup_restore_dialog_body,
