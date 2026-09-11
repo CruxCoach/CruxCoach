@@ -12,8 +12,10 @@ read-only current-data views. Friendship needs one explicit mutual confirmation;
 later owner-chosen scopes need no new recipient acceptance. Ending friendship
 removes both received directions. Legacy consent remains separate. The same
 six relays and optional synthetic server endpoint remain; no backend is required.
-This local continuation includes no merge, push, deployment, release or publisher
-activation. Complete CI and actual Android device qualification remain separate.
+The subsequent [dependency review](architecture/marmot-dependencies.md) retains
+the native host and consolidates Quartz signing. The owner authorized feature
+push/CI/APKTrack publication for that pass; actual publication requires its receipt
+evidence. Main/stable and Android device qualification remain separate.
 Start with the German [permission-system overview and architecture decisions](architecture/marmot-permissions-overview.de.md).
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
 current behavior, migration rules, threat model, measured relay compatibility and

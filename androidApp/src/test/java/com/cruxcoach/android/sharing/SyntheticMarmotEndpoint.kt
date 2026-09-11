@@ -66,7 +66,8 @@ open class SyntheticMarmotEndpoint(
             val signed = json.decodeFromString<BindingEvent>(MarmotTestNative.signEvent(identity, false, unsigned.toString()))
             Nip01SignedEvent(signed.id, signed.pubkey, signed.created_at, signed.kind, signed.tags, signed.content, signed.sig)
         }
-        fun crypto(domain: SigningDomain) = Nip55LedgerCrypto(domain, { currentAccount }, eventSigner, bip340)
+        fun crypto(domain: SigningDomain) = Nip55LedgerCrypto(domain, { currentAccount },
+            if (domain == SigningDomain.FRIENDSHIP) transportEventSigner else eventSigner, bip340)
         val deviceCrypto = object : LedgerCrypto {
             override fun hash(canonical: ByteArray) = MessageDigest.getInstance("SHA-256").digest(canonical)
             override fun sign(hash: ByteArray) = MarmotTestNative.signDigest(identity, true, hash)
@@ -80,6 +81,10 @@ open class SyntheticMarmotEndpoint(
         lateinit var driver: JdbcSqliteDriver
         lateinit var database: SecureDatabase
         lateinit var repository: SecureDbSharingRepository
+        // Exercise the production account-bound route for friendship and leaf
+        // proofs; genesis enrolment still precedes READ authority by definition.
+        private val transportEventSigner = PrivateApplicationSigner(eventSigner, { false }, eventSigner,
+            account, { currentAccount }, { repository.canUseSnapshots(DeviceCapability.READ) })
         lateinit var controller: SharingController
         lateinit var port: LiveMarmotSnapshotPort
         lateinit var exchange: SharingSnapshotExchange
@@ -100,7 +105,7 @@ open class SyntheticMarmotEndpoint(
                     val config = buildJsonObject { put("account", account); put("local_test", loopbackHarness); put("relays", json.encodeToJsonElement(endpoints)) }
                     MarmotTestNative.open(identity, directory.resolve("mls.db").absolutePath, key, config.toString()).also { nativeHandle = it }
                 }, invoke = MarmotNative::call, close = MarmotNative::close,
-                accountSign = { time, kind, tags, text -> runBlocking { eventSigner.sign(time, kind, tags, text) } },
+                accountSign = { time, kind, tags, text -> runBlocking { transportEventSigner.sign(time, kind, tags, text) } },
                 deviceSign = deviceCrypto::sign, verify = bip340, now = clock::now)
             exchange = SharingSnapshotExchange(database, repository, account, role, port, nowEpochMillis = clock::now)
             policy = SharingPolicyTransport(database, repository, account, port, signer, now = clock::now)

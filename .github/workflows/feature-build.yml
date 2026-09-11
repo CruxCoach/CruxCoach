@@ -27,6 +27,15 @@ jobs:
       - name: Derive immutable feature identity
         id: identity
         run: python3 scripts/feature_identity.py --branch "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
+      # Owner review: feature code has no publication credentials. Require the
+      # real native boundary before the trusted-main publisher is eligible.
+      - name: Verify pinned Marmot native boundary
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy --target aarch64-linux-android
+          python3 -m unittest discover -s native/marmot -p '*_test.py'
+          python3 native/marmot/prepare.py
+          cargo +1.97.1 fmt --manifest-path native/marmot/Cargo.toml --check
+          cargo +1.97.1 test --locked --manifest-path native/marmot/Cargo.toml --features local-harness --lib --test native_transport --test relay_boundary --test storage_boundary
       - name: Test
         env:
           FEATURE_BRANCH: ${{ steps.identity.outputs.branch }}
@@ -44,3 +53,9 @@ jobs:
             -PfeaturePackage="$FEATURE_PACKAGE" \
             -PfeatureLabel="$FEATURE_LABEL" \
             -PfeatureVersionCode="$FEATURE_VERSION_CODE"
+      - name: Independent native friendship and legacy participants
+        run: |
+          ./gradlew :androidApp:writeMarmotEndpointClasspath --console=plain
+          cargo +1.97.1 build --locked --manifest-path native/marmot/Cargo.toml --example local_relay
+          python3 scripts/marmot_network_e2e.py
+          python3 scripts/marmot_continuous_e2e.py

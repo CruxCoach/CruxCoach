@@ -108,3 +108,20 @@ notice is retained under `licenses/MDK-MIT.txt`. Dependency license attribution
 is recorded under `licenses/`; source pins and full dependency resolution are in
 `Cargo.lock`. No signing, publisher, OIDC, deployment or production credential
 configuration belongs in this directory.
+
+## Why this host remains alongside Quartz
+
+[The dependency comparison](../../docs/architecture/marmot-dependencies.md) records
+released artifacts, current source pins, API probes, transitive costs and the
+strongest case for replacing this host. Quartz supplies account signing, not this
+Marmot engine. Official UniFFI adds a full runtime; released Quartz has a different
+protocol profile. Neither is adopted without atomic fence/disposal and migration
+parity. The 108-line MDK patch remains unchanged and hash-checked; no new native
+dependency or cryptographic primitive is introduced. Kotlin account callbacks,
+leaf proofs and friendship signatures now share one checked Quartz signer route.
+
+The feature request workflow runs the same native boundary and separate-process
+acceptance as PR CI before the trusted-main publisher may reserve/build/publish.
+Only the trusted publisher holds upload credentials; the local CLI must not obtain
+them from production. Reservation uses the canonical branch/track/commit identity
+before a publishable build. Full APK/Gradle/lint work belongs in CI.

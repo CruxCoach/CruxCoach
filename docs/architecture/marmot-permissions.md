@@ -31,6 +31,15 @@ central authorization service.
 hosts and explicit tests. `NativeSharingGate` is historical evidence; its old
 qualification flags have not been invented or toggled to enable this binding.
 
+## Dependency decision
+
+The subsequent owner-authorized dependency/publication pass retains Quartz 1.05.1
+for account signing and the pinned native MDK host. [The critical dependency
+comparison](marmot-dependencies.md) separates released Amethyst/Quartz, current main
+and official UniFFI APIs, measured costs and migration limits. Account signing is
+now shared by friendship certificates, leaf proofs and native callbacks. This
+pass authorizes only normal feature publication; main/stable remain owner-only.
+
 ## Friendship and current private data
 
 A root-account-signed request and an explicitly signed acceptance establish one

@@ -4,6 +4,7 @@ import android.content.Context
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.domain.sharing.DeviceCapability
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.io.File
 
@@ -94,20 +95,20 @@ class AndroidMarmotFactory(
         error("open_app_for_signer")
     }
 
-    /** Root friendship selections/END retries must use the same unattended
-     * boundary as native transport signatures, including pending bootstrap. */
+    /** One Quartz route for permission certificates, leaf-device proofs and
+     * native account signing. Refusal never falls back to an interactive UI. */
     val permissionEventSigner: Nip01EventSigner = PrivateApplicationSigner(
         foreground = eventSigner,
         unattended = { unattended },
+        account = account,
+        currentAccount = nostrSigner::getPublicKeyHex,
+        authorised = { repository.canUseSnapshots(DeviceCapability.READ) },
         provider = Nip01EventSigner { time, kind, tags, content ->
-            check(nostrSigner.getPublicKeyHex() == account)
             val external = nostrSigner.signer as? com.vitorpamplona.quartz.nip55AndroidSigner.client.NostrSignerExternal
-            val signed = if (external == null) eventSigner.sign(time, kind, tags, content)
+            if (external == null) eventSigner.sign(time, kind, tags, content)
             else providerOnly { QuartzBackgroundSigner.sign(external, time, kind, tags, content) }.let { e ->
                 com.cruxcoach.domain.sharing.Nip01SignedEvent(e.id, e.pubKey, e.createdAt, e.kind, e.tags.map { it.toList() }, e.content, e.sig)
             }
-            check(nostrSigner.getPublicKeyHex() == account)
-            signed
         },
     )
 
@@ -120,13 +121,11 @@ class AndroidMarmotFactory(
             val result = when (operation) {
                 "sign" -> {
                     require(request["pubkey"]!!.jsonPrimitive.content == account)
-                    val event: com.vitorpamplona.quartz.nip01Core.core.Event = if (external != null) providerOnly {
-                        QuartzBackgroundSigner.sign(external, request["created_at"]!!.jsonPrimitive.long, request["kind"]!!.jsonPrimitive.int,
-                            request["tags"]!!.jsonArray.map { tag -> tag.jsonArray.map { it.jsonPrimitive.content } }, request["content"]!!.jsonPrimitive.content)
-                    } else activeSigner.sign(request["created_at"]!!.jsonPrimitive.long, request["kind"]!!.jsonPrimitive.int,
-                        request["tags"]!!.jsonArray.map { tag -> tag.jsonArray.map { it.jsonPrimitive.content }.toTypedArray() }.toTypedArray(),
-                        request["content"]!!.jsonPrimitive.content)
-                    event.toJson()
+                    val event = permissionEventSigner.sign(request["created_at"]!!.jsonPrimitive.long,
+                        request["kind"]!!.jsonPrimitive.int,
+                        request["tags"]!!.jsonArray.map { tag -> tag.jsonArray.map { it.jsonPrimitive.content } },
+                        request["content"]!!.jsonPrimitive.content) ?: error("account_signer_refused")
+                    Json.encodeToString(event.toNativeEvent())
                 }
                 "nip44_encrypt" -> if (external != null) providerOnly { QuartzBackgroundSigner.encrypt(external, request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content) }
                     else activeSigner.nip44Encrypt(request["content"]!!.jsonPrimitive.content, request["public"]!!.jsonPrimitive.content)
@@ -155,15 +154,7 @@ class AndroidMarmotFactory(
             } finally { key.fill(0) }
         },
         invoke = MarmotNative::call, close = MarmotNative::close,
-        accountSign = { time, kind, tags, content ->
-            check(nostrSigner.getPublicKeyHex() == account)
-            val external = if (unattended) nostrSigner.signer as? com.vitorpamplona.quartz.nip55AndroidSigner.client.NostrSignerExternal else null
-            if (external == null) runBlocking { eventSigner.sign(time, kind, tags, content) }
-            else providerOnly { QuartzBackgroundSigner.sign(external, time, kind, tags, content) }.let { e ->
-                check(nostrSigner.getPublicKeyHex() == account)
-                com.cruxcoach.domain.sharing.Nip01SignedEvent(e.id, e.pubKey, e.createdAt, e.kind, e.tags.map { it.toList() }, e.content, e.sig)
-            }
-        },
+        accountSign = { time, kind, tags, content -> runBlocking { permissionEventSigner.sign(time, kind, tags, content) } },
         deviceSign = { digest -> identity.crypto()?.sign(digest) }, verify = verifier,
         now = { repository.permissionClock?.now() ?: System.currentTimeMillis() },
     )

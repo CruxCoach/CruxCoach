@@ -196,7 +196,7 @@ class LiveMarmotSnapshotPort(
             deviceSign(deviceId.unhex())?.hex() ?: error("device_signer_refused"))
         check(validEvent(deviceEvent))
         val signed = accountSign(time, 1221, helloTags, json.encodeToString(deviceEvent)) ?: error("account_signer_refused")
-        val accountEvent = BindingEvent(signed.id, signed.pubKey, signed.createdAt, signed.kind, signed.tags, signed.content, signed.sig)
+        val accountEvent = signed.toNativeEvent()
         check(accountEvent.pubkey == account && validEvent(accountEvent))
         check(fence(peer) == fence && device()?.publicKey == local.publicKey)
         val wire = json.encodeToString(accountEvent)
