@@ -143,3 +143,12 @@ and native storage boundaries passing. These are test-build measurements, not
 an APK-size or cross-SDK benchmark. Backtrace/module information remains; full
 local type/variable debugging can opt in with `CARGO_PROFILE_DEV_DEBUG=2` and
 `CARGO_INCREMENTAL=1`. Keep those overrides out of qualification builds.
+
+The generated JNI directory has two AGP consumers: `merge*JniLibFolders` and
+`merge*NativeLibs`. Both depend on `buildMarmotNative`; attaching only the later
+native merge leaves the source-set folder merge with an undeclared producer
+dependency, which Gradle correctly rejects. A focused check for this integration
+is `./gradlew :androidApp:mergeDebugJniLibFolders --no-daemon --max-workers=2
+--console=plain`. It must select the native producer automatically and merge its
+folders successfully; it does not assemble, sign or install an APK. The complete
+APK build remains a CI check. This Gradle dependency change requires owner review.
