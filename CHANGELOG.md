@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
 ### Fixed
+- Board-sync network warnings update when Wi-Fi or mobile connectivity changes,
+  including after reconnecting without leaving the screen.
 - Randomized search uses one stable shuffled result set across pages. Duplicate
   problem IDs are removed before display, preventing duplicate-key list crashes.
 - Filter counts use the same restrictions as the result list, including hidden

@@ -15,6 +15,7 @@ import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isNetworkPermissionGranted
 import com.cruxcoach.android.util.isWifiConnected
+import com.cruxcoach.android.util.observeNetworkStatus
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.android.util.LocalShareClient
 import com.cruxcoach.android.util.LocalShareDiscovery
@@ -158,6 +159,14 @@ class BoardSyncManager(
     val boardDataDeletion: StateFlow<BoardDataDeletionState> = _boardDataDeletion.asStateFlow()
 
     init {
+        scope.safeLaunch(TAG) {
+            observeNetworkStatus(appContext).collect { network ->
+                _state.update { it.copy(
+                    networkAvailable = network.available,
+                    wifiConnected = network.wifiConnected,
+                ) }
+            }
+        }
         scope.safeLaunch(TAG) {
             val imported = importer.isImported()
             val lastSync = userPreferences.lastSyncTimestamp.first()
