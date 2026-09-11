@@ -1,0 +1,47 @@
+-- Migration 21 -> 22: acts name the manifest head they were authored against,
+-- and the manifest itself becomes fork-capable.
+--
+-- FEAT-062 §11.
+--
+-- An act used to be judged against the manifest as it stands *now*, which is a
+-- different question from the one its signing device answered: a demotion, a
+-- revocation or a recovery moves the answer, and the act stops verifying
+-- because the estate moved on rather than because anything is wrong with it.
+-- So the point in the manifest is signed into the act and the check happens
+-- there.
+--
+-- Existing acts get NULL, which reads as "authored before the genesis" and
+-- fails closed. Inventing a head for them would be asserting a history nobody
+-- signed, which is the worse of the two — the same call migration 20 made about
+-- policy parents.
+ALTER TABLE sharing_authority_attestation ADD COLUMN manifest_head_entry_id TEXT;
+
+-- The manifest was a strict line with a globally unique sequence, so two of the
+-- owner's devices offline could not both change it: the second to arrive
+-- collided and was refused, and whichever reached the database first won. That
+-- is arrival order deciding who administers the estate — the exact thing the
+-- resolver exists to eliminate. Siblings on one parent now share a sequence,
+-- exactly as they do on the other two ledgers, and the resolver settles them
+-- per scope.
+CREATE TABLE sharing_device_manifest_entry_new (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    manifest_sequence INTEGER NOT NULL,
+    authority_generation INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
+
+INSERT INTO sharing_device_manifest_entry_new(
+    entry_id, manifest_sequence, authority_generation, parent_entry_id,
+    signer_npub, signature, body_kind, body_json, received_at
+)
+SELECT entry_id, manifest_sequence, authority_generation, parent_entry_id,
+       signer_npub, signature, body_kind, body_json, received_at
+FROM sharing_device_manifest_entry;
+
+DROP TABLE sharing_device_manifest_entry;
+ALTER TABLE sharing_device_manifest_entry_new RENAME TO sharing_device_manifest_entry;

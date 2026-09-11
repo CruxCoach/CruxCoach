@@ -165,16 +165,24 @@ actual class SecureDriverFactory(
             schema = SecureDatabase.Schema,
             context = context,
             name = dbName,
-            factory = factory
+            factory = factory,
+            // FEAT-062: foreign keys are a correctness requirement of the
+            // sharing projection, so they are turned on in onConfigure — per
+            // connection, before any statement runs on it. The PRAGMA below
+            // repeats it for the connection this factory itself opens; setting
+            // it twice is a no-op, missing it once is a silent fail-open.
+            callback = object : AndroidSqliteDriver.Callback(SecureDatabase.Schema) {
+                override fun onConfigure(db: SupportSQLiteDatabase) {
+                    super.onConfigure(db)
+                    db.setForeignKeyConstraintsEnabled(true)
+                }
+            },
         )
         // SQLCipher requires PRAGMAs to go through query path, not execute
         fun SqlDriver.pragma(stmt: String) {
             executeQuery(null, stmt, { cursor -> cursor.next(); QueryResult.Value(Unit) }, 0)
         }
-        driver.pragma("PRAGMA journal_mode = WAL")
-        driver.pragma("PRAGMA cache_size = -64000")
-        driver.pragma("PRAGMA cipher_memory_security = OFF")
-        driver.pragma("PRAGMA busy_timeout = 5000")
+        SecureDatabasePragmas.STATEMENTS.forEach { driver.pragma(it) }
         return driver
     }
 }

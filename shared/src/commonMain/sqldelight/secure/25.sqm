@@ -1,0 +1,19 @@
+-- Migration 22 -> 23: an act binds the whole manifest frontier, not one head.
+--
+-- FEAT-062 §12.1.
+--
+-- The manifest forks and independent scopes merge: enrolling a tablet and
+-- revoking a phone are siblings on one parent, and the state that stands is
+-- their union. A single head names one branch of that union and silently omits
+-- the other, so a device that signed against "the tablet is enrolled and the
+-- phone is revoked" could record only half of what it saw, and the reader had
+-- to guess the rest from whichever head looked canonical.
+--
+-- The column carries the canonical, length-prefixed frontier
+-- (`ccctx.v1|<n>:<len>:<id>…`), which is what the act signs.
+--
+-- Additive, and the old column is left where it is. Existing rows get NULL,
+-- which parses to no context and fails closed — inventing a frontier for them
+-- would be asserting a history nobody signed, the same call migrations 20 and
+-- 21 made.
+ALTER TABLE sharing_authority_attestation ADD COLUMN manifest_context TEXT;

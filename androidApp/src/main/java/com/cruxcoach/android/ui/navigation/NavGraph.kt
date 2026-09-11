@@ -157,6 +157,9 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val SHARING = "sharing"
+    // The route carries the canonical public-key hex, not a bech32 npub.
+    const val SHARING_PEER = "sharing_peer/{peerKey}"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -885,6 +888,7 @@ fun CruxCoachNavHost(
                     onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
                     onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                     onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                    onNavigateToSharing = { navController.navigate(Routes.SHARING) },
                     onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
                     onDonateClick = {
                         paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
@@ -990,6 +994,25 @@ fun CruxCoachNavHost(
                 KeyManagementScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) }
+                )
+            }
+
+            composable(Routes.SHARING) {
+                com.cruxcoach.android.ui.sharing.SharingScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onOpenPeer = { peer ->
+                        navController.navigate("sharing_peer/${java.net.URLEncoder.encode(peer.value, "UTF-8")}")
+                    },
+                )
+            }
+
+            composable(Routes.SHARING_PEER) { backStackEntry ->
+                val peerKey = java.net.URLDecoder.decode(
+                    backStackEntry.arguments?.getString("peerKey").orEmpty(), "UTF-8",
+                )
+                com.cruxcoach.android.ui.sharing.SharingPeerDetailScreen(
+                    peer = com.cruxcoach.domain.sharing.PeerId(peerKey),
+                    onNavigateBack = { navController.popBackStack() },
                 )
             }
 

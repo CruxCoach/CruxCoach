@@ -1,0 +1,46 @@
+-- Migration 18 -> 19: the permission ledger becomes a DAG.
+--
+-- FEAT-062 §11. Two of the owner's devices go offline and both decide
+-- something about the same person. Under the old shape they both claimed the
+-- next policy_sequence, the UNIQUE index rejected the second, and whichever
+-- branch reached the database first won — arrival order deciding who can see
+-- what, which is precisely what the resolver exists to eliminate.
+--
+-- parent_entry_id records what each entry was built on. The index on
+-- (peer, sequence) stays for lookup but is no longer unique, because two
+-- siblings legitimately share a number.
+--
+-- Existing rows keep parent_entry_id NULL. That is honest rather than
+-- convenient: their parent links were never recorded, so inventing a chain
+-- would be asserting a history nobody signed. A NULL-parent entry heads its own
+-- branch, and the reducer picks between branches by authority as usual.
+CREATE TABLE sharing_ledger_entry_new (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    peer_npub TEXT NOT NULL,
+    policy_sequence INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    authority_generation INTEGER NOT NULL,
+    resource_epoch INTEGER NOT NULL,
+    device_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    FOREIGN KEY (peer_npub) REFERENCES sharing_relationship(peer_npub) ON DELETE CASCADE
+);
+
+INSERT INTO sharing_ledger_entry_new(
+    entry_id, peer_npub, policy_sequence, parent_entry_id, authority_generation,
+    resource_epoch, device_generation, signer_npub, signature, body_kind, body_json, received_at
+)
+SELECT entry_id, peer_npub, policy_sequence, NULL, authority_generation,
+       resource_epoch, device_generation, signer_npub, signature, body_kind, body_json, received_at
+FROM sharing_ledger_entry;
+
+DROP INDEX IF EXISTS idx_sharing_ledger_peer_sequence;
+DROP TABLE sharing_ledger_entry;
+ALTER TABLE sharing_ledger_entry_new RENAME TO sharing_ledger_entry;
+
+CREATE INDEX idx_sharing_ledger_peer_sequence
+    ON sharing_ledger_entry(peer_npub, policy_sequence);

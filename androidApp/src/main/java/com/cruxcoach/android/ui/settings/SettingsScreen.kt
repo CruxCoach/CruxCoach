@@ -62,6 +62,7 @@ fun SettingsScreen(
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToNostrProfile: () -> Unit = {},
+    onNavigateToSharing: () -> Unit = {},
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
@@ -487,6 +488,9 @@ fun SettingsScreen(
                         onNavigateToKeyManagement = onNavigateToKeyManagement,
                         onNavigateToNostrProfile = onNavigateToNostrProfile,
                     )
+                    // FEAT-062: sharing lives next to the account keys because
+                    // the npub is what a sharing relationship is bound to.
+                    SharingSettingsSection(onNavigateToSharing = onNavigateToSharing)
                 }
             }
 

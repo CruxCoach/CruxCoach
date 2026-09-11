@@ -1,0 +1,25 @@
+-- Migration version 17 → 18 (secure/personal DB): the device manifest.
+--
+-- Additive. Until now a device was authorised by being the one holding the key,
+-- so "which of my devices may change permissions" and "which authority
+-- generation is current" had no stored answer. This table is that answer:
+-- owner-signed, append-only, and chained by parent so a fork between two
+-- devices that have not seen each other is detectable rather than merged.
+--
+-- Existing installs get an empty manifest, which grants no device any
+-- authority. That is the fail-closed direction and is deliberate: the first
+-- enrolment is what establishes authority, and until it happens the
+-- administrative paths stay locked rather than defaulting to trusting whoever
+-- holds the root key.
+
+CREATE TABLE sharing_device_manifest_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    manifest_sequence INTEGER NOT NULL UNIQUE,
+    authority_generation INTEGER NOT NULL,
+    parent_entry_id TEXT,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);

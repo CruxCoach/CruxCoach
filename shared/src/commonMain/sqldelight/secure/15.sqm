@@ -1,0 +1,22 @@
+-- Migration version 15 → 16 (secure/personal DB): the owner-policy ledger.
+--
+-- Additive. Circle baselines and per-person/per-object exceptions were written
+-- directly into mutable rows; they now come from a signed append-only ledger
+-- and those rows become a cache rewritten from it. Existing rows are left in
+-- place: the first append rewrites the cache from the ledger, and until then
+-- the reduced policy is simply empty, which grants nothing.
+
+-- The owner's own policy ledger: baselines and per-person/per-object
+-- exceptions. Signed and append-only for the same reason the relationship
+-- ledger is — these decide who sees what, so they are permissions rather than
+-- settings. The three projection tables above are caches rewritten from this.
+CREATE TABLE sharing_owner_policy_entry (
+    entry_id TEXT NOT NULL PRIMARY KEY,
+    policy_sequence INTEGER NOT NULL UNIQUE,
+    authority_generation INTEGER NOT NULL,
+    signer_npub TEXT NOT NULL,
+    signature TEXT NOT NULL,
+    body_kind TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    received_at INTEGER NOT NULL
+);
