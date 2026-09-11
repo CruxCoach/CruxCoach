@@ -64,23 +64,43 @@ internal data class BoardBrowserHeaderContext(
 private const val HEADER_HOME_WIDTH_DP = 44
 private const val HEADER_BOARD_MIN_WIDTH_DP = 96
 private const val HEADER_ACTION_WIDTH_DP = 44
-private const val HEADER_ACTION_COUNT = 5
+
+/** Declaration order is the visual order from 0.2.2; priority only selects visibility. */
+internal enum class BoardHeaderAction(val compactPriority: Int) {
+    BLUETOOTH(0), FILTER(1), LOGBOOK(3), LISTS(4), SETTINGS(2),
+}
+
+internal data class BoardHeaderActionLayout(
+    val direct: List<BoardHeaderAction>,
+    val overflow: List<BoardHeaderAction>,
+)
+
+internal fun boardHeaderActionLayout(availableWidthDp: Int): BoardHeaderActionLayout {
+    val visualOrder = BoardHeaderAction.entries
+    val direct = visualOrder.sortedBy { it.compactPriority }
+        .take(directHeaderActionCount(availableWidthDp)).toSet()
+    return BoardHeaderActionLayout(
+        direct = visualOrder.filter { it in direct },
+        overflow = visualOrder.filterNot { it in direct },
+    )
+}
 
 /**
- * Keep enough room for a useful board picker, then expose actions in priority
- * order. As soon as any action is hidden, one action slot is reserved for the
- * overflow menu that still makes every destination reachable.
+ * Keep enough room for a useful board picker. As soon as any action is hidden,
+ * one action slot is reserved for the overflow menu so every destination stays reachable.
  */
 internal fun directHeaderActionCount(availableWidthDp: Int): Int {
+    val actionCount = BoardHeaderAction.entries.size
     val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
-    if (actionSpace >= HEADER_ACTION_WIDTH_DP * HEADER_ACTION_COUNT) {
-        return HEADER_ACTION_COUNT
+    if (actionSpace >= HEADER_ACTION_WIDTH_DP * actionCount) {
+        return actionCount
     }
     val availableSlots = (actionSpace / HEADER_ACTION_WIDTH_DP).coerceAtLeast(0)
-    return (availableSlots - 1).coerceIn(0, HEADER_ACTION_COUNT - 1)
+    return (availableSlots - 1).coerceIn(0, actionCount - 1)
 }
 
 private data class HeaderActionSpec(
+    val action: BoardHeaderAction,
     val icon: ImageVector,
     @StringRes val contentDescription: Int,
     val tag: String,
@@ -134,24 +154,26 @@ internal fun BoardBrowserHeader(
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val actions = listOf(
             HeaderActionSpec(
+                action = BoardHeaderAction.BLUETOOTH,
                 icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
                 contentDescription = R.string.cd_bluetooth,
                 tag = "board_ble_button",
                 tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                 onClick = onBluetooth,
             ),
-            HeaderActionSpec(Icons.Default.Tune, R.string.cd_filter, "board_filter_toggle", onClick = onFilter),
-            HeaderActionSpec(Icons.Default.Settings, R.string.cd_settings, "board_settings_button", onClick = onSettings),
-            HeaderActionSpec(Icons.Default.Book, R.string.board_logbook_title, "board_logbook_icon", onClick = onLogbook),
+            HeaderActionSpec(BoardHeaderAction.FILTER, Icons.Default.Tune, R.string.cd_filter, "board_filter_toggle", onClick = onFilter),
+            HeaderActionSpec(BoardHeaderAction.LOGBOOK, Icons.Default.Book, R.string.board_logbook_title, "board_logbook_icon", onClick = onLogbook),
             HeaderActionSpec(
+                BoardHeaderAction.LISTS,
                 Icons.AutoMirrored.Filled.FormatListBulleted,
                 R.string.board_lists_title,
                 "board_lists_button",
                 onClick = onLists,
             ),
-        )
-        val directCount = directHeaderActionCount(maxWidth.value.toInt())
-        val overflowActions = actions.drop(directCount)
+            HeaderActionSpec(BoardHeaderAction.SETTINGS, Icons.Default.Settings, R.string.cd_settings, "board_settings_button", onClick = onSettings),
+        ).associateBy { it.action }
+        val actionLayout = boardHeaderActionLayout(maxWidth.value.toInt())
+        val overflowActions = actionLayout.overflow.map(actions::getValue)
         var overflowExpanded by remember { mutableStateOf(false) }
 
         Surface(
@@ -226,7 +248,7 @@ internal fun BoardBrowserHeader(
                         modifier = Modifier.size(18.dp),
                     )
                 }
-                actions.take(directCount).forEach { action ->
+                actionLayout.direct.map(actions::getValue).forEach { action ->
                     HeaderAction(
                         icon = action.icon,
                         contentDescription = action.contentDescription,

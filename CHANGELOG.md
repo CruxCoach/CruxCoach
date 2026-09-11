@@ -24,6 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
 ### Fixed
+- The browser toolbar retains the familiar Bluetooth, Filter, Logbook, Lists,
+  Settings order. Compact-screen priorities independently choose which actions
+  remain visible; both the toolbar and overflow menu preserve that visual order.
 - Board-sync network warnings update when Wi-Fi or mobile connectivity changes,
   including after reconnecting without leaving the screen.
 - Randomized search uses one stable shuffled result set across pages. Duplicate
