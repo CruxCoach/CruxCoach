@@ -219,6 +219,7 @@ internal fun <T> SettingsChoices(
     FlowRow(
         modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         options.forEach { (value, label) ->
             FilterChip(
