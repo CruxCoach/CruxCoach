@@ -22,16 +22,9 @@ internal fun RoutePlaybackSection(
     onCountdownSecondsChange: (Int) -> Unit,
     onAutoLoopChange: (Boolean) -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_playback_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_playback_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_playback_title),
+        description = stringResource(R.string.settings_playback_desc),
     )
 
     // Setter speed toggle
@@ -50,15 +43,10 @@ internal fun RoutePlaybackSection(
     }
     val speedDescription = if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed, speedLabel)
         else stringResource(R.string.settings_playback_frame_speed, speedLabel)
-    Text(
-        speedDescription,
-        style = MaterialTheme.typography.bodyMedium
-    )
-    Text(
-        if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed_desc)
+    SettingsInfoHeading(
+        title = speedDescription,
+        description = if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed_desc)
         else stringResource(R.string.settings_playback_frame_speed_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Slider(
         value = routePlayback.frameSpeed,
@@ -112,16 +100,9 @@ internal fun RestTimerSection(
     onDurationChange: (Int) -> Unit,
     onAutoStartChange: (Boolean) -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_timer_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_timer_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_timer_title),
+        description = stringResource(R.string.settings_timer_desc),
     )
 
     Spacer(modifier = Modifier.height(4.dp))

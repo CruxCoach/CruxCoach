@@ -198,9 +198,12 @@ internal fun UpdaterSettingsSection(
         )
 
         if (state.autoCheckEnabled) {
-            Text(
-                text = stringResource(R.string.updater_settings_automation_title),
-                fontWeight = FontWeight.Bold,
+            SettingsInfoHeading(
+                title = stringResource(R.string.updater_settings_automation_title),
+                description = stringResource(R.string.updater_mode_notify) + "\n" +
+                    stringResource(R.string.updater_mode_notify_desc) + "\n\n" +
+                    stringResource(R.string.updater_mode_auto_update) + "\n" +
+                    stringResource(R.string.updater_mode_auto_update_desc),
             )
             val modes = UpdateAutomationMode.entries
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -217,16 +220,6 @@ internal fun UpdaterSettingsSection(
                     )
                 }
             }
-            Text(
-                text = stringResource(
-                    when (state.automationMode) {
-                        UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify_desc
-                        UpdateAutomationMode.AUTO_UPDATE -> R.string.updater_mode_auto_update_desc
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             if (state.automationMode != UpdateAutomationMode.NOTIFY) {
                 SettingsToggleRow(

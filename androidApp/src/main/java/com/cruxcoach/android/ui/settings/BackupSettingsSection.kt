@@ -42,26 +42,10 @@ internal fun BackupSettingsSection(
     if (!state.featureEnabled) return
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            stringResource(R.string.settings_backup_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.settings_backup_description),
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        Spacer(Modifier.height(4.dp))
-        // Device-local exclusions the backup intentionally does not carry
-        // (backup-compat audit, 0.2.0): board selection + browse/map filters
-        // live in DataStore and are re-set in seconds, so they are not backed
-        // up. Stated here so restore expectations are accurate.
-        Text(
-            stringResource(R.string.settings_backup_device_local_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        SettingsInfoHeading(
+            title = stringResource(R.string.settings_backup_title),
+            description = stringResource(R.string.settings_backup_description) + "\n\n" +
+                stringResource(R.string.settings_backup_device_local_note),
         )
 
         Spacer(Modifier.height(12.dp))

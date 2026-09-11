@@ -73,11 +73,9 @@ internal fun BoardSyncSection(
     )
 
     // Auto-sync interval picker
-    Text(stringResource(R.string.settings_board_auto_download), style = MaterialTheme.typography.bodyMedium)
-    Text(
-        stringResource(R.string.settings_board_auto_download_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_board_auto_download),
+        description = stringResource(R.string.settings_board_auto_download_desc),
     )
     SettingsChoices(
         options = SyncInterval.entries.map { it to stringResource(it.labelRes) },
@@ -124,15 +122,9 @@ internal fun MoonBoardLedPositionSection(
     ledMode: MoonBoardLedMode,
     onModeChange: (MoonBoardLedMode) -> Unit,
 ) {
-    Text(
-        stringResource(R.string.settings_moonboard_led_position_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-    )
-    Text(
-        stringResource(R.string.settings_moonboard_led_position_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_moonboard_led_position_title),
+        description = stringResource(R.string.settings_moonboard_led_position_desc),
     )
     SettingsChoices(
         options = MoonBoardLedMode.entries.map { mode -> mode to stringResource(
@@ -156,15 +148,9 @@ internal fun BoardSendModeSection(
     onSingleConnectionModeChange: (BoardSendMode) -> Unit,
     onMultiConnectionModeChange: (BoardSendMode) -> Unit,
 ) {
-    Text(
-        stringResource(R.string.settings_board_send_mode_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-    )
-    Text(
-        stringResource(R.string.settings_board_send_mode_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_board_send_mode_title),
+        description = stringResource(R.string.settings_board_send_mode_desc),
     )
 
     BoardSendModePicker(
@@ -184,16 +170,15 @@ internal fun BoardSendModeSection(
 
 @Composable
 internal fun BoardProjectionLifecycleHint(boardBrand: BoardBrand) {
-    Text(
-        text = stringResource(
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_board_connections_info),
+        description = stringResource(
             if (boardBrand == BoardBrand.MOONBOARD) {
                 R.string.settings_board_projection_lifecycle_moonboard
             } else {
                 R.string.settings_board_projection_lifecycle_retained
             },
         ),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -223,16 +208,9 @@ internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
     onAutoDisconnectChange: (Int) -> Unit,
 ) {
-    Text(
-        stringResource(R.string.settings_ble_auto_disconnect_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_ble_auto_disconnect_desc_retained),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_ble_auto_disconnect_title),
+        description = stringResource(R.string.settings_ble_auto_disconnect_desc_retained),
     )
 
     // Off is a state of its own, not a duration of zero. It was reachable by
@@ -328,14 +306,14 @@ internal fun AccountKeysSection(
     onNavigateToKeyManagement: () -> Unit,
     onNavigateToNostrProfile: () -> Unit = {},
 ) {
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_page_account),
+        description = stringResource(R.string.key_section_description) + "\n\n" +
+            stringResource(R.string.key_section_nostr_intro),
+    )
     Text(
         stringResource(R.string.settings_account_key_reminder),
         style = MaterialTheme.typography.bodyMedium,
-    )
-    Text(
-        stringResource(R.string.key_section_description),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     OutlinedButton(
         onClick = onNavigateToNostrProfile,
@@ -350,19 +328,5 @@ internal fun AccountKeysSection(
         shape = RoundedCornerShape(12.dp)
     ) {
         Text(stringResource(R.string.key_button_manage))
-    }
-    var showExplanation by rememberSaveable { mutableStateOf(false) }
-    TextButton(onClick = { showExplanation = !showExplanation }) {
-        Text(stringResource(
-            if (showExplanation) R.string.settings_account_explanation_hide
-            else R.string.settings_account_explanation_show,
-        ))
-    }
-    if (showExplanation) {
-        Text(
-            stringResource(R.string.key_section_nostr_intro),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }

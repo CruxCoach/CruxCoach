@@ -7,6 +7,9 @@ tags:
 # Pass the package derived by scripts/feature_identity.py as APP_ID.
 ---
 - tapOn: "Einstellungen"
+- tapOn: "Informationen zu Darstellung & Sprache anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
 - tapOn: "Darstellung & Sprache"
 - assertVisible: "Sprache"
 - assertVisible: "Schwierigkeitsskala"
@@ -16,6 +19,9 @@ tags:
 - pressKey: Back
 - tapOn: "Timer & Wiedergabe"
 - assertVisible: "Pausentimer"
+- tapOn: "Informationen zu Pausentimer anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
 - pressKey: Back
 - scrollUntilVisible:
     element: { text: "Teilen in der Nähe" }
@@ -27,9 +33,9 @@ tags:
     element: { text: "CruxCoach-Konto" }
     direction: DOWN
 - tapOn: "CruxCoach-Konto"
-- assertVisible: "Wie funktioniert mein Nostr-Konto?"
-- tapOn: "Wie funktioniert mein Nostr-Konto?"
-- assertVisible: "Konto-Erklärung ausblenden"
+- tapOn: "Informationen zu CruxCoach-Konto anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
 - pressKey: Back
 - scrollUntilVisible:
     element: { text: "Board-Konten & Importe" }

@@ -156,6 +156,19 @@ flowchart TB
     Encrypt --> Nostr[Nostr: verschlüsselter Schlüssel und Verweis]
 ```
 
+## Einstellungen und Erklärungen
+
+Die Einstellungsübersicht führt zu zwölf Aufgabenseiten. Titel, aktuelle Werte
+und Bedienelemente geben die Orientierung; zusätzliche Erklärungen öffnen sich
+über das benachbarte Info-Symbol. Das Lesen der Hilfe verändert keine Einstellung
+und löst keine Aktion aus. Die Dialoge sind gut lesbar, scrollbar und führen beim
+Schließen zur gleichen Seite zurück. Aktuelle Fehler, fehlende Voraussetzungen,
+Backup-Status und Warnungen vor Löschaktionen bleiben am passenden Ort sichtbar.
+
+Gemeinsame Bausteine sind `SettingsDestinationRow`, `SettingsToggleRow` und
+`SettingsInfoHeading` in `ui/settings/SettingsLayout.kt` sowie
+`ui/common/InfoButton.kt` für die Hilfe.
+
 ## Orientierung im Quellcode
 
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)

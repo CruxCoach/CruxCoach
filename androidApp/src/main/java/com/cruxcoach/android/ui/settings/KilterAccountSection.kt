@@ -106,10 +106,9 @@ internal fun KilterAccountSection(
             onRetryPublishQueueNow = onRetryPublishQueueNow,
         )
     } else {
-        Text(
-            stringResource(R.string.kilter_connect_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        SettingsInfoHeading(
+            title = stringResource(R.string.kilter_section_title),
+            description = stringResource(R.string.kilter_connect_desc),
         )
         OutlinedButton(
             onClick = onShowLogin,
@@ -428,28 +427,12 @@ private fun KilterConnectedCard(
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.kilter_push_label),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        stringResource(R.string.kilter_push_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = pushEnabled,
-                    onCheckedChange = onPushEnabledChanged,
-                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-                )
-            }
+            SettingsToggleRow(
+                title = stringResource(R.string.kilter_push_label),
+                description = stringResource(R.string.kilter_push_desc),
+                checked = pushEnabled,
+                onCheckedChange = onPushEnabledChanged,
+            )
 
             // Climb-publish toggle: also lives here, alongside the
             // ascent-push toggle, since both are "what should we mirror

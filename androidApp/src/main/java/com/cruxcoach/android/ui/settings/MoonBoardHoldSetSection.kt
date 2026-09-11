@@ -69,15 +69,9 @@ internal fun MoonBoardHoldSetSection() {
         modifier = Modifier.fillMaxWidth().testTag("moonboard_hold_sets"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            stringResource(R.string.moonboard_hold_sets_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            stringResource(R.string.moonboard_hold_sets_subtitle),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        SettingsInfoHeading(
+            title = stringResource(R.string.moonboard_hold_sets_title),
+            description = stringResource(R.string.moonboard_hold_sets_subtitle),
         )
 
         // Before a catalogue with a populated hsm arrives, deselecting a set

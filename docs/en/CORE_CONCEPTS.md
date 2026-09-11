@@ -150,6 +150,18 @@ flowchart TB
     Encrypt --> Nostr[Nostr: wrapped key and pointer]
 ```
 
+## Settings and explanations
+
+The settings overview leads to twelve task pages. Titles, current values and
+controls provide the main orientation; optional explanations open from the
+adjacent info button. Reading help never changes a setting or opens its action.
+Dialogs use readable, scrollable text and can be closed to return to the same
+page. Current errors, missing prerequisites, backup status and warnings before
+destructive actions stay visible where they matter.
+
+Use `SettingsDestinationRow`, `SettingsToggleRow` and `SettingsInfoHeading` in
+`ui/settings/SettingsLayout.kt`, with `ui/common/InfoButton.kt` for shared help.
+
 ## Source map
 
 Paths below are relative to the repository, linked for direct navigation.

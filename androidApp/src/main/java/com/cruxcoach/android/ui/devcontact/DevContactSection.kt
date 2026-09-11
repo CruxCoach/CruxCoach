@@ -51,6 +51,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.cruxcoach.android.ui.settings.SettingsToggleRow
 import com.cruxcoach.android.R
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.notification.NotificationReliabilityHelper
@@ -127,76 +128,44 @@ internal fun DevContactSection(
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.devcontact_send_crash_reports),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = stringResource(R.string.devcontact_send_crash_reports_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = crashReportOptIn,
-                onCheckedChange = onCrashReportOptInChange,
-                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-            )
-        }
+        SettingsToggleRow(
+            title = stringResource(R.string.devcontact_send_crash_reports),
+            description = stringResource(R.string.devcontact_send_crash_reports_desc),
+            checked = crashReportOptIn,
+            onCheckedChange = onCrashReportOptInChange,
+        )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.devcontact_notifications),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = stringResource(R.string.devcontact_notifications_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = announcementsEnabled,
-                onCheckedChange = onAnnouncementsEnabledChange,
-                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-            )
-        }
+        SettingsToggleRow(
+            title = stringResource(R.string.devcontact_notifications),
+            description = stringResource(R.string.devcontact_notifications_desc),
+            checked = announcementsEnabled,
+            onCheckedChange = onAnnouncementsEnabledChange,
+        )
 
         AnimatedVisibility(visible = announcementsEnabled) {
             Column(
                 modifier = Modifier.padding(start = 32.dp)
             ) {
-                CategoryToggle(
-                    label = stringResource(R.string.announcements_badge_release),
+                SettingsToggleRow(
+                    title = stringResource(R.string.announcements_badge_release),
                     description = stringResource(R.string.announcement_cat_release_desc),
                     checked = categoryRelease,
                     onCheckedChange = { onCategoryChange(AnnouncementTagParser.CATEGORY_RELEASE, it) }
                 )
-                CategoryToggle(
-                    label = stringResource(R.string.announcements_badge_issue),
+                SettingsToggleRow(
+                    title = stringResource(R.string.announcements_badge_issue),
                     description = stringResource(R.string.announcement_cat_issue_desc),
                     checked = categoryIssue,
                     onCheckedChange = { onCategoryChange(AnnouncementTagParser.CATEGORY_ISSUE, it) }
                 )
-                CategoryToggle(
-                    label = stringResource(R.string.announcements_badge_tip),
+                SettingsToggleRow(
+                    title = stringResource(R.string.announcements_badge_tip),
                     description = stringResource(R.string.announcement_cat_tip_desc),
                     checked = categoryTip,
                     onCheckedChange = { onCategoryChange(AnnouncementTagParser.CATEGORY_TIP, it) }
                 )
-                CategoryToggle(
-                    label = stringResource(R.string.announcements_badge_general),
+                SettingsToggleRow(
+                    title = stringResource(R.string.announcements_badge_general),
                     description = stringResource(R.string.announcement_cat_general_desc),
                     checked = categoryGeneral,
                     onCheckedChange = { onCategoryChange(AnnouncementTagParser.CATEGORY_GENERAL, it) }
@@ -281,37 +250,6 @@ private fun DevContactRow(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun CategoryToggle(
-    label: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
         )
     }
 }

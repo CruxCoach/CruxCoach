@@ -42,16 +42,9 @@ internal fun LedColorSection(
     onResetColors: () -> Unit,
     onKilterColors: () -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_led_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_led_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_led_title),
+        description = stringResource(R.string.settings_led_desc),
     )
 
     // Track which role's picker sheet is open

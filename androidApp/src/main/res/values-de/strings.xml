@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CruxCoach</string>
+    <string name="action_show_info">Informationen zu %1$s anzeigen</string>
+    <string name="settings_board_connections_info">Verbindungen am Board</string>
 
     <!-- Climb Creator (FEAT-003) -->
     <string name="climb_creator_title">Neuer Climb</string>

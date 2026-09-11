@@ -135,11 +135,9 @@ fun SettingsScreen(
                 val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
                 val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
                 SettingsSectionCard {
-                    SettingsGroupHeader(stringResource(R.string.settings_group_selected_board))
-                    Text(
-                        stringResource(R.string.settings_board_hub_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    SettingsInfoHeading(
+                        title = stringResource(R.string.settings_group_selected_board),
+                        description = stringResource(R.string.settings_board_hub_desc),
                     )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
