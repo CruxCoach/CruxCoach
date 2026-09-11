@@ -40,6 +40,15 @@ and official UniFFI APIs, measured costs and migration limits. Account signing i
 now shared by friendship certificates, leaf proofs and native callbacks. This
 pass authorizes only normal feature publication; main/stable remain owner-only.
 
+Native development/test builds keep limited debug information and disable
+incremental scratch, while retaining explicit debug assertions and overflow
+checks. A clean same-source host comparison reduced target storage by 43%;
+the Android release profile is unchanged and the same-path native build retains
+identical library bytes. Feature APK
+compiler diagnostics are surfaced as bounded GitHub annotations without changing
+publication authority. Build measurements and exact-SHA CI results remain separate
+from Android runtime/device qualification.
+
 ## Friendship and current private data
 
 A root-account-signed request and an explicitly signed acceptance establish one
@@ -477,8 +486,8 @@ server authority, stale/replayed consent, revoked queued ciphertext, source
 retraction, crash windows, malicious relay input and quota/clock denial of service.
 The corresponding enforcement is at storage, native handoff/publication, inbox
 admission and read doors, not only the UI. The detailed continuation review and
-command/log evidence live in the owner's run directory under `live-integration/`
-and the preserved `continuous-sharing/` and current `friendship-sharing/` directories.
+command/log evidence live in the owner's run directory under `live-integration/`,
+`continuous-sharing/`, `friendship-sharing/` and `dependency-publication/`.
 
 For the preserved legacy path, this profile closes existing snapshot access on
 epoch/group/device changes;
@@ -487,10 +496,12 @@ consent may remain valid for the same account and still-authorized permission
 device with unchanged rights; it never authorizes a new permission device by
 virtue of MLS membership alone. Other clients must implement the same private application conventions.
 The local server adapter uses synthetic identities only; production server key
-custody/operation is not configured. Complete CI, an Android arm64 runtime test,
-Amber interactions and Android Keystore/process-death behavior still need the
-owner's normal review and device/CI workflow. No push, APK build, device install,
-release, signing, production deployment or remote PR occurs in this task.
+custody/operation is not configured. Full tests and native participant acceptance
+run in feature CI; exact-commit APK build/publication needs its own successful
+trusted publisher and delivered receipt. That evidence is recorded separately
+from host tests. Android arm64 runtime, Amber and Keystore/process-death behavior
+still require device qualification. Normal feature publication is owner-authorized;
+main/stable merging, production administration and device installation are not.
 
 ## First friendship in the app
 

@@ -134,3 +134,12 @@ The original process exit status remains authoritative. Registration excludes
 local builds, test or combined task invocations, and production signing. The
 matcher and its Gradle registration require owner review; no publisher workflow,
 credentials or signing policy are changed.
+
+Development and test builds use limited debug information (`debug = 1`) and no
+incremental scratch. Debug assertions and overflow checks remain explicitly on;
+the Android release profile is unchanged. A clean host JNI comparison reduced
+the target directory from 2.48 GB to 1.41 GB (43%), with the same six signer tests
+and native storage boundaries passing. These are test-build measurements, not
+an APK-size or cross-SDK benchmark. Backtrace/module information remains; full
+local type/variable debugging can opt in with `CARGO_PROFILE_DEV_DEBUG=2` and
+`CARGO_INCREMENTAL=1`. Keep those overrides out of qualification builds.

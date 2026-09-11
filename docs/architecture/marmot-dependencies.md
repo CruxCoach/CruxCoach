@@ -106,3 +106,13 @@ retain their meaning. The push-triggered feature CI now runs native boundary and
 independent-process acceptance before trusted-main publication eligibility.
 Complete run evidence is maintained in the owner's `dependency-publication/`
 artifacts; actual Android/Amber/Keystore/Doze device qualification remains separate.
+
+A subsequent clean host comparison also identified a bounded build improvement:
+limited debug information and no incremental scratch reduce the native test-build
+target from 2.48 GB to 1.41 GB (43%). Cargo's actual artifact messages confirm
+debug assertions and overflow checks remain enabled; JNI signing and native
+storage tests pass. Full local type/variable debugging becomes an explicit opt-in.
+The Android release profile, engine, dependencies and storage formats are unchanged.
+This is a host build measurement, not evidence of a smaller APK or the cause of
+a particular CI failure. Feature-only compiler/Gradle problem annotations make
+packaging failures diagnosable without changing the trusted publisher or its gates.
