@@ -2943,7 +2943,7 @@
     <string name="sharing_snapshot_sync">Synchronize snapshots</string>
     <string name="sharing_snapshot_server">Verified server identity</string>
     <string name="sharing_snapshot_user">User identity</string>
-    <string name="sharing_snapshot_handoff_unclear">A transfer was attempted. Delivery is not confirmed; it will not be retried automatically.</string>
+    <string name="sharing_snapshot_handoff_unclear">Transfer is pending or unconfirmed. While this screen is open, exact queued messages are retried with backoff only if permission and session checks still pass.</string>
     <string name="sharing_snapshot_accept">Accept this exact snapshot</string>
     <string name="sharing_snapshot_open">Read snapshot</string>
     <string name="sharing_snapshot_revoke">Withdraw access</string>
@@ -2957,4 +2957,42 @@
     <string name="sharing_snapshot_declined">Receipt declined</string>
     <string name="sharing_snapshot_invalidated">Permission or connection changed. Create a new offer.</string>
     <string name="sharing_snapshot_pin">Confirm this identity and role</string>
+
+    <!-- Marmot native sharing: paired English/German resources. -->
+    <string name="marmot_title">Encrypted sharing over Nostr</string>
+    <string name="marmot_trust">Connections identify accounts and devices. Each category and each snapshot still needs explicit consent. A relay acceptance is not delivery to the recipient.</string>
+    <string name="marmot_discovery_consent">Enable discovery to publish your public account relay lists and public MLS KeyPackage. Relays can see this metadata. No private content is included.</string>
+    <string name="marmot_enable_discovery">Publish discovery and receive invitations</string>
+    <string name="marmot_configure_relays">Configure relays</string>
+    <string name="marmot_relay_pool">One wss:// relay per line</string>
+    <string name="marmot_save_relays">Save relay pool</string>
+    <string name="marmot_relay_accepted">Relay accepted queued events; recipient receipt still required</string>
+    <string name="marmot_relay_auth">Authentication required; no account disclosed automatically</string>
+    <string name="marmot_relay_rejected">Relay rejected an event; other configured relays remain in use</string>
+    <string name="marmot_relay_unavailable">Unavailable or timed out; exact messages remain pending</string>
+    <string name="marmot_relay_pending">Not checked or pending</string>
+    <string name="marmot_accept_invitation">Accept encrypted connection</string>
+    <string name="marmot_open_peer">Open permissions</string>
+    <string name="marmot_connected">Account and device connection verified. Content still requires explicit consent.</string>
+    <string name="marmot_no_session">No accepted encrypted connection</string>
+    <string name="marmot_invite">Discover account and invite</string>
+    <string name="marmot_permission_proposal">This account offers these categories:</string>
+    <string name="marmot_consent_queued">Category consent saved; awaiting synchronization</string>
+    <string name="marmot_accept_policy">Consent to these categories on this device</string>
+    <string name="marmot_clock_title">Check your device clock</string>
+    <string name="marmot_clock_recovery">Sharing stopped after a clock change. Correct the device time first. Recovery withdraws all of your current grants and invalidates received snapshots. New sharing requires fresh consent. Already decrypted copies on other devices cannot be recalled.</string>
+    <string name="marmot_clock_withdraw">Withdraw grants and recover</string>
+    <string name="marmot_capacity">Snapshot storage is full. Unexpired offers and revocation records stay protected until expiry.</string>
+    <string name="marmot_collect_expired">Remove expired snapshots</string>
+    <string name="marmot_relay_limited">History incomplete or resource limit reached; synchronization remains pending.</string>
+    <string name="marmot_session_reset">Disconnect this session</string>
+    <string name="marmot_session_reset_detail">Disconnecting or accepting a replacement session invalidates access to previous snapshots. Connect again and approve new snapshots to resume sharing.</string>
+    <string name="marmot_transport_limit">The message or retained transport state reached a limit. Your pending data is preserved. Shorten the message or retry after existing offers expire.</string>
+    <string name="marmot_session_unavailable">The session is changing or needs recovery. Synchronize again; if it stays unavailable, disconnect and accept a new invitation. Previous snapshots require new consent.</string>
+    <string name="marmot_discovery_required">Enable discovery explicitly before connecting.</string>
+    <string name="marmot_peer_unavailable">No usable invitation keys were found for this account on your relay pool. The other participant must enable discovery and use at least one common working relay.</string>
+    <string name="marmot_transport_recovery_title">Recover transport storage</string>
+    <string name="marmot_transport_recovery_detail">This withdraws all local grants and invalidates received snapshots. Existing encrypted transport state is archived, including unsent messages; it is not sent automatically. New discovery, invitations and snapshot consent are required. Original notes stay on this device. Remote copies remain until the recipient removes them; this cannot recall them.</string>
+    <string name="marmot_waiting_identity">Waiting for a current verified peer identity or session update. Synchronize both participants.</string>
+    <string name="marmot_invalid_relay_pool">The saved relay configuration is invalid. Sharing is paused. Enter a valid relay pool to continue.</string>
 </resources>

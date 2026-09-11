@@ -556,3 +556,56 @@ dependencies {
     // for ViewModels that depend on @HiltAndroidApp injection.
     testImplementation(libs.hilt.android.testing)
 }
+
+// Owner review: pinned Marmot JNI source build. No publisher/signing credentials.
+// Hook only packaging; ordinary focused JVM compilation does not rebuild an APK.
+val buildMarmotNative by tasks.registering(Exec::class) {
+    val nativeRoot = rootProject.layout.projectDirectory.dir("native/marmot")
+    inputs.files(fileTree(nativeRoot) { exclude(".mdk/**", "target/**") })
+    outputs.dir(layout.buildDirectory.dir("generated/marmot/jniLibs"))
+    commandLine("python3", nativeRoot.file("build.py").asFile.absolutePath,
+        "--android-ndk", android.ndkDirectory.absolutePath,
+        "--output", layout.buildDirectory.dir("generated/marmot/jniLibs").get().asFile.absolutePath)
+}
+android.sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/marmot/jniLibs"))
+android.sourceSets.getByName("main").assets.srcDir(rootProject.file("native/marmot/licenses"))
+tasks.configureEach {
+    if (name.matches(Regex("merge.*NativeLibs"))) dependsOn(buildMarmotNative)
+}
+
+// Local synthetic JNI integration runs the same MDK/SQLCipher code on the host.
+val buildMarmotTestNative by tasks.registering(Exec::class) {
+    inputs.files(fileTree(rootProject.file("native/marmot")) { exclude(".mdk/**", "target/**") })
+    outputs.dir(layout.buildDirectory.dir("generated/marmot/testNative"))
+    commandLine("python3", rootProject.file("native/marmot/build.py").absolutePath, "--harness",
+        "--output", layout.buildDirectory.dir("generated/marmot/testNative").get().asFile.absolutePath)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(buildMarmotTestNative)
+    systemProperty("java.library.path", layout.buildDirectory.dir("generated/marmot/testNative").get().asFile.absolutePath)
+}
+
+// Optional local server/user reference adapter. Uses generated synthetic
+// identities in a host-only library; it is not packaged or deployed.
+val runMarmotEndpoint by tasks.registering(JavaExec::class) {
+    dependsOn("compileDebugUnitTestKotlin", buildMarmotTestNative)
+    mainClass.set("com.cruxcoach.android.sharing.MarmotEndpointMain")
+    standardInput = System.`in`
+    doFirst {
+        classpath = tasks.named<Test>("testDebugUnitTest").get().classpath
+        systemProperty("java.library.path", layout.buildDirectory.dir("generated/marmot/testNative").get().asFile.absolutePath)
+        args(providers.gradleProperty("marmotEndpointArgs").orElse("--synthetic SERVER").get().split(" "))
+    }
+}
+
+val writeMarmotEndpointClasspath by tasks.registering {
+    dependsOn("compileDebugUnitTestKotlin", "transformDebugUnitTestClassesWithAsm", buildMarmotTestNative)
+    val destination = layout.buildDirectory.file("generated/marmot/endpoint-classpath.txt")
+    outputs.file(destination)
+    doLast {
+        destination.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(tasks.named<Test>("testDebugUnitTest").get().classpath.asPath)
+        }
+    }
+}

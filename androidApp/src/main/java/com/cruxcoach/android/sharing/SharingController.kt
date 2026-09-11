@@ -86,6 +86,10 @@ enum class SharingWriteError {
      */
     RECOVERY_LOCKED,
     NATIVE_UNAVAILABLE,
+    TRANSPORT_LIMIT,
+    SESSION_UNAVAILABLE,
+    DISCOVERY_REQUIRED,
+    PEER_UNAVAILABLE,
 }
 
 /**
@@ -155,6 +159,7 @@ data class SharingUiState(
     val baselines: CircleBaselines,
     val peers: List<PeerSummary>,
     val demoSeeded: Boolean = false,
+    val nativeAvailable: Boolean = false,
 )
 
 /**
@@ -237,7 +242,10 @@ class SharingController(
     private val random: SecureRandom = SecureRandom(),
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
     private val snapshotExchange: SharingSnapshotExchange? = null,
+    private val marmot: AndroidMarmotFactory? = null,
+    private val policyTransport: SharingPolicyTransport? = null,
 ) {
+    private val transportAvailable get() = gate.isLive || snapshotExchange?.nativeAvailable == true
 
     /** Held for the whole of every mutation, signing included. */
     private val mutex = Mutex()
@@ -492,7 +500,10 @@ class SharingController(
             return@withLock SharingWriteResult.Failed(SharingWriteError.RECOVERY_LOCKED)
         }
         body().also { result ->
-            if (result.isSuccess && gate.isLive) runCatching { snapshotExchange?.synchronize() }
+            if (result.isSuccess && transportAvailable) runCatching {
+                policyTransport?.synchronize()
+                snapshotExchange?.synchronize()
+            }
         }
     }
 
@@ -517,6 +528,7 @@ class SharingController(
         val projection = repository.loadProjection()
         return SharingUiState(
             gate = gate,
+            nativeAvailable = snapshotExchange?.nativeAvailable == true,
             baselines = policy.baselines,
             peers = projection.relationships.values
                 .sortedBy { it.peer.value }
@@ -608,8 +620,16 @@ class SharingController(
 
     private suspend fun snapshotWrite(body: suspend () -> SharingWriteResult): SharingWriteResult = administrativeWrite {
         try { body() } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: MarmotTransportFailure) { nativeFailure(failure) }
         catch (_: Exception) { SharingWriteResult.Failed(SharingWriteError.REJECTED) }
     }
+    private fun nativeFailure(failure: MarmotTransportFailure) = SharingWriteResult.Failed(when (failure.code) {
+        "native_output_limit", "native_storage_quota", "native_ingest_quota", "payload_or_lifetime", "relay_payload_limit", "peer_quota" -> SharingWriteError.TRANSPORT_LIMIT
+        "history_pending", "session_not_stable", "session_retired", "stale_fence", "invitation_pending", "no_session", "reopen_required", "native_ingest_failed" -> SharingWriteError.SESSION_UNAVAILABLE
+        "discovery_not_enabled" -> SharingWriteError.DISCOVERY_REQUIRED
+        "peer_discovery_missing", "peer_inbox_missing", "peer_relays_not_configured", "valid_keypackage_missing" -> SharingWriteError.PEER_UNAVAILABLE
+        else -> SharingWriteError.REJECTED
+    })
 
     suspend fun pinSnapshotPeer(peer: PeerId, role: SnapshotEndpointRole): SharingWriteResult = snapshotWrite {
         if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
@@ -624,7 +644,7 @@ class SharingController(
 
     suspend fun shareNoteSnapshot(peer: PeerId, text: String, peerRole: SnapshotEndpointRole): SharingWriteResult = snapshotWrite {
         if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
-        if (!gate.isLive) return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!transportAvailable) return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
         val exchange = snapshotExchange ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
         val bytes = text.encodeToByteArray()
         try {
@@ -660,12 +680,67 @@ class SharingController(
     }
 
     suspend fun synchronizeSnapshots(): SharingWriteResult = mutex.withLock {
-        if (!gate.isLive) SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!transportAvailable) SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
         else runCatching {
             val exchange = snapshotExchange ?: return@withLock SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+            marmot?.port?.refresh()
+            policyTransport?.synchronize()
             exchange.synchronize()
             SharingWriteResult.Ok
-        }.getOrElse { SharingWriteResult.Failed(SharingWriteError.REJECTED) }
+        }.getOrElse { if (it is MarmotTransportFailure) nativeFailure(it) else SharingWriteResult.Failed(SharingWriteError.REJECTED) }
+    }
+
+    fun discoveryEnabled(): Boolean = runCatching { marmot?.port?.discoveryEnabled() == true }.getOrDefault(false)
+    fun sharingClockHealthy(): Boolean = repository.sharingClockHealthy()
+    fun snapshotCapacityReached(): Boolean = snapshotExchange?.atCapacity() == true
+    suspend fun collectExpiredSnapshots(): SharingWriteResult = mutex.withLock {
+        snapshotExchange?.collectExpired(); SharingWriteResult.Ok
+    }
+    suspend fun recoverSharingClock(archiveTransport: Boolean = false): SharingWriteResult = administrativeWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@administrativeWrite notSigned()
+        val batch = Batch()
+        for ((peer, state) in repository.loadProjection().relationships) {
+            if (!state.status.isTerminal && state.offeredCategories.isNotEmpty() &&
+                !batch.sign(peer, SharingLedgerBody.GrantChanged(emptySet()))) return@administrativeWrite notSigned()
+        }
+        val result = if (batch.isEmpty) SharingWriteResult.Ok else commit(batch)
+        if (!result.isSuccess) result
+        else if (repository.recoverSharingClock() && (!archiveTransport || marmot?.archiveAfterWithdrawal() == true)) SharingWriteResult.Ok
+        else SharingWriteResult.Failed(SharingWriteError.REJECTED)
+    }
+
+    fun nativePeers(): List<MarmotPeerStatus> = runCatching { marmot?.port?.peers().orEmpty() }.getOrDefault(emptyList())
+    fun nativeRelays(): List<String> = marmot?.relayPool() ?: MarmotRelayDefaults.urls
+    fun nativeRelayStatus(): Map<String, String> = runCatching { marmot?.port?.relaySummary().orEmpty() }.getOrDefault(emptyMap())
+    fun incomingPolicy(peer: PeerId): IncomingSharingPolicy? = runCatching { policyTransport?.incoming(peer.value) }.getOrNull()
+    suspend fun bootstrapMarmot(): SharingWriteResult = snapshotWrite {
+        val adapter = marmot ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        adapter.port.bootstrap(); SharingWriteResult.Ok
+    }
+    suspend fun configureMarmotRelays(relays: List<String>): SharingWriteResult = snapshotWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        val adapter = marmot ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        adapter.configureRelays(relays); SharingWriteResult.Ok
+    }
+    suspend fun connectMarmot(peer: PeerId, accept: Boolean, group: String? = null): SharingWriteResult = snapshotWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        val adapter = marmot ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        if (repository.loadProjection().relationships[peer] == null) {
+            val created = offerLocked(peer, SharingCircle.ALL_OTHER_USERS, emptySet())
+            if (!created.isSuccess) return@snapshotWrite created
+        }
+        if (accept) adapter.port.acceptInvitation(peer.value, group) else adapter.port.invite(peer.value)
+        SharingWriteResult.Ok
+    }
+    suspend fun resetMarmotPeer(peer: PeerId): SharingWriteResult = snapshotWrite {
+        if (!isAuthorised(DeviceCapability.MUTATE_PERMISSIONS)) return@snapshotWrite notSigned()
+        val adapter = marmot ?: return@snapshotWrite SharingWriteResult.Failed(SharingWriteError.NATIVE_UNAVAILABLE)
+        adapter.port.resetPeer(peer.value); SharingWriteResult.Ok
+    }
+    suspend fun acceptRemotePolicy(peer: PeerId, categories: Set<SharingCategory>): SharingWriteResult = snapshotWrite {
+        if (policyTransport?.accept(peer.value, categories) == true) SharingWriteResult.Ok
+        else SharingWriteResult.Failed(SharingWriteError.REJECTED)
     }
 
     // ------------------------------------------------------------- writing

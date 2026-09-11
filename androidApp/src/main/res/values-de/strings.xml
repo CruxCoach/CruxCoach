@@ -2942,7 +2942,7 @@
     <string name="sharing_snapshot_sync">Momentaufnahmen synchronisieren</string>
     <string name="sharing_snapshot_server">Verifizierte Serveridentität</string>
     <string name="sharing_snapshot_user">Nutzeridentität</string>
-    <string name="sharing_snapshot_handoff_unclear">Eine Übertragung wurde versucht. Die Zustellung ist nicht bestätigt; es erfolgt keine automatische Wiederholung.</string>
+    <string name="sharing_snapshot_handoff_unclear">Die Übertragung steht aus oder ist unbestätigt. Solange diese Ansicht geöffnet ist, werden die gespeicherten Nachrichten mit Wartezeiten erneut versucht, sofern Berechtigungen und Sitzung weiterhin gültig sind.</string>
     <string name="sharing_snapshot_accept">Dieser Momentaufnahme zustimmen</string>
     <string name="sharing_snapshot_open">Momentaufnahme lesen</string>
     <string name="sharing_snapshot_revoke">Zugriff widerrufen</string>
@@ -2956,4 +2956,42 @@
     <string name="sharing_snapshot_declined">Empfang abgelehnt</string>
     <string name="sharing_snapshot_invalidated">Berechtigung oder Verbindung geändert. Erstelle ein neues Angebot.</string>
     <string name="sharing_snapshot_pin">Diese Identität und Rolle bestätigen</string>
+
+    <!-- Marmot native sharing: paired English/German resources. -->
+    <string name="marmot_title">Verschlüsselte Freigaben über Nostr</string>
+    <string name="marmot_trust">Verbindungen identifizieren Konten und Geräte. Jede Kategorie und jeder Inhalt braucht weiterhin ausdrückliche Zustimmung. Eine Relay-Annahme ist keine Empfängerzustellung.</string>
+    <string name="marmot_discovery_consent">Discovery veröffentlicht die Relay-Listen deines öffentlichen Kontos und dein öffentliches MLS-KeyPackage. Relays sehen diese Metadaten. Private Inhalte sind nicht enthalten.</string>
+    <string name="marmot_enable_discovery">Discovery veröffentlichen und Einladungen empfangen</string>
+    <string name="marmot_configure_relays">Relays konfigurieren</string>
+    <string name="marmot_relay_pool">Ein wss://-Relay pro Zeile</string>
+    <string name="marmot_save_relays">Relay-Pool speichern</string>
+    <string name="marmot_relay_accepted">Relay hat Ereignisse angenommen; Empfängerbestätigung steht separat aus</string>
+    <string name="marmot_relay_auth">Authentisierung erforderlich; Konto wird nicht automatisch offengelegt</string>
+    <string name="marmot_relay_rejected">Relay hat ein Ereignis abgelehnt; andere konfigurierte Relays bleiben in Verwendung</string>
+    <string name="marmot_relay_unavailable">Nicht erreichbar oder Zeitüberschreitung; Nachrichten bleiben unverändert ausstehend</string>
+    <string name="marmot_relay_pending">Noch nicht geprüft oder ausstehend</string>
+    <string name="marmot_accept_invitation">Verschlüsselte Verbindung annehmen</string>
+    <string name="marmot_open_peer">Berechtigungen öffnen</string>
+    <string name="marmot_connected">Konto- und Geräteverbindung geprüft. Inhalte benötigen weiterhin ausdrückliche Zustimmung.</string>
+    <string name="marmot_no_session">Keine angenommene verschlüsselte Verbindung</string>
+    <string name="marmot_invite">Konto suchen und einladen</string>
+    <string name="marmot_permission_proposal">Dieses Konto bietet diese Kategorien an:</string>
+    <string name="marmot_consent_queued">Kategorie-Zustimmung gespeichert; Synchronisierung ausstehend</string>
+    <string name="marmot_accept_policy">Diesen Kategorien auf diesem Gerät zustimmen</string>
+    <string name="marmot_clock_title">Geräteuhr prüfen</string>
+    <string name="marmot_clock_recovery">Das Teilen wurde nach einer Zeitänderung angehalten. Korrigiere zuerst die Gerätezeit. Die Wiederherstellung entzieht alle aktuellen eigenen Freigaben und macht empfangene Snapshots ungültig. Erneutes Teilen erfordert neue Zustimmung. Bereits entschlüsselte Kopien auf anderen Geräten lassen sich nicht zurückholen.</string>
+    <string name="marmot_clock_withdraw">Freigaben entziehen und wiederherstellen</string>
+    <string name="marmot_capacity">Der Snapshot-Speicher ist voll. Noch gültige Angebote und Widerrufseinträge bleiben bis zum Ablauf geschützt.</string>
+    <string name="marmot_collect_expired">Abgelaufene Snapshots entfernen</string>
+    <string name="marmot_relay_limited">Verlauf unvollständig oder Ressourcenlimit erreicht; Synchronisierung steht noch aus.</string>
+    <string name="marmot_session_reset">Diese Sitzung trennen</string>
+    <string name="marmot_session_reset_detail">Das Trennen oder Annehmen einer Ersatzsitzung macht den Zugriff auf frühere Snapshots ungültig. Verbinde dich erneut und bestätige neue Snapshots, um wieder zu teilen.</string>
+    <string name="marmot_transport_limit">Die Nachricht oder der gespeicherte Transportzustand erreicht ein Limit. Ausstehende Daten bleiben erhalten. Kürze die Nachricht oder versuche es nach Ablauf vorhandener Angebote erneut.</string>
+    <string name="marmot_session_unavailable">Die Sitzung ändert sich oder benötigt eine Wiederherstellung. Synchronisiere erneut. Bleibt sie nicht verfügbar, trenne sie und nimm eine neue Einladung an. Frühere Snapshots benötigen neue Zustimmung.</string>
+    <string name="marmot_discovery_required">Aktiviere vor dem Verbinden ausdrücklich die Auffindbarkeit.</string>
+    <string name="marmot_peer_unavailable">Für dieses Konto wurden im Relay-Pool keine nutzbaren Einladungsschlüssel gefunden. Die andere Person muss die Auffindbarkeit aktivieren und mindestens ein gemeinsames funktionierendes Relay verwenden.</string>
+    <string name="marmot_transport_recovery_title">Transportspeicher wiederherstellen</string>
+    <string name="marmot_transport_recovery_detail">Dies entzieht alle lokalen Freigaben und macht empfangene Snapshots ungültig. Der bestehende verschlüsselte Transportzustand wird einschließlich ungesendeter Nachrichten archiviert und nicht automatisch versendet. Auffindbarkeit, Einladungen und Snapshot-Zustimmungen müssen neu eingerichtet werden. Ursprüngliche Notizen bleiben auf diesem Gerät. Entfernte Kopien bleiben bis zur Löschung durch den Empfänger; sie lassen sich damit nicht zurückholen.</string>
+    <string name="marmot_waiting_identity">Warten auf eine aktuelle geprüfte Gegenstellen-Identität oder Sitzungsänderung. Synchronisiere beide Teilnehmer.</string>
+    <string name="marmot_invalid_relay_pool">Die gespeicherte Relay-Konfiguration ist ungültig. Das Teilen pausiert. Trage einen gültigen Relay-Pool ein, um fortzufahren.</string>
 </resources>

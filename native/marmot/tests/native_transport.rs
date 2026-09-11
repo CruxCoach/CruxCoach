@@ -47,7 +47,9 @@ fn native_bootstrap_duplicate_delivery_restart_and_epoch_fence() {
     let redundant = Relay::start();
     // No CruxCoach relay or backend occurs in either participant's pool.
     let a = Participant::new(vec![relay.url.clone(), redundant.url.clone()]);
-    let b = Participant::new(a.relays.clone());
+    // Peers may serialize the same root relay URL with a trailing slash.
+    // Matching transport hints must not mutate authenticated group routing.
+    let b = Participant::new(a.relays.iter().map(|url| format!("{url}/")).collect());
     let mut alice = a.open();
     let mut bob = b.open();
     alice.bootstrap().unwrap();

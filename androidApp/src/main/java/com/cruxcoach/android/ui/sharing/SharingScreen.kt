@@ -95,7 +95,8 @@ fun SharingScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SharingGateBanner(state.gate)
+            if (!state.nativeAvailable) SharingGateBanner(state.gate)
+            MarmotTransportCard(viewModel, onOpenPeer = onOpenPeer)
             SharingSigningBanner(signing)
 
             SectionHeading(stringResource(R.string.sharing_circles_title))

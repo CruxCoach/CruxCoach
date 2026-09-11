@@ -116,6 +116,24 @@ class SharingProjectionSchemaTest {
     }
 
     @Test
+    fun `native transport migration preserves signed permission records and creates empty consent queues`() {
+        val ddl = requireNotNull(javaClass.getResource("/sharing/release-secure-v14.sql")).readText()
+        ddl.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+            .split(';').filter { it.isNotBlank() }.forEach { driver.exec(it) }
+        SecureDatabase.Schema.migrate(driver, 14, 30)
+        driver.exec("INSERT INTO sharing_snapshot_peer VALUES ('owner','peer','SERVER')")
+        driver.exec("INSERT INTO sharing_snapshot VALUES ('owner','synthetic-id','unknown old format',NULL,'REVOKED',0)")
+        driver.exec("INSERT INTO sharing_snapshot_clock VALUES ('owner',12345,1)")
+        SecureDatabase.Schema.migrate(driver, 30, SecureDatabase.Schema.version)
+        driver.close(); driver = openDriver()
+        assertEquals(1L, count("sharing_snapshot", "state='REVOKED' AND offer_json='unknown old format'"))
+        assertEquals(1L, count("sharing_snapshot_clock", "locked=1 AND high_water=12345"))
+        assertEquals(1L, count("sharing_snapshot_peer", "role='SERVER'"))
+        assertEquals(0L, count("sharing_policy_inbox")); assertEquals(0L, count("sharing_policy_outbox"))
+        assertEquals(0L, count("sharing_relationship"))
+    }
+
+    @Test
     fun `category scoped rule migration preserves old denial and permits distinct category rows`() {
         val ddl = requireNotNull(javaClass.getResource("/sharing/release-secure-v14.sql")).readText()
         ddl.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")

@@ -58,7 +58,7 @@ data class SharingSnapshotView(
  * Membership gives no grant: sender access is rechecked at handoff; recipient
  * approval binds the whole offer, including the exact content digest and leaf.
  * The injected port is the authentication/MLS boundary, never a JSON-supplied
- * assertion of identity. Production wires only BlockedMarmotSnapshotPort.
+ * assertion of identity. Production uses LiveMarmotSnapshotPort with the pinned native engine.
  */
 class SharingSnapshotExchange(
     private val database: SecureDatabase,
@@ -76,6 +76,7 @@ class SharingSnapshotExchange(
     private inline fun <T> coordinated(block: () -> T): T = synchronized(coordinator, block)
     private val q get() = database.snapshotQueries
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
+    val nativeAvailable: Boolean get() = port.nativeAvailable
 
     fun pinnedRole(peer: String): SnapshotEndpointRole? = coordinated { if (ready()) peerRole(peer) else null }
 
@@ -95,6 +96,7 @@ class SharingSnapshotExchange(
 
     /** Prepares an offer from a real sealed local row after existing category/device consent. */
     fun offer(peer: String, localItemId: String, epoch: Long, expiresAt: Long): String? = coordinated {
+        collectExpired()
         if (!ready() || !repository.canUseSnapshots(DeviceCapability.MUTATE_PERMISSIONS) || !validLifetime(expiresAt) || repository.administrativeWritesLocked()) return@coordinated null
         if (q.selectSnapshots(account).executeAsList().size >= MAX_RECORDS) return@coordinated null
         val peerRole = peerRole(peer) ?: return@coordinated null
@@ -150,7 +152,9 @@ class SharingSnapshotExchange(
      * delivery remains unclear across restart instead of minting a new MLS event.
      */
     fun synchronize() = coordinated {
+        collectExpired()
         if (!ready()) return@coordinated
+        port.refresh()
         port.drain(KIND, TAGS) { session, content -> receive(session, content) }
         // Narrowing the signed policy or removing a device also withdraws
         // existing snapshots, including ones already acknowledged by the peer.
@@ -177,12 +181,13 @@ class SharingSnapshotExchange(
                 state == SnapshotState.RECEIVED && offer.recipient == account -> SnapshotMessageKind.RECEIPT
                 else -> return@forEach
             }
-            if (row.attempted and bit(action) != 0L) return@forEach
+            if (row.attempted and bit(action) != 0L && !port.durableIdempotentHandoff) return@forEach
             withOfferSession(offer) { session ->
                 // A separate committed write precedes any external effect.
                 val reserved = database.transactionWithResult {
                     val current = q.selectSnapshot(account, offer.id).executeAsOneOrNull()
-                    if (current == null || current.state != row.state || current.attempted and bit(action) != 0L) false
+                    if (current == null || current.state != row.state ||
+                        current.attempted and bit(action) != 0L && !port.durableIdempotentHandoff) false
                     else { q.markAttempted(bit(action), account, offer.id); true }
                 }
                 if (!reserved) return@withOfferSession
@@ -215,6 +220,40 @@ class SharingSnapshotExchange(
                 } catch (_: Exception) {
                     // No payload, peer identity or provider exception in logs.
                     // attempted remains durable; only a new explicit offer may retry.
+                }
+            }
+        }
+        flushPending()
+    }
+
+    /** Revalidates the actual bytes and signed policy even for a queued send.
+     * The native adapter invokes publish inside this DB transaction. */
+    private fun flushPending() {
+        port.flush(KIND, TAGS) { session, wire, publish ->
+            val message = runCatching { json.decodeFromString<SnapshotMessage>(wire) }.getOrNull() ?: return@flush
+            val offer = message.offer
+            if (!offerValid(offer, session) || !ready()) return@flush
+            database.transaction {
+                val row = q.selectSnapshot(account, offer.id).executeAsOneOrNull() ?: return@transaction
+                if (decodeOffer(row.offer_json) != offer) return@transaction
+                val current = state(row.state)
+                when (message.action) {
+                    SnapshotMessageKind.OFFER, SnapshotMessageKind.CONTENT -> {
+                        if (offer.owner != account || terminal(current) ||
+                            !repository.canUseSnapshots(DeviceCapability.MUTATE_PERMISSIONS)) return@transaction
+                        val item = row.local_item ?: return@transaction
+                        repository.withPeerSnapshot(PeerId(offer.recipient), DeviceId(offer.recipientDevice), item,
+                            offer.resourceEpoch, offer.expiresAt) { category, bytes ->
+                            if (category == offer.category && digest(bytes) == offer.digest &&
+                                (message.action != SnapshotMessageKind.CONTENT ||
+                                    current in setOf(SnapshotState.ACCEPTED, SnapshotState.DELIVERED) &&
+                                    message.content == bytes.decodeToString(throwOnInvalidSequence = true))) publish()
+                        }
+                    }
+                    SnapshotMessageKind.REVOKE -> if (offer.owner == account && current == SnapshotState.REVOKED) publish()
+                    SnapshotMessageKind.DECLINE -> if (offer.recipient == account && current == SnapshotState.DECLINED) publish()
+                    SnapshotMessageKind.CONSENT -> if (offer.recipient == account && current in setOf(SnapshotState.CONSENTED, SnapshotState.RECEIVED)) publish()
+                    SnapshotMessageKind.RECEIPT -> if (offer.recipient == account && current == SnapshotState.RECEIVED) publish()
                 }
             }
         }
@@ -328,6 +367,23 @@ class SharingSnapshotExchange(
         s.local.account == account && s.peer.account != account && hex(s.local.account) && hex(s.peer.account) &&
             hex(s.local.device) && hex(s.peer.device) && s.binding.length in 1..512 &&
             s.members == setOf(s.local, s.peer)
+
+    /** Tombstones remain until the signed offer expires. After that the wire
+     * lifetime check rejects every replay, and bounded storage is reusable. */
+    fun collectExpired(): Int = coordinated {
+        if (!ready()) return@coordinated 0
+        database.transactionWithResult {
+            var removed = 0
+            for (row in q.selectSnapshots(account).executeAsList()) {
+                val offer = decodeOffer(row.offer_json) ?: continue
+                if (offer.expiresAt > nowEpochMillis()) continue
+                row.local_item?.let { repository.discardExpiredSnapshotItem(it, offer.owner, offer.id) }
+                q.deleteExpiredSnapshot(account, offer.id); removed++
+            }
+            removed
+        }
+    }
+    fun atCapacity(): Boolean = coordinated { q.selectSnapshots(account).executeAsList().size >= MAX_RECORDS }
 
     private fun ready(): Boolean {
         if (!repository.canUseSnapshots(DeviceCapability.READ) || account != repository.accountIdentity || !hex(account)) return false

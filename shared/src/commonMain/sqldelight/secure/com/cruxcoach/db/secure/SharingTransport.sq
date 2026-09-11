@@ -1,0 +1,31 @@
+CREATE TABLE sharing_policy_inbox (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    proposal TEXT NOT NULL,
+    consent TEXT,
+    state TEXT NOT NULL,
+    PRIMARY KEY(account, peer)
+);
+CREATE TABLE sharing_policy_outbox (
+    account TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    proposal TEXT NOT NULL,
+    PRIMARY KEY(account, peer)
+);
+
+incomingPolicy:
+SELECT * FROM sharing_policy_inbox WHERE account = ? AND peer = ?;
+incomingPolicies:
+SELECT * FROM sharing_policy_inbox WHERE account = ?;
+putIncomingPolicy:
+INSERT OR REPLACE INTO sharing_policy_inbox(account,peer,binding,proposal,consent,state) VALUES (?,?,?,?,?,?);
+outgoingPolicy:
+SELECT proposal FROM sharing_policy_outbox WHERE account = ? AND peer = ?;
+putOutgoingPolicy:
+INSERT OR REPLACE INTO sharing_policy_outbox(account,peer,proposal) VALUES (?,?,?);
+
+clearIncomingPolicies:
+DELETE FROM sharing_policy_inbox WHERE account = ?;
+clearOutgoingPolicies:
+DELETE FROM sharing_policy_outbox WHERE account = ?;

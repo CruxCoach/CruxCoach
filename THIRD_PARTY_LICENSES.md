@@ -250,3 +250,13 @@ When bundling a third-party asset (image, font, model, dataset):
    restrictions on redistribution.
 2. If the license requires it, surface the attribution in the app's about /
    credits screen.
+
+## Source-built Marmot native library
+
+The account-device JNI host builds a hash-pinned MDK/OpenMLS dependency tree.
+Its exact sources, license expressions and notice hashes are recorded in
+[`native/marmot/licenses/dependencies.json`](native/marmot/licenses/dependencies.json).
+The consolidated [notices](native/marmot/licenses/THIRD-PARTY-NOTICES.txt), including
+MDK's MIT notice, are packaged as Android assets. CruxCoach's local adapter follows
+the repository GPL-3.0 license. See the [native build documentation](native/marmot/README.md)
+for source reproduction. No prebuilt third-party binary is committed.

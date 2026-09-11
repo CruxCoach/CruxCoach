@@ -23,10 +23,24 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      # Owner review: native integration, read-only CI; no signing/publisher token.
+      - name: Install pinned Marmot toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy --target aarch64-linux-android
+      - name: Verify native Marmot boundary with local relays
+        run: |
+          python3 -m unittest discover -s native/marmot -p '*_test.py'
+          python3 native/marmot/prepare.py
+          cargo +1.97.1 fmt --manifest-path native/marmot/Cargo.toml --check
+          cargo +1.97.1 test --locked --manifest-path native/marmot/Cargo.toml --features local-harness --test native_transport --test relay_boundary --test storage_boundary
       - name: Validate feature identity tooling
         run: python3 -m unittest discover -s scripts -p '*_test.py'
       - name: Unit tests
         run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+      - name: Independent local Marmot participant processes
+        run: |
+          ./gradlew :androidApp:writeMarmotEndpointClasspath --console=plain
+          cargo +1.97.1 build --locked --manifest-path native/marmot/Cargo.toml --example local_relay
+          python3 scripts/marmot_network_e2e.py
       - name: Compile debug APK
         run: ./gradlew :androidApp:assembleDebug --console=plain
 

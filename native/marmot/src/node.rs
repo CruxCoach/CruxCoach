@@ -484,10 +484,22 @@ impl Node {
     /// Hints are used only when explicitly configured by the local user. They
     /// never replace authenticated group routing or change canonical state.
     fn permitted(&self, relays: &[String]) -> Vec<String> {
-        relays
+        let advertised: Vec<_> = relays
             .iter()
-            .filter(|r| self.config.relays.contains(r))
-            .cloned()
+            .filter_map(|url| relay::validate_url(url, self.config.local_test).ok())
+            .collect();
+        let mut seen = std::collections::BTreeSet::new();
+        self.config
+            .relays
+            .iter()
+            .filter_map(|configured| {
+                let url = relay::validate_url(configured, self.config.local_test).ok()?;
+                // URL equivalence (host case/default port/root slash) selects only
+                // a locally configured physical endpoint, preserving its UI key.
+                // Canonical MLS routing bytes remain exactly as authenticated.
+                (advertised.contains(&url) && seen.insert(url.to_string()))
+                    .then(|| configured.clone())
+            })
             .collect()
     }
 

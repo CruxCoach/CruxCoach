@@ -105,6 +105,7 @@ fun SharingPeerDetailScreen(
             SharingSigningBanner(signing)
             writeError?.let { SharingWriteErrorMessage(it) }
             StatusCard(current)
+            MarmotTransportCard(viewModel, peer)
             SharingExpiryCard(current, viewModel, !signing)
             SharingSnapshotCard(current, viewModel, !signing)
             // Permission changes are taken one at a time, so while a

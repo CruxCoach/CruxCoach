@@ -27,9 +27,9 @@ that vendored OpenSSL embeds its absolute install paths and compiler flags:
 changing the build directory changes the binary hash despite file-prefix remaps.
 Reproducing the same binary therefore also requires the same absolute source,
 Cargo, NDK and target paths. The manifest pins source/toolchain inputs; it does
-not claim path-independent binary reproducibility. A clean arm64 rebuild on
-2026-09-11 with identical paths was byte-identical (SHA-256
-`a1623162efbb871495599e91e8f7a39c9a063bdaba16c61dbb965a9a47982b00`). Android static dependency
+not claim path-independent binary reproducibility. A full same-path arm64 rebuild was byte-identical. The final adapter-only clean
+rebuild with those unchanged qualified dependencies also matched, SHA-256
+`67fcf53886c417c0322950c18398547f31370f9c7a8a9a60aaf1de698ee67545`. Android static dependency
 symbols are hidden; the shared object's load segments use 16 KiB alignment.
 Gradle packages only the arm64 library, consistent with the existing app ABI.
 No binary is checked in. Changing native pins, Gradle or CI requires owner review.
