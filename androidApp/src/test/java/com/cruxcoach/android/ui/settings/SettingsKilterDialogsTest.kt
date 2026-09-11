@@ -22,7 +22,7 @@ class SettingsKilterDialogsTest {
 
     @Test fun `all data exchange consequences are reachable and the dialog survives recreation`() {
         val finalParagraph = ApplicationProvider.getApplicationContext<Application>()
-            .getString(R.string.kilter_data_info_publish)
+            .getString(R.string.kilter_data_info_publish).substringAfter('\n')
         val restoration = StateRestorationTester(compose)
         restoration.setContent { MaterialTheme { KilterDataInfoButton() } }
         compose.onNodeWithContentDescription("Kilter-Datenaustausch — Info").performClick()

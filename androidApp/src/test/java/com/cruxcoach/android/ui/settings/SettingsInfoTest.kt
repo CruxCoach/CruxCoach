@@ -99,11 +99,13 @@ class SettingsInfoTest {
         restoration.setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
-                    InfoButton("Konto", List(40) { "Absatz $it: Eine ausführliche Erklärung zum Konto." }.joinToString("\n\n"))
+                    InfoButton("Konto", List(40) { "Absatz $it\nEine ausführliche Erklärung zum Konto." }.joinToString("\n\n"))
                 }
             }
         }
         compose.onNodeWithContentDescription("Informationen zu Konto anzeigen").performClick()
+        compose.onNodeWithText("Absatz 0")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         compose.onNodeWithText("Schließen").assertIsDisplayed()
         val scroll = compose.onNodeWithTag("info_dialog_content")
         val range = scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
@@ -112,6 +114,8 @@ class SettingsInfoTest {
         compose.runOnIdle { assertTrue(range.value() > 0f) }
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithTag("info_dialog").assertIsDisplayed()
+        val restoredRange = scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        compose.runOnIdle { assertTrue("Reading position must survive recreation", restoredRange.value() > 0f) }
         compose.onNodeWithText("Schließen").assertIsDisplayed().performClick()
         compose.onNodeWithTag("info_dialog").assertDoesNotExist()
     }
@@ -154,12 +158,19 @@ class SettingsInfoTest {
         compose.onNodeWithContentDescription(app.getString(
             R.string.action_show_info, app.getString(R.string.settings_board_send_mode_title),
         )).performTouchInput { click() }
-        val body = compose.onNodeWithTag("info_dialog_content")
-            .onChildren().filter(hasText(automatic, substring = true)).onFirst()
-            .fetchSemanticsNode().config[SemanticsProperties.Text].joinToString { it.text }
-        assertTrue("Automatic choice must introduce its explanation", body.startsWith(automatic + "\n"))
-        assertTrue("Manual choice must have its own explanation", body.contains("\n\n$explicit\n"))
-        assertFalse("Resource placeholders must be formatted", body.contains("%1\$s"))
+        val body = app.getString(R.string.settings_board_send_mode_desc, automatic, explicit)
+        val inDialog = hasAnyAncestor(hasTestTag("info_dialog_content"))
+        // Each option and exception is a distinct, accessible heading. Verify
+        // that formatting retains every explanation, including the final one.
+        body.split("\n\n").forEach { section ->
+            val heading = section.substringBefore('\n')
+            compose.onNode(hasText(heading) and inDialog)
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            compose.onNode(hasText(section.substringAfter('\n')) and inDialog).assertExists()
+        }
+        compose.onNode(hasText(body.substringAfterLast("\n\n").substringAfter('\n')) and inDialog)
+            .performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("%1\$s", substring = true) and inDialog).assertDoesNotExist()
         compose.onNodeWithText(app.getString(R.string.action_close)).performClick()
         compose.onNodeWithTag("settings_board_send_mode_single")
             .onChildren().filter(hasText(automatic)).onFirst().assertIsSelected()

@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.common
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -13,6 +14,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 
@@ -29,16 +33,19 @@ internal fun InfoButton(title: String, text: String, modifier: Modifier = Modifi
         )
     }
     if (open) {
+        // Save in the owning composition so dialog recreation retains the
+        // reading position; closing and reopening starts a fresh explanation.
+        val scrollState = rememberScrollState()
         AlertDialog(
             modifier = Modifier.testTag("info_dialog"),
             onDismissRequest = { open = false },
             title = { Text(title) },
             text = {
                 Column(
-                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    Modifier.fillMaxWidth().verticalScroll(scrollState)
                         .testTag("info_dialog_content"),
                 ) {
-                    Text(text, style = MaterialTheme.typography.bodyLarge)
+                    InfoText(text)
                 }
             },
             confirmButton = {
@@ -47,5 +54,33 @@ internal fun InfoButton(title: String, text: String, modifier: Modifier = Modifi
                 }
             },
         )
+    }
+}
+
+/**
+ * Help copy uses blank lines between sections. Within a section, a single
+ * newline separates its short heading from its body. Plain paragraphs need no
+ * heading. This keeps resources readable wherever plain text is also used.
+ */
+@Composable
+internal fun InfoText(text: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        text.split("\n\n").filter { it.isNotBlank() }.forEach { section ->
+            val headingEnd = section.indexOf('\n')
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (headingEnd > 0) {
+                    Text(
+                        text = section.substring(0, headingEnd),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(section.substring(headingEnd + 1), style = MaterialTheme.typography.bodyLarge)
+                } else {
+                    Text(section, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
     }
 }
