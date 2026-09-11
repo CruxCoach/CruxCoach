@@ -578,7 +578,9 @@ val buildMarmotNative by tasks.registering(Exec::class) {
 android.sourceSets.getByName("main").jniLibs.srcDir(layout.buildDirectory.dir("generated/marmot/jniLibs"))
 android.sourceSets.getByName("main").assets.srcDir(rootProject.file("native/marmot/licenses"))
 tasks.configureEach {
-    if (name.matches(Regex("merge.*NativeLibs"))) dependsOn(buildMarmotNative)
+    // Source-set folder merging also consumes the generated directory. An edge
+    // only on merge*NativeLibs leaves this earlier consumer unordered in Gradle.
+    if (name.matches(Regex("merge.*(?:JniLibFolders|NativeLibs)"))) dependsOn(buildMarmotNative)
 }
 
 // Local synthetic JNI integration runs the same MDK/SQLCipher code on the host.
