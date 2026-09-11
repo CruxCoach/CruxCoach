@@ -38,3 +38,12 @@ tempfile = "=3.27.0"
 [patch.crates-io]
 hax-lib-macros = { git = "https://github.com/cryspen/hax.git", rev = "8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7" }
 libsqlite3-sys = { git = "https://github.com/rusqlite/rusqlite.git", rev = "5ae7fdf83085c595fd54f977b3a56ccacabaf16b" }
+
+# Keep useful backtrace/module information without variable/type debug data
+# or incremental scratch for the large pinned MDK graph. Test inherits dev;
+# assertions and overflow checks must remain enabled. Release is unchanged.
+[profile.dev]
+debug = 1
+incremental = false
+debug-assertions = true
+overflow-checks = true

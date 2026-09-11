@@ -35,6 +35,14 @@ wenn eine veröffentlichte Variante die gleichen Prüfungen und eine sichere
 Migration nachweist. Die zusätzliche native Buildlast ist ein echtes Gegenargument,
 kein übersehener Nachteil. [Belege und Vergleich](marmot-dependencies.md).
 
+Ein gemessener Buildkostenpunkt ist behoben: Das native Entwicklungs-/Testprofil
+benötigt im frischen Vergleich 43 Prozent weniger Buildspeicher. Assertions und
+Overflow-Prüfungen bleiben aktiv; das Android-Releaseprofil bleibt unverändert und
+seine Bibliothek im geprüften Build mit denselben Pfaden bitgleich. Vollständige
+lokale Typ-/Variablen-Debuginformationen sind bei
+Bedarf zuschaltbar. Fehler beim Feature-APK-Build erscheinen zusätzlich als
+begrenzte CI-Annotationen. Das ersetzt keine Geräteabnahme.
+
 Der Eigentümer hat für diesen folgenden Durchgang normalen Feature-Push und
 APKTrack-Feature-Veröffentlichung autorisiert. Tatsächliche CI-/Receipt-Nachweise
 werden gesondert erfasst; damit sind weder Main-Merge noch Stable autorisiert.
