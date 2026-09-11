@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepared", action="store_true")
+    parser.add_argument("--unreachable-cruxcoach", action="store_true", help="Loopback harness only: map the CruxCoach relay to a closed local port")
     parser.add_argument("--restart-harness", action="store_true", help="Loopback-only encrypted restart fixture; initial configuration on stdin")
     parser.add_argument("--role", choices=["USER", "SERVER"], default="SERVER")
     parser.add_argument("--relay", action="append", default=[])
@@ -25,7 +26,7 @@ def main():
     classpath = (generated / "endpoint-classpath.txt").read_text()
     java = str(Path(os.environ.get("JAVA_HOME", "/usr/lib/jvm/java-17-openjdk-amd64")) / "bin/java")
     os.execv(java, [java, f"-Djava.library.path={generated / 'testNative'}", "-cp", classpath,
-                   "com.cruxcoach.android.sharing.MarmotEndpointMain", "--synthetic", args.role, *(["--restart-harness"] if args.restart_harness else []), *args.relay])
+                   "com.cruxcoach.android.sharing.MarmotEndpointMain", "--synthetic", args.role, *(["--restart-harness"] if args.restart_harness else []), *(["--unreachable-cruxcoach"] if args.unreachable_cruxcoach else []), *args.relay])
 
 
 if __name__ == "__main__":

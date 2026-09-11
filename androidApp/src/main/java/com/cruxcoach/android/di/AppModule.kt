@@ -262,12 +262,13 @@ object AppModule {
     fun provideMarmotFactory(
         @ApplicationContext context: Context,
         keyManager: com.cruxcoach.android.data.SqlCipherKeyManager,
+        database: SecureDatabase,
         nostrSigner: NostrSigner,
         repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
         identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
         eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
         verifier: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-    ) = com.cruxcoach.android.sharing.AndroidMarmotFactory(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, repository, identity, eventSigner, verifier)
+    ) = com.cruxcoach.android.sharing.AndroidMarmotFactory(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, repository, identity, eventSigner, verifier, database)
 
     @Provides
     @Singleton
@@ -295,7 +296,24 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideContinuousSharing(
+        database: SecureDatabase,
+        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
+        nostrSigner: NostrSigner,
+        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
+        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
+        snapshots: com.cruxcoach.android.sharing.SharingSnapshotExchange,
+    ) = com.cruxcoach.android.sharing.ContinuousSharingExchange(database, repository, nostrSigner.getPublicKeyHex(),
+        com.cruxcoach.android.sharing.SnapshotEndpointRole.USER, marmot.port,
+        com.cruxcoach.android.sharing.ContinuousSourceAdapter(database), snapshots::pinnedRole,
+        now = repository.permissionClock!!::now,
+        friendshipCrypto = ledgerCrypto(com.cruxcoach.domain.sharing.SigningDomain.FRIENDSHIP, nostrSigner, marmot.permissionEventSigner, bip340))
+
+    @Provides
+    @Singleton
     fun provideSharingController(
+        @ApplicationContext context: Context,
+        continuous: com.cruxcoach.android.sharing.ContinuousSharingExchange,
         snapshotExchange: com.cruxcoach.android.sharing.SharingSnapshotExchange,
         repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
         signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
@@ -311,6 +329,8 @@ object AppModule {
         com.cruxcoach.android.sharing.SharingController(
             marmot = marmot,
             policyTransport = policyTransport,
+            continuous = continuous,
+            onContinuousChange = { com.cruxcoach.android.sharing.ContinuousSharingWork.schedule(context) },
             snapshotExchange = snapshotExchange,
             repository = repository,
             signer = signer,

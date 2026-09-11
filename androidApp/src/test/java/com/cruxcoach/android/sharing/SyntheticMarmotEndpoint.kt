@@ -84,6 +84,7 @@ open class SyntheticMarmotEndpoint(
         lateinit var port: LiveMarmotSnapshotPort
         lateinit var exchange: SharingSnapshotExchange
         lateinit var policy: SharingPolicyTransport
+        lateinit var continuous: ContinuousSharingExchange
         init { open(!directory.resolve("app.db").exists()) }
         fun open(create: Boolean) {
             driver = JdbcSqliteDriver("jdbc:sqlite:${directory.resolve("app.db").absolutePath}?foreign_keys=on")
@@ -103,14 +104,22 @@ open class SyntheticMarmotEndpoint(
                 deviceSign = deviceCrypto::sign, verify = bip340, now = clock::now)
             exchange = SharingSnapshotExchange(database, repository, account, role, port, nowEpochMillis = clock::now)
             policy = SharingPolicyTransport(database, repository, account, port, signer, now = clock::now)
+            continuous = ContinuousSharingExchange(database, repository, account, role, port, ContinuousSourceAdapter(database), exchange::pinnedRole, clock::now, crypto(SigningDomain.FRIENDSHIP))
             controller = SharingController(repository, signer, policySigner, account,
                 authorityDevice = AuthorityDeviceId(device), authorityDevicePublicKey = device,
                 attestationSigner = attestationSigner, manifestSigner = manifestSigner,
-                snapshotExchange = exchange, policyTransport = policy)
+                snapshotExchange = exchange, policyTransport = policy, continuous = continuous)
             if (create) check(runBlocking { controller.enrolGenesisDevice() }.isSuccess) { "synthetic_genesis_failed" }
         }
+        fun privateStorageMatches(marker: String): Int {
+            port.peers() // hydrate the lazy native store even immediately after restart; no network
+            return json.parseToJsonElement(MarmotNative.call(nativeHandle,
+            buildJsonObject { put("op", "private_storage_matches"); put("marker", marker) }.toString())).jsonObject.let {
+                check(it["ok"]?.jsonPrimitive?.boolean == true); it["value"]!!.jsonPrimitive.int
+            }
+        }
         fun reopen() { port.shutdown(); driver.close(); open(false) }
-        fun tick() { port.refresh(); policy.synchronize(); exchange.synchronize() }
+        fun tick() { FriendshipTransportPreparation.run(port, continuous.pendingRequests()); port.refresh(); FriendshipTransportPreparation.run(port, continuous.pendingRequests()); policy.synchronize(); exchange.synchronize(refreshTransport = false); continuous.synchronize() }
         fun note() {
             val handle = SharingKeyHandles.ownerObject(ObjectId("synthetic-note"))
             val wrapped = repository.createDataKey(handle)

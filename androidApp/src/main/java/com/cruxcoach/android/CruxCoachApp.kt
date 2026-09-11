@@ -71,6 +71,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var boardBleConnection: dagger.Lazy<BoardBleConnection>
 
+    @Inject
+    lateinit var continuousSharing: dagger.Lazy<com.cruxcoach.android.sharing.ContinuousSharingAutomation>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -146,6 +149,11 @@ class CruxCoachApp : Application(), Configuration.Provider {
         // network regain, and a 24 h WorkManager backstop. Hard-disabled
         // when installed via Zapstore (§6.6).
         PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
+
+        appScope.launch {
+            val sharing = continuousSharing.get()
+            withContext(Dispatchers.Main) { sharing.start() }
+        }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             private var lastForegroundPoll = 0L

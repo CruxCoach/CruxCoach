@@ -37,6 +37,7 @@ enum class SigningDomain(val id: String) {
     RELATIONSHIP_LEDGER("cc.sharing.ledger.v2"),
     OWNER_POLICY_LEDGER("cc.sharing.ownerpolicy.v1"),
     BACKUP("cc.sharing.backup.v1"),
+    FRIENDSHIP("cc.sharing.friendship.v1"),
 
     /**
      * The device manifest. Its own purpose so a signature obtained for a

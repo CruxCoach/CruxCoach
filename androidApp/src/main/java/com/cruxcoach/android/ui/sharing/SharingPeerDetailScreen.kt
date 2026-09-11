@@ -27,6 +27,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -104,19 +107,26 @@ fun SharingPeerDetailScreen(
             }
             SharingSigningBanner(signing)
             writeError?.let { SharingWriteErrorMessage(it) }
-            StatusCard(current)
-            MarmotTransportCard(viewModel, peer)
-            SharingExpiryCard(current, viewModel, !signing)
-            SharingSnapshotCard(current, viewModel, !signing)
+            ContinuousSharingCard(viewModel, peer)
             // Permission changes are taken one at a time, so while a
             // signer prompt is open every control that would start
             // another one is switched off rather than silently ignored.
             val enabled = !signing
             CircleCard(current, viewModel, enabled)
-            current.categories.forEach { row -> CategoryCard(current, row, viewModel, enabled) }
-            ObjectRulesCard(current, viewModel, enabled)
+            FriendshipRulesCard(current, viewModel, enabled)
+            var legacy by remember(peer) { mutableStateOf(false) }
+            OutlinedButton(onClick = { legacy = !legacy }) { Text(stringResource(R.string.friendship_settings)) }
+            if (legacy) {
+                Text(stringResource(R.string.friendship_legacy_explanation), style = MaterialTheme.typography.bodySmall)
+                StatusCard(current)
+                current.categories.forEach { row -> CategoryCard(current, row, viewModel, enabled) }
+                ObjectRulesCard(current, viewModel, enabled)
+                MarmotTransportCard(viewModel, peer)
+                SharingExpiryCard(current, viewModel, !signing)
+                SharingSnapshotCard(current, viewModel, !signing)
+                ActionsCard(current, viewModel, onNavigateBack, scope, enabled)
+            }
             DevicesCard(current, viewModel, scope, enabled)
-            ActionsCard(current, viewModel, onNavigateBack, scope, enabled)
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -158,6 +168,13 @@ private fun StatusCard(detail: PeerDetail) {
 
 @Composable
 private fun CircleCard(detail: PeerDetail, viewModel: SharingViewModel, enabled: Boolean = true) {
+    var downgrade by remember { mutableStateOf<SharingCircle?>(null) }
+    downgrade?.let { target -> AlertDialog(onDismissRequest = { downgrade = null },
+        title = { Text(stringResource(SharingLabels.circle(target))) },
+        text = { Text(stringResource(R.string.friendship_downgrade)) },
+        confirmButton = { TextButton(onClick = { viewModel.setPeerCircle(detail.peer, target, true); downgrade = null }) { Text(stringResource(R.string.friendship_clear_exceptions)) } },
+        dismissButton = { TextButton(onClick = { viewModel.setPeerCircle(detail.peer, target); downgrade = null }) { Text(stringResource(R.string.friendship_keep_exceptions)) } })
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -173,8 +190,34 @@ private fun CircleCard(detail: PeerDetail, viewModel: SharingViewModel, enabled:
             SharingCirclePicker(
                 selected = detail.circle,
                 enabled = enabled,
-                onSelect = { viewModel.setPeerCircle(detail.peer, it) },
+                onSelect = { if (it.rank < detail.circle.rank) downgrade = it else viewModel.setPeerCircle(detail.peer, it) },
             )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun FriendshipRulesCard(detail: PeerDetail, viewModel: SharingViewModel, enabled: Boolean) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.friendship_rules), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.friendship_rules_hint), style = MaterialTheme.typography.bodySmall)
+            detail.categories.filter { it.category in setOf(SharingCategory.PROFILE_AND_GOALS, SharingCategory.TRAINING_HISTORY, SharingCategory.PRIVATE_NOTES) }.forEach { row ->
+                Text(stringResource(SharingLabels.category(row.category)))
+                Text(stringResource(if (row.policyDecision.isAllowed) R.string.friendship_rule_eligible else R.string.friendship_rule_blocked), style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(row.policyDecision.source == DecisionSource.PERSON_ALLOW, onClick = { viewModel.setPeerRule(detail.peer, row.category, AccessEffect.ALLOW) }, enabled = enabled,
+                        label = { Text(stringResource(R.string.friendship_rule_allow)) })
+                    FilterChip(row.policyDecision.source == DecisionSource.PERSON_DENY, onClick = { viewModel.setPeerRule(detail.peer, row.category, AccessEffect.DENY) }, enabled = enabled,
+                        label = { Text(stringResource(R.string.friendship_rule_deny)) })
+                    FilterChip(row.policyDecision.source !in setOf(DecisionSource.PERSON_ALLOW, DecisionSource.PERSON_DENY), onClick = { viewModel.setPeerRule(detail.peer, row.category, null) }, enabled = enabled,
+                        label = { Text(stringResource(R.string.friendship_rule_circle)) })
+                }
+            }
+            detail.objectRules.forEach { rule ->
+                Text("${stringResource(SharingLabels.category(rule.category))} · ${rule.objectId.value} · ${stringResource(if (rule.effect == AccessEffect.ALLOW) R.string.sharing_source_object_allow else R.string.sharing_source_object_deny)}", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

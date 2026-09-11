@@ -145,7 +145,21 @@ class SecureDbSharingRepository(
         val identity = localDeviceIdentity() ?: return@transactionWithResult false
         if (!loadDeviceAuthority().can(identity.device, DeviceCapability.MUTATE_PERMISSIONS)) return@transactionWithResult false
         if (loadProjection().relationships.values.any { !it.status.isTerminal && it.offeredCategories.isNotEmpty() }) return@transactionWithResult false
+        // Clock repair is allowed only after friendship contents were locally
+        // withdrawn. Keep their signed generation/END obligation for delivery
+        // after the clock unlocks; clearing those certificates would strand the
+        // peer with no authenticated end until its replica lease expired.
+        val unwithdrawn = database.continuousSharingQueries.grants(ownerNpub).executeAsList().any { row ->
+            row.body.isNotEmpty() && runCatching {
+                ContinuousCodec.json.decodeFromString(ContinuousState.serializer(), row.body).let {
+                    it.status in setOf("ENDED", "DECLINED", "CONFLICT") && it.records.isEmpty() &&
+                        it.receiving.isEmpty() && it.sending == null
+                }
+            }.getOrDefault(false).not()
+        }
+        if (unwithdrawn) return@transactionWithResult false
         database.snapshotQueries.invalidateSnapshots(ownerNpub)
+        database.continuousSharingQueries.clearRequests(ownerNpub)
         database.sharingTransportQueries.clearIncomingPolicies(ownerNpub)
         database.sharingTransportQueries.clearOutgoingPolicies(ownerNpub)
         permissionClock.resetAfterWithdrawal()
@@ -375,6 +389,8 @@ class SecureDbSharingRepository(
         queries.transaction {
             if (entry.body is SharingLedgerBody.RestoreCompleted) {
                 database.snapshotQueries.invalidateSnapshots(ownerNpub)
+                database.continuousSharingQueries.withdrawForRecovery(ownerNpub)
+                database.continuousSharingQueries.clearRequests(ownerNpub)
             }
             ensureRelationshipRow(entry.peer)
             queries.insertLedgerEntry(
@@ -1759,6 +1775,8 @@ class SecureDbSharingRepository(
         }
         if (rootAuthorised || relationshipEntries.any { it.body is com.cruxcoach.domain.sharing.SharingLedgerBody.RestoreCompleted }) {
             database.snapshotQueries.invalidateSnapshots(ownerNpub)
+            database.continuousSharingQueries.withdrawForRecovery(ownerNpub)
+            database.continuousSharingQueries.clearRequests(ownerNpub)
         }
         if (!rootAuthorised) manifestEntries.forEach { requirePairing(it, attestations) }
         relationshipEntries.forEach { requirePairing(it, attestations) }

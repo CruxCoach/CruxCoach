@@ -169,7 +169,25 @@ enum Command {
         after: Option<String>,
         kind: Option<u64>,
     },
+    ContinuousObligations {
+        after: Option<String>,
+    },
+    DiscardContinuous {
+        event_id: String,
+        fence: Fence,
+    },
+    DiscardContinuousInbox {
+        source: String,
+        fence: Fence,
+    },
+    #[cfg(feature = "local-harness")]
+    PrivateStorageMatches {
+        marker: String,
+    },
     Binding {
+        binding: String,
+    },
+    RetiredBinding {
         binding: String,
     },
     Publish {
@@ -222,11 +240,29 @@ fn command(node: &mut Node, raw: &str) -> Result<Value, Error> {
             rows.truncate(16);
             json!(rows)
         }
+        Command::ContinuousObligations { after } => {
+            let mut rows = node.continuous_obligations()?;
+            rows.retain(|r| after.as_ref().is_none_or(|a| &r.event_id > a));
+            rows.sort_by(|a, b| a.event_id.cmp(&b.event_id));
+            rows.truncate(16);
+            json!(rows)
+        }
+        Command::DiscardContinuous { event_id, fence } => {
+            node.discard_continuous_handoff(&event_id, &fence)?;
+            json!(true)
+        }
+        Command::DiscardContinuousInbox { source, fence } => {
+            node.discard_continuous_inbox(&source, &fence)?;
+            json!(true)
+        }
+        #[cfg(feature = "local-harness")]
+        Command::PrivateStorageMatches { marker } => json!(node.private_storage_matches(&marker)?),
         Command::Publish { event_id, fence } => {
             node.publish_handoff(&event_id, &fence)?;
             json!(true)
         }
         Command::Binding { binding } => json!(node.own_binding(&binding)?),
+        Command::RetiredBinding { binding } => json!(node.binding_retired(&binding)?),
         Command::Bootstrap { refresh } => {
             if refresh.unwrap_or(false) {
                 node.refresh_discovery()?;

@@ -89,6 +89,27 @@ class SharingProjectionSchemaTest {
         com.cruxcoach.data.SecureSchemaLineage.requireSupported(tables + setOf("climb_notes", "moon_import_staging"))
     }
 
+    @Test
+    fun `continuous migration preserves snapshot consent without upgrading it`() {
+        val ddl = requireNotNull(javaClass.getResource("/sharing/release-secure-v14.sql")).readText()
+        ddl.lineSequence().filterNot { it.trimStart().startsWith("--") }.joinToString("\n")
+            .split(';').filter { it.isNotBlank() }.forEach { driver.exec(it) }
+        SecureDatabase.Schema.migrate(driver, 14, 31)
+        driver.exec("INSERT INTO climb_notes VALUES ('old-note','synthetic existing beta','2026-09-11')")
+        driver.exec("INSERT INTO sharing_snapshot VALUES ('owner','old-id','old format',NULL,'ACCEPTED',0)")
+        SecureDatabase.Schema.migrate(driver, 31, SecureDatabase.Schema.version)
+        driver.close(); driver = openDriver()
+        assertEquals(0L, count("sharing_continuous_grant"))
+        assertEquals(1L, count("sharing_snapshot", "state='ACCEPTED' AND offer_json='old format'"))
+        val source = com.cruxcoach.android.sharing.ContinuousSourceAdapter(SecureDatabase(driver))
+        val scope = com.cruxcoach.android.sharing.ContinuousScope(setOf(com.cruxcoach.domain.sharing.SharingCategory.PRIVATE_NOTES), "2026-09-11")
+        val old = source.read(scope).single()
+        assertEquals(0L, old.revision)
+        com.cruxcoach.data.repository.PersonalBoardRepositoryImpl(SecureDatabase(driver)).saveClimbNote("old-note", "updated")
+        assertTrue(source.read(scope).single().revision > old.revision)
+        assertEquals(1L, count("sharing_continuous_source"))
+    }
+
     // ------------------------------------------------------------- creation
 
     @Test
@@ -1049,4 +1070,14 @@ class SharingProjectionSchemaTest {
 
         assertEquals(1L, count("sharing_recovery_attempt", "attempt_nonce = 'n-1'"))
     }
+    @Test fun `continuous-v1 migration deletes replicas without upgrading consent or modifying originals`() {
+        SecureDatabase.Schema.create(driver)
+        driver.exec("INSERT INTO sharing_continuous_grant VALUES ('account','old','peer','peer',99999999,'old-foreign-marker')")
+        driver.exec("INSERT INTO climb_notes(climb_uuid,note,updated_at) VALUES ('own','own-marker',0)")
+        driver.exec("DROP TABLE sharing_continuous_request")
+        SecureDatabase.Schema.migrate(driver, 32, 33)
+        assertEquals(0L, count("sharing_continuous_grant"))
+        assertEquals("own-marker",textOrNull("SELECT note FROM climb_notes WHERE climb_uuid='own'"))
+    }
+
 }

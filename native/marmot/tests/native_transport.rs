@@ -367,3 +367,152 @@ fn paged_offline_history_resumes_after_restart_and_rejects_invalid_welcomes() {
     assert!(node.inbox().unwrap().is_empty());
     assert!(node.peers().unwrap().is_empty());
 }
+
+#[test]
+fn continuous_ack_releases_payload_but_keeps_epoch_provenance_and_exact_retirement() {
+    let relay = Relay::start();
+    let a = Participant::new(vec![relay.url.clone()]);
+    let b = Participant::new(a.relays.clone());
+    let mut alice = a.open();
+    let mut bob = b.open();
+    alice.bootstrap().unwrap();
+    bob.bootstrap().unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    let peer = b.keys.public_key().to_hex();
+    let sender = a.keys.public_key().to_hex();
+    let before = alice.invite(&peer).unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    let received = bob.accept_invitation(&sender).unwrap();
+    let tags = vec![vec![
+        "l".into(),
+        "cc.continuous.sync.v1".into(),
+        "cruxcoach.private".into(),
+    ]];
+    let eid = alice
+        .handoff(
+            &before,
+            1223,
+            tags.clone(),
+            "synthetic delta body".repeat(100),
+            now_ms() + 60_000,
+        )
+        .unwrap();
+    alice.sync().unwrap();
+    alice.publish_handoff(&eid, &before).unwrap();
+    bob.sync().unwrap();
+    let row = bob
+        .inbox()
+        .unwrap()
+        .into_iter()
+        .find(|r| r.kind == 1223)
+        .unwrap();
+    assert!(!row.content.is_empty());
+    assert!(bob.private_storage_matches("synthetic delta body").unwrap() > 0);
+    assert!(row.retained_until >= now_ms() + 7 * 86_400_000);
+    bob.acknowledge(&row.source, &received).unwrap();
+    bob.acknowledge(&row.source, &received).unwrap(); // ambiguous return is idempotent
+    assert!(bob.inbox().unwrap().iter().all(|r| r.kind != 1223));
+    assert_eq!(
+        bob.private_storage_matches("synthetic delta body").unwrap(),
+        0
+    );
+    drop(bob);
+    let mut bob = b.open();
+    assert_eq!(bob.fence(&sender).unwrap(), received);
+    let mut wrong = before.clone();
+    wrong.binding = "f".repeat(64);
+    assert!(alice.discard_continuous_handoff(&eid, &wrong).is_err());
+    assert!(
+        alice
+            .continuous_obligations()
+            .unwrap()
+            .iter()
+            .any(|a| a.event_id == eid)
+    );
+    alice.discard_continuous_handoff(&eid, &before).unwrap();
+    alice.discard_continuous_handoff(&eid, &before).unwrap();
+    assert!(alice.continuous_obligations().unwrap().is_empty());
+    assert_eq!(
+        alice
+            .private_storage_matches("synthetic delta body")
+            .unwrap(),
+        0
+    );
+    let snapshot = alice
+        .handoff(
+            &before,
+            1220,
+            tags,
+            "synthetic old snapshot".into(),
+            now_ms() + 60_000,
+        )
+        .unwrap();
+    assert!(
+        alice
+            .discard_continuous_handoff(&snapshot, &before)
+            .is_err()
+    );
+    alice.rotate(&before).unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    assert_ne!(bob.fence(&sender).unwrap().binding, received.binding);
+    assert!(bob.binding_retired(&received.binding).unwrap());
+    assert!(bob.binding_retired("../retired").is_err());
+    assert!(
+        bob.handoff(&received, 1223, vec![], "stale".into(), now_ms() + 60_000)
+            .is_err()
+    );
+}
+
+#[test]
+fn continuous_due_batches_do_not_starve_unattempted_messages() {
+    let relay = Relay::start();
+    let a = Participant::new(vec![relay.url.clone()]);
+    let b = Participant::new(a.relays.clone());
+    let mut alice = a.open();
+    let mut bob = b.open();
+    alice.bootstrap().unwrap();
+    bob.bootstrap().unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    let fence = alice.invite(&b.keys.public_key().to_hex()).unwrap();
+    alice.sync().unwrap();
+    bob.sync().unwrap();
+    bob.accept_invitation(&a.keys.public_key().to_hex())
+        .unwrap();
+    for i in 0..12 {
+        alice
+            .handoff(
+                &fence,
+                1223,
+                vec![],
+                format!("synthetic page {i}"),
+                now_ms() + 60_000,
+            )
+            .unwrap();
+    }
+    let first = alice.pending_applications().unwrap();
+    assert_eq!(first.len(), 8);
+    relay.online.store(false, Ordering::SeqCst);
+    for message in &first {
+        alice.publish_handoff(&message.event_id, &fence).unwrap();
+    }
+    drop(alice);
+    let alice = a.open();
+    let next = alice.pending_applications().unwrap();
+    let unattempted: Vec<_> = next
+        .iter()
+        .filter(|m| !first.iter().any(|f| f.event_id == m.event_id))
+        .collect();
+    assert_eq!(unattempted.len(), 4);
+    assert_eq!(
+        alice.continuous_obligations().unwrap().len(),
+        12,
+        "outage preserves every obligation"
+    );
+}

@@ -1,0 +1,130 @@
+-- Continuous subscriptions are new consent; existing snapshot rows are untouched.
+CREATE TABLE sharing_continuous_source (
+    singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
+    generation TEXT NOT NULL,
+    revision INTEGER NOT NULL
+);
+INSERT INTO sharing_continuous_source VALUES (1, lower(hex(randomblob(16))), 0);
+
+CREATE TABLE sharing_continuous_grant (
+    account TEXT NOT NULL,
+    grant_id TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    PRIMARY KEY(account, grant_id)
+);
+
+CREATE TABLE sharing_continuous_resource (
+    resource_id TEXT NOT NULL PRIMARY KEY,
+    revision INTEGER NOT NULL
+);
+
+CREATE TRIGGER sharing_continuous_user_profiles_insert
+AFTER INSERT ON user_profiles
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'profile:active', revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_user_profiles_update
+AFTER UPDATE OF name, max_boulder_grade, max_sport_grade, climbing_years, sessions_per_week, available_equipment, goals, updated_at ON user_profiles
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'profile:active', revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_user_profiles_delete
+AFTER DELETE ON user_profiles
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'profile:active', revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_ascents_insert
+AFTER INSERT ON ascents
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'ascent:' || new.uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_ascents_update
+AFTER UPDATE OF uuid, climb_uuid, climb_name, board_brand, angle, bid_count, difficulty, climbed_at ON ascents
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'ascent:' || new.uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_ascents_delete
+AFTER DELETE ON ascents
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    DELETE FROM sharing_continuous_resource WHERE resource_id = 'ascent:' || old.uuid;
+END;
+
+CREATE TRIGGER sharing_continuous_bids_insert
+AFTER INSERT ON bids
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'bid:' || new.uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_bids_update
+AFTER UPDATE OF uuid, climb_uuid, climb_name, board_brand, angle, bid_count, climbed_at ON bids
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'bid:' || new.uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_bids_delete
+AFTER DELETE ON bids
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    DELETE FROM sharing_continuous_resource WHERE resource_id = 'bid:' || old.uuid;
+END;
+
+CREATE TRIGGER sharing_continuous_climb_notes_insert
+AFTER INSERT ON climb_notes
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'note:' || new.climb_uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_climb_notes_update
+AFTER UPDATE OF climb_uuid, note ON climb_notes
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    INSERT OR REPLACE INTO sharing_continuous_resource SELECT 'note:' || new.climb_uuid, revision FROM sharing_continuous_source WHERE singleton = 1;
+END;
+
+CREATE TRIGGER sharing_continuous_climb_notes_delete
+AFTER DELETE ON climb_notes
+BEGIN
+    UPDATE sharing_continuous_source
+    SET revision = CASE WHEN revision < 9223372036854775807 THEN revision + 1 ELSE revision END
+    WHERE singleton = 1;
+    DELETE FROM sharing_continuous_resource WHERE resource_id = 'note:' || old.climb_uuid;
+END;
