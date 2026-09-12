@@ -936,8 +936,8 @@
     <!-- Board: Logbook -->
     <string name="board_logbook_title">Board-Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
-    <string name="board_logbook_delete_title">%d Begehungen löschen?</string>
-    <string name="board_logbook_delete_message">Alle ausgewählten Begehungen werden unwiderruflich gelöscht.</string>
+    <string name="board_logbook_delete_title">%d Logeinträge löschen?</string>
+    <string name="board_logbook_delete_message">Alle ausgewählten Logeinträge, auch erfolglose Versuche, werden unwiderruflich gelöscht.</string>
     <string name="board_logbook_ascent_count">%d Begehungen</string>
 
     <!-- Board: Lists -->
@@ -971,8 +971,8 @@
     <string name="board_ascenthistory_title">Deine Begehungen</string>
 
     <!-- Board: Ascent Logging -->
-    <string name="board_ascent_edit_title">Begehung bearbeiten</string>
-    <string name="board_ascent_log_title">Begehung loggen</string>
+    <string name="board_ascent_edit_title">Logeintrag bearbeiten</string>
+    <string name="board_ascent_log_title">Kletterergebnis erfassen</string>
     <string name="board_ascent_type">Ergebnis</string>
     <string name="board_ascent_benchmark_label">Benchmark</string>
     <string name="board_ascent_benchmark_attempt">Als Benchmark markieren</string>
@@ -1460,8 +1460,8 @@
     <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
     <string name="board_logbook_empty_title">Noch keine Begehungen</string>
     <string name="board_logbook_flash">Flash</string>
-    <string name="board_logbook_sessions">Sessions</string>
-    <string name="board_logbook_unique_climbs">Unique Climbs</string>
+    <string name="board_logbook_sessions">Klettertage</string>
+    <string name="board_logbook_unique_climbs">Verschiedene Boulder</string>
     <string name="stats_interval_all">Gesamt</string>
     <string name="stats_interval_30_days">30 Tage</string>
     <string name="stats_interval_90_days">90 Tage</string>
@@ -1536,11 +1536,11 @@
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
     <string name="board_stats_board_comparison">Board-Vergleich</string>
     <string name="board_stats_board_comparison_board">Board</string>
-    <string name="board_stats_attempt">Versuch</string>
+    <string name="board_stats_attempt">Versucht</string>
     <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
     <string name="board_stats_date_range">Zeitraum…</string>
-    <string name="board_stats_flash_rate">Flash-Rate</string>
-    <string name="board_stats_flash_send_attempt">Flash / Send / Versuch</string>
+    <string name="board_stats_flash_rate">Flash-Quote</string>
+    <string name="board_stats_flash_send_attempt">Boulder-Ergebnisse nach Grad</string>
     <string name="board_stats_grade_easy">Leicht</string>
     <string name="board_stats_grade_elite">Elite</string>
     <string name="board_stats_grade_hard">Schwer</string>
@@ -1554,13 +1554,13 @@
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
     <string name="board_stats_week_streak">Wochen-Serie</string>
-    <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
-    <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
+    <string name="board_stats_most_sends_day">Meiste Begehungen pro Tag</string>
+    <string name="board_stats_outcome_distribution">Geschaffte Boulder: Flash oder später</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>
     <string name="board_stats_sends_over_time">Logeinträge im Zeitverlauf</string>
     <string name="board_stats_total">Gesamt</string>
-    <string name="board_stats_unique">Unique</string>
-    <string name="board_stats_weekly_volume">Wochen-Volumen</string>
+    <string name="board_stats_unique">Verschiedene Boulder</string>
+    <string name="board_stats_weekly_volume">Wöchentliche Einträge nach Gradbereich</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
@@ -2796,4 +2796,10 @@
     <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nErgebnis, Board und Winkel grenzen diese Liste ein. Der in der Statistik gewählte Zeitraum gilt auch für diese Liste; der Board-Filter der Statistik ist unabhängig. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
     <string name="ux_stats_help">Umfang\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal.\n\nBoulder-Ergebnisse\nJeder Boulder zählt pro Board-Familie im gewählten Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht. Als Flash gilt eine erste erfasste Begehung bei diesem Winkel mit höchstens einem Versuch in der gesamten Historie. Fehlende Einträge begrenzen diese Aussage. Die Flash-Quote teilt Flashes durch erfolgreiche Einträge einschließlich Wiederholungen.\n\nAktivität und Zeitdiagramm\nSie zählen Logeinträge, auch erfolglose, statt einzelner Kletterversuche oder nur erfolgreicher Begehungen. Rekorde beziehen sich auf die gesamte Historie; die übrigen Diagramme auf den gewählten Zeitraum.</string>
     <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
+    <string name="ux_logbook_unsent_attempts">Ohne Begehung</string>
+    <string name="ux_sent_climbs">Geschaffte Boulder</string>
+    <string name="ux_sent_climbs_grade">Geschaffte Boulder und Wiederholungen nach Grad</string>
+    <string name="ux_later_send">Später geschafft</string>
+    <string name="ux_outcome_donut_hint">Jeder geschaffte Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash oder später geschafft. Erfolglose Boulder gehören nicht zu diesem Ring.</string>
+    <string name="ux_grade_progression_help">Vierwochenfenster\nJeder Punkt nutzt bis zu drei der schwersten verschiedenen Boulder-Winkel-Kombinationen mit erfolgreicher Begehung in dieser und den drei vorherigen Wochen, innerhalb des gewählten Zeitraums. Wiederholungen beim selben Winkel zählen einmal.\n\nNiveau\nBei drei Ergebnissen gilt der mittlere Grad, bei zwei deren Durchschnitt, bei einem dessen Grad. Es zählen nur erfolgreiche Einträge mit bekanntem Grad.</string>
 </resources>

@@ -43,7 +43,7 @@ private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
     GradeChartView.PYRAMID -> stringResource(R.string.board_stats_grade_pyramid)
     GradeChartView.FLASH_SEND_ATTEMPT -> stringResource(R.string.board_stats_flash_send_attempt)
     GradeChartView.OUTCOME_DONUT -> stringResource(R.string.board_stats_outcome_distribution)
-    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.board_stats_unique)
+    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.ux_sent_climbs_grade)
 }
 
 @Composable
@@ -263,7 +263,10 @@ internal fun BoardStatsSheet(
             // Central performance signal: a rolling four-week level based on
             // the best distinct sends, deliberately separate from volume.
             if (stats.gradeProgression.size >= 2) {
-                ChartSection(stringResource(R.string.board_stats_grade_progression)) {
+                ChartSection(
+                    stringResource(R.string.board_stats_grade_progression),
+                    help = stringResource(R.string.ux_grade_progression_help),
+                ) {
                     BoardGradeProgressionChart(
                         entries = stats.gradeProgression,
                         gradeScale = gradeScale,
@@ -295,7 +298,10 @@ internal fun BoardStatsSheet(
                         gradeChartView == GradeChartView.OUTCOME_DONUT
                     ) {
                         Text(
-                            text = stringResource(R.string.board_stats_problem_outcomes_hint),
+                            text = stringResource(
+                                if (gradeChartView == GradeChartView.OUTCOME_DONUT) R.string.ux_outcome_donut_hint
+                                else R.string.board_stats_problem_outcomes_hint,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

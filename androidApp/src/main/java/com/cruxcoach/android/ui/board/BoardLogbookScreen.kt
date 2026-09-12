@@ -355,7 +355,7 @@ private fun LogbookFilterSheet(
                     val label = when (filter) {
                         LogbookOutcomeFilter.ALL -> stringResource(R.string.map_filter_show_all)
                         LogbookOutcomeFilter.SENDS -> stringResource(R.string.board_sends)
-                        LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.board_logbook_attempts)
+                        LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.ux_logbook_unsent_attempts)
                     }
                     FilterChip(
                         selected = state.logbookOutcomeFilter == filter,

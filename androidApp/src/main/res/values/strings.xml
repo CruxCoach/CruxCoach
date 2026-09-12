@@ -892,8 +892,8 @@
     <!-- Board: Logbook -->
     <string name="board_logbook_title">Board logbook</string>
     <string name="board_logbook_selected">%d selected</string>
-    <string name="board_logbook_delete_title">Delete %d ascents?</string>
-    <string name="board_logbook_delete_message">All selected ascents will be permanently deleted.</string>
+    <string name="board_logbook_delete_title">Delete %d log entries?</string>
+    <string name="board_logbook_delete_message">All selected log entries, including unsuccessful attempts, will be permanently deleted.</string>
     <string name="board_logbook_ascent_count">%d ascents</string>
 
     <!-- Board: Lists -->
@@ -927,8 +927,8 @@
     <string name="board_ascenthistory_title">Your ascents</string>
 
     <!-- Board: Ascent Logging -->
-    <string name="board_ascent_edit_title">Edit ascent</string>
-    <string name="board_ascent_log_title">Log ascent</string>
+    <string name="board_ascent_edit_title">Edit log entry</string>
+    <string name="board_ascent_log_title">Log a climb</string>
     <string name="board_ascent_type">Result</string>
     <string name="board_ascent_benchmark_label">Benchmark</string>
     <string name="board_ascent_benchmark_attempt">Mark as benchmark</string>
@@ -1417,8 +1417,8 @@
     <string name="board_logbook_empty_message">Log your first ascent to see it here</string>
     <string name="board_logbook_empty_title">No ascents yet</string>
     <string name="board_logbook_flash">Flash</string>
-    <string name="board_logbook_sessions">Sessions</string>
-    <string name="board_logbook_unique_climbs">Unique Climbs</string>
+    <string name="board_logbook_sessions">Climbing days</string>
+    <string name="board_logbook_unique_climbs">Distinct climbs</string>
     <string name="stats_interval_all">All time</string>
     <string name="stats_interval_30_days">30 days</string>
     <string name="stats_interval_90_days">90 days</string>
@@ -1493,11 +1493,11 @@
     <string name="board_stats_angle_distribution">Angle Distribution</string>
     <string name="board_stats_board_comparison">Board Comparison</string>
     <string name="board_stats_board_comparison_board">Board</string>
-    <string name="board_stats_attempt">Attempt</string>
+    <string name="board_stats_attempt">Attempted</string>
     <string name="board_stats_avg_sessions_week">Sessions/week (8w)</string>
     <string name="board_stats_date_range">Date range…</string>
-    <string name="board_stats_flash_rate">Flash Rate</string>
-    <string name="board_stats_flash_send_attempt">Flash / Send / Attempt</string>
+    <string name="board_stats_flash_rate">Flash rate</string>
+    <string name="board_stats_flash_send_attempt">Problem outcomes by grade</string>
     <string name="board_stats_grade_easy">Easy</string>
     <string name="board_stats_grade_elite">Elite</string>
     <string name="board_stats_grade_hard">Hard</string>
@@ -1511,13 +1511,13 @@
     <string name="board_stats_interval_90d">90 Days</string>
     <string name="board_stats_interval_all">All Time</string>
     <string name="board_stats_week_streak">Week streak</string>
-    <string name="board_stats_most_sends_day">Most Sends/Day</string>
-    <string name="board_stats_outcome_distribution">Outcome Distribution</string>
+    <string name="board_stats_most_sends_day">Most sends in a day</string>
+    <string name="board_stats_outcome_distribution">Sent climbs: flash or later send</string>
     <string name="board_stats_period_comparison">Period Comparison</string>
     <string name="board_stats_sends_over_time">Log entries over time</string>
     <string name="board_stats_total">Total</string>
-    <string name="board_stats_unique">Unique</string>
-    <string name="board_stats_weekly_volume">Weekly Volume</string>
+    <string name="board_stats_unique">Distinct climbs</string>
+    <string name="board_stats_weekly_volume">Weekly log entries by grade band</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
@@ -2797,4 +2797,10 @@
     <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nOutcome, board and angle narrow this list. The period selected in statistics also applies to this list; the statistics board filter is separate. Lighting a climb on the board does not log a climbing attempt.</string>
     <string name="ux_stats_help">Volume\nSends count successful entries, including repeats. Attempts add up the recorded tries in all entries, including sends; each entry counts at least once.\n\nProblem outcomes\nEach climb counts once per board family in the selected period, across angles: Flash, otherwise Sent, otherwise Attempted. A flash requires a first recorded send at that angle with at most one try across the full history. Missing history limits this classification. The flash rate divides flashes by successful entries, including repeats.\n\nActivity and time chart\nThese count log entries, including unsuccessful entries, rather than individual tries or only sends. Records use the full history; other charts follow the selected period.</string>
     <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
+    <string name="ux_logbook_unsent_attempts">Without a send</string>
+    <string name="ux_sent_climbs">Sent climbs</string>
+    <string name="ux_sent_climbs_grade">Sent climbs and repeats by grade</string>
+    <string name="ux_later_send">Later send</string>
+    <string name="ux_outcome_donut_hint">Each sent climb counts once per board family in this period, across angles: Flash or a later send. Unsuccessful climbs are not part of this ring.</string>
+    <string name="ux_grade_progression_help">Four-week window\nEach point uses up to three hardest distinct climb-and-angle combinations sent within that week and the previous three weeks, within the selected period. Repeats at the same angle count once.\n\nLevel\nWith three results, the middle grade is used; with two, their average; with one, its grade. Only successful entries with a known grade contribute.</string>
 </resources>
