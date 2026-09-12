@@ -1414,8 +1414,8 @@
     <string name="board_logbook_no_filter_matches">No logbook entries match these filters.</string>
     <string name="board_logbook_best_grade">Best Grade</string>
     <string name="board_logbook_day_entries">%d entries</string>
-    <string name="board_logbook_empty_message">Log your first ascent to see it here</string>
-    <string name="board_logbook_empty_title">No ascents yet</string>
+    <string name="board_logbook_empty_message">Record attempts or successful sends from a climb’s detail screen.</string>
+    <string name="board_logbook_empty_title">No log entries yet</string>
     <string name="board_logbook_flash">Flash</string>
     <string name="board_logbook_sessions">Climbing days</string>
     <string name="board_logbook_unique_climbs">Distinct climbs</string>

@@ -1457,8 +1457,8 @@
     <string name="board_logbook_no_filter_matches">Keine Logbook-Einträge entsprechen diesen Filtern.</string>
     <string name="board_logbook_best_grade">Bester Grad</string>
     <string name="board_logbook_day_entries">%d Einträge</string>
-    <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
-    <string name="board_logbook_empty_title">Noch keine Begehungen</string>
+    <string name="board_logbook_empty_message">Erfasse Versuche oder erfolgreiche Begehungen in der Detailansicht eines Boulders.</string>
+    <string name="board_logbook_empty_title">Noch keine Logeinträge</string>
     <string name="board_logbook_flash">Flash</string>
     <string name="board_logbook_sessions">Klettertage</string>
     <string name="board_logbook_unique_climbs">Verschiedene Boulder</string>
