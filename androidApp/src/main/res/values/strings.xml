@@ -6,7 +6,7 @@
 
     <!-- Climb Creator (FEAT-003) -->
     <string name="climb_creator_title">New climb</string>
-    <string name="climb_creator_open">Create new climb</string>
+    <string name="climb_creator_open">Create a climb</string>
     <string name="climb_creator_undo">Undo</string>
     <string name="climb_creator_redo">Redo</string>
     <string name="climb_creator_name">Name</string>
@@ -38,8 +38,8 @@
     <string name="climb_creator_also_post_note">Also post to Nostr</string>
     <string name="climb_creator_also_post_note_hint">Posts a short message to your Nostr followers linking back to this climb.</string>
     <string name="auto_note_default_template">I just published a new {board} boulder on nostr:{npub_cruxcoach}:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
-    <string name="auto_note_setting_title">Post new climbs to Nostr</string>
-    <string name="auto_note_setting_body">When enabled, every climb you publish also gets a short post to your Nostr followers, linking back to your climb. Per-climb override in the editor. Default off.</string>
+    <string name="auto_note_setting_title">Add a Nostr post when publishing</string>
+    <string name="auto_note_setting_body">Default for the editor\nWhen enabled, publishing a climb also creates a short public Nostr post with a link to it. You can change this choice for each climb in the editor. Off by default.</string>
     <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
     <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
     <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>
@@ -143,7 +143,7 @@
     <string name="nostr_profile_title">My profile</string>
     <string name="nostr_profile_settings_label">Profile</string>
     <string name="nostr_profile_settings_summary">Display name, picture, lightning address</string>
-    <string name="nostr_profile_explainer">Your profile has two clear modes: save the complete profile privately on this device, or explicitly publish the complete profile globally on Nostr. Selected images stay local until you confirm publication.</string>
+    <string name="nostr_profile_explainer">Save on this device\nSave keeps all profile fields and selected pictures privately on this device without a profile-related network request.\n\nPublish on Nostr\nAfter confirmation, the complete profile becomes public, including pictures, links and addresses. This is separate from encrypted data backups.</string>
     <string name="nostr_profile_display_name">Display name</string>
     <string name="nostr_profile_display_name_hint">Shown next to your climbs as the setter.</string>
     <string name="nostr_profile_about">About</string>
@@ -225,7 +225,7 @@
     <string name="onboarding_existing_data_subtitle">Choose its source to see the matching import. Otherwise start directly.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Restore encrypted backup</string>
-    <string name="onboarding_cruxcoach_restore_desc">Restore a backup from another CruxCoach device using its account key.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Restore\nImport the same account’s private key to access its encrypted backup. The backup must still be available. A public account ID (npub) alone is not enough.</string>
     <string name="onboarding_cruxcoach_restore_action">Restore</string>
     <string name="onboarding_cruxcoach_file_title">Import a CruxCoach file</string>
     <string name="onboarding_cruxcoach_file_desc">Open the existing validated file import with preview and merge controls.</string>
@@ -890,7 +890,7 @@
     <string name="board_holdsearch_clear">Clear</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board Logbook</string>
+    <string name="board_logbook_title">Board logbook</string>
     <string name="board_logbook_selected">%d selected</string>
     <string name="board_logbook_delete_title">Delete %d ascents?</string>
     <string name="board_logbook_delete_message">All selected ascents will be permanently deleted.</string>
@@ -1514,7 +1514,7 @@
     <string name="board_stats_most_sends_day">Most Sends/Day</string>
     <string name="board_stats_outcome_distribution">Outcome Distribution</string>
     <string name="board_stats_period_comparison">Period Comparison</string>
-    <string name="board_stats_sends_over_time">Sends Over Time</string>
+    <string name="board_stats_sends_over_time">Log entries over time</string>
     <string name="board_stats_total">Total</string>
     <string name="board_stats_unique">Unique</string>
     <string name="board_stats_weekly_volume">Weekly Volume</string>
@@ -2438,7 +2438,7 @@
     <string name="list_playback_unavailable_hint">%1$d saved climbs are unavailable locally and are not included.</string>
     <string name="list_playback_error_empty">No locally available climbs can be played.</string>
     <string name="list_playback_error_multiple_boards">This training plan contains multiple board configurations. Split it into one plan per board.</string>
-    <string name="list_plan_membership_info">This plan controls playback only. New list climbs are appended automatically with an estimated rest. Removing or reordering steps does not change the list.</string>
+    <string name="list_plan_membership_info">List and plan\nThis plan controls playback. Removing or reordering steps leaves the list unchanged.\n\nNew climbs\nNew list climbs are appended automatically with an estimated rest. Repeated steps belong to the plan; they do not duplicate list membership.</string>
     <string name="list_plan_duplicate_step">Repeat climb</string>
     <string name="list_plan_reset_title">Rebuild training plan?</string>
     <string name="list_plan_reset_message">The current order, repetitions and rests will be replaced by the list order with automatically estimated rests.</string>
@@ -2750,7 +2750,7 @@
     <string name="beta_video_number">Beta video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Current angle</string>
     <string name="beta_video_close">Close beta videos</string>
-    <string name="board_stats_problem_outcomes_hint">Each problem counts once in the selected period: Flash, otherwise Sent, otherwise Attempted. Repeated tries do not increase these counts.</string>
+    <string name="board_stats_problem_outcomes_hint">Each climb counts once per board family in this period, across angles: Flash, otherwise Sent, otherwise Attempted.</string>
     <string name="whatsnew_023_title">New in 0.2.3</string>
     <string name="whatsnew_023_body">• Statistics count distinct problems as Flash, Sent or Attempt. Total tries remain visible.\n\n• Filter totals match the list, including results beyond the first 50.\n\n• Random search is more reliable while scrolling.\n\n• Switch boards from the compact header and open beta videos from climb details.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
@@ -2789,4 +2789,12 @@
     <string name="settings_account_explanation_hide">Hide account explanation</string>
     <string name="settings_active_board_title">Active board</string>
     <string name="settings_active_board_desc">Selects the brand and model for the climb list and board view in the app. “Change” switches the active board; the brand cards below only open that brand’s settings.</string>
+    <string name="ux_profile_identity">Name and pictures</string>
+    <string name="ux_profile_links">Links and addresses (optional)</string>
+    <string name="ux_plan_title">Playback plan</string>
+    <string name="ux_account_help">Account access\nYour private key controls your account. Keep it secret and save a copy securely. The public account ID (npub) identifies you; it cannot restore access.\n\nBackups\nEncrypted backups contain your saved app data. Restoring requires the same account’s decryption capability and an available backup. Saving a key does not create a data backup.\n\nExternal signer\nAmber manages the private key in a separate app on your phone and handles signing requests. A remote signer manages it elsewhere. Neither is a public profile or a data backup.</string>
+    <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
+    <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nOutcome, board and angle narrow this list. The period selected in statistics also applies to this list; the statistics board filter is separate. Lighting a climb on the board does not log a climbing attempt.</string>
+    <string name="ux_stats_help">Volume\nSends count successful entries, including repeats. Attempts add up the recorded tries in all entries, including sends; each entry counts at least once.\n\nProblem outcomes\nEach climb counts once per board family in the selected period, across angles: Flash, otherwise Sent, otherwise Attempted. A flash requires a first recorded send at that angle with at most one try across the full history. Missing history limits this classification. The flash rate divides flashes by successful entries, including repeats.\n\nActivity and time chart\nThese count log entries, including unsuccessful entries, rather than individual tries or only sends. Records use the full history; other charts follow the selected period.</string>
+    <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
 </resources>

@@ -28,7 +28,10 @@ import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 
@@ -342,10 +345,10 @@ private fun LogbookFilterSheet(
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.board_logbook_filters), style = MaterialTheme.typography.titleLarge)
+            InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
             Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LogbookOutcomeFilter.entries.forEach { filter ->

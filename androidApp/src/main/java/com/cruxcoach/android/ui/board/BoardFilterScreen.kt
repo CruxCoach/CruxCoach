@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoText
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
@@ -663,16 +664,5 @@ private fun FilterTermInfoDialog(onDismiss: () -> Unit) {
 
 @Composable
 private fun FilterTermEntry(termRes: Int, descriptionRes: Int) {
-    Column {
-        Text(
-            stringResource(termRes),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            stringResource(descriptionRes),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+    InfoText(stringResource(termRes) + "\n" + stringResource(descriptionRes))
 }

@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.DarkBackground
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -194,7 +195,7 @@ fun PlaylistGeneratorScreen(
             ProfileHeader(state)
 
             // ── Session type ────────────────────────────────────
-            SectionTitle(stringResource(R.string.playlist_generator_type))
+            InfoHeading(typeLabel(state.type), typeDescription(state.type))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -229,11 +230,6 @@ fun PlaylistGeneratorScreen(
                     }
                 }
             }
-            Text(
-                typeDescription(state.type),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             // ── Grade range ─────────────────────────────────────
             val targetLow = state.targetMinDifficulty

@@ -60,6 +60,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.nostr.profile.LnurlVerifier
 import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import com.halilibo.richtext.markdown.Markdown
@@ -135,7 +137,7 @@ fun NostrProfileScreen(
                     title = { Text(stringResource(R.string.nostr_profile_title)) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
                 )
@@ -172,6 +174,7 @@ fun NostrProfileScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            InfoHeading(stringResource(R.string.ux_profile_identity), stringResource(R.string.nostr_profile_explainer))
             BannerImageArea(
                 url = state.bannerUrl,
                 uploadInFlight = state.bannerUploadInFlight,
@@ -194,16 +197,11 @@ fun NostrProfileScreen(
                 onRemoveClick = viewModel::removePicture,
             )
 
-            Text(
-                stringResource(R.string.nostr_profile_explainer),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
             OutlinedTextField(
                 value = state.displayName,
                 onValueChange = viewModel::setDisplayName,
                 label = { Text(stringResource(R.string.nostr_profile_display_name)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_display_name_hint)) },
+                trailingIcon = { InfoButton(stringResource(R.string.nostr_profile_display_name), stringResource(R.string.nostr_profile_display_name_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 modifier = Modifier.fillMaxWidth(),
@@ -264,6 +262,7 @@ fun NostrProfileScreen(
                 AboutMarkdownPreview(content = state.about)
             }
 
+            SettingsGroupHeader(stringResource(R.string.ux_profile_links))
             OutlinedTextField(
                 value = state.lightningAddress,
                 onValueChange = viewModel::setLightningAddress,
@@ -295,7 +294,7 @@ fun NostrProfileScreen(
                 value = state.website,
                 onValueChange = viewModel::setWebsite,
                 label = { Text(stringResource(R.string.nostr_profile_website_label)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_website_hint)) },
+                trailingIcon = { InfoButton(stringResource(R.string.nostr_profile_website_label), stringResource(R.string.nostr_profile_website_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -334,25 +333,12 @@ fun NostrProfileScreen(
             // time as the per-publish checkbox vorbelegung; flipping
             // here doesn't retro-affect open editor sessions.
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            Text(
-                stringResource(R.string.auto_note_setting_title),
-                style = MaterialTheme.typography.titleSmall,
+            SettingsToggleRow(
+                title = stringResource(R.string.auto_note_setting_title),
+                description = stringResource(R.string.auto_note_setting_body),
+                checked = state.autoNoteEnabled,
+                onCheckedChange = viewModel::setAutoNoteEnabled,
             )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                androidx.compose.material3.Switch(
-                    checked = state.autoNoteEnabled,
-                    onCheckedChange = viewModel::setAutoNoteEnabled,
-                )
-                Spacer(Modifier.size(12.dp))
-                Text(
-                    stringResource(R.string.auto_note_setting_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
 
             // Subscriber liveness — minimal diagnostic so users can
             // tell whether the relay-collect loop is alive. running=false
@@ -412,7 +398,7 @@ private fun BannerImageArea(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
-                    .size(36.dp),
+                    .size(48.dp),
             ) {
                 Icon(
                     Icons.Filled.Close,
@@ -427,7 +413,7 @@ private fun BannerImageArea(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(8.dp)
-                .size(36.dp),
+                .size(48.dp),
         ) {
             Icon(
                 Icons.Filled.Edit,

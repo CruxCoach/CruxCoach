@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.common
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -82,5 +84,19 @@ internal fun InfoText(text: String) {
                 }
             }
         }
+    }
+}
+
+/** Section heading with optional help; wraps without squeezing the info target. */
+@Composable
+internal fun InfoHeading(title: String, text: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        InfoButton(title, text)
     }
 }

@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
@@ -289,6 +290,7 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
+                        InfoButton(stringResource(R.string.ux_plan_title), stringResource(R.string.list_plan_membership_info))
                         IconButton(
                             onClick = { showBleSheet = true },
                             modifier = Modifier.testTag("playlist_ble_button"),
@@ -421,18 +423,6 @@ fun PlaylistDetailScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
-            Surface(
-                color = InfoBlue.copy(alpha = 0.10f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    stringResource(R.string.list_plan_membership_info),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = InfoBlue,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
-            }
             if (state.unavailableCount > 0) {
                 Text(
                     stringResource(R.string.playlist_unavailable_climbs, state.unavailableCount),

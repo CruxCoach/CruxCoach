@@ -55,13 +55,14 @@ internal fun <T> ChartSectionWithSelector(
                 Row(
                     modifier = Modifier
                         .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth(),
+                        .fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = labelOf(selected),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
                     )
                     Icon(
                         Icons.Default.ArrowDropDown,

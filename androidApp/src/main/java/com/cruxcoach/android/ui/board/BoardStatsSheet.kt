@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -226,11 +227,7 @@ internal fun BoardStatsSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                stringResource(R.string.board_stats_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
 
             // Per-board split: only when the user has logged on >1 board.
             if (availableBoardBrands.size > 1) {

@@ -6,7 +6,7 @@
 
     <!-- Climb Creator (FEAT-003) -->
     <string name="climb_creator_title">Neuer Climb</string>
-    <string name="climb_creator_open">Neuen Climb erstellen</string>
+    <string name="climb_creator_open">Boulder oder Route erstellen</string>
     <string name="climb_creator_undo">Rückgängig</string>
     <string name="climb_creator_redo">Wiederherstellen</string>
     <string name="climb_creator_name">Name</string>
@@ -38,8 +38,8 @@
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
     <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
-    <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
-    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
+    <string name="auto_note_setting_title">Beim Veröffentlichen auf Nostr posten</string>
+    <string name="auto_note_setting_body">Vorgabe für den Editor\nWenn aktiv, entsteht beim Veröffentlichen eines Boulders zusätzlich ein kurzer öffentlicher Nostr-Beitrag mit einem Link darauf. Du kannst diese Auswahl für jeden Boulder im Editor ändern. Standardmäßig aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
     <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
     <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
@@ -143,7 +143,7 @@
     <string name="nostr_profile_title">Mein Profil</string>
     <string name="nostr_profile_settings_label">Profil</string>
     <string name="nostr_profile_settings_summary">Anzeigename, Profilbild, Lightning-Adresse</string>
-    <string name="nostr_profile_explainer">Dein Profil hat zwei klare Modi: das vollständige Profil privat auf diesem Gerät speichern oder das vollständige Profil ausdrücklich global auf Nostr veröffentlichen. Ausgewählte Bilder bleiben bis zur Bestätigung lokal.</string>
+    <string name="nostr_profile_explainer">Auf diesem Gerät speichern\nSpeichern behält alle Profilfelder und ausgewählten Bilder privat auf diesem Gerät, ohne profilbezogene Netzwerkanfrage.\n\nAuf Nostr veröffentlichen\nNach deiner Bestätigung wird das vollständige Profil öffentlich, einschließlich Bildern, Links und Adressen. Das ist vom verschlüsselten Daten-Backup getrennt.</string>
     <string name="nostr_profile_display_name">Anzeigename</string>
     <string name="nostr_profile_display_name_hint">Wird bei deinen eigenen Bouldern als Name des Schraubers angezeigt.</string>
     <string name="nostr_profile_about">Über mich</string>
@@ -225,7 +225,7 @@
     <string name="onboarding_existing_data_subtitle">Wähle die Quelle, um den passenden Import zu sehen. Sonst kannst du direkt starten.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Verschlüsseltes Backup wiederherstellen</string>
-    <string name="onboarding_cruxcoach_restore_desc">Stelle ein Backup eines anderen CruxCoach-Geräts mit dessen Account-Schlüssel wieder her.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Wiederherstellen\nImportiere den privaten Schlüssel desselben Kontos für dessen verschlüsseltes Backup. Das Backup muss noch verfügbar sein. Die öffentliche Konto-ID (npub) allein reicht nicht aus.</string>
     <string name="onboarding_cruxcoach_restore_action">Wiederherstellen</string>
     <string name="onboarding_cruxcoach_file_title">CruxCoach-Datei importieren</string>
     <string name="onboarding_cruxcoach_file_desc">Öffne den bestehenden geprüften Dateiimport mit Vorschau und Zusammenführen.</string>
@@ -726,7 +726,7 @@
     <string name="board_show_on_board">Auf Board anzeigen</string>
     <string name="board_log_send">Send loggen</string>
     <string name="board_log_attempt">Attempt loggen</string>
-    <string name="board_browser_search_hint">Name oder Setter suchen…</string>
+    <string name="board_browser_search_hint">Name oder Schrauber suchen…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
@@ -934,7 +934,7 @@
     <string name="board_holdsearch_clear">Aufheben</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board Logbook</string>
+    <string name="board_logbook_title">Board-Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
     <string name="board_logbook_delete_title">%d Begehungen löschen?</string>
     <string name="board_logbook_delete_message">Alle ausgewählten Begehungen werden unwiderruflich gelöscht.</string>
@@ -1412,7 +1412,7 @@
     <string name="ble_your_climb">Dein Climb</string>
     <string name="board_ascent_tries">Top · %d Versuche</string>
     <string name="board_climb_frames">%d Frames</string>
-    <string name="board_climb_sends_count">%d sends</string>
+    <string name="board_climb_sends_count">%d Begehungen</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
     <string name="board_detail_quick_send_logged">Send geloggt</string>
@@ -1557,7 +1557,7 @@
     <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
     <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>
-    <string name="board_stats_sends_over_time">Sends über Zeit</string>
+    <string name="board_stats_sends_over_time">Logeinträge im Zeitverlauf</string>
     <string name="board_stats_total">Gesamt</string>
     <string name="board_stats_unique">Unique</string>
     <string name="board_stats_weekly_volume">Wochen-Volumen</string>
@@ -1932,10 +1932,10 @@
     <string name="key_import_invalid_nsec">Ungültiger nsec-Schlüssel</string>
 
     <!-- Key Management: Screen -->
-    <string name="key_section_account_keys">CruxCoach Account</string>
+    <string name="key_section_account_keys">CruxCoach-Konto</string>
     <string name="key_section_nostr_intro">Kontoschlüssel\nCruxCoach nutzt Nostr: Der öffentliche Schlüssel identifiziert dich, der private gibt Zugang. Halte ihn geheim und sichere ihn; ein Zurücksetzen ist nicht möglich.\n\nSichtbarkeit\nVeröffentlichtes Profil und Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Backups vor dem Upload verschlüsselt. Mit deinem privaten Schlüssel kann jemand als du handeln und geschützte Daten lesen.</string>
     <string name="key_section_description">Profil und Zugang\nBearbeite dein öffentliches Profil. In der Schlüsselverwaltung sicherst du deinen Zugang, nutzt ein vorhandenes Konto oder verbindest die Schlüssel-App Amber.</string>
-    <string name="key_button_manage">Account verwalten</string>
+    <string name="key_button_manage">Konto verwalten</string>
     <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
     <string name="key_label_not_backed_up_desc">Ohne diesen Schlüssel kannst du nach einem Geräteverlust weder dein Konto noch deine Cloud-Sicherung wiederherstellen.</string>
     <string name="key_label_login_method">Login-Methode:</string>
@@ -2437,7 +2437,7 @@
     <string name="list_playback_unavailable_hint">%1$d gespeicherte Climbs sind lokal nicht verfügbar und werden nicht einbezogen.</string>
     <string name="list_playback_error_empty">Es sind keine lokal verfügbaren Climbs abspielbar.</string>
     <string name="list_playback_error_multiple_boards">Dieser Trainingsablauf enthält mehrere Board-Konfigurationen. Teile ihn in einen Ablauf pro Board auf.</string>
-    <string name="list_plan_membership_info">Dieser Ablauf steuert nur das Abspielen. Neue Listen-Climbs werden automatisch mit einer geschätzten Pause angehängt. Schritte zu entfernen oder zu sortieren ändert die Liste nicht.</string>
+    <string name="list_plan_membership_info">Liste und Ablauf\nDieser Ablauf steuert das Abspielen. Schritte zu entfernen oder umzusortieren ändert die Liste nicht.\n\nNeue Boulder\nNeue Boulder aus der Liste werden automatisch mit einer geschätzten Pause angehängt. Wiederholte Schritte gehören zum Ablauf; sie erzeugen keine doppelten Listeneinträge.</string>
     <string name="list_plan_duplicate_step">Climb wiederholen</string>
     <string name="list_plan_reset_title">Trainingsablauf neu erstellen?</string>
     <string name="list_plan_reset_message">Die aktuelle Reihenfolge, Wiederholungen und Pausen werden durch die Listenreihenfolge mit automatisch geschätzten Pausen ersetzt.</string>
@@ -2749,7 +2749,7 @@
     <string name="beta_video_number">Beta-Video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
     <string name="beta_video_close">Beta-Videos schließen</string>
-    <string name="board_stats_problem_outcomes_hint">Jedes Problem zählt im gewählten Zeitraum einmal: Flash, sonst Send, sonst versucht. Weitere Versuche erhöhen diese Zahlen nicht.</string>
+    <string name="board_stats_problem_outcomes_hint">Jeder Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht.</string>
     <string name="whatsnew_023_title">Neu in 0.2.3</string>
     <string name="whatsnew_023_body">• Statistiken zählen unterschiedliche Probleme als Flash, Sent oder Attempt. Die Gesamtzahl deiner Versuche bleibt sichtbar.\n\n• Filterzahlen passen zur Liste, auch bei mehr als 50 Ergebnissen.\n\n• Die zufällige Suche läuft beim Scrollen zuverlässiger.\n\n• Wechsle Boards über die kompakte Kopfzeile und öffne Beta-Videos in den Climb-Details.</string>
     <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
@@ -2788,4 +2788,12 @@
     <string name="settings_account_explanation_hide">Konto-Erklärung ausblenden</string>
     <string name="settings_active_board_title">Aktives Board</string>
     <string name="settings_active_board_desc">Wählt Marke und Modell für die Boulderliste und Board-Ansicht in der App. „Ändern“ wechselt das aktive Board; die Markenkarten darunter öffnen nur die Einstellungen der jeweiligen Marke.</string>
+    <string name="ux_profile_identity">Name und Bilder</string>
+    <string name="ux_profile_links">Links und Adressen (optional)</string>
+    <string name="ux_plan_title">Ablauf</string>
+    <string name="ux_account_help">Kontozugang\nDein privater Schlüssel gewährt Zugriff auf dein Konto. Halte ihn geheim und bewahre eine Kopie sicher auf. Die öffentliche Konto-ID (npub) kennzeichnet dich; sie stellt den Zugang nicht wieder her.\n\nBackups\nVerschlüsselte Backups enthalten deine gesicherten App-Daten. Zum Wiederherstellen brauchst du die Entschlüsselungsmöglichkeit desselben Kontos und ein verfügbares Backup. Einen Schlüssel zu sichern erstellt kein Daten-Backup.\n\nExterner Signierer\nAmber verwaltet den privaten Schlüssel in einer eigenen App auf deinem Handy und bearbeitet Signaturanfragen. Ein entfernter Signierer verwaltet ihn anderswo. Beides ist weder ein öffentliches Profil noch ein Daten-Backup.</string>
+    <string name="ux_lists_help">Listen\nJede Liste enthält einen Boulder höchstens einmal. Favoriten sind eine integrierte Liste.\n\nAbspielen\nEin optionaler Ablauf ergänzt Wiederholungen, Winkel und Pausen. Ein abgespielter Schritt ist noch keine Begehung. Versuche und erfolgreiche Begehungen erfasst du im Logbuch.\n\nVerlauf\nDer Verlauf erfasst an die Board-LEDs übertragene Boulder. Er ist vom Kletterlogbuch getrennt.</string>
+    <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nErgebnis, Board und Winkel grenzen diese Liste ein. Der in der Statistik gewählte Zeitraum gilt auch für diese Liste; der Board-Filter der Statistik ist unabhängig. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
+    <string name="ux_stats_help">Umfang\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal.\n\nBoulder-Ergebnisse\nJeder Boulder zählt pro Board-Familie im gewählten Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht. Als Flash gilt eine erste erfasste Begehung bei diesem Winkel mit höchstens einem Versuch in der gesamten Historie. Fehlende Einträge begrenzen diese Aussage. Die Flash-Quote teilt Flashes durch erfolgreiche Einträge einschließlich Wiederholungen.\n\nAktivität und Zeitdiagramm\nSie zählen Logeinträge, auch erfolglose, statt einzelner Kletterversuche oder nur erfolgreicher Begehungen. Rekorde beziehen sich auf die gesamte Historie; die übrigen Diagramme auf den gewählten Zeitraum.</string>
+    <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
 </resources>

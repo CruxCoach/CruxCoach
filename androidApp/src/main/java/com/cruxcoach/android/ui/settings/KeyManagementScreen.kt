@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -193,6 +194,8 @@ fun KeyManagementScreen(
                     )
                 }
             }
+
+            InfoHeading(stringResource(R.string.key_section_account_keys), stringResource(R.string.ux_account_help))
 
             // Login method
             LoginMethodCard(
@@ -511,13 +514,13 @@ private fun NsecSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 OutlinedButton(
                     onClick = onCopyNsec,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
@@ -525,14 +528,14 @@ private fun NsecSection(
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                    Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
+                    Text(" " + stringResource(R.string.key_button_copy_nsec))
                 }
                 OutlinedButton(
                     onClick = onImportNsec,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.key_button_import_nsec), maxLines = 1)
+                    Text(stringResource(R.string.key_button_import_nsec))
                 }
             }
         }
