@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -32,7 +33,7 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.IntensityZones
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ClimbCard(
     climb: ClimbWithStats,
@@ -73,168 +74,201 @@ internal fun ClimbCard(
         ),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Grade badge
-            Surface(
-                color = zoneColorForDifficulty(climb.difficultyAverage ?: 0.0, zones),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        grade,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkBackground
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // Keep names and move counts clear of long catalogue totals at
+            // narrow widths or large fonts; retain every action and value.
+            val stackStats = maxWidth < 360.dp || LocalDensity.current.fontScale > 1.2f
+            Column(Modifier.fillMaxWidth()) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        climb.name,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    // "Entwurf" (draft) badge: a community/own climb is a
-                    // draft until it has a live Nostr publication. FEAT-024:
-                    // nostr_event_id is the SINGLE canonical publish signal —
-                    // the climb detail screen keys off the same column, so the
-                    // browser and detail can never disagree. source=='local'
-                    // scopes the badge to climbs authored on this device;
-                    // sync_status is intentionally NOT consulted (it can drift
-                    // from the real publish state).
-                    val showDraftBadge = climb.source == "local" &&
-                        climb.nostrEventId.isNullOrBlank()
-                    if (showDraftBadge) {
-                        Surface(
-                            color = OrangeAccent.copy(alpha = 0.18f),
-                            contentColor = OrangeAccent,
-                            shape = RoundedCornerShape(4.dp),
-                        ) {
+                    // Grade badge
+                    Surface(
+                        color = zoneColorForDifficulty(climb.difficultyAverage ?: 0.0, zones),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
                             Text(
-                                stringResource(R.string.climb_card_draft_badge),
-                                style = MaterialTheme.typography.labelSmall,
+                                grade,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                color = DarkBackground
                             )
                         }
                     }
-                }
-                // Setter line: prefer the Kind-0/setter_username already
-                // resolved into the row; else fall back to a short
-                // `npub:<…>` stub for cruxcoach/local rows so own drafts
-                // and own published climbs always show *something* even
-                // when the local Kind-0 profile hasn't been published
-                // yet (cache miss → setter_username column is NULL).
-                // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
-                val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
-                    ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
-                        climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                            ?.let { "npub:${it.take(16)}" }
-                    } else null
-                // Click behaviour mirrors BoardClimbDetailScreen: only
-                // cruxcoach-origin rows with a known pubkey navigate to the
-                // setter's profile. Native Kilter rows render as plain
-                // unclickable text — no search-bar trigger, no link
-                // affordance.
-                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
-                val navigateToSetter = onNavigateToSetter
-                val onSetterClick: (() -> Unit)? =
-                    if (climb.origin == "cruxcoach" && setterPubkey != null && navigateToSetter != null) {
-                        { navigateToSetter(setterPubkey) }
-                    } else null
-                ClimbMetaLine(
-                    setter = setterDisplay,
-                    isRoute = climb.isRoute,
-                    framesCount = climb.framesCount,
-                    moveCount = moveCount,
-                    onSetterClick = onSetterClick,
-                )
-            }
 
-            if (onAddToBoardPlaylist != null) {
-                val queuedDescription = if (boardPlaylistCount > 0) {
-                    pluralStringResource(
-                        R.plurals.board_playlist_already_queued,
-                        boardPlaylistCount,
-                        boardPlaylistCount,
-                    )
-                } else null
-                Box(contentAlignment = Alignment.TopEnd) {
-                    IconButton(
-                        onClick = onAddToBoardPlaylist,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .semantics {
-                                queuedDescription?.let { stateDescription = it }
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                climb.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = if (stackStats) 2 else 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            // "Entwurf" (draft) badge: a community/own climb is a
+                            // draft until it has a live Nostr publication. FEAT-024:
+                            // nostr_event_id is the SINGLE canonical publish signal —
+                            // the climb detail screen keys off the same column, so the
+                            // browser and detail can never disagree. source=='local'
+                            // scopes the badge to climbs authored on this device;
+                            // sync_status is intentionally NOT consulted (it can drift
+                            // from the real publish state).
+                            val showDraftBadge = climb.source == "local" &&
+                                climb.nostrEventId.isNullOrBlank()
+                            if (showDraftBadge) {
+                                Surface(
+                                    color = OrangeAccent.copy(alpha = 0.18f),
+                                    contentColor = OrangeAccent,
+                                    shape = RoundedCornerShape(4.dp),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.climb_card_draft_badge),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
-                            .testTag("board_climb_add_to_playlist"),
-                    ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = stringResource(R.string.board_playlist_add),
-                            tint = OrangeAccent,
-                            modifier = Modifier.size(30.dp),
+                        }
+                        // Setter line: prefer the Kind-0/setter_username already
+                        // resolved into the row; else fall back to a short
+                        // `npub:<…>` stub for cruxcoach/local rows so own drafts
+                        // and own published climbs always show *something* even
+                        // when the local Kind-0 profile hasn't been published
+                        // yet (cache miss → setter_username column is NULL).
+                        // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
+                        val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
+                            ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
+                                climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                                    ?.let { "npub:${it.take(16)}" }
+                            } else null
+                        // Click behaviour mirrors BoardClimbDetailScreen: only
+                        // cruxcoach-origin rows with a known pubkey navigate to the
+                        // setter's profile. Native Kilter rows render as plain
+                        // unclickable text — no search-bar trigger, no link
+                        // affordance.
+                        val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                        val navigateToSetter = onNavigateToSetter
+                        val onSetterClick: (() -> Unit)? =
+                            if (climb.origin == "cruxcoach" && setterPubkey != null && navigateToSetter != null) {
+                                { navigateToSetter(setterPubkey) }
+                            } else null
+                        ClimbMetaLine(
+                            setter = setterDisplay,
+                            isRoute = climb.isRoute,
+                            framesCount = climb.framesCount,
+                            moveCount = moveCount,
+                            onSetterClick = onSetterClick,
                         )
                     }
-                    if (boardPlaylistCount > 0) {
-                        Surface(
-                            color = OrangeAccent,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { },
-                        ) {
-                            Text(
-                                "$boardPlaylistCount",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = DarkBackground,
-                                modifier = Modifier.padding(horizontal = 5.dp),
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.width(2.dp))
-            }
 
-            Column(horizontalAlignment = Alignment.End) {
-                if (climb.benchmarkDifficulty > 0.0) {
-                    Icon(
-                        Icons.Default.Verified,
-                        contentDescription = stringResource(R.string.board_detail_benchmark),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    if (onAddToBoardPlaylist != null) {
+                        val queuedDescription = if (boardPlaylistCount > 0) {
+                            pluralStringResource(
+                                R.plurals.board_playlist_already_queued,
+                                boardPlaylistCount,
+                                boardPlaylistCount,
+                            )
+                        } else null
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            IconButton(
+                                onClick = onAddToBoardPlaylist,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .semantics {
+                                        queuedDescription?.let { stateDescription = it }
+                                    }
+                                    .testTag("board_climb_add_to_playlist"),
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.board_playlist_add),
+                                    tint = OrangeAccent,
+                                    modifier = Modifier.size(30.dp),
+                                )
+                            }
+                            if (boardPlaylistCount > 0) {
+                                Surface(
+                                    color = OrangeAccent,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.padding(top = 2.dp).clearAndSetSemantics { },
+                                ) {
+                                    Text(
+                                        "$boardPlaylistCount",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DarkBackground,
+                                        modifier = Modifier.padding(horizontal = 5.dp),
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(2.dp))
+                    }
+
+                    if (!stackStats) ClimbCatalogueStats(climb, qualityText)
                 }
-                qualityText?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = WarningYellow,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                climb.ascensionistCount?.let {
-                    Text(
-                        stringResource(R.string.board_climb_sends_count, it),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                if (stackStats && (qualityText != null || climb.ascensionistCount != null || climb.benchmarkDifficulty > 0.0)) {
+                    ClimbCatalogueStats(
+                        climb, qualityText, stacked = true,
+                        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                     )
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ClimbCatalogueStats(
+    climb: ClimbWithStats,
+    qualityText: String?,
+    stacked: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val content: @Composable () -> Unit = {
+        if (climb.benchmarkDifficulty > 0.0) {
+            Icon(
+                Icons.Default.Verified,
+                contentDescription = stringResource(R.string.board_detail_benchmark),
+                tint = OrangeAccent,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        qualityText?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelMedium,
+                color = WarningYellow,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        climb.ascensionistCount?.let {
+            Text(
+                stringResource(R.string.board_climb_sends_count, it),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+    if (stacked) {
+        FlowRow(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) { content() }
+    } else {
+        Column(modifier, horizontalAlignment = Alignment.End) { content() }
     }
 }
 
