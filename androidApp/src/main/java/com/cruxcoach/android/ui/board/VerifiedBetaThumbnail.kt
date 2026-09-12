@@ -19,7 +19,7 @@ internal fun betaThumbnailHash(url: String): String? {
     val uri = runCatching { URI(url) }.getOrNull() ?: return null
     if (uri.scheme != "https" || uri.userInfo != null || uri.port !in listOf(-1, 443) ||
         uri.rawQuery != null || uri.fragment != null ||
-        uri.host !in listOf("nostr.download", "blossom.primal.net", "cdn.hzrd149.com")) return null
+        uri.host !in betaThumbnailHosts) return null
     return uri.path.removePrefix("/").takeIf { Regex("[0-9a-f]{64}").matches(it) }
 }
 
