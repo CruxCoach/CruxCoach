@@ -40,9 +40,9 @@
     <string name="auto_note_default_template">I just published a new {board} boulder on nostr:{npub_cruxcoach}:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Add a Nostr post when publishing</string>
     <string name="auto_note_setting_body">Default for the editor\nWhen enabled, publishing a climb also creates a short public Nostr post with a link to it. You can change this choice for each climb in the editor. Off by default.</string>
-    <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
-    <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
-    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>
+    <string name="nostr_profile_subscriber_status_title">Community connection</string>
+    <string name="nostr_profile_subscriber_status_running_never">Connected · no message received yet</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected · last message</string>
     <string name="nostr_profile_subscriber_status_stopped">Not connected</string>
     <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d consecutive failures (last cause: %2$s)</string>
     <string name="climb_creator_dup_title">A climb with these holds already exists</string>
@@ -152,9 +152,9 @@
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — checked only after public publication.</string>
     <string name="nostr_profile_picture">Picture URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direct image URL — currently only your display name is rendered.</string>
-    <string name="nostr_profile_banner_label">Banner image URL</string>
+    <string name="nostr_profile_banner_label">Cover image</string>
     <string name="nostr_profile_banner_hint">Optional. 3:1 aspect ratio looks best — header image on your profile.</string>
-    <string name="nostr_profile_nip05_label">NIP-05 identifier</string>
+    <string name="nostr_profile_nip05_label">Nostr address (NIP-05)</string>
     <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — checked only after public publication.</string>
     <string name="nostr_profile_website_label">Website</string>
     <string name="nostr_profile_website_hint">Optional. Free-form URL shown on your profile.</string>
@@ -170,19 +170,19 @@
     <string name="nostr_profile_image_upload_failed" formatted="false">Image upload failed: %1$s</string>
     <string name="nostr_profile_image_local_failed" formatted="false">Could not store the image privately: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
-    <string name="nostr_profile_save">Save complete profile locally</string>
+    <string name="nostr_profile_save">Save on this device</string>
     <string name="nostr_profile_saving">Saving…</string>
     <string name="nostr_profile_saved_toast">Profile saved</string>
     <string name="profile_local_save_failed">Could not save your profile locally. Please try again.</string>
     <string name="profile_local_storage_hint">All fields and selected images stay privately on this device. This action makes no profile-related network request.</string>
     <string name="nostr_profile_save_failed">The Nostr publication failed. Your local profile is still saved.</string>
-    <string name="nostr_profile_publish_action">Publish complete profile globally</string>
+    <string name="nostr_profile_publish_action">Publish profile</string>
     <string name="nostr_profile_publishing">Publishing…</string>
     <string name="nostr_profile_published_toast">Profile published on Nostr</string>
     <string name="nostr_profile_publish_warning_title">Publish profile publicly?</string>
     <string name="nostr_profile_publish_warning_body">This first uploads your selected profile picture and banner to public Blossom storage, then publishes the complete profile as a public Nostr Kind 0 event. All profile fields and image URLs can be copied and retained by servers, relays, and other clients. Removing them everywhere later cannot be guaranteed.</string>
     <string name="nostr_profile_publish_confirm">Publish publicly</string>
-    <string name="nostr_profile_import_from_kilter">Use my Kilter username</string>
+    <string name="nostr_profile_import_from_kilter">Use Kilter username</string>
     <string name="nostr_profile_kilter_divergence_hint">Your Kilter username (\"%1$s\") stays unchanged in the Kilter app. This profile belongs to CruxCoach and is only shared with Nostr when you explicitly publish it.</string>
 
     <!-- Setter detail / list (community) -->
@@ -1893,8 +1893,8 @@
     <string name="key_section_nostr_intro">Account key\nCruxCoach uses Nostr: your public key identifies you; your private key grants access. Keep it secret and backed up; there is no reset.\n\nVisibility\nPublished profiles and community climbs are public. Developer messages are end-to-end encrypted; backups are encrypted before upload. Anyone with your private key can act as you and read protected data.</string>
     <string name="key_section_description">Profile and access\nEdit your public profile. In key management, back up your key, use an existing account or connect the Amber key app.</string>
     <string name="key_button_manage">Manage account</string>
-    <string name="key_label_not_backed_up">Save your account key</string>
-    <string name="key_label_not_backed_up_desc">Without it, neither your account nor your cloud backup can be restored if you lose this device.</string>
+    <string name="key_label_not_backed_up">Account key not backed up</string>
+    <string name="key_label_not_backed_up_desc">Keep a safe copy so you can recover your account and backup after losing your phone.</string>
     <string name="key_label_login_method">Login method:</string>
     <string name="key_label_login_local">Local key</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1907,13 +1907,13 @@
     <string name="key_button_copy_nsec">Copy nsec</string>
     <string name="key_button_import_nsec">Import nsec</string>
     <string name="key_label_nsec_save_reminder">Save this key somewhere safe — your account AND cloud backup can only be restored on another device with it. Without it, both are gone if you lose this phone.</string>
-    <string name="key_label_nsec_warning">Never share your private key. Whoever has it controls your account permanently.</string>
+    <string name="key_label_nsec_warning">Never share your private key. Anyone who has it can control your account.</string>
     <string name="key_section_recommended">Recommended</string>
     <string name="key_label_use_amber">Use Amber Signer</string>
     <string name="key_label_amber_active">Active — Your key is managed by Amber.</string>
     <string name="key_label_amber_inactive">Your key stays in Amber. CruxCoach never sees it.</string>
     <string name="key_button_setup">Set up</string>
-    <string name="key_button_disconnect_amber">Switch to local key</string>
+    <string name="key_button_disconnect_amber">Use this device’s key</string>
     <string name="key_label_local_key_inactive">Local key (inactive)</string>
     <string name="key_label_active_identity">Active account</string>
 
@@ -2803,4 +2803,41 @@
     <string name="ux_later_send">Later send</string>
     <string name="ux_outcome_donut_hint">Each sent climb counts once per board family in this period, across angles: Flash or a later send. Unsuccessful climbs are not part of this ring.</string>
     <string name="ux_grade_progression_help">Four-week window\nEach point uses up to three hardest distinct climb-and-angle combinations sent within that week and the previous three weeks, within the selected period. Repeats at the same angle count once.\n\nLevel\nWith three results, the middle grade is used; with two, their average; with one, its grade. Only successful entries with a known grade contribute.</string>
+
+    <!-- Profile and account task pages -->
+    <string name="account_section_expanded">Expanded</string>
+    <string name="account_section_collapsed">Collapsed</string>
+    <string name="account_current_access">Current access</string>
+    <string name="account_access_local">On this device</string>
+    <string name="account_access_amber">With Amber</string>
+    <string name="account_access_local_summary">CruxCoach stores your account key on this device.</string>
+    <string name="account_switch_title">Switch account</string>
+    <string name="account_switch_help">Import an account\nUse the private key of an existing account. Your current data stays stored and remains accessible with your current key. Save that key first.</string>
+    <string name="account_switch_amber_help">Switches to the account key managed by CruxCoach on this device and restarts the app. To return to your Amber account, connect Amber again.</string>
+    <string name="account_import_action">Import an existing account</string>
+    <string name="account_amber_title">Amber key app</string>
+    <string name="account_amber_connected">Connected to this account</string>
+    <string name="account_amber_optional">Optional: manage your key in a separate app</string>
+    <string name="account_amber_help">Amber manages your private key in a separate app on your phone and approves signing requests from CruxCoach. CruxCoach does not receive that key. Connecting Amber selects its account and restarts CruxCoach.</string>
+    <string name="account_amber_connect">Connect Amber</string>
+    <string name="account_public_id">Public account ID</string>
+    <string name="account_public_id_help">Your public key (npub) identifies the active account. You can share it so others can find you on Nostr. It cannot restore account access or decrypt a backup.</string>
+    <string name="account_copy_id">Copy account ID</string>
+    <string name="account_recovery_title">Keep access to your account</string>
+    <string name="account_recovery_help">Private key\nSave your private key (nsec) somewhere safe. It gives access to your account, even after losing your phone. CruxCoach cannot reset it.\n\nData backup\nKeeping a copy of your key does not back up your app data. To restore your data, you also need an available encrypted backup for this account.</string>
+    <string name="account_backup_acknowledged">You have marked your key as backed up.</string>
+    <string name="account_copy_secret">Copy private key</string>
+    <string name="profile_cover_title">Cover image</string>
+    <string name="profile_cover_empty">Optional background for your profile</string>
+    <string name="profile_cover_selected">Image selected · change or remove</string>
+    <string name="profile_links_summary">Website, Nostr address and Lightning</string>
+    <string name="profile_lightning_help">Optional address for receiving Lightning payments, such as name@domain. It is checked only after you confirm public profile publication.</string>
+    <string name="profile_nostr_address_help">Optional Nostr address such as name@domain (NIP-05). After public profile publication, CruxCoach checks whether the address points to your account.</string>
+    <string name="profile_public_title">Public profile</string>
+    <string name="profile_public_summary">Share all profile fields and images on Nostr. Requires your confirmation.</string>
+    <string name="profile_community_title">Community</string>
+    <string name="profile_community_summary">Climb posts and connection status</string>
+    <string name="profile_links_check_failed">Address check failed · open details</string>
+    <string name="profile_community_error">Connection error · open details</string>
+    <string name="profile_picture_title">Profile picture</string>
 </resources>

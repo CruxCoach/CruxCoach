@@ -40,9 +40,9 @@
     <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Beim Veröffentlichen auf Nostr posten</string>
     <string name="auto_note_setting_body">Vorgabe für den Editor\nWenn aktiv, entsteht beim Veröffentlichen eines Boulders zusätzlich ein kurzer öffentlicher Nostr-Beitrag mit einem Link darauf. Du kannst diese Auswahl für jeden Boulder im Editor ändern. Standardmäßig aus.</string>
-    <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
-    <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
-    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
+    <string name="nostr_profile_subscriber_status_title">Community-Verbindung</string>
+    <string name="nostr_profile_subscriber_status_running_never">Verbunden · noch keine Nachricht empfangen</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden · letzte Nachricht</string>
     <string name="nostr_profile_subscriber_status_stopped">Nicht verbunden</string>
     <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d Fehler in Folge (zuletzt: %2$s)</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
@@ -152,9 +152,9 @@
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — wird erst nach öffentlicher Veröffentlichung geprüft.</string>
     <string name="nostr_profile_picture">Profilbild-URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
-    <string name="nostr_profile_banner_label">Banner-Bild-URL</string>
+    <string name="nostr_profile_banner_label">Titelbild</string>
     <string name="nostr_profile_banner_hint">Optional. 3:1-Seitenverhältnis sieht am besten aus — Headerbild auf deinem Profil.</string>
-    <string name="nostr_profile_nip05_label">NIP-05-Kennung</string>
+    <string name="nostr_profile_nip05_label">Nostr-Adresse (NIP-05)</string>
     <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — wird erst nach öffentlicher Veröffentlichung geprüft.</string>
     <string name="nostr_profile_website_label">Webseite</string>
     <string name="nostr_profile_website_hint">Optional. Frei wählbare URL, wird auf deinem Profil angezeigt.</string>
@@ -170,19 +170,19 @@
     <string name="nostr_profile_image_upload_failed" formatted="false">Bild-Upload fehlgeschlagen: %1$s</string>
     <string name="nostr_profile_image_local_failed" formatted="false">Das Bild konnte nicht privat gespeichert werden: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
-    <string name="nostr_profile_save">Vollständiges Profil lokal speichern</string>
+    <string name="nostr_profile_save">Auf diesem Gerät speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>
     <string name="profile_local_save_failed">Das Profil konnte nicht lokal gespeichert werden. Bitte erneut versuchen.</string>
     <string name="profile_local_storage_hint">Alle Felder und ausgewählten Bilder bleiben privat auf diesem Gerät. Diese Aktion stellt keine profilbezogene Netzwerkverbindung her.</string>
     <string name="nostr_profile_save_failed">Die Veröffentlichung auf Nostr ist fehlgeschlagen. Dein lokales Profil bleibt gespeichert.</string>
-    <string name="nostr_profile_publish_action">Vollständiges Profil global veröffentlichen</string>
+    <string name="nostr_profile_publish_action">Profil veröffentlichen</string>
     <string name="nostr_profile_publishing">Wird veröffentlicht…</string>
     <string name="nostr_profile_published_toast">Profil auf Nostr veröffentlicht</string>
     <string name="nostr_profile_publish_warning_title">Profil öffentlich veröffentlichen?</string>
     <string name="nostr_profile_publish_warning_body">Dadurch werden zuerst dein ausgewähltes Profil- und Bannerbild in einen öffentlichen Blossom-Speicher hochgeladen und anschließend das vollständige Profil als öffentliches Nostr-Kind-0-Event veröffentlicht. Alle Profilfelder und Bild-URLs können von Servern, Relays und anderen Clients kopiert und dauerhaft gespeichert werden. Ein späteres vollständiges Entfernen kann nicht garantiert werden.</string>
     <string name="nostr_profile_publish_confirm">Öffentlich veröffentlichen</string>
-    <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
+    <string name="nostr_profile_import_from_kilter">Kilter-Benutzernamen übernehmen</string>
     <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Benutzername („%1$s“) bleibt in der Kilter-App unverändert. Dieses CruxCoach-Profil wird nur mit deiner ausdrücklichen Freigabe auf Nostr veröffentlicht.</string>
 
     <!-- Setter-Detail / Liste (Community) -->
@@ -1936,8 +1936,8 @@
     <string name="key_section_nostr_intro">Kontoschlüssel\nCruxCoach nutzt Nostr: Der öffentliche Schlüssel identifiziert dich, der private gibt Zugang. Halte ihn geheim und sichere ihn; ein Zurücksetzen ist nicht möglich.\n\nSichtbarkeit\nVeröffentlichtes Profil und Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Backups vor dem Upload verschlüsselt. Mit deinem privaten Schlüssel kann jemand als du handeln und geschützte Daten lesen.</string>
     <string name="key_section_description">Profil und Zugang\nBearbeite dein öffentliches Profil. In der Schlüsselverwaltung sicherst du deinen Zugang, nutzt ein vorhandenes Konto oder verbindest die Schlüssel-App Amber.</string>
     <string name="key_button_manage">Konto verwalten</string>
-    <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
-    <string name="key_label_not_backed_up_desc">Ohne diesen Schlüssel kannst du nach einem Geräteverlust weder dein Konto noch deine Cloud-Sicherung wiederherstellen.</string>
+    <string name="key_label_not_backed_up">Kontoschlüssel noch nicht gesichert</string>
+    <string name="key_label_not_backed_up_desc">Bewahre eine Kopie sicher auf, damit du nach einem Handyverlust Konto und Backup wiederherstellen kannst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
     <string name="key_label_login_local">Lokaler Schlüssel</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1950,13 +1950,13 @@
     <string name="key_button_copy_nsec">nsec kopieren</string>
     <string name="key_button_import_nsec">nsec importieren</string>
     <string name="key_label_nsec_save_reminder">Sichere diesen Schlüssel an einem sicheren Ort — sowohl dein Account als auch dein Cloud-Backup können nur damit auf einem anderen Gerät wiederhergestellt werden. Ohne ihn ist beides verloren wenn du dieses Telefon verlierst.</string>
-    <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
+    <string name="key_label_nsec_warning">Gib deinen privaten Schlüssel niemals weiter. Wer ihn hat, kann dein Konto übernehmen.</string>
     <string name="key_section_recommended">Empfohlen</string>
     <string name="key_label_use_amber">Amber Signer verwenden</string>
     <string name="key_label_amber_active">Aktiv — Dein Schlüssel wird von Amber verwaltet.</string>
     <string name="key_label_amber_inactive">Dein Schlüssel bleibt in Amber. CruxCoach sieht ihn nie.</string>
     <string name="key_button_setup">Einrichten</string>
-    <string name="key_button_disconnect_amber">Zu lokalem Schlüssel wechseln</string>
+    <string name="key_button_disconnect_amber">Zum Schlüssel dieses Geräts wechseln</string>
     <string name="key_label_local_key_inactive">Lokaler Schlüssel (inaktiv)</string>
     <string name="key_label_active_identity">Aktiver Account</string>
 
@@ -2802,4 +2802,41 @@
     <string name="ux_later_send">Später geschafft</string>
     <string name="ux_outcome_donut_hint">Jeder geschaffte Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash oder später geschafft. Erfolglose Boulder gehören nicht zu diesem Ring.</string>
     <string name="ux_grade_progression_help">Vierwochenfenster\nJeder Punkt nutzt bis zu drei der schwersten verschiedenen Boulder-Winkel-Kombinationen mit erfolgreicher Begehung in dieser und den drei vorherigen Wochen, innerhalb des gewählten Zeitraums. Wiederholungen beim selben Winkel zählen einmal.\n\nNiveau\nBei drei Ergebnissen gilt der mittlere Grad, bei zwei deren Durchschnitt, bei einem dessen Grad. Es zählen nur erfolgreiche Einträge mit bekanntem Grad.</string>
+
+    <!-- Profile and account task pages -->
+    <string name="account_section_expanded">Aufgeklappt</string>
+    <string name="account_section_collapsed">Zugeklappt</string>
+    <string name="account_current_access">Aktueller Zugang</string>
+    <string name="account_access_local">Auf diesem Gerät</string>
+    <string name="account_access_amber">Mit Amber</string>
+    <string name="account_access_local_summary">CruxCoach verwaltet deinen Kontoschlüssel auf diesem Gerät.</string>
+    <string name="account_switch_title">Konto wechseln</string>
+    <string name="account_switch_help">Vorhandenes Konto nutzen\nImportiere dessen privaten Schlüssel. Deine bisherigen Daten bleiben gespeichert und sind mit deinem bisherigen Schlüssel wieder zugänglich. Sichere ihn vorher.</string>
+    <string name="account_switch_amber_help">Wechselt zum Kontoschlüssel, den CruxCoach auf diesem Gerät verwaltet, und startet die App neu. Verbinde Amber erneut, um zu deinem Amber-Konto zurückzukehren.</string>
+    <string name="account_import_action">Vorhandenes Konto importieren</string>
+    <string name="account_amber_title">Schlüssel-App Amber</string>
+    <string name="account_amber_connected">Mit diesem Konto verbunden</string>
+    <string name="account_amber_optional">Optional: Schlüssel in einer eigenen App verwalten</string>
+    <string name="account_amber_help">Amber verwaltet deinen privaten Schlüssel in einer eigenen App auf deinem Handy und bestätigt Anfragen von CruxCoach. CruxCoach erhält diesen Schlüssel nicht. Beim Verbinden wird das Amber-Konto aktiv und CruxCoach startet neu.</string>
+    <string name="account_amber_connect">Amber verbinden</string>
+    <string name="account_public_id">Öffentliche Konto-ID</string>
+    <string name="account_public_id_help">Dein öffentlicher Schlüssel (npub) kennzeichnet das aktive Konto. Du kannst ihn teilen, damit andere dich auf Nostr finden. Er stellt keinen Kontozugang wieder her und entschlüsselt kein Backup.</string>
+    <string name="account_copy_id">Konto-ID kopieren</string>
+    <string name="account_recovery_title">Zugang sichern</string>
+    <string name="account_recovery_help">Privater Schlüssel\nBewahre deinen privaten Schlüssel (nsec) sicher auf. Damit kommst du auch nach einem Handyverlust wieder in dein Konto. CruxCoach kann ihn nicht zurücksetzen.\n\nDaten-Backup\nEine Schlüsselkopie sichert keine App-Daten. Zum Wiederherstellen brauchst du zusätzlich ein verfügbares verschlüsseltes Backup dieses Kontos.</string>
+    <string name="account_backup_acknowledged">Du hast deinen Schlüssel als gesichert markiert.</string>
+    <string name="account_copy_secret">Privaten Schlüssel kopieren</string>
+    <string name="profile_cover_title">Titelbild</string>
+    <string name="profile_cover_empty">Optionaler Hintergrund für dein Profil</string>
+    <string name="profile_cover_selected">Bild ausgewählt · ändern oder entfernen</string>
+    <string name="profile_links_summary">Webseite, Nostr-Adresse und Lightning</string>
+    <string name="profile_lightning_help">Optionale Adresse für Lightning-Zahlungen, etwa name@domain. Sie wird erst geprüft, nachdem du dein Profil öffentlich veröffentlicht hast.</string>
+    <string name="profile_nostr_address_help">Optionale Nostr-Adresse wie name@domain (NIP-05). Nach der öffentlichen Profilveröffentlichung prüft CruxCoach, ob sie zu deinem Konto gehört.</string>
+    <string name="profile_public_title">Öffentliches Profil</string>
+    <string name="profile_public_summary">Alle Profilfelder und Bilder auf Nostr teilen. Erst nach deiner Bestätigung.</string>
+    <string name="profile_community_title">Community</string>
+    <string name="profile_community_summary">Boulder-Beiträge und Verbindungsstatus</string>
+    <string name="profile_links_check_failed">Adressprüfung fehlgeschlagen · Details öffnen</string>
+    <string name="profile_community_error">Verbindungsfehler · Details öffnen</string>
+    <string name="profile_picture_title">Profilbild</string>
 </resources>

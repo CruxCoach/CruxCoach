@@ -176,6 +176,15 @@ messages and encrypted backups.
 Use `SettingsDestinationRow`, `SettingsToggleRow` and `SettingsInfoHeading` in
 `ui/settings/SettingsLayout.kt`, with `ui/common/InfoButton.kt` for shared help.
 
+The profile editor keeps local saving in a fixed bottom bar. Cover images, optional
+addresses and community options have separate expandable sections; collapsing one
+preserves its values. Public profile publication remains a separate confirmed action.
+Account management groups current access, key recovery, account switching, Amber and
+the public account ID. The displayed ID belongs to the active signer in both modes;
+it is not an inactive local key when Amber is active. Reading help never invokes a
+key or account action. Device authentication and existing confirmations remain at
+the action boundary.
+
 ## Source map
 
 Paths below are relative to the repository, linked for direct navigation.
