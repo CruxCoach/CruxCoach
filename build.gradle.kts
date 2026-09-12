@@ -9,3 +9,12 @@ plugins {
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.ksp) apply false
 }
+
+// Owner review: expose test failures in public check annotations for the
+// credential-free feature test jobs, including the publisher's build job.
+// This only adds diagnostics; it does not change tests or publication gates.
+if (providers.environmentVariable("GITHUB_ACTIONS").orNull == "true" &&
+    providers.gradleProperty("featureBranch").orNull?.startsWith("feat/") == true &&
+    gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "testDebugUnitTest" }) {
+    println("::add-matcher::${file("scripts/ci-test-problems.json").absolutePath}")
+}

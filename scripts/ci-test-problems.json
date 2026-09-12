@@ -1,0 +1,32 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "cruxcoach-feature-test",
+      "pattern": [
+        {
+          "regexp": "^([A-Za-z0-9_.$][A-Za-z0-9_.$ \\[\\]-]{0,250} > [^\\r\\n]{1,500} FAILED)$",
+          "message": 1
+        }
+      ]
+    },
+    {
+      "owner": "cruxcoach-feature-test-failure",
+      "pattern": [
+        {
+          "regexp": "^[ \\t]{4,}([A-Za-z0-9_.$]+(?:Error|Exception)(?: at [^\\r\\n]{1,300})?)$",
+          "message": 1
+        }
+      ]
+    },
+    {
+      "owner": "cruxcoach-feature-test-gradle",
+      "pattern": [
+        { "regexp": "^\\* What went wrong:$" },
+        {
+          "regexp": "^([^\\r\\n]{1,1000})$",
+          "message": 1
+        }
+      ]
+    }
+  ]
+}

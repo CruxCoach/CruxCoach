@@ -6,6 +6,14 @@ only focused tests or selected device flows; documentation needs link/reference
 checks, not an APK build. The two layers below are complementary, not a demand
 to run every test twice.
 
+Feature unit-test jobs register `scripts/ci-test-problems.json` when running
+in GitHub Actions. Failed test names, exception locations and Gradle failure
+summaries become public check annotations, even when full job logs require
+sign-in. This also covers the trusted publisher's separate test job. The
+matcher does not change test results or publication gates; a successful test
+run still does not prove that an APK was published. Gradle configuration
+changes require owner review before integration.
+
 ## Device access and environment
 
 The old direct reverse-tunnel/port-6037 setup is historical. The 2026-09-06
