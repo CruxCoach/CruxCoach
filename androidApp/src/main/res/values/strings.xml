@@ -339,7 +339,7 @@
     <string name="map_stats_label_countries">Countries</string>
     <string name="map_stats_label_public">Public</string>
     <string name="map_stats_label_adjustable">Adjustable</string>
-    <string name="map_stats_total_locations">locations total</string>
+    <string name="map_stats_total_locations">Recorded boards</string>
     <string name="map_stats_empty">No data</string>
 
     <!-- Access enum display values -->
@@ -2868,4 +2868,7 @@
     <string name="account_show_qr">Show public account ID as QR code</string>
     <string name="account_continue">Continue</string>
     <string name="account_access_error">Could not change key management. Please reopen account management and check the active account.</string>
+    <string name="map_stats_brand_distribution">Board brands</string>
+    <string name="map_stats_unknown_layout">Unknown layout</string>
+    <string name="map_stats_scope">All recorded boards, regardless of map filters. A location can contain several boards.</string>
 </resources>

@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -67,7 +68,7 @@ fun StatsScreen(
     // "matches your filters" lives, not here.
     val stats = state.unfilteredStats
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().testTag("map_statistics"),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -76,12 +77,21 @@ fun StatsScreen(
         }
 
         item {
-            DonutCard(
+            BarChartCard(
+                title = stringResource(R.string.map_stats_brand_distribution),
+                items = stats.byBrand.map { (brand, count) -> brand.displayName to count },
+                barColor = ChartOrange,
+            )
+        }
+
+        item {
+            BarChartCard(
                 title = stringResource(R.string.map_stats_layout_distribution),
-                slices = listOf(
-                    DonutSlice(stringResource(R.string.map_stats_layout_original), stats.originalCount, ChartOrange),
-                    DonutSlice(stringResource(R.string.map_stats_layout_homewall), stats.homewallCount, ChartGrey),
-                ),
+                items = stats.byLayout.map { entry ->
+                    val layout = entry.layout ?: stringResource(R.string.map_stats_unknown_layout)
+                    "${entry.brand.displayName} · $layout" to entry.count
+                },
+                barColor = ChartBlue,
             )
         }
 
@@ -144,10 +154,9 @@ private fun HeaderCard(stats: MapStats) {
                 fontWeight = FontWeight.Bold,
                 color = ChartOrange,
             )
-            Text(
+            com.cruxcoach.android.ui.common.InfoHeading(
                 stringResource(R.string.map_stats_total_locations),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(R.string.map_stats_scope),
             )
             Spacer(modifier = Modifier.height(4.dp))
             Row(
@@ -314,37 +323,16 @@ private fun BarChartCard(
 
 @Composable
 private fun BarRow(label: String, count: Int, max: Int, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            label,
-            modifier = Modifier.width(60.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(18.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            // The fraction-based fillMaxWidth on the inner Box gives a
-            // simple proportional bar without a Canvas. Single colour
-            // — categorical labels carry the meaning, not the bar fill.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = count.toFloat() / max.toFloat())
-                    .height(18.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(color),
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(count.toString(), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(
-            count.toString(),
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .width(48.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)) {
+            Box(Modifier.fillMaxWidth(fraction = count.toFloat() / max.toFloat()).height(12.dp)
+                .background(color))
+        }
     }
 }

@@ -316,7 +316,7 @@
     <string name="map_stats_label_countries">Länder</string>
     <string name="map_stats_label_public">Öffentlich</string>
     <string name="map_stats_label_adjustable">Verstellbar</string>
-    <string name="map_stats_total_locations">Standorte gesamt</string>
+    <string name="map_stats_total_locations">Erfasste Boards</string>
     <string name="map_stats_empty">Keine Daten</string>
     <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
     <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
@@ -2867,4 +2867,7 @@
     <string name="account_show_qr">Öffentliche Konto-ID als QR-Code anzeigen</string>
     <string name="account_continue">Weiter</string>
     <string name="account_access_error">Schlüsselverwaltung konnte nicht geändert werden. Öffne die Kontoverwaltung erneut und prüfe das aktive Konto.</string>
+    <string name="map_stats_brand_distribution">Board-Marken</string>
+    <string name="map_stats_unknown_layout">Layout unbekannt</string>
+    <string name="map_stats_scope">Alle erfassten Boards, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards haben.</string>
 </resources>

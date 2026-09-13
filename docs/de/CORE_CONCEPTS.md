@@ -204,6 +204,10 @@ Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselk
 wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
 Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
+## Statistik der Boardkarte
+
+Die Kartenstatistik zählt alle erfassten Boards im geladenen Kartendatensatz, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards enthalten. Marken- und Layout-Verteilung berücksichtigen alle Board-Familien; Layouts werden je Marke gruppiert und fehlende Angaben als unbekannt angezeigt. Zugang, Verstellbarkeit, Länder und bekannte Größen verwenden denselben Datensatz.
+
 ## Orientierung im Quellcode
 
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)

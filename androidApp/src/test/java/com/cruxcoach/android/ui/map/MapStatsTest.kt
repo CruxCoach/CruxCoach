@@ -130,4 +130,44 @@ class MapStatsTest {
         assertEquals(1, s.total)
         assertEquals(1, s.originalCount)
     }
+    @Test fun `every board family contributes to brand and layout totals`() {
+        val locations = BoardBrand.entries.map { loc(boardBrand = it) }
+        val stats = MapStats.from(locations)
+        assertEquals(BoardBrand.entries.toSet(), stats.byBrand.map { it.first }.toSet())
+        assertEquals(stats.total, stats.byBrand.sumOf { it.second })
+        assertEquals(stats.total, stats.byLayout.sumOf { it.count })
+        assertEquals(BoardBrand.entries.size, stats.byLayout.size)
+    }
+
+    @Test fun `identical layout names and ids stay separated by brand`() {
+        val stats = MapStats.from(listOf(
+            loc(boardBrand = BoardBrand.KILTER).copy(layoutName = "Original"),
+            loc(boardBrand = BoardBrand.TENSION).copy(layoutName = "Original"),
+            loc(boardBrand = BoardBrand.TENSION).copy(layoutName = " Original "),
+        ))
+        assertEquals(listOf(
+            MapLayoutCount(BoardBrand.TENSION, "Original", 2),
+            MapLayoutCount(BoardBrand.KILTER, "Original", 1),
+        ), stats.byLayout)
+    }
+
+    @Test fun `non Kilter only catalogue retains named and unknown layouts`() {
+        val stats = MapStats.from(listOf(
+            loc(boardBrand = BoardBrand.MOONBOARD).copy(layoutName = "2024"),
+            loc(boardBrand = BoardBrand.TENSION).copy(layoutName = " "),
+            loc(boardBrand = BoardBrand.QUANTUM, layoutId = null),
+        ))
+        assertEquals(3, stats.byBrand.size)
+        assertEquals(3, stats.byLayout.sumOf { it.count })
+        assertEquals(2, stats.byLayout.count { it.layout == null })
+        assertEquals(0, stats.originalCount)
+        assertEquals(0, stats.homewallCount)
+    }
+
+    @Test fun `brand and layout ordering is stable for equal counts`() {
+        val locations = BoardBrand.entries.map { loc(boardBrand = it) }
+        assertEquals(MapStats.from(locations).byBrand, MapStats.from(locations.reversed()).byBrand)
+        assertEquals(MapStats.from(locations).byLayout, MapStats.from(locations.reversed()).byLayout)
+    }
+
 }

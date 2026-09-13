@@ -196,6 +196,10 @@ switching accounts keeps the existing isolation/reset behavior. Without a retain
 local key, the UI offers import rather than a disconnect that creates an identity.
 Private keys remain masked during import, and screenshot protection remains active.
 
+## Board map statistics
+
+Map statistics count all recorded boards in the loaded map dataset, independently of map filters. A venue may contain several boards. Brand and layout distributions include every board family; layout names are grouped within their brand, and missing layouts remain visible as unknown. Access, adjustability, country and known size aggregates use the same dataset.
+
 ## Source map
 
 Paths below are relative to the repository, linked for direct navigation.
