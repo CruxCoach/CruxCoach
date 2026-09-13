@@ -176,9 +176,12 @@ messages and encrypted backups.
 Use `SettingsDestinationRow`, `SettingsToggleRow` and `SettingsInfoHeading` in
 `ui/settings/SettingsLayout.kt`, with `ui/common/InfoButton.kt` for shared help.
 
-The profile editor keeps local saving in a fixed bottom bar. Cover images, optional
-addresses and community options have separate expandable sections; collapsing one
-preserves its values. Public profile publication remains a separate confirmed action.
+The profile editor shows the cover and avatar together in its header, with edit
+buttons on the images. Its fixed bottom bar gives local saving primary emphasis;
+the secondary “Publish on Nostr” action requires an additional confirmation explaining
+public image hosting and permanent copies. Local saving stays the default after
+publication. Optional addresses and community options remain expandable without
+losing edits.
 Account management groups current access, key recovery, account switching, Amber and
 the public account ID. The displayed ID belongs to the active signer in both modes;
 it is not an inactive local key when Amber is active. Reading help never invokes a

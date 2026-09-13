@@ -47,13 +47,13 @@ class AccountScreensTest {
         restore.setContent {
             CruxCoachTheme(darkModeSetting = DarkModeSetting.DARK) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
-                    Scaffold(bottomBar = { ProfileSaveBar(state.value) { saved = state.value } }) { padding ->
-                        NostrProfileContent(state.value, actions(state, { published++ }), Modifier.padding(padding))
+                    Scaffold(bottomBar = { ProfileSaveBar(state.value, { saved = state.value }, { published++ }) }) { padding ->
+                        NostrProfileContent(state.value, actions(state), Modifier.padding(padding))
                     }
                 }
             }
         }
-        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_change)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_change)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.nostr_profile_lightning)).assertDoesNotExist()
         compose.onNodeWithTag("profile_save_local").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.nostr_profile_display_name)).performTextInput("Mara")
@@ -75,23 +75,62 @@ class AccountScreensTest {
 
     @Test fun `public profile still requires confirmation and respects a busy save`() {
         val busy = mutableStateOf(false)
+        var saved = 0
         var published = 0
         compose.setContent {
             CruxCoachTheme {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
-                    ProfilePublicationSection(busy.value, false) { published++ }
+                    ProfileSaveBar(NostrProfileEditState(isLoading = false, isSaving = busy.value), { saved++ }, { published++ })
                 }
             }
         }
         compose.onNodeWithTag("profile_publish").performTouchInput { click() }
         compose.onNodeWithText(text(R.string.nostr_profile_publish_warning_title)).assertIsDisplayed()
-        compose.runOnIdle { assertEquals(0, published) }
+        compose.runOnIdle { assertEquals(0, published); busy.value = true }
+        compose.onNodeWithText(text(R.string.nostr_profile_publish_confirm)).assertIsNotEnabled()
+        compose.runOnIdle { busy.value = false }
         compose.onNodeWithText(app.getString(android.R.string.cancel)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(0, published) }
         compose.onNodeWithTag("profile_publish").performClick()
         compose.onNodeWithText(text(R.string.nostr_profile_publish_confirm)).assertIsDisplayed().performClick()
-        compose.runOnIdle { assertEquals(1, published); busy.value = true }
+        compose.runOnIdle { assertEquals(1, published); assertEquals(0, saved) }
+        compose.onNodeWithTag("profile_save_local").performTouchInput { click() }
+        compose.runOnIdle { assertEquals(1, saved); assertEquals(1, published); busy.value = true }
         compose.onNodeWithTag("profile_publish").assertIsNotEnabled()
+        compose.onNodeWithTag("profile_save_local").assertIsNotEnabled()
+    }
+
+    @Test fun `image buttons edit and remove independently without a text action`() {
+        val state = mutableStateOf(NostrProfileEditState(isLoading = false))
+        var pictureEdits = 0
+        var coverEdits = 0
+        var pictureRemovals = 0
+        var coverRemovals = 0
+        compose.setContent {
+            CruxCoachTheme {
+                NostrProfileContent(state.value, actions(state).copy(
+                    onEditPicture = { pictureEdits++ }, onEditBanner = { coverEdits++ },
+                    onRemovePicture = { pictureRemovals++ }, onRemoveBanner = { coverRemovals++ },
+                ))
+            }
+        }
+        compose.onNodeWithText(text(R.string.nostr_profile_picture_change)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.profile_cover_title)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.profile_public_title)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_picture_remove)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_remove)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_picture_change)).assertIsDisplayed().performTouchInput { click() }
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_change)).assertIsDisplayed().performTouchInput { click() }
+        compose.runOnIdle {
+            assertEquals(1, pictureEdits); assertEquals(1, coverEdits)
+            state.value = state.value.copy(pictureUrl = "file:///synthetic-avatar.png", bannerUrl = "file:///synthetic-cover.png")
+        }
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_picture_remove)).performTouchInput { click() }
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_remove)).performTouchInput { click() }
+        compose.runOnIdle { assertEquals(1, pictureRemovals); assertEquals(1, coverRemovals) }
+        compose.runOnIdle { state.value = state.value.copy(pictureUploadInFlight = true, bannerUploadInFlight = true) }
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_picture_change)).assertIsNotEnabled()
+        compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_change)).assertIsNotEnabled()
     }
 
     @Test fun `recovery help cannot copy a key or acknowledge a backup`() {
@@ -168,12 +207,12 @@ class AccountScreensTest {
         compose.runOnIdle { assertEquals(1, connections); assertEquals(1, imports) }
     }
 
-    @Test fun `profile starts with personal fields and visible save instead of empty cover`() {
+    @Test fun `profile has an integrated image header and persistent local and public actions`() {
         val state = mutableStateOf(NostrProfileEditState(isLoading = false))
         compose.setContent {
             reviewView = LocalView.current
             CruxCoachTheme(darkModeSetting = DarkModeSetting.DARK) {
-                Scaffold(bottomBar = { ProfileSaveBar(state.value) {} }) { padding ->
+                Scaffold(bottomBar = { ProfileSaveBar(state.value, {}, {}) }) { padding ->
                     NostrProfileContent(state.value, actions(state), Modifier.padding(padding))
                 }
             }
@@ -197,14 +236,14 @@ class AccountScreensTest {
         reviewImage("account-normal-fixture")
     }
 
-    private fun actions(state: MutableState<NostrProfileEditState>, onPublish: () -> Unit = {}) = ProfileEditorActions(
+    private fun actions(state: MutableState<NostrProfileEditState>) = ProfileEditorActions(
         onDisplayName = { state.value = state.value.copy(displayName = it) },
         onAbout = { state.value = state.value.copy(about = it) },
         onLightning = { state.value = state.value.copy(lightningAddress = it) },
         onNip05 = { state.value = state.value.copy(nip05 = it) },
         onWebsite = { state.value = state.value.copy(website = it) },
         onImportKilter = {}, onEditPicture = {}, onRemovePicture = {}, onEditBanner = {},
-        onRemoveBanner = {}, onPublish = onPublish, onAutoNote = {},
+        onRemoveBanner = {}, onAutoNote = {},
     )
 
     // Optional review artifacts render these production components with synthetic data only.

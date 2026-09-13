@@ -163,24 +163,24 @@
     <string name="nostr_profile_nip05_unreachable">Konnte nicht verifizieren (offline oder Domain nicht konfiguriert)</string>
     <string name="nostr_profile_lud16_verified">Lightning-Adresse aktiv</string>
     <string name="nostr_profile_lud16_unreachable">Konnte Lightning-Adresse nicht verifizieren</string>
-    <string name="nostr_profile_banner_change">Banner ändern</string>
-    <string name="nostr_profile_banner_remove">Banner entfernen</string>
+    <string name="nostr_profile_banner_change">Titelbild ändern</string>
+    <string name="nostr_profile_banner_remove">Titelbild entfernen</string>
     <string name="nostr_profile_picture_change">Profilbild ändern</string>
     <string name="nostr_profile_picture_remove">Profilbild entfernen</string>
     <string name="nostr_profile_image_upload_failed" formatted="false">Bild-Upload fehlgeschlagen: %1$s</string>
     <string name="nostr_profile_image_local_failed" formatted="false">Das Bild konnte nicht privat gespeichert werden: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
-    <string name="nostr_profile_save">Auf diesem Gerät speichern</string>
+    <string name="nostr_profile_save">Lokal speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>
     <string name="profile_local_save_failed">Das Profil konnte nicht lokal gespeichert werden. Bitte erneut versuchen.</string>
-    <string name="profile_local_storage_hint">Alle Felder und ausgewählten Bilder bleiben privat auf diesem Gerät. Diese Aktion stellt keine profilbezogene Netzwerkverbindung her.</string>
+    <string name="profile_local_storage_hint">Speichert alle Profilangaben und ausgewählten Bilder privat auf diesem Gerät. Dein öffentliches Profil auf Nostr bleibt unverändert.</string>
     <string name="nostr_profile_save_failed">Die Veröffentlichung auf Nostr ist fehlgeschlagen. Dein lokales Profil bleibt gespeichert.</string>
-    <string name="nostr_profile_publish_action">Profil veröffentlichen</string>
+    <string name="nostr_profile_publish_action">Auf Nostr veröffentlichen</string>
     <string name="nostr_profile_publishing">Wird veröffentlicht…</string>
     <string name="nostr_profile_published_toast">Profil auf Nostr veröffentlicht</string>
-    <string name="nostr_profile_publish_warning_title">Profil öffentlich veröffentlichen?</string>
-    <string name="nostr_profile_publish_warning_body">Dadurch werden zuerst dein ausgewähltes Profil- und Bannerbild in einen öffentlichen Blossom-Speicher hochgeladen und anschließend das vollständige Profil als öffentliches Nostr-Kind-0-Event veröffentlicht. Alle Profilfelder und Bild-URLs können von Servern, Relays und anderen Clients kopiert und dauerhaft gespeichert werden. Ein späteres vollständiges Entfernen kann nicht garantiert werden.</string>
+    <string name="nostr_profile_publish_warning_title">Profil auf Nostr veröffentlichen?</string>
+    <string name="nostr_profile_publish_warning_body">Dein Profil wird zuerst lokal gespeichert. Anschließend werden alle Profilangaben und Bilder öffentlich auf Nostr geteilt. Bilder werden dafür auf öffentliche Bildserver (Blossom) hochgeladen.\n\nAndere können Angaben und Bilder dauerhaft kopieren. Vollständiges Löschen ist später nicht garantiert.</string>
     <string name="nostr_profile_publish_confirm">Öffentlich veröffentlichen</string>
     <string name="nostr_profile_import_from_kilter">Kilter-Benutzernamen übernehmen</string>
     <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Benutzername („%1$s“) bleibt in der Kilter-App unverändert. Dieses CruxCoach-Profil wird nur mit deiner ausdrücklichen Freigabe auf Nostr veröffentlicht.</string>

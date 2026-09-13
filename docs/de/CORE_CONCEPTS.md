@@ -184,10 +184,12 @@ Gemeinsame Bausteine sind `SettingsDestinationRow`, `SettingsToggleRow` und
 `SettingsInfoHeading` in `ui/settings/SettingsLayout.kt` sowie
 `ui/common/InfoButton.kt` für die Hilfe.
 
-Im Profileditor bleibt lokales Speichern unten direkt erreichbar. Titelbild,
-optionale Adressen und Community-Optionen haben eigene aufklappbare Bereiche;
-Zuklappen bewahrt die Eingaben. Das öffentliche Profil wird weiterhin erst nach
-Bestätigung veröffentlicht. Die Kontoverwaltung gliedert aktuellen Zugang,
+Im Profileditor bilden Titelbild und Profilbild einen gemeinsamen Kopfbereich mit
+Bearbeiten-Buttons an den Bildern. Die feste Leiste unten hebt „Lokal speichern“ als
+Hauptaktion hervor. „Auf Nostr veröffentlichen“ verlangt zusätzlich einen Dialog,
+der öffentliche Bildspeicherung und dauerhafte Kopien erklärt. Lokales Speichern
+bleibt auch danach der Standard. Optionale Adressen und Community-Optionen lassen
+sich ohne Verlust der Eingaben zuklappen. Die Kontoverwaltung gliedert aktuellen Zugang,
 Schlüsselsicherung, Kontowechsel, Amber und öffentliche Konto-ID. Die ID gehört in
 beiden Modi zum aktiven Signierer; bei Amber ist sie kein inaktiver lokaler Schlüssel.
 Hilfen lösen keine Kontoaktion aus. Geräteauthentifizierung und bestehende

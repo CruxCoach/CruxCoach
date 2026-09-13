@@ -4,11 +4,13 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
@@ -64,7 +66,6 @@ import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
-import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.nostr.profile.LnurlVerifier
 import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import com.halilibo.richtext.markdown.Markdown
@@ -133,7 +134,7 @@ fun NostrProfileScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (!state.isLoading) ProfileSaveBar(state, viewModel::save)
+            if (!state.isLoading) ProfileSaveBar(state, viewModel::save, viewModel::publishToNostr)
         },
     ) { paddingValues ->
         if (state.isLoading) {
@@ -162,7 +163,6 @@ fun NostrProfileScreen(
                 onRemovePicture = viewModel::removePicture,
                 onEditBanner = { bannerPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onRemoveBanner = viewModel::removeBanner,
-                onPublish = viewModel::publishToNostr,
                 onAutoNote = viewModel::setAutoNoteEnabled,
             ),
             modifier = Modifier.padding(paddingValues),
@@ -181,7 +181,6 @@ internal data class ProfileEditorActions(
     val onRemovePicture: () -> Unit,
     val onEditBanner: () -> Unit,
     val onRemoveBanner: () -> Unit,
-    val onPublish: () -> Unit,
     val onAutoNote: (Boolean) -> Unit,
 )
 
@@ -196,9 +195,14 @@ internal fun NostrProfileContent(
             .testTag("profile_content"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Box(Modifier.fillMaxWidth().padding(bottom = 48.dp).testTag("profile_image_header")) {
+            BannerImageArea(state.bannerUrl, state.bannerUploadInFlight, actions.onEditBanner, actions.onRemoveBanner)
+            ProfilePictureArea(
+                state.pictureUrl, state.pictureUploadInFlight, actions.onEditPicture, actions.onRemovePicture,
+                Modifier.align(Alignment.BottomStart).padding(start = 16.dp).offset(y = 40.dp),
+            )
+        }
         SettingsSectionCard {
-            InfoHeading(stringResource(R.string.ux_profile_identity), stringResource(R.string.nostr_profile_explainer))
-            ProfilePictureArea(state.pictureUrl, state.pictureUploadInFlight, actions.onEditPicture, actions.onRemovePicture)
             OutlinedTextField(
                 value = state.displayName,
                 onValueChange = actions.onDisplayName,
@@ -265,13 +269,6 @@ internal fun NostrProfileContent(
             }
         }
         SettingsExpandableSection(
-            title = stringResource(R.string.profile_cover_title),
-            summary = stringResource(if (state.bannerUrl.isBlank()) R.string.profile_cover_empty else R.string.profile_cover_selected),
-            initiallyExpanded = state.bannerUrl.isNotBlank(),
-        ) {
-            BannerImageArea(state.bannerUrl, state.bannerUploadInFlight, actions.onEditBanner, actions.onRemoveBanner)
-        }
-        SettingsExpandableSection(
             title = stringResource(R.string.ux_profile_links),
             summary = stringResource(
                 if (state.nip05Verification is Nip05Verifier.State.Mismatch ||
@@ -327,7 +324,6 @@ internal fun NostrProfileContent(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        ProfilePublicationSection(state.isSaving || state.isPublishing, state.isPublishing, actions.onPublish)
         SettingsExpandableSection(
             title = stringResource(R.string.profile_community_title),
             summary = stringResource(
@@ -347,39 +343,37 @@ internal fun NostrProfileContent(
 }
 
 @Composable
-internal fun ProfileSaveBar(state: NostrProfileEditState, onSave: () -> Unit) {
+internal fun ProfileSaveBar(state: NostrProfileEditState, onSave: () -> Unit, onPublish: () -> Unit) {
+    val busy = state.isSaving || state.isPublishing || state.pictureUploadInFlight || state.bannerUploadInFlight
     Surface(tonalElevation = 3.dp) {
-        Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Button(
-                onClick = onSave,
-                enabled = !state.isSaving && !state.isPublishing,
-                modifier = Modifier.weight(1f).testTag("profile_save_local"),
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(stringResource(if (state.isSaving) R.string.nostr_profile_saving else R.string.nostr_profile_save))
+                Button(
+                    onClick = onSave,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f).testTag("profile_save_local"),
+                ) {
+                    Text(stringResource(if (state.isSaving) R.string.nostr_profile_saving else R.string.nostr_profile_save))
+                }
+                InfoButton(stringResource(R.string.nostr_profile_save), stringResource(R.string.profile_local_storage_hint))
             }
-            InfoButton(stringResource(R.string.nostr_profile_save), stringResource(R.string.profile_local_storage_hint))
+            ProfilePublishAction(busy, state.isPublishing, onPublish)
         }
     }
 }
 
 @Composable
-internal fun ProfilePublicationSection(busy: Boolean, publishing: Boolean, onPublish: () -> Unit) {
+internal fun ProfilePublishAction(busy: Boolean, publishing: Boolean, onPublish: () -> Unit) {
     val showPublishWarning = rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    SettingsSectionCard {
-        InfoHeading(stringResource(R.string.profile_public_title), stringResource(R.string.nostr_profile_explainer))
-        Text(stringResource(R.string.profile_public_summary), style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(
-            onClick = { showPublishWarning.value = true },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().testTag("profile_publish"),
-        ) {
-            Text(stringResource(if (publishing) R.string.nostr_profile_publishing else R.string.nostr_profile_publish_action))
-        }
+    TextButton(
+        onClick = { showPublishWarning.value = true },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth().testTag("profile_publish"),
+    ) {
+        Text(stringResource(if (publishing) R.string.nostr_profile_publishing else R.string.nostr_profile_publish_action))
     }
     if (showPublishWarning.value) {
         AlertDialog(
@@ -447,13 +441,13 @@ private fun BannerImageArea(
                     .size(40.dp),
             )
         }
-        // Remove button (top-left) — only visible when a banner is set.
+        // Keep both cover controls clear of the overlapping avatar.
         if (url.isNotBlank() && !uploadInFlight) {
             FilledIconButton(
                 onClick = onRemoveClick,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 64.dp)
                     .size(48.dp),
             ) {
                 Icon(
@@ -487,42 +481,42 @@ private fun ProfilePictureArea(
     uploadInFlight: Boolean,
     onEditClick: () -> Unit,
     onRemoveClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-        ) {
-            if (url.isNotBlank()) {
-                AsyncImage(
-                    model = url,
-                    contentDescription = stringResource(R.string.profile_picture_title),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                )
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(112.dp)) {
+            Box(
+                Modifier.size(96.dp)
+                    .border(4.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    .padding(4.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                if (url.isNotBlank()) {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = stringResource(R.string.profile_picture_title),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                } else {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.align(Alignment.Center).size(40.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                if (uploadInFlight) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(28.dp))
+                }
             }
-            if (url.isBlank()) {
-                Icon(Icons.Default.Person, null, modifier = Modifier.align(Alignment.Center).size(32.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            FilledIconButton(
+                onClick = onEditClick,
+                enabled = !uploadInFlight,
+                modifier = Modifier.align(Alignment.BottomEnd).size(48.dp),
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.nostr_profile_picture_change))
             }
-            if (uploadInFlight) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(28.dp))
-            }
-        }
-        TextButton(onClick = onEditClick, enabled = !uploadInFlight, modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.nostr_profile_picture_change))
         }
         if (url.isNotBlank() && !uploadInFlight) {
-            FilledIconButton(onClick = onRemoveClick) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.nostr_profile_picture_remove),
-                )
+            FilledIconButton(onClick = onRemoveClick, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.nostr_profile_picture_remove))
             }
         }
     }
