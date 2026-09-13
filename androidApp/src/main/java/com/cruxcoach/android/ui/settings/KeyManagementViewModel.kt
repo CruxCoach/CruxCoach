@@ -43,6 +43,9 @@ import javax.inject.Inject
 
 data class KeyManagementState(
     val npubDisplay: String = "",
+    val localNpub: String? = null,
+    val displayName: String = "",
+    val pictureUrl: String = "",
     val npubFull: String = "",
     val amberPubkeyDisplay: String? = null,
     val signerMode: SignerMode = SignerMode.LOCAL,
@@ -53,6 +56,7 @@ data class KeyManagementState(
     val showAmberSuccessDialog: Boolean = false,
     val showNoSecurityDialog: Boolean = false,
     val isLoading: Boolean = true,
+    val isWorking: Boolean = false,
     val requireRestart: Boolean = false,
     val error: String? = null,
     val userMessage: String? = null
@@ -61,6 +65,7 @@ data class KeyManagementState(
 @HiltViewModel
 class KeyManagementViewModel @Inject constructor(
     private val keyStore: NostrKeyStore,
+    private val profileManager: com.cruxcoach.android.payment.NostrProfileManager,
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
@@ -101,8 +106,12 @@ class KeyManagementViewModel @Inject constructor(
                         }
                     } else null
 
+                    val profile = runCatching { profileManager.getProfileFromCache(pubKeyHex) }.getOrNull()
                     KeyManagementState(
+                        displayName = profile?.displayName.orEmpty(),
+                        pictureUrl = profile?.pictureUrl.orEmpty(),
                         npubDisplay = npubDisplay,
+                        localNpub = if (keyStore.hasKey()) keyStore.getOrCreateKeyPair().pubKey.toNpub() else null,
                         npubFull = npubFull,
                         amberPubkeyDisplay = amberPubkeyDisplay,
                         signerMode = mode,
@@ -138,11 +147,13 @@ class KeyManagementViewModel @Inject constructor(
         _state.update { it.copy(showNsecWarningDialog = false) }
     }
 
-    fun confirmNsecCopy() {
+    fun confirmNsecCopy(): Boolean {
+        if (_state.value.signerMode != SignerMode.LOCAL) return false
         _state.update { it.copy(showNsecWarningDialog = false) }
-        val privKeyHex = keyStore.getPrivateKeyHex() ?: return
+        val privKeyHex = keyStore.getPrivateKeyHex() ?: return false
         val nsec = privKeyHex.hexToByteArray().toNsec()
         copySecretToClipboard(nsec)
+        return true
     }
 
     /**
@@ -172,46 +183,59 @@ class KeyManagementViewModel @Inject constructor(
     }
 
     fun onAmberLoginSuccess(pubkeyInput: String, packageName: String?) {
+        if (_state.value.isWorking) return
+        _state.update { it.copy(isWorking = true) }
         viewModelScope.launch {
-            val pubkeyHex = normalizeToHex(pubkeyInput) ?: run {
-                _state.update { it.copy(error = context.getString(R.string.key_import_format_unknown)) }
-                return@launch
-            }
-            val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
-            // Cancel periodic backup before identity swap so the next
-            // scheduled tick can't fire under the new pubkey while
-            // BackupRepository.pipelineMutex still serializes any
-            // in-flight run from the old identity.
-            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
-            nostrSigner.saveAmberConfig(pubkeyHex, pkg)
-            nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
+            try {
+                val validatedNpub = accountNpub(pubkeyInput)
+                val pubkeyHex = validatedNpub?.let(::normalizeToHex) ?: run {
+                    _state.update { it.copy(error = context.getString(R.string.key_import_format_unknown)) }
+                    return@launch
+                }
+                val sameAccount = sameAccountIdentity(nostrSigner.getPublicKeyHex(), pubkeyHex)
+                val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
+                // Cancel periodic backup before identity swap so the next
+                // scheduled tick can't fire under the new pubkey while
+                // BackupRepository.pipelineMutex still serializes any
+                // in-flight run from the old identity.
+                BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+                nostrSigner.saveAmberConfig(pubkeyHex, pkg)
+                nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
 
-            // Purge messages from previous identity and reset sync cursor
-            withContext(Dispatchers.IO) {
-                messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
-                userPreferences.setNostrSyncCursor(0L)
-                // FEAT-002 state (wrapped dataKey, d-tag cache, previous
-                // blob sha, timestamps) is identity-scoped — reset so the
-                // new Amber pubkey doesn't publish under the old d-tag.
-                backupPreferences.clearAllIdentityState()
-                // FEAT-001 NIP-65 cache is global DataStore; stale relays
-                // would route new pubkey's publishes to old identity's
-                // relays until the 24h TTL ticks.
-                relayListCache.clear()
-            }
+                // Purge messages from previous identity and reset sync cursor
+                if (!sameAccount) withContext(Dispatchers.IO) {
+                    messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
+                    userPreferences.setNostrSyncCursor(0L)
+                    // FEAT-002 state (wrapped dataKey, d-tag cache, previous
+                    // blob sha, timestamps) is identity-scoped — reset so the
+                    // new Amber pubkey doesn't publish under the old d-tag.
+                    backupPreferences.clearAllIdentityState()
+                    // FEAT-001 NIP-65 cache is global DataStore; stale relays
+                    // would route new pubkey's publishes to old identity's
+                    // relays until the 24h TTL ticks.
+                    relayListCache.clear()
+                }
 
-            val displayNpub = try {
-                formatNpubShort(pubkeyHex.hexToByteArray().toNpub())
-            } catch (e: Exception) {
-                null
-            }
+                val displayNpub = try {
+                    formatNpubShort(pubkeyHex.hexToByteArray().toNpub())
+                } catch (e: Exception) {
+                    null
+                }
 
-            _state.update {
-                it.copy(
-                    signerMode = SignerMode.AMBER,
-                    amberPubkeyDisplay = displayNpub,
-                    showAmberSuccessDialog = true
-                )
+                _state.update {
+                    it.copy(
+                        signerMode = SignerMode.AMBER,
+                        amberPubkeyDisplay = displayNpub,
+                        npubFull = pubkeyHex.hexToByteArray().toNpub(),
+                        npubDisplay = displayNpub.orEmpty(),
+                        showAmberSuccessDialog = true
+                    )
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _state.update { it.copy(error = context.getString(R.string.account_access_error)) }
+            } finally {
+                _state.update { it.copy(isWorking = false) }
             }
         }
     }
@@ -226,21 +250,34 @@ class KeyManagementViewModel @Inject constructor(
     }
 
     fun switchToLocalSigner() {
+        // Disconnect must never silently generate a replacement identity.
+        if (!keyStore.hasKey()) return
+        if (_state.value.isWorking) return
+        _state.update { it.copy(isWorking = true) }
         viewModelScope.launch {
-            // Cancel periodic backup before identity swap (see onAmberLoginSuccess).
-            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
-            nostrSigner.clearAmberConfig()
-            nostrSigner.switchToLocal()
+            try {
+                // Cancel periodic backup before identity swap (see onAmberLoginSuccess).
+                BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+                val previousPubkey = nostrSigner.getPublicKeyHex()
+                nostrSigner.clearAmberConfig()
+                nostrSigner.switchToLocal()
 
-            withContext(Dispatchers.IO) {
-                val newPubkey = nostrSigner.getPublicKeyHex()
-                messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
-                userPreferences.setNostrSyncCursor(0L)
-                backupPreferences.clearAllIdentityState()
-                relayListCache.clear()
+                withContext(Dispatchers.IO) {
+                    val newPubkey = nostrSigner.getPublicKeyHex()
+                    if (sameAccountIdentity(newPubkey, previousPubkey)) return@withContext
+                    messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
+                    userPreferences.setNostrSyncCursor(0L)
+                    backupPreferences.clearAllIdentityState()
+                    relayListCache.clear()
+                }
+
+                _state.update { it.copy(requireRestart = true) }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _state.update { it.copy(error = context.getString(R.string.account_access_error)) }
+            } finally {
+                _state.update { it.copy(isWorking = false) }
             }
-
-            _state.update { it.copy(requireRestart = true) }
         }
     }
 
@@ -266,7 +303,8 @@ class KeyManagementViewModel @Inject constructor(
 
     private fun copySecretToClipboard(secret: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("nostr_key", secret)
+        val clipLabel = "nostr_key_" + java.util.UUID.randomUUID().toString()
+        val clip = ClipData.newPlainText(clipLabel, secret)
         clip.description.extras = PersistableBundle().apply {
             putBoolean(
                 if (Build.VERSION.SDK_INT >= 33) ClipDescription.EXTRA_IS_SENSITIVE
@@ -276,9 +314,15 @@ class KeyManagementViewModel @Inject constructor(
         }
         clipboard.setPrimaryClip(clip)
 
-        Executors.newSingleThreadScheduledExecutor().schedule({
-            if (Build.VERSION.SDK_INT >= 28) clipboard.clearPrimaryClip()
-            else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+        val executor = Executors.newSingleThreadScheduledExecutor()
+        executor.schedule({
+            try {
+                // Do not erase unrelated text copied after the key.
+                if (clipboard.primaryClipDescription?.label == clipLabel) {
+                    if (Build.VERSION.SDK_INT >= 28) clipboard.clearPrimaryClip()
+                    else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                }
+            } finally { executor.shutdown() }
         }, CLIPBOARD_CLEAR_DELAY_SECONDS, TimeUnit.SECONDS)
 
         _state.update {
@@ -311,4 +355,18 @@ class KeyManagementViewModel @Inject constructor(
         private const val TAG = "KeyManagementViewModel"
         private const val CLIPBOARD_CLEAR_DELAY_SECONDS = 60L
     }
+}
+
+internal fun accountNpub(value: String): String? = runCatching {
+    val hex = NostrSigner.normalizeToHex(value)?.let(::canonicalAccountHex) ?: return null
+    hex.hexToByteArray().toNpub()
+}.getOrNull()
+
+/** Signers supply decoded public keys; compare canonical hex without loading crypto code. */
+internal fun canonicalAccountHex(value: String): String? =
+    value.takeIf { it.matches(Regex("^[0-9a-fA-F]{64}$")) }?.lowercase()
+
+internal fun sameAccountIdentity(first: String, second: String): Boolean {
+    val identity = canonicalAccountHex(first) ?: return false
+    return identity == canonicalAccountHex(second)
 }

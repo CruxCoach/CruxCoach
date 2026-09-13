@@ -1893,7 +1893,7 @@
     <string name="key_section_nostr_intro">Account key\nCruxCoach uses Nostr: your public key identifies you; your private key grants access. Keep it secret and backed up; there is no reset.\n\nVisibility\nPublished profiles and community climbs are public. Developer messages are end-to-end encrypted; backups are encrypted before upload. Anyone with your private key can act as you and read protected data.</string>
     <string name="key_section_description">Profile and access\nEdit your public profile. In key management, back up your key, use an existing account or connect the Amber key app.</string>
     <string name="key_button_manage">Manage account</string>
-    <string name="key_label_not_backed_up">Account key not backed up</string>
+    <string name="key_label_not_backed_up">Backup not yet confirmed</string>
     <string name="key_label_not_backed_up_desc">Keep a safe copy so you can recover your account and backup after losing your phone.</string>
     <string name="key_label_login_method">Login method:</string>
     <string name="key_label_login_local">Local key</string>
@@ -1918,9 +1918,9 @@
     <string name="key_label_active_identity">Active account</string>
 
     <!-- Key Management: Dialogs -->
-    <string name="key_dialog_nsec_title">Private key</string>
-    <string name="key_dialog_nsec_text">This key controls your entire CruxCoach account. If anyone sees it, they can permanently impersonate you. The clipboard will be cleared after 60 seconds.</string>
-    <string name="key_dialog_nsec_confirm">I understand, copy</string>
+    <string name="key_dialog_nsec_title">Back up account key</string>
+    <string name="key_dialog_nsec_text">Your private key lets you recover your account. Anyone who has it can use your account.\n\nAuthenticate with your device lock and copy the key into a password manager. Never share it with anyone.</string>
+    <string name="key_dialog_nsec_confirm">Unlock and copy</string>
     <string name="key_dialog_biometric_title">Screen lock required</string>
     <string name="key_dialog_biometric_text">First set up a screen lock (PIN, pattern or fingerprint) to protect your key.</string>
     <string name="key_button_open_settings">Go to settings</string>
@@ -1929,9 +1929,9 @@
     <string name="key_button_install_zapstore">Zapstore</string>
     <string name="key_button_install_fdroid">F-Droid</string>
     <string name="key_dialog_amber_success_title">Amber set up</string>
-    <string name="key_dialog_amber_success_text">Amber is set up. Your key is now managed by Amber.\n\nThe app will restart to switch account.\n\nDelete local key copy?</string>
+    <string name="key_dialog_amber_success_text">Amber now handles approvals. If CruxCoach still holds a key copy, it stays until you explicitly remove it.</string>
     <string name="key_button_delete">Delete</string>
-    <string name="key_button_keep">Keep</string>
+    <string name="key_button_keep">Keep copy and continue</string>
     <string name="key_dialog_no_security_title">No device protection</string>
     <string name="key_dialog_no_security_text">This device has no screen lock or biometric security. Your private key is not protected. It is strongly recommended to set up a screen lock.</string>
     <string name="key_button_proceed_anyway">Proceed anyway</string>
@@ -1983,22 +1983,22 @@
     <string name="keys_imported_toast">Key imported</string>
 
     <!-- Key Import Screen -->
-    <string name="key_import_title">Import account</string>
-    <string name="key_import_prompt">Paste your private key:</string>
-    <string name="key_import_label">Key</string>
+    <string name="key_import_title">Paste a key</string>
+    <string name="key_import_prompt">Paste your private key. You can review its account before confirming that you want to use it.</string>
+    <string name="key_import_label">Private key</string>
     <string name="key_import_supported_formats">Supported: nsec, ncryptsec, hex, 12/24 words</string>
     <string name="key_import_reveal">Show key</string>
     <string name="key_import_hide">Hide key</string>
     <string name="key_import_detected">Detected: %1$s</string>
-    <string name="key_import_button">Import</string>
+    <string name="key_import_button">Review account</string>
     <string name="key_import_success_toast">Key imported</string>
     <string name="key_import_overwrite_title">Switch account?</string>
     <string name="key_import_overwrite_text">Importing switches to the imported key. Your current climbs and lists are kept (not deleted), but become reachable only with your current key — they reappear if you re-import it. Make sure you have a backup of your current key.</string>
     <string name="key_import_overwrite_confirm">Import anyway</string>
     <string name="key_import_confirm_title">Is this your key?</string>
-    <string name="key_import_confirm_button">Yes, import</string>
+    <string name="key_import_confirm_button">Use this account</string>
     <string name="key_import_password_title">Enter password</string>
-    <string name="key_import_password_label">ncryptsec password</string>
+    <string name="key_import_password_label">Key backup password</string>
     <string name="key_import_decrypt_button">Decrypt</string>
     <string name="identity_switch_title">Switching account…</string>
 
@@ -2814,19 +2814,19 @@
     <string name="account_switch_title">Switch account</string>
     <string name="account_switch_help">Import an account\nUse the private key of an existing account. Your current data stays stored and remains accessible with your current key. Save that key first.</string>
     <string name="account_switch_amber_help">Switches to the account key managed by CruxCoach on this device and restarts the app. To return to your Amber account, connect Amber again.</string>
-    <string name="account_import_action">Import an existing account</string>
+    <string name="account_import_action">Paste a key</string>
     <string name="account_amber_title">Amber key app</string>
     <string name="account_amber_connected">Connected to this account</string>
     <string name="account_amber_optional">Optional: manage your key in a separate app</string>
     <string name="account_amber_help">Amber manages your private key in a separate app on your phone and approves signing requests from CruxCoach. CruxCoach does not receive that key. Connecting Amber selects its account and restarts CruxCoach.</string>
     <string name="account_amber_connect">Connect Amber</string>
-    <string name="account_public_id">Public account ID</string>
-    <string name="account_public_id_help">Your public key (npub) identifies the active account. You can share it so others can find you on Nostr. It cannot restore account access or decrypt a backup.</string>
+    <string name="account_public_id">Your account</string>
+    <string name="account_public_id_help">Public account ID (npub)\nOthers can use it to find your account. It is safe to share and does not grant access to your account.</string>
     <string name="account_copy_id">Copy account ID</string>
     <string name="account_recovery_title">Keep access to your account</string>
     <string name="account_recovery_help">Private key\nSave your private key (nsec) somewhere safe. It gives access to your account, even after losing your phone. CruxCoach cannot reset it.\n\nData backup\nKeeping a copy of your key does not back up your app data. To restore your data, you also need an available encrypted backup for this account.</string>
-    <string name="account_backup_acknowledged">You have marked your key as backed up.</string>
-    <string name="account_copy_secret">Copy private key</string>
+    <string name="account_backup_acknowledged">Marked as backed up by you</string>
+    <string name="account_copy_secret">Back up key</string>
     <string name="profile_cover_title">Cover image</string>
     <string name="profile_cover_empty">Optional background for your profile</string>
     <string name="profile_cover_selected">Image selected · change or remove</string>
@@ -2840,4 +2840,32 @@
     <string name="profile_links_check_failed">Address check failed · open details</string>
     <string name="profile_community_error">Connection error · open details</string>
     <string name="profile_picture_title">Profile picture</string>
+    <string name="account_methods_title">Manage your key</string>
+    <string name="account_method_local">In CruxCoach</string>
+    <string name="account_method_active">Active</string>
+    <string name="account_method_amber">With Amber</string>
+    <string name="account_method_local_body">CruxCoach stores your private key on this device. You back it up yourself to recover your account.</string>
+    <string name="account_method_amber_body">Amber manages your key in a separate app. CruxCoach requests approvals there without receiving the key.</string>
+    <string name="account_amber_backup">Back up your account key in Amber. Connecting alone does not create a backup.</string>
+    <string name="account_amber_choose">Choose account in Amber</string>
+    <string name="account_local_copy_available">CruxCoach still holds a key on this device. You can review its account before switching.</string>
+    <string name="account_use_local">Use stored key</string>
+    <string name="account_backup_finish_title">Store your key safely</string>
+    <string name="account_backup_finish_body">Paste the copied key into your password manager. The clipboard clears shortly. Confirm only after storing your key safely.\n\nThe key protects access to your account. Your climbs and lists need a separate data backup.</string>
+    <string name="account_access_change_title">Change key management?</string>
+    <string name="account_access_same">You will keep using the same account:</string>
+    <string name="account_access_different">You will switch to this account. Your existing climbs and lists stay with the previous account. Back up its key so you can return.</string>
+    <string name="account_access_to_amber">Amber will handle approvals. Any existing key copy in CruxCoach is kept initially.</string>
+    <string name="account_access_to_local">CruxCoach will manage the key on this device. Any existing Amber connection will be disconnected.</string>
+    <string name="account_access_confirm">Confirm and continue</string>
+    <string name="account_delete_copy_title">Remove key copy?</string>
+    <string name="account_delete_copy_body">Remove this copy only if you have stored the key safely elsewhere. It may belong to a different account than your Amber account. Without it, you cannot return to that account. Your key in Amber is kept.</string>
+    <string name="account_remove_local_copy">Remove local key copy…</string>
+    <string name="account_import_replaces_local">This replaces a different key stored in CruxCoach. Back it up first to keep access to that account.</string>
+    <string name="account_import_error">Could not read the key. Check the complete key and, if needed, its password.</string>
+    <string name="account_import_checking">Checking key…</string>
+    <string name="account_recovery_words">Recovery words</string>
+    <string name="account_show_qr">Show public account ID as QR code</string>
+    <string name="account_continue">Continue</string>
+    <string name="account_access_error">Could not change key management. Please reopen account management and check the active account.</string>
 </resources>

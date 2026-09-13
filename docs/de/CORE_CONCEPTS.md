@@ -189,11 +189,20 @@ Bearbeiten-Buttons an den Bildern. Die feste Leiste unten hebt „Lokal speicher
 Hauptaktion hervor. „Auf Nostr veröffentlichen“ verlangt zusätzlich einen Dialog,
 der öffentliche Bildspeicherung und dauerhafte Kopien erklärt. Lokales Speichern
 bleibt auch danach der Standard. Optionale Adressen und Community-Optionen lassen
-sich ohne Verlust der Eingaben zuklappen. Die Kontoverwaltung gliedert aktuellen Zugang,
-Schlüsselsicherung, Kontowechsel, Amber und öffentliche Konto-ID. Die ID gehört in
-beiden Modi zum aktiven Signierer; bei Amber ist sie kein inaktiver lokaler Schlüssel.
-Hilfen lösen keine Kontoaktion aus. Geräteauthentifizierung und bestehende
-Bestätigungen bleiben vor den jeweiligen Aktionen erhalten.
+sich ohne Verlust der Eingaben zuklappen. Die Kontoverwaltung beginnt mit dem aktiven Profil und seiner öffentlichen Konto-ID
+zum Kopieren oder als QR-Code. Zwei dauerhaft sichtbare Cards erklären, wer den
+privaten Schlüssel verwaltet: CruxCoach auf diesem Gerät oder die separate App Amber.
+Bei genügend Platz stehen sie nebeneinander. Die lokale Schlüsselsicherung führt
+von der Erklärung über Geräteauthentifizierung und Kopieren zur ausdrücklichen
+Bestätigung der sicheren Aufbewahrung. Kopieren allein bestätigt keine Sicherung;
+Boulder und Listen benötigen zusätzlich ein Daten-Backup. Bei Amber erfolgt die
+Schlüsselsicherung in Amber. Vorhandene lokale Kopien bleiben erhalten; ihr Entfernen
+verlangt eine zweite Bestätigung.
+Import und Methodenwechsel zeigen vorab die öffentliche Ziel-Konto-ID. Ein
+Methodenwechsel beim selben Konto erhält dessen Sync-Metadaten; für ein anderes
+Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselkopie
+wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
+Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
 ## Orientierung im Quellcode
 

@@ -168,7 +168,7 @@ class AccountScreensTest {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     AccountManagementContent(
                         KeyManagementState(isLoading = false, signerMode = SignerMode.AMBER,
-                            npubDisplay = "PUBLIC-FIXTURE", amberPubkeyDisplay = "PUBLIC-FIXTURE"),
+                            npubDisplay = "PUBLIC-FIXTURE", localNpub = "OTHER-PUBLIC-FIXTURE", amberPubkeyDisplay = "PUBLIC-FIXTURE"),
                         onCopyNsec = { error("Amber must not offer local key export") },
                         onImport = { imports++ }, onSetupAmber = {},
                         onDisconnectAmber = { localSwitches++ }, onCopyNpub = { copies++ },
@@ -179,13 +179,15 @@ class AccountScreensTest {
         }
         compose.onNodeWithTag("account_copy_secret").assertDoesNotExist()
         compose.onNodeWithText(text(R.string.key_label_local_key_inactive)).assertDoesNotExist()
-        compose.onNodeWithTag("account_switch").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithTag("account_use_local").performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, localSwitches); assertEquals(0, imports) }
+        compose.onNodeWithTag("account_switch").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, imports) }
         compose.onNodeWithText(text(R.string.account_copy_id)).performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, copies) }
     }
 
-    @Test fun `optional Amber help never connects and import remains reachable at large font`() {
+    @Test fun `both methods are available without expanding and remain reachable at large font`() {
         var connections = 0
         var imports = 0
         compose.setContent {
@@ -196,12 +198,9 @@ class AccountScreensTest {
                 }
             }
         }
-        compose.onNodeWithTag("account_connect_amber").assertDoesNotExist()
-        compose.onNodeWithContentDescription(app.getString(R.string.action_show_info, text(R.string.account_amber_title)))
-            .performScrollTo().performTouchInput { click() }
-        compose.onNodeWithText(text(R.string.action_close)).performClick()
+        compose.onNodeWithText(text(R.string.account_method_local_body)).assertExists()
+        compose.onNodeWithText(text(R.string.account_method_amber_body)).assertExists()
         compose.runOnIdle { assertEquals(0, connections); assertEquals(0, imports) }
-        compose.onNodeWithText(text(R.string.account_amber_title)).performClick()
         compose.onNodeWithTag("account_connect_amber").performScrollTo().performTouchInput { click() }
         compose.onNodeWithTag("account_switch").performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, connections); assertEquals(1, imports) }
@@ -232,8 +231,52 @@ class AccountScreensTest {
                 }
             }
         }
-        compose.onNodeWithTag("account_copy_secret").assertIsDisplayed()
         reviewImage("account-normal-fixture")
+        compose.onNodeWithTag("account_copy_secret").performScrollTo().assertIsDisplayed()
+        reviewImage("account-recovery-fixture")
+    }
+
+    @Test fun `method change requires confirmation and invalid identity cannot proceed`() {
+        val target = mutableStateOf("PUBLIC-TARGET")
+        var confirmed = 0
+        var dismissed = 0
+        compose.setContent {
+            CruxCoachTheme {
+                AccountAccessConfirmation(target.value, false, true, { dismissed++ }, { confirmed++ })
+            }
+        }
+        compose.onNodeWithText("PUBLIC-TARGET").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, confirmed) }
+        compose.onNodeWithText(text(R.string.action_cancel)).performClick()
+        compose.runOnIdle { assertEquals(1, dismissed); assertEquals(0, confirmed) }
+        compose.onNodeWithText(text(R.string.account_access_confirm)).performClick()
+        compose.runOnIdle { assertEquals(1, confirmed); target.value = "" }
+        compose.onNodeWithText(text(R.string.account_access_confirm)).assertIsNotEnabled()
+    }
+
+    @Test fun `removing retained key requires a second explicit confirmation`() {
+        var kept = 0
+        var removed = 0
+        compose.setContent { CruxCoachTheme { AmberSuccessDialog({ kept++ }, { removed++ }) } }
+        compose.onNodeWithText(text(R.string.account_remove_local_copy)).performClick()
+        compose.runOnIdle { assertEquals(0, removed); assertEquals(0, kept) }
+        compose.onNodeWithText(text(R.string.action_back)).performClick()
+        compose.runOnIdle { assertEquals(0, removed) }
+        compose.onNodeWithText(text(R.string.account_remove_local_copy)).performClick()
+        compose.onNodeWithText(text(R.string.key_button_delete)).performClick()
+        compose.runOnIdle { assertEquals(1, removed) }
+    }
+
+    @Test fun `Amber without retained key offers import without a local disconnect`() {
+        compose.setContent {
+            CruxCoachTheme {
+                AccountManagementContent(KeyManagementState(isLoading = false, signerMode = SignerMode.AMBER),
+                    {}, {}, {}, { error("Must not generate a new identity") }, {}, {})
+            }
+        }
+        compose.onNodeWithTag("account_use_local").assertDoesNotExist()
+        compose.onNodeWithTag("account_switch").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("account_connect_amber").performScrollTo().assertIsDisplayed()
     }
 
     private fun actions(state: MutableState<NostrProfileEditState>) = ProfileEditorActions(

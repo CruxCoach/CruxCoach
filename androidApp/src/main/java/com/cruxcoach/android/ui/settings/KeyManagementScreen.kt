@@ -8,6 +8,14 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,11 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,7 +82,9 @@ fun KeyManagementScreen(
     var showNoSecurityWarning by remember { mutableStateOf(false) }
     var noSecurityPendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showAmberNotInstalled by remember { mutableStateOf(false) }
-    var showAmberSuccess by remember { mutableStateOf(false) }
+    var pendingAmber by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showLocalSwitch by remember { mutableStateOf(false) }
+    var showBackupDone by remember { mutableStateOf(false) }
 
     // Process restart after identity change (Amber login, switch to local)
     LaunchedEffect(state.requireRestart) {
@@ -99,8 +107,7 @@ fun KeyManagementScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val pubkey = result.data?.getStringExtra("signature") ?: return@rememberLauncherForActivityResult
             val packageName = result.data?.getStringExtra("package") ?: AmberIntegration.AMBER_PACKAGE
-            viewModel.onAmberLoginSuccess(pubkey, packageName)
-            showAmberSuccess = true
+            pendingAmber = pubkey to packageName
         }
     }
 
@@ -119,17 +126,7 @@ fun KeyManagementScreen(
     ) { padding ->
         AccountManagementContent(
             state = state,
-            onCopyNsec = {
-                requestBiometric(
-                    context = context,
-                    onSuccess = { showNsecWarning = true },
-                    onUnavailable = { showBiometricUnavailable = true },
-                    onNoHardware = {
-                        noSecurityPendingAction = { showNsecWarning = true }
-                        showNoSecurityWarning = true
-                    },
-                )
-            },
+            onCopyNsec = { showNsecWarning = true },
             onImport = onNavigateToImport,
             onSetupAmber = {
                 if (AmberIntegration.isInstalled(context)) {
@@ -138,7 +135,7 @@ fun KeyManagementScreen(
                     showAmberNotInstalled = true
                 }
             },
-            onDisconnectAmber = viewModel::switchToLocalSigner,
+            onDisconnectAmber = { showLocalSwitch = true },
             onCopyNpub = {
                 copyToClipboard(context, state.npubFull, "npub", sensitive = false)
                 Toast.makeText(context, npubCopiedMessage, Toast.LENGTH_SHORT).show()
@@ -154,7 +151,13 @@ fun KeyManagementScreen(
             onDismiss = { showNsecWarning = false },
             onConfirm = {
                 showNsecWarning = false
-                viewModel.confirmNsecCopy()
+                val copyAndFinish = { if (viewModel.confirmNsecCopy()) showBackupDone = true }
+                requestBiometric(context, onSuccess = copyAndFinish,
+                    onUnavailable = { showBiometricUnavailable = true },
+                    onNoHardware = {
+                        noSecurityPendingAction = copyAndFinish
+                        showNoSecurityWarning = true
+                    })
             }
         )
     }
@@ -214,14 +217,47 @@ fun KeyManagementScreen(
         )
     }
 
-    if (showAmberSuccess) {
+    pendingAmber?.let { (key, pkg) ->
+        val target = accountNpub(key)
+        AccountAccessConfirmation(
+            targetNpub = target.orEmpty(),
+            sameAccount = target == state.npubFull,
+            toAmber = true,
+            onDismiss = { pendingAmber = null },
+            onConfirm = { pendingAmber = null; viewModel.onAmberLoginSuccess(key, pkg) },
+        )
+    }
+    if (showLocalSwitch) {
+        AccountAccessConfirmation(
+            targetNpub = state.localNpub.orEmpty(),
+            sameAccount = state.localNpub == state.npubFull,
+            toAmber = false,
+            onDismiss = { showLocalSwitch = false },
+            onConfirm = { showLocalSwitch = false; viewModel.switchToLocalSigner() },
+        )
+    }
+    if (showBackupDone) {
+        AlertDialog(
+            onDismissRequest = { showBackupDone = false },
+            title = { Text(stringResource(R.string.account_backup_finish_title)) },
+            text = { Text(stringResource(R.string.account_backup_finish_body), modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = {
+                showBackupDone = false; viewModel.acknowledgeKeyBackup()
+            }) { Text(stringResource(R.string.backup_key_warning_ack_confirm)) } },
+            dismissButton = { TextButton(onClick = { showBackupDone = false }) {
+                Text(stringResource(R.string.action_close))
+            } },
+        )
+    }
+    if (state.showAmberSuccessDialog) {
         AmberSuccessDialog(
+            hasLocalKey = state.localNpub != null,
             onKeepLocalKey = {
-                showAmberSuccess = false
+                viewModel.dismissAmberSuccess()
                 restartApp(context)
             },
             onDeleteLocalKey = {
-                showAmberSuccess = false
+                viewModel.dismissAmberSuccess()
                 viewModel.deleteLocalKeyAfterAmber()
                 restartApp(context)
             }
@@ -241,67 +277,103 @@ internal fun AccountManagementContent(
     onAcknowledgeBackup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showPublicQr by remember { mutableStateOf(false) }
+    if (showPublicQr && state.npubFull.isNotBlank()) {
+        val bitmap = remember(state.npubFull) { com.cruxcoach.android.util.ApkShareHelper.generateQrBitmap("nostr:" + state.npubFull) }
+        AlertDialog(
+            onDismissRequest = { showPublicQr = false },
+            title = { Text(stringResource(R.string.account_public_id)) },
+            text = { Image(bitmap.asImageBitmap(), contentDescription = stringResource(R.string.account_show_qr),
+                modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(onClick = { showPublicQr = false }) { Text(stringResource(R.string.action_close)) } },
+        )
+    }
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
             .testTag("account_content"),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (state.isLoading) {
+        if (state.isLoading || state.isWorking) {
             CircularProgressIndicator()
             return@Column
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         SettingsSectionCard {
-            InfoHeading(
-                stringResource(R.string.account_current_access),
-                stringResource(if (state.signerMode == SignerMode.AMBER) R.string.key_label_amber_active else R.string.account_access_local_summary),
-            )
-            Text(
-                stringResource(if (state.signerMode == SignerMode.AMBER) R.string.account_access_amber else R.string.account_access_local),
-                style = MaterialTheme.typography.titleLarge,
-            )
-        }
-
-        if (state.signerMode == SignerMode.LOCAL) {
-            AccountRecoverySection(state.keyBackedUp, onCopyNsec, onAcknowledgeBackup)
-        }
-
-        SettingsSectionCard {
-            InfoHeading(stringResource(R.string.account_switch_title), stringResource(if (state.signerMode == SignerMode.AMBER) R.string.account_switch_amber_help else R.string.account_switch_help))
-            OutlinedButton(
-                onClick = if (state.signerMode == SignerMode.AMBER) onDisconnectAmber else onImport,
-                modifier = Modifier.fillMaxWidth().testTag("account_switch"),
-            ) {
-                Text(stringResource(if (state.signerMode == SignerMode.AMBER) R.string.key_button_disconnect_amber else R.string.account_import_action))
-            }
-        }
-
-        SettingsExpandableSection(
-            title = stringResource(R.string.account_amber_title),
-            summary = stringResource(if (state.signerMode == SignerMode.AMBER) R.string.account_amber_connected else R.string.account_amber_optional),
-            initiallyExpanded = state.signerMode == SignerMode.AMBER,
-            help = stringResource(R.string.account_amber_help),
-        ) {
-            if (state.signerMode == SignerMode.AMBER) {
-                state.amberPubkeyDisplay?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                Text(stringResource(R.string.key_label_amber_active), style = MaterialTheme.typography.bodyMedium)
-            } else {
-                OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
-                    Text(stringResource(R.string.account_amber_connect))
+            InfoHeading(stringResource(R.string.account_public_id), stringResource(R.string.account_public_id_help))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (state.pictureUrl.isNotBlank()) {
+                    coil.compose.AsyncImage(state.pictureUrl, contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.size(48.dp).clip(CircleShape))
+                } else {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.size(48.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer).padding(8.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    if (state.displayName.isNotBlank()) Text(state.displayName, style = MaterialTheme.typography.titleMedium)
+                    Text(state.npubDisplay, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag("account_public_id"))
+                }
+                IconButton(onClick = { showPublicQr = true }, enabled = state.npubFull.isNotBlank()) {
+                    Icon(Icons.Default.QrCode, stringResource(R.string.account_show_qr))
                 }
             }
-        }
-
-        SettingsSectionCard {
-            InfoHeading(stringResource(R.string.account_public_id), stringResource(R.string.account_public_id_help))
-            // npubFull and npubDisplay identify the active signer in both modes.
-            // Do not mislabel the active Amber identity as an inactive local key.
-            Text(truncateKey(state.npubDisplay), style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.testTag("account_public_id"))
             TextButton(onClick = onCopyNpub, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
                 Text(stringResource(R.string.account_copy_id))
+            }
+        }
+        Text(stringResource(R.string.account_methods_title), style = MaterialTheme.typography.titleMedium)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val local: @Composable () -> Unit = {
+                SettingsSectionCard {
+                    Text(stringResource(R.string.account_method_local), style = MaterialTheme.typography.titleLarge)
+                    if (state.signerMode == SignerMode.LOCAL) {
+                        Text(stringResource(R.string.account_method_active), color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Text(stringResource(R.string.account_method_local_body), style = MaterialTheme.typography.bodyMedium)
+                    if (state.signerMode == SignerMode.AMBER && state.localNpub != null) {
+                        Text(stringResource(R.string.account_local_copy_available), style = MaterialTheme.typography.bodyMedium)
+                        OutlinedButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
+                            Text(stringResource(R.string.account_use_local))
+                        }
+                    }
+                    OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().testTag("account_switch")) {
+                        Text(stringResource(R.string.account_import_action))
+                    }
+                }
+            }
+            val amber: @Composable () -> Unit = {
+                SettingsSectionCard {
+                    Text(stringResource(R.string.account_method_amber), style = MaterialTheme.typography.titleLarge)
+                    if (state.signerMode == SignerMode.AMBER) {
+                        Text(stringResource(R.string.account_method_active), color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Text(stringResource(R.string.account_method_amber_body), style = MaterialTheme.typography.bodyMedium)
+                    if (state.signerMode == SignerMode.AMBER) {
+                        Text(stringResource(R.string.account_amber_backup), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
+                        Text(stringResource(if (state.signerMode == SignerMode.AMBER)
+                            R.string.account_amber_choose else R.string.account_amber_connect))
+                    }
+                }
+            }
+            if (maxWidth >= 600.dp) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f)) { local() }
+                    Column(Modifier.weight(1f)) { amber() }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { local(); amber() }
+            }
+        }
+        if (state.signerMode == SignerMode.LOCAL) {
+            SettingsSectionCard {
+                AccountRecoverySection(state.keyBackedUp, onCopyNsec, onAcknowledgeBackup)
             }
         }
     }
@@ -310,23 +382,11 @@ internal fun AccountManagementContent(
 @Composable
 internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, onAcknowledge: () -> Unit) {
     var showAckDialog by rememberSaveable { mutableStateOf(false) }
-    SettingsSectionCard {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InfoHeading(stringResource(R.string.account_recovery_title), stringResource(R.string.account_recovery_help))
-        if (!backedUp) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                    Text(stringResource(R.string.key_label_not_backed_up), fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f))
-                }
-            }
-        } else {
-            Text(stringResource(R.string.account_backup_acknowledged), style = MaterialTheme.typography.bodyMedium)
-        }
-        Text(stringResource(R.string.key_label_nsec_warning), style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = onCopyNsec, modifier = Modifier.fillMaxWidth().testTag("account_copy_secret")) {
+        Text(stringResource(if (backedUp) R.string.account_backup_acknowledged else R.string.key_label_not_backed_up),
+            style = MaterialTheme.typography.bodyMedium)
+        Button(onClick = onCopyNsec, modifier = Modifier.fillMaxWidth().testTag("account_copy_secret")) {
             Icon(Icons.Default.Lock, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(8.dp))
             Text(stringResource(R.string.account_copy_secret))

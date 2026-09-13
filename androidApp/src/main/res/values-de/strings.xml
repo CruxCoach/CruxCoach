@@ -1936,7 +1936,7 @@
     <string name="key_section_nostr_intro">Kontoschlüssel\nCruxCoach nutzt Nostr: Der öffentliche Schlüssel identifiziert dich, der private gibt Zugang. Halte ihn geheim und sichere ihn; ein Zurücksetzen ist nicht möglich.\n\nSichtbarkeit\nVeröffentlichtes Profil und Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Backups vor dem Upload verschlüsselt. Mit deinem privaten Schlüssel kann jemand als du handeln und geschützte Daten lesen.</string>
     <string name="key_section_description">Profil und Zugang\nBearbeite dein öffentliches Profil. In der Schlüsselverwaltung sicherst du deinen Zugang, nutzt ein vorhandenes Konto oder verbindest die Schlüssel-App Amber.</string>
     <string name="key_button_manage">Konto verwalten</string>
-    <string name="key_label_not_backed_up">Kontoschlüssel noch nicht gesichert</string>
+    <string name="key_label_not_backed_up">Sicherung noch nicht bestätigt</string>
     <string name="key_label_not_backed_up_desc">Bewahre eine Kopie sicher auf, damit du nach einem Handyverlust Konto und Backup wiederherstellen kannst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
     <string name="key_label_login_local">Lokaler Schlüssel</string>
@@ -1961,9 +1961,9 @@
     <string name="key_label_active_identity">Aktiver Account</string>
 
     <!-- Key Management: Dialogs -->
-    <string name="key_dialog_nsec_title">Privater Schlüssel</string>
-    <string name="key_dialog_nsec_text">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Wenn jemand ihn sieht, kann er sich als du ausgeben. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
-    <string name="key_dialog_nsec_confirm">Ich verstehe, kopieren</string>
+    <string name="key_dialog_nsec_title">Kontoschlüssel sichern</string>
+    <string name="key_dialog_nsec_text">Mit deinem privaten Schlüssel kannst du dein Konto wiederherstellen. Wer ihn besitzt, kann dein Konto verwenden.\n\nEntsperre mit deiner Gerätesperre und kopiere den Schlüssel in einen Passwortmanager. Teile ihn niemals mit anderen.</string>
+    <string name="key_dialog_nsec_confirm">Entsperren und kopieren</string>
     <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
     <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
     <string name="key_button_open_settings">Zu den Einstellungen</string>
@@ -1972,9 +1972,9 @@
     <string name="key_button_install_zapstore">Zapstore</string>
     <string name="key_button_install_fdroid">F-Droid</string>
     <string name="key_dialog_amber_success_title">Amber eingerichtet</string>
-    <string name="key_dialog_amber_success_text">Amber ist eingerichtet. Dein Schlüssel wird jetzt von Amber verwaltet.\n\nDie App wird neu gestartet, um den Account zu wechseln.\n\nLokale Schlüsselkopie löschen?</string>
+    <string name="key_dialog_amber_success_text">Amber übernimmt jetzt die Freigaben. Falls CruxCoach noch eine Schlüsselkopie gespeichert hat, bleibt sie erhalten, bis du sie ausdrücklich entfernst.</string>
     <string name="key_button_delete">Löschen</string>
-    <string name="key_button_keep">Behalten</string>
+    <string name="key_button_keep">Kopie behalten und weiter</string>
     <string name="key_dialog_no_security_title">Kein Geräteschutz</string>
     <string name="key_dialog_no_security_text">Dieses Gerät hat keine Bildschirmsperre oder biometrische Sicherung. Dein privater Schlüssel ist dadurch nicht geschützt. Es wird dringend empfohlen, eine Bildschirmsperre einzurichten.</string>
     <string name="key_button_proceed_anyway">Trotzdem fortfahren</string>
@@ -1983,22 +1983,22 @@
     <string name="key_biometric_subtitle">Authentifiziere dich</string>
 
     <!-- Key Import Screen -->
-    <string name="key_import_title">Account importieren</string>
-    <string name="key_import_prompt">Füge deinen privaten Schlüssel ein:</string>
-    <string name="key_import_label">Schlüssel</string>
+    <string name="key_import_title">Schlüssel einfügen</string>
+    <string name="key_import_prompt">Füge deinen privaten Schlüssel ein. Wir zeigen dir zuerst das zugehörige Konto. Erst nach deiner Bestätigung wird es verwendet.</string>
+    <string name="key_import_label">Privater Schlüssel</string>
     <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
     <string name="key_import_reveal">Schlüssel anzeigen</string>
     <string name="key_import_hide">Schlüssel ausblenden</string>
     <string name="key_import_detected">Erkannt: %1$s</string>
-    <string name="key_import_button">Importieren</string>
+    <string name="key_import_button">Konto prüfen</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
-    <string name="key_import_overwrite_title">Account wechseln?</string>
+    <string name="key_import_overwrite_title">Konto wechseln?</string>
     <string name="key_import_overwrite_text">Der Import wechselt zu dem importierten Schlüssel. Deine aktuellen Climbs und Listen bleiben gespeichert (werden nicht gelöscht), sind aber nur noch mit deinem jetzigen Schlüssel erreichbar — sie erscheinen wieder, wenn du ihn erneut importierst. Sichere deinen jetzigen Schlüssel.</string>
     <string name="key_import_overwrite_confirm">Trotzdem importieren</string>
     <string name="key_import_confirm_title">Ist das dein Schlüssel?</string>
-    <string name="key_import_confirm_button">Ja, importieren</string>
+    <string name="key_import_confirm_button">Dieses Konto verwenden</string>
     <string name="key_import_password_title">Passwort eingeben</string>
-    <string name="key_import_password_label">ncryptsec Passwort</string>
+    <string name="key_import_password_label">Passwort der Schlüsselsicherung</string>
     <string name="key_import_decrypt_button">Entschlüsseln</string>
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
@@ -2813,19 +2813,19 @@
     <string name="account_switch_title">Konto wechseln</string>
     <string name="account_switch_help">Vorhandenes Konto nutzen\nImportiere dessen privaten Schlüssel. Deine bisherigen Daten bleiben gespeichert und sind mit deinem bisherigen Schlüssel wieder zugänglich. Sichere ihn vorher.</string>
     <string name="account_switch_amber_help">Wechselt zum Kontoschlüssel, den CruxCoach auf diesem Gerät verwaltet, und startet die App neu. Verbinde Amber erneut, um zu deinem Amber-Konto zurückzukehren.</string>
-    <string name="account_import_action">Vorhandenes Konto importieren</string>
+    <string name="account_import_action">Schlüssel einfügen</string>
     <string name="account_amber_title">Schlüssel-App Amber</string>
     <string name="account_amber_connected">Mit diesem Konto verbunden</string>
     <string name="account_amber_optional">Optional: Schlüssel in einer eigenen App verwalten</string>
     <string name="account_amber_help">Amber verwaltet deinen privaten Schlüssel in einer eigenen App auf deinem Handy und bestätigt Anfragen von CruxCoach. CruxCoach erhält diesen Schlüssel nicht. Beim Verbinden wird das Amber-Konto aktiv und CruxCoach startet neu.</string>
     <string name="account_amber_connect">Amber verbinden</string>
-    <string name="account_public_id">Öffentliche Konto-ID</string>
-    <string name="account_public_id_help">Dein öffentlicher Schlüssel (npub) kennzeichnet das aktive Konto. Du kannst ihn teilen, damit andere dich auf Nostr finden. Er stellt keinen Kontozugang wieder her und entschlüsselt kein Backup.</string>
+    <string name="account_public_id">Dein Konto</string>
+    <string name="account_public_id_help">Öffentliche Konto-ID (npub)\nDamit können andere dein Konto finden. Du darfst sie teilen. Sie ermöglicht keinen Zugriff auf dein Konto.</string>
     <string name="account_copy_id">Konto-ID kopieren</string>
     <string name="account_recovery_title">Zugang sichern</string>
     <string name="account_recovery_help">Privater Schlüssel\nBewahre deinen privaten Schlüssel (nsec) sicher auf. Damit kommst du auch nach einem Handyverlust wieder in dein Konto. CruxCoach kann ihn nicht zurücksetzen.\n\nDaten-Backup\nEine Schlüsselkopie sichert keine App-Daten. Zum Wiederherstellen brauchst du zusätzlich ein verfügbares verschlüsseltes Backup dieses Kontos.</string>
-    <string name="account_backup_acknowledged">Du hast deinen Schlüssel als gesichert markiert.</string>
-    <string name="account_copy_secret">Privaten Schlüssel kopieren</string>
+    <string name="account_backup_acknowledged">Von dir als gesichert bestätigt</string>
+    <string name="account_copy_secret">Schlüssel sichern</string>
     <string name="profile_cover_title">Titelbild</string>
     <string name="profile_cover_empty">Optionaler Hintergrund für dein Profil</string>
     <string name="profile_cover_selected">Bild ausgewählt · ändern oder entfernen</string>
@@ -2839,4 +2839,32 @@
     <string name="profile_links_check_failed">Adressprüfung fehlgeschlagen · Details öffnen</string>
     <string name="profile_community_error">Verbindungsfehler · Details öffnen</string>
     <string name="profile_picture_title">Profilbild</string>
+    <string name="account_methods_title">Schlüssel verwalten</string>
+    <string name="account_method_local">In CruxCoach</string>
+    <string name="account_method_active">Aktiv</string>
+    <string name="account_method_amber">Mit Amber</string>
+    <string name="account_method_local_body">CruxCoach speichert deinen privaten Schlüssel auf diesem Gerät. Du sicherst ihn selbst für die Wiederherstellung.</string>
+    <string name="account_method_amber_body">Amber verwaltet deinen Schlüssel in einer separaten App. CruxCoach fragt dort Freigaben an, ohne den Schlüssel zu erhalten.</string>
+    <string name="account_amber_backup">Sichere deinen Kontoschlüssel in Amber. Eine Verbindung allein ist noch keine Sicherung.</string>
+    <string name="account_amber_choose">Konto in Amber auswählen</string>
+    <string name="account_local_copy_available">Auf diesem Gerät ist noch ein Schlüssel in CruxCoach gespeichert. Vor dem Wechsel zeigen wir dir das zugehörige Konto.</string>
+    <string name="account_use_local">Gespeicherten Schlüssel verwenden</string>
+    <string name="account_backup_finish_title">Schlüssel sicher aufbewahren</string>
+    <string name="account_backup_finish_body">Füge den kopierten Schlüssel in deinen Passwortmanager ein. Die Zwischenablage wird nach kurzer Zeit geleert. Bestätige die Sicherung erst, wenn du den Schlüssel sicher aufbewahrt hast.\n\nDer Schlüssel sichert deinen Zugang. Für deine Boulder und Listen brauchst du zusätzlich ein Daten-Backup.</string>
+    <string name="account_access_change_title">Schlüsselverwaltung ändern?</string>
+    <string name="account_access_same">Du verwendest weiterhin dasselbe Konto:</string>
+    <string name="account_access_different">Du wechselst zu diesem Konto. Deine bisherigen Boulder und Listen bleiben beim bisherigen Konto. Sichere dessen Zugang, damit du zurückkehren kannst.</string>
+    <string name="account_access_to_amber">Amber übernimmt die Freigaben. Eine vorhandene Schlüsselkopie in CruxCoach bleibt zunächst erhalten.</string>
+    <string name="account_access_to_local">CruxCoach verwaltet den Schlüssel auf diesem Gerät. Eine bestehende Amber-Verbindung wird getrennt.</string>
+    <string name="account_access_confirm">Bestätigen und fortfahren</string>
+    <string name="account_delete_copy_title">Schlüsselkopie entfernen?</string>
+    <string name="account_delete_copy_body">Entferne die Kopie nur, wenn du diesen Schlüssel anderweitig sicher aufbewahrt hast. Er kann zu einem anderen Konto als deinem Amber-Konto gehören. Ohne ihn kannst du zu diesem Konto nicht zurückkehren. Dein Schlüssel in Amber bleibt erhalten.</string>
+    <string name="account_remove_local_copy">Lokale Schlüsselkopie entfernen…</string>
+    <string name="account_import_replaces_local">Dabei wird ein anderer, in CruxCoach gespeicherter Schlüssel ersetzt. Sichere ihn vorher, um den Zugang zu diesem Konto zu behalten.</string>
+    <string name="account_import_error">Schlüssel konnte nicht eingelesen werden. Prüfe den vollständigen Schlüssel und gegebenenfalls das Passwort.</string>
+    <string name="account_import_checking">Schlüssel wird geprüft…</string>
+    <string name="account_recovery_words">Wiederherstellungswörter</string>
+    <string name="account_show_qr">Öffentliche Konto-ID als QR-Code anzeigen</string>
+    <string name="account_continue">Weiter</string>
+    <string name="account_access_error">Schlüsselverwaltung konnte nicht geändert werden. Öffne die Kontoverwaltung erneut und prüfe das aktive Konto.</string>
 </resources>

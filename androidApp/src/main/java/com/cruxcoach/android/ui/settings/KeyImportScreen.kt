@@ -1,11 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Activity
-import android.content.Intent
-import android.net.Uri
 import android.view.WindowManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -29,7 +27,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -99,100 +96,81 @@ fun KeyImportScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(16.dp).imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = stringResource(R.string.key_import_prompt),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
+            SettingsSectionCard {
+                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.key_import_supported_formats))
+                Text(
+                    text = stringResource(R.string.key_import_prompt),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
 
-            // Amber path is intentionally not surfaced here — Amber is its
-            // own setup flow under Settings → CruxCoach Account →
-            // "Recommended". The import screen is for the nsec / mnemonic /
-            // hex / ncryptsec text path only, so the user doesn't see two
-            // overlapping ways to switch to Amber.
+                // Keep input masked by default; never persist the reveal state.
+                var revealKey by remember { mutableStateOf(false) }
+                OutlinedTextField(
+                    value = state.input,
+                    enabled = !state.isWorking,
+                    onValueChange = { viewModel.updateInput(it) },
+                    label = { Text(stringResource(R.string.key_import_label)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 112.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        autoCorrect = false,
+                        capitalization = KeyboardCapitalization.None,
+                    ),
+                    trailingIcon = {
+                        IconButton(onClick = { revealKey = !revealKey }) {
+                            Icon(
+                                imageVector = if (revealKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = stringResource(
+                                    if (revealKey) R.string.key_import_hide else R.string.key_import_reveal
+                                ),
+                            )
+                        }
+                    },
 
-            // Masked by default — the field accepts nsec / mnemonic /
-            // hex / ncryptsec, all of which are high-value secrets the
-            // user should not have to expose on-screen while typing.
-            // Hold the eye icon to reveal for verification; switching
-            // the keyboard to Password + disabling autocorrect keeps
-            // the IME from learning the value into its dictionary or
-            // auto-capitalizing.
-            var revealKey by remember { mutableStateOf(false) }
-            OutlinedTextField(
-                value = state.input,
-                onValueChange = { viewModel.updateInput(it) },
-                label = { Text(stringResource(R.string.key_import_label)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp),
-                shape = RoundedCornerShape(12.dp),
-                visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrect = false,
-                    capitalization = KeyboardCapitalization.None,
-                ),
-                trailingIcon = {
-                    IconButton(onClick = { revealKey = !revealKey }) {
-                        Icon(
-                            imageVector = if (revealKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = stringResource(
-                                if (revealKey) R.string.key_import_hide else R.string.key_import_reveal
-                            ),
-                        )
-                    }
-                },
-                supportingText = {
+                )
+
+                // Detected format indicator
+                val detectedFormat = state.detectedFormat
+                if (detectedFormat != ImportFormat.UNKNOWN) {
+                    Text(stringResource(R.string.key_import_detected, when (detectedFormat) {
+                        ImportFormat.MNEMONIC -> stringResource(R.string.account_recovery_words)
+                        else -> detectedFormat.name.lowercase()
+                    }), style = MaterialTheme.typography.bodySmall)
+
+                }
+
+                // Error message
+                val error = state.error
+                if (error != null) {
                     Text(
-                        text = stringResource(R.string.key_import_supported_formats),
+                        text = error,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
-            )
 
-            // Detected format indicator
-            val detectedFormat = state.detectedFormat
-            if (detectedFormat != ImportFormat.UNKNOWN) {
-                SuggestionChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = stringResource(R.string.key_import_detected, detectedFormat.name.lowercase()),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                )
-            }
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Error message
-            val error = state.error
-            if (error != null) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Button(
-                onClick = { viewModel.startImport() },
-                enabled = detectedFormat != ImportFormat.UNKNOWN,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.key_import_button),
-                    fontWeight = FontWeight.Bold
-                )
+                Button(
+                    onClick = { viewModel.startImport() },
+                    enabled = detectedFormat != ImportFormat.UNKNOWN && !state.isWorking,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(if (state.isWorking) R.string.account_import_checking else R.string.key_import_button),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -230,20 +208,22 @@ fun KeyImportScreen(
     if (state.showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissConfirmDialog() },
-            title = { Text(stringResource(R.string.key_import_confirm_title)) },
+            title = { Text(stringResource(if (state.sameAccount) R.string.account_access_change_title else R.string.key_import_overwrite_title)) },
             text = {
-                Text(
-                    text = state.derivedNpub,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(if (state.sameAccount) R.string.account_access_same else R.string.account_access_different))
+                    Text(state.derivedNpub, style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.account_access_to_local))
+                    if (state.replacesLocalKey) Text(stringResource(R.string.account_import_replaces_local))
+                }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmImport() }) {
+                TextButton(onClick = { viewModel.confirmImport() }, enabled = !state.isWorking) {
                     Text(stringResource(R.string.key_import_confirm_button), color = OrangeAccent)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissConfirmDialog() }) {
+                TextButton(onClick = { viewModel.dismissConfirmDialog() }, enabled = !state.isWorking) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }
@@ -268,6 +248,7 @@ private fun NcryptsecPasswordDialog(
                 label = { Text(stringResource(R.string.key_import_password_label)) },
                 visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )

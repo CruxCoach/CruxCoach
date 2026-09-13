@@ -182,11 +182,19 @@ the secondary “Publish on Nostr” action requires an additional confirmation 
 public image hosting and permanent copies. Local saving stays the default after
 publication. Optional addresses and community options remain expandable without
 losing edits.
-Account management groups current access, key recovery, account switching, Amber and
-the public account ID. The displayed ID belongs to the active signer in both modes;
-it is not an inactive local key when Amber is active. Reading help never invokes a
-key or account action. Device authentication and existing confirmations remain at
-the action boundary.
+Account management starts with the active profile and public account ID (copy or QR).
+Two always-visible cards explain who manages the private key: CruxCoach on this
+device, or Amber in its separate app. Wide layouts place these cards side by side.
+Local key backup guides the user through explanation, device authentication, copying
+and a separate confirmation of safe storage. Copying alone is not a verified backup;
+recovering climbs and lists also requires a data backup. Amber users secure their
+key in Amber. Existing local copies are retained unless explicitly removed, with a
+second confirmation before deletion.
+Import and method changes preview the target public identity before applying it.
+Switching methods for the same account preserves identity-scoped sync metadata;
+switching accounts keeps the existing isolation/reset behavior. Without a retained
+local key, the UI offers import rather than a disconnect that creates an identity.
+Private keys remain masked during import, and screenshot protection remains active.
 
 ## Source map
 

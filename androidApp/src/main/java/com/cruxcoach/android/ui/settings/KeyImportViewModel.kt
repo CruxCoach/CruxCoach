@@ -58,6 +58,9 @@ internal fun detectKeyImportFormat(input: String): ImportFormat = when {
 
 data class KeyImportState(
     val input: String = "",
+    val isWorking: Boolean = false,
+    val sameAccount: Boolean = false,
+    val replacesLocalKey: Boolean = false,
     val detectedFormat: ImportFormat = ImportFormat.UNKNOWN,
     val showPasswordDialog: Boolean = false,
     val showConfirmDialog: Boolean = false,
@@ -85,6 +88,7 @@ class KeyImportViewModel @Inject constructor(
     private var pendingPassword: String? = null
 
     fun updateInput(text: String) {
+        if (_state.value.isWorking || _state.value.showConfirmDialog) return
         val trimmed = text.trim()
         val format = detectFormat(trimmed)
         _state.update { it.copy(input = trimmed, detectedFormat = format, error = null) }
@@ -92,6 +96,7 @@ class KeyImportViewModel @Inject constructor(
 
     fun startImport() {
         val s = _state.value
+        if (s.isWorking || s.showConfirmDialog) return
         if (s.detectedFormat == ImportFormat.UNKNOWN) {
             _state.update {
                 it.copy(error = context.getString(R.string.key_import_format_unknown))
@@ -102,11 +107,7 @@ class KeyImportViewModel @Inject constructor(
             _state.update { it.copy(showPasswordDialog = true) }
             return
         }
-        if (keyStore.hasKey()) {
-            _state.update { it.copy(showOverwriteWarning = true) }
-        } else {
-            deriveAndPreview(null)
-        }
+        deriveAndPreview(null)
     }
 
     fun dismissPasswordDialog() {
@@ -116,11 +117,7 @@ class KeyImportViewModel @Inject constructor(
     fun submitPassword(password: String) {
         _state.update { it.copy(showPasswordDialog = false) }
         pendingPassword = password
-        if (keyStore.hasKey()) {
-            _state.update { it.copy(showOverwriteWarning = true) }
-        } else {
-            deriveAndPreview(password)
-        }
+        deriveAndPreview(password)
     }
 
     fun confirmOverwrite() {
@@ -134,6 +131,8 @@ class KeyImportViewModel @Inject constructor(
     }
 
     fun confirmImport() {
+        if (_state.value.isWorking || !_state.value.showConfirmDialog) return
+        _state.update { it.copy(isWorking = true) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 try {
@@ -149,6 +148,7 @@ class KeyImportViewModel @Inject constructor(
                     // see the new identity (or stay cancelled).
                     BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
 
+                    val previousPubkey = nostrSigner.getPublicKeyHex()
                     keyStore.importKey(privKeyHex)
                     nostrSigner.clearAmberConfig()
                     userPreferences.setKeyBackedUp(false)
@@ -157,33 +157,39 @@ class KeyImportViewModel @Inject constructor(
                     // Purge messages from previous identity and reset sync cursor
                     // so the subscription back-fills history for the new key.
                     val newPubkey = nostrSigner.getPublicKeyHex()
-                    messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
-                    userPreferences.setNostrSyncCursor(0L)
-                    // Drop FEAT-002 backup state that belongs to the previous
-                    // identity: wrapped dataKey, d-tag HMAC cache, previous
-                    // blob SHA, and timestamps. Without this, the new
-                    // identity would publish pointers under the old d-tag
-                    // (breaking enumeration resistance) and the self-heal
-                    // chain would mask misleading "last backup" timestamps.
-                    backupPreferences.clearAllIdentityState()
-                    // FEAT-001 NIP-65 cache is a single shared DataStore
-                    // entry (not per-pubkey); stale relay URLs from the
-                    // previous identity would otherwise stay active for
-                    // up to the 24h TTL and route the new identity's
-                    // Nostr publishes through the old one's relays.
-                    relayListCache.clear()
+                    if (!sameAccountIdentity(newPubkey, previousPubkey)) {
+                        messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
+                        userPreferences.setNostrSyncCursor(0L)
+                        // Drop FEAT-002 backup state that belongs to the previous
+                        // identity: wrapped dataKey, d-tag HMAC cache, previous
+                        // blob SHA, and timestamps. Without this, the new
+                        // identity would publish pointers under the old d-tag
+                        // (breaking enumeration resistance) and the self-heal
+                        // chain would mask misleading "last backup" timestamps.
+                        backupPreferences.clearAllIdentityState()
+                        // FEAT-001 NIP-65 cache is a single shared DataStore
+                        // entry (not per-pubkey); stale relay URLs from the
+                        // previous identity would otherwise stay active for
+                        // up to the 24h TTL and route the new identity's
+                        // Nostr publishes through the old one's relays.
+                        relayListCache.clear()
+                    }
 
                     pendingPassword = null
-                    _state.update { it.copy(showConfirmDialog = false, requireRestart = true) }
+                    _state.update { it.copy(input = "", showConfirmDialog = false, requireRestart = true) }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Key import failed", e)
-                    _state.update { it.copy(error = context.getString(R.string.key_import_failed, e.message ?: "")) }
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    pendingPassword = null
+                    _state.update { it.copy(showConfirmDialog = false, error = context.getString(R.string.account_import_error)) }
+                } finally {
+                    _state.update { it.copy(isWorking = false) }
                 }
             }
         }
     }
 
     fun dismissConfirmDialog() {
+        if (_state.value.isWorking) return
         _state.update { it.copy(showConfirmDialog = false) }
         pendingPassword = null
     }
@@ -243,6 +249,8 @@ class KeyImportViewModel @Inject constructor(
      * then shows a confirmation dialog with the resulting npub.
      */
     private fun deriveAndPreview(password: String?) {
+        if (_state.value.isWorking) return
+        _state.update { it.copy(isWorking = true) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 try {
@@ -252,11 +260,16 @@ class KeyImportViewModel @Inject constructor(
                     val npub = keyPair.pubKey.toHexKey().hexToByteArray().toNpub()
 
                     _state.update {
-                        it.copy(derivedNpub = npub, showConfirmDialog = true)
+                        it.copy(derivedNpub = npub, showConfirmDialog = true,
+                            sameAccount = accountNpub(nostrSigner.getPublicKeyHex()) == npub,
+                            replacesLocalKey = keyStore.hasKey() && keyStore.getOrCreateKeyPair().pubKey.toNpub() != npub)
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Key derivation failed", e)
-                    _state.update { it.copy(error = context.getString(R.string.key_import_failed, e.message ?: "")) }
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    pendingPassword = null
+                    _state.update { it.copy(error = context.getString(R.string.account_import_error)) }
+                } finally {
+                    _state.update { it.copy(isWorking = false) }
                 }
             }
         }

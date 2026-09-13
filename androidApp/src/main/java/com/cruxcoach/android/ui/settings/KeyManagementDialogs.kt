@@ -4,29 +4,17 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Bitmap
 import android.os.Build
 import android.os.PersistableBundle
 import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,15 +22,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
@@ -58,7 +40,7 @@ internal fun NsecWarningDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.key_dialog_nsec_title)) },
         text = {
-            Text(stringResource(R.string.key_dialog_nsec_text))
+            Text(stringResource(R.string.key_dialog_nsec_text), modifier = Modifier.verticalScroll(rememberScrollState()))
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
@@ -111,7 +93,7 @@ internal fun AmberNotInstalledDialog(
             Text(stringResource(R.string.key_dialog_amber_not_installed_text))
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column {
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.action_cancel))
                 }
@@ -129,24 +111,25 @@ internal fun AmberNotInstalledDialog(
 @Composable
 internal fun AmberSuccessDialog(
     onKeepLocalKey: () -> Unit,
-    onDeleteLocalKey: () -> Unit
+    onDeleteLocalKey: () -> Unit,
+    hasLocalKey: Boolean = true,
 ) {
+    var confirmDelete by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onKeepLocalKey,
-        title = { Text(stringResource(R.string.key_dialog_amber_success_title)) },
-        text = {
-            Text(stringResource(R.string.key_dialog_amber_success_text))
-        },
+        title = { Text(stringResource(if (confirmDelete) R.string.account_delete_copy_title else R.string.key_dialog_amber_success_title)) },
+        text = { Text(stringResource(if (confirmDelete) R.string.account_delete_copy_body else R.string.key_dialog_amber_success_text),
+            modifier = Modifier.verticalScroll(rememberScrollState())) },
         confirmButton = {
-            TextButton(onClick = onDeleteLocalKey) {
-                Text(stringResource(R.string.key_button_delete), color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = if (confirmDelete) onDeleteLocalKey else onKeepLocalKey) {
+                Text(stringResource(if (confirmDelete) R.string.key_button_delete else if (hasLocalKey) R.string.key_button_keep else R.string.account_continue))
             }
         },
         dismissButton = {
-            TextButton(onClick = onKeepLocalKey) {
-                Text(stringResource(R.string.key_button_keep))
+            if (hasLocalKey) TextButton(onClick = { confirmDelete = !confirmDelete }) {
+                Text(stringResource(if (confirmDelete) R.string.action_back else R.string.account_remove_local_copy))
             }
-        }
+        },
     )
 }
 
@@ -245,4 +228,30 @@ internal fun truncateKey(key: String): String {
     } else {
         key
     }
+}
+
+/** A method change is not applied until its public target identity has been confirmed. */
+@Composable
+internal fun AccountAccessConfirmation(
+    targetNpub: String,
+    sameAccount: Boolean,
+    toAmber: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(if (sameAccount) R.string.account_access_change_title else R.string.key_import_overwrite_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(if (sameAccount) R.string.account_access_same else R.string.account_access_different))
+                Text(targetNpub, style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(if (toAmber) R.string.account_access_to_amber else R.string.account_access_to_local))
+            }
+        },
+        confirmButton = { TextButton(onClick = onConfirm, enabled = targetNpub.isNotBlank()) {
+            Text(stringResource(R.string.account_access_confirm))
+        } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
