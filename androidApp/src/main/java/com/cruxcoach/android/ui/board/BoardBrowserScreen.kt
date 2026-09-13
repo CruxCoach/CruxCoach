@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -727,7 +727,7 @@ fun BoardBrowserScreen(
                     contentColor = DarkBackground,
                     modifier = Modifier.testTag("board_create_fab")
                 ) {
-                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
                 }
                 FloatingActionButton(
                     onClick = { searchVisible = !searchVisible },
