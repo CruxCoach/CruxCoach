@@ -15,12 +15,20 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
+// The importer rejects this verified generic Instagram logo. Also reject older
+// signed snapshots before cache lookup so an already cached logo cannot persist.
+private val betaThumbnailPlaceholderHashes = setOf(
+    "555f5ee1978ef15c15ca6bd780f1b205e56117f551eb4561ec10d1b9437c9a8e",
+)
+
 internal fun betaThumbnailHash(url: String): String? {
     val uri = runCatching { URI(url) }.getOrNull() ?: return null
     if (uri.scheme != "https" || uri.userInfo != null || uri.port !in listOf(-1, 443) ||
         uri.rawQuery != null || uri.fragment != null ||
         uri.host !in betaThumbnailHosts) return null
-    return uri.path.removePrefix("/").takeIf { Regex("[0-9a-f]{64}").matches(it) }
+    return uri.path.removePrefix("/").takeIf {
+        Regex("[0-9a-f]{64}").matches(it) && it !in betaThumbnailPlaceholderHashes
+    }
 }
 
 internal fun validBetaThumbnailBytes(bytes: ByteArray, hash: String): Boolean =

@@ -49,6 +49,13 @@ class BetaThumbnailUrlsTest {
         val signed = "https://nostr.download/" + "a".repeat(64) + "?signature=example"
         assertEquals(listOf(signed), betaThumbnailUrls(signed))
     }
+    @Test fun previouslyPublishedInstagramLogoIsRejectedBeforeCacheLookup() {
+        val logoHash = "555f5ee1978ef15c15ca6bd780f1b205e56117f551eb4561ec10d1b9437c9a8e"
+        betaThumbnailHosts.forEach { host ->
+            assertEquals(null, betaThumbnailHash("https://$host/$logoHash"))
+        }
+    }
+
     @Test fun imageBytesMustMatchSignedHashBeforeCachingOrDisplay() {
         val bytes = "known bytes".toByteArray()
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
