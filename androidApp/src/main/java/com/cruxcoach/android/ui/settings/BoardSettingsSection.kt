@@ -329,6 +329,13 @@ internal fun AccountKeysSection(
         stringResource(R.string.settings_account_key_reminder),
         style = MaterialTheme.typography.bodyMedium,
     )
+    Button(
+        onClick = onNavigateToKeyManagement,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(stringResource(R.string.key_button_manage))
+    }
     OutlinedButton(
         onClick = onNavigateToNostrProfile,
         modifier = Modifier.fillMaxWidth(),
@@ -336,11 +343,5 @@ internal fun AccountKeysSection(
     ) {
         Text(stringResource(R.string.nostr_profile_settings_label))
     }
-    OutlinedButton(
-        onClick = onNavigateToKeyManagement,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(stringResource(R.string.key_button_manage))
-    }
+
 }

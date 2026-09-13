@@ -183,11 +183,12 @@ class AccountScreensTest {
         compose.runOnIdle { assertEquals(1, localSwitches); assertEquals(0, imports) }
         compose.onNodeWithTag("account_switch").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, imports) }
+        compose.onNodeWithText(text(R.string.account_public_id)).performScrollTo().performClick()
         compose.onNodeWithText(text(R.string.account_copy_id)).performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, copies) }
     }
 
-    @Test fun `both methods are available without expanding and remain reachable at large font`() {
+    @Test fun `backup leads while restore and Amber remain reachable at large font`() {
         var connections = 0
         var imports = 0
         compose.setContent {
@@ -198,8 +199,11 @@ class AccountScreensTest {
                 }
             }
         }
-        compose.onNodeWithText(text(R.string.account_method_local_body)).assertExists()
-        compose.onNodeWithText(text(R.string.account_method_amber_body)).assertExists()
+        compose.onNodeWithTag("account_copy_secret").assertIsDisplayed()
+        compose.onNodeWithTag("account_public_id").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.account_backup_priority)).assertExists()
+        compose.onNodeWithText(text(R.string.account_amber_save_steps)).assertExists()
+        compose.onNodeWithText(text(R.string.account_restore_body)).assertExists()
         compose.runOnIdle { assertEquals(0, connections); assertEquals(0, imports) }
         compose.onNodeWithTag("account_connect_amber").performScrollTo().performTouchInput { click() }
         compose.onNodeWithTag("account_switch").performScrollTo().performTouchInput { click() }

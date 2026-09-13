@@ -1935,7 +1935,7 @@
     <string name="key_section_account_keys">CruxCoach-Konto</string>
     <string name="key_section_nostr_intro">Kontoschlüssel\nCruxCoach nutzt Nostr: Der öffentliche Schlüssel identifiziert dich, der private gibt Zugang. Halte ihn geheim und sichere ihn; ein Zurücksetzen ist nicht möglich.\n\nSichtbarkeit\nVeröffentlichtes Profil und Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Backups vor dem Upload verschlüsselt. Mit deinem privaten Schlüssel kann jemand als du handeln und geschützte Daten lesen.</string>
     <string name="key_section_description">Profil und Zugang\nBearbeite dein öffentliches Profil. In der Schlüsselverwaltung sicherst du deinen Zugang, nutzt ein vorhandenes Konto oder verbindest die Schlüssel-App Amber.</string>
-    <string name="key_button_manage">Konto verwalten</string>
+    <string name="key_button_manage">Schlüssel sichern &amp; wiederherstellen</string>
     <string name="key_label_not_backed_up">Sicherung noch nicht bestätigt</string>
     <string name="key_label_not_backed_up_desc">Bewahre eine Kopie sicher auf, damit du nach einem Handyverlust Konto und Backup wiederherstellen kannst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
@@ -1983,8 +1983,8 @@
     <string name="key_biometric_subtitle">Authentifiziere dich</string>
 
     <!-- Key Import Screen -->
-    <string name="key_import_title">Schlüssel einfügen</string>
-    <string name="key_import_prompt">Füge deinen privaten Schlüssel ein. Wir zeigen dir zuerst das zugehörige Konto. Erst nach deiner Bestätigung wird es verwendet.</string>
+    <string name="key_import_title">Konto wiederherstellen</string>
+    <string name="key_import_prompt">Du hast deinen Schlüssel bereits gesichert? Füge ihn hier ein, um dieses Konto wieder zu verwenden. Für ein neues Konto brauchst du diesen Schritt nicht. Prüfe das Konto, bevor du den Wechsel bestätigst.</string>
     <string name="key_import_label">Privater Schlüssel</string>
     <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
     <string name="key_import_reveal">Schlüssel anzeigen</string>
@@ -2813,7 +2813,7 @@
     <string name="account_switch_title">Konto wechseln</string>
     <string name="account_switch_help">Vorhandenes Konto nutzen\nImportiere dessen privaten Schlüssel. Deine bisherigen Daten bleiben gespeichert und sind mit deinem bisherigen Schlüssel wieder zugänglich. Sichere ihn vorher.</string>
     <string name="account_switch_amber_help">Wechselt zum Kontoschlüssel, den CruxCoach auf diesem Gerät verwaltet, und startet die App neu. Verbinde Amber erneut, um zu deinem Amber-Konto zurückzukehren.</string>
-    <string name="account_import_action">Schlüssel einfügen</string>
+    <string name="account_import_action">Schlüssel einfügen – Konto wiederherstellen</string>
     <string name="account_amber_title">Schlüssel-App Amber</string>
     <string name="account_amber_connected">Mit diesem Konto verbunden</string>
     <string name="account_amber_optional">Optional: Schlüssel in einer eigenen App verwalten</string>
@@ -2822,10 +2822,10 @@
     <string name="account_public_id">Dein Konto</string>
     <string name="account_public_id_help">Öffentliche Konto-ID (npub)\nDamit können andere dein Konto finden. Du darfst sie teilen. Sie ermöglicht keinen Zugriff auf dein Konto.</string>
     <string name="account_copy_id">Konto-ID kopieren</string>
-    <string name="account_recovery_title">Zugang sichern</string>
+    <string name="account_recovery_title">Konto sichern</string>
     <string name="account_recovery_help">Privater Schlüssel\nBewahre deinen privaten Schlüssel (nsec) sicher auf. Damit kommst du auch nach einem Handyverlust wieder in dein Konto. CruxCoach kann ihn nicht zurücksetzen.\n\nDaten-Backup\nEine Schlüsselkopie sichert keine App-Daten. Zum Wiederherstellen brauchst du zusätzlich ein verfügbares verschlüsseltes Backup dieses Kontos.</string>
     <string name="account_backup_acknowledged">Von dir als gesichert bestätigt</string>
-    <string name="account_copy_secret">Schlüssel sichern</string>
+    <string name="account_copy_secret">nsec kopieren und sichern</string>
     <string name="profile_cover_title">Titelbild</string>
     <string name="profile_cover_empty">Optionaler Hintergrund für dein Profil</string>
     <string name="profile_cover_selected">Bild ausgewählt · ändern oder entfernen</string>
@@ -2845,12 +2845,12 @@
     <string name="account_method_amber">Mit Amber</string>
     <string name="account_method_local_body">CruxCoach speichert deinen privaten Schlüssel auf diesem Gerät. Du sicherst ihn selbst für die Wiederherstellung.</string>
     <string name="account_method_amber_body">Amber verwaltet deinen Schlüssel in einer separaten App. CruxCoach fragt dort Freigaben an, ohne den Schlüssel zu erhalten.</string>
-    <string name="account_amber_backup">Sichere deinen Kontoschlüssel in Amber. Eine Verbindung allein ist noch keine Sicherung.</string>
+    <string name="account_amber_backup">Dein Schlüssel wird von Amber verwaltet. Sichere den nsec dort auch außerhalb dieses Handys, damit du bei Verlust des Geräts wieder Zugang hast. CruxCoach kann diesen Schlüssel nicht kopieren.</string>
     <string name="account_amber_choose">Konto in Amber auswählen</string>
     <string name="account_local_copy_available">Auf diesem Gerät ist noch ein Schlüssel in CruxCoach gespeichert. Vor dem Wechsel zeigen wir dir das zugehörige Konto.</string>
     <string name="account_use_local">Gespeicherten Schlüssel verwenden</string>
     <string name="account_backup_finish_title">Schlüssel sicher aufbewahren</string>
-    <string name="account_backup_finish_body">Füge den kopierten Schlüssel in deinen Passwortmanager ein. Die Zwischenablage wird nach kurzer Zeit geleert. Bestätige die Sicherung erst, wenn du den Schlüssel sicher aufbewahrt hast.\n\nDer Schlüssel sichert deinen Zugang. Für deine Boulder und Listen brauchst du zusätzlich ein Daten-Backup.</string>
+    <string name="account_backup_finish_body">Füge den kopierten nsec in deinen Passwortmanager oder in Amber als bestehenden Schlüssel ein. Die Zwischenablage wird nach kurzer Zeit geleert. Bestätige erst, wenn du ihn sicher aufbewahrt hast – auch außerhalb dieses Handys.\n\nDer Schlüssel sichert deinen Kontozugang. Für Logbuch, Boulder und Listen brauchst du zusätzlich ein Daten-Backup.</string>
     <string name="account_access_change_title">Schlüsselverwaltung ändern?</string>
     <string name="account_access_same">Du verwendest weiterhin dasselbe Konto:</string>
     <string name="account_access_different">Du wechselst zu diesem Konto. Deine bisherigen Boulder und Listen bleiben beim bisherigen Konto. Sichere dessen Zugang, damit du zurückkehren kannst.</string>
@@ -2870,4 +2870,9 @@
     <string name="map_stats_brand_distribution">Board-Marken</string>
     <string name="map_stats_unknown_layout">Layout unbekannt</string>
     <string name="map_stats_scope">Alle erfassten Boards, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards haben.</string>
+    <string name="account_backup_priority">Neu bei CruxCoach? Sichere zuerst deinen privaten Schlüssel (nsec). Er gibt dir auf einem neuen Handy wieder Zugang zu deinem Konto. Kopiere ihn und bewahre ihn in einem Passwortmanager oder in Amber auf.</string>
+    <string name="account_amber_save_steps">Für dein aktuelles Konto: nsec oben kopieren und in Amber als bestehenden Schlüssel importieren. Danach hier genau dieses Konto verbinden. Nur Amber zu verbinden erstellt keine Sicherung. Bewahre auch eine Sicherung außerhalb dieses Handys auf.</string>
+    <string name="account_restore_title">Schon einen Schlüssel gesichert?</string>
+    <string name="account_restore_body">Schlüssel einfügen ist die Wiederherstellung: Verwende einen früher gesicherten nsec, um zu deinem bestehenden Konto zurückzukehren. Das sichert nicht dein aktuelles Konto. Neue Nutzer brauchen nur die Sicherung oben.</string>
+    <string name="account_public_optional">Optional: öffentliche Konto-ID. Kein Schlüssel zur Wiederherstellung.</string>
 </resources>

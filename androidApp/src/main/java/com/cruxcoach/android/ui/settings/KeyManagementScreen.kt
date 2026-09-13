@@ -15,7 +15,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -299,7 +298,35 @@ internal fun AccountManagementContent(
         }
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         SettingsSectionCard {
-            InfoHeading(stringResource(R.string.account_public_id), stringResource(R.string.account_public_id_help))
+            if (state.signerMode == SignerMode.LOCAL) {
+                AccountRecoverySection(state.keyBackedUp, onCopyNsec, onAcknowledgeBackup)
+                Text(stringResource(R.string.account_method_amber), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.account_amber_save_steps), style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(stringResource(R.string.account_recovery_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.account_amber_backup), style = MaterialTheme.typography.bodyLarge)
+            }
+            OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
+                Text(stringResource(if (state.signerMode == SignerMode.AMBER)
+                    R.string.account_amber_choose else R.string.account_amber_connect))
+            }
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text(stringResource(R.string.account_restore_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.account_restore_body), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().testTag("account_switch")) {
+                Text(stringResource(R.string.account_import_action))
+            }
+            if (state.signerMode == SignerMode.AMBER && state.localNpub != null) {
+                Text(stringResource(R.string.account_local_copy_available), style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
+                    Text(stringResource(R.string.account_use_local))
+                }
+            }
+        }
+        SettingsExpandableSection(
+            title = stringResource(R.string.account_public_id),
+            summary = stringResource(R.string.account_public_optional),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (state.pictureUrl.isNotBlank()) {
                     coil.compose.AsyncImage(state.pictureUrl, contentDescription = null,
@@ -324,58 +351,6 @@ internal fun AccountManagementContent(
                 Text(stringResource(R.string.account_copy_id))
             }
         }
-        Text(stringResource(R.string.account_methods_title), style = MaterialTheme.typography.titleMedium)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val local: @Composable () -> Unit = {
-                SettingsSectionCard {
-                    Text(stringResource(R.string.account_method_local), style = MaterialTheme.typography.titleLarge)
-                    if (state.signerMode == SignerMode.LOCAL) {
-                        Text(stringResource(R.string.account_method_active), color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold)
-                    }
-                    Text(stringResource(R.string.account_method_local_body), style = MaterialTheme.typography.bodyMedium)
-                    if (state.signerMode == SignerMode.AMBER && state.localNpub != null) {
-                        Text(stringResource(R.string.account_local_copy_available), style = MaterialTheme.typography.bodyMedium)
-                        OutlinedButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
-                            Text(stringResource(R.string.account_use_local))
-                        }
-                    }
-                    OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().testTag("account_switch")) {
-                        Text(stringResource(R.string.account_import_action))
-                    }
-                }
-            }
-            val amber: @Composable () -> Unit = {
-                SettingsSectionCard {
-                    Text(stringResource(R.string.account_method_amber), style = MaterialTheme.typography.titleLarge)
-                    if (state.signerMode == SignerMode.AMBER) {
-                        Text(stringResource(R.string.account_method_active), color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold)
-                    }
-                    Text(stringResource(R.string.account_method_amber_body), style = MaterialTheme.typography.bodyMedium)
-                    if (state.signerMode == SignerMode.AMBER) {
-                        Text(stringResource(R.string.account_amber_backup), style = MaterialTheme.typography.bodyMedium)
-                    }
-                    OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
-                        Text(stringResource(if (state.signerMode == SignerMode.AMBER)
-                            R.string.account_amber_choose else R.string.account_amber_connect))
-                    }
-                }
-            }
-            if (maxWidth >= 600.dp) {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1f)) { local() }
-                    Column(Modifier.weight(1f)) { amber() }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) { local(); amber() }
-            }
-        }
-        if (state.signerMode == SignerMode.LOCAL) {
-            SettingsSectionCard {
-                AccountRecoverySection(state.keyBackedUp, onCopyNsec, onAcknowledgeBackup)
-            }
-        }
     }
 }
 
@@ -384,6 +359,7 @@ internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, o
     var showAckDialog by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InfoHeading(stringResource(R.string.account_recovery_title), stringResource(R.string.account_recovery_help))
+        Text(stringResource(R.string.account_backup_priority), style = MaterialTheme.typography.bodyLarge)
         Text(stringResource(if (backedUp) R.string.account_backup_acknowledged else R.string.key_label_not_backed_up),
             style = MaterialTheme.typography.bodyMedium)
         Button(onClick = onCopyNsec, modifier = Modifier.fillMaxWidth().testTag("account_copy_secret")) {
