@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -42,7 +43,7 @@ private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
     GradeChartView.PYRAMID -> stringResource(R.string.board_stats_grade_pyramid)
     GradeChartView.FLASH_SEND_ATTEMPT -> stringResource(R.string.board_stats_flash_send_attempt)
     GradeChartView.OUTCOME_DONUT -> stringResource(R.string.board_stats_outcome_distribution)
-    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.board_stats_unique)
+    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.ux_sent_climbs_grade)
 }
 
 @Composable
@@ -226,11 +227,7 @@ internal fun BoardStatsSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                stringResource(R.string.board_stats_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
 
             // Per-board split: only when the user has logged on >1 board.
             if (availableBoardBrands.size > 1) {
@@ -266,7 +263,10 @@ internal fun BoardStatsSheet(
             // Central performance signal: a rolling four-week level based on
             // the best distinct sends, deliberately separate from volume.
             if (stats.gradeProgression.size >= 2) {
-                ChartSection(stringResource(R.string.board_stats_grade_progression)) {
+                ChartSection(
+                    stringResource(R.string.board_stats_grade_progression),
+                    help = stringResource(R.string.ux_grade_progression_help),
+                ) {
                     BoardGradeProgressionChart(
                         entries = stats.gradeProgression,
                         gradeScale = gradeScale,
@@ -298,7 +298,10 @@ internal fun BoardStatsSheet(
                         gradeChartView == GradeChartView.OUTCOME_DONUT
                     ) {
                         Text(
-                            text = stringResource(R.string.board_stats_problem_outcomes_hint),
+                            text = stringResource(
+                                if (gradeChartView == GradeChartView.OUTCOME_DONUT) R.string.ux_outcome_donut_hint
+                                else R.string.board_stats_problem_outcomes_hint,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

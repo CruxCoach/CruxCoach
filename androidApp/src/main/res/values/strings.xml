@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
     <string name="app_name">CruxCoach</string>
+    <string name="action_show_info">Show information about %1$s</string>
+    <string name="settings_board_connections_info">Board connections</string>
 
     <!-- Climb Creator (FEAT-003) -->
     <string name="climb_creator_title">New climb</string>
-    <string name="climb_creator_open">Create new climb</string>
+    <string name="climb_creator_open">Create a climb</string>
     <string name="climb_creator_undo">Undo</string>
     <string name="climb_creator_redo">Redo</string>
     <string name="climb_creator_name">Name</string>
@@ -36,11 +38,11 @@
     <string name="climb_creator_also_post_note">Also post to Nostr</string>
     <string name="climb_creator_also_post_note_hint">Posts a short message to your Nostr followers linking back to this climb.</string>
     <string name="auto_note_default_template">I just published a new {board} boulder on nostr:{npub_cruxcoach}:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
-    <string name="auto_note_setting_title">Post new climbs to Nostr</string>
-    <string name="auto_note_setting_body">When enabled, every climb you publish also gets a short post to your Nostr followers, linking back to your climb. Per-climb override in the editor. Default off.</string>
-    <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
-    <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
-    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>
+    <string name="auto_note_setting_title">Add a Nostr post when publishing</string>
+    <string name="auto_note_setting_body">Default for the editor\nWhen enabled, publishing a climb also creates a short public Nostr post with a link to it. You can change this choice for each climb in the editor. Off by default.</string>
+    <string name="nostr_profile_subscriber_status_title">Community connection</string>
+    <string name="nostr_profile_subscriber_status_running_never">Connected · no message received yet</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected · last message</string>
     <string name="nostr_profile_subscriber_status_stopped">Not connected</string>
     <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d consecutive failures (last cause: %2$s)</string>
     <string name="climb_creator_dup_title">A climb with these holds already exists</string>
@@ -141,7 +143,7 @@
     <string name="nostr_profile_title">My profile</string>
     <string name="nostr_profile_settings_label">Profile</string>
     <string name="nostr_profile_settings_summary">Display name, picture, lightning address</string>
-    <string name="nostr_profile_explainer">Your profile has two clear modes: save the complete profile privately on this device, or explicitly publish the complete profile globally on Nostr. Selected images stay local until you confirm publication.</string>
+    <string name="nostr_profile_explainer">Save on this device\nSave keeps all profile fields and selected pictures privately on this device without a profile-related network request.\n\nPublish on Nostr\nAfter confirmation, the complete profile becomes public, including pictures, links and addresses. This is separate from encrypted data backups.</string>
     <string name="nostr_profile_display_name">Display name</string>
     <string name="nostr_profile_display_name_hint">Shown next to your climbs as the setter.</string>
     <string name="nostr_profile_about">About</string>
@@ -150,9 +152,9 @@
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — checked only after public publication.</string>
     <string name="nostr_profile_picture">Picture URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direct image URL — currently only your display name is rendered.</string>
-    <string name="nostr_profile_banner_label">Banner image URL</string>
+    <string name="nostr_profile_banner_label">Cover image</string>
     <string name="nostr_profile_banner_hint">Optional. 3:1 aspect ratio looks best — header image on your profile.</string>
-    <string name="nostr_profile_nip05_label">NIP-05 identifier</string>
+    <string name="nostr_profile_nip05_label">Nostr address (NIP-05)</string>
     <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — checked only after public publication.</string>
     <string name="nostr_profile_website_label">Website</string>
     <string name="nostr_profile_website_hint">Optional. Free-form URL shown on your profile.</string>
@@ -168,19 +170,19 @@
     <string name="nostr_profile_image_upload_failed" formatted="false">Image upload failed: %1$s</string>
     <string name="nostr_profile_image_local_failed" formatted="false">Could not store the image privately: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
-    <string name="nostr_profile_save">Save complete profile locally</string>
+    <string name="nostr_profile_save">Save on this device</string>
     <string name="nostr_profile_saving">Saving…</string>
     <string name="nostr_profile_saved_toast">Profile saved</string>
     <string name="profile_local_save_failed">Could not save your profile locally. Please try again.</string>
     <string name="profile_local_storage_hint">All fields and selected images stay privately on this device. This action makes no profile-related network request.</string>
     <string name="nostr_profile_save_failed">The Nostr publication failed. Your local profile is still saved.</string>
-    <string name="nostr_profile_publish_action">Publish complete profile globally</string>
+    <string name="nostr_profile_publish_action">Publish profile</string>
     <string name="nostr_profile_publishing">Publishing…</string>
     <string name="nostr_profile_published_toast">Profile published on Nostr</string>
     <string name="nostr_profile_publish_warning_title">Publish profile publicly?</string>
     <string name="nostr_profile_publish_warning_body">This first uploads your selected profile picture and banner to public Blossom storage, then publishes the complete profile as a public Nostr Kind 0 event. All profile fields and image URLs can be copied and retained by servers, relays, and other clients. Removing them everywhere later cannot be guaranteed.</string>
     <string name="nostr_profile_publish_confirm">Publish publicly</string>
-    <string name="nostr_profile_import_from_kilter">Use my Kilter username</string>
+    <string name="nostr_profile_import_from_kilter">Use Kilter username</string>
     <string name="nostr_profile_kilter_divergence_hint">Your Kilter username (\"%1$s\") stays unchanged in the Kilter app. This profile belongs to CruxCoach and is only shared with Nostr when you explicitly publish it.</string>
 
     <!-- Setter detail / list (community) -->
@@ -223,7 +225,7 @@
     <string name="onboarding_existing_data_subtitle">Choose its source to see the matching import. Otherwise start directly.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Restore encrypted backup</string>
-    <string name="onboarding_cruxcoach_restore_desc">Restore a backup from another CruxCoach device using its account key.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Restore\nImport the same account’s private key to access its encrypted backup. The backup must still be available. A public account ID (npub) alone is not enough.</string>
     <string name="onboarding_cruxcoach_restore_action">Restore</string>
     <string name="onboarding_cruxcoach_file_title">Import a CruxCoach file</string>
     <string name="onboarding_cruxcoach_file_desc">Open the existing validated file import with preview and merge controls.</string>
@@ -262,10 +264,10 @@
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter data exchange — info</string>
     <string name="kilter_data_info_title">Kilter account: what happens to your data?</string>
-    <string name="kilter_data_info_login">Sign in to import your sends and projects from Kilter. “Import once” imports them and then discards your credentials; “Sync continuously” keeps downloading new Kilter ascents over time.</string>
-    <string name="kilter_data_info_offline">No account? Import offline via the Aurora JSON export from the old Kilter app.</string>
-    <string name="kilter_data_info_local">Anything sent TO Kilter is opt-in (off by default): “Upload to Kilter” pushes your ascents back, and “Publish own climbs to Kilter” shares climbs you create. Leave them off and CruxCoach stays local.</string>
-    <string name="kilter_data_info_publish">Whatever you enable only ever touches YOUR own Kilter account — never other people’s data.</string>
+    <string name="kilter_data_info_login">Import\nImports your Kilter logbook, own climbs and climb lists (“circuits”). Once: removes the saved sign-in afterwards, keeps imported data. Ongoing: fetches new logbook entries later.</string>
+    <string name="kilter_data_info_offline">Without signing in\nImport an Aurora JSON file under Logbook import.</string>
+    <string name="kilter_data_info_local">Upload to Kilter\nOff by default. Transfers sends and attempts from CruxCoach, including older unsynced entries. Publishing your own climbs is separate.</string>
+    <string name="kilter_data_info_publish">Separate settings\nCloud backups and publishing to the CruxCoach community are controlled separately.</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
@@ -361,8 +363,8 @@
     <string name="settings_language_title">Language</string>
     <string name="settings_title">Settings</string>
     <string name="settings_display_title">Display</string>
-    <string name="settings_display_appearance">Appearance:</string>
-    <string name="settings_display_grade_scale">Grade scale:</string>
+    <string name="settings_display_appearance">Theme</string>
+    <string name="settings_display_grade_scale">Grade scale</string>
     <string name="settings_board_title">Board settings</string>
     <string name="settings_board_collapse">Collapse</string>
     <string name="settings_board_expand">Expand</string>
@@ -407,27 +409,27 @@
     <string name="settings_board_data_title">Board data</string>
     <string name="settings_board_type">Board type:</string>
     <string name="settings_board_auto_download">Automatic download (WiFi):</string>
-    <string name="settings_board_auto_download_desc">Downloads current board catalogues in the background over WiFi (currently about 130 MB; varies as catalogues grow).</string>
+    <string name="settings_board_auto_download_desc">Daily / Weekly\nDownloads new board catalogues for the app in the background, usually over Wi-Fi. Networks marked as metered are excluded. Android may delay the start.\n\nManual\nYou start downloads yourself. Downloads can be large.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Release board connection</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Optional for exclusive Kilter/Aurora and Quantum controllers whose lighting remains after disconnecting. MoonBoard, multi-client and unknown controllers always stay connected.</string>
-    <string name="settings_ble_auto_disconnect_moonboard">Not used for MoonBoard: the lighting requires an active connection.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Disconnects Bluetooth from the board after the idle time so someone else can connect. Each sent climb restarts the timer.\n\nRequirement\nThe board allows one connection and its LEDs stay lit after disconnecting. Excludes MoonBoard and connections still needed by features such as CruxRelay.</string>
+    <string name="settings_ble_auto_disconnect_moonboard">MoonBoard LEDs stay on only while at least one app is connected, so timed auto-disconnect is disabled.</string>
     <string name="settings_ble_auto_disconnect_enable">Disconnect automatically</string>
-    <string name="settings_ble_auto_disconnect_off_hint">The connection stays open until you disconnect it yourself.</string>
-    <string name="settings_ble_auto_disconnect_multi_mode">Unavailable while a mesh, shared session, relay, or multi-client connection is active. Your duration is retained.</string>
+    <string name="settings_ble_auto_disconnect_off_hint">The app does not disconnect from the board after an idle timeout. You can disconnect yourself in the Bluetooth menu.</string>
+    <string name="settings_ble_auto_disconnect_multi_mode">This timer does not disconnect while multiple apps are supported or a shared connection is in use. Your chosen duration stays saved.</string>
     <string name="settings_duration_minutes_label">Minutes</string>
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
-    <string name="settings_ble_keep_screen_on_desc">Screen stays on in board screens so you don\'t have to unlock constantly.</string>
+    <string name="settings_ble_keep_screen_on_desc">Keeps your phone screen on while a board view is open in the app. Off: the display turns off according to your Android settings.</string>
 
     <!-- Settings: LED Colors -->
-    <string name="settings_led_title">Kilter LED colors</string>
-    <string name="settings_led_desc">Colors Kilter boards use for each hold role.</string>
-    <string name="settings_led_role_start">Start</string>
-    <string name="settings_led_role_hand">Hand</string>
-    <string name="settings_led_role_foot">Foot</string>
-    <string name="settings_led_role_top">Top</string>
+    <string name="settings_led_title">Kilter hold colours</string>
+    <string name="settings_led_desc">In the app\nSets marker colours for start, hand and finish holds and footholds.\n\nOn the board\nCan recolour the currently lit LEDs. On the next send, catalogue colours take priority where available; otherwise your choices apply.\n\nPresets\nRestore the CruxCoach or Kilter defaults.</string>
+    <string name="settings_led_role_start">Start holds</string>
+    <string name="settings_led_role_hand">Hand holds</string>
+    <string name="settings_led_role_foot">Footholds</string>
+    <string name="settings_led_role_top">Finish holds</string>
     <string name="settings_led_selected">Selected</string>
     <string name="settings_led_pick_color">Choose color for %s</string>
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
@@ -435,35 +437,35 @@
 
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Rest timer</string>
-    <string name="settings_timer_desc">Timer between boulder attempts. Starts after logging an ascent.</string>
+    <string name="settings_timer_desc">Your rest duration between attempts. Start the timer in the app’s climb view, or enable automatic start after logging below.</string>
     <string name="settings_timer_auto_start">Auto-start</string>
-    <string name="settings_timer_auto_start_desc">Timer starts automatically after logging</string>
+    <string name="settings_timer_auto_start_desc">Starts the rest timer after a logged send or attempt, including quick logging.</string>
 
     <!-- Settings: Playback -->
-    <string name="settings_playback_title">Routes</string>
-    <string name="settings_playback_desc">Settings for multi-frame route playback.</string>
-    <string name="settings_playback_setter_speed">Setter speed</string>
-    <string name="settings_playback_setter_speed_desc">Use speed set by the creator</string>
-    <string name="settings_playback_frame_speed">Frame speed: %s</string>
-    <string name="settings_playback_frame_speed_desc">Custom speed for all routes</string>
-    <string name="settings_playback_fallback_speed">Fallback speed: %s</string>
-    <string name="settings_playback_fallback_speed_desc">Used when no setter speed is available</string>
+    <string name="settings_playback_title">Route playback</string>
+    <string name="settings_playback_desc">The app shows a route’s hold markers section by section. The connected board’s LEDs follow when no session or playlist controls them. Start playback in the route view.</string>
+    <string name="settings_playback_setter_speed">Use the setter’s timing</string>
+    <string name="settings_playback_setter_speed_desc">On\nMarkers change at the setter’s pace. If no timing is saved, the time below applies.\n\nOff\nYour chosen time applies to every route section.</string>
+    <string name="settings_playback_frame_speed">Time per route section: %s</string>
+    <string name="settings_playback_frame_speed_desc">How long one route section’s markers remain before the next section appears. Applies when setter timing is off.</string>
+    <string name="settings_playback_fallback_speed">Time without setter timing: %s</string>
+    <string name="settings_playback_fallback_speed_desc">How long each route section is displayed when the setter has not saved a pace.</string>
     <string name="settings_playback_countdown">Countdown</string>
-    <string name="settings_playback_countdown_desc">Countdown before auto-play</string>
+    <string name="settings_playback_countdown_desc">Counts down in the app before route markers start changing automatically, giving you time to take the start holds. Set the duration below.</string>
     <string name="settings_playback_countdown_duration">Countdown duration: %ds</string>
-    <string name="settings_playback_auto_loop">Auto-loop</string>
-    <string name="settings_playback_auto_loop_desc">Repeat automatically</string>
+    <string name="settings_playback_auto_loop">Repeat the route</string>
+    <string name="settings_playback_auto_loop_desc">Returns to the first route section after the last, until you stop playback. Off: playback ends at the last section.</string>
 
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Data management</string>
     <string name="settings_data_export">Export data</string>
-    <string name="settings_data_export_desc">Save or share selected CruxCoach data as JSON, a CSV ZIP, or a readable Excel file</string>
+    <string name="settings_data_export_desc">JSON / CSV-ZIP\nFor saving, sharing and reimporting into CruxCoach.\n\nExcel\nFor reading and analysis.\n\nChoose which data to export and keep personal exports safe.</string>
     <string name="settings_data_import">Import data</string>
-    <string name="settings_data_import_desc">Import CruxCoach data from JSON or a CSV ZIP</string>
+    <string name="settings_data_import_desc">Choose a CruxCoach JSON or CSV-ZIP export, review it and select what to import. Use Logbook import for Kilter and MoonBoard files.</string>
     <string name="settings_data_delete_board">Delete board data</string>
-    <string name="settings_data_delete_board_desc">Removes downloaded climbs, stats, and layout data — for all boards or just the ones you pick. Can be re-synced anytime. Your own and community climbs are kept.</string>
+    <string name="settings_data_delete_board_desc">Deletes downloaded climbs, catalogue statistics and hold layouts from the app, for all or selected boards. You can download them again. Own and community climbs remain.</string>
     <string name="settings_data_delete_board_dialog_title">Delete board data?</string>
-    <string name="settings_data_delete_board_dialog_message">Downloaded climbs, stats, and layout data of the selected boards will be deleted. You can re-download them anytime via board sync. Your own and community climbs are kept.</string>
+    <string name="settings_data_delete_board_dialog_message">Downloaded climb catalogues, statistics and hold layouts for the selected boards will be deleted from the app. You can download them again. Own and community climbs remain.</string>
     <string name="settings_data_delete_board_progress">Deleting board data…</string>
     <string name="settings_data_delete_select_all">All boards</string>
     <string name="settings_data_delete_user">Delete personal logbook data</string>
@@ -513,7 +515,7 @@
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">Nearby sharing</string>
     <string name="settings_sharing_enable">Share current climb</string>
-    <string name="settings_sharing_enable_desc">Shows nearby CruxCoach users which climb is currently projected. Also needed to send disconnect requests to other users — and, in return, lets them ask you to disconnect from the board.</string>
+    <string name="settings_sharing_enable_desc">Nearby CruxCoach users can open the climb you have lit on the board in their app. They can also ask you to release the board connection. A request never disconnects you automatically.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth is off. Turn on Bluetooth to use climb sharing.</string>
     <string name="settings_sharing_no_ble_advertising">This device does not support BLE advertising. The feature is unavailable.</string>
     <string name="settings_sharing_remote_disconnect">Allow remote disconnect</string>
@@ -744,18 +746,18 @@
     <string name="board_filter_my_climbs">My climbs</string>
     <string name="climb_card_draft_badge">Draft</string>
     <string name="board_filter_grade_range">Grade: %1$s – %2$s</string>
-    <string name="board_filter_ungraded_only">Ungraded only (projects)</string>
+    <string name="board_filter_ungraded_only">Ungraded only</string>
     <string name="board_filter_info_action">Explain filter terms</string>
     <string name="board_filter_info_title">Filter &amp; sort terms</string>
-    <string name="board_filter_info_status_new">Climbs you haven\'t tried yet — no attempt or send logged.</string>
-    <string name="board_filter_info_status_attempted">Climbs you\'ve logged attempts on but not sent.</string>
-    <string name="board_filter_info_status_sent">Climbs you\'ve logged at least one send for.</string>
-    <string name="board_filter_info_benchmarks">Only official benchmark climbs — curated reference problems with a fixed grade instead of a community average.</string>
-    <string name="board_filter_info_ungraded">Only ungraded climbs (no community grade yet) — your project pile.</string>
-    <string name="board_filter_info_sort_sends">Total climbers worldwide who have sent the climb — community total, not your own sends.</string>
-    <string name="board_filter_info_sort_quality">Average community star rating.</string>
-    <string name="board_filter_info_sort_quality_sends">Rating × sends — surfaces climbs that are both popular and well-rated.</string>
-    <string name="board_filter_info_sort_moves">Number of moves in the climb.</string>
+    <string name="board_filter_info_status_new">Climbs with no send or attempt recorded in your CruxCoach logbook.</string>
+    <string name="board_filter_info_status_attempted">Climbs with logged attempts but no successful send in your logbook.</string>
+    <string name="board_filter_info_status_sent">Climbs with at least one successful send in your logbook. Lighting a climb on the board does not count as a send.</string>
+    <string name="board_filter_info_benchmarks">Climbs marked as benchmarks: reference problems for comparing grades.</string>
+    <string name="board_filter_info_ungraded">Climbs without a catalogue grade. This does not indicate whether you have attempted or sent them.</string>
+    <string name="board_filter_info_sort_sends">Sorts by how many climbers have completed the problem according to the catalogue. Your personal logbook entries are not used.</string>
+    <string name="board_filter_info_sort_quality">Sorts by the average star rating.</string>
+    <string name="board_filter_info_sort_quality_sends">Star rating × ascent count: more ascents and higher ratings increase the score.</string>
+    <string name="board_filter_info_sort_moves">Sorts by the number of climbing moves in a problem.</string>
     <string name="board_filter_info_sort_random">Shuffles the matching climbs into a random order.</string>
     <string name="board_filter_info_sort_newest">The date the climb was created — descending shows the newest first.</string>
     <string name="board_filter_sort">Sort</string>
@@ -821,10 +823,10 @@
     <string name="announcements_badge_issue">Issue</string>
     <string name="announcements_badge_tip">Tip</string>
     <string name="announcements_badge_general">General</string>
-    <string name="announcement_cat_release_desc">New versions</string>
-    <string name="announcement_cat_issue_desc">Known bugs</string>
-    <string name="announcement_cat_tip_desc">Usage tips</string>
-    <string name="announcement_cat_general_desc">Other announcements</string>
+    <string name="announcement_cat_release_desc">New versions and changes. App updates are configured separately.</string>
+    <string name="announcement_cat_issue_desc">Known issues and possible fixes.</string>
+    <string name="announcement_cat_tip_desc">Tips for using the app and its features.</string>
+    <string name="announcement_cat_general_desc">Other messages from the developer.</string>
     <string name="announcements_notification_release">New version available</string>
     <string name="announcements_notification_issue">Known issue</string>
     <string name="announcements_notification_tip">Tip from the developer</string>
@@ -872,9 +874,9 @@
     <string name="board_holdsearch_title">Hold Search</string>
     <string name="board_holdsearch_heatmap">Heatmap</string>
     <string name="board_holdsearch_hold_search">Hold Search</string>
-    <string name="board_holdsearch_hint">Tap holds on the board to find climbs that use these holds.</string>
+    <string name="board_holdsearch_hint">Tap holds in the board image. The app finds climbs that use those holds.</string>
     <string name="board_holdsearch_zone_mode">Select area</string>
-    <string name="board_holdsearch_zone_hint">Drag with one finger to frame an area on the board. Only climbs fully inside the area will match.</string>
+    <string name="board_holdsearch_zone_hint">Draw a box on the board image. The app shows only climbs whose holds all fit inside it.</string>
     <string name="board_holdsearch_zone_active">Area active</string>
     <string name="board_holdsearch_zone_clear">Remove area</string>
     <string name="board_holdsearch_zone_only">Area filter</string>
@@ -888,10 +890,10 @@
     <string name="board_holdsearch_clear">Clear</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board Logbook</string>
+    <string name="board_logbook_title">Board logbook</string>
     <string name="board_logbook_selected">%d selected</string>
-    <string name="board_logbook_delete_title">Delete %d ascents?</string>
-    <string name="board_logbook_delete_message">All selected ascents will be permanently deleted.</string>
+    <string name="board_logbook_delete_title">Delete %d log entries?</string>
+    <string name="board_logbook_delete_message">All selected log entries, including unsuccessful attempts, will be permanently deleted.</string>
     <string name="board_logbook_ascent_count">%d ascents</string>
 
     <!-- Board: Lists -->
@@ -925,8 +927,8 @@
     <string name="board_ascenthistory_title">Your ascents</string>
 
     <!-- Board: Ascent Logging -->
-    <string name="board_ascent_edit_title">Edit ascent</string>
-    <string name="board_ascent_log_title">Log ascent</string>
+    <string name="board_ascent_edit_title">Edit log entry</string>
+    <string name="board_ascent_log_title">Log a climb</string>
     <string name="board_ascent_type">Result</string>
     <string name="board_ascent_benchmark_label">Benchmark</string>
     <string name="board_ascent_benchmark_attempt">Mark as benchmark</string>
@@ -1039,8 +1041,8 @@
     <string name="board_sync_no_wifi_banner">No WiFi — downloading now will use mobile data</string>
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
-    <string name="board_sync_db_description">Downloads the public climb catalogues for offline use (currently about 130 MB; varies with catalogue updates). WiFi recommended.</string>
-    <string name="board_sync_compact_description">All board catalogues · about 130 MB. This continues in the background, so you can continue.</string>
+    <string name="board_sync_db_description">Downloads public climb catalogues into the app for offline use. Wi-Fi recommended; downloads can be large.</string>
+    <string name="board_sync_compact_description">Downloads all board catalogues in the background. You can keep using the app.</string>
     <string name="board_sync_compact_waiting_wifi">Queued — starts automatically on WiFi</string>
     <string name="board_sync_compact_progress">%1$d of %2$d boards ready</string>
     <string name="board_sync_compact_show_details">Show details</string>
@@ -1076,14 +1078,14 @@
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>
     <string name="kilter_connect_button">Connect Kilter Account</string>
-    <string name="kilter_connect_desc">Import your ascents from the official Kilter app</string>
+    <string name="kilter_connect_desc">Imports your Kilter logbook and climb lists (“circuits”) into CruxCoach: once or with later checks for new entries. Enable uploading logs and publishing your own climbs separately.</string>
     <string name="kilter_connected_as">Connected as: %s</string>
     <string name="kilter_last_sync">Last sync: %s</string>
     <string name="kilter_sync_now">Sync now</string>
     <string name="kilter_push_label">Upload to Kilter</string>
-    <string name="kilter_push_desc">Also upload local ascents to your Kilter account</string>
+    <string name="kilter_push_desc">Transfers sends and attempts from CruxCoach to Kilter, including older unsynced entries. Downloads still work with uploads off. Publishing your own climbs is separate.</string>
     <string name="kilter_climb_publish_label">Publish own climbs to Kilter</string>
-    <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to mirror your climbs there.</string>
+    <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to publish your own climbs there too.</string>
     <string name="kilter_publish_queue_title">Publish queue</string>
     <string name="kilter_publish_queue_pending" formatted="false">%1$d climbs awaiting Kilter sync</string>
     <string name="kilter_publish_queue_failed" formatted="false">%1$d failed previously</string>
@@ -1102,9 +1104,9 @@
     <string name="kilter_preview_title">Kilter Ascents</string>
     <string name="kilter_preview_found">%1$d ascents found (%2$d new, %3$d already imported)</string>
     <string name="kilter_import_one_time">Import once</string>
-    <string name="kilter_import_one_time_desc">Import ascents, then discard Kilter credentials</string>
+    <string name="kilter_import_one_time_desc">Import your logbook, then remove the saved sign-in</string>
     <string name="kilter_import_persistent">Sync continuously</string>
-    <string name="kilter_import_persistent_desc">Keep downloading new Kilter ascents over time</string>
+    <string name="kilter_import_persistent_desc">Fetch new Kilter logbook entries on later syncs</string>
     <string name="kilter_import_success">%d ascents imported</string>
     <string name="kilter_import_part_ascents">%d ascents</string>
     <string name="kilter_import_part_projects">%d projects</string>
@@ -1269,16 +1271,16 @@
     <string name="updater_settings_status_never">Last checked: never</string>
     <string name="updater_settings_check_now">Check now</string>
     <string name="updater_settings_auto_check">Check automatically</string>
-    <string name="updater_settings_auto_check_desc">Checks after app start, when the network returns, and periodically in the background.</string>
+    <string name="updater_settings_auto_check_desc">Checks for updates on app startup, when the network returns and regularly in the background. “Check now” works even with automatic checks off.</string>
     <string name="updater_settings_automation_title">When an update is available</string>
     <string name="updater_mode_notify">Notify</string>
     <string name="updater_mode_auto_update">Automatic</string>
-    <string name="updater_mode_notify_desc">Shows an update notice. You decide whether to download and install it.</string>
-    <string name="updater_mode_auto_update_desc">Downloads and verifies updates automatically, then starts installation. You can confirm or decline it in Android.</string>
+    <string name="updater_mode_notify_desc">Alerts you to updates. You choose when to download and install.</string>
+    <string name="updater_mode_auto_update_desc">Downloads and verifies updates automatically on allowed networks. You confirm installation in Android.</string>
     <string name="updater_settings_auto_mobile">Also download over mobile data</string>
-    <string name="updater_settings_auto_mobile_desc">Only enable if you have an unlimited data plan.</string>
+    <string name="updater_settings_auto_mobile_desc">Allows automatic app downloads on mobile data and networks marked as metered. Off: waits for an unmetered connection, usually Wi-Fi. Updates can use substantial data.</string>
     <string name="updater_settings_anonymous_metrics">Anonymous verified-update count</string>
-    <string name="updater_settings_anonymous_metrics_desc">After an update download passes both hash and signer verification, make at most one best-effort count attempt per target version containing only that version and which configured download source delivered the file. No user, device, installation, account, Nostr, or session ID. Turn this off to send nothing. It never affects update checks, downloads, or installation.</string>
+    <string name="updater_settings_anonymous_metrics_desc">Reported data\nVersion and source of a successfully verified download; no account or device ID. At most one reporting attempt per version.\n\nOptional\nUpdates work without these reports.</string>
     <string name="updater_auto_update_info_title">Confirmed installation</string>
     <string name="updater_auto_update_ready_desc">After download and verification, Android asks you to confirm installation. CruxCoach does not install updates silently.</string>
     <string name="updater_auto_update_permission_desc">Allow CruxCoach once to open Android’s installer for its own verified updates. You can still confirm or decline every installation.</string>
@@ -1412,11 +1414,11 @@
     <string name="board_logbook_no_filter_matches">No logbook entries match these filters.</string>
     <string name="board_logbook_best_grade">Best Grade</string>
     <string name="board_logbook_day_entries">%d entries</string>
-    <string name="board_logbook_empty_message">Log your first ascent to see it here</string>
-    <string name="board_logbook_empty_title">No ascents yet</string>
+    <string name="board_logbook_empty_message">Record attempts or successful sends from a climb’s detail screen.</string>
+    <string name="board_logbook_empty_title">No log entries yet</string>
     <string name="board_logbook_flash">Flash</string>
-    <string name="board_logbook_sessions">Sessions</string>
-    <string name="board_logbook_unique_climbs">Unique Climbs</string>
+    <string name="board_logbook_sessions">Climbing days</string>
+    <string name="board_logbook_unique_climbs">Distinct climbs</string>
     <string name="stats_interval_all">All time</string>
     <string name="stats_interval_30_days">30 days</string>
     <string name="stats_interval_90_days">90 days</string>
@@ -1491,11 +1493,11 @@
     <string name="board_stats_angle_distribution">Angle Distribution</string>
     <string name="board_stats_board_comparison">Board Comparison</string>
     <string name="board_stats_board_comparison_board">Board</string>
-    <string name="board_stats_attempt">Attempt</string>
+    <string name="board_stats_attempt">Attempted</string>
     <string name="board_stats_avg_sessions_week">Sessions/week (8w)</string>
     <string name="board_stats_date_range">Date range…</string>
-    <string name="board_stats_flash_rate">Flash Rate</string>
-    <string name="board_stats_flash_send_attempt">Flash / Send / Attempt</string>
+    <string name="board_stats_flash_rate">Flash rate</string>
+    <string name="board_stats_flash_send_attempt">Problem outcomes by grade</string>
     <string name="board_stats_grade_easy">Easy</string>
     <string name="board_stats_grade_elite">Elite</string>
     <string name="board_stats_grade_hard">Hard</string>
@@ -1509,13 +1511,13 @@
     <string name="board_stats_interval_90d">90 Days</string>
     <string name="board_stats_interval_all">All Time</string>
     <string name="board_stats_week_streak">Week streak</string>
-    <string name="board_stats_most_sends_day">Most Sends/Day</string>
-    <string name="board_stats_outcome_distribution">Outcome Distribution</string>
+    <string name="board_stats_most_sends_day">Most sends in a day</string>
+    <string name="board_stats_outcome_distribution">Sent climbs: flash or later send</string>
     <string name="board_stats_period_comparison">Period Comparison</string>
-    <string name="board_stats_sends_over_time">Sends Over Time</string>
+    <string name="board_stats_sends_over_time">Log entries over time</string>
     <string name="board_stats_total">Total</string>
-    <string name="board_stats_unique">Unique</string>
-    <string name="board_stats_weekly_volume">Weekly Volume</string>
+    <string name="board_stats_unique">Distinct climbs</string>
+    <string name="board_stats_weekly_volume">Weekly log entries by grade band</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
@@ -1616,9 +1618,9 @@
     <string name="devcontact_message">Message</string>
     <string name="devcontact_messages">Messages</string>
     <string name="devcontact_notifications">Background announcements</string>
-    <string name="devcontact_notifications_desc">Automatically fetch and notify about announcements. When off, opening Announcements remains a manual refresh.</string>
+    <string name="devcontact_notifications_desc">Notifies you of developer announcements in the selected categories. Android notification permission is required. Off: announcements refresh when you open their page.</string>
     <string name="devcontact_send_crash_reports">Send Crash Reports</string>
-    <string name="devcontact_send_crash_reports_desc">Automatically send encrypted crash reports to the developer, linked to your CruxCoach Nostr public key</string>
+    <string name="devcontact_send_crash_reports_desc">Automatic reporting\nSends saved crash reports on the next app start. Includes error details, time, app and Android versions, language and a broad device performance tier.\n\nPrivacy\nEnd-to-end encrypted, but linked to your public account key; not anonymous. Off: you send reports yourself.</string>
     <string name="devcontact_send_failed">Sending failed</string>
     <string name="devcontact_status_delivered">✓ Delivered · %1$s</string>
     <string name="devcontact_status_not_delivered">✗ Not delivered</string>
@@ -1736,41 +1738,41 @@
     <string name="settings_group_appearance">Appearance &amp; language</string>
     <string name="settings_group_training_playback">Training &amp; playback</string>
     <string name="settings_group_all_boards">All boards</string>
-    <string name="settings_group_selected_board">Selected board</string>
+    <string name="settings_group_selected_board">Settings for each board</string>
     <string name="settings_group_board_accounts_imports">Board accounts &amp; logbook imports</string>
     <string name="settings_group_board_catalogs">Board catalogs</string>
     <string name="settings_group_backup_transfer">Backup &amp; transfer</string>
     <string name="settings_group_delete_data">Delete data</string>
-    <string name="settings_board_hub_desc">Tap a card to view that board’s settings. This does not change your active board.</string>
+    <string name="settings_board_hub_desc">Choose a brand to view its settings. Change the app’s active board at the top. “All boards” applies to every brand.</string>
     <string name="settings_board_active_badge">Active</string>
     <string name="settings_board_viewing">Viewing settings for %1$s</string>
     <string name="settings_board_make_active">Configure and set active</string>
     <string name="settings_board_active_connection">Active board &amp; connection</string>
     <string name="settings_board_specific">Board-specific settings</string>
-    <string name="settings_board_inactive_hint">%1$s is not active. You can review its brand-specific options here; changing the active board always requires a separate confirmation.</string>
+    <string name="settings_board_inactive_hint">%1$s is not active in the app. You can view its settings without switching the active board.</string>
     <string name="settings_board_layout_title">Wall</string>
-    <string name="settings_board_layout_desc">Pick which Kilter wall you have. Browse and climb-creator follow this choice.</string>
+    <string name="settings_board_layout_desc">Choose your Kilter model. The app uses it for the climb list and the editor for your own climbs.</string>
     <string name="settings_board_layout_original">Kilter Original</string>
     <string name="settings_board_layout_homewall">Kilter Homewall</string>
     <string name="settings_board_model_title">Board</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_moonboard_led_position_title">LED position</string>
-    <string name="settings_moonboard_led_position_desc">Choose which existing LEDs mark each hold. Finish holds and positions without an upper LED stay lit from below.</string>
+    <string name="settings_moonboard_led_position_desc">Chooses whether the physical MoonBoard LEDs light below, above or on both sides of holds. Finish holds and holds without an upper LED use the lower one. LED colours stay the same.</string>
     <string name="settings_moonboard_led_position_below">Below</string>
     <string name="settings_moonboard_led_position_above">Above</string>
     <string name="settings_moonboard_led_position_both">Both</string>
     <string name="settings_board_send_mode_title">Send to board</string>
-    <string name="settings_board_send_mode_desc">Opening, swiping or reconnecting on a climb detail never changes the wall; tap its lamp explicitly. This preference controls automatic playlist/playback progression for controllers that allow one or several connected apps. Climbing over a relay counts as several connected apps.</string>
+    <string name="settings_board_send_mode_desc">%1$s\nOpening or swiping to a climb in the app lights it on the connected board. This also applies when connecting or advancing a playlist.\n\n%2$s\nBrowse in the app without changing the board LEDs. Tap the lamp icon to light your selection, including the next climb in a playlist.\n\nBluetooth connections\nThe rows apply to controllers supporting one or several simultaneous app connections. CruxCoach detects this; CruxRelay counts as several.\n\nExceptions\nRunning playlists take priority over automatic sends. Quantum: always use the lamp icon in climb details. Shared session: add climbs with the queue button. Starting playlists or route playback can change the board LEDs in either mode.</string>
     <string name="settings_board_capacity_recheck">Re-detect board capabilities</string>
-    <string name="settings_board_capacity_recheck_desc">CruxCoach remembers whether a controller accepts one app or several. Use this after a board has been swapped or reconfigured — it is measured again on the next connection.</string>
+    <string name="settings_board_capacity_recheck_desc">On the next connection, checks again whether the board supports one or several apps at once. Useful after replacing its controller.</string>
     <string name="settings_board_capacity_recheck_done">Will be measured again on the next connection</string>
     <string name="settings_board_send_mode_single">Single connection</string>
     <string name="settings_board_send_mode_multi">Multiple connections</string>
-    <string name="settings_board_send_mode_automatic">Automatic playback</string>
+    <string name="settings_board_send_mode_automatic">Automatically</string>
     <string name="settings_board_send_mode_explicit">Tap to send</string>
-    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard accepts multiple clients. Its lights remain until the final connection closes.</string>
-    <string name="settings_board_projection_lifecycle_retained">Modern controllers accept multiple clients; verified legacy controllers can be shared through CruxCoach Relay.</string>
+    <string name="settings_board_projection_lifecycle_moonboard">Board LEDs\nTurn off when the last Bluetooth connection ends, so the app does not use timed disconnect here.\n\nConnecting together\nSupport for several phones at once depends on the controller. The app detects this when connecting.</string>
+    <string name="settings_board_projection_lifecycle_retained">Board LEDs\nStay lit after disconnecting. Release Bluetooth yourself or by timer for others.\n\nSharing\nThe app detects whether several phones can connect directly. On supported boards, CruxRelay lets others light climbs through your phone instead.</string>
     <string name="cd_add_climb_to_shared_queue">Add climb to shared queue</string>
     <string name="cd_light_climb_on_board">Light climb on board</string>
     <string name="cd_restore_queue_climb">Light the current queue climb again</string>
@@ -1888,11 +1890,11 @@
 
     <!-- Key Management: Screen -->
     <string name="key_section_account_keys">CruxCoach Account</string>
-    <string name="key_section_nostr_intro">Your CruxCoach account works fundamentally different from traditional accounts: Instead of registering with an email and password at a company, you own a cryptographic key. This key is your account — whoever holds it has access. No company can lock, delete, or read your data. Messages to the developer are end-to-end encrypted. The trade-off: you are responsible for your key. If lost, nobody can reset it for you. Technically, your account is built on the open Nostr protocol.</string>
-    <string name="key_section_description">Back up your account, transfer it to a new device, or use the external signer app Amber.</string>
+    <string name="key_section_nostr_intro">Account key\nCruxCoach uses Nostr: your public key identifies you; your private key grants access. Keep it secret and backed up; there is no reset.\n\nVisibility\nPublished profiles and community climbs are public. Developer messages are end-to-end encrypted; backups are encrypted before upload. Anyone with your private key can act as you and read protected data.</string>
+    <string name="key_section_description">Profile and access\nEdit your public profile. In key management, back up your key, use an existing account or connect the Amber key app.</string>
     <string name="key_button_manage">Manage account</string>
-    <string name="key_label_not_backed_up">Save your account key</string>
-    <string name="key_label_not_backed_up_desc">Without it, neither your account nor your cloud backup can be restored if you lose this device.</string>
+    <string name="key_label_not_backed_up">Account key not backed up</string>
+    <string name="key_label_not_backed_up_desc">Keep a safe copy so you can recover your account and backup after losing your phone.</string>
     <string name="key_label_login_method">Login method:</string>
     <string name="key_label_login_local">Local key</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1905,13 +1907,13 @@
     <string name="key_button_copy_nsec">Copy nsec</string>
     <string name="key_button_import_nsec">Import nsec</string>
     <string name="key_label_nsec_save_reminder">Save this key somewhere safe — your account AND cloud backup can only be restored on another device with it. Without it, both are gone if you lose this phone.</string>
-    <string name="key_label_nsec_warning">Never share your private key. Whoever has it controls your account permanently.</string>
+    <string name="key_label_nsec_warning">Never share your private key. Anyone who has it can control your account.</string>
     <string name="key_section_recommended">Recommended</string>
     <string name="key_label_use_amber">Use Amber Signer</string>
     <string name="key_label_amber_active">Active — Your key is managed by Amber.</string>
     <string name="key_label_amber_inactive">Your key stays in Amber. CruxCoach never sees it.</string>
     <string name="key_button_setup">Set up</string>
-    <string name="key_button_disconnect_amber">Switch to local key</string>
+    <string name="key_button_disconnect_amber">Use this device’s key</string>
     <string name="key_label_local_key_inactive">Local key (inactive)</string>
     <string name="key_label_active_identity">Active account</string>
 
@@ -2002,8 +2004,8 @@
 
     <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
     <string name="settings_backup_title">Encrypted cloud backup</string>
-    <string name="settings_backup_description">Encrypted on your device, then stored across several public servers. Only you can decrypt it.</string>
-    <string name="settings_backup_device_local_note">Board selection and browse/map filters stay on this device and aren\'t restored from a backup.</string>
+    <string name="settings_backup_description">Contents and protection\nBacks up your logbook, attempts, lists, notes, own climbs and training data. The app encrypts the backup before uploading it to public servers. Restore with the same account key.\n\nBack up and restore\nEnable backups for scheduled backups or “Back up now”. Restore works even with automatic backups off.</string>
+    <string name="settings_backup_device_local_note">Not included\nBoard selection and climb-list/map filters stay on this device. Download public board catalogues again as needed.</string>
     <string name="settings_backup_enable">Enable backup</string>
     <string name="settings_backup_needs_key">An account key is needed. It is generated automatically on first backup.</string>
     <string name="settings_backup_interval">Interval</string>
@@ -2146,7 +2148,7 @@
     <string name="board_model_dialog_title_pick">Which board do you climb on?</string>
     <string name="board_model_dialog_body_missing_with_sync">The board database has not been synced yet. Start the sync; afterward you can pick your board model.</string>
     <string name="board_model_dialog_body_missing_inline">The board database has not been synced yet. Start the sync below on this screen; afterward you can pick your board model.</string>
-    <string name="board_model_dialog_hint">The selection determines which holds and LEDs are shown.</string>
+    <string name="board_model_dialog_hint">Choose your board model. The app uses its hold layout and maps the LEDs when sending a climb.</string>
     <string name="board_model_dialog_start_sync">Start sync</string>
     <string name="board_model_dialog_close">Close</string>
     <string name="board_model_dialog_confirm">Confirm</string>
@@ -2262,7 +2264,7 @@
     <string name="whatsnew_gym_picker_action_later">Later</string>
 
     <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
-    <string name="settings_aurora_migration_desc">Bring your ascents, attempts and playlists across from the email export Aurora sends after a data request.</string>
+    <string name="settings_aurora_migration_desc">Imports sends, attempts and climb lists from an Aurora JSON file, available by email on request. Selecting the file starts the import, then shows the result. No sign-in needed.</string>
     <string name="aurora_migration_title">Aurora migration</string>
     <string name="aurora_migration_what_happened_title">What happened to Aurora?</string>
     <string name="aurora_migration_what_happened_body">Aurora Climbing took its API offline in early 2026 and the official Kilter app moved to a new backend. Aurora still honours one-time data-export requests by email — the file they send is what this importer reads.</string>
@@ -2436,7 +2438,7 @@
     <string name="list_playback_unavailable_hint">%1$d saved climbs are unavailable locally and are not included.</string>
     <string name="list_playback_error_empty">No locally available climbs can be played.</string>
     <string name="list_playback_error_multiple_boards">This training plan contains multiple board configurations. Split it into one plan per board.</string>
-    <string name="list_plan_membership_info">This plan controls playback only. New list climbs are appended automatically with an estimated rest. Removing or reordering steps does not change the list.</string>
+    <string name="list_plan_membership_info">List and plan\nThis plan controls playback. Removing or reordering steps leaves the list unchanged.\n\nNew climbs\nNew list climbs are appended automatically with an estimated rest. Repeated steps belong to the plan; they do not duplicate list membership.</string>
     <string name="list_plan_duplicate_step">Repeat climb</string>
     <string name="list_plan_reset_title">Rebuild training plan?</string>
     <string name="list_plan_reset_message">The current order, repetitions and rests will be replaced by the list order with automatically estimated rests.</string>
@@ -2452,7 +2454,7 @@
     <string name="relay_chip_text">Relay for %1$s · %2$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
     <string name="settings_relay_manual_start">Start CruxRelay manually</string>
-    <string name="settings_relay_manual_start_desc">Off by default: CruxRelay starts and stops with the board connection. Turn this on only if you want to start it manually.</string>
+    <string name="settings_relay_manual_start_desc">Others can light climbs on the board through your phone. For supported boards with only one direct connection.\n\nOff\nStarts when connecting, after your initial approval.\n\nOn\nYou start it in the Bluetooth menu.\n\nStops when you disconnect from the board.</string>
     <string name="relay_disclosure_title">Share with board apps</string>
     <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxCoach…\". Other board apps can send climbs through CruxCoach. The latest successful send controls the lights. Your Bluetooth name is restored when sharing stops.</string>
     <string name="relay_disclosure_confirm">Allow board apps</string>
@@ -2536,9 +2538,9 @@
          translate them either) — they come from MoonBoardHoldSets, not from
          here. -->
     <string name="moonboard_hold_sets_title">Hold sets</string>
-    <string name="moonboard_hold_sets_subtitle">Which holds are mounted on your board</string>
+    <string name="moonboard_hold_sets_subtitle">Select the hold sets mounted on your MoonBoard. The app shows climbs that fit. Choose the complete setup if all sets are installed.</string>
     <string name="moonboard_setup_complete">Complete %1$s setup</string>
-    <string name="moonboard_setup_complete_hint">The bundle as sold — every hold set</string>
+    <string name="moonboard_setup_complete_hint">All hold sets for this model are installed.</string>
     <string name="moonboard_setup_partial">Some holds are missing</string>
     <string name="moonboard_hold_sets_summary">%1$d of %2$d hold sets</string>
     <string name="moonboard_hold_sets_count">%1$s holds</string>
@@ -2549,7 +2551,7 @@
     <string name="cd_back">Back</string>
     <string name="ble_mesh_climb">On the board via mesh</string>
     <string name="settings_moon_csv_title">Import MoonBoard logbook</string>
-    <string name="settings_moon_csv_desc">Copy your logbook from the installed Moon app or import its CSV.</string>
+    <string name="settings_moon_csv_desc">Imports your logbook from the Moon app or an exported CSV file. Then shows imported and unmatched entries.</string>
     <string name="moon_csv_title">MoonBoard logbook import</string>
     <string name="moon_csv_intro">Move your existing MoonBoard history into CruxCoach. The direct on-device transfer is fastest; CSV remains available as a fallback.</string>
     <string name="moon_device_title">Copy from the installed Moon app</string>
@@ -2748,9 +2750,94 @@
     <string name="beta_video_number">Beta video %1$d</string>
     <string name="beta_video_current_angle">%1$d° · Current angle</string>
     <string name="beta_video_close">Close beta videos</string>
-    <string name="board_stats_problem_outcomes_hint">Each problem counts once in the selected period: Flash, otherwise Sent, otherwise Attempted. Repeated tries do not increase these counts.</string>
+    <string name="board_stats_problem_outcomes_hint">Each climb counts once per board family in this period, across angles: Flash, otherwise Sent, otherwise Attempted.</string>
     <string name="whatsnew_023_title">New in 0.2.3</string>
     <string name="whatsnew_023_body">• Statistics count distinct problems as Flash, Sent or Attempt. Total tries remain visible.\n\n• Filter totals match the list, including results beyond the first 50.\n\n• Random search is more reliable while scrolling.\n\n• Switch boards from the compact header and open beta videos from climb details.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
+
+    <!-- Task-based settings navigation (0.2.3). -->
+    <string name="settings_group_climbing">Climbing</string>
+    <string name="settings_group_app_help">App &amp; help</string>
+    <string name="settings_page_display">Appearance &amp; language</string>
+    <string name="settings_summary_display">Choose the app language, theme and grade scale. Keep your phone screen on while viewing a board.</string>
+    <string name="settings_page_board">Board &amp; Bluetooth</string>
+    <string name="settings_summary_board">Choose the board used in the app, configure its physical LEDs and manage the Bluetooth connection.</string>
+    <string name="settings_page_timers">Timers &amp; playback</string>
+    <string name="settings_summary_timers">Set the app’s rest timer and how route sections are displayed in sequence.</string>
+    <string name="settings_page_sharing">Sharing nearby</string>
+    <string name="settings_summary_sharing">Share climbs with people nearby. CruxRelay lets them control the board LEDs through your phone.</string>
+    <string name="settings_page_account">CruxCoach account</string>
+    <string name="settings_summary_account">Edit your public profile and manage your account key, including with Amber.</string>
+    <string name="settings_page_imports">Board accounts &amp; imports</string>
+    <string name="settings_summary_imports">Connect Kilter or import logbooks from MoonBoard and Aurora.</string>
+    <string name="settings_summary_catalogues">Download board catalogues, check status and schedule updates.</string>
+    <string name="settings_page_backup">Back up &amp; transfer</string>
+    <string name="settings_summary_backup">Back up and restore to the cloud; import and export CruxCoach files.</string>
+    <string name="settings_page_delete">Delete local data</string>
+    <string name="settings_summary_delete">Delete selected catalogues or personal board data after confirming your choice.</string>
+    <string name="settings_summary_updates">Check for app updates and configure automatic downloads.</string>
+    <string name="settings_page_support">Bugs &amp; feature requests</string>
+    <string name="settings_summary_support">Report bugs, request features and contact the developer. Configure notifications and automatic crash reports.</string>
+    <string name="settings_page_about">About CruxCoach</string>
+    <string name="settings_summary_about">View the version and project information, or share the app.</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_account_key_reminder">Your key gives access to your account and encrypted backups. Keep it safe: a lost key cannot be reset.</string>
+    <string name="settings_account_explanation_show">How does my Nostr account work?</string>
+    <string name="settings_account_explanation_hide">Hide account explanation</string>
+    <string name="settings_active_board_title">Active board</string>
+    <string name="settings_active_board_desc">Selects the brand and model for the climb list and board view in the app. “Change” switches the active board; the brand cards below only open that brand’s settings.</string>
+    <string name="ux_profile_identity">Name and pictures</string>
+    <string name="ux_profile_links">Links and addresses (optional)</string>
+    <string name="ux_plan_title">Playback plan</string>
+    <string name="ux_account_help">Account access\nYour private key controls your account. Keep it secret and save a copy securely. The public account ID (npub) identifies you; it cannot restore access.\n\nBackups\nEncrypted backups contain your saved app data. Restoring requires the same account’s decryption capability and an available backup. Saving a key does not create a data backup.\n\nExternal signer\nAmber manages the private key in a separate app on your phone and handles signing requests. A remote signer manages it elsewhere. Neither is a public profile or a data backup.</string>
+    <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
+    <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nOutcome, board and angle narrow this list. The period selected in statistics also applies to this list; the statistics board filter is separate. Lighting a climb on the board does not log a climbing attempt.</string>
+    <string name="ux_stats_help">Volume\nSends count successful entries, including repeats. Attempts add up the recorded tries in all entries, including sends; each entry counts at least once.\n\nProblem outcomes\nEach climb counts once per board family in the selected period, across angles: Flash, otherwise Sent, otherwise Attempted. For a flash, the first recorded entry for that climb at that angle must be a send with at most one try. Earlier attempts rule it out, even outside the selected period. Missing history limits this classification. The flash rate divides flashes by successful entries, including repeats.\n\nActivity and time chart\nThese count log entries, including unsuccessful entries, rather than individual tries or only sends. Records use the full history; other charts follow the selected period.</string>
+    <string name="ux_restore_consequence">Restoring uses the previous account and enables encrypted backup. You will confirm the account change before continuing.</string>
+    <string name="ux_logbook_unsent_attempts">Without a send</string>
+    <string name="ux_sent_climbs">Sent climbs</string>
+    <string name="ux_sent_climbs_grade">Sent climbs and repeats by grade</string>
+    <string name="ux_later_send">Later send</string>
+    <string name="ux_outcome_donut_hint">Each sent climb counts once per board family in this period, across angles: Flash or a later send. Unsuccessful climbs are not part of this ring.</string>
+    <string name="ux_grade_progression_help">Four-week window\nEach point uses up to three hardest distinct climb-and-angle combinations sent within that week and the previous three weeks, within the selected period. Repeats at the same angle count once.\n\nLevel\nWith three results, the middle grade is used; with two, their average; with one, its grade. Only successful entries with a known grade contribute.</string>
+
+    <!-- Profile and account task pages -->
+    <string name="account_section_expanded">Expanded</string>
+    <string name="account_section_collapsed">Collapsed</string>
+    <string name="account_current_access">Current access</string>
+    <string name="account_access_local">On this device</string>
+    <string name="account_access_amber">With Amber</string>
+    <string name="account_access_local_summary">CruxCoach stores your account key on this device.</string>
+    <string name="account_switch_title">Switch account</string>
+    <string name="account_switch_help">Import an account\nUse the private key of an existing account. Your current data stays stored and remains accessible with your current key. Save that key first.</string>
+    <string name="account_switch_amber_help">Switches to the account key managed by CruxCoach on this device and restarts the app. To return to your Amber account, connect Amber again.</string>
+    <string name="account_import_action">Import an existing account</string>
+    <string name="account_amber_title">Amber key app</string>
+    <string name="account_amber_connected">Connected to this account</string>
+    <string name="account_amber_optional">Optional: manage your key in a separate app</string>
+    <string name="account_amber_help">Amber manages your private key in a separate app on your phone and approves signing requests from CruxCoach. CruxCoach does not receive that key. Connecting Amber selects its account and restarts CruxCoach.</string>
+    <string name="account_amber_connect">Connect Amber</string>
+    <string name="account_public_id">Public account ID</string>
+    <string name="account_public_id_help">Your public key (npub) identifies the active account. You can share it so others can find you on Nostr. It cannot restore account access or decrypt a backup.</string>
+    <string name="account_copy_id">Copy account ID</string>
+    <string name="account_recovery_title">Keep access to your account</string>
+    <string name="account_recovery_help">Private key\nSave your private key (nsec) somewhere safe. It gives access to your account, even after losing your phone. CruxCoach cannot reset it.\n\nData backup\nKeeping a copy of your key does not back up your app data. To restore your data, you also need an available encrypted backup for this account.</string>
+    <string name="account_backup_acknowledged">You have marked your key as backed up.</string>
+    <string name="account_copy_secret">Copy private key</string>
+    <string name="profile_cover_title">Cover image</string>
+    <string name="profile_cover_empty">Optional background for your profile</string>
+    <string name="profile_cover_selected">Image selected · change or remove</string>
+    <string name="profile_links_summary">Website, Nostr address and Lightning</string>
+    <string name="profile_lightning_help">Optional address for receiving Lightning payments, such as name@domain. It is checked only after you confirm public profile publication.</string>
+    <string name="profile_nostr_address_help">Optional Nostr address such as name@domain (NIP-05). After public profile publication, CruxCoach checks whether the address points to your account.</string>
+    <string name="profile_public_title">Public profile</string>
+    <string name="profile_public_summary">Share all profile fields and images on Nostr. Requires your confirmation.</string>
+    <string name="profile_community_title">Community</string>
+    <string name="profile_community_summary">Climb posts and connection status</string>
+    <string name="profile_links_check_failed">Address check failed · open details</string>
+    <string name="profile_community_error">Connection error · open details</string>
+    <string name="profile_picture_title">Profile picture</string>
 </resources>

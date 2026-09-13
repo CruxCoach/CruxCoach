@@ -77,10 +77,12 @@ class QuantumCatalogueSync @Inject constructor(
                         },
                     )
                     var count = 0L
-                    withBackgroundThreadPriority {
-                        importer.importQuantumSnapshot(output) { step ->
-                            if (step is BoardDatabaseImporter.ImportStep.Done) count = step.climbs.toLong()
-                            onProgress?.invoke(step)
+                    retryBoardImport {
+                        withBackgroundThreadPriority {
+                            importer.importQuantumSnapshot(output) { step ->
+                                if (step is BoardDatabaseImporter.ImportStep.Done) count = step.climbs.toLong()
+                                onProgress?.invoke(step)
+                            }
                         }
                     }
                     blossom.saveCompletedManifest(manifest, listOf(chunk), BlossomSyncManager.BETA_IMPORT_VERSION)

@@ -36,6 +36,7 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.data.repository.Climb_lists
 
@@ -101,6 +102,9 @@ fun BoardListsScreen(
             Column {
                 TopAppBar(
                     title = { Text(stringResource(R.string.board_lists_title)) },
+                    actions = {
+                        InfoButton(stringResource(R.string.board_lists_title), stringResource(R.string.ux_lists_help))
+                    },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))

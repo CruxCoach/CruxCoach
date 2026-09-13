@@ -1,0 +1,90 @@
+appId: ${APP_ID}
+name: settings-task-navigation
+tags:
+  - settings
+# German locale; onboarded APKTrack feature app, disconnected Kilter account.
+# Start in the board browser. No consent, login, export or deletion is performed.
+# Pass the package derived by scripts/feature_identity.py as APP_ID.
+---
+- tapOn: "Einstellungen"
+- tapOn: "Informationen zu Darstellung & Sprache anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
+- tapOn: "Darstellung & Sprache"
+- assertVisible: "Sprache"
+- assertVisible: "Schwierigkeitsskala"
+- pressKey: Back
+- tapOn: "Board & Bluetooth"
+- assertVisible: "Aktives Board"
+- assertVisible: "Ändern"
+- assertVisible: "Alle Boards"
+- scrollUntilVisible:
+    element: { text: "Einstellungen je Board" }
+    direction: DOWN
+- pressKey: Back
+- tapOn: "Timer & Wiedergabe"
+- assertVisible: "Pausentimer"
+- tapOn: "Informationen zu Pausentimer anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Teilen in der Nähe" }
+    direction: DOWN
+- tapOn: "Teilen in der Nähe"
+- assertVisible: "Aktuellen Boulder teilen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "CruxCoach-Konto" }
+    direction: DOWN
+- tapOn: "CruxCoach-Konto"
+- tapOn: "Informationen zu CruxCoach-Konto anzeigen"
+- assertVisible: "Schließen"
+- tapOn: "Schließen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Board-Konten & Importe" }
+    direction: DOWN
+- tapOn: "Board-Konten & Importe"
+- assertVisible: "Kilter-Konto verbinden"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Board-Kataloge" }
+    direction: DOWN
+- tapOn: "Board-Kataloge"
+- assertVisible: "Automatischer Download (WLAN):"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Sichern & übertragen" }
+    direction: DOWN
+- tapOn: "Sichern & übertragen"
+- assertVisible: "Verschlüsseltes Cloud-Backup"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Lokale Daten löschen" }
+    direction: DOWN
+- tapOn: "Lokale Daten löschen"
+- assertVisible: "Board-Daten löschen"
+- assertVisible: "Eigene Logbuch-Daten löschen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "App-Updates" }
+    direction: DOWN
+- tapOn: "App-Updates"
+- assertVisible: "Automatisch prüfen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Fehler & Funktionswünsche" }
+    direction: DOWN
+- tapOn: "Fehler & Funktionswünsche"
+- assertVisible: "Nachrichten"
+- assertVisible: "Ankündigungen"
+- pressKey: Back
+- scrollUntilVisible:
+    element: { text: "Über CruxCoach" }
+    direction: DOWN
+- tapOn: "Über CruxCoach"
+- assertVisible: "CruxCoach v.*"
+- pressKey: Back
+- pressKey: Back
+- assertVisible: "Aktives Board ändern"

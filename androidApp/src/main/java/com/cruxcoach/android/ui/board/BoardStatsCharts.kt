@@ -35,6 +35,7 @@ private val AttemptColor = Slate80
  * Stacked horizontal bars per grade: flash (green) | redpoint (orange) | attempt (gray).
  * Replaces the simple grade pyramid with a richer outcome view.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardGradeOutcomeChart(
     entries: List<GradeOutcomeEntry>,
@@ -45,12 +46,13 @@ internal fun BoardGradeOutcomeChart(
     val textColor = MaterialTheme.colorScheme.onSurface
 
     // Legend
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.padding(bottom = 8.dp)
     ) {
         LegendDot(FlashColor, "Flash")
-        LegendDot(RedpointColor, "Redpoint")
+        LegendDot(RedpointColor, stringResource(R.string.ux_later_send))
         LegendDot(AttemptColor, stringResource(R.string.board_stats_attempt))
     }
 
@@ -114,9 +116,10 @@ internal fun BoardGradeOutcomeChart(
 }
 
 /**
- * Donut chart showing overall flash / redpoint / attempt distribution.
- * Center text shows total sends.
+ * Donut chart of distinct sent climbs: flash versus later send.
+ * Unsuccessful climbs are excluded; the center counts distinct sent climbs.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardOutcomeDonutChart(
     distribution: OutcomeDistribution,
@@ -125,15 +128,16 @@ internal fun BoardOutcomeDonutChart(
     if (distribution.total == 0 && distribution.attempts == 0) return
     val total = (distribution.flashes + distribution.redpoints).toFloat().coerceAtLeast(1f)
     val textColor = MaterialTheme.colorScheme.onSurface
-    val sendsLabel = stringResource(R.string.board_sends)
+    val sendsLabel = stringResource(R.string.board_filter_status_sent)
 
     // Legend
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.padding(bottom = 8.dp)
     ) {
         LegendDot(FlashColor, "Flash (${distribution.flashes})")
-        LegendDot(RedpointColor, "Redpoint (${distribution.redpoints})")
+        LegendDot(RedpointColor, stringResource(R.string.ux_later_send) + " (${distribution.redpoints})")
     }
 
     Box(
@@ -200,6 +204,7 @@ internal fun BoardOutcomeDonutChart(
 /**
  * Weekly volume chart — stacked vertical bars by grade band (easy/medium/hard/elite).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardWeeklyVolumeChart(
     entries: List<WeeklyVolumeEntry>,
@@ -211,8 +216,9 @@ internal fun BoardWeeklyVolumeChart(
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     // Legend
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.padding(bottom = 8.dp)
     ) {
         LegendDot(GradeEasy, stringResource(R.string.board_stats_grade_easy))
@@ -382,6 +388,7 @@ internal fun progressionXFraction(entries: List<GradeProgressionPoint>, index: I
 /**
  * Unique climbs chart — grouped horizontal bars: unique (accent) vs total sends (muted).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardUniqueClimbsChart(
     entries: List<UniqueClimbEntry>,
@@ -391,12 +398,13 @@ internal fun BoardUniqueClimbsChart(
     val maxCount = entries.maxOf { it.totalSends }.coerceAtLeast(1)
     val textColor = MaterialTheme.colorScheme.onSurface
 
-    Row(
+    FlowRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.padding(bottom = 8.dp)
     ) {
-        LegendDot(OrangeAccent, stringResource(R.string.board_stats_unique))
-        LegendDot(Slate80.copy(alpha = 0.5f), stringResource(R.string.board_stats_total))
+        LegendDot(OrangeAccent, stringResource(R.string.ux_sent_climbs))
+        LegendDot(Slate80.copy(alpha = 0.5f), stringResource(R.string.board_sends))
     }
 
     Column(modifier = modifier) {

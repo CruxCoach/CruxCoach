@@ -150,6 +150,41 @@ flowchart TB
     Encrypt --> Nostr[Nostr: wrapped key and pointer]
 ```
 
+## Settings and explanations
+
+The settings overview leads to twelve task pages. Titles, current values and
+controls provide the main orientation; optional explanations open from the
+adjacent info button. Reading help never changes a setting or opens its action.
+Dialogs use readable, scrollable text and can be closed to return to the same
+page. Current errors, missing prerequisites, backup status and warnings before
+destructive actions stay visible where they matter.
+
+“Board & Bluetooth” shows “Active board”, “All boards”, then “Settings for each
+board”. The brand cards select which settings to inspect. Opening the
+active-board picker always starts from the active board, even while inspecting
+another brand; activating that other brand remains a separate explicit action.
+
+Help explains what each choice does, when it takes effect and any relevant
+prerequisites. It must not describe an optional behaviour as always active.
+Check the call site and implementation when updating both English and German:
+for example, automatic board sending can follow browsing and reconnecting,
+while explicit sending waits for a lamp action. Shared sessions, running
+playlists and Quantum layer selection add their own delivery rules. Keep
+account privacy explanations specific to public profiles/climbs, encrypted
+messages and encrypted backups.
+
+Use `SettingsDestinationRow`, `SettingsToggleRow` and `SettingsInfoHeading` in
+`ui/settings/SettingsLayout.kt`, with `ui/common/InfoButton.kt` for shared help.
+
+The profile editor keeps local saving in a fixed bottom bar. Cover images, optional
+addresses and community options have separate expandable sections; collapsing one
+preserves its values. Public profile publication remains a separate confirmed action.
+Account management groups current access, key recovery, account switching, Amber and
+the public account ID. The displayed ID belongs to the active signer in both modes;
+it is not an inactive local key when Amber is active. Reading help never invokes a
+key or account action. Device authentication and existing confirmations remain at
+the action boundary.
+
 ## Source map
 
 Paths below are relative to the repository, linked for direct navigation.

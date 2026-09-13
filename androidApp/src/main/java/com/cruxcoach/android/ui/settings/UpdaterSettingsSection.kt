@@ -190,7 +190,7 @@ internal fun UpdaterSettingsSection(
             }
         }
 
-        ToggleSettingRow(
+        SettingsToggleRow(
             title = stringResource(R.string.updater_settings_auto_check),
             description = stringResource(R.string.updater_settings_auto_check_desc),
             checked = state.autoCheckEnabled,
@@ -198,9 +198,12 @@ internal fun UpdaterSettingsSection(
         )
 
         if (state.autoCheckEnabled) {
-            Text(
-                text = stringResource(R.string.updater_settings_automation_title),
-                fontWeight = FontWeight.Bold,
+            SettingsInfoHeading(
+                title = stringResource(R.string.updater_settings_automation_title),
+                description = stringResource(R.string.updater_mode_notify) + "\n" +
+                    stringResource(R.string.updater_mode_notify_desc) + "\n\n" +
+                    stringResource(R.string.updater_mode_auto_update) + "\n" +
+                    stringResource(R.string.updater_mode_auto_update_desc),
             )
             val modes = UpdateAutomationMode.entries
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
@@ -217,19 +220,9 @@ internal fun UpdaterSettingsSection(
                     )
                 }
             }
-            Text(
-                text = stringResource(
-                    when (state.automationMode) {
-                        UpdateAutomationMode.NOTIFY -> R.string.updater_mode_notify_desc
-                        UpdateAutomationMode.AUTO_UPDATE -> R.string.updater_mode_auto_update_desc
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             if (state.automationMode != UpdateAutomationMode.NOTIFY) {
-                ToggleSettingRow(
+                SettingsToggleRow(
                     title = stringResource(R.string.updater_settings_auto_mobile),
                     description = stringResource(R.string.updater_settings_auto_mobile_desc),
                     checked = state.autoDownloadOnMobile,
@@ -255,7 +248,7 @@ internal fun UpdaterSettingsSection(
         }
 
         if (viewModel.anonymousUpdateMetricsAvailable) {
-            ToggleSettingRow(
+            SettingsToggleRow(
                 title = stringResource(R.string.updater_settings_anonymous_metrics),
                 description = stringResource(R.string.updater_settings_anonymous_metrics_desc),
                 checked = state.anonymousUpdateMetricsEnabled,
@@ -327,30 +320,6 @@ internal fun UpdaterSettingsSection(
                 },
             )
         }
-    }
-}
-
-@Composable
-private fun ToggleSettingRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(text = title, fontWeight = FontWeight.Medium)
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

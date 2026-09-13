@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
@@ -777,6 +778,10 @@ private fun KilterStep(
                         highlighted = true,
                         testTag = "onboarding_cruxcoach_restore",
                     )
+                    Text(
+                        stringResource(R.string.ux_restore_consequence),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     ImportSourceCard(
                         icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
                         title = stringResource(R.string.onboarding_cruxcoach_file_title),
@@ -926,7 +931,7 @@ private fun MoonBoardImportCard(onClick: () -> Unit, highlighted: Boolean) {
 }
 
 @Composable
-private fun ImportSourceCard(
+internal fun ImportSourceCard(
     icon: @Composable () -> Unit,
     title: String,
     description: String,
@@ -951,14 +956,9 @@ private fun ImportSourceCard(
         ) {
             icon()
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                InfoHeading(title, description)
+                Text(action, style = MaterialTheme.typography.labelLarge, color = OrangeAccent)
             }
-            Text(action, style = MaterialTheme.typography.labelMedium, color = OrangeAccent)
         }
     }
 }

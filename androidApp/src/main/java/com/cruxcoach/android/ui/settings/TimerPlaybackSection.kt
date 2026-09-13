@@ -9,8 +9,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @Composable
 internal fun RoutePlaybackSection(
@@ -21,38 +22,18 @@ internal fun RoutePlaybackSection(
     onCountdownSecondsChange: (Int) -> Unit,
     onAutoLoopChange: (Boolean) -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_playback_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_playback_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_playback_title),
+        description = stringResource(R.string.settings_playback_desc),
     )
 
     // Setter speed toggle
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_playback_setter_speed), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_playback_setter_speed_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = routePlayback.useSetterSpeed,
-            onCheckedChange = onUseSetterSpeedChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_playback_setter_speed),
+        description = stringResource(R.string.settings_playback_setter_speed_desc),
+        checked = routePlayback.useSetterSpeed,
+        onCheckedChange = onUseSetterSpeedChange,
+    )
 
     // Frame speed (custom default)
     val speedLabel = if (routePlayback.frameSpeed == routePlayback.frameSpeed.toLong().toFloat()) {
@@ -60,16 +41,12 @@ internal fun RoutePlaybackSection(
     } else {
         "%.1fs".format(routePlayback.frameSpeed)
     }
-    Text(
-        if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed, speedLabel)
-        else stringResource(R.string.settings_playback_frame_speed, speedLabel),
-        style = MaterialTheme.typography.bodyMedium
-    )
-    Text(
-        if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed_desc)
+    val speedDescription = if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed, speedLabel)
+        else stringResource(R.string.settings_playback_frame_speed, speedLabel)
+    SettingsInfoHeading(
+        title = speedDescription,
+        description = if (routePlayback.useSetterSpeed) stringResource(R.string.settings_playback_fallback_speed_desc)
         else stringResource(R.string.settings_playback_frame_speed_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Slider(
         value = routePlayback.frameSpeed,
@@ -77,35 +54,24 @@ internal fun RoutePlaybackSection(
         valueRange = 1f..15f,
         modifier = Modifier
             .fillMaxWidth()
+            .semantics { contentDescription = speedDescription }
             .testTag("settings_route_speed"),
-        colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
+        colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
     )
 
     // Countdown toggle
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(stringResource(R.string.settings_playback_countdown), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_playback_countdown_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = routePlayback.countdown,
-            onCheckedChange = onCountdownChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_playback_countdown),
+        description = stringResource(R.string.settings_playback_countdown_desc),
+        checked = routePlayback.countdown,
+        onCheckedChange = onCountdownChange,
+    )
 
     // Countdown duration slider (only when enabled)
     if (routePlayback.countdown) {
+        val countdownDescription = stringResource(R.string.settings_playback_countdown_duration, routePlayback.countdownSeconds)
         Text(
-            stringResource(R.string.settings_playback_countdown_duration, routePlayback.countdownSeconds),
+            countdownDescription,
             style = MaterialTheme.typography.bodyMedium
         )
         Slider(
@@ -113,31 +79,18 @@ internal fun RoutePlaybackSection(
             onValueChange = { onCountdownSecondsChange(it.toInt()) },
             valueRange = 1f..10f,
             steps = 8,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = countdownDescription },
+            colors = SliderDefaults.colors(thumbColor = MaterialTheme.colorScheme.primary, activeTrackColor = MaterialTheme.colorScheme.primary)
         )
     }
 
     // Auto-loop toggle
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(stringResource(R.string.settings_playback_auto_loop), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_playback_auto_loop_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = routePlayback.autoLoop,
-            onCheckedChange = onAutoLoopChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_playback_auto_loop),
+        description = stringResource(R.string.settings_playback_auto_loop_desc),
+        checked = routePlayback.autoLoop,
+        onCheckedChange = onAutoLoopChange,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -147,16 +100,9 @@ internal fun RestTimerSection(
     onDurationChange: (Int) -> Unit,
     onAutoStartChange: (Boolean) -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_timer_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_timer_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_timer_title),
+        description = stringResource(R.string.settings_timer_desc),
     )
 
     Spacer(modifier = Modifier.height(4.dp))
@@ -173,23 +119,10 @@ internal fun RestTimerSection(
     )
 
     // Auto-start toggle
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column {
-            Text(stringResource(R.string.settings_timer_auto_start), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_timer_auto_start_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = restTimer.autoStart,
-            onCheckedChange = onAutoStartChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_timer_auto_start),
+        description = stringResource(R.string.settings_timer_auto_start_desc),
+        checked = restTimer.autoStart,
+        onCheckedChange = onAutoStartChange,
+    )
 }

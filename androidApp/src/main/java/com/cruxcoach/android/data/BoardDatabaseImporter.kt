@@ -186,8 +186,9 @@ class BoardDatabaseImporter(
         val grandClimbTotal = climbChunkCounts.sum()
         val grandStatTotal = statChunkCounts.sum()
 
-        // Drop indexes before bulk import, rebuild after (avoids per-row index
-        // maintenance). Layout/meta import is also inside the block so its
+        // Only an empty database can defer indexes. Existing catalogues from
+        // ANY board must remain indexed while the browser is reading them.
+        // Layout/meta import is also inside the block so its
         // INSERTs benefit, and the UI sees a single clean phase progression:
         // Climbs → Stats → Layout → Finalizing (rebuild + backfill + denorm).
         withDeferredIndexes(
@@ -387,25 +388,17 @@ class BoardDatabaseImporter(
         var snapshotHasMoveCount = false
         var snapshotHasMethod = false
         var snapshotHasClimbAliases = false
-        // A full first import benefits enormously from dropping the browse
-        // indexes while hundreds of thousands of rows are inserted.  An
-        // incremental MoonBoard refresh is the opposite: dropping those
-        // indexes makes the live browser perform unindexed catalogue scans
-        // while the importer compares the snapshot, starving progress UI and
-        // making an otherwise read-mostly update look hung for tens of
-        // minutes on slower devices.
-        val hasExistingMoonBoardRows = openTargetDb().let { db ->
-            try {
-                queryLong(
-                    db,
-                    "SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' LIMIT 1)",
-                ) == 1L
-            } finally {
-                db.close()
-            }
+        // Skip unchanged MoonBoard stats on refresh. This brand-specific check
+        // does not decide whether the shared browse indexes can be deferred.
+        val hasExistingMoonBoardRows = openTargetDb().use { db ->
+            queryLong(
+                db,
+                "SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = 'moonboard' LIMIT 1)",
+            ) == 1L
         }
+        // The shared guard checks ALL brands: a first MoonBoard import must
+        // not remove indexes from an already usable Kilter/Aurora catalogue.
         withDeferredIndexes(
-            deferIndexes = !hasExistingMoonBoardRows,
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             val targetDb = openTargetDb()
@@ -2565,55 +2558,13 @@ class BoardDatabaseImporter(
     // Index DDLs live in the companion object at the top of the class so
     // they can also be referenced by HotPathIndexDriftTest.
 
-    private fun dropIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
-        for ((name, _) in indexes) db.execSQL("DROP INDEX IF EXISTS $name")
-    }
-
-    private fun createIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
-        for ((_, ddl) in indexes) db.execSQL(ddl)
-    }
-
-    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA
-     *  optimize. [onRebuild] fires before the rebuild starts so callers can
-     *  surface a "finalizing" status (rebuild can take 30s–2min on a fresh
-     *  full sync). */
-    private inline fun <R> withDeferredIndexes(
-        deferIndexes: Boolean = true,
-        crossinline onRebuild: () -> Unit = {},
+    /** Defer indexes only on an empty database; otherwise preserve live browsing.
+     * [onRebuild] announces finalization before restoring fresh-import indexes. */
+    private fun <R> withDeferredIndexes(
+        onRebuild: () -> Unit = {},
         block: () -> R,
-    ): R {
-        if (deferIndexes) {
-            val db = openTargetDb()
-            try {
-                dropIndexes(db, CLIMB_INDEXES)
-                dropIndexes(db, STAT_INDEXES)
-            } finally {
-                db.close()
-            }
-        }
-        try {
-            return block()
-        } finally {
-            onRebuild()
-            if (deferIndexes) {
-                val db2 = openTargetDb()
-                try {
-                    createIndexes(db2, CLIMB_INDEXES)
-                    createIndexes(db2, STAT_INDEXES)
-                    // Note: PRAGMA optimize used to run here but was dropped —
-                    // on a fresh import it triggers a full ANALYZE pass over
-                    // the freshly-built indexes (174k climbs + 290k stats),
-                    // which takes the same 10-30s the user just waited
-                    // through for the index rebuild. The SQLite query planner
-                    // copes fine with fresh indexes that have no sqlite_stat1
-                    // entries; ANALYZE can be re-introduced in an idle-time
-                    // worker if a query-plan regression actually shows up.
-                } finally {
-                    db2.close()
-                }
-            }
-        }
-    }
+    ): R = BoardImportIndexes(::openTargetDb, (CLIMB_INDEXES + STAT_INDEXES).toList())
+        .duringImport(onRebuild, block)
 
     /** Run a board-scoped import with existing indexes intact. */
     private inline fun <R> withIncrementalIndexes(

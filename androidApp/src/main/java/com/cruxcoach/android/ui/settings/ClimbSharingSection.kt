@@ -17,7 +17,6 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
-import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
 
 @Composable
@@ -81,68 +80,39 @@ internal fun ClimbSharingSection(
     }
 
     // Sharing toggle
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_sharing_enable), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_sharing_enable_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = climbSharing.enabled,
-            onCheckedChange = { enabled ->
-                if (enabled) {
-                    // Collect all required permissions: advertising + base BLE/location
-                    val advPerms = BlePermissionHelper.getAdvertisingPermissions()
-                    val basePerms = BlePermissionHelper.getRequiredPermissions()
-                    val allPerms = (advPerms.toSet() + basePerms.toSet()).toTypedArray()
-                    val missingPerms = allPerms.filter {
-                        ContextCompat.checkSelfPermission(context, it) !=
-                            PackageManager.PERMISSION_GRANTED
-                    }.toTypedArray()
-                    if (missingPerms.isEmpty()) {
-                        onSharingChange(true)
-                    } else {
-                        permissionLauncher.launch(missingPerms)
-                    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_sharing_enable),
+        description = stringResource(R.string.settings_sharing_enable_desc),
+        checked = climbSharing.enabled,
+        onCheckedChange = { enabled ->
+            if (enabled) {
+                // Collect all required permissions: advertising + base BLE/location
+                val advPerms = BlePermissionHelper.getAdvertisingPermissions()
+                val basePerms = BlePermissionHelper.getRequiredPermissions()
+                val allPerms = (advPerms.toSet() + basePerms.toSet()).toTypedArray()
+                val missingPerms = allPerms.filter {
+                    ContextCompat.checkSelfPermission(context, it) !=
+                        PackageManager.PERMISSION_GRANTED
+                }.toTypedArray()
+                if (missingPerms.isEmpty()) {
+                    onSharingChange(true)
                 } else {
-                    onSharingChange(false)
+                    permissionLauncher.launch(missingPerms)
                 }
-            },
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
+            } else {
+                onSharingChange(false)
+            }
+        },
+    )
 
     // The normal mode follows the physical board connection. This opt-in is
     // only for users who deliberately want the old manual start button.
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.settings_relay_manual_start),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                stringResource(R.string.settings_relay_manual_start_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(
-            checked = relayManualStart,
-            onCheckedChange = onRelayManualStartChange,
-            modifier = Modifier.testTag("settings_relay_manual_start"),
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
-        )
-    }
+    SettingsToggleRow(
+        title = stringResource(R.string.settings_relay_manual_start),
+        description = stringResource(R.string.settings_relay_manual_start_desc),
+        checked = relayManualStart,
+        onCheckedChange = onRelayManualStartChange,
+        modifier = Modifier.testTag("settings_relay_manual_start"),
+    )
 
 }

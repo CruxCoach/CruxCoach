@@ -156,6 +156,43 @@ flowchart TB
     Encrypt --> Nostr[Nostr: verschlüsselter Schlüssel und Verweis]
 ```
 
+## Einstellungen und Erklärungen
+
+Die Einstellungsübersicht führt zu zwölf Aufgabenseiten. Titel, aktuelle Werte
+und Bedienelemente geben die Orientierung; zusätzliche Erklärungen öffnen sich
+über das benachbarte Info-Symbol. Das Lesen der Hilfe verändert keine Einstellung
+und löst keine Aktion aus. Die Dialoge sind gut lesbar, scrollbar und führen beim
+Schließen zur gleichen Seite zurück. Aktuelle Fehler, fehlende Voraussetzungen,
+Backup-Status und Warnungen vor Löschaktionen bleiben am passenden Ort sichtbar.
+
+„Board & Bluetooth“ zeigt zuerst „Aktives Board“, dann „Alle Boards“ und danach
+„Einstellungen je Board“. Die Markenkarten wählen nur die angezeigten Einstellungen.
+Die Auswahl für das aktive Board startet immer beim aktiven Board, auch wenn du
+gerade eine andere Marke ansiehst. Diese andere Marke zu aktivieren bleibt eine
+separate ausdrückliche Aktion.
+
+Hilfen erklären die Wirkung der Auswahl, ihren Auslöser und relevante
+Voraussetzungen. Optionales Verhalten darf nicht als immer aktiv beschrieben
+werden. Prüfe beim Aktualisieren beider Sprachen den Aufrufort und den Code:
+Automatisches Senden kann etwa dem Stöbern und Neuverbinden folgen, während
+manuelles Senden auf die Lampe wartet. Gemeinsame Sessions, laufende Playlists
+und die Quantum-Ebenenauswahl haben zusätzliche Senderegeln. Erkläre den
+Datenschutz getrennt für öffentliche Profile/Boulder, verschlüsselte Nachrichten
+und verschlüsselte Backups.
+
+Gemeinsame Bausteine sind `SettingsDestinationRow`, `SettingsToggleRow` und
+`SettingsInfoHeading` in `ui/settings/SettingsLayout.kt` sowie
+`ui/common/InfoButton.kt` für die Hilfe.
+
+Im Profileditor bleibt lokales Speichern unten direkt erreichbar. Titelbild,
+optionale Adressen und Community-Optionen haben eigene aufklappbare Bereiche;
+Zuklappen bewahrt die Eingaben. Das öffentliche Profil wird weiterhin erst nach
+Bestätigung veröffentlicht. Die Kontoverwaltung gliedert aktuellen Zugang,
+Schlüsselsicherung, Kontowechsel, Amber und öffentliche Konto-ID. Die ID gehört in
+beiden Modi zum aktiven Signierer; bei Amber ist sie kein inaktiver lokaler Schlüssel.
+Hilfen lösen keine Kontoaktion aus. Geräteauthentifizierung und bestehende
+Bestätigungen bleiben vor den jeweiligen Aktionen erhalten.
+
 ## Orientierung im Quellcode
 
 Die [Quellcode-Tabelle der englischen Fassung](../en/CORE_CONCEPTS.md#source-map)

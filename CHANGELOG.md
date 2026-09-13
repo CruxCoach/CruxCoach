@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Changed
+- Settings show compact titles and controls, with optional explanations behind
+  labelled info buttons. Help opens in a scrollable dialog; current status,
+  prerequisites and destructive-action warnings remain visible.
+- Board & Bluetooth starts with a separate active-board selector, followed by
+  options for all boards and then individual boards. Inspecting another board
+  does not change the active-board picker context.
+- Settings help explains the available choices and their actual triggers in
+  English and German, including automatic versus explicit board sending,
+  controller connections, timers, imports, backups and data sharing.
 - The status filter has a direct "Exclude sent problems" switch synchronized
   with the existing multi-select statuses. Checkmarks and wrapping chips make
   the selection visible on narrow screens.
@@ -24,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   local caching, with mirror fallback and a stable placeholder when unavailable.
 
 ### Fixed
+- Board catalogue imports preserve the indexes used by existing boards, repair
+  missing indexes, and roll back interrupted index preparation. Temporary SQLite
+  locks retry the local import with the already verified downloads.
 - The browser toolbar retains the familiar Bluetooth, Filter, Logbook, Lists,
   Settings order. Compact-screen priorities independently choose which actions
   remain visible; both the toolbar and overflow menu preserve that visual order.
