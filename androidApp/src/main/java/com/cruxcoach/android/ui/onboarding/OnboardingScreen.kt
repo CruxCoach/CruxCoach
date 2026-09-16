@@ -464,12 +464,8 @@ private fun BoardSetupStep(
         )
 
         Text(
-            stringResource(R.string.board_download_selection_title),
+            stringResource(R.string.onboarding_download_selection_title),
             style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            stringResource(R.string.onboarding_download_selection_description),
-            style = MaterialTheme.typography.bodyMedium,
         )
         downloadSelection?.let { selected ->
             BoardMultiSelectRows(
