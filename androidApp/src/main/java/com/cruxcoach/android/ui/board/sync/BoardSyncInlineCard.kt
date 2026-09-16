@@ -93,7 +93,7 @@ fun BoardSyncInlineCard(
     // both fire on first composition and used to run the same full grouped
     // catalogue count concurrently.
     val doneBrands = state.boardSteps.filterValues { it is ImportStep.Done }.keys
-    LaunchedEffect(state.lastSyncCompletedAtMillis, state.alreadyImported, doneBrands) {
+    LaunchedEffect(state.lastSyncCompletedAtMillis, state.catalogueRevision, state.alreadyImported, doneBrands) {
         viewModel.refreshBoardCounts()
     }
     if (autoStartIfNeeded) {
@@ -501,7 +501,7 @@ fun BoardSyncInlineCard(
 }
 
 @Composable
-private fun CompactDatabasePreparation(
+internal fun CompactDatabasePreparation(
     state: BoardSyncState,
     boardCounts: Map<String, Long>,
     activeBrand: BoardBrand,
@@ -512,10 +512,10 @@ private fun CompactDatabasePreparation(
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val supportedBoards = BoardBrand.entries.filter { it in selectedBrands }
     val readyBoards = supportedBoards.count { brand ->
-        boardCounts[brand.wireValue]?.let { it > 0L } == true ||
-            state.boardSteps[brand] is ImportStep.Done
+        catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, state.boardSteps[brand]) > 0L
     }
     val hasErrors = state.errorMessage != null || state.boardErrors.isNotEmpty()
+    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
         shape = RoundedCornerShape(14.dp),
@@ -527,9 +527,9 @@ private fun CompactDatabasePreparation(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (state.alreadyImported) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
+                    if (allReady) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
                     contentDescription = null,
-                    tint = if (state.alreadyImported) SuccessGreen else OrangeAccent,
+                    tint = if (allReady) SuccessGreen else OrangeAccent,
                     modifier = Modifier.size(22.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -544,7 +544,7 @@ private fun CompactDatabasePreparation(
                             when {
                                 state.isSyncing -> R.string.onboarding_offline_status_loading
                                 selectedBrands.isEmpty() -> R.string.board_download_selection_empty
-                                state.alreadyImported -> R.string.onboarding_offline_status_ready
+                                allReady -> R.string.onboarding_offline_status_ready
                                 state.waitingForUnmeteredNetwork || !state.networkAvailable ->
                                     R.string.board_sync_compact_waiting_wifi
                                 hasErrors -> R.string.onboarding_offline_status_waiting
@@ -555,9 +555,9 @@ private fun CompactDatabasePreparation(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if ((!state.alreadyImported || state.errorMessage != null) && !state.isSyncing) {
+                if (!allReady && !state.isSyncing) {
                     TextButton(onClick = onRetry, enabled = selectedBrands.isNotEmpty(), modifier = Modifier.testTag("onboarding_offline_retry")) {
-                        Text(stringResource(if (state.errorMessage != null) R.string.action_retry else R.string.board_sync_update_online))
+                        Text(stringResource(if (hasErrors) R.string.action_retry else R.string.board_sync_update_online))
                     }
                 }
             }
@@ -1010,13 +1010,9 @@ private fun BoardStatusRow(
 ) {
     // This board is mid-sync when it has a non-terminal step in the map.
     val boardSyncing = step != null && step !is ImportStep.Done
-    // A Done step carries that board's post-import catalogue total — use it
-    // while [count] (refreshed asynchronously) is still stale, so the row
-    // flips to done+count the moment its own import completes. AlreadyCurrent
-    // reports Done(0,0,0); the count-first preference keeps the previously
-    // loaded total for that case.
-    val doneClimbs = (step as? ImportStep.Done)?.climbs?.toLong() ?: 0L
-    val displayCount = if (count > 0L) count else doneClimbs
+    // A completed import carries a fresh, brand-scoped total. Zero means
+    // AlreadyCurrent and falls back to the stored catalogue count.
+    val displayCount = catalogueDisplayCount(count, step)
     val loaded = displayCount > 0L
 
     // Inline progress label (reuses the step strings) + bar fraction.
@@ -1072,13 +1068,13 @@ private fun BoardStatusRow(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
-                loaded -> Icon(
-                    Icons.Default.CheckCircle, contentDescription = null,
-                    tint = SuccessGreen, modifier = Modifier.size(20.dp),
-                )
                 hasError -> Icon(
                     Icons.Default.Warning, contentDescription = null,
                     tint = ErrorRed, modifier = Modifier.size(20.dp),
+                )
+                loaded -> Icon(
+                    Icons.Default.CheckCircle, contentDescription = null,
+                    tint = SuccessGreen, modifier = Modifier.size(20.dp),
                 )
                 isActive -> Icon(
                     Icons.Default.Warning, contentDescription = null,
@@ -1255,3 +1251,7 @@ private fun formatTimestamp(iso: String): String {
         iso
     }
 }
+
+/** Done(0) represents an unchanged catalogue, not a newly loaded empty one. */
+internal fun catalogueDisplayCount(count: Long, step: ImportStep?): Long =
+    (step as? ImportStep.Done)?.climbs?.toLong()?.takeIf { it > 0L } ?: count

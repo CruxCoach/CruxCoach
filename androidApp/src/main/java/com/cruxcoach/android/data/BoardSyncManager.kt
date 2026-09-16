@@ -1015,8 +1015,9 @@ class BoardSyncManager(
                     throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Kilter catalogue download failed", e)
-                    _state.update { it.copy(importStep = null,
-                        errorMessage = appContext.getString(R.string.board_sync_error_download)) }
+                    val message = appContext.getString(R.string.board_sync_error_download)
+                    _state.update { it.copy(importStep = null, errorMessage = message,
+                        auroraErrors = it.auroraErrors + (BoardBrand.KILTER to message)) }
                 }
             } else if (syncCatalogue(brand)) changed = true
         }
@@ -1072,7 +1073,7 @@ class BoardSyncManager(
             // complete so the MoonBoard section is the only one still
             // showing progress while it re-checks.
             _state.update { it.copy(importStep = ImportStep.Done(
-                boardRepository.getClimbCount().toInt(),
+                (boardRepository.getClimbCountsByBrand()["kilter"] ?: 0L).toInt(),
                 boardRepository.getStatCount().toInt(),
                 0,
             )) }
@@ -1202,10 +1203,13 @@ class BoardSyncManager(
 
             if (failedChunks.isNotEmpty()) {
                 // Partial success: the imported chunks + their saved hashes are
-                // durable, so the sync still reports complete (the user sees the
+                // durable, but the sync must report the incomplete download (the user sees the
                 // data that arrived). getChangedChunks will re-report the skipped
                 // chunks on the next sync and the catalogue converges — no full
                 // re-download, no hard failure.
+                val message = appContext.getString(R.string.board_sync_error_download)
+                _state.update { it.copy(errorMessage = message,
+                    auroraErrors = it.auroraErrors + (BoardBrand.KILTER to message)) }
                 chunksToDownload.forEach { chunk ->
                     if (chunkFiles.containsKey(chunk.name)) {
                         blossomSyncManager.saveChunkHash(
@@ -1236,7 +1240,7 @@ class BoardSyncManager(
             //    Kilter done + MoonBoard in progress as two distinct sections.
             _state.update { it.copy(
                 importStep = kilterDone ?: ImportStep.Done(
-                    boardRepository.getClimbCount().toInt(),
+                    (boardRepository.getClimbCountsByBrand()["kilter"] ?: 0L).toInt(),
                     boardRepository.getStatCount().toInt(),
                     0,
                 )
@@ -2054,16 +2058,23 @@ class BoardSyncManager(
      * MoonBoardCatalogueSync / AuroraCatalogueSync). UNSELECTED boards'
      * stores stay intact so their incremental sync state survives.
      *
-     * The Kilter-centric global flags (alreadyImported / syncComplete /
-     * lastSyncTimestamp) gate the main Blossom sync, so they reset only
-     * when Kilter itself is among [brands] — a MoonBoard-only deletion
-     * must not advertise the Kilter catalogue as missing.
+     * Recompute availability and discard terminal steps for deleted boards so
+     * a stale Done cannot resurrect their counts in the UI.
      */
     private fun resetSyncStateForBrands(brands: Set<BoardBrand>) {
+        val imported = importer.isImported()
+        _state.update { it.copy(
+            alreadyImported = imported,
+            syncComplete = false,
+            importStep = if (BoardBrand.KILTER in brands) null else it.importStep,
+            moonBoardStep = if (BoardBrand.MOONBOARD in brands) null else it.moonBoardStep,
+            moonBoardError = if (BoardBrand.MOONBOARD in brands) null else it.moonBoardError,
+            auroraSteps = it.auroraSteps - brands,
+            auroraErrors = it.auroraErrors - brands,
+            localShareBoardSteps = it.localShareBoardSteps - brands,
+        ) }
         if (BoardBrand.KILTER in brands) {
             _state.update { it.copy(
-                alreadyImported = false,
-                syncComplete = false,
                 lastSyncTimestamp = null
             ) }
             blossomSyncManager.clearStoredHashes()

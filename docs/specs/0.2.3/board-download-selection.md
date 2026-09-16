@@ -47,6 +47,19 @@ Deleting personal logbook data does not change the catalogue preference. An expl
 single-board download opts only that board back in and runs in WorkManager, with
 its board argument preserved through the worker.
 
+## Catalogue availability and import status
+
+Catalogue counts and download gates exclude local drafts and community routes.
+They use the same provenance as catalogue deletion: `source=kilter` for legacy
+catalogues and `source=quantum` on Quantum. General browser row availability
+continues to include personal/community routes. Import completion counts are
+brand-scoped, and a fresh completion count takes precedence over stale UI counts.
+The compact status is ready only when all selected boards have catalogue rows
+and no download error remains; `Done(0)` alone does not prove availability.
+Partial Kilter downloads retain successful chunks but expose an error and do not
+advance the successful-sync timestamp. Deletion clears the affected terminal
+steps and refreshes counts through the catalogue revision.
+
 ## Download boundary
 
 Each online run snapshots the selection and prioritises the active board only if

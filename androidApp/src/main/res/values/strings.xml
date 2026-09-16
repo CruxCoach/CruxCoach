@@ -220,7 +220,7 @@
     <string name="onboarding_offline_status_starting">Choose your boards and start the download.</string>
     <string name="onboarding_offline_status_loading">Loading in the background — you can continue.</string>
     <string name="onboarding_offline_status_ready">Offline catalogues are ready.</string>
-    <string name="onboarding_offline_status_waiting">Will resume when a connection is available.</string>
+    <string name="onboarding_offline_status_waiting">Download incomplete. Please try again.</string>
     <string name="onboarding_existing_data_title">Do you already have climbing data?</string>
     <string name="onboarding_existing_data_subtitle">Choose its source to see the matching import. Otherwise start directly.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>

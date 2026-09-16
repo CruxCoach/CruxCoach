@@ -139,6 +139,22 @@ class BoardDownloadSyncTest {
         assertNull(prefs.lastSyncTimestamp.first())
     }
 
+    @Test fun `deleting the only imported board clears availability and terminal progress`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setBoardDownloadBrands(setOf(BoardBrand.MOONBOARD))
+        val manager = manager(prefs)
+        runCurrent()
+        manager.startBackgroundSync()
+        runCurrent()
+        assertTrue(manager.state.value.boardSteps[BoardBrand.MOONBOARD] is BoardDatabaseImporter.ImportStep.Done)
+        every { importer.isImported() } returns false
+        manager.deleteBoardData(setOf(BoardBrand.MOONBOARD))
+        runCurrent()
+        assertFalse(manager.state.value.alreadyImported)
+        assertFalse(manager.state.value.syncComplete)
+        assertNull(manager.state.value.boardSteps[BoardBrand.MOONBOARD])
+    }
+
     @Test fun `successful deletion excludes board before next background sync`() = runTest {
         val prefs = createTestUserPreferences(backgroundScope)
         prefs.setBoardDownloadBrands(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD))
@@ -151,6 +167,25 @@ class BoardDownloadSyncTest {
         runCurrent()
         coVerify(exactly = 0) { moon.sync(any()) }
     }
+    @Test fun `partial Kilter download remains retryable and does not advance success timestamp`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setBoardDownloadBrands(setOf(BoardBrand.KILTER))
+        val manager = manager(prefs)
+        val good = com.cruxcoach.android.data.blossom.BlossomChunk("climbs_0", "climbs", "a", 1L, emptyList())
+        val missing = good.copy(name = "climbs_1", sha256 = "b")
+        every { blossom.getChangedChunks(any(), any(), any()) } returns listOf(good, missing)
+        coEvery { blossom.downloadAndDecompressChunk(missing, any(), any(), any(), any()) } throws java.io.IOException("offline")
+        runCurrent()
+        manager.startBackgroundSync()
+        runCurrent()
+        assertFalse(manager.state.value.syncComplete)
+        assertNotNull(manager.state.value.errorMessage)
+        assertNull(prefs.lastSyncTimestamp.first())
+        assertNotNull(manager.state.value.boardErrors[BoardBrand.KILTER])
+        verify(exactly = 1) { blossom.saveChunkHash(good.name, good.sha256, any()) }
+        verify(exactly = 0) { blossom.saveChunkHash(missing.name, any(), any()) }
+    }
+
     @Test fun `failed Kilter does not block Quantum or advance success timestamp`() = runTest {
         val prefs = createTestUserPreferences(backgroundScope)
         prefs.setBoardDownloadBrands(setOf(BoardBrand.KILTER, BoardBrand.QUANTUM))

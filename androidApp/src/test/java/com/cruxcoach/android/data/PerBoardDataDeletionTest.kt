@@ -82,6 +82,40 @@ class PerBoardDataDeletionTest {
         )
     }
 
+    @Test
+    fun catalogueStatusExcludesOwnAndCommunityRoutesAcrossImportAndDeletion() {
+        climb("own", "moonboard", "local")
+        climb("peer", "tension", "nostr")
+        assertTrue(repo.hasAnyClimbs())
+        assertFalse(repo.hasAnyCatalogueClimbs())
+        assertFalse(repo.hasClimbsForBrand("moonboard"))
+        assertFalse(repo.hasClimbsForBrand("tension"))
+        assertEquals(emptyMap(), repo.getClimbCountsByBrand())
+
+        climb("catalogue", "moonboard", "kilter")
+        assertTrue(repo.hasAnyCatalogueClimbs())
+        assertTrue(repo.hasClimbsForBrand("moonboard"))
+        assertEquals(mapOf("moonboard" to 1L), repo.getClimbCountsByBrand())
+
+        repo.deleteBoardDataForBrands(setOf("moonboard"))
+        assertTrue(repo.hasAnyClimbs())
+        assertFalse(repo.hasAnyCatalogueClimbs())
+        assertFalse(repo.hasClimbsForBrand("moonboard"))
+        assertEquals(emptyMap(), repo.getClimbCountsByBrand())
+    }
+
+    @Test
+    fun quantumCatalogueUsesItsOwnProvenanceMarker() {
+        climb("quantum-route", "quantum", "quantum")
+        climb("quantum-peer", "quantum", "nostr")
+        assertTrue(repo.hasAnyCatalogueClimbs())
+        assertTrue(repo.hasClimbsForBrand("quantum"))
+        assertEquals(mapOf("quantum" to 1L), repo.getClimbCountsByBrand())
+        repo.deleteBoardDataForBrands(setOf("quantum"))
+        assertFalse(repo.hasAnyCatalogueClimbs())
+        assertEquals(emptyMap(), repo.getClimbCountsByBrand())
+    }
+
     /** One row in every brand-keyed geometry table, all under [id]. */
     private fun geometry(brand: String, id: Long) {
         repo.upsertHole(id, id, 1L, 1L, null, brand)

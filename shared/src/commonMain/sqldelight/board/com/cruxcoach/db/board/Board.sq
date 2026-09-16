@@ -1164,6 +1164,7 @@ SELECT COUNT(*) FROM climbs;
 countClimbsByBrand:
 SELECT board_brand AS boardBrand, COUNT(*) AS climbCount
 FROM climbs INDEXED BY idx_climbs_board_brand
+WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')
 GROUP BY board_brand;
 
 -- O(1) "do we have any climbs at all" check. Use this anywhere the
@@ -1180,7 +1181,12 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 -- the browser then renders an unexplained blank list instead of a
 -- "load catalogue" empty state.
 hasClimbsForBrand:
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? LIMIT 1);
+SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
+
+-- Catalogue provenance is 'kilter' (legacy) or 'quantum'. Own/peer routes must
+-- never suppress the initial catalogue download.
+hasAnyCatalogueClimbs:
+SELECT EXISTS(SELECT 1 FROM climbs WHERE source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum') LIMIT 1);
 
 -- Presence gate for the MoonBoard hold-set filter (FEAT-049): has a
 -- CATALOGUE with a POPULATED hsm arrived yet? The column is computed in the

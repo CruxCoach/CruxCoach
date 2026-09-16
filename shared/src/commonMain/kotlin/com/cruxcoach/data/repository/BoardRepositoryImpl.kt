@@ -309,6 +309,8 @@ class BoardRepositoryImpl(
         return q.hasAnyClimbs().executeAsOne()
     }
 
+    override fun hasAnyCatalogueClimbs(): Boolean = q.hasAnyCatalogueClimbs().executeAsOne()
+
     override fun hasClimbsForBrand(boardBrand: String): Boolean {
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }

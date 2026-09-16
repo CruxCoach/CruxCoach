@@ -11,6 +11,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -64,8 +65,11 @@ class BoardSyncViewModel @Inject constructor(
 
     /** Recompute per-board catalogue sizes off the main thread. Call on first
      *  composition and whenever a sync completes. */
+    private var countsJob: Job? = null
+
     fun refreshBoardCounts() {
-        viewModelScope.launch {
+        countsJob?.cancel()
+        countsJob = viewModelScope.launch {
             _boardCounts.value = withContext(Dispatchers.IO) {
                 PerfLogger.traceQuery("boardSync.countClimbsByBrand") {
                     boardRepository.getClimbCountsByBrand()
