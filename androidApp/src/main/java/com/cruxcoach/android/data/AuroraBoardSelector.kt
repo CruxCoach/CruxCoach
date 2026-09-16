@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -22,7 +23,7 @@ class AuroraBoardSelector @Inject constructor(
     private val auroraCatalogueSync: AuroraCatalogueSync,
     private val boardRepository: BoardRepository,
 ) {
-    enum class Status { IMPORTED, ALREADY_CURRENT, FAILED }
+    enum class Status { IMPORTED, ALREADY_CURRENT, FAILED, DOWNLOAD_DISABLED }
 
     data class Outcome(
         val status: Status,
@@ -82,6 +83,9 @@ class AuroraBoardSelector @Inject constructor(
                     )
                 }
             }
+        }
+        if (board !in userPreferences.boardDownloadBrands.first()) {
+            return Outcome(Status.DOWNLOAD_DISABLED, variant?.layoutId, variantSize, variant?.displayName)
         }
         return when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
             is AuroraCatalogueSync.Result.Failed -> Outcome(

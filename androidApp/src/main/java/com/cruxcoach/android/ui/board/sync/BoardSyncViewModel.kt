@@ -74,6 +74,28 @@ class BoardSyncViewModel @Inject constructor(
         }
     }
 
+    val downloadBrands: StateFlow<Set<BoardBrand>?> = userPreferences.boardDownloadBrands
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
+
+    suspend fun initialDownloadSelection(): Set<BoardBrand> {
+        if (!userPreferences.isOnboardingCompleted() && !state.value.alreadyImported &&
+            !userPreferences.hasBoardDownloadSelection()) {
+            val suggested = setOf(BoardBrand.fromWire(userPreferences.boardBrand.first()))
+            // Skipping onboarding's download must not leave the legacy all-board
+            // default for a later periodic worker to download without a choice.
+            userPreferences.setBoardDownloadBrands(emptySet())
+            return suggested
+        }
+        return userPreferences.boardDownloadBrands.first()
+    }
+
+    fun saveDownloadSelection(brands: Set<BoardBrand>, startInitial: Boolean = false) {
+        viewModelScope.launch {
+            userPreferences.setBoardDownloadBrands(brands)
+            if (startInitial && brands.isNotEmpty()) syncManager.startInitialSyncIfNeeded()
+        }
+    }
+
     /** Load (or retry) a board's catalogue from the status list. */
     fun loadBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 

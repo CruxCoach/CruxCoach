@@ -217,7 +217,7 @@
     <string name="onboarding_start_without_import">Start without import</string>
     <string name="onboarding_start_cruxcoach">Start CruxCoach</string>
     <string name="onboarding_offline_status_title">Preparing offline climbs</string>
-    <string name="onboarding_offline_status_starting">Starts automatically in the background.</string>
+    <string name="onboarding_offline_status_starting">Choose your boards and start the download.</string>
     <string name="onboarding_offline_status_loading">Loading in the background — you can continue.</string>
     <string name="onboarding_offline_status_ready">Offline catalogues are ready.</string>
     <string name="onboarding_offline_status_waiting">Will resume when a connection is available.</string>
@@ -465,7 +465,7 @@
     <string name="settings_data_delete_board">Delete board data</string>
     <string name="settings_data_delete_board_desc">Deletes downloaded climbs, catalogue statistics and hold layouts from the app, for all or selected boards. You can download them again. Own and community climbs remain.</string>
     <string name="settings_data_delete_board_dialog_title">Delete board data?</string>
-    <string name="settings_data_delete_board_dialog_message">Downloaded climb catalogues, statistics and hold layouts for the selected boards will be deleted from the app. You can download them again. Own and community climbs remain.</string>
+    <string name="settings_data_delete_board_dialog_message">Downloaded climb catalogues, statistics and hold layouts for the selected boards will be deleted from the app. You can download them again. Own and community climbs remain. Deleted boards are also excluded from future downloads.</string>
     <string name="settings_data_delete_board_progress">Deleting board data…</string>
     <string name="settings_data_delete_select_all">All boards</string>
     <string name="settings_data_delete_user">Delete personal logbook data</string>
@@ -1042,7 +1042,7 @@
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
     <string name="board_sync_db_description">Downloads public climb catalogues into the app for offline use. Wi-Fi recommended; downloads can be large.</string>
-    <string name="board_sync_compact_description">Downloads all board catalogues in the background. You can keep using the app.</string>
+    <string name="board_sync_compact_description">Downloads selected board catalogues in the background. You can keep using the app.</string>
     <string name="board_sync_compact_waiting_wifi">Queued — starts automatically on WiFi</string>
     <string name="board_sync_compact_progress">%1$d of %2$d boards ready</string>
     <string name="board_sync_compact_show_details">Show details</string>
@@ -2876,4 +2876,12 @@
     <string name="account_restore_title">Already have a saved key?</string>
     <string name="account_restore_body">Pasting a key restores access: use a previously saved nsec to return to your existing account. This does not back up your current account. New users only need the backup above.</string>
     <string name="account_public_optional">Optional: public account ID. Cannot restore account access.</string>
+    <string name="board_download_selection_title">Boards to download</string>
+    <string name="board_download_selection_description">Only selected boards are downloaded online and updated automatically. Deselecting keeps downloaded data and your logbook.</string>
+    <string name="board_download_selection_local_share">A direct transfer from another device includes its entire shared board database. This selection applies to online downloads.</string>
+    <string name="board_download_only_active">Only %1$s</string>
+    <string name="board_download_selection_summary">Board selection: %1$d selected</string>
+    <string name="board_download_selection_empty">No automatic board downloads. Select boards to download data.</string>
+    <string name="board_download_disabled">Downloads for this board are disabled. You can enable them in the board download selection.</string>
+    <string name="board_download_not_selected">Excluded from downloads</string>
 </resources>

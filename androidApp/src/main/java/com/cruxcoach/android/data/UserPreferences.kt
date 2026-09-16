@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.cruxcoach.android.notification.AnnouncementTagParser
@@ -298,6 +299,7 @@ object PreferenceKeys {
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val BOARD_DOWNLOAD_BRANDS = stringSetPreferencesKey("board_download_brands")
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
@@ -535,6 +537,38 @@ class UserPreferences(
      * "kilter": pre-0.2.0 installs have no MoonBoard concept and must keep
      * behaving exactly as before.
      */
+    /** Device-wide catalogue choice. Missing key preserves pre-selection behavior. */
+    val boardDownloadBrands: Flow<Set<BoardBrand>> = dataStore.data.map { prefs ->
+        decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS])
+    }
+
+    suspend fun hasBoardDownloadSelection(): Boolean =
+        dataStore.data.first().contains(PreferenceKeys.BOARD_DOWNLOAD_BRANDS)
+
+    suspend fun setBoardDownloadBrands(brands: Set<BoardBrand>) {
+        require(brands.all { it.isInteractive })
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] = brands.map { it.wireValue }.toSet()
+        }
+    }
+
+    suspend fun includeBoardDownload(brand: BoardBrand) {
+        require(brand.isInteractive)
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
+                (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) + brand)
+                    .map { it.wireValue }.toSet()
+        }
+    }
+
+    suspend fun excludeBoardDownloads(brands: Set<BoardBrand>) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
+                (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) - brands)
+                    .map { it.wireValue }.toSet()
+        }
+    }
+
     val boardBrand: Flow<String> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter"
     }

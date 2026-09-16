@@ -7,6 +7,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.SyncInterval
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -38,7 +39,9 @@ class BoardSyncWorker @AssistedInject constructor(
 
             // Delegate to the shared BoardSyncManager so the in-app banner
             // reflects sync progress regardless of source (manual or auto).
-            syncManager.startBackgroundSync()
+            val requestedBoard = BoardBrand.fromWireOrNull(inputData.getString(KEY_BOARD_BRAND))
+                ?.takeIf { it.isInteractive }
+            syncManager.startBackgroundSync(requestedBoard)
 
             // Wait until the sync finishes (success or error)
             val finalState = syncManager.state
@@ -72,6 +75,7 @@ class BoardSyncWorker @AssistedInject constructor(
 
     companion object {
         private const val TAG = "BoardSyncWorker"
+        private const val KEY_BOARD_BRAND = "board_brand"
         const val WORK_NAME = "board_sync_periodic"
         const val WORK_NAME_ONESHOT = "board_sync_oneshot"
 
@@ -99,8 +103,9 @@ class BoardSyncWorker @AssistedInject constructor(
          * Safe against interrupting a live sync: the caller only gets here
          * while [BoardSyncManager] reports no sync in progress.
          */
-        fun enqueueExpedited(context: Context, allowMetered: Boolean = false) {
+        fun enqueueExpedited(context: Context, allowMetered: Boolean = false, board: BoardBrand? = null) {
             val request = OneTimeWorkRequestBuilder<BoardSyncWorker>()
+                .setInputData(workDataOf(KEY_BOARD_BRAND to board?.wireValue))
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(

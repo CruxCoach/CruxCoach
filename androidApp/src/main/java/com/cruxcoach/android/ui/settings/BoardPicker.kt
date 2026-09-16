@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -195,6 +196,7 @@ class BoardPickerViewModel @Inject constructor(
             )
             // Selection remains usable offline when already cached; a failed
             // refresh is non-destructive and can be retried from board sync.
+            if (BoardBrand.QUANTUM !in userPreferences.boardDownloadBrands.first()) return@launch
             val result = quantumCatalogueSync.sync()
             if (result is QuantumCatalogueSync.Result.Failed) {
                 Toast.makeText(context, R.string.quantum_sync_failed_generic, Toast.LENGTH_LONG).show()
@@ -219,6 +221,9 @@ class BoardPickerViewModel @Inject constructor(
             // Touchstone) is a completely silent no-op offline — the selector
             // persists nothing for variant-less boards until the sync succeeds
             // — and a variant pick lands on an unexplained empty board.
+            if (status == AuroraBoardSelector.Status.DOWNLOAD_DISABLED) {
+                Toast.makeText(context, R.string.board_download_disabled, Toast.LENGTH_LONG).show()
+            }
             if (status == AuroraBoardSelector.Status.FAILED) {
                 Toast.makeText(context, R.string.aurora_sync_failed_generic, Toast.LENGTH_LONG).show()
             }

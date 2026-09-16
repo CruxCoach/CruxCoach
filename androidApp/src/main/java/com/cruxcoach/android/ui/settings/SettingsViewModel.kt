@@ -502,6 +502,8 @@ class SettingsViewModel @Inject constructor(
             // every other picker so they behave identically (FEAT-031).
             val message = try {
                 when (auroraBoardSelector.select(board).status) {
+                    AuroraBoardSelector.Status.DOWNLOAD_DISABLED ->
+                        context.getString(R.string.board_download_disabled)
                     AuroraBoardSelector.Status.FAILED ->
                         context.getString(R.string.aurora_sync_failed_generic)
                     AuroraBoardSelector.Status.ALREADY_CURRENT ->
