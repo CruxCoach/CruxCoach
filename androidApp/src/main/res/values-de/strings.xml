@@ -2882,4 +2882,9 @@
     <string name="board_download_selection_empty">Keine automatischen Board-Downloads. Wähle Boards aus, um Daten herunterzuladen.</string>
     <string name="board_download_disabled">Downloads für dieses Board sind abgewählt. Du kannst sie in der Board-Auswahl für Downloads aktivieren.</string>
     <string name="board_download_not_selected">Von Downloads abgewählt</string>
+    <string name="onboarding_download_selection_description">Wähle die Board-Kataloge zum Herunterladen. Mit „Weiter“ starten die ausgewählten Downloads parallel zur restlichen Einrichtung: zuerst dein aktives Board, danach weitere Kataloge und Zusatzdaten. Ohne Auswahl geht es ohne Download weiter.</string>
+    <string name="onboarding_download_selection_failed">Die Download-Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
+    <string name="board_picker_download_title">%1$s herunterladen?</string>
+    <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
+    <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
 </resources>

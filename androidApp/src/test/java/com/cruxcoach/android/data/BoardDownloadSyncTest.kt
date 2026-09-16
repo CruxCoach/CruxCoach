@@ -7,6 +7,8 @@ import com.cruxcoach.android.fakes.createTestUserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.*
+import kotlinx.coroutines.CompletableDeferred
+import com.cruxcoach.android.notification.BoardSyncWorker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
@@ -45,6 +47,34 @@ class BoardDownloadSyncTest {
             mockk(relaxed = true), mockk(relaxed = true), moon, aurora, quantum,
             mockk(relaxed = true), moonBoardBetaSync = mockk(relaxed = true), boardBetaMediaSync = media,
             scope = backgroundScope)
+    }
+
+    @Test fun `picker download confirmed during an import waits then enqueues the added board`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setBoardDownloadBrands(setOf(BoardBrand.MOONBOARD))
+        val manager = manager(prefs)
+        val finish = CompletableDeferred<Unit>()
+        coEvery { moon.sync(any()) } coAnswers {
+            finish.await()
+            MoonBoardCatalogueSync.Result.AlreadyCurrent
+        }
+        mockkObject(BoardSyncWorker.Companion)
+        every { BoardSyncWorker.enqueueExpedited(any(), any(), any()) } just Runs
+        try {
+            runCurrent()
+            manager.startBackgroundSync()
+            runCurrent()
+            assertTrue(manager.state.value.isSyncing)
+            manager.loadBoardCatalogue(BoardBrand.KILTER)
+            runCurrent()
+            verify(exactly = 0) { BoardSyncWorker.enqueueExpedited(any(), any(), any()) }
+            assertEquals(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), prefs.boardDownloadBrands.first())
+            finish.complete(Unit)
+            runCurrent()
+            verify(exactly = 1) { BoardSyncWorker.enqueueExpedited(any(), true, BoardBrand.KILTER) }
+        } finally {
+            unmockkObject(BoardSyncWorker.Companion)
+        }
     }
 
     @Test fun `Kilter only excludes other catalogues and previously downloaded media`() = runTest {

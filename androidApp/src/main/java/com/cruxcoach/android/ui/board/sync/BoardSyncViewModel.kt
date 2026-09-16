@@ -89,6 +89,18 @@ class BoardSyncViewModel @Inject constructor(
         return userPreferences.boardDownloadBrands.first()
     }
 
+    /** Persist consent before enqueueing; the application owns the download lifetime. */
+    suspend fun confirmOnboardingDownloads(brands: Set<BoardBrand>) {
+        val added = brands - userPreferences.boardDownloadBrands.first()
+        userPreferences.setBoardDownloadBrands(brands)
+        if (brands.isEmpty()) return
+        if (state.value.isSyncing || state.value.alreadyImported) {
+            if (added.isNotEmpty()) syncManager.startSelectedSyncAfterCurrent()
+        } else {
+            syncManager.startInitialSyncIfNeeded()
+        }
+    }
+
     fun saveDownloadSelection(brands: Set<BoardBrand>, startInitial: Boolean = false) {
         viewModelScope.launch {
             userPreferences.setBoardDownloadBrands(brands)

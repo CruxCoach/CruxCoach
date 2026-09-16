@@ -543,6 +543,7 @@ private fun CompactDatabasePreparation(
                         stringResource(
                             when {
                                 state.isSyncing -> R.string.onboarding_offline_status_loading
+                                selectedBrands.isEmpty() -> R.string.board_download_selection_empty
                                 state.alreadyImported -> R.string.onboarding_offline_status_ready
                                 state.waitingForUnmeteredNetwork || !state.networkAvailable ->
                                     R.string.board_sync_compact_waiting_wifi

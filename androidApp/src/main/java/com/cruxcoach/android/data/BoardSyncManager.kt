@@ -826,6 +826,17 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
+    /** A second onboarding confirmation may add boards after the first run
+     * snapshotted its selection. Keep this request alive outside the screen. */
+    fun startSelectedSyncAfterCurrent() {
+        scope.safeLaunch(TAG) {
+            _state.first { !it.isSyncing }
+            if (userPreferences.boardDownloadBrands.first().isNotEmpty()) {
+                startApiSync(queueWhenOffline = true)
+            }
+        }
+    }
+
     fun startApiSync(bypassWifi: Boolean = false, queueWhenOffline: Boolean = false) {
         Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
@@ -1400,11 +1411,15 @@ class BoardSyncManager(
      * Reports into the per-board map so the row shows the same step checklist.
      */
     fun loadBoardCatalogue(brand: BoardBrand) {
-        if (!brand.isInteractive || _state.value.isSyncing) return
+        if (!brand.isInteractive) return
         // Carry the exact board through WorkManager so even a long Kilter
         // download survives backgrounding without expanding to other boards.
         scope.safeLaunch(TAG) {
             userPreferences.includeBoardDownload(brand)
+            // A picker confirmation during onboarding must survive the current
+            // catalogue import instead of silently dropping the new request.
+            _state.first { !it.isSyncing }
+            if (brand !in userPreferences.boardDownloadBrands.first()) return@safeLaunch
             BoardSyncWorker.enqueueExpedited(appContext, allowMetered = true, board = brand)
             watchForSilentDeferral()
         }

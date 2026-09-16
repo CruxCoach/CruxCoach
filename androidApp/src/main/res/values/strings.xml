@@ -2883,4 +2883,9 @@
     <string name="board_download_selection_empty">No automatic board downloads. Select boards to download data.</string>
     <string name="board_download_disabled">Downloads for this board are disabled. You can enable them in the board download selection.</string>
     <string name="board_download_not_selected">Excluded from downloads</string>
+    <string name="onboarding_download_selection_description">Choose which board catalogues to download. Continue starts the selected downloads while you finish setup: your active board first, then other catalogues and extra data. Select none to continue without downloading.</string>
+    <string name="onboarding_download_selection_failed">Could not save the download selection. Please try again.</string>
+    <string name="board_picker_download_title">Download %1$s?</string>
+    <string name="board_picker_download_description">This board is not available offline and its downloads are disabled. Download it now and keep it selected for future catalogue and extra-data updates?</string>
+    <string name="board_picker_download_confirm">Download and enable updates</string>
 </resources>

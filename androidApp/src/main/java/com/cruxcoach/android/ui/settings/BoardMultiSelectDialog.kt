@@ -35,7 +35,6 @@ internal fun BoardMultiSelectDialog(
     onDismiss: () -> Unit,
     allowEmpty: Boolean = false,
 ) {
-    val boards = remember { BoardBrand.entries.filter { it.isInteractive } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -44,55 +43,7 @@ internal fun BoardMultiSelectDialog(
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(message, style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .triStateToggleable(
-                            state = when {
-                                selectedBrands.containsAll(boards) -> ToggleableState.On
-                                selectedBrands.isEmpty() -> ToggleableState.Off
-                                else -> ToggleableState.Indeterminate
-                            },
-                            role = Role.Checkbox,
-                            onClick = onToggleSelectAll,
-                        ),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TriStateCheckbox(
-                        state = when {
-                            selectedBrands.containsAll(boards) -> ToggleableState.On
-                            selectedBrands.isEmpty() -> ToggleableState.Off
-                            else -> ToggleableState.Indeterminate
-                        },
-                        onClick = null,
-                        colors = CheckboxDefaults.colors(checkedColor = confirmColor)
-                    )
-                    Text(
-                        stringResource(R.string.settings_data_delete_select_all),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                boards.forEach { brand ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("board_selection_${brand.wireValue}")
-                            .toggleable(
-                                value = brand in selectedBrands,
-                                role = Role.Checkbox,
-                                onValueChange = { onToggleBrand(brand) },
-                            ),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = brand in selectedBrands,
-                            onCheckedChange = null,
-                            colors = CheckboxDefaults.colors(checkedColor = confirmColor)
-                        )
-                        Text(brand.displayName, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
+                BoardMultiSelectRows(selectedBrands, onToggleBrand, onToggleSelectAll, confirmColor)
                 note?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -120,4 +71,66 @@ internal fun BoardMultiSelectDialog(
             }
         }
     )
+}
+
+/** Inline and dialog variants share checkbox semantics and board availability. */
+@Composable
+internal fun BoardMultiSelectRows(
+    selectedBrands: Set<BoardBrand>,
+    onToggleBrand: (BoardBrand) -> Unit,
+    onToggleSelectAll: () -> Unit,
+    confirmColor: Color,
+) {
+    val boards = remember { BoardBrand.entries.filter { it.isInteractive } }
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .triStateToggleable(
+                    state = when {
+                        selectedBrands.containsAll(boards) -> ToggleableState.On
+                        selectedBrands.isEmpty() -> ToggleableState.Off
+                        else -> ToggleableState.Indeterminate
+                    },
+                    role = Role.Checkbox,
+                    onClick = onToggleSelectAll,
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TriStateCheckbox(
+                state = when {
+                    selectedBrands.containsAll(boards) -> ToggleableState.On
+                    selectedBrands.isEmpty() -> ToggleableState.Off
+                    else -> ToggleableState.Indeterminate
+                },
+                onClick = null,
+                colors = CheckboxDefaults.colors(checkedColor = confirmColor)
+            )
+            Text(
+                stringResource(R.string.settings_data_delete_select_all),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        boards.forEach { brand ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("board_selection_${brand.wireValue}")
+                    .toggleable(
+                        value = brand in selectedBrands,
+                        role = Role.Checkbox,
+                        onValueChange = { onToggleBrand(brand) },
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = brand in selectedBrands,
+                    onCheckedChange = null,
+                    colors = CheckboxDefaults.colors(checkedColor = confirmColor)
+                )
+                Text(brand.displayName, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }
