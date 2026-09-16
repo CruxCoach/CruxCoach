@@ -130,11 +130,6 @@ fun BoardSyncInlineCard(
             },
             onDismiss = { selectionDraft = null },
             allowEmpty = !startAfterSelection,
-            shortcut = {
-                TextButton(onClick = { selectionDraft = setOf(activeBrand) }) {
-                    Text(stringResource(R.string.board_download_only_active, activeBrand.displayName))
-                }
-            },
         )
     }
 

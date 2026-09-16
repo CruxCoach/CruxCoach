@@ -8,7 +8,7 @@ not a published release or completed physical-device validation.
 Download selection is a device-wide preference, independent of the active board,
 identity, sync interval and local catalogue contents. The download card exposes a
 board count and a shared checkbox dialog, using the same control as per-board
-deletion. The dialog supports all/none, individual boards, and “only [active board]”.
+deletion. The dialog supports all/none and individual boards.
 Existing installations without the preference retain all supported boards.
 Onboarding reviews the selection before its first bulk download, initially
 suggesting the active board. Persisted choices take precedence on subsequent visits.

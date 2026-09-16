@@ -34,7 +34,6 @@ internal fun BoardMultiSelectDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     allowEmpty: Boolean = false,
-    shortcut: (@Composable () -> Unit)? = null,
 ) {
     val boards = remember { BoardBrand.entries.filter { it.isInteractive } }
     AlertDialog(
@@ -74,7 +73,6 @@ internal fun BoardMultiSelectDialog(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                shortcut?.invoke()
                 boards.forEach { brand ->
                     Row(
                         modifier = Modifier

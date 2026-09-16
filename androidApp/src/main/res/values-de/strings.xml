@@ -2878,7 +2878,6 @@
     <string name="board_download_selection_title">Boards zum Herunterladen</string>
     <string name="board_download_selection_description">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Abwählen behält bereits geladene Daten und dein Logbuch.</string>
     <string name="board_download_selection_local_share">Die direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank. Diese Auswahl gilt für Online-Downloads.</string>
-    <string name="board_download_only_active">Nur %1$s</string>
     <string name="board_download_selection_summary">Board-Auswahl: %1$d ausgewählt</string>
     <string name="board_download_selection_empty">Keine automatischen Board-Downloads. Wähle Boards aus, um Daten herunterzuladen.</string>
     <string name="board_download_disabled">Downloads für dieses Board sind abgewählt. Du kannst sie in der Board-Auswahl für Downloads aktivieren.</string>

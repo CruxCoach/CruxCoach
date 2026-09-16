@@ -2879,7 +2879,6 @@
     <string name="board_download_selection_title">Boards to download</string>
     <string name="board_download_selection_description">Only selected boards are downloaded online and updated automatically. Deselecting keeps downloaded data and your logbook.</string>
     <string name="board_download_selection_local_share">A direct transfer from another device includes its entire shared board database. This selection applies to online downloads.</string>
-    <string name="board_download_only_active">Only %1$s</string>
     <string name="board_download_selection_summary">Board selection: %1$d selected</string>
     <string name="board_download_selection_empty">No automatic board downloads. Select boards to download data.</string>
     <string name="board_download_disabled">Downloads for this board are disabled. You can enable them in the board download selection.</string>
