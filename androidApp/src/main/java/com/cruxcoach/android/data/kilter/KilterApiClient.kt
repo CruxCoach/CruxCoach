@@ -361,6 +361,7 @@ class KilterApiClient @Inject constructor(
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
+        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
         // `kilter_error` column / Android backup blob). 5xx renders can
@@ -875,7 +876,17 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            val payload = json.encodeToString(logs)
+            // Catalogue IDs use the legacy 32-hex spelling. Kilter's log API
+            // rejects that spelling with HTTP 500; it requires UUID hyphens.
+            // Normalize only the wire copy, preserving local keys and log UUIDs.
+            val payload = json.encodeToString(logs.map { log ->
+                val id = log.climbUuid
+                if (COMPACT_CLIMB_UUID.matches(id)) {
+                    val hex = id.lowercase()
+                    log.copy(climbUuid = "${hex.substring(0, 8)}-${hex.substring(8, 12)}-" +
+                        "${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}")
+                } else log
+            })
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()

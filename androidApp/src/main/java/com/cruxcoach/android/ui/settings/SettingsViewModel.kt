@@ -1040,13 +1040,14 @@ class SettingsViewModel @Inject constructor(
                     lastSync = lastSync,
                     resultMessage = result.fold(
                         onSuccess = { r ->
-                            r.uploadStatus?.let { upload ->
-                                context.getString(R.string.kilter_sync_download_count, r.downloaded) + "\n" + upload.localized(context)
+                            r.uploadStatus?.let {
+                                // Upload results already have their own persistent card.
+                                context.getString(R.string.kilter_sync_download_count, r.downloaded)
                             } ?: context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
                         },
                         onFailure = { localizeKilterImportError(context, it) }
                     ),
-                    resultIsError = result.isFailure || result.getOrNull()?.uploadFailed == true,
+                    resultIsError = result.isFailure,
                 )) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -1130,13 +1131,14 @@ class SettingsViewModel @Inject constructor(
 
     fun retryKilterUpload(trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL) {
         if (_state.value.kilterAccount.isSyncing) return
-        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true)) }
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+            isSyncing = true, resultMessage = null, resultIsError = false,
+        )) }
         viewModelScope.launch {
             try {
-                val result = kilterSyncEngine.uploadPendingLogs(trigger)
-                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                    resultMessage = result.localized(context), resultIsError = result.failed,
-                )) }
+                // The observed upload status owns the result and retry/report actions.
+                // Do not repeat it in the generic import/sync result card.
+                kilterSyncEngine.uploadPendingLogs(trigger)
             } finally {
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = false)) }
             }

@@ -138,3 +138,60 @@ English/German resource XML and duplicate resource names were checked;
 `git diff --check` passed. No full suite, Android lint or APK build was run.
 ADB still listed no devices on 2026-09-17, so real-device UI/DI validation
 and the official Kilter app end-to-end check remain outstanding.
+
+## Live root cause and wire fix (2026-09-17)
+
+A feature APK at `844ff2e05` was published as development build 1000013 and
+installed on the Android API 35 test device. With the owner's authorized test
+account connected, a local send for **Floats Your Boat, 40 degrees** was created
+while upload was disabled, then labelled `CruxCoach upload test 2026-09-17 - NOT
+a real ascent`. Enabling upload immediately attempted transmission, but the API
+returned HTTP 500. The new diagnostic card correctly showed 0 uploaded / 1
+pending. An independent GET of the account's logbook did not show the new send.
+
+The local catalogue stores this climb UUID as 32 hexadecimal characters without
+hyphens. `uploadPendingLogs` copies that exact local key into `KilterLog.climbUuid`,
+and `uploadLogs` previously serialized it unchanged. The REST endpoint requires
+the hyphenated UUID spelling.
+
+A controlled comparison used one additional diagnostic log UUID and identical
+account, wall, gym, layout, angle, attempts and timestamp. Only `climbUuid` changed:
+
+| Wire spelling | POST /api/logs/bulk | GET /api/logs by exact log UUID |
+| --- | --- | --- |
+| Compact 32-hex catalogue ID | HTTP 500, empty response body | Absent |
+| Same UUID, lowercase 8-4-4-4-12 | HTTP 200 | Present |
+
+The additional diagnostic record was deleted after the comparison (HTTP 200);
+read-back confirmed it absent. The original phone-created pending test send was
+preserved. Credentials were consumed by scripts, not displayed, and raw payloads,
+tokens and authenticated responses were not retained as diagnostic artifacts.
+The API did not return a useful error body, so attaching raw server errors to a
+bug report would not have explained this failure.
+
+Fix: convert compact climb UUIDs in a copy immediately before upload
+serialization. Keep local catalogue keys, local log references and `logUuid`
+unchanged. This also covers queued older sends and attempts on their next retry;
+no data migration or new log UUID is necessary. Already-hyphenated IDs remain
+unchanged. A wire-level regression test covers lower/uppercase compact IDs,
+already-hyphenated IDs, unchanged log identity, and send/attempt properties.
+
+Historical research reported some HTTP-500 responses despite successful writes.
+That behavior did not occur in this controlled comparison. Do not blanket-treat
+500 as success: the invalid-UUID request really did not produce an observable log.
+
+The device screenshot also reproduced duplicate error cards: a persistent upload
+status card followed by an identical generic result card. Upload-only actions now
+use the persistent card exclusively; full sync's generic result only describes
+the download, keeping the upload error and retry/report controls in one place.
+
+A separate first-run issue was observed: concurrent catalogue imports delayed
+Kilter's optional climb backfill and produced SQLITE_BUSY. This is distinct from
+the HTTP-500 write failure and is not changed by the UUID fix.
+
+Validation of this follow-up: 16 focused tests passed (2 HTTP serialization/error
+handling, 13 upload-status/queue tests, 1 German status-card Compose test).
+`git diff --check` passed. The wire-format fix and duplicate-message change are
+currently source changes in this worktree; they have not yet been republished or
+installed on the phone. The successful canonical-ID comparison above used a
+direct controlled REST probe, not an APK containing the new fix.
