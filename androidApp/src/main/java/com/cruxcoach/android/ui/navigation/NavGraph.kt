@@ -882,6 +882,7 @@ fun CruxCoachNavHost(
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                     onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                     onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
+                    onReportKilterUpload = { navController.navigate(Routes.bugReport(context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title), "")) },
                     onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
                     onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                     onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },

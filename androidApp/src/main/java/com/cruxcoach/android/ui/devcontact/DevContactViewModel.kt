@@ -68,6 +68,7 @@ class DevContactViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager,
     private val deliveryCoordinator: MessageDeliveryCoordinator,
+    private val uploadDiagnostics: com.cruxcoach.android.data.kilter.KilterUploadDiagnostics,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -319,7 +320,9 @@ class DevContactViewModel @Inject constructor(
         sendMessage(content = message, type = MessageType.CHAT, subject = null)
     }
 
-    fun sendBugReport(title: String, description: String, steps: String) {
+    fun uploadDiagnosticSnapshot(): String = uploadDiagnostics.snapshot()
+
+    fun sendBugReport(title: String, description: String, steps: String, diagnostics: String? = null) {
         val content = buildString {
             append(title)
             append("\n\nBeschreibung:\n")
@@ -330,6 +333,11 @@ class DevContactViewModel @Inject constructor(
             }
             append("\n\n---\n")
             append(deviceInfoLine())
+            append("\nApp ${com.cruxcoach.android.BuildConfig.VERSION_NAME} (${com.cruxcoach.android.BuildConfig.VERSION_CODE})")
+            if (!diagnostics.isNullOrBlank()) {
+                append("\n\nKilter upload diagnostics:\n")
+                append(diagnostics)
+            }
         }
         sendMessage(content = content, type = MessageType.BUG, subject = title)
     }

@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.kilter.KilterUploadStatus
+import com.cruxcoach.android.data.kilter.localized
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +28,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 data class KilterAccountState(
+    val uploadStatus: KilterUploadStatus? = null,
     val isConnected: Boolean = false,
     val username: String = "",
     val lastSync: String? = null,
@@ -85,6 +90,8 @@ internal fun KilterAccountSection(
     onDismissDisconnectConfirm: () -> Unit,
     onDismissResult: () -> Unit,
     onRetryPublishQueueNow: () -> Unit,
+    onRetryUpload: () -> Unit = {},
+    onReportUpload: () -> Unit = {},
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -120,6 +127,32 @@ internal fun KilterAccountSection(
         // Greyed-out climb-publish toggle: discoverable but inert until
         // the user connects. Tapping the row jumps to the login flow.
         DisconnectedClimbPublishHint(onConnect = onShowLogin)
+    }
+
+    state.uploadStatus?.takeIf { state.isConnected }?.let { upload ->
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = if (upload.failed)
+                MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.kilter_upload_status_title), fontWeight = FontWeight.Bold)
+                Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(upload.timestampMs)),
+                    style = MaterialTheme.typography.bodySmall)
+                SelectionContainer { Text(upload.localized(LocalContext.current)) }
+                if (upload.pending > 0 || upload.failed) {
+                    if (state.sessionExpired) {
+                        TextButton(onClick = onShowLogin) { Text(stringResource(R.string.kilter_login_button)) }
+                    } else {
+                        TextButton(onClick = onRetryUpload, enabled = !state.isSyncing && state.pushEnabled) {
+                            if (state.isSyncing) CircularProgressIndicator(Modifier.size(16.dp))
+                            Text(stringResource(R.string.kilter_upload_retry))
+                        }
+                    }
+                    TextButton(onClick = onReportUpload) { Text(stringResource(R.string.devcontact_report_bug)) }
+                }
+            }
+        }
     }
 
     // Result message (success/error)

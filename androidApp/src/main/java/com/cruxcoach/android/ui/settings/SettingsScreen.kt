@@ -46,6 +46,7 @@ fun SettingsScreen(
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
+    onReportKilterUpload: () -> Unit = {},
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
@@ -306,6 +307,8 @@ fun SettingsScreen(
                         onDismissDisconnectConfirm = { viewModel.dismissKilterDisconnectConfirm() },
                         onDismissResult = { viewModel.dismissKilterResult() },
                         onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
+                        onRetryUpload = { viewModel.retryKilterUpload() },
+                        onReportUpload = onReportKilterUpload,
                     )
                 }
                 SettingsSectionCard {

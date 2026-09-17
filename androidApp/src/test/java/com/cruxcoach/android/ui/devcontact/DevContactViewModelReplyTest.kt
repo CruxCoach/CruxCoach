@@ -101,6 +101,7 @@ class DevContactViewModelReplyTest {
         // it must never delete the rows these tests seed.
         userPreferences.setNostrRecoveryVersion(Int.MAX_VALUE)
         return DevContactViewModel(
+            uploadDiagnostics = mockk(relaxed = true),
             messageSender = messageSender,
             messageRepository = repo,
             pushCoordinator = NostrPushCoordinator(
@@ -250,4 +251,37 @@ class DevContactViewModelReplyTest {
         const val REPLY_SELF_WRAP = "reply-self-wrap"
         const val REPLY_RECIPIENT_WRAP = "reply-recipient-wrap"
     }
+    @Test fun `bug report excludes optional diagnostics unless supplied`() = runTest {
+        val vm = viewModel()
+        vm.sendBugReport("Upload", "Not visible", "")
+        vm.state.test(timeout = 10.seconds) {
+            while (awaitItem().sendSuccess != true) { }
+            cancelAndIgnoreRemainingEvents()
+        }
+        vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        coVerify {
+            messageSender.buildMessage(
+                match { it.contains("App ") && !it.contains("Kilter upload diagnostics:") },
+                MessageType.BUG, any(), "Upload", any(), any(),
+            )
+        }
+    }
+
+    @Test fun `bug report sends exactly the diagnostic preview selected by user`() = runTest {
+        val vm = viewModel()
+        val preview = "operation=logs.bulk http=422 pending=1"
+        vm.sendBugReport("Upload", "Not visible", "", diagnostics = preview)
+        vm.state.test(timeout = 10.seconds) {
+            while (awaitItem().sendSuccess != true) { }
+            cancelAndIgnoreRemainingEvents()
+        }
+        vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        coVerify {
+            messageSender.buildMessage(
+                match { it.endsWith("Kilter upload diagnostics:\n$preview") },
+                MessageType.BUG, any(), "Upload", any(), any(),
+            )
+        }
+    }
+
 }

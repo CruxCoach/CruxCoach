@@ -1083,7 +1083,7 @@
     <string name="kilter_last_sync">Last sync: %s</string>
     <string name="kilter_sync_now">Sync now</string>
     <string name="kilter_push_label">Upload to Kilter</string>
-    <string name="kilter_push_desc">Transfers sends and attempts from CruxCoach to Kilter, including older unsynced entries. Downloads still work with uploads off. Publishing your own climbs is separate.</string>
+    <string name="kilter_push_desc">Enabling starts an upload of your sends and attempts, including older pending entries. New entries upload automatically while Kilter sync is connected. Downloads still work with uploads off. Publishing your own climbs is separate.</string>
     <string name="kilter_climb_publish_label">Publish own climbs to Kilter</string>
     <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to publish your own climbs there too.</string>
     <string name="kilter_publish_queue_title">Publish queue</string>
@@ -2871,4 +2871,19 @@
     <string name="map_stats_brand_distribution">Board brands</string>
     <string name="map_stats_unknown_layout">Unknown layout</string>
     <string name="map_stats_scope">All recorded boards, regardless of map filters. A location can contain several boards.</string>
+    <string name="kilter_upload_counts">Uploaded: %1$d · Still pending: %2$d</string>
+    <string name="kilter_upload_status_title">Last logbook upload attempt</string>
+    <string name="kilter_upload_done">No queued entries remain. Sends and attempts belong in your Kilter logbook; publishing your own climbs is separate.</string>
+    <string name="kilter_upload_pending">Some entries changed during upload. Retry to transfer their latest changes.</string>
+    <string name="kilter_upload_disabled">Uploads are disabled. Enable uploads to transfer pending entries.</string>
+    <string name="kilter_upload_auth">Please sign in to Kilter again. Pending entries remain on this device.</string>
+    <string name="kilter_upload_wall">The Kilter wall configuration could not be loaded. Check your Kilter account and retry.</string>
+    <string name="kilter_upload_network">Connection failed. Check your internet connection and retry.</string>
+    <string name="kilter_upload_http">Kilter rejected the upload. Pending entries remain on this device. Retry or report the problem.</string>
+    <string name="kilter_upload_internal">Upload failed. Pending entries remain on this device. Retry or report the problem.</string>
+    <string name="kilter_upload_retry">Retry upload</string>
+    <string name="kilter_upload_report_title">Kilter logbook upload</string>
+    <string name="kilter_diagnostics_attach">Attach Kilter upload diagnostics</string>
+    <string name="kilter_diagnostics_explanation">Optional: sends the technical preview below with this report. It contains status codes and counts, without account details, tokens or logbook contents.</string>
+    <string name="kilter_sync_download_count">Imported: %1$d</string>
 </resources>

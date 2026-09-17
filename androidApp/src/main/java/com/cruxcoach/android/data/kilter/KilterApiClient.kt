@@ -883,18 +883,17 @@ class KilterApiClient @Inject constructor(
                 .addHeader("Authorization", "Bearer $token")
                 .post(requestBody)
                 .build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
-                )
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    // Do not retain response bodies: servers can echo private log data.
+                    return@withContext Result.failure(KilterUploadException(response.code))
+                }
+                Result.success(Unit)
             }
-            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "uploadLogs failed", e)
+            Log.w(TAG, "uploadLogs failed (${e.javaClass.simpleName})")
             Result.failure(e)
         }
     }

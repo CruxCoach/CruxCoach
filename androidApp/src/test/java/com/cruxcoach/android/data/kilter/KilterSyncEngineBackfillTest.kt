@@ -152,7 +152,7 @@ class KilterSyncEngineBackfillTest {
             ascents.add(RecordedAscent(arg<String>(1), arg<String>(15), arg<String>(17)))
         }
 
-        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs)
+        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs, mockk(relaxed = true))
     }
 
     private fun loggedClimb(uuid: String) = KilterLoggedClimb(

@@ -6,6 +6,9 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.util.DateTimeUtil
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +74,7 @@ data class KilterSyncReport(
      *  failed — the unsynced logs stay queued for the next sync. Surfaced
      *  so a half-failed sync doesn't render as a clean success. */
     val uploadFailed: Boolean = false,
+    val uploadStatus: KilterUploadStatus? = null,
 )
 
 @Singleton
@@ -80,7 +84,8 @@ class KilterSyncEngine @Inject constructor(
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
     private val secureDb: SecureDatabase,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val uploadDiagnostics: KilterUploadDiagnostics,
 ) {
     private companion object {
         const val TAG = "KilterSyncEngine"
@@ -123,6 +128,10 @@ class KilterSyncEngine @Inject constructor(
             }
         }
     }
+
+    private val uploadMutex = Mutex()
+    val uploadStatus get() = uploadDiagnostics.latest
+    suspend fun clearUploadDiagnostics() = uploadMutex.withLock { uploadDiagnostics.clear() }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -191,14 +200,15 @@ class KilterSyncEngine @Inject constructor(
         scope.launch {
             if (!userPreferences.kilterSyncEnabled.first()) return@launch
             if (!userPreferences.kilterPushEnabled.first()) return@launch
-            if (!tokenStore.hasCredentials()) return@launch
             try {
-                val uploaded = uploadUnsyncedLogs() ?: 0
+                val uploaded = uploadPendingLogs(KilterUploadTrigger.NEW_LOG).uploaded
                 if (uploaded > 0) {
                     Log.d(TAG, "Auto-uploaded $uploaded ascents to Kilter")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.w(TAG, "Auto-upload to Kilter failed", e)
+                Log.w(TAG, "Auto-upload to Kilter failed (${e.javaClass.simpleName})")
             }
         }
     }
@@ -207,13 +217,19 @@ class KilterSyncEngine @Inject constructor(
      * Sync on app start if persistent sync is enabled.
      * Downloads new Kilter logs, uploads unsynced local logs (if push enabled),
      * and proactively refreshes the access token to keep the session alive.
-     * Silent — errors are logged but not surfaced to the user.
+     * Upload outcomes are retained for the Kilter settings and optional bug diagnostics.
      */
     fun syncOnAppStartIfEnabled() {
         scope.launch {
             if (!userPreferences.kilterSyncEnabled.first()) return@launch
             if (!tokenStore.hasCredentials()) return@launch
             try {
+                val upload = if (userPreferences.kilterPushEnabled.first()) {
+                    uploadPendingLogs(KilterUploadTrigger.APP_START)
+                } else null
+                val uploaded = upload?.uploaded ?: 0
+
+                if (upload?.reason == KilterUploadReason.AUTHENTICATION) return@launch
                 // Proactive token refresh — keeps the offline session alive.
                 // The offline_access refresh token lasts ~30 days and renews
                 // on each use, so this effectively prevents expiry.
@@ -246,16 +262,13 @@ class KilterSyncEngine @Inject constructor(
                 circuitImporter.importCircuits()
                 val imported = insertLogs(logs).totalNew
 
-                // Upload unsynced local logs (catches offline-logged ascents)
-                val uploaded = if (userPreferences.kilterPushEnabled.first()) {
-                    uploadUnsyncedLogs() ?: 0
-                } else 0
-
-                if (imported > 0 || uploaded > 0) {
+                if ((imported > 0 || uploaded > 0) && upload?.failed != true && (upload == null || upload.pending == 0)) {
                     val timestamp = DateTimeUtil.nowIso()
                     userPreferences.setKilterLastSync(timestamp)
                     Log.i(TAG, "App-start sync: imported=$imported, uploaded=$uploaded")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "App-start Kilter sync failed", e)
             }
@@ -366,8 +379,6 @@ class KilterSyncEngine @Inject constructor(
             val logsResult = apiClient.fetchLogs()
             val logs = logsResult.getOrThrow()
 
-            // Ensure wall context is available before the upload below.
-            if (pushEnabled) resolveAndStoreWallContext(logs)
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             climbBackfiller.backfillLoggedClimbs()
@@ -375,16 +386,17 @@ class KilterSyncEngine @Inject constructor(
             circuitImporter.importCircuits()
             val downloaded = insertLogs(logs).totalNew
 
-            // Upload unsynced local data (only if push is enabled). null =
-            // the upload call itself failed → report it in the result so a
-            // half-failed sync doesn't render as a clean success.
-            val uploaded = if (pushEnabled) uploadUnsyncedLogs() else 0
+            // Preserve partial progress and blocked/failed outcomes for the UI.
+            val upload = if (pushEnabled) uploadPendingLogs(prefetchedLogs = logs) else null
+            val uploaded = upload?.uploaded ?: 0
 
             val timestamp = DateTimeUtil.nowIso()
-            userPreferences.setKilterLastSync(timestamp)
+            if (upload?.failed != true && (upload == null || upload.pending == 0)) userPreferences.setKilterLastSync(timestamp)
 
             Log.i(TAG, "Sync: downloaded=$downloaded, uploaded=$uploaded (push=$pushEnabled)")
-            Result.success(KilterSyncReport(downloaded, uploaded ?: 0, uploadFailed = uploaded == null))
+            Result.success(KilterSyncReport(downloaded, uploaded, uploadFailed = upload?.failed == true, uploadStatus = upload))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             // Pre-fix this pattern-matched on `e.message?.contains("Nicht
@@ -496,114 +508,126 @@ class KilterSyncEngine @Inject constructor(
         return LogInsertCounts(newAscents, newBids, duplicates)
     }
 
-    /**
-     * Upload local ascents/bids that haven't been synced to Kilter yet.
-     * Returns the total count of uploaded records; 0 when there is nothing
-     * to upload (or no wall context); null when the Kilter upload call
-     * itself failed — those records stay unsynced and retry next sync.
-     */
-    private suspend fun uploadUnsyncedLogs(): Int? {
-        val userUuid = tokenStore.getUserUuid() ?: return 0
-
-        // Wall context is required for Kilter API — try to resolve if missing
-        if (!tokenStore.hasWallContext()) {
-            resolveAndStoreWallContext()
-        }
-        val gymUuid = tokenStore.getGymUuid() ?: run {
-            Log.w(TAG, "No wall context — skipping upload")
-            return 0
-        }
-        val wallUuid = tokenStore.getWallUuid() ?: return 0
-        val layoutUuid = tokenStore.getProductLayoutUuid() ?: return 0
-
-        val unsyncedAscents = personalBoardRepo.getUnsyncedAscents()
-        val unsyncedBids = personalBoardRepo.getUnsyncedBids()
-        Log.d(TAG, "Unsynced: ${unsyncedAscents.size} ascents, ${unsyncedBids.size} bids")
-
-        if (unsyncedAscents.isEmpty() && unsyncedBids.isEmpty()) return 0
-
-        val pending = ArrayList<PendingUpload>(unsyncedAscents.size + unsyncedBids.size)
-
-        for (ascent in unsyncedAscents) {
-            pending.add(PendingUpload(
-                log = KilterLog(
-                    logUuid = ascent.uuid,
-                    userUuid = userUuid,
-                    climbUuid = ascent.climbUuid,
-                    gymUuid = ascent.gymUuid ?: gymUuid,
-                    wallUuid = ascent.wallUuid ?: wallUuid,
-                    productLayoutUuid = ascent.productLayoutUuid ?: layoutUuid,
-                    angle = ascent.angle.toInt(),
-                    flashed = ascent.bidCount <= 1L,
-                    topped = true,
-                    attempts = ascent.bidCount.toInt().coerceAtLeast(1),
-                    createdAt = ensureUtcSuffix(ascent.climbedAt),
-                    comment = ascent.comment
-                ),
-                uuid = ascent.uuid,
-                rowVersion = ascent.rowVersion,
-                isAscent = true,
-            ))
-        }
-
-        for (bid in unsyncedBids) {
-            pending.add(PendingUpload(
-                log = KilterLog(
-                    logUuid = bid.uuid,
-                    userUuid = userUuid,
-                    climbUuid = bid.climbUuid,
-                    gymUuid = bid.gymUuid ?: gymUuid,
-                    wallUuid = bid.wallUuid ?: wallUuid,
-                    productLayoutUuid = bid.productLayoutUuid ?: layoutUuid,
-                    angle = bid.angle.toInt(),
-                    flashed = false,
-                    topped = false,
-                    attempts = bid.bidCount.toInt().coerceAtLeast(1),
-                    createdAt = ensureUtcSuffix(bid.climbedAt),
-                    comment = bid.comment
-                ),
-                uuid = bid.uuid,
-                rowVersion = bid.rowVersion,
-                isAscent = false,
-            ))
-        }
-
-        // Upload in batches so one oversized POST can't fail the whole
-        // backlog. Each batch that succeeds is marked synced independently;
-        // on the first batch failure we stop and leave the rest queued for
-        // the next sync. Return null (hard failure) only when NOTHING got
-        // through — partial progress returns the count so the caller doesn't
-        // render a clean success while the remainder is still pending.
-        var uploaded = 0
-        var anyFailed = false
-        for (batch in pending.chunked(UPLOAD_CHUNK)) {
-            val result = apiClient.uploadLogs(batch.map { it.log })
-            if (result.isFailure) {
-                Log.w(TAG, "Upload batch failed: ${result.exceptionOrNull()?.message}")
-                anyFailed = true
-                break
+    /** Serialized across manual and automatic triggers; only successful batches are stamped. */
+    suspend fun uploadPendingLogs(
+        trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL,
+        prefetchedLogs: List<KilterLog>? = null,
+    ): KilterUploadStatus =
+        withContext(Dispatchers.IO) { uploadMutex.withLock {
+            val start = System.currentTimeMillis()
+            var uploaded = 0
+            var attempted = 0
+            var pendingCount = 0
+            fun finish(reason: KilterUploadReason = KilterUploadReason.NONE, http: Int? = null): KilterUploadStatus {
+                val status = KilterUploadStatus(uploaded, pendingCount, attempted, reason, http,
+                    durationMs = System.currentTimeMillis() - start, trigger = trigger)
+                uploadDiagnostics.record(status)
+                if (reason == KilterUploadReason.AUTHENTICATION) _sessionExpired.value = true
+                return status
             }
-            // Optimistic mark — stamp synced=1 only when row_version still
-            // matches the snapshot captured at read time. Any user edit
-            // during the HTTP upload window bumps row_version and the stamp
-            // is skipped, so the next sync re-uploads the newer data
-            // instead of silently losing it to a stale write.
-            var skipped = 0
-            personalBoardRepo.runInTransaction {
-                for (item in batch) {
-                    val applied = if (item.isAscent) {
-                        personalBoardRepo.markAscentSyncedIfUnchanged(item.uuid, item.rowVersion)
-                    } else {
-                        personalBoardRepo.markBidSyncedIfUnchanged(item.uuid, item.rowVersion)
+            try {
+                val unsyncedAscents = personalBoardRepo.getUnsyncedAscents()
+                val unsyncedBids = personalBoardRepo.getUnsyncedBids()
+                pendingCount = unsyncedAscents.size + unsyncedBids.size
+                if (!userPreferences.kilterPushEnabled.first()) return@withLock finish(KilterUploadReason.DISABLED)
+                if (pendingCount == 0) return@withLock finish()
+                val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+                    ?: return@withLock finish(KilterUploadReason.AUTHENTICATION)
+                if (!tokenStore.hasCredentials()) return@withLock finish(KilterUploadReason.AUTHENTICATION)
+                if (!tokenStore.hasWallContext()) resolveAndStoreWallContext(prefetchedLogs)
+                val gymUuid = tokenStore.getGymUuid()?.takeIf { it.isNotBlank() }
+                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
+                val wallUuid = tokenStore.getWallUuid()?.takeIf { it.isNotBlank() }
+                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
+                val layoutUuid = tokenStore.getProductLayoutUuid()?.takeIf { it.isNotBlank() }
+                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
+
+                val pending = ArrayList<PendingUpload>(unsyncedAscents.size + unsyncedBids.size)
+
+                for (ascent in unsyncedAscents) {
+                    pending.add(PendingUpload(
+                        log = KilterLog(
+                            logUuid = ascent.uuid,
+                            userUuid = userUuid,
+                            climbUuid = ascent.climbUuid,
+                            gymUuid = ascent.gymUuid ?: gymUuid,
+                            wallUuid = ascent.wallUuid ?: wallUuid,
+                            productLayoutUuid = ascent.productLayoutUuid ?: layoutUuid,
+                            angle = ascent.angle.toInt(),
+                            flashed = ascent.bidCount <= 1L,
+                            topped = true,
+                            attempts = ascent.bidCount.toInt().coerceAtLeast(1),
+                            createdAt = ensureUtcSuffix(ascent.climbedAt),
+                            comment = ascent.comment
+                        ),
+                        uuid = ascent.uuid,
+                        rowVersion = ascent.rowVersion,
+                        isAscent = true,
+                    ))
+                }
+
+                for (bid in unsyncedBids) {
+                    pending.add(PendingUpload(
+                        log = KilterLog(
+                            logUuid = bid.uuid,
+                            userUuid = userUuid,
+                            climbUuid = bid.climbUuid,
+                            gymUuid = bid.gymUuid ?: gymUuid,
+                            wallUuid = bid.wallUuid ?: wallUuid,
+                            productLayoutUuid = bid.productLayoutUuid ?: layoutUuid,
+                            angle = bid.angle.toInt(),
+                            flashed = false,
+                            topped = false,
+                            attempts = bid.bidCount.toInt().coerceAtLeast(1),
+                            createdAt = ensureUtcSuffix(bid.climbedAt),
+                            comment = bid.comment
+                        ),
+                        uuid = bid.uuid,
+                        rowVersion = bid.rowVersion,
+                        isAscent = false,
+                    ))
+                }
+
+                for (batch in pending.chunked(UPLOAD_CHUNK)) {
+                    // An opt-out while waiting/in flight takes effect before the next request.
+                    if (!userPreferences.kilterPushEnabled.first()) return@withLock finish(KilterUploadReason.DISABLED)
+                    attempted += batch.size
+                    apiClient.uploadLogs(batch.map { it.log }).getOrThrow()
+                    // Optimistic mark — stamp synced=1 only when row_version still
+                    // matches the snapshot captured at read time. Any user edit
+                    // during the HTTP upload window bumps row_version and the stamp
+                    // is skipped, so the next sync re-uploads the newer data
+                    // instead of silently losing it to a stale write.
+                    var skipped = 0
+                    personalBoardRepo.runInTransaction {
+                        for (item in batch) {
+                            val applied = if (item.isAscent) {
+                                personalBoardRepo.markAscentSyncedIfUnchanged(item.uuid, item.rowVersion)
+                            } else {
+                                personalBoardRepo.markBidSyncedIfUnchanged(item.uuid, item.rowVersion)
+                            }
+                            if (!applied) skipped++
+                        }
                     }
-                    if (!applied) skipped++
+                    if (skipped > 0) {
+                        Log.i(TAG, "Sync: $skipped log(s) edited during upload — will re-upload next sync")
+                    }
+                    uploaded += batch.size
+                    pendingCount -= batch.size - skipped
+                }
+                finish()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                when (e) {
+                    is KilterUploadException -> finish(
+                        if (e.status == 401 || e.status == 403) KilterUploadReason.AUTHENTICATION else KilterUploadReason.HTTP,
+                        e.status)
+                    is KilterApiException -> finish(
+                        if (e.reason == KilterAuthResult.Error.Reason.NotAuthenticated) KilterUploadReason.AUTHENTICATION else KilterUploadReason.INTERNAL)
+                    is java.io.IOException -> finish(KilterUploadReason.NETWORK)
+                    else -> finish(KilterUploadReason.INTERNAL)
                 }
             }
-            if (skipped > 0) {
-                Log.i(TAG, "Sync: $skipped log(s) edited during upload — will re-upload next sync")
-            }
-            uploaded += batch.size
-        }
-        return if (anyFailed && uploaded == 0) null else uploaded
-    }
+        } }
 }

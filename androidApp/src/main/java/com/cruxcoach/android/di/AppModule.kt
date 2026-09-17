@@ -805,9 +805,10 @@ object AppModule {
         boardRepository: BoardRepository,
         personalBoardRepo: PersonalBoardRepository,
         secureDatabase: SecureDatabase,
-        userPreferences: UserPreferences
+        userPreferences: UserPreferences,
+        uploadDiagnostics: com.cruxcoach.android.data.kilter.KilterUploadDiagnostics
     ): KilterSyncEngine {
-        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences)
+        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences, uploadDiagnostics)
     }
 
     @Provides
