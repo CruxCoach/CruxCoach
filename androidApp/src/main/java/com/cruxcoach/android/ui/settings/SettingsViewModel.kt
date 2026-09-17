@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.kilter.localized
+import com.cruxcoach.android.data.kilter.KilterUploadTrigger
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -311,6 +313,11 @@ class SettingsViewModel @Inject constructor(
             }
             _state.update { initialState }
 
+            launch {
+                kilterSyncEngine.uploadStatus.collect { upload ->
+                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(uploadStatus = upload)) }
+                }
+            }
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
             launch {
@@ -1022,7 +1029,7 @@ class SettingsViewModel @Inject constructor(
 
     fun kilterSyncNow() {
         if (_state.value.kilterAccount.isSyncing) return
-        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true)) }
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true, resultMessage = null, resultIsError = false)) }
         viewModelScope.launch {
             // Same defensive wrap as kilterLogin/kilterImport*: an unexpected
             // throw (e.g. from the DataStore read) must not strand the
@@ -1034,13 +1041,12 @@ class SettingsViewModel @Inject constructor(
                     isSyncing = false,
                     lastSync = lastSync,
                     resultMessage = result.fold(
-                        onSuccess = { r ->
-                            if (r.uploadFailed) context.getString(R.string.kilter_sync_upload_failed, r.downloaded)
-                            else context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
-                        },
+                        // The persistent status is sufficient; do not add an
+                        // "Imported: 0" result card after every manual sync.
+                        onSuccess = { null },
                         onFailure = { localizeKilterImportError(context, it) }
                     ),
-                    resultIsError = result.isFailure || result.getOrNull()?.uploadFailed == true,
+                    resultIsError = result.isFailure,
                 )) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -1113,7 +1119,29 @@ class SettingsViewModel @Inject constructor(
 
     fun setKilterPushEnabled(enabled: Boolean) {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(pushEnabled = enabled)) }
-        viewModelScope.launch { userPreferences.setKilterPushEnabled(enabled) }
+        viewModelScope.launch {
+            userPreferences.setKilterPushEnabled(enabled)
+            if (enabled) {
+                state.first { !it.kilterAccount.isSyncing }
+                if (userPreferences.kilterPushEnabled.first()) retryKilterUpload(KilterUploadTrigger.ENABLED)
+            }
+        }
+    }
+
+    fun retryKilterUpload(trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL) {
+        if (_state.value.kilterAccount.isSyncing) return
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+            isSyncing = true, resultMessage = null, resultIsError = false,
+        )) }
+        viewModelScope.launch {
+            try {
+                // The observed upload status owns the result and retry/report actions.
+                // Do not repeat it in the generic import/sync result card.
+                kilterSyncEngine.uploadPendingLogs(trigger)
+            } finally {
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = false)) }
+            }
+        }
     }
 
     fun kilterDisconnect() {
@@ -1122,8 +1150,10 @@ class SettingsViewModel @Inject constructor(
             // triage of "I lost my Kilter login" or "my pending publishes
             // disappeared" reports can be matched against logcat.
             Log.i(TAG, "destructive: kilterDisconnect() requested at ${System.currentTimeMillis() / 1000}")
+            userPreferences.setKilterPushEnabled(false)
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
+            kilterSyncEngine.clearUploadDiagnostics()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
             Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")

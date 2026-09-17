@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.kilter.KilterUploadStatus
+import com.cruxcoach.android.data.kilter.localized
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +28,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 data class KilterAccountState(
+    val uploadStatus: KilterUploadStatus? = null,
     val isConnected: Boolean = false,
     val username: String = "",
     val lastSync: String? = null,
@@ -85,6 +90,8 @@ internal fun KilterAccountSection(
     onDismissDisconnectConfirm: () -> Unit,
     onDismissResult: () -> Unit,
     onRetryPublishQueueNow: () -> Unit,
+    onRetryUpload: () -> Unit = {},
+    onReportUpload: () -> Unit = {},
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -120,6 +127,10 @@ internal fun KilterAccountSection(
         // Greyed-out climb-publish toggle: discoverable but inert until
         // the user connects. Tapping the row jumps to the login flow.
         DisconnectedClimbPublishHint(onConnect = onShowLogin)
+    }
+
+    if (state.isConnected) {
+        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload)
     }
 
     // Result message (success/error)
@@ -188,6 +199,44 @@ internal fun KilterAccountSection(
                 }
             }
         )
+    }
+}
+
+/** Compact upload status; detailed counts, timestamps and HTTP codes stay in diagnostics. */
+@Composable
+internal fun KilterLogbookSyncStatus(
+    state: KilterAccountState,
+    onLogin: () -> Unit,
+    onRetry: () -> Unit,
+    onReport: () -> Unit,
+) {
+    val upload = state.uploadStatus
+    val needsLogin = state.sessionExpired || upload?.reason ==
+        com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
+    val active = state.pushEnabled && !state.isSyncing
+    val problem = active && (needsLogin || upload?.failed == true)
+    val message = when {
+        state.isSyncing -> stringResource(R.string.kilter_upload_syncing)
+        !state.pushEnabled -> stringResource(R.string.kilter_upload_disabled)
+        needsLogin -> stringResource(R.string.kilter_upload_auth)
+        upload == null -> stringResource(R.string.kilter_upload_unchecked)
+        else -> upload.localized(LocalContext.current)
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(message, style = MaterialTheme.typography.bodyMedium,
+            color = if (problem) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+        if (active && (needsLogin || upload == null || upload.failed || upload.pending > 0)) {
+            Row {
+                TextButton(onClick = if (needsLogin) onLogin else onRetry) {
+                    Text(stringResource(if (needsLogin) R.string.kilter_login_button
+                        else R.string.kilter_sync_now))
+                }
+                if (problem) {
+                    TextButton(onClick = onReport) { Text(stringResource(R.string.devcontact_report_bug)) }
+                }
+            }
+        }
     }
 }
 

@@ -1380,7 +1380,10 @@ class BoardSyncManager(
         if (brand == BoardBrand.KILTER) return  // Kilter handled by the main lane
         val loaded = withContext(Dispatchers.IO) {
             // Presence needs one indexed row, not totals for every loaded board.
-            boardRepository.hasClimbsForBrand(brand.wireValue)
+            boardRepository.hasClimbsForBrand(brand.wireValue) &&
+                (!brand.usesAuroraProtocol ||
+                    (boardRepository.getDefaultProductSizeForBrand(brand.wireValue) != null &&
+                        boardRepository.getAllPlacements(brand.wireValue).isNotEmpty()))
         }
         if (loaded) return
         if (!isWifiConnected(appContext)) {

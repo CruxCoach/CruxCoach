@@ -298,6 +298,7 @@ class UpdateChecker(
                 } else {
                     it.pipelineStage
                 },
+                lastNotifiedTagName = if (isNewerThanPending) null else it.lastNotifiedTagName,
                 notifDismissedAtEpochMs = if (isNewerThanPending) null else it.notifDismissedAtEpochMs,
                 notifReArmCount = if (isNewerThanPending) 0 else it.notifReArmCount,
             )

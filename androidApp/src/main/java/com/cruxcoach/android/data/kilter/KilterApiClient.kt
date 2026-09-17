@@ -361,6 +361,7 @@ class KilterApiClient @Inject constructor(
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
+        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
         // `kilter_error` column / Android backup blob). 5xx renders can
@@ -865,6 +866,15 @@ class KilterApiClient @Inject constructor(
         }
     }
 
+    private fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
+        local.climbUuid == remote.climbUuid && local.angle == remote.angle &&
+            local.topped == remote.topped && local.flashed == remote.flashed &&
+            local.attempts == remote.attempts && local.userUuid == remote.userUuid &&
+            local.gymUuid == remote.gymUuid && local.wallUuid == remote.wallUuid &&
+            local.productLayoutUuid == remote.productLayoutUuid &&
+            runCatching { java.time.Instant.parse(local.createdAt) == java.time.Instant.parse(remote.createdAt) }
+                .getOrDefault(local.createdAt == remote.createdAt)
+
     /**
      * Upload local ascents to Kilter in bulk.
      */
@@ -875,7 +885,25 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            val payload = json.encodeToString(logs)
+            // Legacy catalogue keys are case-sensitive upstream: compact uppercase.
+            // Lowercase compact IDs fail; adding UUID hyphens creates a different
+            // statistics identity even when the server resolves the climb's name.
+            // Keep native hyphenated IDs and all local/log identities unchanged.
+            val wireLogs = logs.map { log ->
+                if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
+                    log.copy(climbUuid = log.climbUuid.uppercase())
+                } else log
+            }
+            // Kilter bulk inserts are not upserts: duplicate log UUIDs return 500.
+            // Reconcile before posting, including retries after a lost response.
+            val existing = fetchLogs().getOrThrow().associateBy { it.logUuid }
+            val missing = wireLogs.filter { log ->
+                val remote = existing[log.logUuid]
+                if (remote != null && !sameUploadedLog(log, remote)) throw KilterLogConflictException()
+                remote == null
+            }
+            if (missing.isEmpty()) return@withContext Result.success(Unit)
+            val payload = json.encodeToString(missing)
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
@@ -883,18 +911,17 @@ class KilterApiClient @Inject constructor(
                 .addHeader("Authorization", "Bearer $token")
                 .post(requestBody)
                 .build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
-                )
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    // Do not retain response bodies: servers can echo private log data.
+                    return@withContext Result.failure(KilterUploadException(response.code))
+                }
+                Result.success(Unit)
             }
-            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "uploadLogs failed", e)
+            Log.w(TAG, "uploadLogs failed (${e.javaClass.simpleName})")
             Result.failure(e)
         }
     }

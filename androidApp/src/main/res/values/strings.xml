@@ -1083,7 +1083,7 @@
     <string name="kilter_last_sync">Last sync: %s</string>
     <string name="kilter_sync_now">Sync now</string>
     <string name="kilter_push_label">Upload to Kilter</string>
-    <string name="kilter_push_desc">Transfers sends and attempts from CruxCoach to Kilter, including older unsynced entries. Downloads still work with uploads off. Publishing your own climbs is separate.</string>
+    <string name="kilter_push_desc">Enabling starts an upload of your sends and attempts, including older pending entries. New entries upload automatically while Kilter sync is connected. Downloads still work with uploads off. Publishing your own climbs is separate.</string>
     <string name="kilter_climb_publish_label">Publish own climbs to Kilter</string>
     <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to publish your own climbs there too.</string>
     <string name="kilter_publish_queue_title">Publish queue</string>
@@ -2888,4 +2888,22 @@
     <string name="board_picker_download_title">Download %1$s?</string>
     <string name="board_picker_download_description">This board is not available offline and its downloads are disabled. Download it now and keep it selected for future catalogue and extra-data updates?</string>
     <string name="board_picker_download_confirm">Download and enable updates</string>
+    <string name="kilter_upload_counts">Uploaded: %1$d · Still pending: %2$d</string>
+    <string name="kilter_upload_status_title">Last logbook upload attempt</string>
+    <string name="kilter_upload_done">Logbook synced</string>
+    <string name="kilter_upload_pending">Some entries still need syncing.</string>
+    <string name="kilter_upload_disabled">Upload to Kilter is off</string>
+    <string name="kilter_upload_auth">Kilter sign-in expired. Please sign in again.</string>
+    <string name="kilter_upload_wall">Could not identify the Kilter board.</string>
+    <string name="kilter_upload_network">Cannot reach Kilter. Please check your connection.</string>
+    <string name="kilter_upload_http">Kilter rejected the upload. Please try again.</string>
+    <string name="kilter_upload_internal">Upload failed. Please try again.</string>
+    <string name="kilter_upload_retry">Retry upload</string>
+    <string name="kilter_upload_report_title">Kilter logbook upload</string>
+    <string name="kilter_diagnostics_attach">Attach Kilter upload diagnostics</string>
+    <string name="kilter_diagnostics_explanation">Optional: sends the technical preview below with this report. It contains status codes and counts, without account details, tokens or logbook contents.</string>
+    <string name="kilter_sync_download_count">Imported: %1$d</string>
+    <string name="kilter_upload_syncing">Syncing logbook…</string>
+    <string name="kilter_upload_unchecked">Sync not checked yet</string>
+    <string name="kilter_upload_conflict">This entry differs from Kilter. Please check it in the Kilter app.</string>
 </resources>

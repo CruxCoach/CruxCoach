@@ -1127,7 +1127,7 @@
     <string name="kilter_last_sync">Letzter Sync: %s</string>
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
-    <string name="kilter_push_desc">Überträgt Begehungen und Versuche aus CruxCoach in dein Kilter-Konto, auch ältere noch nicht übertragene Einträge. Abrufen bleibt auch bei ausgeschalteten Uploads möglich. Eigene Boulder veröffentlichst du separat.</string>
+    <string name="kilter_push_desc">Beim Einschalten startet der Upload deiner Begehungen und Versuche, einschließlich älterer ausstehender Einträge. Neue Einträge werden bei verbundenem Kilter-Sync automatisch übertragen. Abrufen bleibt auch ohne Uploads möglich. Eigene Boulder veröffentlichst du separat.</string>
     <string name="kilter_climb_publish_label">Eigene Climbs auf Kilter veröffentlichen</string>
     <string name="kilter_climb_publish_disconnected_hint">Verbinde dein Kilter-Konto, um eigene Boulder auch dort zu veröffentlichen.</string>
     <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
@@ -2887,4 +2887,22 @@
     <string name="board_picker_download_title">%1$s herunterladen?</string>
     <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
     <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
+    <string name="kilter_upload_counts">Übertragen: %1$d · Noch ausstehend: %2$d</string>
+    <string name="kilter_upload_status_title">Letzter Übertragungsversuch des Logbuchs</string>
+    <string name="kilter_upload_done">Logbuch synchronisiert</string>
+    <string name="kilter_upload_pending">Noch nicht alle Einträge synchronisiert.</string>
+    <string name="kilter_upload_disabled">Upload zu Kilter ausgeschaltet</string>
+    <string name="kilter_upload_auth">Kilter-Anmeldung abgelaufen. Bitte erneut anmelden.</string>
+    <string name="kilter_upload_wall">Kilter-Board konnte nicht zugeordnet werden.</string>
+    <string name="kilter_upload_network">Kilter nicht erreichbar. Bitte Internetverbindung prüfen.</string>
+    <string name="kilter_upload_http">Kilter hat den Upload abgelehnt. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_internal">Upload fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_retry">Upload wiederholen</string>
+    <string name="kilter_upload_report_title">Kilter-Logbuch übertragen</string>
+    <string name="kilter_diagnostics_attach">Kilter-Uploaddiagnose anhängen</string>
+    <string name="kilter_diagnostics_explanation">Optional: Sendet die folgende technische Vorschau mit diesem Bericht. Sie enthält Statuscodes und Zähler, keine Kontodaten, Tokens oder Logbuchinhalte.</string>
+    <string name="kilter_sync_download_count">Importiert: %1$d</string>
+    <string name="kilter_upload_syncing">Logbuch wird synchronisiert…</string>
+    <string name="kilter_upload_unchecked">Synchronisierung noch nicht geprüft</string>
+    <string name="kilter_upload_conflict">Dieser Eintrag weicht von Kilter ab. Bitte in der Kilter-App prüfen.</string>
 </resources>

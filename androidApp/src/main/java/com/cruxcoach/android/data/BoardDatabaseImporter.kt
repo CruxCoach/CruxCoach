@@ -746,6 +746,7 @@ class BoardDatabaseImporter(
             val targetDb = openTargetDb()
             try {
                 targetDb.execSQL("ATTACH DATABASE ? AS ab", arrayOf(snapshotFile.absolutePath))
+                targetDb.beginTransactionNonExclusive()
 
                 // Optional columns in one scan — move_count plus origin +
                 // created_by_pubkey, so Aurora community climbs (origin='cruxcoach'
@@ -874,7 +875,9 @@ class BoardDatabaseImporter(
                     )
                 }
                 replaceEmbeddedBetaLinks(targetDb, "ab", boardBrand)
+                targetDb.setTransactionSuccessful()
             } finally {
+                if (targetDb.inTransaction()) targetDb.endTransaction()
                 runCatching { targetDb.execSQL("DETACH DATABASE ab") }
                 targetDb.close()
             }

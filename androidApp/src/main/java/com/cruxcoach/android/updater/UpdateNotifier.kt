@@ -30,7 +30,7 @@ class UpdateNotifier(private val context: Context) {
 
     private val manager: NotificationManagerCompat = NotificationManagerCompat.from(context)
 
-    fun showPendingDownload(info: UpdateInfo) {
+    fun showPendingDownload(info: UpdateInfo): Boolean {
         // No inline Download action: tapping the notification opens
         // Settings and auto-triggers the download-confirm dialog — the
         // user still gets one explicit confirmation before any bytes fly.
@@ -39,7 +39,7 @@ class UpdateNotifier(private val context: Context) {
             .setContentText(context.getString(R.string.updater_notif_pending_body, humanizeSize(info.apkSizeBytes)))
             .setOngoing(false)
             .setContentIntent(settingsPendingIntent(askDownload = true))
-        notify(builder)
+        return notify(builder)
     }
 
     fun showDownloading(info: UpdateInfo, progressPercent: Int) {
@@ -204,6 +204,7 @@ class UpdateNotifier(private val context: Context) {
         return NotificationCompat.Builder(context, AppNotificationService.Channel.UPDATER)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setOnlyAlertOnce(true)
             .setAutoCancel(false)
             .setContentIntent(settingsPendingIntent())
             .setDeleteIntent(actionPendingIntent(Action.DISMISS))
@@ -237,14 +238,15 @@ class UpdateNotifier(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    private fun notify(builder: NotificationCompat.Builder) {
-        if (!manager.areNotificationsEnabled()) return
+    private fun notify(builder: NotificationCompat.Builder): Boolean {
+        if (!manager.areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val sys = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             val ch = sys?.getNotificationChannel(AppNotificationService.Channel.UPDATER)
-            if (ch?.importance == NotificationManager.IMPORTANCE_NONE) return
+            if (ch?.importance == NotificationManager.IMPORTANCE_NONE) return false
         }
         manager.notify(AppNotificationService.Id.UPDATE, builder.build())
+        return true
     }
 
     private fun humanizeSize(bytes: Long): String {
