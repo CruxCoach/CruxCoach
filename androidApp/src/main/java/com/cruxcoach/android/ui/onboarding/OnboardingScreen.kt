@@ -118,7 +118,11 @@ fun OnboardingScreen(
                     connectedName = ble.connectedBoardName.takeIf { ble.connectionState == com.cruxcoach.android.ble.ConnectionState.CONNECTED },
                     suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
                     onDefer = { BrowserTour(context).deferBle() },
-                    onRestore = onNavigateToKeyManagement,
+                    onRestore = {
+                        viewModel.setBackupOptIn(true)
+                        viewModel.setBackupChoice(BackupChoice.RESTORE)
+                        viewModel.requestKeyImport()
+                    },
                 )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.

@@ -93,10 +93,9 @@ internal fun boardHeaderActionLayout(availableWidthDp: Int): BoardHeaderActionLa
  * one action slot is reserved for the overflow menu so every destination stays reachable.
  */
 internal fun directHeaderActionCount(availableWidthDp: Int): Int {
-    val actionCount = BoardHeaderAction.entries.size
     val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_ANGLE_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
     val availableSlots = (actionSpace / HEADER_ACTION_WIDTH_DP).coerceAtLeast(0)
-    return (availableSlots - 1).coerceIn(0, actionCount)
+    return (availableSlots - 1).coerceIn(0, 2)
 }
 
 private data class HeaderActionSpec(
@@ -135,9 +134,8 @@ internal fun boardBrowserHeaderContext(
 }
 
 /**
- * Compact browser bar: the logo opens the main menu and the adjacent active
- * board context opens the picker. Existing destinations remain one-tap icon
- * actions without a second label row.
+ * One row with room for a readable board label and angle. Bluetooth and filters
+ * stay primary; logbook, lists, settings and the introduction live in overflow.
  */
 @Composable
 internal fun BoardBrowserHeader(
