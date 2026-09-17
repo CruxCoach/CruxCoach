@@ -270,6 +270,9 @@ data class UpdaterState(
         pendingDownloadSourceIndex = 0,
         pendingAllowMobile = false,
         pipelineStage = PipelineStage.NONE,
+        lastNotifiedTagName = null,
+        notifDismissedAtEpochMs = null,
+        notifReArmCount = 0,
     )
 
     /** Reconstitutes the [UpdateInfo] previously written to state, if all fields are present. */

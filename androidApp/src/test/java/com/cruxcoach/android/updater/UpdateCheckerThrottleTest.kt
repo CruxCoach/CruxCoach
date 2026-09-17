@@ -229,6 +229,7 @@ class UpdateCheckerThrottleTest {
             autoCheckEnabled = true,
             lastCheckBootRealtime = 0L,
             pendingVersionName = "0.2.5",
+            lastNotifiedTagName = "v0.2.5",
             notifDismissedAtEpochMs = 123L,
             notifReArmCount = 3,
         )
@@ -241,6 +242,7 @@ class UpdateCheckerThrottleTest {
 
         assertTrue("expected Update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
         val finalState = captured.fold(seed) { s, f -> f(s) }
+        assertEquals(null, finalState.lastNotifiedTagName)
         assertEquals(null, finalState.notifDismissedAtEpochMs)
         assertEquals(0, finalState.notifReArmCount)
         assertEquals("9.9.9", finalState.pendingVersionName)
@@ -254,6 +256,7 @@ class UpdateCheckerThrottleTest {
             autoCheckEnabled = true,
             lastCheckBootRealtime = 0L,
             pendingVersionName = "9.9.9",
+            lastNotifiedTagName = "v9.9.9",
             notifDismissedAtEpochMs = 123L,
             notifReArmCount = 3,
         )
@@ -265,6 +268,7 @@ class UpdateCheckerThrottleTest {
         checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
 
         val finalState = captured.fold(seed) { s, f -> f(s) }
+        assertEquals("v9.9.9", finalState.lastNotifiedTagName)
         assertEquals(123L, finalState.notifDismissedAtEpochMs)
         assertEquals(3, finalState.notifReArmCount)
     }
