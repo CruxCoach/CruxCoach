@@ -4,7 +4,6 @@ import android.content.Context
 import com.cruxcoach.android.R
 
 fun KilterUploadStatus.localized(context: Context): String {
-    val counts = context.getString(R.string.kilter_upload_counts, uploaded, pending)
     val reasonText = when (reason) {
         KilterUploadReason.NONE -> if (pending > 0) R.string.kilter_upload_pending else R.string.kilter_upload_done
         KilterUploadReason.DISABLED -> R.string.kilter_upload_disabled
@@ -12,7 +11,8 @@ fun KilterUploadStatus.localized(context: Context): String {
         KilterUploadReason.WALL_CONTEXT -> R.string.kilter_upload_wall
         KilterUploadReason.NETWORK -> R.string.kilter_upload_network
         KilterUploadReason.HTTP -> R.string.kilter_upload_http
+        KilterUploadReason.CONFLICT -> R.string.kilter_upload_conflict
         KilterUploadReason.INTERNAL -> R.string.kilter_upload_internal
     }
-    return "$counts\n${context.getString(reasonText)}" + (httpStatus?.let { " (HTTP $it)" } ?: "")
+    return context.getString(reasonText)
 }

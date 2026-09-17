@@ -212,7 +212,7 @@ object BoardStatsComputer {
         context: Context? = null
     ): List<TimeBucketEntry> {
         if (ascents.isEmpty()) return emptyList()
-        val parsed = ascents.mapNotNull { parseDate(it.climbedAt) }
+        val parsed = ascents.filter { it.isSend }.mapNotNull { parseDate(it.climbedAt) }
         if (parsed.isEmpty()) return emptyList()
 
         return when (interval) {

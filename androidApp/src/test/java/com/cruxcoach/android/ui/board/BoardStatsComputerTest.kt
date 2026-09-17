@@ -66,6 +66,15 @@ class BoardStatsComputerTest {
     private var idCounter = 0
     private fun nextId(): Int = ++idCounter
 
+    @Test
+    fun `send timeline excludes attempts but retains repeat sends`() {
+        val rows = listOf(ascent(isSend = false, bidCount = 4), ascent(), ascent())
+        val stats = BoardStatsComputer.computeStats(rows, StatsTimeInterval.ALL, GradeScale.FRENCH, clock = fixedClock)
+        assertEquals(2, stats.sendsOverTime.sumOf { it.count })
+        assertEquals(6, stats.totalAttempts)
+        assertTrue(BoardStatsComputer.computeSendsOverTime(rows.take(1), StatsTimeInterval.ALL).isEmpty())
+    }
+
     // -- filterByInterval --
 
     @Test

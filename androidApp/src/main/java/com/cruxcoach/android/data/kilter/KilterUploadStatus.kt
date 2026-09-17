@@ -11,7 +11,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Serializable
-enum class KilterUploadReason { NONE, DISABLED, AUTHENTICATION, WALL_CONTEXT, NETWORK, HTTP, INTERNAL }
+enum class KilterUploadReason { NONE, DISABLED, AUTHENTICATION, WALL_CONTEXT, NETWORK, HTTP, CONFLICT, INTERNAL }
 
 /** Only fixed categories and counts may cross the diagnostics boundary. */
 @Serializable
@@ -31,6 +31,8 @@ data class KilterUploadStatus(
 
 @Serializable
 enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START }
+
+class KilterLogConflictException : Exception("Existing Kilter log differs from local entry")
 
 class KilterUploadException(val status: Int) : Exception("Kilter upload HTTP $status")
 

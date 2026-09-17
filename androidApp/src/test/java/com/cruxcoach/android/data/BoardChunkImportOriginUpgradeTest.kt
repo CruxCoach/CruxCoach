@@ -109,6 +109,27 @@ class BoardChunkImportOriginUpgradeTest {
         )
     }
 
+    @Test
+    fun interruptedAuroraImportRollsBackAlreadyWrittenClimbs() {
+        openTarget().use { db -> db.execSQL("DELETE FROM climbs") }
+        var interruptedAfterClimbs = false
+        try {
+            importer.importAuroraSnapshot(chunkFile, "tension") { step ->
+                if (step is BoardDatabaseImporter.ImportStep.ImportClimbs && step.inserted > 0) {
+                    interruptedAfterClimbs = true
+                    throw kotlinx.coroutines.CancellationException("test interruption")
+                }
+            }
+            org.junit.Assert.fail("Expected cancellation")
+        } catch (_: kotlinx.coroutines.CancellationException) { }
+        assertTrue(interruptedAfterClimbs)
+        openTarget().use { db ->
+            db.rawQuery("SELECT COUNT(*) FROM climbs WHERE board_brand='tension'", null).use {
+                it.moveToFirst(); assertEquals(0, it.getInt(0))
+            }
+        }
+    }
+
     @After
     fun tearDown() {
         runCatching { chunkFile.delete() }

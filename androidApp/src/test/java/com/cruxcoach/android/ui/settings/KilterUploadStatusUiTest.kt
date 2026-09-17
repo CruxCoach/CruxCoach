@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
 class KilterUploadStatusUiTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun partial_failure_displays_remaining_entries_and_exposes_retry_and_report() {
+    @Test fun partial_failure_shows_short_problem_with_retry_and_report() {
         var retries = 0
         var reports = 0
         compose.setContent {
@@ -42,14 +42,60 @@ class KilterUploadStatusUiTest {
                 }
             }
         }
-        compose.onNodeWithText("Übertragen: 200 · Noch ausstehend: 1", substring = true)
+        compose.onNodeWithText("Kilter hat den Upload abgelehnt. Bitte erneut versuchen.")
             .performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("HTTP 422", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("Upload wiederholen").performScrollTo().performClick()
+        compose.onNodeWithText("HTTP 422", substring = true).assertDoesNotExist()
+        compose.onAllNodesWithText("Jetzt synchronisieren")[1].performScrollTo().performClick()
         compose.onNodeWithText("Bug melden").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(1, retries)
             assertEquals(1, reports)
         }
+    }
+    @Test fun success_is_a_single_line_without_technical_details_or_actions() {
+        compose.setContent {
+            MaterialTheme {
+                KilterLogbookSyncStatus(KilterAccountState(pushEnabled = true,
+                    uploadStatus = KilterUploadStatus(uploaded = 200)), {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Logbuch synchronisiert").assertIsDisplayed()
+        compose.onNodeWithText("Übertragen:", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Letzter Übertragungsversuch", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Jetzt synchronisieren").assertDoesNotExist()
+    }
+
+    @Test fun disabled_upload_does_not_show_stale_success_or_retry() {
+        compose.setContent {
+            MaterialTheme {
+                KilterLogbookSyncStatus(KilterAccountState(pushEnabled = false,
+                    uploadStatus = KilterUploadStatus()), {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Upload zu Kilter ausgeschaltet").assertIsDisplayed()
+        compose.onNodeWithText("Logbuch synchronisiert").assertDoesNotExist()
+        compose.onNodeWithText("Jetzt synchronisieren").assertDoesNotExist()
+    }
+
+    @Test fun missing_status_does_not_claim_success() {
+        compose.setContent {
+            MaterialTheme {
+                KilterLogbookSyncStatus(KilterAccountState(pushEnabled = true), {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Synchronisierung noch nicht geprüft").assertIsDisplayed()
+        compose.onNodeWithText("Logbuch synchronisiert").assertDoesNotExist()
+    }
+
+    @Test fun syncing_hides_stale_success_and_retry_actions() {
+        compose.setContent {
+            MaterialTheme {
+                KilterLogbookSyncStatus(KilterAccountState(pushEnabled = true, isSyncing = true,
+                    uploadStatus = KilterUploadStatus()), {}, {}, {})
+            }
+        }
+        compose.onNodeWithText("Logbuch wird synchronisiert…").assertIsDisplayed()
+        compose.onNodeWithText("Logbuch synchronisiert").assertDoesNotExist()
+        compose.onNodeWithText("Jetzt synchronisieren").assertDoesNotExist()
     }
 }

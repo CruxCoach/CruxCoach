@@ -620,6 +620,7 @@ class KilterSyncEngine @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 when (e) {
+                    is KilterLogConflictException -> finish(KilterUploadReason.CONFLICT)
                     is KilterUploadException -> finish(
                         if (e.status == 401 || e.status == 403) KilterUploadReason.AUTHENTICATION else KilterUploadReason.HTTP,
                         e.status)

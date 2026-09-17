@@ -129,30 +129,8 @@ internal fun KilterAccountSection(
         DisconnectedClimbPublishHint(onConnect = onShowLogin)
     }
 
-    state.uploadStatus?.takeIf { state.isConnected }?.let { upload ->
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = if (upload.failed)
-                MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.kilter_upload_status_title), fontWeight = FontWeight.Bold)
-                Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(upload.timestampMs)),
-                    style = MaterialTheme.typography.bodySmall)
-                SelectionContainer { Text(upload.localized(LocalContext.current)) }
-                if (upload.pending > 0 || upload.failed) {
-                    if (state.sessionExpired) {
-                        TextButton(onClick = onShowLogin) { Text(stringResource(R.string.kilter_login_button)) }
-                    } else {
-                        TextButton(onClick = onRetryUpload, enabled = !state.isSyncing && state.pushEnabled) {
-                            if (state.isSyncing) CircularProgressIndicator(Modifier.size(16.dp))
-                            Text(stringResource(R.string.kilter_upload_retry))
-                        }
-                    }
-                    TextButton(onClick = onReportUpload) { Text(stringResource(R.string.devcontact_report_bug)) }
-                }
-            }
-        }
+    if (state.isConnected) {
+        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload)
     }
 
     // Result message (success/error)
@@ -221,6 +199,44 @@ internal fun KilterAccountSection(
                 }
             }
         )
+    }
+}
+
+/** Compact upload status; detailed counts, timestamps and HTTP codes stay in diagnostics. */
+@Composable
+internal fun KilterLogbookSyncStatus(
+    state: KilterAccountState,
+    onLogin: () -> Unit,
+    onRetry: () -> Unit,
+    onReport: () -> Unit,
+) {
+    val upload = state.uploadStatus
+    val needsLogin = state.sessionExpired || upload?.reason ==
+        com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
+    val active = state.pushEnabled && !state.isSyncing
+    val problem = active && (needsLogin || upload?.failed == true)
+    val message = when {
+        state.isSyncing -> stringResource(R.string.kilter_upload_syncing)
+        !state.pushEnabled -> stringResource(R.string.kilter_upload_disabled)
+        needsLogin -> stringResource(R.string.kilter_upload_auth)
+        upload == null -> stringResource(R.string.kilter_upload_unchecked)
+        else -> upload.localized(LocalContext.current)
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(message, style = MaterialTheme.typography.bodyMedium,
+            color = if (problem) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+        if (active && (needsLogin || upload == null || upload.failed || upload.pending > 0)) {
+            Row {
+                TextButton(onClick = if (needsLogin) onLogin else onRetry) {
+                    Text(stringResource(if (needsLogin) R.string.kilter_login_button
+                        else R.string.kilter_sync_now))
+                }
+                if (problem) {
+                    TextButton(onClick = onReport) { Text(stringResource(R.string.devcontact_report_bug)) }
+                }
+            }
+        }
     }
 }
 

@@ -866,6 +866,15 @@ class KilterApiClient @Inject constructor(
         }
     }
 
+    private fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
+        local.climbUuid == remote.climbUuid && local.angle == remote.angle &&
+            local.topped == remote.topped && local.flashed == remote.flashed &&
+            local.attempts == remote.attempts && local.userUuid == remote.userUuid &&
+            local.gymUuid == remote.gymUuid && local.wallUuid == remote.wallUuid &&
+            local.productLayoutUuid == remote.productLayoutUuid &&
+            runCatching { java.time.Instant.parse(local.createdAt) == java.time.Instant.parse(remote.createdAt) }
+                .getOrDefault(local.createdAt == remote.createdAt)
+
     /**
      * Upload local ascents to Kilter in bulk.
      */
@@ -880,11 +889,21 @@ class KilterApiClient @Inject constructor(
             // Lowercase compact IDs fail; adding UUID hyphens creates a different
             // statistics identity even when the server resolves the climb's name.
             // Keep native hyphenated IDs and all local/log identities unchanged.
-            val payload = json.encodeToString(logs.map { log ->
+            val wireLogs = logs.map { log ->
                 if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
                     log.copy(climbUuid = log.climbUuid.uppercase())
                 } else log
-            })
+            }
+            // Kilter bulk inserts are not upserts: duplicate log UUIDs return 500.
+            // Reconcile before posting, including retries after a lost response.
+            val existing = fetchLogs().getOrThrow().associateBy { it.logUuid }
+            val missing = wireLogs.filter { log ->
+                val remote = existing[log.logUuid]
+                if (remote != null && !sameUploadedLog(log, remote)) throw KilterLogConflictException()
+                remote == null
+            }
+            if (missing.isEmpty()) return@withContext Result.success(Unit)
+            val payload = json.encodeToString(missing)
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
