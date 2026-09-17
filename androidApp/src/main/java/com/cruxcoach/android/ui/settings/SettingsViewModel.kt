@@ -1027,7 +1027,7 @@ class SettingsViewModel @Inject constructor(
 
     fun kilterSyncNow() {
         if (_state.value.kilterAccount.isSyncing) return
-        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true)) }
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true, resultMessage = null, resultIsError = false)) }
         viewModelScope.launch {
             // Same defensive wrap as kilterLogin/kilterImport*: an unexpected
             // throw (e.g. from the DataStore read) must not strand the
@@ -1039,12 +1039,9 @@ class SettingsViewModel @Inject constructor(
                     isSyncing = false,
                     lastSync = lastSync,
                     resultMessage = result.fold(
-                        onSuccess = { r ->
-                            r.uploadStatus?.let {
-                                // Upload results already have their own persistent card.
-                                context.getString(R.string.kilter_sync_download_count, r.downloaded)
-                            } ?: context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
-                        },
+                        // The persistent status is sufficient; do not add an
+                        // "Imported: 0" result card after every manual sync.
+                        onSuccess = { null },
                         onFailure = { localizeKilterImportError(context, it) }
                     ),
                     resultIsError = result.isFailure,
