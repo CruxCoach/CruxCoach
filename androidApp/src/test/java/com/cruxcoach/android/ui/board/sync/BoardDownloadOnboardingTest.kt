@@ -10,7 +10,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
@@ -35,8 +36,8 @@ class BoardDownloadOnboardingTest {
             assertEquals(setOf(BoardBrand.MOONBOARD), prefs.boardDownloadBrands.first())
             verify(exactly = 1) { sync.startInitialSyncIfNeeded() }
         } finally {
-            vm.viewModelScope.cancel()
-            runCurrent()
+            // IO work must finish cancellation before Main is removed.
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -53,8 +54,8 @@ class BoardDownloadOnboardingTest {
             assertEquals(emptySet<BoardBrand>(), prefs.boardDownloadBrands.first())
             verify(exactly = 0) { sync.startInitialSyncIfNeeded() }
         } finally {
-            vm.viewModelScope.cancel()
-            runCurrent()
+            // IO work must finish cancellation before Main is removed.
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -74,8 +75,8 @@ class BoardDownloadOnboardingTest {
             vm.confirmOnboardingDownloads(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD))
             verify(exactly = 1) { sync.startSelectedSyncAfterCurrent() }
         } finally {
-            vm.viewModelScope.cancel()
-            runCurrent()
+            // IO work must finish cancellation before Main is removed.
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
@@ -91,8 +92,8 @@ class BoardDownloadOnboardingTest {
             assertEquals(setOf(BoardBrand.QUANTUM), vm.initialDownloadSelection())
             assertEquals(setOf(BoardBrand.QUANTUM), prefs.boardDownloadBrands.first())
         } finally {
-            vm.viewModelScope.cancel()
-            runCurrent()
+            // IO work must finish cancellation before Main is removed.
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }

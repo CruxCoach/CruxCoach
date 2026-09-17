@@ -34,8 +34,8 @@ class BoardPickerDownloadPreferenceTest {
             assertEquals(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), prefs.boardDownloadBrands.first())
             assertFalse(vm.needsDownloadConsent(BoardBrand.MOONBOARD))
         } finally {
-            vm.viewModelScope.cancel()
-            runCurrent()
+            // IO work must finish cancellation before Main is removed.
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
             Dispatchers.resetMain()
         }
     }
