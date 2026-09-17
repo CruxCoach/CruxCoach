@@ -876,15 +876,13 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            // Catalogue IDs use the legacy 32-hex spelling. Kilter's log API
-            // rejects that spelling with HTTP 500; it requires UUID hyphens.
-            // Normalize only the wire copy, preserving local keys and log UUIDs.
+            // Legacy catalogue keys are case-sensitive upstream: compact uppercase.
+            // Lowercase compact IDs fail; adding UUID hyphens creates a different
+            // statistics identity even when the server resolves the climb's name.
+            // Keep native hyphenated IDs and all local/log identities unchanged.
             val payload = json.encodeToString(logs.map { log ->
-                val id = log.climbUuid
-                if (COMPACT_CLIMB_UUID.matches(id)) {
-                    val hex = id.lowercase()
-                    log.copy(climbUuid = "${hex.substring(0, 8)}-${hex.substring(8, 12)}-" +
-                        "${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}")
+                if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
+                    log.copy(climbUuid = log.climbUuid.uppercase())
                 } else log
             })
             val requestBody = payload.toRequestBody("application/json".toMediaType())

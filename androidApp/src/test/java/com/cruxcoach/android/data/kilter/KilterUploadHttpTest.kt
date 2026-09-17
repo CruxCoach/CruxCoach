@@ -14,7 +14,7 @@ import org.junit.Test
 import kotlin.test.*
 
 class KilterUploadHttpTest {
-    @Test fun legacy_catalogue_ids_are_canonical_on_wire_without_changing_log_identity() = runTest {
+    @Test fun legacy_catalogue_ids_keep_compact_uppercase_statistics_identity_on_wire() = runTest {
         MockWebServer().use { server ->
             server.start()
             server.enqueue(MockResponse().setResponseCode(200))
@@ -25,6 +25,7 @@ class KilterUploadHttpTest {
             client.setEndpointsForTesting(server.url("/").toString().trimEnd('/'))
             val canonical = "abcdef12-3456-4789-abcd-0123456789ab"
             val inputs = listOf(canonical.replace("-", ""), canonical.replace("-", "").uppercase(), canonical)
+            val expected = listOf(canonical.replace("-", "").uppercase(), canonical.replace("-", "").uppercase(), canonical)
             val logs = inputs.mapIndexed { index, id ->
                 KilterLog(logUuid = "stable-log-$index", climbUuid = id,
                     topped = index != 1, attempts = index + 1, comment = "synthetic fixture")
@@ -37,7 +38,7 @@ class KilterUploadHttpTest {
             assertEquals(3, sent.size)
             sent.forEachIndexed { index, value ->
                 val row = value.jsonObject
-                assertEquals(canonical, row.getValue("climbUuid").jsonPrimitive.content)
+                assertEquals(expected[index], row.getValue("climbUuid").jsonPrimitive.content)
                 assertEquals(logs[index].logUuid, row.getValue("logUuid").jsonPrimitive.content)
                 assertEquals(logs[index].topped.toString(), row.getValue("topped").jsonPrimitive.content)
                 assertEquals(logs[index].attempts.toString(), row.getValue("attempts").jsonPrimitive.content)

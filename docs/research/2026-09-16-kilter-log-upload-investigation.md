@@ -195,3 +195,94 @@ handling, 13 upload-status/queue tests, 1 German status-card Compose test).
 currently source changes in this worktree; they have not yet been republished or
 installed on the phone. The successful canonical-ID comparison above used a
 direct controlled REST probe, not an APK containing the new fix.
+
+## Official-app mismatch after build 1000015 (2026-09-17)
+
+**The earlier HTTP/read-back success does not establish a correct official-app
+upload.** The owner reports the test entry as no grade, one star, three ascents,
+and `null @40`, despite the correct climb name/setter.
+
+Read-only inspection reproduces the incorrect aggregate in `/climbs/logged`:
+for the hyphenated, lowercase test climb ID at 40 degrees, `currentDifficultyId=1`,
+`difficultyAverage=1`, `qualityAverage=1`, and `ascentCount=3`. `/logs` still
+contains exactly one test log (nine account logs total). Three aggregate ascents
+must not be described as three duplicate account log rows. Whether earlier test
+writes/deletion left aggregate effects is unverified.
+
+A retained official `/climbs/curated` response from 2026-05-06 contains the same
+climb under its uppercase compact ID, with grade ID 16, quality 3.04 and 77,310
+ascents at 40 degrees. The phone's current catalogue has difficulty 15.96,
+quality 3.13 and 97,088 ascensionists. These are different snapshots, not values
+expected to match exactly. Existing account logs predominantly retain compact
+uppercase IDs and return plausible grade IDs. This is strong evidence that
+UUID spelling is significant for statistics joins even where climb metadata
+can be resolved across spellings. Treating the two spellings as interchangeable
+at the upload boundary was not justified by the prior tests.
+
+The uploaded log also uses product layout 10 inherited from account history,
+whereas the climb metadata uses product layout 8. A climb's minimum layout may
+differ from the wall it was climbed on; this discrepancy alone does not prove
+an invalid wall, and must not be fixed by blindly copying climb layout IDs.
+
+A single controlled repair attempt reused the existing test log UUID and all
+other upload fields, changing only the climb ID to uppercase compact spelling
+(and retaining the known test comment). `/logs/bulk` returned HTTP 500; read-back
+confirmed the original test log remained unchanged. Because this was an existing
+log, it does not distinguish ID rejection from endpoint update/conflict behavior.
+No new diagnostic log was created in this follow-up. No credentials or raw
+account responses were saved.
+
+Next contract validation: compare a same-climb, same-angle log created through
+the official app, establish its write endpoint and exact identity representation,
+and verify update/idempotency behavior separately. Do not guess rating fields,
+replace missing ratings with catalogue averages, or retry alternate IDs on real
+user logs. A fix must preserve the upstream climb/statistics identity and cover
+already-marked-synced affected logs without duplicating ascents. Acceptance needs
+correct official-app grade/name/angle/statistics, not merely HTTP 200 and log
+presence. `null @40` has not yet been traced to its exact official-app field.
+
+For diagnostics, distinguish transport acceptance from verified association;
+record an allowlisted mismatch reason and aggregate counts, not raw account
+payloads. Do not reject genuinely ungraded climbs merely because grade is null.
+The owner has been asked for a reference log from the official app. No new code
+fix, push, or publication is claimed by this follow-up.
+
+### Official reference and isolated comparisons (2026-09-17, follow-up)
+
+The owner created the requested official-app reference at 15:06 UTC. It uses the
+uppercase compact catalogue ID at 40 degrees, layout 8, grade ID 16 and the
+existing aggregate (97,258 ascents, difficulty 15.96, quality 3.13). The older
+CruxCoach log uses a lowercase hyphenated ID and the separate incorrect aggregate.
+
+Controlled, fresh diagnostic log UUIDs established the following. Each successful
+temporary log was deleted and verified absent; the owner's official reference and
+original CruxCoach test entry remain. No production-user logs were modified.
+
+| Endpoint | Climb ID | Wall context | HTTP / read-back |
+| --- | --- | --- | --- |
+| `/logs/` | uppercase compact | official reference | 200, exact ID, grade 16 |
+| `/logs/bulk` | uppercase compact | official reference | 200, exact ID, grade 16 |
+| `/logs/bulk` | lowercase compact | official reference | 500, exact log absent |
+| `/logs/bulk` | uppercase compact | original CruxCoach test | 200, exact ID, grade 16 |
+
+This isolates **case-sensitive legacy IDs**, not layout 10 or the bulk endpoint,
+as the upload failure. Hyphenating the ID avoided rejection but selected a new
+statistics identity. The fix now uppercases compact 32-hex IDs on the wire while
+preserving their compact form. Native hyphenated IDs, local catalogue keys, and
+log UUIDs remain unchanged. The HTTP regression test explicitly checks both
+compact input cases and an untouched native hyphenated ID.
+
+The unsuccessful earlier repair reused an existing log UUID. Fresh uppercase
+inserts succeed, so that failure is not evidence against the correct ID spelling.
+Update/conflict semantics and repair of already-synced hyphenated legacy logs
+remain separate work: do not silently delete/recreate user logs, and do not claim
+that retrying the upload switch repairs already-marked-synced records. No change
+of endpoint, invented grade/quality upload, or forced layout reassignment is needed
+for a new correctly associated send. HTTP acceptance alone remains insufficient
+as an end-to-end acceptance test.
+
+Focused verification after the correction: `KilterUploadHttpTest` passed (2 tests,
+0 failures/errors) via `:androidApp:testDebugUnitTest --tests
+'com.cruxcoach.android.data.kilter.KilterUploadHttpTest'`. `git diff --check`
+passed. Live probes above exercised the same corrected wire spelling directly;
+the installed APK still contains the old spelling until republished and updated.
