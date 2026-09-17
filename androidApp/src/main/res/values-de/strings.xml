@@ -217,10 +217,10 @@
     <string name="onboarding_start_without_import">Ohne Import starten</string>
     <string name="onboarding_start_cruxcoach">CruxCoach starten</string>
     <string name="onboarding_offline_status_title">Offline-Climbs werden vorbereitet</string>
-    <string name="onboarding_offline_status_starting">Startet automatisch im Hintergrund.</string>
+    <string name="onboarding_offline_status_starting">Wähle deine Boards und starte den Download.</string>
     <string name="onboarding_offline_status_loading">Lädt im Hintergrund — du kannst weitergehen.</string>
     <string name="onboarding_offline_status_ready">Offline-Kataloge sind bereit.</string>
-    <string name="onboarding_offline_status_waiting">Wird bei verfügbarer Verbindung fortgesetzt.</string>
+    <string name="onboarding_offline_status_waiting">Download unvollständig. Bitte erneut versuchen.</string>
     <string name="onboarding_existing_data_title">Hast du bereits Kletterdaten?</string>
     <string name="onboarding_existing_data_subtitle">Wähle die Quelle, um den passenden Import zu sehen. Sonst kannst du direkt starten.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
@@ -466,7 +466,7 @@
     <string name="settings_data_delete_board">Board-Daten löschen</string>
     <string name="settings_data_delete_board_desc">Löscht heruntergeladene Boulder, Katalogstatistiken und Griffanordnungen aus der App. Für alle oder ausgewählte Boards; erneutes Herunterladen bleibt möglich. Eigene und Community-Boulder bleiben erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
-    <string name="settings_data_delete_board_dialog_message">Boulder-Kataloge, Statistiken und Griffanordnungen der ausgewählten Boards werden aus der App gelöscht. Du kannst sie erneut herunterladen. Eigene und Community-Boulder bleiben erhalten.</string>
+    <string name="settings_data_delete_board_dialog_message">Boulder-Kataloge, Statistiken und Griffanordnungen der ausgewählten Boards werden aus der App gelöscht. Du kannst sie erneut herunterladen. Eigene und Community-Boulder bleiben erhalten. Gelöschte Boards werden auch von künftigen Downloads abgewählt.</string>
     <string name="settings_data_delete_board_progress">Board-Daten werden gelöscht…</string>
     <string name="settings_data_delete_select_all">Alle Boards</string>
     <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>
@@ -1086,7 +1086,7 @@
     <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Board-Datenbanken</string>
     <string name="board_sync_db_description">Lädt öffentliche Boulder-Kataloge in die App, damit du sie ohne Internet nutzen kannst. WLAN empfohlen; die Datenmenge kann groß sein.</string>
-    <string name="board_sync_compact_description">Lädt alle Board-Kataloge im Hintergrund. Du kannst die App weiter nutzen.</string>
+    <string name="board_sync_compact_description">Lädt ausgewählte Board-Kataloge im Hintergrund. Du kannst die App weiter nutzen.</string>
     <string name="board_sync_compact_waiting_wifi">Vorgemerkt — startet automatisch im WLAN</string>
     <string name="board_sync_compact_progress">%1$d von %2$d Boards bereit</string>
     <string name="board_sync_compact_show_details">Details anzeigen</string>
@@ -2875,4 +2875,16 @@
     <string name="account_restore_title">Schon einen Schlüssel gesichert?</string>
     <string name="account_restore_body">Schlüssel einfügen ist die Wiederherstellung: Verwende einen früher gesicherten nsec, um zu deinem bestehenden Konto zurückzukehren. Das sichert nicht dein aktuelles Konto. Neue Nutzer brauchen nur die Sicherung oben.</string>
     <string name="account_public_optional">Optional: öffentliche Konto-ID. Kein Schlüssel zur Wiederherstellung.</string>
+    <string name="board_download_selection_title">Boards zum Herunterladen</string>
+    <string name="board_download_selection_description">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Abwählen behält bereits geladene Daten und dein Logbuch.</string>
+    <string name="board_download_selection_local_share">Die direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank. Diese Auswahl gilt für Online-Downloads.</string>
+    <string name="board_download_selection_summary">Board-Auswahl: %1$d ausgewählt</string>
+    <string name="board_download_selection_empty">Keine automatischen Board-Downloads. Wähle Boards aus, um Daten herunterzuladen.</string>
+    <string name="board_download_disabled">Downloads für dieses Board sind abgewählt. Du kannst sie in der Board-Auswahl für Downloads aktivieren.</string>
+    <string name="board_download_not_selected">Von Downloads abgewählt</string>
+    <string name="onboarding_download_selection_title">Wähle die Board-Kataloge zum Herunterladen.</string>
+    <string name="onboarding_download_selection_failed">Die Download-Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
+    <string name="board_picker_download_title">%1$s herunterladen?</string>
+    <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
+    <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
 </resources>

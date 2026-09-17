@@ -64,6 +64,16 @@ object BoardConstants {
         ),
     )
 
+    /** Single-layout hardware defaults, verified against the published snapshot
+     * layouts/product_sizes (grasshopper cb450f80, soill 04a896f9, touchstone
+     * 60e953f7). Like the variant list, these permit choosing hardware before
+     * consenting to a catalogue download. Imported geometry remains authoritative. */
+    val AURORA_SINGLE_LAYOUT_DEFAULTS: Map<BoardBrand, Pair<Int, Int>> = mapOf(
+        BoardBrand.GRASSHOPPER to (1 to 4),
+        BoardBrand.SOILL to (1 to 2),
+        BoardBrand.TOUCHSTONE to (1 to 1),
+    )
+
     private fun auroraSize(id: Int, name: String, l: Int, r: Int, b: Int, t: Int, brand: BoardBrand, productId: Int = 1) =
         BoardSize(id.toLong(), productId = productId.toLong(), name = name,
                   edgeLeft = l.toLong(), edgeRight = r.toLong(),

@@ -452,7 +452,7 @@ interface BoardClimbQueries {
     fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
     fun getClimbCount(): Long
     /** Per-brand catalogue sizes (FEAT-031), keyed by `board_brand` wire value.
-     *  Brands with no imported climbs are absent from the map. */
+     *  Only downloadable catalogue rows count; own/peer routes are excluded. */
     fun getClimbCountsByBrand(): Map<String, Long>
     /** O(1) existence check. Far cheaper than [getClimbCount] — that one
      *  full-table-scans on a 190k-row catalog, and worse, blocks on the
@@ -460,6 +460,8 @@ interface BoardClimbQueries {
      *  Use this anywhere the caller only needs a boolean (empty-state
      *  decision in BoardBrowser, fresh-install probe). */
     fun hasAnyClimbs(): Boolean
+    /** Whether any downloaded catalogue rows exist, excluding own/peer routes. */
+    fun hasAnyCatalogueClimbs(): Boolean
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean

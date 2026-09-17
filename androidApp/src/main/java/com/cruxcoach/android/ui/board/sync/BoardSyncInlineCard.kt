@@ -57,12 +57,7 @@ fun BoardSyncInlineCard(
     modifier: Modifier = Modifier,
     viewModel: BoardSyncViewModel = hiltViewModel(),
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
-    /** When true, fires the API sync automatically on first composition
-     *  if no board data is present yet. Used by the onboarding's
-     *  BOARD_SETUP step so the user doesn't have to scroll past the
-     *  intro and tap "Jetzt laden" before the download begins. Default
-     *  false keeps every other call site (BoardBrowser, Settings)
-     *  manual-trigger as before. */
+    /** Review the download selection on first onboarding entry before starting. */
     autoStartIfNeeded: Boolean = false,
     /** Compact background-preparation status for the board-first onboarding. */
     compact: Boolean = false,
@@ -70,6 +65,10 @@ fun BoardSyncInlineCard(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
     val boardCounts by viewModel.boardCounts.collectAsStateWithLifecycle()
+    val downloadBrands by viewModel.downloadBrands.collectAsStateWithLifecycle()
+    var selectionDraft by rememberSaveable { mutableStateOf<Set<BoardBrand>?>(null) }
+    var initialReviewShown by rememberSaveable { mutableStateOf(false) }
+    var startAfterSelection by rememberSaveable { mutableStateOf(false) }
     val activeBrand by viewModel.activeBrand.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val syncBugReportTitle = stringResource(R.string.error_bug_report_sync_title)
@@ -94,15 +93,44 @@ fun BoardSyncInlineCard(
     // both fire on first composition and used to run the same full grouped
     // catalogue count concurrently.
     val doneBrands = state.boardSteps.filterValues { it is ImportStep.Done }.keys
-    LaunchedEffect(state.lastSyncCompletedAtMillis, state.alreadyImported, doneBrands) {
+    LaunchedEffect(state.lastSyncCompletedAtMillis, state.catalogueRevision, state.alreadyImported, doneBrands) {
         viewModel.refreshBoardCounts()
     }
     if (autoStartIfNeeded) {
-        // One-shot on first composition. The VM's startInitialSyncIfNeeded
-        // guards on alreadyImported + isSyncing so a re-entry to the
-        // onboarding (or returning user) doesn't kick off a redundant
-        // re-download.
-        LaunchedEffect(Unit) { viewModel.startInitialSyncIfNeeded() }
+        // First download waits for a reviewable board choice. Nothing is fetched
+        // before confirmation, and the preference is persisted before enqueueing.
+        LaunchedEffect(Unit) {
+            if (!initialReviewShown && !state.alreadyImported && !state.isSyncing) {
+                initialReviewShown = true
+                selectionDraft = viewModel.initialDownloadSelection()
+                startAfterSelection = true
+            }
+        }
+    }
+    selectionDraft?.let { draft ->
+        com.cruxcoach.android.ui.settings.BoardMultiSelectDialog(
+            title = stringResource(R.string.board_download_selection_title),
+            message = stringResource(R.string.board_download_selection_description),
+            note = stringResource(R.string.board_download_selection_local_share),
+            confirmLabel = stringResource(
+                if (startAfterSelection) R.string.board_sync_update_online else R.string.action_save,
+            ),
+            confirmColor = OrangeAccent,
+            selectedBrands = draft,
+            onToggleBrand = { brand ->
+                selectionDraft = if (brand in draft) draft - brand else draft + brand
+            },
+            onToggleSelectAll = {
+                val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
+                selectionDraft = if (draft.containsAll(all)) emptySet() else all
+            },
+            onConfirm = {
+                viewModel.saveDownloadSelection(draft, startInitial = startAfterSelection)
+                selectionDraft = null
+            },
+            onDismiss = { selectionDraft = null },
+            allowEmpty = !startAfterSelection,
+        )
     }
 
     if (state.showNetworkDialog) {
@@ -420,16 +448,34 @@ fun BoardSyncInlineCard(
                 !state.wifiConnected -> NoWifiWarningBanner()
             }
         }
-        state.autoSyncOverdueDays?.let { days -> AutoSyncOverdueBanner(days) }
-        val startSync = {
-            if (autoStartIfNeeded) viewModel.startInitialSync()
-            else viewModel.startApiSync()
+        state.autoSyncOverdueDays?.takeIf { !downloadBrands.isNullOrEmpty() }
+            ?.let { days -> AutoSyncOverdueBanner(days) }
+        val startSync: () -> Unit = {
+            if (autoStartIfNeeded && !state.alreadyImported) {
+                selectionDraft = downloadBrands ?: setOf(activeBrand)
+                startAfterSelection = true
+            } else viewModel.startApiSync()
+        }
+        OutlinedButton(
+            onClick = {
+                selectionDraft = downloadBrands
+                startAfterSelection = false
+            },
+            enabled = downloadBrands != null && !state.isSyncing,
+            modifier = Modifier.fillMaxWidth().testTag("board_download_selection"),
+        ) {
+            Text(stringResource(R.string.board_download_selection_summary, downloadBrands?.size ?: 0))
+        }
+        if (downloadBrands?.isEmpty() == true) {
+            Text(stringResource(R.string.board_download_selection_empty),
+                style = MaterialTheme.typography.bodySmall)
         }
         if (compact) {
             CompactDatabasePreparation(
                 state = state,
                 boardCounts = boardCounts,
                 activeBrand = activeBrand,
+                selectedBrands = downloadBrands.orEmpty(),
                 onRetry = startSync,
                 onLoadBoard = { viewModel.loadBoard(it) },
             )
@@ -438,6 +484,7 @@ fun BoardSyncInlineCard(
                 state = state,
                 boardCounts = boardCounts,
                 activeBrand = activeBrand,
+                selectedBrands = downloadBrands.orEmpty(),
                 onStartSync = startSync,
                 onLoadBoard = { viewModel.loadBoard(it) },
                 onDismissError = { viewModel.clearError() },
@@ -454,20 +501,21 @@ fun BoardSyncInlineCard(
 }
 
 @Composable
-private fun CompactDatabasePreparation(
+internal fun CompactDatabasePreparation(
     state: BoardSyncState,
     boardCounts: Map<String, Long>,
     activeBrand: BoardBrand,
+    selectedBrands: Set<BoardBrand>,
     onRetry: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    val supportedBoards = remember { BoardBrand.entries.filter { it.isInteractive } }
+    val supportedBoards = BoardBrand.entries.filter { it in selectedBrands }
     val readyBoards = supportedBoards.count { brand ->
-        boardCounts[brand.wireValue]?.let { it > 0L } == true ||
-            state.boardSteps[brand] is ImportStep.Done
+        catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, state.boardSteps[brand]) > 0L
     }
     val hasErrors = state.errorMessage != null || state.boardErrors.isNotEmpty()
+    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
         shape = RoundedCornerShape(14.dp),
@@ -479,9 +527,9 @@ private fun CompactDatabasePreparation(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    if (state.alreadyImported) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
+                    if (allReady) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
                     contentDescription = null,
-                    tint = if (state.alreadyImported) SuccessGreen else OrangeAccent,
+                    tint = if (allReady) SuccessGreen else OrangeAccent,
                     modifier = Modifier.size(22.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -495,7 +543,8 @@ private fun CompactDatabasePreparation(
                         stringResource(
                             when {
                                 state.isSyncing -> R.string.onboarding_offline_status_loading
-                                state.alreadyImported -> R.string.onboarding_offline_status_ready
+                                selectedBrands.isEmpty() -> R.string.board_download_selection_empty
+                                allReady -> R.string.onboarding_offline_status_ready
                                 state.waitingForUnmeteredNetwork || !state.networkAvailable ->
                                     R.string.board_sync_compact_waiting_wifi
                                 hasErrors -> R.string.onboarding_offline_status_waiting
@@ -506,9 +555,9 @@ private fun CompactDatabasePreparation(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (state.errorMessage != null && !state.isSyncing) {
-                    TextButton(onClick = onRetry, modifier = Modifier.testTag("onboarding_offline_retry")) {
-                        Text(stringResource(R.string.action_retry))
+                if (!allReady && !state.isSyncing) {
+                    TextButton(onClick = onRetry, enabled = selectedBrands.isNotEmpty(), modifier = Modifier.testTag("onboarding_offline_retry")) {
+                        Text(stringResource(if (hasErrors) R.string.action_retry else R.string.board_sync_update_online))
                     }
                 }
             }
@@ -557,6 +606,7 @@ private fun CompactDatabasePreparation(
                     BoardCatalogueStatusList(
                         boardCounts = boardCounts,
                         activeBrand = activeBrand,
+                        selectedBrands = selectedBrands,
                         boardSteps = state.boardSteps,
                         boardErrors = state.boardErrors,
                         syncing = state.isSyncing,
@@ -628,6 +678,7 @@ private fun DatabaseImportSection(
     state: BoardSyncState,
     boardCounts: Map<String, Long>,
     activeBrand: BoardBrand,
+    selectedBrands: Set<BoardBrand>,
     onStartSync: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
     onDismissError: () -> Unit,
@@ -676,6 +727,7 @@ private fun DatabaseImportSection(
                 // Fresh install — nothing imported yet: the primary download CTA.
                 Button(
                     onClick = onStartSync,
+                    enabled = selectedBrands.isNotEmpty(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("board_sync_start"),
@@ -698,6 +750,7 @@ private fun DatabaseImportSection(
                 BoardCatalogueStatusList(
                     boardCounts = boardCounts,
                     activeBrand = activeBrand,
+                    selectedBrands = selectedBrands,
                     boardSteps = state.boardSteps,
                     boardErrors = state.boardErrors,
                     syncing = state.isSyncing,
@@ -716,6 +769,7 @@ private fun DatabaseImportSection(
                     }
                     OutlinedButton(
                         onClick = onStartSync,
+                        enabled = selectedBrands.isNotEmpty(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("board_sync_update"),
@@ -898,6 +952,7 @@ private fun formatShareBytes(bytes: Long): String = when {
 private fun BoardCatalogueStatusList(
     boardCounts: Map<String, Long>,
     activeBrand: BoardBrand,
+    selectedBrands: Set<BoardBrand>,
     boardSteps: Map<BoardBrand, ImportStep>,
     boardErrors: Map<BoardBrand, String>,
     syncing: Boolean,
@@ -934,6 +989,7 @@ private fun BoardCatalogueStatusList(
                 sharedPhasePending = sharedPhasePending,
                 hasError = !sharedPhasePending && boardErrors.containsKey(brand),
                 anySyncing = syncing,
+                downloadSelected = brand in selectedBrands,
                 onLoad = { onLoadBoard(brand) },
             )
         }
@@ -949,17 +1005,14 @@ private fun BoardStatusRow(
     sharedPhasePending: Boolean,
     hasError: Boolean,
     anySyncing: Boolean,
+    downloadSelected: Boolean,
     onLoad: () -> Unit,
 ) {
     // This board is mid-sync when it has a non-terminal step in the map.
     val boardSyncing = step != null && step !is ImportStep.Done
-    // A Done step carries that board's post-import catalogue total — use it
-    // while [count] (refreshed asynchronously) is still stale, so the row
-    // flips to done+count the moment its own import completes. AlreadyCurrent
-    // reports Done(0,0,0); the count-first preference keeps the previously
-    // loaded total for that case.
-    val doneClimbs = (step as? ImportStep.Done)?.climbs?.toLong() ?: 0L
-    val displayCount = if (count > 0L) count else doneClimbs
+    // A completed import carries a fresh, brand-scoped total. Zero means
+    // AlreadyCurrent and falls back to the stored catalogue count.
+    val displayCount = catalogueDisplayCount(count, step)
     val loaded = displayCount > 0L
 
     // Inline progress label (reuses the step strings) + bar fraction.
@@ -1015,13 +1068,13 @@ private fun BoardStatusRow(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
-                loaded -> Icon(
-                    Icons.Default.CheckCircle, contentDescription = null,
-                    tint = SuccessGreen, modifier = Modifier.size(20.dp),
-                )
                 hasError -> Icon(
                     Icons.Default.Warning, contentDescription = null,
                     tint = ErrorRed, modifier = Modifier.size(20.dp),
+                )
+                loaded -> Icon(
+                    Icons.Default.CheckCircle, contentDescription = null,
+                    tint = SuccessGreen, modifier = Modifier.size(20.dp),
                 )
                 isActive -> Icon(
                     Icons.Default.Warning, contentDescription = null,
@@ -1035,14 +1088,21 @@ private fun BoardStatusRow(
             }
             Spacer(Modifier.width(8.dp))
 
-            Text(
-                brand.displayName,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                color = if (loaded || isActive || boardSyncing) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    brand.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (!downloadSelected) {
+                    Text(
+                        stringResource(R.string.board_download_not_selected),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             when {
                 boardSyncing -> Text(
@@ -1074,7 +1134,7 @@ private fun BoardStatusRow(
 
             // Per-board reload (loaded) / download (empty). Hidden while any
             // sync runs so the row shows progress, not a dead button.
-            if (!anySyncing) {
+            if (!anySyncing && downloadSelected) {
                 Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = onLoad,
@@ -1191,3 +1251,7 @@ private fun formatTimestamp(iso: String): String {
         iso
     }
 }
+
+/** Done(0) represents an unchanged catalogue, not a newly loaded empty one. */
+internal fun catalogueDisplayCount(count: Long, step: ImportStep?): Long =
+    (step as? ImportStep.Done)?.climbs?.toLong()?.takeIf { it > 0L } ?: count

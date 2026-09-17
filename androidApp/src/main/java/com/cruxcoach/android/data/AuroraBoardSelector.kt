@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -22,7 +23,7 @@ class AuroraBoardSelector @Inject constructor(
     private val auroraCatalogueSync: AuroraCatalogueSync,
     private val boardRepository: BoardRepository,
 ) {
-    enum class Status { IMPORTED, ALREADY_CURRENT, FAILED }
+    enum class Status { IMPORTED, ALREADY_CURRENT, FAILED, DOWNLOAD_DISABLED }
 
     data class Outcome(
         val status: Status,
@@ -38,6 +39,7 @@ class AuroraBoardSelector @Inject constructor(
          *  variant's default. Lets a TB2 owner pick 10x12 / 12x8 / 10x8 instead
          *  of being pinned to the 12x12 default (FEAT-031). */
         productSizeId: Int? = null,
+        allowDownload: Boolean = true,
     ): Outcome {
         val brand = board.wireValue
         // Effective size for a variant pick: the user's explicit choice, else
@@ -83,6 +85,19 @@ class AuroraBoardSelector @Inject constructor(
                 }
             }
         }
+        // A fresh onboarding must be able to choose a single-layout board
+        // without starting its download. Use the same bundled hardware sizes
+        // as the picker; selecting hardware is separate from download consent.
+        if (variant == null) {
+            BoardConstants.AURORA_SINGLE_LAYOUT_DEFAULTS[board]?.let { (layout, defaultSize) ->
+                val size = BoardConstants.auroraBundledSizes(board)
+                    .firstOrNull { it.id.toInt() == productSizeId }?.id?.toInt() ?: defaultSize
+                userPreferences.setBoardSelection(brand, layout, size)
+            }
+        }
+        if (!allowDownload || board !in userPreferences.boardDownloadBrands.first()) {
+            return Outcome(Status.DOWNLOAD_DISABLED, variant?.layoutId, variantSize, variant?.displayName)
+        }
         return when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
             is AuroraCatalogueSync.Result.Failed -> Outcome(
                 status = Status.FAILED,
@@ -108,13 +123,8 @@ class AuroraBoardSelector @Inject constructor(
                         boardRepository.getDefaultProductSizeForBrand(brand)
                     }
                 }
-                // A no-variant board is made the active board ONLY here, after a
-                // successful sync derived a coherent (layout, size) — and the
-                // brand is written atomically WITH that layout/size. Two
-                // consequences fall out: a failed first-time sync never strands
-                // the user on an empty catalogue (nothing was persisted up
-                // front), and the brand is never active without a matching
-                // layout/size (no brand/layout mismatch on a derive miss).
+                // Once downloaded, replace bundled hardware defaults with the
+                // authoritative catalogue configuration in one atomic write.
                 if (variant == null && layout != null && size != null) {
                     userPreferences.setBoardSelection(brand, layout, size.first)
                 }

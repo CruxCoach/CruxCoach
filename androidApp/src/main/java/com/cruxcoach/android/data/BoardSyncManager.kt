@@ -129,6 +129,8 @@ class BoardSyncManager(
      *  invitation consumed after Android's asynchronous permission result. */
     private val offlineShareConsentLock = Any()
 
+    private val catalogueOperationLock = Any()
+
     private var deferralWatchdog: Job? = null
     /** True only for the onboarding fallback. Dismissing its mobile-data
      * consent queues the catalogue for Wi-Fi instead of cancelling it. */
@@ -245,6 +247,8 @@ class BoardSyncManager(
      */
     fun recoverPartialImportIfNeeded() {
         scope.safeLaunch(TAG) {
+            // Photo-based MoonBoard catalogues legitimately have no placements.
+            if (BoardBrand.KILTER !in userPreferences.boardDownloadBrands.first()) return@safeLaunch
             // EXISTS-based fast path: getClimbCount() blocks tens of
             // seconds during an active import, and this hook fires at
             // app-start where the user is already waiting on UI render.
@@ -277,6 +281,7 @@ class BoardSyncManager(
      */
     fun handlePostMigrationResync() {
         scope.safeLaunch(TAG) {
+            if (BoardBrand.KILTER !in userPreferences.boardDownloadBrands.first()) return@safeLaunch
             val v8 = boardRepository.hasPostV8ResyncMarker()
             val homewall = boardRepository.hasHomewallResyncMarker()
             if (!v8 && !homewall) return@safeLaunch
@@ -343,6 +348,7 @@ class BoardSyncManager(
      */
     fun backfillLocationsIfMissing() {
         scope.launch {
+            if (BoardBrand.KILTER !in userPreferences.boardDownloadBrands.first()) return@launch
             // Track cache files outside the timeout block so finally can clean
             // them up regardless of which path exits.
             val backfillFiles = mutableListOf<File>()
@@ -478,35 +484,10 @@ class BoardSyncManager(
                 return@safeLaunch
             }
 
-            // Check Blossom manifest for changed chunks
-            Log.d(TAG, "Data stale, checking Blossom manifest...")
-            try {
-                val manifest = blossomSyncManager.fetchManifest()
-                if (!blossomSyncManager.canApplyManifest(manifest)) {
-                    Log.w(TAG, "Auto-sync: stale manifest rejected — keeping current data")
-                    return@safeLaunch
-                }
-                userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
-                val changedChunks = blossomSyncManager.getChangedChunks(
-                    manifest,
-                    requiredImportVersion = BlossomSyncManager.BETA_IMPORT_VERSION,
-                    requiresImportVersion = { BlossomSyncManager.isBetaChunk(it) },
-                )
-                if (changedChunks.isEmpty()) {
-                    blossomSyncManager.saveAcceptedManifestTimestamp(manifest)
-                    Log.d(TAG, "All chunks up to date — skipping auto-sync")
-                    val timestamp = DateTimeUtil.nowIso()
-                    userPreferences.setLastSyncTimestamp(timestamp)
-                    _state.update { it.copy(lastSyncTimestamp = timestamp) }
-                    return@safeLaunch
-                }
-                Log.d(TAG, "Changed chunks: ${changedChunks.map { it.name }}")
-                // Run under a foreground service so the stale-data
-                // auto-sync isn't killed if the user backgrounds the
-                // app right after launch.
+            // Each selected catalogue owns its manifest and freshness. A Kilter
+            // no-op must neither suppress other boards nor fetch an excluded board.
+            if (userPreferences.boardDownloadBrands.first().isNotEmpty()) {
                 BoardSyncWorker.enqueueExpedited(appContext)
-            } catch (e: Exception) {
-                Log.w(TAG, "Blossom manifest check failed — skipping auto-sync", e)
             }
         }
     }
@@ -520,7 +501,8 @@ class BoardSyncManager(
      * (user tap + auto-sync, Blossom + local share, etc.) could both
      * observe isSyncing=false and start duplicate imports.
      */
-    private fun claimSyncSlot(initialStep: ImportStep, localShare: Boolean = false): Boolean {
+    private fun claimSyncSlot(initialStep: ImportStep, localShare: Boolean = false): Boolean = synchronized(catalogueOperationLock) {
+        if (_boardDataDeletion.value.running) return@synchronized false
         var claimed = false
         _state.update { current ->
             if (current.isSyncing) {
@@ -549,7 +531,7 @@ class BoardSyncManager(
                 )
             }
         }
-        return claimed
+        claimed
     }
 
     /**
@@ -844,6 +826,17 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
+    /** A second onboarding confirmation may add boards after the first run
+     * snapshotted its selection. Keep this request alive outside the screen. */
+    fun startSelectedSyncAfterCurrent() {
+        scope.safeLaunch(TAG) {
+            _state.first { !it.isSyncing }
+            if (userPreferences.boardDownloadBrands.first().isNotEmpty()) {
+                startApiSync(queueWhenOffline = true)
+            }
+        }
+    }
+
     fun startApiSync(bypassWifi: Boolean = false, queueWhenOffline: Boolean = false) {
         Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
@@ -929,14 +922,25 @@ class BoardSyncManager(
      * Starts a Blossom-based sync: fetches manifest, downloads changed chunks,
      * decompresses, and imports into the board database.
      */
-    private fun startBlossomSync() {
+    private fun startBlossomSync(requestedBoard: BoardBrand? = null) {
         // Atomic check-and-claim: only the caller that flips isSyncing
         // from false to true is allowed to proceed.
         if (!claimSyncSlot(ImportStep.FetchingManifest)) return
 
         scope.launch {
             try {
-                val catalogueChanged = performBlossomSync()
+                // Snapshot once: a settings change applies to the next run,
+                // including optional media, never to half of an in-flight run.
+                val awaitingFirstChoice = !userPreferences.hasBoardDownloadSelection() &&
+                    !importer.isImported() && !userPreferences.isOnboardingCompleted()
+                val savedSelection = if (awaitingFirstChoice) emptySet()
+                    else userPreferences.boardDownloadBrands.first()
+                // A queued single-board request must honor a later exclusion or
+                // deletion; opting in happens at the explicit UI action, not here.
+                val selectedBrands = if (requestedBoard != null) {
+                    savedSelection.intersect(setOf(requestedBoard))
+                } else savedSelection
+                val catalogueChanged = performBlossomSync(selectedBrands, recordFullSync = requestedBoard == null)
                 // Refresh SQLite query-planner stats now the catalogue may
                 // have grown substantially (Kilter + MoonBoard imports both
                 // skip ANALYZE inline to keep the "finalizing" phase short).
@@ -951,7 +955,13 @@ class BoardSyncManager(
                 // from the MoonBoard step made its short replacement writer
                 // contend with later board imports/ANALYZE and could stall
                 // first-browse queries even though the visible sync was done.
-                for (board in boardRepository.getClimbCountsByBrand().filterValues { it > 0 }.keys) {
+                for (board in boardRepository.getClimbCountsByBrand().filter { (wire, count) ->
+                    count > 0 && BoardBrand.fromWireOrNull(wire) in selectedBrands
+                }.keys) {
+                    // A deletion queued behind this catalogue run takes priority
+                    // over optional media for data that is about to be removed.
+                    if (_boardDataDeletion.value.running) break
+                    if (BoardBrand.fromWireOrNull(board) !in userPreferences.boardDownloadBrands.first()) continue
                     val mediaAvailable = boardBetaMediaSync?.sync(board, forceImport = catalogueChanged) == true
                     if (board == "moonboard" && !mediaAvailable && _state.value.moonBoardError == null) {
                         moonBoardBetaSync?.sync()
@@ -989,21 +999,47 @@ class BoardSyncManager(
         }
     }
 
-    private suspend fun performBlossomSync(): Boolean {
+    private suspend fun performBlossomSync(
+        selectedBrands: Set<BoardBrand>,
+        recordFullSync: Boolean,
+    ): Boolean {
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        val prioritisedBrand = activeBrand.takeIf {
-            it.isInteractive && it != BoardBrand.KILTER
+        _state.update { it.copy(importStep = null, moonBoardStep = null, moonBoardError = null,
+            auroraSteps = emptyMap(), auroraErrors = emptyMap()) }
+        var changed = false
+        for (brand in catalogueSyncOrder(activeBrand, selectedBrands)) {
+            if (brand == BoardBrand.KILTER) {
+                try {
+                    if (syncKilterCatalogue()) changed = true
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Kilter catalogue download failed", e)
+                    val message = appContext.getString(R.string.board_sync_error_download)
+                    _state.update { it.copy(importStep = null, errorMessage = message,
+                        auroraErrors = it.auroraErrors + (BoardBrand.KILTER to message)) }
+                }
+            } else if (syncCatalogue(brand)) changed = true
         }
-        // 1. Fetch manifest
+        val failed = _state.value.errorMessage != null || _state.value.boardErrors.isNotEmpty()
+        val timestamp = if (recordFullSync && selectedBrands.isNotEmpty() && !failed) DateTimeUtil.nowIso()
+            else userPreferences.lastSyncTimestamp.first()
+        userPreferences.setLastSyncTimestamp(timestamp)
         _state.update { it.copy(
-            importStep = ImportStep.FetchingManifest,
-            moonBoardStep = null,
-            moonBoardError = null,
+            isSyncing = false,
+            syncComplete = selectedBrands.isNotEmpty() && !failed,
+            alreadyImported = importer.isImported(),
+            lastSyncTimestamp = timestamp,
+            errorMessage = if (failed) _state.value.errorMessage
+                ?: appContext.getString(R.string.board_sync_error_download) else null,
+            importStep = null,
+            lastSyncCompletedAtMillis = System.currentTimeMillis(),
         ) }
-        // Make the board selected during onboarding useful first. Its lane is
-        // isolated and idempotent, so a failure cannot prevent the complete
-        // all-catalogue pass (Kilter remains the historical main lane).
-        val prioritisedCatalogueChanged = prioritisedBrand?.let { syncCatalogue(it) } ?: false
+        return changed
+    }
+
+    private suspend fun syncKilterCatalogue(): Boolean {
+        _state.update { it.copy(importStep = ImportStep.FetchingManifest) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
         val manifestAcceptable = blossomSyncManager.canApplyManifest(manifest)
@@ -1037,24 +1073,11 @@ class BoardSyncManager(
             // complete so the MoonBoard section is the only one still
             // showing progress while it re-checks.
             _state.update { it.copy(importStep = ImportStep.Done(
-                boardRepository.getClimbCount().toInt(),
+                (boardRepository.getClimbCountsByBrand()["kilter"] ?: 0L).toInt(),
                 boardRepository.getStatCount().toInt(),
                 0,
             )) }
-            // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
-            // it even when the Kilter catalogue itself is unchanged.
-            val remainingCatalogueChanged = syncRemainingCatalogues(activeBrand)
-            val timestamp = DateTimeUtil.nowIso()
-            userPreferences.setLastSyncTimestamp(timestamp)
-            _state.update { it.copy(
-                isSyncing = false,
-                syncComplete = true,
-                alreadyImported = true,
-                lastSyncTimestamp = timestamp,
-                importStep = null,
-                lastSyncCompletedAtMillis = System.currentTimeMillis()
-            ) }
-            return prioritisedCatalogueChanged || remainingCatalogueChanged
+            return false
         }
 
         // 3. Download and decompress changed chunks (semaphore-bounded parallel).
@@ -1180,10 +1203,13 @@ class BoardSyncManager(
 
             if (failedChunks.isNotEmpty()) {
                 // Partial success: the imported chunks + their saved hashes are
-                // durable, so the sync still reports complete (the user sees the
+                // durable, but the sync must report the incomplete download (the user sees the
                 // data that arrived). getChangedChunks will re-report the skipped
                 // chunks on the next sync and the catalogue converges — no full
                 // re-download, no hard failure.
+                val message = appContext.getString(R.string.board_sync_error_download)
+                _state.update { it.copy(errorMessage = message,
+                    auroraErrors = it.auroraErrors + (BoardBrand.KILTER to message)) }
                 chunksToDownload.forEach { chunk ->
                     if (chunkFiles.containsKey(chunk.name)) {
                         blossomSyncManager.saveChunkHash(
@@ -1214,23 +1240,10 @@ class BoardSyncManager(
             //    Kilter done + MoonBoard in progress as two distinct sections.
             _state.update { it.copy(
                 importStep = kilterDone ?: ImportStep.Done(
-                    boardRepository.getClimbCount().toInt(),
+                    (boardRepository.getClimbCountsByBrand()["kilter"] ?: 0L).toInt(),
                     boardRepository.getStatCount().toInt(),
                     0,
                 )
-            ) }
-            syncRemainingCatalogues(activeBrand)
-
-            val timestamp = DateTimeUtil.nowIso()
-            userPreferences.setLastSyncTimestamp(timestamp)
-            _state.update { it.copy(
-                isSyncing = false,
-                syncComplete = true,
-                alreadyImported = true,
-                lastSyncTimestamp = timestamp,
-                errorMessage = null,
-                importStep = null,
-                lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
             return true
         } finally {
@@ -1286,43 +1299,6 @@ class BoardSyncManager(
             ) }
             false
         }
-    }
-
-    /**
-     * Sync the active Aurora-family board's catalogue as part of the board-data
-     * sync (FEAT-031), so Tension / Grasshopper / Decoy / So iLL / Touchstone
-     * get ongoing catalogue updates and their own progress section in the sync
-     * card. Single-active-board model: only the currently-selected Aurora board
-     * is synced. Idempotent and isolated — a failure never fails the Kilter
-     * sync (mirrors [syncMoonBoardCatalogue]).
-     */
-    private suspend fun syncActiveAuroraBoard() {
-        val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        // Kilter + MoonBoard have their own lanes above; only the non-Kilter
-        // Aurora family is handled here.
-        if (!brand.usesAuroraProtocol || brand == BoardBrand.KILTER) return
-        syncAuroraBoard(brand)
-    }
-
-    /**
-     * Sync every remaining interactive board catalogue. Product
-     * decision 2026-06-11: the full board-data sync — onboarding first sync,
-     * the manual re-download button, and the scheduled background sync —
-     * loads ALL boards, not just already-loaded ones. The active non-Kilter
-     * lane has already run before Kilter and is excluded here, so a fresh install or
-     * a post-deletion re-download restores the complete multiboard catalogue
-     * without per-board activation. The bins are small (0.3–26 MB gz) and
-     * unchanged boards short-circuit to AlreadyCurrent on every later run,
-     * so repeat syncs stay cheap.
-     */
-    private suspend fun syncRemainingCatalogues(activeBrand: BoardBrand): Boolean {
-        var imported = false
-        catalogueSyncOrder(activeBrand)
-            .filter { it != BoardBrand.KILTER && it != activeBrand }
-            .forEach { brand ->
-                if (syncCatalogue(brand)) imported = true
-            }
-        return imported
     }
 
     private suspend fun syncCatalogue(brand: BoardBrand): Boolean {
@@ -1400,6 +1376,7 @@ class BoardSyncManager(
      */
     private suspend fun ensureActiveBoardCatalogue() {
         val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        if (brand !in userPreferences.boardDownloadBrands.first()) return
         if (brand == BoardBrand.KILTER) return  // Kilter handled by the main lane
         val loaded = withContext(Dispatchers.IO) {
             // Presence needs one indexed row, not totals for every loaded board.
@@ -1438,24 +1415,17 @@ class BoardSyncManager(
      * Reports into the per-board map so the row shows the same step checklist.
      */
     fun loadBoardCatalogue(brand: BoardBrand) {
-        if (brand == BoardBrand.KILTER) { startApiSync(bypassWifi = true); return }
-        if (!claimSyncSlot(ImportStep.FetchingManifest)) return
-        // Board-specific load: clear the Kilter importStep the slot-claim set so
-        // only this board's row shows progress (not a phantom Kilter row).
-        _state.update { it.copy(importStep = null) }
-        scope.launch {
-            var imported = false
-            try {
-                imported = when (brand) {
-                    BoardBrand.MOONBOARD -> syncMoonBoardCatalogue()
-                    BoardBrand.QUANTUM -> syncQuantumBoard()
-                    else -> syncAuroraBoard(brand)
-                }
-            } finally {
-                finishSyncSlot()
-            }
-            // FEAT-037B: refresh planner stats for the freshly-imported board.
-            runPostSingleBoardImportTasks(brand, imported)
+        if (!brand.isInteractive) return
+        // Carry the exact board through WorkManager so even a long Kilter
+        // download survives backgrounding without expanding to other boards.
+        scope.safeLaunch(TAG) {
+            userPreferences.includeBoardDownload(brand)
+            // A picker confirmation during onboarding must survive the current
+            // catalogue import instead of silently dropping the new request.
+            _state.first { !it.isSyncing }
+            if (brand !in userPreferences.boardDownloadBrands.first()) return@safeLaunch
+            BoardSyncWorker.enqueueExpedited(appContext, allowMetered = true, board = brand)
+            watchForSilentDeferral()
         }
     }
 
@@ -1465,6 +1435,7 @@ class BoardSyncManager(
         _state.update { it.copy(
             isSyncing = false,
             syncComplete = true,
+            alreadyImported = importer.isImported(),
             importStep = null,
             lastSyncCompletedAtMillis = System.currentTimeMillis(),
         ) }
@@ -2004,8 +1975,8 @@ class BoardSyncManager(
      * Starts a background Blossom sync. Called by [BoardSyncWorker] and
      * auto-sync on stale data.
      */
-    fun startBackgroundSync() {
-        startBlossomSync()
+    fun startBackgroundSync(requestedBoard: BoardBrand? = null) {
+        startBlossomSync(requestedBoard)
     }
 
     /**
@@ -2028,14 +1999,12 @@ class BoardSyncManager(
         if (brands.isEmpty()) return
         // Atomic check-and-claim, mirrors claimSyncSlot: only the caller
         // that flips running from false to true starts the delete.
-        var claimed = false
-        _boardDataDeletion.update { current ->
-            if (current.running) {
-                claimed = false
-                current
+        val claimed = synchronized(catalogueOperationLock) {
+            if (_boardDataDeletion.value.running) {
+                false
             } else {
-                claimed = true
-                current.copy(running = true)
+                _boardDataDeletion.update { it.copy(running = true) }
+                true
             }
         }
         if (!claimed) return
@@ -2045,6 +2014,9 @@ class BoardSyncManager(
             val allBoards = brands.containsAll(BoardBrand.entries.filter { it.isInteractive })
             Log.i(TAG, "destructive: deleteBoardData(brands=[$brandNames], allBoards=$allBoards) started")
             try {
+                // An in-flight snapshot can include these boards. Wait for it
+                // before deleting, and keep new syncs out while deletion waits.
+                _state.first { !it.isSyncing }
                 if (allBoards) {
                     boardRepository.deleteAllBoardData()
                     resetAfterDataDeletion()
@@ -2052,6 +2024,9 @@ class BoardSyncManager(
                     boardRepository.deleteBoardDataForBrands(brands.map { it.wireValue }.toSet())
                     resetSyncStateForBrands(brands)
                 }
+                // Deleting a catalogue also opts it out of future downloads;
+                // otherwise the next worker would silently undo the deletion.
+                userPreferences.excludeBoardDownloads(brands)
                 // Catalogue contents changed in the other direction: a gate
                 // that was true is now false, and anything holding a mask
                 // derived from it has to re-ask (FEAT-049 §3.7).
@@ -2083,16 +2058,23 @@ class BoardSyncManager(
      * MoonBoardCatalogueSync / AuroraCatalogueSync). UNSELECTED boards'
      * stores stay intact so their incremental sync state survives.
      *
-     * The Kilter-centric global flags (alreadyImported / syncComplete /
-     * lastSyncTimestamp) gate the main Blossom sync, so they reset only
-     * when Kilter itself is among [brands] — a MoonBoard-only deletion
-     * must not advertise the Kilter catalogue as missing.
+     * Recompute availability and discard terminal steps for deleted boards so
+     * a stale Done cannot resurrect their counts in the UI.
      */
     private fun resetSyncStateForBrands(brands: Set<BoardBrand>) {
+        val imported = importer.isImported()
+        _state.update { it.copy(
+            alreadyImported = imported,
+            syncComplete = false,
+            importStep = if (BoardBrand.KILTER in brands) null else it.importStep,
+            moonBoardStep = if (BoardBrand.MOONBOARD in brands) null else it.moonBoardStep,
+            moonBoardError = if (BoardBrand.MOONBOARD in brands) null else it.moonBoardError,
+            auroraSteps = it.auroraSteps - brands,
+            auroraErrors = it.auroraErrors - brands,
+            localShareBoardSteps = it.localShareBoardSteps - brands,
+        ) }
         if (BoardBrand.KILTER in brands) {
             _state.update { it.copy(
-                alreadyImported = false,
-                syncComplete = false,
                 lastSyncTimestamp = null
             ) }
             blossomSyncManager.clearStoredHashes()
@@ -2173,8 +2155,11 @@ internal fun parseRetryAfterSeconds(header: String?): Long =
 /** Stable all-catalogue order with the user's current board moved to the
  * front. Map-only brands are deliberately absent. Keeping this pure makes
  * onboarding priority independent of the transport implementations. */
-internal fun catalogueSyncOrder(activeBrand: BoardBrand): List<BoardBrand> {
-    val supported = BoardBrand.entries.filter { it.isInteractive }
+internal fun catalogueSyncOrder(
+    activeBrand: BoardBrand,
+    selectedBrands: Set<BoardBrand> = BoardBrand.entries.filter { it.isInteractive }.toSet(),
+): List<BoardBrand> {
+    val supported = BoardBrand.entries.filter { it.isInteractive && it in selectedBrands }
     if (activeBrand !in supported) return supported
     return listOf(activeBrand) + supported.filterNot { it == activeBrand }
 }

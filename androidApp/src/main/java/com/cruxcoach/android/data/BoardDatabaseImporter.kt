@@ -107,13 +107,14 @@ class BoardDatabaseImporter(
         )
     }
 
-    /** Returns true if board data has already been imported (including layout data).
+    /** Returns true if any downloadable catalogue routes exist.
+     *  Own/peer routes do not prove that a catalogue has been downloaded.
      *  Uses the EXISTS-based fast path — boardRepository.getClimbCount()
      *  is a full table-scan that blocks on the importer's writer-lock
      *  (~28s on slower-eMMC), unacceptable for the BoardSyncManager's
      *  startup-decision read that needs to feel instant. */
     fun isImported(): Boolean {
-        return boardRepository.hasAnyClimbs()
+        return boardRepository.hasAnyCatalogueClimbs()
     }
 
     fun getClimbCount(): Long = boardRepository.getClimbCount()
@@ -328,7 +329,7 @@ class BoardDatabaseImporter(
             }
         }
 
-        val climbCount = boardRepository.getClimbCount()
+        val climbCount = boardRepository.getClimbCountsByBrand()["kilter"] ?: 0L
         val statCount = boardRepository.getStatCount()
         val placementCount = boardRepository.getAllPlacements().size
         val nomatchCount = boardRepository.countNomatchClimbs()
@@ -570,7 +571,7 @@ class BoardDatabaseImporter(
         // `frames` post-import (same as pre-2026-04 Kilter chunks). Newer
         // snapshots carry it precomputed, so the backfill is skipped.
         if (!snapshotHasMoveCount) backfillMoveCounts()
-        val climbCount = boardRepository.getClimbCount()
+        val climbCount = boardRepository.getClimbCountsByBrand()["moonboard"] ?: 0L
         val statCount = boardRepository.getStatCount()
         Log.i(TAG, "importMoonBoardSnapshot done: catalogue totals climbs=$climbCount stats=$statCount")
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
@@ -879,7 +880,7 @@ class BoardDatabaseImporter(
             }
         }
         if (!snapshotHasMoveCount) backfillMoveCounts()
-        val climbCount = boardRepository.getClimbCount()
+        val climbCount = boardRepository.getClimbCountsByBrand()[boardBrand] ?: 0L
         val statCount = boardRepository.getStatCount()
         Log.i(TAG, "importAuroraSnapshot($boardBrand) done: catalogue totals climbs=$climbCount stats=$statCount")
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))

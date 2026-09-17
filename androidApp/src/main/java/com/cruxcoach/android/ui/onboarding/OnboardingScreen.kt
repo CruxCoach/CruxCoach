@@ -26,6 +26,12 @@ import androidx.compose.material3.*
 import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
 import com.cruxcoach.android.ui.aurora.MigrationFlowContent
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.cruxcoach.android.ui.board.sync.BoardSyncViewModel
+import com.cruxcoach.android.ui.settings.BoardMultiSelectRows
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -66,8 +72,19 @@ fun OnboardingScreen(
     onNavigateToMoonBoardImport: () -> Unit = {},
     onNavigateToDataImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
+    boardSyncViewModel: BoardSyncViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var downloadSelection by rememberSaveable { mutableStateOf<Set<BoardBrand>?>(null) }
+    var downloadsConfirmed by rememberSaveable { mutableStateOf(false) }
+    var confirmingDownloads by androidx.compose.runtime.remember { mutableStateOf(false) }
+    var downloadSelectionFailed by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(state.currentStep) {
+        if (downloadSelection == null || (downloadsConfirmed && state.currentStep == OnboardingStep.BOARD_SETUP)) {
+            downloadSelection = boardSyncViewModel.initialDownloadSelection()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OnboardingProgressHeader(state.currentStep)
@@ -78,17 +95,22 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(
+                    state = state,
+                    downloadSelection = downloadSelection,
+                    onDownloadSelectionChange = { downloadSelection = it },
+                )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
                 OnboardingStep.PRIVACY -> KilterStep(
-                    state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport,
+                    state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport, boardSyncViewModel,
                 )
                 OnboardingStep.KILTER -> KilterStep(
                     state = state,
                     viewModel = viewModel,
                     onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
                     onNavigateToDataImport = onNavigateToDataImport,
+                    boardSyncViewModel = boardSyncViewModel,
                 )
             }
         }
@@ -113,7 +135,25 @@ fun OnboardingScreen(
             when (state.currentStep) {
                 OnboardingStep.BOARD_SETUP -> {
                     Button(
-                        onClick = { viewModel.nextStep() },
+                        onClick = {
+                            val selected = downloadSelection ?: return@Button
+                            confirmingDownloads = true
+                            downloadSelectionFailed = false
+                            scope.launch {
+                                try {
+                                    boardSyncViewModel.confirmOnboardingDownloads(selected)
+                                    downloadsConfirmed = true
+                                    viewModel.nextStep()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    downloadSelectionFailed = true
+                                } finally {
+                                    confirmingDownloads = false
+                                }
+                            }
+                        },
+                        enabled = downloadSelection != null && !confirmingDownloads,
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
@@ -172,6 +212,13 @@ fun OnboardingScreen(
             }
         }
 
+        if (downloadSelectionFailed) {
+            Text(
+                stringResource(R.string.onboarding_download_selection_failed),
+                color = ErrorRed,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
         if (state.error != null) {
             Text(
                 text = state.error ?: "",
@@ -328,6 +375,8 @@ private fun OnboardingProgressHeader(step: OnboardingStep) {
 @Composable
 private fun BoardSetupStep(
     state: OnboardingState,
+    downloadSelection: Set<BoardBrand>?,
+    onDownloadSelectionChange: (Set<BoardBrand>) -> Unit,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
@@ -336,6 +385,8 @@ private fun BoardSetupStep(
         // sync card) — identical state + the full board list incl. the Aurora
         // family. The selection persists via the shared VM.
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
+            deferDownloads = true,
+            onBoardChosen = { onDownloadSelectionChange(downloadSelection.orEmpty() + it) },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
@@ -346,6 +397,8 @@ private fun BoardSetupStep(
     }
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            deferDownloads = true,
+            onBoardChosen = { onDownloadSelectionChange(downloadSelection.orEmpty() + it) },
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
@@ -410,12 +463,27 @@ private fun BoardSetupStep(
             onChangeModel = { showBoardModelDialog = true },
         )
 
-        // The catalogues prepare in the background. Keep this status compact:
-        // the board choice is the decision on this screen, not the download.
-        BoardSyncInlineCard(
-            modifier = Modifier.fillMaxWidth(),
-            autoStartIfNeeded = true,
-            compact = true,
+        Text(
+            stringResource(R.string.onboarding_download_selection_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        downloadSelection?.let { selected ->
+            BoardMultiSelectRows(
+                selectedBrands = selected,
+                onToggleBrand = { brand ->
+                    onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
+                },
+                onToggleSelectAll = {
+                    val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
+                    onDownloadSelectionChange(if (selected.containsAll(all)) emptySet() else all)
+                },
+                confirmColor = OrangeAccent,
+            )
+        }
+        Text(
+            stringResource(R.string.board_download_selection_local_share),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -694,6 +762,7 @@ private fun KilterStep(
     viewModel: OnboardingViewModel,
     onNavigateToMoonBoardImport: () -> Unit,
     onNavigateToDataImport: () -> Unit,
+    boardSyncViewModel: BoardSyncViewModel,
 ) {
     // Keep the first view deliberately quiet. Import credentials, scraping
     // instructions and migration details only appear after the user chooses
@@ -715,6 +784,7 @@ private fun KilterStep(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        BoardSyncInlineCard(viewModel = boardSyncViewModel, compact = true)
         Text(
             stringResource(R.string.onboarding_existing_data_title),
             style = MaterialTheme.typography.headlineSmall,

@@ -11,6 +11,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -64,13 +65,50 @@ class BoardSyncViewModel @Inject constructor(
 
     /** Recompute per-board catalogue sizes off the main thread. Call on first
      *  composition and whenever a sync completes. */
+    private var countsJob: Job? = null
+
     fun refreshBoardCounts() {
-        viewModelScope.launch {
+        countsJob?.cancel()
+        countsJob = viewModelScope.launch {
             _boardCounts.value = withContext(Dispatchers.IO) {
                 PerfLogger.traceQuery("boardSync.countClimbsByBrand") {
                     boardRepository.getClimbCountsByBrand()
                 }
             }
+        }
+    }
+
+    val downloadBrands: StateFlow<Set<BoardBrand>?> = userPreferences.boardDownloadBrands
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
+
+    suspend fun initialDownloadSelection(): Set<BoardBrand> {
+        if (!userPreferences.isOnboardingCompleted() && !state.value.alreadyImported &&
+            !userPreferences.hasBoardDownloadSelection()) {
+            val suggested = setOf(BoardBrand.fromWire(userPreferences.boardBrand.first()))
+            // Skipping onboarding's download must not leave the legacy all-board
+            // default for a later periodic worker to download without a choice.
+            userPreferences.setBoardDownloadBrands(emptySet())
+            return suggested
+        }
+        return userPreferences.boardDownloadBrands.first()
+    }
+
+    /** Persist consent before enqueueing; the application owns the download lifetime. */
+    suspend fun confirmOnboardingDownloads(brands: Set<BoardBrand>) {
+        val added = brands - userPreferences.boardDownloadBrands.first()
+        userPreferences.setBoardDownloadBrands(brands)
+        if (brands.isEmpty()) return
+        if (state.value.isSyncing || state.value.alreadyImported) {
+            if (added.isNotEmpty()) syncManager.startSelectedSyncAfterCurrent()
+        } else {
+            syncManager.startInitialSyncIfNeeded()
+        }
+    }
+
+    fun saveDownloadSelection(brands: Set<BoardBrand>, startInitial: Boolean = false) {
+        viewModelScope.launch {
+            userPreferences.setBoardDownloadBrands(brands)
+            if (startInitial && brands.isNotEmpty()) syncManager.startInitialSyncIfNeeded()
         }
     }
 
