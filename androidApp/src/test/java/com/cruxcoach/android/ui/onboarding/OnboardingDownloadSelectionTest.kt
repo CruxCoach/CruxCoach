@@ -21,20 +21,23 @@ import org.robolectric.annotation.Config
 class OnboardingDownloadSelectionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `first step shows inline choices and only Continue confirms the edited selection`() {
+    @Test fun `first step reveals catalogue choices and only Continue confirms the edited selection`() {
         val onboarding = mockk<OnboardingViewModel>(relaxed = true)
         every { onboarding.state } returns MutableStateFlow(OnboardingState())
         val sync = mockk<BoardSyncViewModel>(relaxed = true)
         coEvery { sync.initialDownloadSelection() } returns setOf(BoardBrand.KILTER)
+        val ble = mockk<com.cruxcoach.android.ui.board.BleConnectionViewModel>(relaxed = true)
+        every { ble.state } returns MutableStateFlow(com.cruxcoach.android.ui.board.BleConnectionState())
         val saved = CompletableDeferred<Unit>()
         coEvery { sync.confirmOnboardingDownloads(any()) } coAnswers { saved.await() }
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             MaterialTheme {
-                OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync)
+                OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync, bleViewModel = ble)
             }
         }
         compose.onNode(isDialog()).assertDoesNotExist()
+        compose.onNodeWithTag("setup_catalogue_choices").performScrollTo().performClick()
         compose.onNodeWithTag("board_selection_kilter").performScrollTo().assertIsOn().performClick()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
         restoration.emulateSavedInstanceStateRestore()

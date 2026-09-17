@@ -262,6 +262,7 @@ internal fun BoardPickerDialog(
     mismatch: BoardConfigurationMismatch? = null,
     deferDownloads: Boolean = false,
     onBoardChosen: (BoardBrand) -> Unit = {},
+    suggestedBrand: BoardBrand? = null,
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
@@ -273,7 +274,7 @@ internal fun BoardPickerDialog(
         onSelected()
     }) { request ->
         BoardSelectionDialog(
-            initialBrand = prefill?.brand?.wireValue ?: state.initialBrand,
+            initialBrand = prefill?.brand?.wireValue ?: suggestedBrand?.wireValue ?: state.initialBrand,
             productSizes = state.productSizes,
             selectedKilterSizeId = state.selectedKilterSizeId,
             selectedMoonBoardVariant = state.selectedMoonBoardVariant,

@@ -15,6 +15,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,8 +33,10 @@ import com.cruxcoach.android.R
 @Composable
 internal fun BoardStatusFilter(
     statuses: Set<ClimbStatusFilter>,
+    compact: Boolean = false,
     onChange: (Set<ClimbStatusFilter>) -> Unit,
 ) {
+    var details by rememberSaveable { mutableStateOf(false) }
     Column {
         Text(
             stringResource(R.string.board_filter_status),
@@ -57,6 +62,17 @@ internal fun BoardStatusFilter(
             )
             Switch(checked = excludesSent, onCheckedChange = null)
         }
+        if (compact) {
+            val labels = buildList {
+                if (ClimbStatusFilter.NEW in statuses) add(stringResource(R.string.board_filter_status_new))
+                if (ClimbStatusFilter.ATTEMPTED in statuses) add(stringResource(R.string.board_filter_status_attempted))
+                if (ClimbStatusFilter.SENT in statuses) add(stringResource(R.string.board_filter_status_sent))
+            }
+            TextButton(onClick = { details = !details }, modifier = Modifier.testTag("board_filter_status_details")) {
+                Text(stringResource(R.string.board_filter_status) + ": " + if (labels.isEmpty()) stringResource(R.string.board_filter_all) else labels.joinToString(" · "))
+            }
+        }
+        if (!compact || details) {
         Text(
             stringResource(R.string.board_filter_status_hint),
             style = MaterialTheme.typography.bodySmall,
@@ -85,6 +101,7 @@ internal fun BoardStatusFilter(
                     },
                 )
             }
+        }
         }
     }
 }

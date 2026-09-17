@@ -73,7 +73,15 @@ fun OnboardingScreen(
     onNavigateToDataImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
     boardSyncViewModel: BoardSyncViewModel = hiltViewModel(),
+    bleViewModel: com.cruxcoach.android.ui.board.BleConnectionViewModel = hiltViewModel(),
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bleModel = bleViewModel
+    val ble by bleModel.state.collectAsStateWithLifecycle()
+    var showBle by rememberSaveable { mutableStateOf(false) }
+    if (showBle) com.cruxcoach.android.ui.board.BleConnectionSheet(
+        onDismiss = { showBle = false }, neutralDiscovery = true, viewModel = bleModel,
+    )
     val state by viewModel.state.collectAsStateWithLifecycle()
     var downloadSelection by rememberSaveable { mutableStateOf<Set<BoardBrand>?>(null) }
     var downloadsConfirmed by rememberSaveable { mutableStateOf(false) }
@@ -87,6 +95,13 @@ fun OnboardingScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = {
+                viewModel.completeOnboarding(onComplete, skipTour = true)
+            }, enabled = !state.isSaving && !state.restoreInProgress && !state.isKilterImporting && !confirmingDownloads) {
+                Text(stringResource(R.string.setup_skip))
+            }
+        }
         OnboardingProgressHeader(state.currentStep)
 
         AnimatedContent(
@@ -99,6 +114,11 @@ fun OnboardingScreen(
                     state = state,
                     downloadSelection = downloadSelection,
                     onDownloadSelectionChange = { downloadSelection = it },
+                    onConnect = { showBle = true },
+                    connectedName = ble.connectedBoardName.takeIf { ble.connectionState == com.cruxcoach.android.ble.ConnectionState.CONNECTED },
+                    suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
+                    onDefer = { BrowserTour(context).deferBle() },
+                    onRestore = onNavigateToKeyManagement,
                 )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
@@ -157,7 +177,7 @@ fun OnboardingScreen(
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
-                        Text(stringResource(R.string.onboarding_continue))
+                        Text(stringResource(R.string.setup_confirm_downloads))
                     }
                 }
                 OnboardingStep.PRIVACY -> {
@@ -377,6 +397,11 @@ private fun BoardSetupStep(
     state: OnboardingState,
     downloadSelection: Set<BoardBrand>?,
     onDownloadSelectionChange: (Set<BoardBrand>) -> Unit,
+    onConnect: () -> Unit,
+    connectedName: String?,
+    suggestedBrand: BoardBrand?,
+    onDefer: () -> Unit,
+    onRestore: () -> Unit,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
@@ -386,7 +411,8 @@ private fun BoardSetupStep(
         // family. The selection persists via the shared VM.
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
             deferDownloads = true,
-            onBoardChosen = { onDownloadSelectionChange(downloadSelection.orEmpty() + it) },
+            suggestedBrand = suggestedBrand,
+            onBoardChosen = { onDownloadSelectionChange(setOf(it)) },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
@@ -398,7 +424,7 @@ private fun BoardSetupStep(
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
             deferDownloads = true,
-            onBoardChosen = { onDownloadSelectionChange(downloadSelection.orEmpty() + it) },
+            onBoardChosen = { onDownloadSelectionChange(setOf(it)) },
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
@@ -416,42 +442,19 @@ private fun BoardSetupStep(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Surface(
-            color = OrangeAccent.copy(alpha = 0.10f),
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Surface(
-                    color = OrangeAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape,
-                ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.padding(11.dp).size(26.dp),
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        stringResource(R.string.onboarding_choose_board_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        stringResource(R.string.onboarding_board_first_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        Text(stringResource(R.string.setup_board_title), style = MaterialTheme.typography.headlineSmall)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (connectedName != null) stringResource(R.string.setup_connected, connectedName)
+                    else stringResource(R.string.setup_near_board), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(if (connectedName != null) R.string.setup_confirm_model else R.string.setup_connect_hint), style = MaterialTheme.typography.bodyMedium)
+                if (connectedName == null) {
+                    Button(onClick = onConnect, modifier = Modifier.fillMaxWidth().testTag("setup_connect")) { Text(stringResource(R.string.cd_board_connect)) }
+                    var deferred by rememberSaveable { mutableStateOf(false) }
+                    TextButton(onClick = { deferred = true; onDefer() }) { Text(stringResource(if (deferred) R.string.setup_ble_later else R.string.setup_not_near_board)) }
                 }
             }
         }
-
         // Board picker — hardware knowledge, no sync round-trip needed.
         // Original/Homewall is now an in-dialog segment, not a chip.
         com.cruxcoach.android.ui.settings.BoardModelSection(
@@ -463,28 +466,23 @@ private fun BoardSetupStep(
             onChangeModel = { showBoardModelDialog = true },
         )
 
-        Text(
-            stringResource(R.string.onboarding_download_selection_title),
-            style = MaterialTheme.typography.titleMedium,
-        )
+        Text(stringResource(R.string.setup_download_hint), style = MaterialTheme.typography.bodyMedium)
         downloadSelection?.let { selected ->
-            BoardMultiSelectRows(
+            var showAllDownloads by rememberSaveable { mutableStateOf(false) }
+            TextButton(onClick = { showAllDownloads = !showAllDownloads }, modifier = Modifier.testTag("setup_catalogue_choices")) {
+                Text(stringResource(R.string.setup_more_catalogues, selected.size))
+            }
+            if (showAllDownloads) BoardMultiSelectRows(
                 selectedBrands = selected,
-                onToggleBrand = { brand ->
-                    onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
-                },
+                onToggleBrand = { brand -> onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand) },
                 onToggleSelectAll = {
                     val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
                     onDownloadSelectionChange(if (selected.containsAll(all)) emptySet() else all)
-                },
-                confirmColor = OrangeAccent,
+                }, confirmColor = OrangeAccent,
             )
         }
-        Text(
-            stringResource(R.string.board_download_selection_local_share),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        TextButton(onClick = onRestore) { Text(stringResource(R.string.setup_restore)) }
+
     }
 }
 

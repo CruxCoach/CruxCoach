@@ -64,15 +64,16 @@ fun BleConnectionSheet(
     /** A mismatch picker changes which catalogue is meaningful. Hosts outside
      * the browser use this to discard a now-invalid detail/editor surface. */
     onBoardMismatchExit: () -> Unit = {},
+    neutralDiscovery: Boolean = false,
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val connectionMismatch = connectedBoardConfigurationMismatch(
+    val connectionMismatch = if (neutralDiscovery) null else connectedBoardConfigurationMismatch(
         activeBrand = state.activeBoardBrand,
         connectedBrand = state.connectedBoardBrand,
         connectedQuantumModel = state.connectedQuantumModel,
     )
-    val rememberedBoard = state.rememberedBoardControllers[state.activeBoardBrand]
+    val rememberedBoard = if (neutralDiscovery) null else state.rememberedBoardControllers[state.activeBoardBrand]
     var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
     var pendingScanStart by remember(state.activeBoardBrand) {
         mutableStateOf<PendingScanStart?>(null)
@@ -231,7 +232,7 @@ fun BleConnectionSheet(
             pendingScanStart = null
             when (requestedStart) {
                 PendingScanStart.MANUAL -> viewModel.startScan()
-                PendingScanStart.AUTO_CONNECT -> viewModel.startScanWithAutoConnect()
+                PendingScanStart.AUTO_CONNECT -> viewModel.startScanWithAutoConnect(preferSelectedBrand = !neutralDiscovery)
             }
         }
     }

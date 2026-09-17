@@ -99,6 +99,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.MoonBoardVariant
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.ui.onboarding.*
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
@@ -496,6 +497,10 @@ fun BoardClimbDetailScreen(
                 "countdown=${state.playback.countdownSeconds}"
         )
     }
+    val (tour, tourStep) = rememberBrowserTour()
+    LaunchedEffect(state.climb?.uuid, tourStep) {
+        if (state.climb != null && tourStep == TourStep.OPEN) tour.move(TourStep.PROJECT)
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
@@ -503,16 +508,22 @@ fun BoardClimbDetailScreen(
             // logbook-only stub there is no climb to act on, and a dock
             // offering to light one would be offering nothing.
             if (state.climb != null && state.error == null && state.logbookOnly == null) {
+                Column {
+                if (tourStep == TourStep.PROJECT) TourHint(R.string.tour_project_title, R.string.tour_project_body,
+                    R.string.tour_understood, { tour.move(TourStep.LOG) }, { tour.move(TourStep.DONE) })
+                if (tourStep == TourStep.LOG) TourHint(R.string.tour_log_title, R.string.tour_log_body,
+                    R.string.tour_understood, { tour.move(TourStep.DONE) }, { tour.move(TourStep.DONE) })
                 BoardDetailBottomActions(
                     state = state,
                     decision = deliveryDecision,
                     hasDirectPayload = hasDirectPayload,
                     boardOwnedByOthers = detailQueueState.isConnecting,
                     onAttempt = { viewModel.quickLogAscent(isSend = false) },
-                    onLight = viewModel::deliverClimb,
+                    onLight = { viewModel.deliverClimb(); if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
                     onConnectBoard = { showBleSheet = true },
                     onSend = { viewModel.quickLogAscent(isSend = true) },
                 )
+                }
             }
         },
         topBar = {

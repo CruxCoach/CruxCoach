@@ -9,10 +9,10 @@ import org.junit.Test
 class BoardBrowserHeaderTest {
     @Test
     fun `header reserves room for the board picker and overflow menu`() {
-        assertEquals(5, directHeaderActionCount(360))
-        assertEquals(3, directHeaderActionCount(320))
-        assertEquals(2, directHeaderActionCount(300))
-        assertEquals(1, directHeaderActionCount(260))
+        assertEquals(3, directHeaderActionCount(360))
+        assertEquals(2, directHeaderActionCount(320))
+        assertEquals(1, directHeaderActionCount(300))
+        assertEquals(0, directHeaderActionCount(260))
         assertEquals(0, directHeaderActionCount(220))
     }
 
@@ -25,13 +25,12 @@ class BoardBrowserHeaderTest {
         val settings = BoardHeaderAction.SETTINGS
         val legacyOrder = listOf(bluetooth, filter, logbook, lists, settings)
         val cases = listOf(
-            Triple(360, legacyOrder, emptyList()),
-            // Settings stays directly reachable even though it is the rightmost icon.
-            Triple(320, listOf(bluetooth, filter, settings), listOf(logbook, lists)),
-            Triple(300, listOf(bluetooth, filter), listOf(logbook, lists, settings)),
-            Triple(260, listOf(bluetooth), listOf(filter, logbook, lists, settings)),
+            Triple(360, listOf(bluetooth, filter, settings), listOf(logbook, lists)),
+            Triple(320, listOf(bluetooth, filter), listOf(logbook, lists, settings)),
+            Triple(300, listOf(bluetooth), listOf(filter, logbook, lists, settings)),
+            Triple(260, emptyList(), legacyOrder),
             Triple(220, emptyList(), legacyOrder),
-            Triple(400, legacyOrder, emptyList()),
+            Triple(480, legacyOrder, emptyList()),
         )
         for ((width, direct, overflow) in cases) {
             val actual = boardHeaderActionLayout(width)

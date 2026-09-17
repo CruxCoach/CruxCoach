@@ -39,7 +39,7 @@ import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
- * New 3-step onboarding:
+ * Setup before the independent, contextual browser tour:
  *  - BOARD_SETUP  — welcome header + the one must-have action (Board-DB download).
  *  - PRIVACY      — privacy + backup + (inline) backup-restore choice in a single screen.
  *  - KILTER       — optional Kilter-logbook import, prominent skip.
@@ -152,6 +152,7 @@ class OnboardingViewModel @Inject constructor(
     private val backupRepository: BackupRepository,
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
 ) : ViewModel() {
 
     private companion object {
@@ -163,7 +164,9 @@ class OnboardingViewModel @Inject constructor(
     }
 
     private val _state = MutableStateFlow(
-        OnboardingState(hasNostrKey = keyStore.hasKey()),
+        OnboardingState(hasNostrKey = keyStore.hasKey(), currentStep = runCatching {
+            OnboardingStep.valueOf(savedStateHandle.get<String>("setupStep") ?: "BOARD_SETUP")
+        }.getOrDefault(OnboardingStep.BOARD_SETUP)),
     )
 
     init {
@@ -264,6 +267,7 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.PRIVACY -> OnboardingStep.KILTER
             OnboardingStep.KILTER -> return
         }
+        savedStateHandle["setupStep"] = next.name
         _state.update { it.copy(currentStep = next) }
     }
 
@@ -273,6 +277,7 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
             OnboardingStep.KILTER -> OnboardingStep.BOARD_SETUP
         }
+        savedStateHandle["setupStep"] = prev.name
         _state.update { it.copy(currentStep = prev) }
     }
 
@@ -593,7 +598,7 @@ class OnboardingViewModel @Inject constructor(
 
     // ────────────────────────────────────────────────────────────────────
 
-    fun completeOnboarding(onComplete: () -> Unit) {
+    fun completeOnboarding(onComplete: () -> Unit, skipTour: Boolean = false) {
         val s = _state.value
         _state.update { it.copy(isSaving = true, error = null) }
 
@@ -647,6 +652,8 @@ class OnboardingViewModel @Inject constructor(
                     userPreferences.setBoardProductSizeId(s.boardProductSizeId)
                     userPreferences.setBoardBrand(BoardBrand.fromWire(s.boardBrand).wireValue)
                 }
+                if (skipTour && !userPreferences.hasBoardDownloadSelection()) userPreferences.setBoardDownloadBrands(emptySet())
+                if (skipTour) BrowserTour(appContext).move(TourStep.DONE) else BrowserTour(appContext).start()
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

@@ -455,7 +455,7 @@ class BleConnectionViewModel @Inject constructor(
      *  - 2+ boards → leave the list visible for manual pick.
      *  - 0 boards → keep scanning, fall back to manual pick after the user waits.
      */
-    fun startScanWithAutoConnect() {
+    fun startScanWithAutoConnect(preferSelectedBrand: Boolean = true) {
         autoConnectScanJob?.cancel()
         _state.update { it.copy(isAutoConnectScan = true) }
         autoConnectScanJob = viewModelScope.safeLaunch(TAG) {
@@ -469,7 +469,7 @@ class BleConnectionViewModel @Inject constructor(
                 _state.update { it.copy(isAutoConnectScan = false) }
                 return@safeLaunch
             }
-            val candidates = preferActiveBrand(boards)
+            val candidates = if (preferSelectedBrand) preferActiveBrand(boards) else boards.filterNot { it.isCruxRelay }
             val target = BoardConnectFlowPolicy.autoConnectTarget(candidates)
             if (target != null) {
                 Log.i(

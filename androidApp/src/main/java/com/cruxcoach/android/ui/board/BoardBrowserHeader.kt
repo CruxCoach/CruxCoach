@@ -37,6 +37,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -61,9 +63,10 @@ internal data class BoardBrowserHeaderContext(
     val subtitle: String,
 )
 
-private const val HEADER_HOME_WIDTH_DP = 44
-private const val HEADER_BOARD_MIN_WIDTH_DP = 96
-private const val HEADER_ACTION_WIDTH_DP = 44
+private const val HEADER_HOME_WIDTH_DP = 48
+private const val HEADER_ANGLE_WIDTH_DP = 64
+private const val HEADER_BOARD_MIN_WIDTH_DP = 56
+private const val HEADER_ACTION_WIDTH_DP = 48
 
 /** Declaration order is the visual order from 0.2.2; priority only selects visibility. */
 internal enum class BoardHeaderAction(val compactPriority: Int) {
@@ -91,12 +94,9 @@ internal fun boardHeaderActionLayout(availableWidthDp: Int): BoardHeaderActionLa
  */
 internal fun directHeaderActionCount(availableWidthDp: Int): Int {
     val actionCount = BoardHeaderAction.entries.size
-    val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
-    if (actionSpace >= HEADER_ACTION_WIDTH_DP * actionCount) {
-        return actionCount
-    }
+    val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_ANGLE_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
     val availableSlots = (actionSpace / HEADER_ACTION_WIDTH_DP).coerceAtLeast(0)
-    return (availableSlots - 1).coerceIn(0, actionCount - 1)
+    return (availableSlots - 1).coerceIn(0, actionCount)
 }
 
 private data class HeaderActionSpec(
@@ -143,6 +143,9 @@ internal fun boardBrowserHeaderContext(
 internal fun BoardBrowserHeader(
     context: BoardBrowserHeaderContext,
     isBleConnected: Boolean,
+    angle: Int,
+    onAngle: () -> Unit,
+    activeFilterCount: Int = 0,
     onOpenMenu: () -> Unit,
     onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
@@ -150,7 +153,9 @@ internal fun BoardBrowserHeader(
     onLogbook: () -> Unit,
     onLists: () -> Unit,
     onSettings: () -> Unit,
+    onTour: () -> Unit,
 ) {
+    val angleDescription = stringResource(R.string.board_angle_change, angle)
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val actions = listOf(
             HeaderActionSpec(
@@ -172,7 +177,8 @@ internal fun BoardBrowserHeader(
             ),
             HeaderActionSpec(BoardHeaderAction.SETTINGS, Icons.Default.Settings, R.string.cd_settings, "board_settings_button", onClick = onSettings),
         ).associateBy { it.action }
-        val actionLayout = boardHeaderActionLayout(maxWidth.value.toInt())
+        val angleWidth = maxOf(64f, 48f * androidx.compose.ui.platform.LocalDensity.current.fontScale)
+        val actionLayout = boardHeaderActionLayout((maxWidth.value - (angleWidth - 64f)).toInt())
         val overflowActions = actionLayout.overflow.map(actions::getValue)
         var overflowExpanded by remember { mutableStateOf(false) }
 
@@ -190,7 +196,7 @@ internal fun BoardBrowserHeader(
             ) {
                 Box(
                     modifier = Modifier
-                        .width(44.dp)
+                        .width(48.dp)
                         .fillMaxSize()
                         .clickable(
                             onClickLabel = stringResource(R.string.cd_open_menu),
@@ -223,30 +229,29 @@ internal fun BoardBrowserHeader(
                         .padding(start = 2.dp, end = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = context.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (context.subtitle.isNotEmpty()) {
-                            Text(
-                                text = context.subtitle,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                    Text(
+                        text = context.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = stringResource(R.string.board_browser_change_board),
                         tint = OrangeAccent,
                         modifier = Modifier.size(18.dp),
                     )
+                }
+                androidx.compose.material3.TextButton(
+                    onClick = onAngle,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    modifier = Modifier.width(angleWidth.dp).testTag("board_header_angle")
+                        .semantics { contentDescription = angleDescription },
+                ) {
+                    Text("$angle°", maxLines = 1, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
                 actionLayout.direct.map(actions::getValue).forEach { action ->
                     HeaderAction(
@@ -255,9 +260,10 @@ internal fun BoardBrowserHeader(
                         tag = action.tag,
                         tint = action.tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = action.onClick,
+                        badgeCount = if (action.action == BoardHeaderAction.FILTER) activeFilterCount else 0,
                     )
                 }
-                if (overflowActions.isNotEmpty()) {
+                if (true) {
                     Box {
                         HeaderAction(
                             icon = Icons.Default.MoreVert,
@@ -269,6 +275,11 @@ internal fun BoardBrowserHeader(
                             expanded = overflowExpanded,
                             onDismissRequest = { overflowExpanded = false },
                         ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.tour_replay)) },
+                                onClick = { overflowExpanded = false; onTour() },
+                                modifier = Modifier.testTag("board_tour_replay"),
+                            )
                             overflowActions.forEach { action ->
                                 DropdownMenuItem(
                                     text = { Text(stringResource(action.contentDescription)) },
@@ -301,18 +312,23 @@ private fun HeaderAction(
     tag: String,
     onClick: () -> Unit,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    badgeCount: Int = 0,
 ) {
     IconButton(
         onClick = onClick,
         modifier = Modifier
-            .width(44.dp)
+            .width(48.dp)
             .testTag(tag),
     ) {
+        androidx.compose.material3.BadgedBox(badge = {
+            if (badgeCount > 0) androidx.compose.material3.Badge { Text(badgeCount.toString()) }
+        }) {
         Icon(
             imageVector = icon,
             contentDescription = stringResource(contentDescription),
             tint = tint,
             modifier = Modifier.size(22.dp),
         )
+        }
     }
 }
