@@ -1,6 +1,7 @@
 package com.cruxcoach.domain.board
 
 import kotlin.math.abs
+import com.cruxcoach.util.formatDecimal
 
 /**
  * Maps Kilter difficulty integers (10–34) to V-Scale and Font grades.
@@ -199,6 +200,6 @@ object KilterGradeMapper {
      */
     fun formatGrade(difficultyAvg: Double): String {
         val vScale = difficultyToVScale(difficultyAvg)
-        return "$vScale (${"%.1f".format(difficultyAvg)})"
+        return "$vScale (${formatDecimal(difficultyAvg, 1)})"
     }
 }

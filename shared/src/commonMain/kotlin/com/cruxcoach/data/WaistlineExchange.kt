@@ -5,6 +5,7 @@ import com.cruxcoach.domain.model.BodyStat
 import com.cruxcoach.domain.model.StatRegistry
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import com.cruxcoach.util.formatDecimal
 
 /**
  * Handles import/export of body stats in Waistline-compatible JSON format.
@@ -85,13 +86,13 @@ object WaistlineExchange {
         sb.appendLine()
 
         // Data rows (sorted by date ascending)
-        byDate.toSortedMap().forEach { (date, stats) ->
+        byDate.entries.sortedBy { it.key }.forEach { (date, stats) ->
             sb.append(date)
             val statsMap = stats.associateBy { it.statName }
             statNames.forEach { name ->
                 sb.append(";")
                 statsMap[name]?.let { stat ->
-                    sb.append("%.2f".format(stat.value))
+                    sb.append(formatDecimal(stat.value, 2))
                 }
             }
             sb.appendLine()

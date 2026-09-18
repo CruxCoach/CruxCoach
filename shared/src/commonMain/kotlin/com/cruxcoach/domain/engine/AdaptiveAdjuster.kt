@@ -3,6 +3,7 @@ package com.cruxcoach.domain.engine
 import com.cruxcoach.domain.model.*
 import com.cruxcoach.util.DateTimeUtil
 import com.cruxcoach.util.GradeConverter
+import com.cruxcoach.util.formatDecimal
 
 class AdaptiveAdjuster {
 
@@ -57,7 +58,7 @@ class AdaptiveAdjuster {
             adaptations.add(
                 Adaptation(
                     type = AdaptationType.VOLUME_DECREASE,
-                    description = "Volumen um 20% reduziert – deine RPE war ${"%.1f".format(avgRpe)} in den letzten Sessions",
+                    description = "Volumen um 20% reduziert – deine RPE war ${formatDecimal(avgRpe, 1)} in den letzten Sessions",
                     emoji = "\uD83D\uDCC9" // 📉
                 )
             )
@@ -68,7 +69,7 @@ class AdaptiveAdjuster {
             adaptations.add(
                 Adaptation(
                     type = AdaptationType.INTENSITY_INCREASE,
-                    description = "Intensität erhöht – du hattest Luft nach oben (RPE ${"%.1f".format(avgRpe)})",
+                    description = "Intensität erhöht – du hattest Luft nach oben (RPE ${formatDecimal(avgRpe, 1)})",
                     emoji = "\uD83D\uDCC8" // 📈
                 )
             )
