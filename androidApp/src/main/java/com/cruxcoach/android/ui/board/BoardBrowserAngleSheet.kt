@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -24,8 +26,8 @@ internal fun BoardBrowserAngleSheet(filter: BrowserFilterState, onAngle: (Int) -
     val angles = browserAngleOptions(filter)
     var draftAngle by remember(filter.angle, filter.boardBrand, filter.layoutId) { mutableIntStateOf(filter.angle) }
     val finish = { if (draftAngle != filter.angle && draftAngle in angles) onAngle(draftAngle); onDismiss() }
-    ModalBottomSheet(onDismissRequest = finish) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp),
+    ModalBottomSheet(onDismissRequest = finish, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.board_filter_angle, draftAngle), style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.board_angle_physical_hint), style = MaterialTheme.typography.bodyMedium)

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -47,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,12 +98,19 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
         if (state.filter.quantumRuleMask != 0L) add(stringResource(R.string.board_filter_quantum_rules))
         if (state.filter.quantumOverlapFilter.active) add(stringResource(R.string.board_filter_quantum_overlap_title))
     }
+    val compactReset = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.3f
     Scaffold(
         topBar = { TopAppBar(
-            title = { Text(stringResource(R.string.board_filter_title)) },
+            title = { Text(stringResource(R.string.board_filter_title), maxLines = 1, overflow = TextOverflow.Ellipsis) },
             navigationIcon = { IconButton(onClick = onNavigateBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back)) } },
             actions = {
-                TextButton(onClick = { viewModel.clearAllBrowseFilters() }, modifier = Modifier.testTag("board_filter_reset")) { Text(stringResource(R.string.action_reset)) }
+                if (compactReset) {
+                    IconButton(onClick = { viewModel.clearAllBrowseFilters() }, modifier = Modifier.testTag("board_filter_reset")) {
+                        Icon(Icons.Default.RestartAlt, stringResource(R.string.action_reset))
+                    }
+                } else {
+                    TextButton(onClick = { viewModel.clearAllBrowseFilters() }, modifier = Modifier.testTag("board_filter_reset")) { Text(stringResource(R.string.action_reset)) }
+                }
                 IconButton(onClick = { showTermInfo = true }) { Icon(Icons.Outlined.Info, stringResource(R.string.board_filter_info_action)) }
             }, windowInsets = WindowInsets(0.dp),
         ) },

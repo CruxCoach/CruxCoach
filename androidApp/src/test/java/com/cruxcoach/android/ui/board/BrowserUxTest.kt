@@ -63,6 +63,23 @@ class BrowserUxTest {
         assertTrue(ended)
     }
 
+    @Test fun `filter header leaves controls visible with large text`() {
+        val viewModel = io.mockk.mockk<BoardBrowserViewModel>(relaxed = true)
+        io.mockk.every { viewModel.state } returns kotlinx.coroutines.flow.MutableStateFlow(BoardBrowserState())
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+                MaterialTheme { Box(Modifier.width(320.dp).height(500.dp)) {
+                    BoardFilterScreen(viewModel, {})
+                } }
+            }
+        }
+        compose.onNodeWithText("Filters", substring = false).assertIsDisplayed()
+        compose.onNodeWithTag("board_filter_reset").assertIsDisplayed().performClick()
+        io.mockk.verify { viewModel.clearAllBrowseFilters() }
+        compose.onNodeWithTag("board_filter_show_results").assertIsDisplayed()
+    }
+
     @Test fun `compact status keeps multi selection when reopening details`() {
         val selected = mutableStateOf(setOf(ClimbStatusFilter.NEW))
         compose.setContent { MaterialTheme { BoardStatusFilter(selected.value, compact = true) { selected.value = it } } }
