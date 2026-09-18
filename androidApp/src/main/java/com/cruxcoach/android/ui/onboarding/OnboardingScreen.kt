@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +16,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -31,7 +35,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import com.cruxcoach.android.ui.board.sync.BoardSyncViewModel
-import com.cruxcoach.android.ui.settings.BoardMultiSelectRows
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -75,7 +78,6 @@ fun OnboardingScreen(
     boardSyncViewModel: BoardSyncViewModel = hiltViewModel(),
     bleViewModel: com.cruxcoach.android.ui.board.BleConnectionViewModel = hiltViewModel(),
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     val bleModel = bleViewModel
     val ble by bleModel.state.collectAsStateWithLifecycle()
     var showBle by rememberSaveable { mutableStateOf(false) }
@@ -95,14 +97,11 @@ fun OnboardingScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = {
-                viewModel.completeOnboarding(onComplete, skipTour = true)
-            }, enabled = !state.isSaving && !state.restoreInProgress && !state.isKilterImporting && !confirmingDownloads) {
-                Text(stringResource(R.string.setup_skip))
-            }
-        }
-        OnboardingProgressHeader(state.currentStep)
+        OnboardingProgressHeader(
+            step = state.currentStep,
+            canSkip = !state.isSaving && !state.restoreInProgress && !state.isKilterImporting && !confirmingDownloads,
+            onSkip = { viewModel.completeOnboarding(onComplete, skipTour = true) },
+        )
 
         AnimatedContent(
             targetState = state.currentStep,
@@ -117,7 +116,6 @@ fun OnboardingScreen(
                     onConnect = { showBle = true },
                     connectedName = ble.connectedBoardName.takeIf { ble.connectionState == com.cruxcoach.android.ble.ConnectionState.CONNECTED },
                     suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
-                    onDefer = { BrowserTour(context).deferBle() },
                 )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
@@ -176,7 +174,11 @@ fun OnboardingScreen(
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
-                        Text(stringResource(R.string.setup_confirm_downloads))
+                        if (confirmingDownloads) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(stringResource(if (downloadSelection.isNullOrEmpty()) R.string.action_next else R.string.setup_confirm_downloads))
                     }
                 }
                 OnboardingStep.PRIVACY -> {
@@ -347,45 +349,17 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingProgressHeader(step: OnboardingStep) {
-    val steps = listOf(OnboardingStep.BOARD_SETUP, OnboardingStep.KILTER)
+private fun OnboardingProgressHeader(step: OnboardingStep, canSkip: Boolean, onSkip: () -> Unit) {
     val current = if (step == OnboardingStep.BOARD_SETUP) 1 else 2
-    val title = stringResource(
-        when (step) {
-            OnboardingStep.BOARD_SETUP -> R.string.onboarding_progress_board
-            OnboardingStep.PRIVACY -> R.string.onboarding_progress_import
-            OnboardingStep.KILTER -> R.string.onboarding_progress_import
-        },
-    )
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.onboarding_progress_step, current, steps.size),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = OrangeAccent,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            LinearProgressIndicator(
-                progress = { current.toFloat() / steps.size },
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = OrangeAccent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.onboarding_progress_step, current, 2),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onSkip, enabled = canSkip) { Text(stringResource(R.string.setup_skip)) }
         }
+        LinearProgressIndicator(progress = { current / 2f }, modifier = Modifier.fillMaxWidth().height(3.dp),
+            color = OrangeAccent, trackColor = MaterialTheme.colorScheme.surfaceVariant)
     }
 }
 
@@ -399,7 +373,6 @@ private fun BoardSetupStep(
     onConnect: () -> Unit,
     connectedName: String?,
     suggestedBrand: BoardBrand?,
-    onDefer: () -> Unit,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
@@ -440,44 +413,62 @@ private fun BoardSetupStep(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(stringResource(R.string.setup_board_title), style = MaterialTheme.typography.headlineSmall)
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (connectedName != null) stringResource(R.string.setup_connected, connectedName)
-                    else stringResource(R.string.setup_near_board), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(if (connectedName != null) R.string.setup_confirm_model else R.string.setup_connect_hint), style = MaterialTheme.typography.bodyMedium)
-                if (connectedName == null) {
-                    Button(onClick = onConnect, modifier = Modifier.fillMaxWidth().testTag("setup_connect")) { Text(stringResource(R.string.cd_board_connect)) }
-                    var deferred by rememberSaveable { mutableStateOf(false) }
-                    TextButton(onClick = { deferred = true; onDefer() }) { Text(stringResource(if (deferred) R.string.setup_ble_later else R.string.setup_not_near_board)) }
-                }
+        InfoHeading(stringResource(R.string.setup_board_title), stringResource(R.string.setup_confirm_model))
+        OutlinedCard(
+            onClick = { showBoardModelDialog = true },
+            modifier = Modifier.fillMaxWidth().testTag("settings_change_active_board"),
+        ) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                    brand = BoardBrand.fromWire(state.boardBrand), layoutId = state.boardLayoutId,
+                    detail = state.boardProductSizeName,
+                ), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_board_model_change))
             }
         }
-        // Board picker — hardware knowledge, no sync round-trip needed.
-        // Original/Homewall is now an in-dialog segment, not a chip.
-        com.cruxcoach.android.ui.settings.BoardModelSection(
-            boardModelName = com.cruxcoach.android.ui.settings.boardSelectionLabel(
-                brand = BoardBrand.fromWire(state.boardBrand),
-                layoutId = state.boardLayoutId,
-                detail = state.boardProductSizeName,
-            ),
-            onChangeModel = { showBoardModelDialog = true },
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onConnect, modifier = Modifier.weight(1f).testTag("setup_connect")) {
+                Icon(if (connectedName == null) Icons.Default.Bluetooth else Icons.Default.CheckCircle, null,
+                    modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (connectedName == null) stringResource(R.string.setup_bluetooth_find)
+                    else stringResource(R.string.setup_connected, connectedName))
+            }
+            com.cruxcoach.android.ui.common.InfoButton(
+                stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
+        }
+        InfoHeading(stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info))
+        Text(stringResource(R.string.setup_download_hint), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        Text(stringResource(R.string.setup_download_hint), style = MaterialTheme.typography.bodyMedium)
         downloadSelection?.let { selected ->
-            Text(
-                stringResource(R.string.setup_more_catalogues, selected.size),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            BoardMultiSelectRows(
-                selectedBrands = selected,
-                onToggleBrand = { brand -> onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand) },
-                onToggleSelectAll = {
-                    val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
-                    onDownloadSelectionChange(if (selected.containsAll(all)) emptySet() else all)
-                }, confirmColor = OrangeAccent,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
+                    val checked = brand in selected
+                    Surface(
+                        color = if (checked) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                                .testTag("board_selection_${brand.wireValue}")
+                                .toggleable(value = checked, role = Role.Checkbox,
+                                    onValueChange = { onDownloadSelectionChange(if (checked) selected - brand else selected + brand) })
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(brand.displayName, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                            Icon(if (checked) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                                contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+            }
         }
 
     }

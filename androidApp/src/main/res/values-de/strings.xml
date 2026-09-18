@@ -2915,16 +2915,16 @@
     <string name="board_filter_order">Reihenfolge</string>
     <string name="board_filter_own_scope">Eigene Boulder werden über alle Winkel und Schwierigkeitsgrade angezeigt, damit deine Entwürfe sichtbar bleiben.</string>
     <string name="setup_skip">Einrichtung überspringen</string>
-    <string name="setup_board_title">An welchem Board kletterst du?</string>
+    <string name="setup_board_title">Wähle dein Board</string>
     <string name="setup_near_board">Du bist gerade am Board?</string>
     <string name="setup_connect_hint">Verbinde dich jetzt oder wähle dein Board unten aus.</string>
     <string name="setup_connected">Verbunden: %1$s</string>
-    <string name="setup_confirm_model">Bestätige unten Modell und Größe. Bluetooth erkennt diese nicht zuverlässig.</string>
+    <string name="setup_confirm_model">Wähle Modell und Größe deines Boards. Bluetooth kann die Board-Familie vorschlagen, erkennt aber Modell und Größe nicht zuverlässig. Du kannst die Auswahl später im Board-Browser ändern.</string>
     <string name="setup_not_near_board">Ich bin gerade nicht am Board</string>
     <string name="setup_ble_later">Verbindung verschoben. Wähle unten dein Board.</string>
-    <string name="setup_download_hint">Mit deiner Bestätigung werden die gewählten Kataloge geladen und für künftige Updates ausgewählt.</string>
+    <string name="setup_download_hint">Lade die Climbs deiner Boards zum Offline-Browsen.</string>
     <string name="setup_more_catalogues">Katalog-Auswahl · %1$d ausgewählt</string>
-    <string name="setup_confirm_downloads">Auswahl bestätigen und weiter</string>
+    <string name="setup_confirm_downloads">Laden und weiter</string>
     <string name="tour_replay">Einführung ansehen</string>
     <string name="tour_skip">Tour überspringen</string>
     <string name="tour_spotlight_connect">Tippe auf Bluetooth, um dein Board zu verbinden. Ohne Board kannst du die Suche wieder schließen.</string>
@@ -2977,4 +2977,8 @@
     <string name="account_flow_backup_option">Auch meine Daten sichern</string>
     <string name="account_flow_data_summary">Logbuch, Listen und Trainingsdaten brauchen eine eigene Sicherung.</string>
     <string name="account_flow_help">Was ist dieser Schlüssel?\nDein privater Kontoschlüssel beginnt mit „nsec“ und funktioniert wie ein Passwort. Teile ihn niemals. CruxCoach kann ihn nicht zurücksetzen.\n\nZuerst sicher aufbewahren\nEntsperre und kopiere den Schlüssel. Füge ihn in einen Passwortmanager ein, auf den du ohne dieses Handy zugreifen kannst. Die Zwischenablage wird nach 60 Sekunden geleert; über „Schlüssel erneut kopieren“ kannst du den Vorgang wiederholen. Bestätige dann die sichere Aufbewahrung.\n\nOptionales Daten-Backup\nDer Schlüssel allein sichert keine Daten. Das Einschalten lädt noch nichts hoch. Erst deine Bestätigung startet die erste Sicherung; nach Erfolg folgen tägliche Backups. Bestehende Backup-Einstellungen bleiben unverändert.</string>
+    <string name="setup_catalogues_title">Climbs herunterladen</string>
+    <string name="setup_catalogues_info">Wähle die Boards, deren Climbs du nutzen möchtest. Mit „Laden und weiter“ startet der Download; diese Kataloge bleiben auch für künftige Updates ausgewählt. Du kannst währenddessen fortfahren.\n\nDu kannst die Auswahl später ändern. Ohne Auswahl wird nichts heruntergeladen.</string>
+    <string name="setup_bluetooth_find">Per Bluetooth finden</string>
+    <string name="setup_bluetooth_info">Optional vor Ort: Verbinde dein Board, um bei der Board-Auswahl eine passende Familie vorgeschlagen zu bekommen. Modell und Größe wählst du selbst. Du kannst dich auch später im Board-Browser verbinden.</string>
 </resources>

@@ -17,7 +17,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, qualifiers = "de")
+@Config(application = Application::class, qualifiers = "de-w360dp-h800dp")
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class OnboardingDownloadSelectionTest {
     @get:Rule val compose = createComposeRule()
 
@@ -31,12 +32,29 @@ class OnboardingDownloadSelectionTest {
         val saved = CompletableDeferred<Unit>()
         coEvery { sync.confirmOnboardingDownloads(any()) } coAnswers { saved.await() }
         val restoration = StateRestorationTester(compose)
+        var view: android.view.View? = null
         restoration.setContent {
-            MaterialTheme {
-                OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync, bleViewModel = ble)
+            view = androidx.compose.ui.platform.LocalView.current
+            com.cruxcoach.android.ui.theme.CruxCoachTheme(com.cruxcoach.android.data.DarkModeSetting.DARK) {
+                androidx.compose.material3.Surface {
+                    OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync, bleViewModel = ble)
+                }
             }
         }
         compose.onNode(isDialog()).assertDoesNotExist()
+        compose.onNodeWithTag("setup_connect").assertIsDisplayed()
+        System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
+            compose.runOnIdle {
+                val root = requireNotNull(view)
+                val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+                root.draw(android.graphics.Canvas(bitmap))
+                java.io.File(directory).mkdirs()
+                java.io.File(directory, "onboarding-first.png").outputStream().use {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+                bitmap.recycle()
+            }
+        }
         compose.onNodeWithTag("board_selection_kilter").performScrollTo().assertIsOn().performClick()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
         restoration.emulateSavedInstanceStateRestore()
@@ -52,4 +70,31 @@ class OnboardingDownloadSelectionTest {
         coVerify(exactly = 1) { sync.confirmOnboardingDownloads(setOf(BoardBrand.MOONBOARD)) }
         verify(exactly = 1) { onboarding.nextStep() }
     }
+    @Test
+    @Config(qualifiers = "de-w320dp-h640dp")
+    fun `large text keeps skip and continue reachable without starting downloads`() {
+        val onboarding = mockk<OnboardingViewModel>(relaxed = true)
+        every { onboarding.state } returns MutableStateFlow(OnboardingState())
+        val sync = mockk<BoardSyncViewModel>(relaxed = true)
+        coEvery { sync.initialDownloadSelection() } returns emptySet()
+        val ble = mockk<com.cruxcoach.android.ui.board.BleConnectionViewModel>(relaxed = true)
+        every { ble.state } returns MutableStateFlow(com.cruxcoach.android.ui.board.BleConnectionState())
+        compose.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, 2f)
+            ) {
+                MaterialTheme {
+                    OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync, bleViewModel = ble)
+                }
+            }
+        }
+        compose.onNodeWithTag("onboarding_next_button").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("settings_change_active_board").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
+        compose.onNodeWithText("Einrichtung überspringen").assertIsDisplayed().performClick()
+        coVerify(exactly = 0) { sync.confirmOnboardingDownloads(any()) }
+        verify(exactly = 1) { onboarding.completeOnboarding(any(), skipTour = true) }
+    }
+
 }
