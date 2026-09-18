@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,10 +35,17 @@ class AccountBackupDialogTest {
         }
         compose.onNode(isToggleable()).assertIsOff().performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0, uploads) }
+        val copyBounds = compose.onNodeWithTag("account_flow_copy").fetchSemanticsNode().boundsInRoot
+        val cancelBefore = compose.onNodeWithTag("account_flow_cancel").fetchSemanticsNode().boundsInRoot
+        assertTrue("Copy and cancel must not overlap", copyBounds.bottom <= cancelBefore.top)
         compose.onNodeWithTag("account_flow_copy").assertIsDisplayed().performClick()
         compose.onNodeWithTag("account_flow_copy").assertDoesNotExist()
         compose.onNodeWithTag("account_flow_confirm").assertIsDisplayed()
         compose.onNodeWithText("Schlüssel kopiert").assertIsDisplayed()
+        val confirmBounds = compose.onNodeWithTag("account_flow_confirm").fetchSemanticsNode().boundsInRoot
+        val cancelBounds = compose.onNodeWithTag("account_flow_cancel").fetchSemanticsNode().boundsInRoot
+        assertTrue("Confirm and cancel must not overlap", confirmBounds.bottom <= cancelBounds.top)
+        compose.onNodeWithTag("account_flow_cancel").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, uploads) }
         compose.onNodeWithTag("account_flow_confirm").performClick()
         compose.runOnIdle { assertEquals(1, uploads) }

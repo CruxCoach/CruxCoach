@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -64,23 +65,27 @@ internal fun AccountBackupDialog(
             }
         },
         confirmButton = {
-            when (state.step) {
-                AccountBackupStep.COPY -> TextButton(onClick = onCopy, enabled = !busy, modifier = Modifier.testTag("account_flow_copy")) {
-                    Text(stringResource(R.string.account_flow_copy))
+            // AlertDialog's action FlowRow can overlap tall multiline labels.
+            // Keep actions in one explicit vertical layout at every font scale.
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when (state.step) {
+                    AccountBackupStep.COPY -> TextButton(onClick = onCopy, enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("account_flow_copy")) {
+                        Text(stringResource(R.string.account_flow_copy))
+                    }
+                    AccountBackupStep.STORE -> TextButton(onClick = onConfirmStored, enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("account_flow_confirm")) {
+                        Text(stringResource(if (state.wantsBackup) R.string.account_flow_store_and_start else R.string.account_flow_store_only))
+                    }
+                    AccountBackupStep.ERROR -> TextButton(onClick = onConfirmStored, modifier = Modifier.fillMaxWidth().testTag("account_flow_retry")) {
+                        Text(stringResource(R.string.account_flow_retry))
+                    }
+                    AccountBackupStep.SUCCESS -> TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_close)) }
+                    else -> Unit
                 }
-                AccountBackupStep.STORE -> TextButton(onClick = onConfirmStored, enabled = !busy, modifier = Modifier.testTag("account_flow_confirm")) {
-                    Text(stringResource(if (state.wantsBackup) R.string.account_flow_store_and_start else R.string.account_flow_store_only))
+                if (!busy && state.step != AccountBackupStep.SUCCESS) TextButton(
+                    onClick = onDismiss, modifier = Modifier.fillMaxWidth().testTag("account_flow_cancel"),
+                ) {
+                    Text(stringResource(R.string.action_cancel))
                 }
-                AccountBackupStep.ERROR -> TextButton(onClick = onConfirmStored, modifier = Modifier.testTag("account_flow_retry")) {
-                    Text(stringResource(R.string.account_flow_retry))
-                }
-                AccountBackupStep.SUCCESS -> TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
-                else -> Unit
-            }
-        },
-        dismissButton = {
-            if (!busy && state.step != AccountBackupStep.SUCCESS) TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.action_cancel))
             }
         },
     )
