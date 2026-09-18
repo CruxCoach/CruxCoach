@@ -4,6 +4,7 @@ import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.SupportedBoard
+import kotlin.concurrent.Volatile
 
 class BoardRepositoryImpl(
     private val database: BoardDatabase,

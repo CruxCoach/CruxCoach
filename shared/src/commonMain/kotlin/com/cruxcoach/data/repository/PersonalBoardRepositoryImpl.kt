@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.Volatile
 
 /** Stable identifier for the built-in "Ignored" list — promoted to
  *  [PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID] so the backup layer

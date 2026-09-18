@@ -14,17 +14,18 @@ kotlin {
         }
     }
 
-    // iosTarget – uncomment when ready for iOS
-    // listOf(
-    //     iosX64(),
-    //     iosArm64(),
-    //     iosSimulatorArm64()
-    // ).forEach {
-    //     it.binaries.framework {
-    //         baseName = "shared"
-    //         isStatic = true
-    //     }
-    // }
+    // Apple targets for the native iOS app (iosApp/). Device + Apple-silicon
+    // simulator only; the Intel simulator is not a delivery target. Klibs
+    // cross-compile on Linux, but framework linking requires a macOS host.
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach {
+        it.binaries.framework {
+            baseName = "shared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -42,6 +43,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.sqlcipher.android)
             implementation(libs.androidx.sqlite)
+        }
+        iosMain.dependencies {
+            implementation(libs.sqldelight.native.driver)
         }
     }
 }
