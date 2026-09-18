@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,7 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -185,6 +186,7 @@ private fun PartialSetupHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clickable(onClick = onToggle)
             .testTag("moonboard_setup_partial"),
         verticalAlignment = Alignment.CenterVertically,
@@ -193,6 +195,7 @@ private fun PartialSetupHeader(
             Text(
                 stringResource(R.string.moonboard_setup_partial),
                 style = MaterialTheme.typography.bodyMedium,
+                color = OrangeAccent,
             )
             // Only once the selection has actually left "complete" is the
             // n-of-m line worth showing; on Level 1 it would just restate the
@@ -263,6 +266,50 @@ private fun HoldSetList(
                     assetState = assetState,
                     modifier = Modifier.width(96.dp),
                 )
+            }
+        }
+    }
+}
+
+
+/** Optional physical setup, scoped to the pending picker variant rather than the active board. */
+@Composable
+internal fun MoonBoardPickerHoldSets(
+    variant: MoonBoardVariant,
+    selectedSetIds: List<Long>,
+    catalogueHasHoldSetData: Boolean? = null,
+    onSelectionChange: (List<Long>) -> Unit,
+) {
+    if (!MoonBoardHoldSets.isSelectable(variant)) return
+    val allSets = MoonBoardHoldSets.setIdsFor(variant)
+    val complete = selectedSetIds.toSet() == allSets.toSet()
+    var expanded by remember(variant) { mutableStateOf(!complete) }
+    var minimumWarning by remember(variant) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PartialSetupHeader(
+            expanded = expanded,
+            summary = if (complete) null else stringResource(R.string.moonboard_hold_sets_summary, selectedSetIds.size, allSets.size),
+            onToggle = { expanded = !expanded },
+        )
+        AnimatedVisibility(expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (catalogueHasHoldSetData == false) Text(
+                    stringResource(R.string.moonboard_picker_hold_sets_pending),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                CompleteSetupRow(variant.displayName, complete) {
+                    minimumWarning = false
+                    onSelectionChange(allSets)
+                }
+                HoldSetList(variant, MoonBoardHoldSetState(
+                    loaded = true, variant = variant, sets = MoonBoardHoldSets.setsFor(variant),
+                    selectedSetIds = selectedSetIds.toSet(), showMinimumOneWarning = minimumWarning,
+                )) { id ->
+                    val next = if (id in selectedSetIds) selectedSetIds - id else selectedSetIds + id
+                    minimumWarning = next.isEmpty()
+                    if (next.isNotEmpty()) onSelectionChange(allSets.filter { it in next })
+                }
             }
         }
     }

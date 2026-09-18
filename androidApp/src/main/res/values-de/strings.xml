@@ -2540,7 +2540,7 @@
     <string name="moonboard_hold_sets_subtitle">Wähle die Griffsets, die an deinem MoonBoard montiert sind. Die App zeigt dazu passende Boulder. Bei allen montierten Sets wähle das vollständige Setup.</string>
     <string name="moonboard_setup_complete">Komplettes %1$s Setup</string>
     <string name="moonboard_setup_complete_hint">Alle Griffsets dieses Modells sind montiert.</string>
-    <string name="moonboard_setup_partial">Mir fehlen Griffe</string>
+    <string name="moonboard_setup_partial">Du hast nicht alle Griffe?</string>
     <string name="moonboard_hold_sets_summary">%1$d von %2$d Griffsets</string>
     <string name="moonboard_hold_sets_count">%1$s Griffe</string>
     <string name="moonboard_hold_sets_climbable">%1$s von %2$s Problemen kletterbar</string>
@@ -2942,4 +2942,5 @@
     <string name="tour_spotlight_entry">Das ist dein Eintrag. Mit dem Stift kannst du ihn bearbeiten; im Bearbeiten-Dialog kannst du ihn auch löschen.</string>
     <string name="board_logbook_delete_entry_title">Logeintrag löschen?</string>
     <string name="board_logbook_delete_entry_message">Dieser Logeintrag wird unwiderruflich gelöscht.</string>
+    <string name="moonboard_picker_hold_sets_pending">Deine Griffauswahl wird nach dem Katalog-Update berücksichtigt.</string>
 </resources>

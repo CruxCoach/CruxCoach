@@ -94,7 +94,7 @@ class BoardHubComposeTest {
                     selectedKilterSizeId = 0,
                     selectedMoonBoardVariant = MoonBoardVariant.MOONBOARD_2016,
                     onConfirmKilter = { persisted = true },
-                    onConfirmMoonBoard = { persisted = true },
+                    onConfirmMoonBoard = { _, _ -> persisted = true },
                     onConfirmQuantum = { persisted = true },
                     onDismiss = { dismissed = true },
                 )

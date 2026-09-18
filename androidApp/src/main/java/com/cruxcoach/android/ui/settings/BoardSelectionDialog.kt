@@ -20,6 +20,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.QuantumBoardModel
 
 /**
@@ -78,7 +79,9 @@ internal fun BoardSelectionDialog(
      *  iLL); empty pre-sync so the tier stays hidden. */
     auroraBrandSizes: Map<String, List<BoardSize>> = emptyMap(),
     onConfirmKilter: (Int) -> Unit,
-    onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
+    onConfirmMoonBoard: (MoonBoardVariant, List<Long>) -> Unit,
+    initialMoonBoardHoldSets: Map<MoonBoardVariant, List<Long>> = emptyMap(),
+    moonBoardHasHoldSetData: Boolean? = null,
     onConfirmQuantum: (QuantumBoardModel) -> Unit = {},
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
      *  variant (null for single-layout boards) + the chosen product size (null
@@ -141,6 +144,11 @@ internal fun BoardSelectionDialog(
             } else selectedMoonBoardVariant ?: MoonBoardVariant.entries.first()
         )
     }
+    // Dialog-local drafts: changing variants or cancelling never writes preferences.
+    val moonHoldDrafts = remember { mutableStateMapOf<MoonBoardVariant, List<Long>>() }
+    fun selectedHolds(variant: MoonBoardVariant): List<Long> =
+        moonHoldDrafts[variant] ?: initialMoonBoardHoldSets[variant] ?: MoonBoardHoldSets.setIdsFor(variant)
+
     var quantumModel by remember(prefill) {
         mutableStateOf(
             if (prefill?.brand == BoardBrand.QUANTUM) {
@@ -541,6 +549,11 @@ internal fun BoardSelectionDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else if (category == BoardCategory.MOONBOARD) {
+                    mbVariant?.let { variant ->
+                        MoonBoardPickerHoldSets(variant, selectedHolds(variant), moonBoardHasHoldSetData) { selected ->
+                            moonHoldDrafts[variant] = selected
+                        }
+                    }
                     Text(
                         stringResource(R.string.board_selection_moonboard_variant_label),
                         style = MaterialTheme.typography.bodyMedium,
@@ -569,7 +582,7 @@ internal fun BoardSelectionDialog(
                         isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant, auroraSizeId)
                         isKilter -> onConfirmKilter(kilterSelection)
                         isQuantum -> quantumModel?.let(onConfirmQuantum)
-                        category == BoardCategory.MOONBOARD -> mbVariant?.let(onConfirmMoonBoard)
+                        category == BoardCategory.MOONBOARD -> mbVariant?.let { onConfirmMoonBoard(it, selectedHolds(it)) }
                     }
                 },
                 enabled = when {

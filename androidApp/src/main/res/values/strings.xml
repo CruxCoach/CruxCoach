@@ -2541,7 +2541,7 @@
     <string name="moonboard_hold_sets_subtitle">Select the hold sets mounted on your MoonBoard. The app shows climbs that fit. Choose the complete setup if all sets are installed.</string>
     <string name="moonboard_setup_complete">Complete %1$s setup</string>
     <string name="moonboard_setup_complete_hint">All hold sets for this model are installed.</string>
-    <string name="moonboard_setup_partial">Some holds are missing</string>
+    <string name="moonboard_setup_partial">Missing some holds?</string>
     <string name="moonboard_hold_sets_summary">%1$d of %2$d hold sets</string>
     <string name="moonboard_hold_sets_count">%1$s holds</string>
     <string name="moonboard_hold_sets_climbable">%1$s of %2$s problems climbable</string>
@@ -2943,4 +2943,5 @@
     <string name="tour_spotlight_entry">This is your entry. Tap the pencil to edit it. You can also delete it from the edit dialog.</string>
     <string name="board_logbook_delete_entry_title">Delete log entry?</string>
     <string name="board_logbook_delete_entry_message">This log entry will be permanently deleted.</string>
+    <string name="moonboard_picker_hold_sets_pending">Your hold selection takes effect after the catalogue update.</string>
 </resources>

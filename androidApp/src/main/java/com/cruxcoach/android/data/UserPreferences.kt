@@ -620,8 +620,14 @@ class UserPreferences(
      * angle to 40° — valid for every v0.2.0 MoonBoard variant — so the
      * browser shows climbs immediately.
      */
-    suspend fun setMoonBoardSelection(layoutId: Int) {
+    suspend fun setMoonBoardSelection(layoutId: Int, holdSetIds: Collection<Long>? = null) {
+        val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+        val selected = holdSetIds?.let { ids -> variant?.let { MoonBoardHoldSets.setIdsFor(it).filter { id -> id in ids } } }
+        require(holdSetIds == null || !selected.isNullOrEmpty()) { "Choose at least one valid MoonBoard hold set" }
         dataStore.edit { prefs ->
+            if (selected != null && variant != null) {
+                prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)] = selected.joinToString(",")
+            }
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.BOARD_ANGLE] = 40

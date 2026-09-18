@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -47,6 +48,8 @@ data class BoardPickerState(
      *  its (unkeyed) remembered selection from the placeholder default, or it
      *  would always open on Kilter regardless of the actual active board. */
     val loaded: Boolean = false,
+    val moonBoardHoldSets: Map<MoonBoardVariant, List<Long>> = emptyMap(),
+    val moonBoardHasHoldSetData: Boolean? = null,
     val initialBrand: String = BoardBrand.KILTER.wireValue,
     val productSizes: List<BoardSize> = BoardConstants.KILTER_KNOWN_SIZES,
     val selectedKilterSizeId: Int = 0,
@@ -85,6 +88,11 @@ class BoardPickerViewModel @Inject constructor(
     private val loadedBrands = MutableStateFlow<Set<String>>(emptySet())
     private val auroraBrandSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
 
+    private val moonHoldSetData = MutableStateFlow<Boolean?>(null)
+    private val moonHoldSets = combine(MoonBoardVariant.entries.map { variant ->
+        userPreferences.moonBoardHoldSets(variant).map { variant to it }
+    }) { it.toMap() }
+
     val state: StateFlow<BoardPickerState> = combine(
         userPreferences.boardBrand,
         userPreferences.boardLayoutId,
@@ -108,6 +116,10 @@ class BoardPickerViewModel @Inject constructor(
             selectedAuroraProductSizeId = sizeId,
             auroraBrandSizes = auroraSizes,
         )
+    }.let { boardState ->
+        combine(boardState, moonHoldSets, moonHoldSetData) { board, holds, hasData ->
+            board.copy(moonBoardHoldSets = holds, moonBoardHasHoldSetData = hasData)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
     init {
@@ -165,6 +177,12 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
+    fun refreshMoonBoardHoldSetData() {
+        viewModelScope.launch {
+            moonHoldSetData.value = withContext(Dispatchers.IO) { boardRepository.hasMoonBoardHoldSetMask() }
+        }
+    }
+
     suspend fun needsDownloadConsent(brand: BoardBrand): Boolean =
         brand !in userPreferences.boardDownloadBrands.first() && withContext(Dispatchers.IO) {
             !boardRepository.hasClimbsForBrand(brand.wireValue)
@@ -195,8 +213,8 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
-    fun selectMoonBoard(variant: MoonBoardVariant) {
-        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
+    fun selectMoonBoard(variant: MoonBoardVariant, holdSetIds: List<Long>? = null) {
+        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSetIds) }
     }
 
     fun selectQuantum(model: QuantumBoardModel, deferDownload: Boolean = false) {
@@ -266,6 +284,7 @@ internal fun BoardPickerDialog(
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.refreshMoonBoardHoldSetData() }
     // Wait for the real prefs before composing the dialog — it seeds its
     // selection once (unkeyed remember), so it must not see the placeholder.
     if (!state.loaded) return
@@ -278,6 +297,8 @@ internal fun BoardPickerDialog(
             productSizes = state.productSizes,
             selectedKilterSizeId = state.selectedKilterSizeId,
             selectedMoonBoardVariant = state.selectedMoonBoardVariant,
+            initialMoonBoardHoldSets = state.moonBoardHoldSets,
+            moonBoardHasHoldSetData = state.moonBoardHasHoldSetData,
             selectedAuroraLayoutId = state.selectedAuroraLayoutId,
             selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
             loadedAuroraBrands = state.loadedAuroraBrands,
@@ -287,7 +308,7 @@ internal fun BoardPickerDialog(
             prefill = prefill,
             mismatch = mismatch,
             onConfirmKilter = { size -> request(BoardBrand.KILTER) { viewModel.selectKilter(size) } },
-            onConfirmMoonBoard = { variant -> request(BoardBrand.MOONBOARD) { viewModel.selectMoonBoard(variant) } },
+            onConfirmMoonBoard = { variant, holds -> request(BoardBrand.MOONBOARD) { viewModel.selectMoonBoard(variant, holds) } },
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,

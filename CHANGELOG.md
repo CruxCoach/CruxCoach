@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Changed
+- MoonBoard hold sets can be adjusted under “Missing some holds?” in the board
+  picker. Changes apply only on confirmation; the empty connection heading is
+  removed from MoonBoard settings.
 - First-run setup offers optional Bluetooth discovery before board selection,
   shows catalogue downloads explicitly and groups account restoration with imports.
 - A skippable visual tour highlights the actual browser and detail controls.

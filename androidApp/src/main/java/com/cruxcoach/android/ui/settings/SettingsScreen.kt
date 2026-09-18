@@ -221,19 +221,13 @@ fun SettingsScreen(
                             Text(stringResource(R.string.settings_board_make_active))
                         }
                     }
-                    // FEAT-049: which of the variant's hold sets are actually
-                    // mounted. Renders nothing for any other brand, and none
-                    // for MoonBoard 2010 (one set, no choice).
-                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand == BoardBrand.MOONBOARD) {
-                        MoonBoardHoldSetSection()
-                    }
                     if (settingsBoardBrand == BoardBrand.MOONBOARD) {
                         MoonBoardLedPositionSection(
                             ledMode = state.moonBoardLedMode,
                             onModeChange = viewModel::updateMoonBoardLedMode,
                         )
                     }
-                    if (settingsBoardBrand == activeBoardBrand) {
+                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand != BoardBrand.MOONBOARD) {
                         BoardProjectionLifecycleHint(activeBoardBrand)
                     }
                     if (showsKilterLedColors(settingsBoardBrand)) {

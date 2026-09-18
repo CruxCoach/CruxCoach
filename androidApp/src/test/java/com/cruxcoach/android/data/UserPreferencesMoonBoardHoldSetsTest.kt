@@ -26,6 +26,28 @@ class UserPreferencesMoonBoardHoldSetsTest {
     private val universe2019 = MoonBoardHoldSets.setIdsFor(masters2019)
 
     @Test
+    fun `picker confirms variant and hold subset together without changing other variants`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setMoonBoardHoldSets(masters2017, listOf(11L))
+        prefs.setMoonBoardSelection(masters2019.layoutId.toInt(), listOf(17L, 19L))
+        assertEquals(masters2019.layoutId.toInt(), prefs.boardLayoutId.first())
+        assertEquals("moonboard", prefs.boardBrand.first())
+        assertEquals(listOf(17L, 19L), prefs.getMoonBoardHoldSets(masters2019))
+        assertEquals(listOf(11L), prefs.getMoonBoardHoldSets(masters2017))
+    }
+
+    @Test
+    fun `invalid picker subset does not change active board`() = runTest {
+        val prefs = createTestUserPreferences(backgroundScope)
+        val before = prefs.boardBrand.first()
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            prefs.setMoonBoardSelection(masters2019.layoutId.toInt(), emptyList())
+        }
+        assertEquals(before, prefs.boardBrand.first())
+        assertEquals(universe2019, prefs.getMoonBoardHoldSets(masters2019))
+    }
+
+    @Test
     fun `absent preference means every set`() = runTest {
         val prefs = createTestUserPreferences(backgroundScope)
 
