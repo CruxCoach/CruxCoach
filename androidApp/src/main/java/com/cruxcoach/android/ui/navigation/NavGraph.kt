@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.navigation
 
 import com.cruxcoach.android.ui.onboarding.*
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
@@ -1125,7 +1126,8 @@ internal fun BrowserMainDrawer(tourVisible: Boolean, onSelect: (String) -> Unit)
                     )
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                NavigationDrawerItem(label = { Text(stringResource(com.cruxcoach.android.R.string.tour_replay)) },
+                NavigationDrawerItem(icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                    label = { Text(stringResource(com.cruxcoach.android.R.string.tour_replay)) },
                     selected = false, onClick = { tour.start(replay = true); onSelect(Routes.BOARD_BROWSER) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag("board_tour_replay"))
             }
