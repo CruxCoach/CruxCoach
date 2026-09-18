@@ -2927,14 +2927,15 @@
     <string name="setup_confirm_downloads">Auswahl bestätigen und weiter</string>
     <string name="tour_replay">Einführung ansehen</string>
     <string name="tour_skip">Tour überspringen</string>
-    <string name="tour_spotlight_connect">Verbinde dein Board per Bluetooth. Ohne Board: Dialog schließen.</string>
-    <string name="tour_spotlight_angle">Stelle hier den Winkel deines Boards ein.</string>
-    <string name="tour_spotlight_filter">Wähle deine Schwierigkeit und den Kletterstatus.</string>
-    <string name="tour_spotlight_open">Öffne diesen Boulder, um seine Griffe zu sehen.</string>
-    <string name="tour_spotlight_project">Beleuchte diesen Boulder an deinem Board.</string>
-    <string name="tour_spotlight_detail_connect">Verbinde hier dein Board. Ohne Board: Dialog schließen.</string>
-    <string name="tour_spotlight_log">Öffne „Mit Details loggen…“. Du musst nichts speichern.</string>
-    <string name="tour_spotlight_menu">Öffne das Menü und wähle den markierten Eintrag.</string>
-    <string name="tour_spotlight_catalogue">Wähle dein Board und lade seinen Katalog.</string>
-    <string name="tour_spotlight_queue">Füge diesen Boulder zur gemeinsamen Warteschlange hinzu.</string>
+    <string name="tour_spotlight_connect">Tippe auf Bluetooth, um dein Board zu verbinden. Ohne Board kannst du die Suche wieder schließen.</string>
+    <string name="tour_spotlight_angle">Wähle den Winkel, auf dem du kletterst. Er wird für die Boulderauswahl und Bewertungen verwendet.</string>
+    <string name="tour_spotlight_filter">Öffne die Filter: Wähle passende Schwierigkeitsgrade, blende geschaffte Boulder aus und lege die Sortierung fest.</string>
+    <string name="tour_spotlight_open">Tippe auf diesen Boulder. In der Detailansicht siehst du seine Griffe und kannst ihn am Board beleuchten.</string>
+    <string name="tour_spotlight_project">Tippe hier, um die Griffe dieses Boulders am verbundenen Board aufleuchten zu lassen.</string>
+    <string name="tour_spotlight_detail_connect">Verbinde dein Board, um die Griffe aufleuchten zu lassen. Ohne Board kannst du die Suche wieder schließen.</string>
+    <string name="tour_spotlight_log">Öffne das Menü und wähle „Mit Details loggen…“, um Versuche oder Sends einzutragen. Du kannst das Formular ohne Speichern schließen.</string>
+    <string name="tour_spotlight_catalogue">Öffne die Board-Auswahl. Wähle dein Modell und die Größe, damit du den passenden Boulder-Katalog erhältst.</string>
+    <string name="tour_spotlight_queue">Tippe hier, um diesen Boulder in die gemeinsame Warteschlange einzureihen.</string>
+    <string name="tour_spotlight_menu_filter">Öffne das Menü und wähle „Filter“. Dort kannst du Schwierigkeitsgrade eingrenzen, geschaffte Boulder ausblenden und die Sortierung ändern.</string>
+    <string name="tour_spotlight_menu_connect">Öffne das Menü und wähle „Bluetooth“, um dein Board zu verbinden. Ohne Board kannst du die Suche wieder schließen.</string>
 </resources>

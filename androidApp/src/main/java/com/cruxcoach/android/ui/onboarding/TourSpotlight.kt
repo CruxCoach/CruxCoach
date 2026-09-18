@@ -72,7 +72,9 @@ internal fun TourHost(
                 val direct = targets.bounds[target]
                 val bounds = direct ?: if (target == TourTarget.FILTER || target == TourTarget.BLUETOOTH) targets.bounds[TourTarget.OVERFLOW] else null
                 if (bounds != null) TourSpotlight(bounds,
-                    if (direct == null) R.string.tour_spotlight_menu else message, onEnd)
+                    if (direct != null) message
+                    else if (target == TourTarget.FILTER) R.string.tour_spotlight_menu_filter
+                    else R.string.tour_spotlight_menu_connect, onEnd)
             }
         }
     }

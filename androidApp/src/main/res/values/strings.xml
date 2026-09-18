@@ -2928,14 +2928,15 @@
     <string name="setup_confirm_downloads">Confirm selection &amp; continue</string>
     <string name="tour_replay">Show introduction</string>
     <string name="tour_skip">Skip tour</string>
-    <string name="tour_spotlight_connect">Connect your board via Bluetooth. Close the dialog to continue without a board.</string>
-    <string name="tour_spotlight_angle">Set the angle of the board in front of you.</string>
-    <string name="tour_spotlight_filter">Choose your difficulty and climbing status.</string>
-    <string name="tour_spotlight_open">Open this climb to see its holds.</string>
-    <string name="tour_spotlight_project">Light this climb on your board.</string>
-    <string name="tour_spotlight_detail_connect">Connect your board here. Close the dialog to continue without a board.</string>
-    <string name="tour_spotlight_log">Open “Log with details…”. No need to save an entry.</string>
-    <string name="tour_spotlight_menu">Open the menu and choose the highlighted item.</string>
-    <string name="tour_spotlight_catalogue">Choose your board and load its catalogue.</string>
-    <string name="tour_spotlight_queue">Add this climb to the shared queue.</string>
+    <string name="tour_spotlight_connect">Tap Bluetooth to connect your board. If you have no board nearby, close the search to continue.</string>
+    <string name="tour_spotlight_angle">Choose the angle you are climbing at. It is used for climb selection and ratings.</string>
+    <string name="tour_spotlight_filter">Open the filters to choose a grade range, hide climbs you have sent and set the sort order.</string>
+    <string name="tour_spotlight_open">Tap this climb to see its holds in the detail view and light it on your board.</string>
+    <string name="tour_spotlight_project">Tap here to light the holds of this climb on your connected board.</string>
+    <string name="tour_spotlight_detail_connect">Connect your board to light the holds. If you have no board nearby, close the search to continue.</string>
+    <string name="tour_spotlight_log">Open the menu and choose “Log with details…” to record attempts or sends. You can close the form without saving.</string>
+    <string name="tour_spotlight_catalogue">Open the board picker. Choose your model and size to get the matching climb catalogue.</string>
+    <string name="tour_spotlight_queue">Tap here to add this climb to the shared queue.</string>
+    <string name="tour_spotlight_menu_filter">Open the menu and choose “Filter” to select a grade range, hide climbs you have sent and change the sort order.</string>
+    <string name="tour_spotlight_menu_connect">Open the menu and choose “Bluetooth” to connect your board. If you have no board nearby, close the search to continue.</string>
 </resources>
