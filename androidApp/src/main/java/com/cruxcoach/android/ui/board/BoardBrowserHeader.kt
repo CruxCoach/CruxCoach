@@ -114,7 +114,7 @@ internal fun BoardBrowserHeader(
                     .testTag("board_browser_board_picker").tourTarget(TourTarget.BOARD)
                     .semantics(mergeDescendants = true) {
                         contentDescription = listOf(context.title, context.subtitle).filter { it.isNotBlank() }.joinToString(", ")
-                    }.padding(horizontal = 4.dp)) {
+                    }.padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
                     val measurer = rememberTextMeasurer()
                     val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
                     val available = with(LocalDensity.current) { (maxWidth - 12.dp).toPx() }.coerceAtLeast(1f)
