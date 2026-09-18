@@ -546,7 +546,7 @@ fun CruxCoachNavHost(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
                     drawerContent = {
-                        BrowserMainDrawer(tourVisible = drawerState.isOpen) { route ->
+                        BrowserMainDrawer() { route ->
                             drawerScope.launch { drawerState.close() }
                             if (route != Routes.BOARD_BROWSER) {
                                 navController.navigate(route) { launchSingleTop = true }
@@ -1088,49 +1088,31 @@ fun CruxCoachNavHost(
 }
 
 @Composable
-internal fun BrowserMainDrawer(tourVisible: Boolean, onSelect: (String) -> Unit) {
-    val (tour, step) = rememberBrowserTour()
-    val targets = remember { TourTargets() }
+internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+    val (tour, _) = rememberBrowserTour()
     ModalDrawerSheet {
-        TourHost(targets, if (step == TourStep.LOGBOOK) TourTarget.LOGBOOK else null,
-            com.cruxcoach.android.R.string.tour_spotlight_logbook,
-            { tour.move(TourStep.DONE) }, visible = tourVisible) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                Spacer(Modifier.height(16.dp))
-                Text(stringResource(com.cruxcoach.android.R.string.main_menu_title),
-                    Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                val entries = listOf(
-                    Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
-                    Triple(Routes.BOARD_LOGBOOK, com.cruxcoach.android.R.string.board_logbook_title, "menu_logbook"),
-                    Triple(Routes.BOARD_LISTS, com.cruxcoach.android.R.string.board_lists_title, "menu_lists"),
-                    Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
-                    Triple(Routes.SETTINGS, com.cruxcoach.android.R.string.cd_settings, "menu_settings"),
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(16.dp))
+            Text(stringResource(com.cruxcoach.android.R.string.main_menu_title),
+                Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            val entries = listOf(
+                Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
+                Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
+            )
+            entries.forEach { (route, label, tag) ->
+                NavigationDrawerItem(
+                    icon = { Icon(if (route == Routes.BOARD_MAP) Icons.Default.Map else Icons.Default.DeveloperBoard, null) },
+                    label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
+                    onClick = { onSelect(route) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),
                 )
-                entries.forEach { (route, label, tag) ->
-                    NavigationDrawerItem(
-                        icon = { Icon(when (route) {
-                            Routes.BOARD_LOGBOOK -> Icons.Default.Book
-                            Routes.BOARD_LISTS -> Icons.AutoMirrored.Filled.FormatListBulleted
-                            Routes.SETTINGS -> Icons.Default.Settings
-                            Routes.BOARD_MAP -> Icons.Default.Map
-                            else -> Icons.Default.DeveloperBoard
-                        }, null) },
-                        label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
-                        onClick = {
-                            if (route == Routes.BOARD_LOGBOOK && step == TourStep.LOGBOOK) tour.move(TourStep.ENTRY)
-                            onSelect(route)
-                        },
-                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag)
-                            .then(if (route == Routes.BOARD_LOGBOOK) Modifier.tourTarget(TourTarget.LOGBOOK) else Modifier),
-                    )
-                }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                NavigationDrawerItem(icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                    label = { Text(stringResource(com.cruxcoach.android.R.string.tour_replay)) },
-                    selected = false, onClick = { tour.start(replay = true); onSelect(Routes.BOARD_BROWSER) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag("board_tour_replay"))
             }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            NavigationDrawerItem(icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                label = { Text(stringResource(com.cruxcoach.android.R.string.tour_replay)) },
+                selected = false, onClick = { tour.start(replay = true); onSelect(Routes.BOARD_BROWSER) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag("board_tour_replay"))
         }
     }
 }

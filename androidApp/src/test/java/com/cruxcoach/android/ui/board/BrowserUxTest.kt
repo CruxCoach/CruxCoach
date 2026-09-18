@@ -48,7 +48,7 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_filter_toggle").assertIsDisplayed()
         compose.onNodeWithTag("board_browser_home").assertIsDisplayed()
         compose.onNodeWithTag("board_browser_board_picker").assertIsDisplayed()
-        compose.onNodeWithTag("board_header_overflow").assertDoesNotExist()
+        compose.onNodeWithTag("board_header_overflow").assertIsDisplayed()
         assertTrue(angleOpened)
     }
 
@@ -142,22 +142,37 @@ class BrowserUxTest {
         assertEquals(0, lights)
     }
 
-    @Test fun `logo menu guides to the real logbook and blocks unrelated destinations`() {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
-        val tour = BrowserTour(context)
-        tour.logged("saved-entry")
-        var destination: String? = null
-        compose.setContent { MaterialTheme {
-            com.cruxcoach.android.ui.navigation.BrowserMainDrawer(tourVisible = true) { destination = it }
-        } }
-        compose.onNodeWithTag("menu_settings").performTouchInput { click() }
+    @Test fun `narrow overflow routes logbook and blocks other actions during tour`() {
+        var logs = 0
+        var lists = 0
+        compose.setContent { MaterialTheme { Box(Modifier.width(320.dp)) {
+            BoardBrowserHeader(BoardBrowserHeaderContext("Kilter Original", "12x12"), false, 40,
+                onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {}, onFilter = {},
+                onLogbook = { logs++ }, onLists = { lists++ }, logbookTour = true)
+        } } }
+        compose.onNodeWithTag("board_header_overflow").performClick()
+        compose.onNodeWithTag("board_header_overflow_action_1").assertIsNotEnabled()
+        compose.onNodeWithTag("board_header_overflow_action_0").performClick()
         compose.waitForIdle()
-        assertNull(destination)
-        compose.onNodeWithTag("menu_logbook").performTouchInput { click() }
-        compose.waitForIdle()
-        assertEquals(com.cruxcoach.android.ui.navigation.Routes.BOARD_LOGBOOK, destination)
-        assertEquals(TourStep.ENTRY, tour.step())
-        tour.move(TourStep.DONE)
+        assertEquals(1, logs)
+        assertEquals(0, lists)
+    }
+
+    @Config(qualifiers = "w411dp-h800dp")
+    @Test fun `compact picker makes room for direct logbook while remaining actions use overflow`() {
+        var logs = 0
+        compose.setContent { MaterialTheme { Box(Modifier.width(411.dp)) {
+            BoardBrowserHeader(BoardBrowserHeaderContext("Kilter Original", "12x12 with Kickboard"), false, 40,
+                onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {}, onFilter = {},
+                onLogbook = { logs++ })
+        } } }
+        assertTrue(compose.onNodeWithTag("board_browser_board_picker").getUnclippedBoundsInRoot().let { it.right - it.left <= 132.dp })
+        compose.onNodeWithTag("board_header_action_0").assertIsDisplayed().performClick()
+        assertEquals(1, logs)
+        compose.onNodeWithTag("board_header_overflow").performClick()
+        compose.onNodeWithTag("board_header_overflow_action_0").assertDoesNotExist()
+        compose.onNodeWithTag("board_header_overflow_action_1").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_overflow_action_2").assertIsDisplayed()
     }
 
     @Test fun `filter header leaves controls visible with large text`() {

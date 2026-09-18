@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Users advance through normal actions, including Quicklog and editing in the
   logbook; replay is available from the app menu behind the logo.
 - The one-row browser header keeps the logo, board family, angle, Bluetooth and
-  filter directly accessible. Filters prioritise
+  filter directly accessible. A compact board picker leaves room for additional
+  actions; those that do not fit move into the right-hand overflow menu. Filters prioritise
   grade, status and sorting, with further restrictions under an expandable section
   and vertical choice lists. Resetting filters preserves the board angle.
 - Settings show compact titles and controls, with optional explanations behind
