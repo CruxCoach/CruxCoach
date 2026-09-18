@@ -2941,4 +2941,6 @@
     <string name="tour_spotlight_logbook_menu">Tap the app logo to open the menu. Your logbook is there.</string>
     <string name="tour_spotlight_logbook">Open your logbook to see your attempts and sends.</string>
     <string name="tour_spotlight_entry">This is your entry. Tap the pencil to edit it. You can also delete it from the edit dialog.</string>
+    <string name="board_logbook_delete_entry_title">Delete log entry?</string>
+    <string name="board_logbook_delete_entry_message">This log entry will be permanently deleted.</string>
 </resources>

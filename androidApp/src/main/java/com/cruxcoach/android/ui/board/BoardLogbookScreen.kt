@@ -98,8 +98,8 @@ fun BoardLogbookScreen(
 
     state.showDeleteConfirm?.let {
         AlertDialog(onDismissRequest = viewModel::dismissDeleteConfirm,
-            title = { Text(stringResource(R.string.board_logbook_delete_title, 1)) },
-            text = { Text(stringResource(R.string.board_logbook_delete_message)) },
+            title = { Text(stringResource(R.string.board_logbook_delete_entry_title)) },
+            text = { Text(stringResource(R.string.board_logbook_delete_entry_message)) },
             confirmButton = { TextButton(onClick = viewModel::confirmDeleteAscent) {
                 Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
             } },

@@ -2940,4 +2940,6 @@
     <string name="tour_spotlight_logbook_menu">Öffne das App-Menü über das Logo. Dort findest du dein Logbuch.</string>
     <string name="tour_spotlight_logbook">Öffne dein Logbuch. Dort findest du deine Versuche und erfolgreichen Begehungen.</string>
     <string name="tour_spotlight_entry">Das ist dein Eintrag. Mit dem Stift kannst du ihn bearbeiten; im Bearbeiten-Dialog kannst du ihn auch löschen.</string>
+    <string name="board_logbook_delete_entry_title">Logeintrag löschen?</string>
+    <string name="board_logbook_delete_entry_message">Dieser Logeintrag wird unwiderruflich gelöscht.</string>
 </resources>
