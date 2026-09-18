@@ -87,6 +87,16 @@ Der Ablauf erhält seinen Zustand über den Wechsel zur externen Ablage und die 
 
 Für Amber-verwaltete Konten darf die Oberfläche keinen lokalen Schlüsselbesitz behaupten: Schlüsselsicherung erfolgt in Amber, Datenbackup bleibt eine separate Aufgabe. Die konkrete Einbindung dieser Konten in den neuen Dialog ist vor dessen Abnahme zu prüfen. Der neue lokale nsec-Dialog wird für Amber-Konten nicht angeboten; sie behalten ihre separate Schlüsselverwaltung. Als Integrationsstellen dienen [NavGraph.kt](androidApp/src/main/java/com/cruxcoach/android/ui/navigation/NavGraph.kt), [BackupSettingsSection.kt](androidApp/src/main/java/com/cruxcoach/android/ui/settings/BackupSettingsSection.kt) und das [Backup-Modul](androidApp/src/main/java/com/cruxcoach/android/nostr/backup/); diese Referenzen bestätigen nicht den neuen Ablauf.
 
+### Kurze Oberfläche, gezielte Info-Karten
+
+Kontoverwaltung und Backup verwenden dieselbe Informationshierarchie wie der Browser:
+
+- **Direkt sichtbar:** die nächste Handlung und ihre entscheidende Folge. Der Schlüssel ermöglicht Kontozugang und lässt sich nicht zurücksetzen; eine Schlüsselkopie sichert keine App-Daten. Beim gewählten Daten-Backup bleiben öffentlicher verschlüsselter Speicher, Start erst nach Bestätigung und anschließende tägliche Sicherung sichtbar.
+- **Am Info-Symbol:** Bedeutung von „nsec“, sichere externe Aufbewahrung, Zwischenablage-Frist, genaue Datenkategorien, sichtbare Verbindungsdaten und Löschgrenzen. Kurze Abschnitte mit verständlichen Überschriften statt eines unstrukturierten Textblocks. Lesen verändert weder Auswahl noch Konto oder Backup.
+- **Optional aufklappbar:** Amber für lokale Konten und öffentliche Konto-ID. Aktive Amber-Konten behalten ihre Schlüsselverwaltung direkt sichtbar. Kontozugang sichern, Daten sichern und ein bestehendes Konto wiederherstellen bleiben getrennte, direkt erkennbare Aufgaben.
+
+Ein fehlender Bestätigungsvermerk zur Schlüsselaufbewahrung ist eine wichtige Aufgabe, kein technischer Fehler: kompakter neutraler Hinweis mit klarer Aktion statt großem rotem Warnbanner. Aktuelle Fehler und irreversible Aktionen behalten angemessene Warnungen. Wesentliche Einwilligungen dürfen nicht ausschließlich in einer Info-Karte stehen. Fließtext bleibt in normaler lesbarer Größe; weniger Inhalt ersetzt kleinere Schrift.
+
 ## Barrierefreiheit, Sprache und Vertrauen
 
 **Abnahmekriterien:** Primäre Bedienelemente behalten ausreichend große Berührungsflächen; der Header verwendet für seine Icon-Aktionen und den Winkel 48 dp. Große Schrift darf keine notwendigen Aktionen abschneiden. Dialogtexte und längere Auswahlbereiche scrollen; wichtige Bestätigungs- und Abbruchaktionen bleiben erreichbar. Board-Familie und reale gerenderte Grenzen sind bei 320 dp und 200 % Schriftgröße zu prüfen, nicht nur die Existenz eines UI-Knotens.

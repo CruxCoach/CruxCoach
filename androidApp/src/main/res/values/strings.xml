@@ -1984,7 +1984,7 @@
 
     <!-- Key Import Screen -->
     <string name="key_import_title">Restore account</string>
-    <string name="key_import_prompt">Already saved your key? Paste it here to use that account again. You do not need this step for a new account. Review the account before confirming the switch.</string>
+    <string name="key_import_prompt">Paste the key you saved earlier to return to your existing account.</string>
     <string name="key_import_label">Private key</string>
     <string name="key_import_supported_formats">Supported: nsec, ncryptsec, hex, 12/24 words</string>
     <string name="key_import_reveal">Show key</string>
@@ -2003,11 +2003,11 @@
     <string name="identity_switch_title">Switching account…</string>
 
     <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
-    <string name="settings_backup_title">Encrypted cloud backup</string>
+    <string name="settings_backup_title">Data backup</string>
     <string name="settings_backup_description">Contents and protection\nBacks up your logbook, attempts, lists, notes, own climbs and training data. The app encrypts the backup before uploading it to public servers. Restore with the same account key.\n\nBack up and restore\nEnable backups for scheduled backups or “Back up now”. Restore works even with automatic backups off.</string>
     <string name="settings_backup_device_local_note">Not included\nBoard selection and climb-list/map filters stay on this device. Download public board catalogues again as needed.</string>
     <string name="settings_backup_enable">Enable backup</string>
-    <string name="settings_backup_needs_key">An account key is needed. It is generated automatically on first backup.</string>
+    <string name="settings_backup_needs_key">Set up your account access first.</string>
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
     <string name="settings_backup_status_no_key">Backup needs your account key.</string>
@@ -2045,10 +2045,10 @@
          remind them that without their key the backup cannot be restored.
          Two body variants: local key (= save in password manager) vs Amber
          (= back up Amber itself). -->
-    <string name="backup_key_warning_title">Save your CruxCoach Account key</string>
-    <string name="backup_key_warning_body_local">Same key as your CruxCoach Account: identifies you on Nostr and encrypts your cloud backup. Without it, both are gone if you lose this device — even we can\'t recover them. Save it somewhere safe (e.g. a password manager).</string>
-    <string name="backup_key_warning_body_amber">Your CruxCoach Account key is held by Amber and encrypts your cloud backup. Without Amber\'s own backup, the key is lost when you lose your phone — and both your account and your cloud backup become unrecoverable. Make sure Amber\'s backup is set up.</string>
-    <string name="backup_key_warning_view_account">Open CruxCoach Account</string>
+    <string name="backup_key_warning_title">Save your key</string>
+    <string name="backup_key_warning_body_local">Your data backup can only be opened with your account key. Store that key in a password manager you can access without this phone. CruxCoach cannot replace a lost key.</string>
+    <string name="backup_key_warning_body_amber">Your account key is managed by Amber. Make sure you can restore it even if this phone is lost. Connecting Amber alone does not create a key backup or a data backup.</string>
+    <string name="backup_key_warning_view_account">Open key settings</string>
     <string name="backup_key_warning_acknowledged">I\'ve saved my key</string>
     <string name="backup_key_warning_ack_dialog_title">Backup key saved?</string>
     <string name="backup_key_warning_ack_dialog_body">By tapping Confirm you state that you have stored your key somewhere outside this device — a password manager, Amber\'s backup, paper, etc. We have no way to recover it if you lose this device without saving it. Local data on this phone is not affected.</string>
@@ -2784,7 +2784,7 @@
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
-    <string name="settings_account_key_reminder">Your key gives access to your account and encrypted backups. Keep it safe: a lost key cannot be reset.</string>
+    <string name="settings_account_key_reminder">Your key opens your account. Keep it safe — it cannot be reset.</string>
     <string name="settings_account_explanation_show">How does my Nostr account work?</string>
     <string name="settings_account_explanation_hide">Hide account explanation</string>
     <string name="settings_active_board_title">Active board</string>
@@ -2792,7 +2792,7 @@
     <string name="ux_profile_identity">Name and pictures</string>
     <string name="ux_profile_links">Links and addresses (optional)</string>
     <string name="ux_plan_title">Playback plan</string>
-    <string name="ux_account_help">Account access\nYour private key controls your account. Keep it secret and save a copy securely. The public account ID (npub) identifies you; it cannot restore access.\n\nBackups\nEncrypted backups contain your saved app data. Restoring requires the same account’s decryption capability and an available backup. Saving a key does not create a data backup.\n\nExternal signer\nAmber manages the private key in a separate app on your phone and handles signing requests. A remote signer manages it elsewhere. Neither is a public profile or a data backup.</string>
+    <string name="ux_account_help">Account access\nYour private key works like a password. Keep it secret and store it outside this phone. It cannot be reset.\n\nYour data\nA key copy is not a data backup. Your logbook and lists need a separate backup.\n\nOptional tools\nAmber can manage your key in a separate app. Your public account ID can be shared, but cannot restore access.</string>
     <string name="ux_lists_help">Lists\nA list contains each climb once. Favourites are a built-in list.\n\nPlayback\nAn optional plan adds repeated climbs, angles and rests. Playing it does not automatically mean you climbed its steps. Record attempts and sends in the logbook.\n\nHistory\nHistory records climbs sent to the board LEDs. It is separate from your climbing logbook.</string>
     <string name="ux_logbook_help">Entries\nSends are successful log entries, including repeats. Attempts here are entries without a send. An entry can include several tries.\n\nFilters\nOutcome, board and angle narrow this list. The period selected in statistics also applies to this list; the statistics board filter is separate. Lighting a climb on the board does not log a climbing attempt.</string>
     <string name="ux_stats_help">Volume\nSends count successful entries, including repeats. Attempts add up the recorded tries in all entries, including sends; each entry counts at least once.\n\nProblem outcomes\nEach climb counts once per board family in the selected period, across angles: Flash, otherwise Sent, otherwise Attempted. For a flash, the first recorded entry for that climb at that angle must be a send with at most one try. Earlier attempts rule it out, even outside the selected period. Missing history limits this classification. The flash rate divides flashes by successful entries, including repeats.\n\nActivity and time chart\nThese count log entries, including unsuccessful entries, rather than individual tries or only sends. Records use the full history; other charts follow the selected period.</string>
@@ -2814,7 +2814,7 @@
     <string name="account_switch_title">Switch account</string>
     <string name="account_switch_help">Import an account\nUse the private key of an existing account. Your current data stays stored and remains accessible with your current key. Save that key first.</string>
     <string name="account_switch_amber_help">Switches to the account key managed by CruxCoach on this device and restarts the app. To return to your Amber account, connect Amber again.</string>
-    <string name="account_import_action">Paste a key – restore account</string>
+    <string name="account_import_action">Use saved key</string>
     <string name="account_amber_title">Amber key app</string>
     <string name="account_amber_connected">Connected to this account</string>
     <string name="account_amber_optional">Optional: manage your key in a separate app</string>
@@ -2823,10 +2823,10 @@
     <string name="account_public_id">Your account</string>
     <string name="account_public_id_help">Public account ID (npub)\nOthers can use it to find your account. It is safe to share and does not grant access to your account.</string>
     <string name="account_copy_id">Copy account ID</string>
-    <string name="account_recovery_title">Back up your account</string>
-    <string name="account_recovery_help">Private key\nSave your private key (nsec) somewhere safe. It gives access to your account, even after losing your phone. CruxCoach cannot reset it.\n\nData backup\nKeeping a copy of your key does not back up your app data. To restore your data, you also need an available encrypted backup for this account.</string>
+    <string name="account_recovery_title">Save account access</string>
+    <string name="account_recovery_help">Your account key\nYour private key works like an account password. It starts with “nsec”. Anyone who has it can use your account; never share it. CruxCoach cannot reset or replace it.\n\nKeep a safe copy\nCopy it into a password manager that you can access even if this phone is lost. Copying alone does not mean it is safely stored.\n\nYour data\nThe key restores account access. Your logbook, lists and training data also need an existing data backup.</string>
     <string name="account_backup_acknowledged">Marked as backed up by you</string>
-    <string name="account_copy_secret">Copy and save nsec</string>
+    <string name="account_copy_secret">Save key</string>
     <string name="profile_cover_title">Cover image</string>
     <string name="profile_cover_empty">Optional background for your profile</string>
     <string name="profile_cover_selected">Image selected · change or remove</string>
@@ -2846,7 +2846,7 @@
     <string name="account_method_amber">With Amber</string>
     <string name="account_method_local_body">CruxCoach stores your private key on this device. You back it up yourself to recover your account.</string>
     <string name="account_method_amber_body">Amber manages your key in a separate app. CruxCoach requests approvals there without receiving the key.</string>
-    <string name="account_amber_backup">Amber manages your key. Back up nsec there outside this phone too, so you can regain access if you lose it. CruxCoach cannot copy this key.</string>
+    <string name="account_amber_backup">Amber manages your key. Save a copy there outside this phone.</string>
     <string name="account_amber_choose">Choose account in Amber</string>
     <string name="account_local_copy_available">CruxCoach still holds a key on this device. You can review its account before switching.</string>
     <string name="account_use_local">Use stored key</string>
@@ -2871,10 +2871,10 @@
     <string name="map_stats_brand_distribution">Board brands</string>
     <string name="map_stats_unknown_layout">Unknown layout</string>
     <string name="map_stats_scope">All recorded boards, regardless of map filters. A location can contain several boards.</string>
-    <string name="account_backup_priority">New to CruxCoach? Save your private key (nsec) first. It gives you access to your account on a new phone. Copy it and keep it in a password manager or in Amber.</string>
+    <string name="account_backup_priority">Your key gives you access to your account. Keep it outside this phone — it cannot be reset.</string>
     <string name="account_amber_save_steps">For your current account: copy nsec above and import it into Amber as an existing key. Then connect that same account here. Connecting Amber alone does not create a backup. Keep a backup outside this phone too.</string>
-    <string name="account_restore_title">Already have a saved key?</string>
-    <string name="account_restore_body">Pasting a key restores access: use a previously saved nsec to return to your existing account. This does not back up your current account. New users only need the backup above.</string>
+    <string name="account_restore_title">Restore an existing account</string>
+    <string name="account_restore_body">Use a previously saved key to return to your account.</string>
     <string name="account_public_optional">Optional: public account ID. Cannot restore account access.</string>
     <string name="board_download_selection_title">Boards to download</string>
     <string name="board_download_selection_description">Only selected boards are downloaded online and updated automatically. Deselecting keeps downloaded data and your logbook.</string>
@@ -2944,20 +2944,20 @@
     <string name="board_logbook_delete_entry_title">Delete log entry?</string>
     <string name="board_logbook_delete_entry_message">This log entry will be permanently deleted.</string>
     <string name="moonboard_picker_hold_sets_pending">Your hold selection takes effect after the catalogue update.</string>
-    <string name="account_data_backup_title">Your key and your data</string>
-    <string name="account_data_backup_explanation">Your nsec secures account access, not your app data. Enable data backup separately and create a first backup.</string>
-    <string name="account_data_backup_action">Set up or restore data backup</string>
+    <string name="account_data_backup_title">Save your data</string>
+    <string name="account_data_backup_explanation">A saved key is not a copy of your data. Back up your logbook, lists and training data separately.</string>
+    <string name="account_data_backup_action">Open data backup</string>
     <string name="account_key_saved_open_backup">Key saved — set up data backup</string>
-    <string name="account_import_backup_explanation">Importing your nsec restores account access only. Your data requires an existing backup made with this key. After import, open or restore your data backup before creating a new one; importing the key alone does not activate backups.</string>
+    <string name="account_import_backup_explanation">This restores account access. Restore your data afterwards from an existing backup; no new backup starts automatically.</string>
     <string name="backup_public_storage_notice">Backups are encrypted on this device and stored on public servers. Operators can see your public account ID, IP address, transfer time and file size. Anyone with your nsec and a retained backup can read its contents. Deletion cannot guarantee removal of every copy.</string>
     <string name="backup_manual_schedule_notice">Automatic backup is off. Use Back up now or choose Daily or Weekly.</string>
     <string name="account_flow_title">Save your key and data</string>
     <string name="account_flow_copied_title">Key copied</string>
-    <string name="account_flow_intro">Keep your private key (nsec) in a password manager. It restores account access; your logbook, lists and training data also need a data backup. Never share your key.</string>
-    <string name="account_flow_store">Paste the key into your password manager now. Come back and confirm only after saving it safely outside this phone. The clipboard clears after 60 seconds; you can copy again here.</string>
-    <string name="account_flow_schedule">After you confirm key storage: create the first backup, then back up daily. Nothing is uploaded yet.</string>
+    <string name="account_flow_intro">Your key opens your account. Store it safely and never share it.</string>
+    <string name="account_flow_store">Paste the key into your password manager. Confirm only when you can access it even without this phone.</string>
+    <string name="account_flow_schedule">After you confirm key storage: create the first backup, then back up daily.</string>
     <string name="account_flow_existing">Already enabled. Your current backup schedule stays unchanged.</string>
-    <string name="backup_storage_short">Encrypted on public servers. Your key unlocks the backup; server operators can see connection metadata. Copies may remain after deletion.</string>
+    <string name="backup_storage_short">Data backups are encrypted and stored on public servers.</string>
     <string name="account_flow_copy">Unlock and copy key</string>
     <string name="account_flow_copy_again">Copy key again</string>
     <string name="account_flow_store_and_start">Key saved · start backup</string>
@@ -2969,5 +2969,13 @@
     <string name="account_flow_error">Backup setup could not be completed. Your key storage is confirmed. Check your connection and try again.</string>
     <string name="account_flow_existing_error">The new backup could not be completed. Your key storage is confirmed and your previous backup settings remain unchanged. Try again.</string>
     <string name="account_flow_retry">Try again</string>
-    <string name="account_flow_already_stored">Confirm that your current account key is safely stored outside this phone. You can also choose to back up your data now.</string>
+    <string name="account_flow_already_stored">Confirm that your current account key is safely stored outside this phone.</string>
+    <string name="account_restore_help">Returning to your account\nUse the private key you saved earlier. Importing a key can switch the active account; the confirmation shows which account will be used. This does not back up your current account.\n\nRestoring data\nAfter importing, the backup page opens. Restore an existing backup before creating a new one. Without an existing data backup, the key alone cannot recover your logbook.</string>
+    <string name="account_import_help">Account access and data\nImport the private key of the account you want to use. Your key is also called “nsec”. It restores access, not your logbook.\n\nNext step\nThe backup page opens after import. Look for an existing backup for this key and restore it before creating a new one. Importing does not enable automatic uploads.</string>
+    <string name="account_amber_summary">For your current account, import the same saved key into Amber first.</string>
+    <string name="backup_key_short_local">Without your key, you cannot restore your backup on a new phone. Keep a copy outside this device.</string>
+    <string name="backup_key_short_amber">Save your key in Amber too. Without it, you cannot restore your backup.</string>
+    <string name="account_flow_backup_option">Back up my data too</string>
+    <string name="account_flow_data_summary">Your logbook, lists and training data need their own backup.</string>
+    <string name="account_flow_help">What is this key?\nYour private account key starts with “nsec” and works like a password. Never share it. CruxCoach cannot reset it.\n\nSave it first\nUnlock, copy and paste the key into a password manager you can access without this phone. The clipboard clears after 60 seconds; “Copy key again” lets you repeat this. Then confirm that it is safely stored.\n\nOptional data backup\nThe key alone does not save your data. Selecting backup does not upload anything yet. Only your storage confirmation starts the first backup, followed by daily backups on success. Existing backup settings stay unchanged.</string>
 </resources>

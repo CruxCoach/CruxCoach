@@ -301,35 +301,33 @@ internal fun AccountManagementContent(
         SettingsSectionCard {
             if (state.signerMode == SignerMode.LOCAL) {
                 AccountRecoverySection(state.keyBackedUp, onCopyNsec, onAcknowledgeBackup)
-                Text(stringResource(R.string.account_method_amber), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.account_amber_save_steps), style = MaterialTheme.typography.bodyMedium)
             } else {
-                Text(stringResource(R.string.account_recovery_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.account_amber_backup), style = MaterialTheme.typography.bodyLarge)
-            }
-            OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
-                Text(stringResource(if (state.signerMode == SignerMode.AMBER)
-                    R.string.account_amber_choose else R.string.account_amber_connect))
-            }
-            androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Text(stringResource(R.string.account_restore_title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.account_restore_body), style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().testTag("account_switch")) {
-                Text(stringResource(R.string.account_import_action))
-            }
-            if (state.signerMode == SignerMode.AMBER && state.localNpub != null) {
-                Text(stringResource(R.string.account_local_copy_available), style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
-                    Text(stringResource(R.string.account_use_local))
-                }
+                InfoHeading(stringResource(R.string.account_recovery_title), stringResource(R.string.account_amber_help))
+                Text(stringResource(R.string.account_amber_backup), style = MaterialTheme.typography.bodyMedium)
+                AccountAmberActions(state, onSetupAmber, onDisconnectAmber)
             }
         }
         SettingsSectionCard {
-            Text(stringResource(R.string.account_data_backup_title), style = MaterialTheme.typography.titleMedium)
+            InfoHeading(stringResource(R.string.account_data_backup_title), stringResource(R.string.settings_backup_description))
             Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = onOpenBackup, modifier = Modifier.fillMaxWidth().testTag("account_open_data_backup")) {
                 Text(stringResource(R.string.account_data_backup_action))
             }
+        }
+        SettingsSectionCard {
+            InfoHeading(stringResource(R.string.account_restore_title), stringResource(R.string.account_restore_help))
+            Text(stringResource(R.string.account_restore_body), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().testTag("account_switch")) {
+                Text(stringResource(R.string.account_import_action))
+            }
+        }
+        if (state.signerMode == SignerMode.LOCAL) SettingsExpandableSection(
+            title = stringResource(R.string.account_amber_title),
+            summary = stringResource(R.string.account_amber_optional),
+        ) {
+            InfoHeading(stringResource(R.string.account_method_amber), stringResource(R.string.account_amber_help) + "\n\n" + stringResource(R.string.account_amber_save_steps))
+            Text(stringResource(R.string.account_amber_summary), style = MaterialTheme.typography.bodyMedium)
+            AccountAmberActions(state, onSetupAmber, onDisconnectAmber)
         }
         SettingsExpandableSection(
             title = stringResource(R.string.account_public_id),
@@ -363,10 +361,23 @@ internal fun AccountManagementContent(
 }
 
 @Composable
+private fun AccountAmberActions(state: KeyManagementState, onSetupAmber: () -> Unit, onDisconnectAmber: () -> Unit) {
+    OutlinedButton(onClick = onSetupAmber, modifier = Modifier.fillMaxWidth().testTag("account_connect_amber")) {
+        Text(stringResource(if (state.signerMode == SignerMode.AMBER) R.string.account_amber_choose else R.string.account_amber_connect))
+    }
+    if (state.signerMode == SignerMode.AMBER && state.localNpub != null) {
+        Text(stringResource(R.string.account_local_copy_available), style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
+            Text(stringResource(R.string.account_use_local))
+        }
+    }
+}
+
+@Composable
 internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, onAcknowledge: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InfoHeading(stringResource(R.string.account_recovery_title), stringResource(R.string.account_recovery_help))
-        Text(stringResource(R.string.account_backup_priority), style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.account_backup_priority), style = MaterialTheme.typography.bodyMedium)
         Text(stringResource(if (backedUp) R.string.account_backup_acknowledged else R.string.key_label_not_backed_up),
             style = MaterialTheme.typography.bodyMedium)
         Button(onClick = onCopyNsec, modifier = Modifier.fillMaxWidth().testTag("account_copy_secret")) {

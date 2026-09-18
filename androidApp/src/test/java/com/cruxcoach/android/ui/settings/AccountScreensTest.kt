@@ -189,6 +189,7 @@ class AccountScreensTest {
         var imports = 0
         var backupOpens = 0
         compose.setContent {
+            reviewView = LocalView.current
             CruxCoachTheme(darkModeSetting = DarkModeSetting.DARK) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     AccountManagementContent(KeyManagementState(isLoading = false, keyBackedUp = true),
@@ -197,11 +198,14 @@ class AccountScreensTest {
             }
         }
         compose.onNodeWithTag("account_copy_secret").assertIsDisplayed()
+        reviewImage("account-compact-font150")
         compose.onNodeWithTag("account_public_id").assertDoesNotExist()
         compose.onNodeWithText(text(R.string.account_backup_priority)).assertExists()
-        compose.onNodeWithText(text(R.string.account_amber_save_steps)).assertExists()
+        compose.onNodeWithText(text(R.string.account_amber_save_steps)).assertDoesNotExist()
+        compose.onNodeWithTag("account_connect_amber").assertDoesNotExist()
         compose.onNodeWithText(text(R.string.account_restore_body)).assertExists()
         compose.runOnIdle { assertEquals(0, connections); assertEquals(0, imports) }
+        compose.onNodeWithText(text(R.string.account_amber_title)).performScrollTo().performClick()
         compose.onNodeWithTag("account_connect_amber").performScrollTo().performTouchInput { click() }
         compose.onNodeWithTag("account_switch").performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, connections); assertEquals(1, imports) }

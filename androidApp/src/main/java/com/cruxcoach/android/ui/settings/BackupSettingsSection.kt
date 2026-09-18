@@ -68,15 +68,15 @@ internal fun BackupSettingsSection(
         }
         Text(
             statusText,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(Modifier.height(12.dp))
 
-        Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.backup_storage_short), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.backup_storage_short), style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(12.dp))
 
         // Toggle row
@@ -91,7 +91,7 @@ internal fun BackupSettingsSection(
         if (!state.hasNostrKey) {
             Text(
                 stringResource(R.string.settings_backup_needs_key),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
         }
@@ -126,7 +126,7 @@ internal fun BackupSettingsSection(
 
             if (state.interval == SyncInterval.MANUAL) Text(
                 stringResource(R.string.backup_manual_schedule_notice),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
 
             // "Letzte Sicherung" / "Noch keine Sicherung" has moved up
@@ -185,7 +185,7 @@ internal fun BackupSettingsSection(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.settings_backup_restore_wait_import),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

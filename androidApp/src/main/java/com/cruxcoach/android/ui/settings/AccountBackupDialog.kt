@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 
 @Composable
 internal fun AccountBackupDialog(
@@ -28,8 +29,12 @@ internal fun AccountBackupDialog(
     val busy = state.step == AccountBackupStep.RUNNING || state.authenticating
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(stringResource(if (state.step == AccountBackupStep.STORE && state.copiedInFlow)
-            R.string.account_flow_copied_title else R.string.account_flow_title)) },
+        title = {
+            InfoHeading(
+                stringResource(if (state.step == AccountBackupStep.STORE && state.copiedInFlow) R.string.account_flow_copied_title else R.string.account_flow_title),
+                stringResource(R.string.account_flow_help) + "\n\n" + stringResource(R.string.backup_public_storage_notice),
+            )
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (state.step) {
@@ -44,12 +49,13 @@ internal fun AccountBackupDialog(
                             Text(stringResource(R.string.account_flow_copy_again))
                         }
                         SettingsToggleRow(
-                            title = stringResource(R.string.settings_backup_enable),
+                            title = stringResource(R.string.account_flow_backup_option),
                             description = "",
                             checked = state.wantsBackup,
                             enabled = !state.alreadyEnabled && !state.authenticating,
                             onCheckedChange = onChooseBackup,
                         )
+                        Text(stringResource(R.string.account_flow_data_summary))
                         if (state.wantsBackup) Text(stringResource(
                             if (state.alreadyEnabled) R.string.account_flow_existing else R.string.account_flow_schedule))
                         Text(stringResource(R.string.backup_storage_short))

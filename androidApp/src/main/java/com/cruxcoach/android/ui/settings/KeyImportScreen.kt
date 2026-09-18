@@ -100,7 +100,7 @@ fun KeyImportScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             SettingsSectionCard {
-                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.key_import_supported_formats))
+                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.account_import_help) + "\n\n" + stringResource(R.string.key_import_supported_formats))
                 Text(
                     text = stringResource(R.string.key_import_prompt),
                     style = MaterialTheme.typography.bodyLarge,
