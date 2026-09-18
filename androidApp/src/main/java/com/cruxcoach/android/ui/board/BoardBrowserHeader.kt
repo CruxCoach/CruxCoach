@@ -235,14 +235,17 @@ internal fun BoardBrowserHeader(
                         .padding(start = 2.dp, end = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = context.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
+                    Column(Modifier.weight(1f).semantics(mergeDescendants = true) {
+                        contentDescription = listOf(context.title, context.subtitle).filter { it.isNotBlank() }.joinToString(", ")
+                    }) {
+                        Text(context.title, style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (context.subtitle.isNotBlank()) {
+                            Text(context.subtitle, style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = stringResource(R.string.board_browser_change_board),
@@ -282,12 +285,17 @@ internal fun BoardBrowserHeader(
                             onDismissRequest = { overflowExpanded = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.tour_replay)) },
-                                onClick = { overflowExpanded = false; onTour() },
+                                text = { Text(stringResource(if (tourTargets?.active != null) R.string.tour_skip else R.string.tour_replay)) },
+                                onClick = { overflowExpanded = false; if (tourTargets?.active != null) tourTargets.onEnd?.invoke() else onTour() },
                                 modifier = Modifier.testTag("board_tour_replay"),
                             )
                             overflowActions.forEach { action ->
                                 DropdownMenuItem(
+                                    enabled = tourTargets?.active == null || when (action.action) {
+                                        BoardHeaderAction.BLUETOOTH -> tourTargets.active == TourTarget.BLUETOOTH
+                                        BoardHeaderAction.FILTER -> tourTargets.active == TourTarget.FILTER
+                                        else -> false
+                                    },
                                     text = { Text(stringResource(action.contentDescription)) },
                                     leadingIcon = {
                                         Icon(

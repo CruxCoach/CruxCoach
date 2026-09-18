@@ -270,6 +270,28 @@ internal fun BoardSelectionDialog(
         else -> Triple(prefill?.brand ?: activeBrand, 0L, null)
     }
 
+    val selectionTitle = when {
+        isAurora -> auroraBrand!!.displayName
+        isQuantum -> BoardBrand.QUANTUM.displayName
+        category == BoardCategory.MOONBOARD -> "MoonBoard"
+        category == BoardCategory.KILTER_HOMEWALL -> "Kilter Homewall"
+        category == BoardCategory.KILTER_ORIGINAL -> "Kilter Original"
+        else -> stringResource(R.string.board_mismatch_choose_detail)
+    }
+    val selectionDetail = when {
+        isAurora -> listOfNotNull(
+            auroraVariant?.displayName,
+            auroraBrandSizes[auroraBrand!!.wireValue].orEmpty()
+                .firstOrNull { it.id.toInt() == auroraSizeId }
+                ?.let { BoardConstants.auroraSizeLabel(auroraBrand!!, it) },
+        ).distinct().joinToString(" · ")
+        isQuantum -> quantumModel?.displayName.orEmpty()
+        category == BoardCategory.MOONBOARD -> mbVariant?.displayName.orEmpty()
+        isKilter -> shownSizes.firstOrNull { it.id.toInt() == kilterSelection }
+            ?.let { BoardConstants.sizeLabel(it.id, it.name).removePrefix("Homewall ") }.orEmpty()
+        else -> ""
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -313,21 +335,28 @@ internal fun BoardSelectionDialog(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
-                            .padding(8.dp),
-                        contentAlignment = Alignment.Center,
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         ZoomableBoardPreview(
                             brand = previewBrand,
                             sizeId = previewSizeId,
                             layoutId = previewLayoutId,
-                            modifier = Modifier.fillMaxHeight(),
+                            modifier = Modifier.width(64.dp).height(88.dp),
                         )
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(selectionTitle, style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold)
+                            if (selectionDetail.isNotBlank()) {
+                                Text(selectionDetail, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
+
                 // Tier 0 — board category. A single dropdown: the labels are too
                 // long to share one chip row on a narrow dialog, and the list grows
                 // with each interactive Aurora board (FEAT-031).

@@ -53,6 +53,7 @@ class BrowserUxTest {
     @Test fun `spotlight passes real touch to the original button and stays skippable at large font`() {
         var ended = false
         var connected = 0
+        var backgroundClicks = 0
         compose.setContent {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
@@ -60,6 +61,8 @@ class BrowserUxTest {
                     TourHost(remember { TourTargets() }, TourTarget.BLUETOOTH,
                         R.string.tour_spotlight_connect, { ended = true }) {
                         Box(Modifier.fillMaxSize()) {
+                            Button(onClick = { backgroundClicks++ }, modifier = Modifier.align(Alignment.Center)
+                                .testTag("background_climb")) { Text("Climb") }
                             Button(onClick = { connected++ }, modifier = Modifier.align(Alignment.TopEnd)
                                 .tourTarget(TourTarget.BLUETOOTH).testTag("real_connect")) { Text("Bluetooth") }
                         }
@@ -68,6 +71,8 @@ class BrowserUxTest {
             }
         }
         compose.onNodeWithTag("tour_spotlight").assertIsDisplayed()
+        compose.onNodeWithTag("background_climb").performTouchInput { click(); swipeUp() }
+        assertEquals(0, backgroundClicks)
         compose.onNodeWithTag("real_connect").performTouchInput { click() }
         assertEquals(1, connected)
         compose.onNodeWithTag("tour_skip").assertIsDisplayed().performTouchInput { click() }
@@ -93,6 +98,7 @@ class BrowserUxTest {
         compose.onNodeWithTag("tour_spotlight").assertIsDisplayed()
         compose.onNodeWithTag("board_header_overflow").performTouchInput { click() }
         compose.onNodeWithTag("tour_spotlight").assertDoesNotExist()
+        compose.onNodeWithTag("board_settings_button").assertIsNotEnabled()
         compose.onNodeWithTag("board_filter_toggle").performTouchInput { click() }
         assertTrue(filtered)
     }

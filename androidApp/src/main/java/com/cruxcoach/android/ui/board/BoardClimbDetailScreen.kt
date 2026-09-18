@@ -666,6 +666,10 @@ fun BoardClimbDetailScreen(
                                     },
                                     modifier = Modifier.testTag("boarddetail_log_button").tourMenuTarget(TourTarget.LOG),
                                 )
+                                if (tourTargets.active != null) {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.tour_skip)) },
+                                        onClick = { moreExpanded = false; tour.move(TourStep.DONE) })
+                                }
                                 HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
@@ -678,6 +682,7 @@ fun BoardClimbDetailScreen(
                                 // overflow, above the owner-gated Edit/Delete.
                                 if (state.isMirrorable) {
                                     DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
                                         text = {
                                             Text(
                                                 stringResource(
@@ -707,6 +712,7 @@ fun BoardClimbDetailScreen(
                                 // with the mirror toggle above the owner-gated
                                 // Edit/Delete actions.
                                 DropdownMenuItem(
+                                    enabled = tourTargets.active == null,
                                     text = {
                                         Text(
                                             stringResource(
@@ -740,6 +746,7 @@ fun BoardClimbDetailScreen(
                                 val shareUuid = shareClimb?.uuid
                                 if (shareUuid != null) {
                                     DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
                                         text = { Text(stringResource(R.string.board_detail_share_link)) },
                                         leadingIcon = {
                                             Icon(
@@ -773,7 +780,7 @@ fun BoardClimbDetailScreen(
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         },
-                                        enabled = !state.isOwnPublishInProgress,
+                                        enabled = tourTargets.active == null && !state.isOwnPublishInProgress,
                                         onClick = {
                                             moreExpanded = false
                                             viewModel.publishOwnClimb()
@@ -798,7 +805,7 @@ fun BoardClimbDetailScreen(
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     },
-                                    enabled = state.climb != null,
+                                    enabled = tourTargets.active == null && state.climb != null,
                                     onClick = {
                                         moreExpanded = false
                                         state.climb?.uuid?.let(onNavigateToFork)
@@ -808,6 +815,7 @@ fun BoardClimbDetailScreen(
                                 if (canEdit) {
                                     if (!kilterImmutable) {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.climb_creator_edit_action)) },
                                             leadingIcon = {
                                                 Icon(
@@ -886,6 +894,7 @@ fun BoardClimbDetailScreen(
                                     } ?: false
                                     if (isUnpublishedDraft) {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.climb_creator_drafts_delete_action)) },
                                             leadingIcon = {
                                                 Icon(
@@ -902,6 +911,7 @@ fun BoardClimbDetailScreen(
                                         )
                                     } else {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.community_climb_delete_action)) },
                                             leadingIcon = {
                                                 Icon(

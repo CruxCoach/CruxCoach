@@ -36,6 +36,7 @@ internal class TourTargets {
     val bounds = mutableStateMapOf<TourTarget, Rect>()
     var active by mutableStateOf<TourTarget?>(null)
     var menuOpen by mutableStateOf(false)
+    var onEnd: (() -> Unit)? = null
 }
 internal val LocalTourTargets = staticCompositionLocalOf<TourTargets?> { null }
 
@@ -63,7 +64,7 @@ internal fun TourHost(
     visible: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    SideEffect { targets.active = target }
+    SideEffect { targets.active = target; targets.onEnd = onEnd }
     CompositionLocalProvider(LocalTourTargets provides targets) {
         Box(Modifier.fillMaxSize()) {
             content()
@@ -77,7 +78,7 @@ internal fun TourHost(
     }
 }
 
-/** Draw-only scrim: pointer events in the cutout go to the original control below. */
+/** Four input shields leave only the real highlighted control and skip action touchable. */
 @Composable
 private fun TourSpotlight(targetInRoot: Rect, message: Int, onEnd: () -> Unit) {
     BackHandler(onBack = onEnd)
@@ -112,6 +113,22 @@ private fun TourSpotlight(targetInRoot: Rect, message: Int, onEnd: () -> Unit) {
             val direction = if (below) 1 else -1
             drawLine(OrangeAccent, start, start + Offset(-4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
             drawLine(OrangeAccent, start, start + Offset(4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
+        }
+        // Separate rectangles are intentional: a full-screen pointer handler would
+        // win hit testing inside the hole, preventing the real control from firing.
+        listOf(
+            Rect(0f, 0f, width, target.top),
+            Rect(0f, target.bottom, width, height),
+            Rect(0f, target.top, target.left, target.bottom),
+            Rect(target.right, target.top, width, target.bottom),
+        ).filter { it.width > 0 && it.height > 0 }.forEach { shield ->
+            Box(Modifier.offset { IntOffset(shield.left.roundToInt(), shield.top.roundToInt()) }
+                .size(with(density) { shield.width.toDp() }, with(density) { shield.height.toDp() })
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                })
         }
         Text(stringResource(message), color = Color.White, style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.offset { IntOffset(margin.roundToInt(), hintY.roundToInt()) }
