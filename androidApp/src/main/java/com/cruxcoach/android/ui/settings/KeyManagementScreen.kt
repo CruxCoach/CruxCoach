@@ -70,6 +70,7 @@ import kotlin.system.exitProcess
 fun KeyManagementScreen(
     onNavigateBack: () -> Unit,
     onNavigateToImport: () -> Unit,
+    onNavigateToBackup: () -> Unit = {},
     viewModel: KeyManagementViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -88,7 +89,7 @@ fun KeyManagementScreen(
     // Process restart after identity change (Amber login, switch to local)
     LaunchedEffect(state.requireRestart) {
         if (state.requireRestart) {
-            restartApp(context)
+            restartApp(context, openBackup = true)
         }
     }
 
@@ -127,6 +128,7 @@ fun KeyManagementScreen(
             state = state,
             onCopyNsec = { showNsecWarning = true },
             onImport = onNavigateToImport,
+            onOpenBackup = onNavigateToBackup,
             onSetupAmber = {
                 if (AmberIntegration.isInstalled(context)) {
                     amberLauncher.launch(AmberIntegration.buildGetPubkeyIntent())
@@ -241,8 +243,8 @@ fun KeyManagementScreen(
             title = { Text(stringResource(R.string.account_backup_finish_title)) },
             text = { Text(stringResource(R.string.account_backup_finish_body), modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton(onClick = {
-                showBackupDone = false; viewModel.acknowledgeKeyBackup()
-            }) { Text(stringResource(R.string.backup_key_warning_ack_confirm)) } },
+                showBackupDone = false; viewModel.acknowledgeKeyBackup(); onNavigateToBackup()
+            }) { Text(stringResource(R.string.account_key_saved_open_backup)) } },
             dismissButton = { TextButton(onClick = { showBackupDone = false }) {
                 Text(stringResource(R.string.action_close))
             } },
@@ -253,12 +255,12 @@ fun KeyManagementScreen(
             hasLocalKey = state.localNpub != null,
             onKeepLocalKey = {
                 viewModel.dismissAmberSuccess()
-                restartApp(context)
+                restartApp(context, openBackup = true)
             },
             onDeleteLocalKey = {
                 viewModel.dismissAmberSuccess()
                 viewModel.deleteLocalKeyAfterAmber()
-                restartApp(context)
+                restartApp(context, openBackup = true)
             }
         )
     }
@@ -275,6 +277,7 @@ internal fun AccountManagementContent(
     onCopyNpub: () -> Unit,
     onAcknowledgeBackup: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenBackup: () -> Unit = {},
 ) {
     var showPublicQr by remember { mutableStateOf(false) }
     if (showPublicQr && state.npubFull.isNotBlank()) {
@@ -321,6 +324,13 @@ internal fun AccountManagementContent(
                 TextButton(onClick = onDisconnectAmber, modifier = Modifier.fillMaxWidth().testTag("account_use_local")) {
                     Text(stringResource(R.string.account_use_local))
                 }
+            }
+        }
+        SettingsSectionCard {
+            Text(stringResource(R.string.account_data_backup_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = onOpenBackup, modifier = Modifier.fillMaxWidth().testTag("account_open_data_backup")) {
+                Text(stringResource(R.string.account_data_backup_action))
             }
         }
         SettingsExpandableSection(
@@ -392,11 +402,12 @@ internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, o
     }
 }
 
-internal fun restartApp(context: Context) {
+internal fun restartApp(context: Context, openBackup: Boolean = false) {
     val intent = context.packageManager
         .getLaunchIntentForPackage(context.packageName)!!
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         .putExtra("identity_switch", true)
+    if (openBackup) intent.putExtra("navigate_to", "backup_settings")
     context.startActivity(intent)
     exitProcess(0)
 }

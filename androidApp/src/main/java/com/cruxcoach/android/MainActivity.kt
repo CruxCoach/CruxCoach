@@ -357,6 +357,7 @@ class MainActivity : AppCompatActivity() {
             raw == "announcements" -> raw
             raw == "dev_chat" -> raw
             raw == "settings" -> raw
+            raw == "backup_settings" -> raw // UI only; never starts restore or upload.
             raw == "app_share" -> raw
             // Carries no parameters and reaches no import sink of its own: the
             // MoonBoard screen only offers a file picker and the opt-in

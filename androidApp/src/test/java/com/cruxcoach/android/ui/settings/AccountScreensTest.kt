@@ -191,11 +191,12 @@ class AccountScreensTest {
     @Test fun `backup leads while restore and Amber remain reachable at large font`() {
         var connections = 0
         var imports = 0
+        var backupOpens = 0
         compose.setContent {
             CruxCoachTheme(darkModeSetting = DarkModeSetting.DARK) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     AccountManagementContent(KeyManagementState(isLoading = false, keyBackedUp = true),
-                        {}, { imports++ }, { connections++ }, {}, {}, {})
+                        {}, { imports++ }, { connections++ }, {}, {}, {}, onOpenBackup = { backupOpens++ })
                 }
             }
         }
@@ -208,6 +209,8 @@ class AccountScreensTest {
         compose.onNodeWithTag("account_connect_amber").performScrollTo().performTouchInput { click() }
         compose.onNodeWithTag("account_switch").performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, connections); assertEquals(1, imports) }
+        compose.onNodeWithTag("account_open_data_backup").performScrollTo().performTouchInput { click() }
+        compose.runOnIdle { assertEquals(1, backupOpens) }
     }
 
     @Test fun `profile has an integrated image header and persistent local and public actions`() {

@@ -1919,7 +1919,7 @@
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Back up account key</string>
-    <string name="key_dialog_nsec_text">Your private key lets you recover your account. Anyone who has it can use your account.\n\nAuthenticate with your device lock and copy the key into a password manager. Never share it with anyone.</string>
+    <string name="key_dialog_nsec_text">Your private key lets you recover your account. Anyone who has it can use your account.\n\nAuthenticate with your device lock and copy the key into a password manager. Never share it with anyone. Copying this key does not create a backup of your data.</string>
     <string name="key_dialog_nsec_confirm">Unlock and copy</string>
     <string name="key_dialog_biometric_title">Screen lock required</string>
     <string name="key_dialog_biometric_text">First set up a screen lock (PIN, pattern or fingerprint) to protect your key.</string>
@@ -2013,7 +2013,7 @@
     <string name="settings_backup_status_no_key">Backup needs your account key.</string>
     <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
     <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
-    <string name="settings_backup_status_enabled_no_backup">Backup enabled — no sync yet.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup enabled — no successful backup on this device yet.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup enabled — last sync %1$s.</string>
     <string name="settings_backup_never_synced">No backup yet</string>
     <string name="settings_backup_run_now">Back up now</string>
@@ -2086,15 +2086,15 @@
     <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
-    <string name="settings_backup_delete_remote_dialog_body">This will hide your backup behind a deletion marker on every index server, and request the encrypted backup data to be removed from every storage server. After this:\n\n• No device — yours or anyone else\'s — can restore the backup, even if a storage server still holds the encrypted bytes.\n• Storage-server cleanup is best-effort. A partial result (e.g. 1/2 servers) is not a privacy issue: the deletion marker is what guarantees the backup is unrecoverable.\n• Local data on this device is not affected.</string>
+    <string name="settings_backup_delete_remote_dialog_body">The app asks the configured servers to delete your encrypted backup and publishes deletion markers. Automatic backups are disabled. Local data stays on this device.\n\nServers or other parties may retain copies of the encrypted data and key information. A deletion marker does not make those copies unreadable. Anyone with the matching nsec may still decrypt them.</string>
     <string name="settings_backup_delete_remote_confirm">Delete</string>
     <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
-    <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>
+    <string name="settings_backup_delete_remote_done_header">Remote deletion requests completed.</string>
     <string name="settings_backup_delete_remote_partial_header">Remote backups partially deleted.</string>
     <string name="settings_backup_delete_remote_relays_line">Index servers: %1$d / %2$d accepted the deletion.</string>
     <string name="settings_backup_delete_remote_blossom_line">Storage servers: %1$d / %2$d confirmed deletion.</string>
     <string name="settings_backup_delete_remote_no_blob">No backup data on record (nothing to delete there).</string>
-    <string name="settings_backup_delete_remote_caveat">Note: backup servers (Nostr relays + Blossom CDNs under the hood) can propagate or cache content before deletion. Third-party mirrors you never wrote to may still hold a copy — for full certainty, check with a Nostr client against your published pubkey.</string>
+    <string name="settings_backup_delete_remote_caveat">Server confirmations are not proof that every copy has been erased. Other clients can only check what their servers currently return.</string>
 
     <!-- FEAT-002: Encrypted cloud backup onboarding (key-related strings keep
          Nostr terminology because they're about your decentralized identity,
@@ -2944,4 +2944,11 @@
     <string name="board_logbook_delete_entry_title">Delete log entry?</string>
     <string name="board_logbook_delete_entry_message">This log entry will be permanently deleted.</string>
     <string name="moonboard_picker_hold_sets_pending">Your hold selection takes effect after the catalogue update.</string>
+    <string name="account_data_backup_title">Your key and your data</string>
+    <string name="account_data_backup_explanation">Your nsec secures account access, not your app data. Enable data backup separately and create a first backup.</string>
+    <string name="account_data_backup_action">Set up or restore data backup</string>
+    <string name="account_key_saved_open_backup">Key saved — set up data backup</string>
+    <string name="account_import_backup_explanation">Importing your nsec restores account access only. Your data requires an existing backup made with this key. After import, open or restore your data backup before creating a new one; importing the key alone does not activate backups.</string>
+    <string name="backup_public_storage_notice">Backups are encrypted on this device and stored on public servers. Operators can see your public account ID, IP address, transfer time and file size. Anyone with your nsec and a retained backup can read its contents. Deletion cannot guarantee removal of every copy.</string>
+    <string name="backup_manual_schedule_notice">Automatic backup is off. Use Back up now or choose Daily or Weekly.</string>
 </resources>

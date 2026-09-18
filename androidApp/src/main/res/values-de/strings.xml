@@ -1962,7 +1962,7 @@
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Kontoschlüssel sichern</string>
-    <string name="key_dialog_nsec_text">Mit deinem privaten Schlüssel kannst du dein Konto wiederherstellen. Wer ihn besitzt, kann dein Konto verwenden.\n\nEntsperre mit deiner Gerätesperre und kopiere den Schlüssel in einen Passwortmanager. Teile ihn niemals mit anderen.</string>
+    <string name="key_dialog_nsec_text">Mit deinem privaten Schlüssel kannst du dein Konto wiederherstellen. Wer ihn besitzt, kann dein Konto verwenden.\n\nEntsperre mit deiner Gerätesperre und kopiere den Schlüssel in einen Passwortmanager. Teile ihn niemals mit anderen. Das Kopieren dieses Schlüssels erstellt keine Sicherung deiner Daten.</string>
     <string name="key_dialog_nsec_confirm">Entsperren und kopieren</string>
     <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
     <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
@@ -2012,7 +2012,7 @@
     <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
     <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
-    <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup aktiviert – auf diesem Gerät noch keine erfolgreiche Sicherung.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
     <string name="settings_backup_never_synced">Noch keine Sicherung</string>
     <string name="settings_backup_run_now">Jetzt sichern</string>
@@ -2085,15 +2085,15 @@
     <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
-    <string name="settings_backup_delete_remote_dialog_body">Dies versieht dein Backup auf jedem Index-Server mit einem Lösch-Marker und fordert die verschlüsselten Backup-Daten von jedem Speicher-Server zur Entfernung an. Danach gilt:\n\n• Kein Gerät — weder dein eigenes noch ein fremdes — kann das Backup wiederherstellen, selbst wenn ein Speicher-Server die verschlüsselten Daten noch hält.\n• Das Aufräumen auf den Speicher-Servern ist Best-Effort. Ein Teilergebnis (z.B. 1/2 Server) ist kein Datenschutzproblem: Der Lösch-Marker garantiert, dass das Backup unwiederherstellbar ist.\n• Lokale Daten auf diesem Gerät bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_dialog_body">Die App fordert die konfigurierten Server zum Löschen deiner verschlüsselten Sicherung auf und veröffentlicht Löschmarker. Automatische Backups werden deaktiviert. Lokale Daten bleiben auf diesem Gerät.\n\nServer oder andere Personen können Kopien der verschlüsselten Daten und Schlüssel-Info behalten. Ein Löschmarker macht solche Kopien nicht unlesbar. Mit dem passenden nsec können sie weiterhin entschlüsselt werden.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
-    <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
+    <string name="settings_backup_delete_remote_done_header">Löschanfragen abgeschlossen.</string>
     <string name="settings_backup_delete_remote_partial_header">Remote-Backups nur teilweise gelöscht.</string>
     <string name="settings_backup_delete_remote_relays_line">Index-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
     <string name="settings_backup_delete_remote_blossom_line">Speicher-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
     <string name="settings_backup_delete_remote_no_blob">Keine Backup-Daten erfasst (nichts zu löschen dort).</string>
-    <string name="settings_backup_delete_remote_caveat">Hinweis: Backup-Server (Nostr-Relais + Blossom-CDNs unter der Haube) können Inhalte vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
+    <string name="settings_backup_delete_remote_caveat">Server-Bestätigungen beweisen nicht, dass alle Kopien gelöscht wurden. Auch ein anderer Client kann nur prüfen, was seine Server gerade zurückliefern.</string>
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup Onboarding (Schlüssel-Strings
          behalten Nostr-Branding, weil sie zur dezentralen Identität gehören —
@@ -2943,4 +2943,11 @@
     <string name="board_logbook_delete_entry_title">Logeintrag löschen?</string>
     <string name="board_logbook_delete_entry_message">Dieser Logeintrag wird unwiderruflich gelöscht.</string>
     <string name="moonboard_picker_hold_sets_pending">Deine Griffauswahl wird nach dem Katalog-Update berücksichtigt.</string>
+    <string name="account_data_backup_title">Dein Schlüssel und deine Daten</string>
+    <string name="account_data_backup_explanation">Dein nsec sichert den Kontozugang, nicht deine App-Daten. Aktiviere das Daten-Backup zusätzlich und erstelle eine erste Sicherung.</string>
+    <string name="account_data_backup_action">Daten-Backup einrichten oder wiederherstellen</string>
+    <string name="account_key_saved_open_backup">Schlüssel gesichert – Daten-Backup einrichten</string>
+    <string name="account_import_backup_explanation">Der nsec-Import stellt nur den Kontozugang wieder her. Für deine Daten brauchst du ein bereits erstelltes Backup mit diesem Schlüssel. Nach dem Import öffnet sich die Backup-Seite. Stelle ein vorhandenes Backup zuerst wieder her, bevor du ein neues erstellst. Der Schlüsselimport aktiviert kein Backup.</string>
+    <string name="backup_public_storage_notice">Backups werden auf diesem Gerät verschlüsselt und auf öffentlichen Servern gespeichert. Betreiber können deine öffentliche Konto-ID, IP-Adresse, Übertragungszeit und Dateigröße sehen. Wer deinen nsec und eine aufbewahrte Sicherung besitzt, kann deren Inhalt lesen. Beim Löschen können Kopien zurückbleiben.</string>
+    <string name="backup_manual_schedule_notice">Automatische Sicherungen sind aus. Nutze „Jetzt sichern“ oder wähle täglich oder wöchentlich.</string>
 </resources>

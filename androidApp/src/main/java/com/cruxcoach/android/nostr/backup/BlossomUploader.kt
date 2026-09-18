@@ -183,24 +183,13 @@ class BlossomUploader @Inject constructor(
         }
     }
 
-    private fun parseUploadResponse(server: String, response: Response): UploadResult {
+    internal fun parseUploadResponse(server: String, response: Response): UploadResult {
         if (response.isSuccessful) {
             return UploadResult(server, accepted = true, httpStatus = response.code)
         }
-        // Server response bodies are attacker-controlled text (a hostile or
-        // compromised Blossom host can put phishing copy in its 5xx body).
-        // Compose's Text doesn't render HTML so it's not XSS-exploitable,
-        // but it would still render inside CruxCoach's own app chrome and
-        // enable convincing social engineering. Log the body preview for
-        // dev debugging; surface only a canonical "HTTP <code>" to the
-        // UploadResult.error string that later reaches the user-visible
-        // snackbar.
-        val bodyPreview = runCatching { response.body?.string()?.take(200) }.getOrNull()
-        Log.w(
-            TAG,
-            "event=upload_http_rejected server=${server.shortHost()}" +
-                " code=${response.code} body=${bodyPreview ?: "<none>"}",
-        )
+        // Never read or log an untrusted error body: it can be unbounded or
+        // echo authorization material. HTTP status is sufficient for diagnosis.
+        Log.w(TAG, "event=upload_http_rejected code=${response.code}")
         return UploadResult(
             server = server,
             accepted = false,

@@ -33,7 +33,7 @@ class SettingsNavigationTest {
     private var shares = 0
     private lateinit var backDispatcher: OnBackPressedDispatcher
 
-    private fun render(): StateRestorationTester {
+    private fun render(startInBackup: Boolean = false): StateRestorationTester {
         val restoration = StateRestorationTester(compose)
         restoration.setContent {
             backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
@@ -42,6 +42,7 @@ class SettingsNavigationTest {
                     SettingsLayout(
                         isLoading = loading.value,
                         openUpdates = openUpdates.value,
+                        startInBackup = startInBackup,
                         onNavigateBack = { exits++ },
                         onNavigateToAppShare = { shares++ },
                         banners = { Text("Connection status", Modifier.testTag("banner")) },
@@ -54,6 +55,15 @@ class SettingsNavigationTest {
             }
         }
         return restoration
+    }
+
+    @Test fun `backup entry opens directly and back exits to its caller`() {
+        val restoration = render(startInBackup = true)
+        compose.onNodeWithTag("page_BACKUP").assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithTag("page_BACKUP").assertIsDisplayed()
+        compose.onNodeWithTag("settings_back").performClick()
+        compose.runOnIdle { assertEquals(1, exits) }
     }
 
     @Test fun `every task opens its own page and back returns to its overview row`() {

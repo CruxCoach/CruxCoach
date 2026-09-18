@@ -75,7 +75,7 @@ fun KeyImportScreen(
 
     LaunchedEffect(state.requireRestart) {
         if (state.requireRestart) {
-            restartApp(context)
+            restartApp(context, openBackup = true)
         }
     }
 
@@ -106,6 +106,9 @@ fun KeyImportScreen(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
+
+                Text(stringResource(R.string.account_import_backup_explanation),
+                    style = MaterialTheme.typography.bodyMedium)
 
                 // Keep input masked by default; never persist the reveal state.
                 var revealKey by remember { mutableStateOf(false) }
@@ -214,6 +217,7 @@ fun KeyImportScreen(
                     Text(stringResource(if (state.sameAccount) R.string.account_access_same else R.string.account_access_different))
                     Text(state.derivedNpub, style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.account_access_to_local))
+                    Text(stringResource(R.string.account_import_backup_explanation))
                     if (state.replacesLocalKey) Text(stringResource(R.string.account_import_replaces_local))
                 }
             },

@@ -166,6 +166,7 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val BACKUP_SETTINGS = "backup_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -877,41 +878,45 @@ fun CruxCoachNavHost(
                 }
             }
 
-            composable(Routes.SETTINGS) {
-                var showPaymentSheet by remember { mutableStateOf(false) }
-                val paymentViewModel: PaymentViewModel = hiltViewModel()
-                val paymentState by paymentViewModel.state.collectAsStateWithLifecycle()
-                val context = LocalContext.current
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS).forEach { settingsRoute ->
+                composable(settingsRoute) {
+                    var showPaymentSheet by remember { mutableStateOf(false) }
+                    val paymentViewModel: PaymentViewModel = hiltViewModel()
+                    val paymentState by paymentViewModel.state.collectAsStateWithLifecycle()
+                    val context = LocalContext.current
 
-                SettingsScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
-                    onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
-                    onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
-                    onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
-                    onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
-                    onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
-                    onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
-                    onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
-                    onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
-                    onReportKilterUpload = { navController.navigate(Routes.bugReport(context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title), "")) },
-                    onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
-                    onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
-                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
-                    onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
-                    onDonateClick = {
-                        paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
-                        showPaymentSheet = true
-                    },
-                )
+                    SettingsScreen(
+                        startInBackup = settingsRoute == Routes.BACKUP_SETTINGS,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
+                        onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
+                        onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
+                        onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
+                        onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+                        onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
+                        onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
+                        onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
+                        onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
+                        onReportKilterUpload = { navController.navigate(Routes.bugReport(context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title), "")) },
+                        onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
+                        onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
+                        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                        onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
+                        onDonateClick = {
+                            paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
+                            showPaymentSheet = true
+                        },
+                    )
 
-                SettingsPaymentDialogs(
-                    showPaymentSheet = showPaymentSheet,
-                    onDismissSheet = { showPaymentSheet = false },
-                    paymentViewModel = paymentViewModel,
-                    paymentState = paymentState,
-                    context = context
-                )
+                    SettingsPaymentDialogs(
+                        showPaymentSheet = showPaymentSheet,
+                        onDismissSheet = { showPaymentSheet = false },
+                        paymentViewModel = paymentViewModel,
+                        paymentState = paymentState,
+                        context = context
+                    )
+                }
+
             }
 
             composable(Routes.PROFILE_ASSESSMENT) {
@@ -1002,7 +1007,8 @@ fun CruxCoachNavHost(
             composable(Routes.KEY_MANAGEMENT) {
                 KeyManagementScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) }
+                    onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) },
+                    onNavigateToBackup = { navController.navigate(Routes.BACKUP_SETTINGS) }
                 )
             }
 

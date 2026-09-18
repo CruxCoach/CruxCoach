@@ -37,6 +37,7 @@ import com.cruxcoach.domain.board.BoardBrand
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    startInBackup: Boolean = false,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     onNavigateToImport: () -> Unit = {},
@@ -111,6 +112,7 @@ fun SettingsScreen(
 
 
     SettingsLayout(
+        startInBackup = startInBackup,
         isLoading = state.isLoading,
         openUpdates = updaterDialogRequested,
         onNavigateBack = onNavigateBack,

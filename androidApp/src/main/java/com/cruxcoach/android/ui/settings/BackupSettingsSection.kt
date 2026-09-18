@@ -73,6 +73,10 @@ internal fun BackupSettingsSection(
 
         Spacer(Modifier.height(12.dp))
 
+        Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.backup_public_storage_notice), style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+
         // Toggle row
         SettingsToggleRow(
             title = stringResource(R.string.settings_backup_enable),
@@ -116,6 +120,11 @@ internal fun BackupSettingsSection(
                 options = SyncInterval.entries.map { it to stringResource(it.labelRes) },
                 selected = state.interval,
                 onSelect = onSetInterval,
+            )
+
+            if (state.interval == SyncInterval.MANUAL) Text(
+                stringResource(R.string.backup_manual_schedule_notice),
+                style = MaterialTheme.typography.bodySmall,
             )
 
             // "Letzte Sicherung" / "Noch keine Sicherung" has moved up

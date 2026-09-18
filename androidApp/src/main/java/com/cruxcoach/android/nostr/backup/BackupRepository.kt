@@ -134,7 +134,7 @@ class BackupRepository @Inject constructor(
         )
         val plaintext = json.toByteArray(Charsets.UTF_8)
         val compressed = BackupCompression.compress(plaintext)
-        val ciphertext = BackupCrypto.encrypt(compressed, dataKey)
+        val ciphertext = try { BackupCrypto.encrypt(compressed, dataKey) } finally { dataKey.fill(0) }
         val sha256 = ciphertext.sha256Hex()
 
         // 4 — discover Blossom servers (user's Kind 10063 + defaults).
@@ -194,6 +194,9 @@ class BackupRepository @Inject constructor(
             throw BackupException(BackupErrorReason.BlobNotVisibleAfterUpload(total = total))
         }
 
+        // Require acceptance of the wrapped key before advertising a new pointer.
+        republishKeyEvent()
+
         // 7 — ONLY NOW publish pointer event
         val previousSha = preferences.getPreviousBlobSha256()
         val pointer = BackupPointer(
@@ -214,17 +217,6 @@ class BackupRepository @Inject constructor(
             Log.d(TAG, "event=backup_cleanup previousShaPresent=true serversCleaned=${servers.size}")
         } ?: Log.d(TAG, "event=backup_cleanup previousShaPresent=false serversCleaned=0")
 
-        // 8b — keep the Kind-30078 key event from aging off the relays.
-        // The pointer is republished on every backup (so it stays fresh
-        // by construction); republish the key event on the SAME cadence.
-        // Replaceable-parameterized events can be evicted by relays over
-        // time, so a stale-gated (~30 d) refresh left a window where the
-        // pointer + blob survived but the key event was already evicted —
-        // a reinstalled user with the nsec could then find but not decrypt
-        // the backup. Best-effort + non-fatal (blob + pointer are already
-        // durable); for local signers there is no popup.
-        republishKeyEvent()
-
         // 9 — record success
         val now = System.currentTimeMillis() / 1000
         preferences.setLastBackupSync(now)
@@ -234,27 +226,13 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    /**
-     * Republish the Kind-30078 key event on every backup, matching the
-     * pointer cadence. Unconditional (was stale-gated to ~30 d): a relay
-     * could evict the older key event by age while keeping the pointer +
-     * blob, leaving a reinstalled user able to find but not decrypt the
-     * backup. Best-effort + non-fatal — blob + pointer are already durable,
-     * so a publish failure simply retries on the next backup.
-     */
-    private suspend fun republishKeyEvent() {
-        val nowEpoch = System.currentTimeMillis() / 1000
-        val wrapped = preferences.getWrappedDataKey() ?: return
-        runCatching { publishKeyEvent(wrapped) }
-            .onSuccess {
-                preferences.setLastKeyEventPublish(nowEpoch)
-                Log.d(TAG, "event=key_event_republished")
-            }
-            .onFailure { e ->
-                // Not fatal — blob + pointer are already durable; we'll
-                // try again on the next backup.
-                Log.w(TAG, "event=key_event_republish_failed reason=${e.message}", e)
-            }
+    /** Require a relay acknowledgement before publishing a fresh backup reference. */
+    internal suspend fun republishKeyEvent() {
+        val wrapped = preferences.getWrappedDataKey()
+            ?: throw BackupException(BackupErrorReason.KeyFetchAmbiguous)
+        publishKeyEvent(wrapped)
+        preferences.setLastKeyEventPublish(System.currentTimeMillis() / 1000)
+        Log.d(TAG, "event=key_event_republished")
     }
 
     /**
@@ -452,7 +430,7 @@ class BackupRepository @Inject constructor(
             TAG,
             "event=restore_download_ok sha256Prefix=${pointer.sha256.take(8)} bytes=${ciphertext.size} durationMs=${System.currentTimeMillis() - started}",
         )
-        val compressed = BackupCrypto.decrypt(ciphertext, dataKey)
+        val compressed = try { BackupCrypto.decrypt(ciphertext, dataKey) } finally { dataKey.fill(0) }
         val json = BackupCompression
             .decompress(compressed, maxBytes = MAX_PLAINTEXT_BYTES)
             .toString(Charsets.UTF_8)
@@ -896,7 +874,7 @@ class BackupRepository @Inject constructor(
         return event?.content
     }
 
-    private suspend fun publishKeyEvent(wrappedDataKey: String) {
+    internal suspend fun publishKeyEvent(wrappedDataKey: String) {
         val keyDTag = dTagDeriver.derive(BackupPreferences.IDENTIFIER_KEY)
         val tags = arrayOf(arrayOf("d", keyDTag))
         val event = nostrSigner.signer.sign<com.vitorpamplona.quartz.nip01Core.core.Event>(

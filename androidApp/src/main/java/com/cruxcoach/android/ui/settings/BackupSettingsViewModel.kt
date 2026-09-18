@@ -34,7 +34,7 @@ import javax.inject.Inject
 data class BackupSettingsState(
     val featureEnabled: Boolean = true,
     val backupEnabled: Boolean = false,
-    val interval: SyncInterval = SyncInterval.DAILY,
+    val interval: SyncInterval = SyncInterval.MANUAL,
     val lastBackupIso: String? = null,
     val hasNostrKey: Boolean = false,
     /** Mirrors [com.cruxcoach.android.data.UserPreferences.keyBackedUp]. The
@@ -172,7 +172,8 @@ class BackupSettingsViewModel @Inject constructor(
         // init is correct.
         _state.update {
             it.copy(
-                hasNostrKey = keyStore.hasKey(),
+                hasNostrKey = keyStore.hasKey() ||
+                    (signer.getStoredSignerMode() == SignerMode.AMBER && signer.getStoredAmberPubkey() != null),
                 signerMode = signer.getStoredSignerMode(),
             )
         }
@@ -239,6 +240,7 @@ class BackupSettingsViewModel @Inject constructor(
      * scratch.
      */
     fun runBackupNow() {
+        if (!_state.value.backupEnabled || _state.value.isRunningOneShot || _state.value.isRestoring) return
         viewModelScope.launch {
             _state.update { it.copy(isRunningOneShot = true) }
             val outcome = runCatching { backupRepository.performFullBackup(trigger = "manual") }
