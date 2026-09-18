@@ -6,8 +6,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Density
-import com.cruxcoach.android.ui.onboarding.TourHint
+import com.cruxcoach.android.ui.onboarding.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
 import com.cruxcoach.android.R
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
@@ -43,24 +50,51 @@ class BrowserUxTest {
         assertTrue(angleOpened)
     }
 
-    @Test fun `tour remains dismissible and actions scroll into view with large text`() {
+    @Test fun `spotlight passes real touch to the original button and stays skippable at large font`() {
         var ended = false
-        var connected = false
+        var connected = 0
         compose.setContent {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
-                MaterialTheme { Box(Modifier.width(320.dp).height(400.dp)) {
-                    TourHint(R.string.tour_connect_title, R.string.tour_connect_body,
-                        R.string.cd_board_connect, { connected = true }, { ended = true },
-                        R.string.tour_later)
+                MaterialTheme { Box(Modifier.width(320.dp).height(500.dp).padding(top = 24.dp)) {
+                    TourHost(remember { TourTargets() }, TourTarget.BLUETOOTH,
+                        R.string.tour_spotlight_connect, { ended = true }) {
+                        Box(Modifier.fillMaxSize()) {
+                            Button(onClick = { connected++ }, modifier = Modifier.align(Alignment.TopEnd)
+                                .tourTarget(TourTarget.BLUETOOTH).testTag("real_connect")) { Text("Bluetooth") }
+                        }
+                    }
                 } }
             }
         }
-        compose.onNodeWithContentDescription("End tour").assertIsDisplayed()
-        compose.onNodeWithText("Connect board").performScrollTo().assertIsDisplayed().performClick()
-        assertTrue(connected)
-        compose.onNodeWithContentDescription("End tour").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("tour_spotlight").assertIsDisplayed()
+        compose.onNodeWithTag("real_connect").performTouchInput { click() }
+        assertEquals(1, connected)
+        compose.onNodeWithTag("tour_skip").assertIsDisplayed().performTouchInput { click() }
         assertTrue(ended)
+    }
+
+    @Test fun `spotlight follows overflow to the real filter menu item on a narrow header`() {
+        var filtered = false
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+                MaterialTheme { Box(Modifier.width(320.dp).height(500.dp)) {
+                    TourHost(remember { TourTargets() }, TourTarget.FILTER, R.string.tour_spotlight_filter, {}) {
+                        Box(Modifier.fillMaxSize()) {
+                            BoardBrowserHeader(BoardBrowserHeaderContext("Kilter Original", "12x12"), false, 40,
+                                onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {},
+                                onFilter = { filtered = true }, onLogbook = {}, onLists = {}, onSettings = {}, onTour = {})
+                        }
+                    }
+                } }
+            }
+        }
+        compose.onNodeWithTag("tour_spotlight").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_overflow").performTouchInput { click() }
+        compose.onNodeWithTag("tour_spotlight").assertDoesNotExist()
+        compose.onNodeWithTag("board_filter_toggle").performTouchInput { click() }
+        assertTrue(filtered)
     }
 
     @Test fun `filter header leaves controls visible with large text`() {

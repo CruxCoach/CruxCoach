@@ -100,6 +100,7 @@ import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.MoonBoardVariant
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.ui.onboarding.*
+import androidx.compose.runtime.DisposableEffect
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
@@ -125,6 +126,8 @@ fun BoardClimbDetailScreen(
     // leaving the climb stale after an edit even though the VM reloaded it.
     // The setter list (which refreshes correctly) uses plain collectAsState too.
     val state by viewModel.state.collectAsState()
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
@@ -189,7 +192,7 @@ fun BoardClimbDetailScreen(
 
     if (showBleSheet) {
         BleConnectionSheet(
-            onDismiss = { showBleSheet = false },
+            onDismiss = { showBleSheet = false; if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
             onBoardMismatchExit = onNavigateToBoardBrowser,
         )
     }
@@ -497,10 +500,25 @@ fun BoardClimbDetailScreen(
                 "countdown=${state.playback.countdownSeconds}"
         )
     }
-    val (tour, tourStep) = rememberBrowserTour()
     LaunchedEffect(state.climb?.uuid, tourStep) {
         if (state.climb != null && tourStep == TourStep.OPEN) tour.move(TourStep.PROJECT)
     }
+    val tourLamp = BoardDeliveryPolicy.lampMode(
+        decision = deliveryDecision, hasDirectPayload = hasDirectPayload,
+        boardConnected = state.ble.connectionState == ConnectionState.CONNECTED || state.ble.connectionState == ConnectionState.SENDING,
+        boardOwnedByOthers = detailQueueState.isConnecting, countdownRunning = state.playback.countdownSeconds > 0)
+    val detailTourTarget = when (tourStep) {
+        TourStep.PROJECT -> if (tourLamp == BoardDetailLampMode.HIDDEN) TourTarget.LOG else TourTarget.PROJECT
+        TourStep.LOG -> TourTarget.LOG
+        else -> null
+    }
+    TourHost(tourTargets, detailTourTarget,
+        if (detailTourTarget == TourTarget.LOG) R.string.tour_spotlight_log
+        else if (tourLamp == BoardDetailLampMode.CONNECT) R.string.tour_spotlight_detail_connect
+        else if (tourLamp == BoardDetailLampMode.SHARED_QUEUE) R.string.tour_spotlight_queue
+        else R.string.tour_spotlight_project,
+        { tour.move(TourStep.DONE) },
+        visible = !showBleSheet && !showMismatchPicker && !state.ascent.showDialog && state.climb != null && state.error == null) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
@@ -509,10 +527,6 @@ fun BoardClimbDetailScreen(
             // offering to light one would be offering nothing.
             if (state.climb != null && state.error == null && state.logbookOnly == null) {
                 Column {
-                if (tourStep == TourStep.PROJECT) TourHint(R.string.tour_project_title, R.string.tour_project_body,
-                    R.string.tour_understood, { tour.move(TourStep.LOG) }, { tour.move(TourStep.DONE) })
-                if (tourStep == TourStep.LOG) TourHint(R.string.tour_log_title, R.string.tour_log_body,
-                    R.string.tour_understood, { tour.move(TourStep.DONE) }, { tour.move(TourStep.DONE) })
                 BoardDetailBottomActions(
                     state = state,
                     decision = deliveryDecision,
@@ -606,10 +620,14 @@ fun BoardClimbDetailScreen(
                         val kilterImmutable = state.climb?.kilterStatus == "synced" ||
                             state.climb?.kilterStatus == "diverged"
                         var moreExpanded by remember { mutableStateOf(false) }
+                        DisposableEffect(moreExpanded) {
+                            tourTargets.menuOpen = moreExpanded
+                            onDispose { tourTargets.menuOpen = false }
+                        }
                         Box {
                             IconButton(
-                                onClick = { moreExpanded = true },
-                                modifier = Modifier.testTag("boarddetail_more_button"),
+                                onClick = { moreExpanded = true; if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
+                                modifier = Modifier.testTag("boarddetail_more_button").tourTarget(TourTarget.LOG),
                             ) {
                                 Icon(
                                     Icons.Default.MoreVert,
@@ -644,8 +662,9 @@ fun BoardClimbDetailScreen(
                                     onClick = {
                                         moreExpanded = false
                                         viewModel.showAscentDialog()
+                                        if (tour.step() == TourStep.LOG) tour.move(TourStep.DONE)
                                     },
-                                    modifier = Modifier.testTag("boarddetail_log_button"),
+                                    modifier = Modifier.testTag("boarddetail_log_button").tourMenuTarget(TourTarget.LOG),
                                 )
                                 HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip
@@ -1004,6 +1023,7 @@ fun BoardClimbDetailScreen(
             )
         }
     }
+    } // TourHost
 }
 
 /**
@@ -2148,7 +2168,7 @@ private fun BoardDetailActionDock(
                 modifier = Modifier
                     .weight(1.12f)
                     .height(64.dp)
-                    .testTag("boarddetail_connect_board_button"),
+                    .testTag("boarddetail_connect_board_button").tourTarget(TourTarget.PROJECT),
                 shape = RoundedCornerShape(18.dp),
                 // Same treatment as the lamp: this is the primary action of
                 // the dock whenever there is no board yet, and a grey control
@@ -2173,6 +2193,7 @@ private fun BoardDetailActionDock(
                     modifier = Modifier
                         .weight(1.12f)
                         .height(64.dp)
+                        .tourTarget(TourTarget.PROJECT)
                         .testTag(
                             if (sharedQueue) "boarddetail_add_to_shared_queue_button"
                             else "boarddetail_light_climb_button",

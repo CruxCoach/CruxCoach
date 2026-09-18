@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.3] - Unreleased
 
 ### Changed
+- First-run setup offers optional Bluetooth discovery before board selection,
+  shows catalogue downloads explicitly and groups account restoration with imports.
+- A skippable visual tour highlights the actual browser and detail controls.
+  Users advance through normal actions; replay is available from browser overflow.
+- The one-row browser header exposes the board angle directly. Filters prioritise
+  grade, status and sorting, with further restrictions under an expandable section
+  and vertical choice lists. Resetting filters preserves the board angle.
 - Settings show compact titles and controls, with optional explanations behind
   labelled info buttons. Help opens in a scrollable dialog; current status,
   prerequisites and destructive-action warnings remain visible.

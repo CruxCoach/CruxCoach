@@ -90,6 +90,8 @@ fun BoardBrowserScreen(
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
     val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
@@ -208,7 +210,7 @@ fun BoardBrowserScreen(
 
     if (showBleSheet) {
         BleConnectionSheet(
-            onDismiss = { showBleSheet = false },
+            onDismiss = { showBleSheet = false; if (tour.step() == TourStep.CONNECT) tour.move(TourStep.ANGLE) },
             onNavigateToClimb = { uuid, angle ->
                 viewModel.climbNavState.climbUuids = listOf(uuid)
                 viewModel.climbNavState.angle = angle
@@ -321,7 +323,6 @@ fun BoardBrowserScreen(
         )
     }
 
-    val (tour, tourStep) = rememberBrowserTour()
     LaunchedEffect(isBleConnected, tourStep) {
         if (isBleConnected && tourStep == TourStep.CONNECT) tour.move(TourStep.ANGLE)
     }
@@ -334,6 +335,23 @@ fun BoardBrowserScreen(
         )
     }
 
+    val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
+    val tourTarget = when (tourStep) {
+        TourStep.CONNECT -> TourTarget.BLUETOOTH
+        TourStep.ANGLE -> if (catalogueReady) TourTarget.ANGLE else TourTarget.BOARD
+        TourStep.FILTER -> if (catalogueReady) TourTarget.FILTER else TourTarget.BOARD
+        TourStep.OPEN -> if (state.climbs.isNotEmpty()) TourTarget.CLIMB else if (catalogueReady) TourTarget.FILTER else TourTarget.BOARD
+        else -> null
+    }
+    val tourMessage = when (tourTarget) {
+        TourTarget.BLUETOOTH -> R.string.tour_spotlight_connect
+        TourTarget.ANGLE -> R.string.tour_spotlight_angle
+        TourTarget.FILTER -> R.string.tour_spotlight_filter
+        TourTarget.CLIMB -> R.string.tour_spotlight_open
+        else -> R.string.tour_spotlight_catalogue
+    }
+    TourHost(tourTargets, tourTarget, tourMessage, { tour.move(TourStep.DONE) },
+        visible = !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch && !state.activeBrandImporting) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         BoardBrowserHeader(
@@ -355,20 +373,6 @@ fun BoardBrowserScreen(
             onSettings = onNavigateToSettings,
             onTour = { tour.start(replay = true) },
         )
-        val tourCatalogueReady = state.hasBoardData && state.activeBrandHasCatalogue
-        when {
-            tourStep == TourStep.CONNECT -> TourHint(R.string.tour_connect_title, R.string.tour_connect_body,
-                R.string.cd_board_connect, { showBleSheet = true }, { tour.move(TourStep.DONE) },
-                R.string.tour_later, { tour.deferBle(); tour.move(TourStep.ANGLE) })
-            tourCatalogueReady && tourStep == TourStep.ANGLE -> TourHint(R.string.tour_angle_title, R.string.tour_angle_body,
-                R.string.tour_angle_action, { showAngleSheet = true }, { tour.move(TourStep.DONE) })
-            tourCatalogueReady && tourStep == TourStep.FILTER -> TourHint(R.string.tour_filter_title, R.string.tour_filter_body,
-                R.string.cd_filter, { tour.move(TourStep.OPEN); onNavigateToFilter() }, { tour.move(TourStep.DONE) })
-            !tourCatalogueReady && tourStep in listOf(TourStep.ANGLE, TourStep.FILTER, TourStep.OPEN) -> TourHint(R.string.tour_catalogue_title, R.string.tour_catalogue_body,
-                R.string.board_browser_change_board, { showBoardPicker = true }, { tour.move(TourStep.DONE) })
-            state.climbs.isNotEmpty() && tourStep == TourStep.OPEN -> TourHint(R.string.tour_open_title, R.string.tour_open_body,
-                R.string.action_done, { tour.move(TourStep.PROJECT) }, { tour.move(TourStep.DONE) })
-        }
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
@@ -643,6 +647,9 @@ fun BoardBrowserScreen(
                     lastTopUuid = topUuid
                 }
 
+                LaunchedEffect(tourStep) {
+                    if (tourStep == TourStep.OPEN && state.climbs.isNotEmpty()) listState.scrollToItem(0)
+                }
                 // Trigger loadMore when near bottom
                 val shouldLoadMore by remember {
                     derivedStateOf {
@@ -702,6 +709,7 @@ fun BoardBrowserScreen(
                         key = { it.uuid },
                         contentType = { "climb" }
                     ) { climb ->
+                        Box(if (climb.uuid == state.climbs.firstOrNull()?.uuid) Modifier.tourTarget(TourTarget.CLIMB) else Modifier) {
                         ClimbCard(
                             climb = climb,
                             gradeScale = gradeScale,
@@ -715,6 +723,7 @@ fun BoardBrowserScreen(
                             boardPlaylistCount =
                                 runningPlaylistCounts[climb.uuid.lowercase()] ?: 0,
                         )
+                        }
                     }
 
                     if (state.isLoadingMore) {
@@ -777,4 +786,5 @@ fun BoardBrowserScreen(
             }
         }
     }
+    } // TourHost
 }

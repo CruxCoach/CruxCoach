@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.onboarding.*
+import androidx.compose.runtime.DisposableEffect
+
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -179,6 +182,11 @@ internal fun BoardBrowserHeader(
         val actionLayout = boardHeaderActionLayout((maxWidth.value - (angleWidth - 64f)).toInt())
         val overflowActions = actionLayout.overflow.map(actions::getValue)
         var overflowExpanded by remember { mutableStateOf(false) }
+        val tourTargets = LocalTourTargets.current
+        DisposableEffect(overflowExpanded, tourTargets) {
+            tourTargets?.menuOpen = overflowExpanded
+            onDispose { tourTargets?.menuOpen = false }
+        }
 
         Surface(
             color = MaterialTheme.colorScheme.surface,
@@ -223,7 +231,7 @@ internal fun BoardBrowserHeader(
                         .weight(1f)
                         .fillMaxSize()
                         .clickable(onClick = onBoardPicker)
-                        .testTag("board_browser_board_picker")
+                        .testTag("board_browser_board_picker").tourTarget(TourTarget.BOARD)
                         .padding(start = 2.dp, end = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -245,7 +253,7 @@ internal fun BoardBrowserHeader(
                 androidx.compose.material3.TextButton(
                     onClick = onAngle,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                    modifier = Modifier.width(angleWidth.dp).testTag("board_header_angle")
+                    modifier = Modifier.width(angleWidth.dp).testTag("board_header_angle").tourTarget(TourTarget.ANGLE)
                         .semantics { contentDescription = angleDescription },
                 ) {
                     Text("$angle°", maxLines = 1, fontWeight = FontWeight.SemiBold)
@@ -292,7 +300,11 @@ internal fun BoardBrowserHeader(
                                         overflowExpanded = false
                                         action.onClick()
                                     },
-                                    modifier = Modifier.testTag(action.tag),
+                                    modifier = Modifier.testTag(action.tag).then(when (action.action) {
+                                        BoardHeaderAction.BLUETOOTH -> Modifier.tourMenuTarget(TourTarget.BLUETOOTH)
+                                        BoardHeaderAction.FILTER -> Modifier.tourMenuTarget(TourTarget.FILTER)
+                                        else -> Modifier
+                                    }),
                                 )
                             }
                         }
@@ -316,7 +328,13 @@ private fun HeaderAction(
         onClick = onClick,
         modifier = Modifier
             .width(48.dp)
-            .testTag(tag),
+            .testTag(tag)
+            .then(when (tag) {
+                "board_ble_button" -> Modifier.tourTarget(TourTarget.BLUETOOTH)
+                "board_filter_toggle" -> Modifier.tourTarget(TourTarget.FILTER)
+                "board_header_overflow" -> Modifier.tourTarget(TourTarget.OVERFLOW)
+                else -> Modifier
+            }),
     ) {
         androidx.compose.material3.BadgedBox(badge = {
             if (badgeCount > 0) androidx.compose.material3.Badge { Text(badgeCount.toString()) }

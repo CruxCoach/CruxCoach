@@ -3,6 +3,12 @@
 This release focuses on reliable browsing, clearer statistics and quicker board navigation.
 
 ## Highlights
+- **A guided first session.** Connect your board during setup, choose catalogue
+  downloads and optionally import your logbook. A skippable tour then highlights
+  the real app controls; you can replay it from the browser menu.
+- **Angle selection at hand.** Change the board angle directly in the single-row
+  browser header. The filter screen keeps difficulty, status and sorting together,
+  with additional restrictions available when needed.
 - **Exclude sent problems directly.** The filter switch selects unsent problems;
   status chips stay synchronized and show checkmarks for your selection.
 - **Clearer MoonBoard markings.** Light and dark outlines make the coloured rings
