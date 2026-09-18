@@ -16,16 +16,10 @@ kotlin {
 
     // Apple targets for the native iOS app (iosApp/). Device + Apple-silicon
     // simulator only; the Intel simulator is not a delivery target. Klibs
-    // cross-compile on Linux, but framework linking requires a macOS host.
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach {
-        it.binaries.framework {
-            baseName = "shared"
-            isStatic = true
-        }
-    }
+    // cross-compile on Linux. The Xcode framework is built by :appcore, which
+    // re-exports this module.
+    iosArm64()
+    iosSimulatorArm64()
 
     sourceSets {
         commonMain.dependencies {
