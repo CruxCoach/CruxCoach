@@ -96,6 +96,7 @@ data class BoardLogbookState(
     // Edit dialog
     val showEditDialog: Boolean = false,
     val editingAscentUuid: String? = null,
+    val editingIsSend: Boolean = true,
     val editBidCount: Int = 1,
     val editQuality: Int = 0,
     val editComment: String = "",
@@ -747,6 +748,7 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(
             showEditDialog = true,
             editingAscentUuid = ascent.uuid,
+            editingIsSend = ascent.isSend,
             editBidCount = ascent.bidCount.toInt().coerceAtLeast(1),
             editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 5),
             editComment = ascent.comment ?: ""
@@ -776,7 +778,8 @@ class BoardLogbookViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             try {
                 withContext(Dispatchers.IO) {
-                    personalBoardRepo.updateAscent(
+                    if (!s.editingIsSend) personalBoardRepo.updateBid(uuid, s.editBidCount.toLong(), s.editComment.ifBlank { null })
+                    else personalBoardRepo.updateAscent(
                         uuid = uuid,
                         bidCount = s.editBidCount.toLong(),
                         quality = if (s.editQuality > 0) s.editQuality.toLong() else null,

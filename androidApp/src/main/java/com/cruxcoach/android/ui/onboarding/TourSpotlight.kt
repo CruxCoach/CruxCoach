@@ -29,7 +29,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import kotlin.math.roundToInt
 
-internal enum class TourTarget { BOARD, BLUETOOTH, ANGLE, FILTER, OVERFLOW, CLIMB, PROJECT, LOG }
+internal enum class TourTarget { BOARD, BLUETOOTH, ANGLE, FILTER, OVERFLOW, CLIMB, PROJECT, LOG, QUICK_ATTEMPT, QUICK_SEND, MENU, BACK, LOGBOOK, EDIT, DELETE }
 
 @Stable
 internal class TourTargets {
@@ -62,6 +62,7 @@ internal fun TourHost(
     message: Int,
     onEnd: () -> Unit,
     visible: Boolean = true,
+    secondaryTarget: TourTarget? = null,
     content: @Composable () -> Unit,
 ) {
     SideEffect { targets.active = target; targets.onEnd = onEnd }
@@ -69,12 +70,10 @@ internal fun TourHost(
         Box(Modifier.fillMaxSize()) {
             content()
             if (visible && !targets.menuOpen && target != null) {
-                val direct = targets.bounds[target]
-                val bounds = direct ?: if (target == TourTarget.FILTER || target == TourTarget.BLUETOOTH) targets.bounds[TourTarget.OVERFLOW] else null
-                if (bounds != null) TourSpotlight(bounds,
-                    if (direct != null) message
-                    else if (target == TourTarget.FILTER) R.string.tour_spotlight_menu_filter
-                    else R.string.tour_spotlight_menu_connect, onEnd)
+                val bounds = targets.bounds[target]
+                if (bounds != null) TourSpotlight(
+                    listOfNotNull(bounds, secondaryTarget?.let { targets.bounds[it] }), message, onEnd)
+
             }
         }
     }
@@ -82,7 +81,7 @@ internal fun TourHost(
 
 /** Four input shields leave only the real highlighted control and skip action touchable. */
 @Composable
-private fun TourSpotlight(targetInRoot: Rect, message: Int, onEnd: () -> Unit) {
+private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> Unit) {
     BackHandler(onBack = onEnd)
     val density = LocalDensity.current
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -93,37 +92,35 @@ private fun TourSpotlight(targetInRoot: Rect, message: Int, onEnd: () -> Unit) {
         val height = with(density) { maxHeight.toPx() }
         val margin = with(density) { 16.dp.toPx() }
         val gap = with(density) { 24.dp.toPx() }
-        val target = targetInRoot.translate(-origin).intersect(Rect(0f, 0f, width, height))
-        if (target.width <= 0 || target.height <= 0) return@BoxWithConstraints
+        val holes = targetsInRoot.map { it.translate(-origin).intersect(Rect(0f, 0f, width, height)) }
+            .filter { it.width > 0 && it.height > 0 }
+        if (holes.isEmpty()) return@BoxWithConstraints
+        val target = holes.reduce { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
         val below = target.center.y < height / 2
         val available = (if (below) height - target.bottom - gap - margin - with(density) { 56.dp.toPx() }
             else target.top - gap - margin).coerceAtLeast(1f)
         val hintY = if (below) target.bottom + gap else (target.top - gap - hintHeight).coerceAtLeast(margin)
         Canvas(Modifier.fillMaxSize()) {
-            val hole = RoundRect(target, CornerRadius(12.dp.toPx()))
             val scrim = Path().apply {
                 fillType = PathFillType.EvenOdd
                 addRect(Rect(Offset.Zero, size))
-                addRoundRect(hole)
+                holes.forEach { addRoundRect(RoundRect(it, CornerRadius(12.dp.toPx()))) }
             }
             drawPath(scrim, Color.Black.copy(alpha = 0.78f))
-            drawRoundRect(OrangeAccent, target.topLeft, target.size, CornerRadius(12.dp.toPx()), style = Stroke(2.dp.toPx()))
-            val arrowX = target.center.x.coerceIn(margin, width - margin)
-            val start = Offset(arrowX, if (below) target.bottom + 4.dp.toPx() else target.top - 4.dp.toPx())
+            holes.forEach { drawRoundRect(OrangeAccent, it.topLeft, it.size, CornerRadius(12.dp.toPx()), style = Stroke(2.dp.toPx())) }
+            holes.forEach { hole ->
+            val arrowX = hole.center.x.coerceIn(margin, width - margin)
+            val start = Offset(arrowX, if (below) hole.bottom + 4.dp.toPx() else hole.top - 4.dp.toPx())
             val end = start + Offset(0f, if (below) 16.dp.toPx() else -16.dp.toPx())
             drawLine(OrangeAccent, start, end, 2.dp.toPx())
             val direction = if (below) 1 else -1
             drawLine(OrangeAccent, start, start + Offset(-4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
             drawLine(OrangeAccent, start, start + Offset(4.dp.toPx(), direction * 5.dp.toPx()), 2.dp.toPx())
+            }
         }
         // Separate rectangles are intentional: a full-screen pointer handler would
         // win hit testing inside the hole, preventing the real control from firing.
-        listOf(
-            Rect(0f, 0f, width, target.top),
-            Rect(0f, target.bottom, width, height),
-            Rect(0f, target.top, target.left, target.bottom),
-            Rect(target.right, target.top, width, target.bottom),
-        ).filter { it.width > 0 && it.height > 0 }.forEach { shield ->
+        spotlightShields(width, height, holes).forEach { shield ->
             Box(Modifier.offset { IntOffset(shield.left.roundToInt(), shield.top.roundToInt()) }
                 .size(with(density) { shield.width.toDp() }, with(density) { shield.height.toDp() })
                 .pointerInput(Unit) {
@@ -143,6 +140,21 @@ private fun TourSpotlight(targetInRoot: Rect, message: Int, onEnd: () -> Unit) {
             modifier = Modifier.align(if (below) Alignment.BottomEnd else Alignment.TopEnd)
                 .padding(12.dp).testTag("tour_skip")) {
             Text(stringResource(R.string.tour_skip))
+        }
+    }
+}
+
+/** Partition the screen around every hole; the space between Quicklog buttons stays blocked. */
+internal fun spotlightShields(width: Float, height: Float, holes: List<Rect>): List<Rect> {
+    val rows = (listOf(0f, height) + holes.flatMap { listOf(it.top, it.bottom) }).distinct().sorted()
+    return buildList {
+        rows.zipWithNext().forEach { (top, bottom) ->
+            var left = 0f
+            holes.filter { it.top < bottom && it.bottom > top }.sortedBy { it.left }.forEach { hole ->
+                if (hole.left > left) add(Rect(left, top, hole.left, bottom))
+                left = maxOf(left, hole.right)
+            }
+            if (left < width) add(Rect(left, top, width, bottom))
         }
     }
 }

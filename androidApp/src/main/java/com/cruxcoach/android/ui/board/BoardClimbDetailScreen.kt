@@ -427,6 +427,11 @@ fun BoardClimbDetailScreen(
 
     LaunchedEffect(state.quickLogFeedback?.eventId) {
         val feedback = state.quickLogFeedback ?: return@LaunchedEffect
+        if (tour.step() == TourStep.LOG) {
+            tour.logged(feedback.entryUuid)
+            viewModel.consumeQuickLogFeedback()
+            return@LaunchedEffect
+        }
         val result = snackbarHostState.showSnackbar(
             resources.getString(
                 if (feedback.isSend) R.string.board_detail_quick_send_logged
@@ -508,16 +513,19 @@ fun BoardClimbDetailScreen(
         boardConnected = state.ble.connectionState == ConnectionState.CONNECTED || state.ble.connectionState == ConnectionState.SENDING,
         boardOwnedByOthers = detailQueueState.isConnecting, countdownRunning = state.playback.countdownSeconds > 0)
     val detailTourTarget = when (tourStep) {
-        TourStep.PROJECT -> if (tourLamp == BoardDetailLampMode.HIDDEN) TourTarget.LOG else TourTarget.PROJECT
-        TourStep.LOG -> TourTarget.LOG
+        TourStep.PROJECT -> if (tourLamp == BoardDetailLampMode.HIDDEN) TourTarget.QUICK_ATTEMPT else TourTarget.PROJECT
+        TourStep.LOG -> TourTarget.QUICK_ATTEMPT
+        TourStep.LOGBOOK -> TourTarget.BACK
         else -> null
     }
     TourHost(tourTargets, detailTourTarget,
-        if (detailTourTarget == TourTarget.LOG) R.string.tour_spotlight_log
+        if (detailTourTarget == TourTarget.QUICK_ATTEMPT) R.string.tour_spotlight_quicklog
+        else if (detailTourTarget == TourTarget.BACK) R.string.tour_spotlight_logbook_back
         else if (tourLamp == BoardDetailLampMode.CONNECT) R.string.tour_spotlight_detail_connect
         else if (tourLamp == BoardDetailLampMode.SHARED_QUEUE) R.string.tour_spotlight_queue
         else R.string.tour_spotlight_project,
         { tour.move(TourStep.DONE) },
+        secondaryTarget = if (detailTourTarget == TourTarget.QUICK_ATTEMPT) TourTarget.QUICK_SEND else null,
         visible = !showBleSheet && !showMismatchPicker && !state.ascent.showDialog && state.climb != null && state.error == null) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -532,10 +540,10 @@ fun BoardClimbDetailScreen(
                     decision = deliveryDecision,
                     hasDirectPayload = hasDirectPayload,
                     boardOwnedByOthers = detailQueueState.isConnecting,
-                    onAttempt = { viewModel.quickLogAscent(isSend = false) },
+                    onAttempt = { if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG); viewModel.quickLogAscent(isSend = false) },
                     onLight = { viewModel.deliverClimb(); if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
                     onConnectBoard = { showBleSheet = true },
-                    onSend = { viewModel.quickLogAscent(isSend = true) },
+                    onSend = { if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG); viewModel.quickLogAscent(isSend = true) },
                 )
                 }
             }
@@ -547,7 +555,7 @@ fun BoardClimbDetailScreen(
                     navigationIcon = {
                         IconButton(
                             onClick = onNavigateBack,
-                            modifier = Modifier.testTag("boarddetail_back_button")
+                            modifier = Modifier.testTag("boarddetail_back_button").tourTarget(TourTarget.BACK)
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
@@ -626,7 +634,7 @@ fun BoardClimbDetailScreen(
                         }
                         Box {
                             IconButton(
-                                onClick = { moreExpanded = true; if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
+                                onClick = { moreExpanded = true },
                                 modifier = Modifier.testTag("boarddetail_more_button").tourTarget(TourTarget.LOG),
                             ) {
                                 Icon(
@@ -662,7 +670,6 @@ fun BoardClimbDetailScreen(
                                     onClick = {
                                         moreExpanded = false
                                         viewModel.showAscentDialog()
-                                        if (tour.step() == TourStep.LOG) tour.move(TourStep.DONE)
                                     },
                                     modifier = Modifier.testTag("boarddetail_log_button").tourMenuTarget(TourTarget.LOG),
                                 )
@@ -2158,7 +2165,7 @@ private fun BoardDetailActionDock(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
-                .testTag("boarddetail_quick_attempt"),
+                .testTag("boarddetail_quick_attempt").tourTarget(TourTarget.QUICK_ATTEMPT),
             shape = RoundedCornerShape(18.dp),
             color = ErrorRed.copy(alpha = 0.13f),
             contentColor = ErrorRed,
@@ -2244,7 +2251,7 @@ private fun BoardDetailActionDock(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
-                .testTag("boarddetail_quick_send"),
+                .testTag("boarddetail_quick_send").tourTarget(TourTarget.QUICK_SEND),
             shape = RoundedCornerShape(18.dp),
             color = SuccessGreen.copy(alpha = 0.16f),
             contentColor = SuccessGreen,

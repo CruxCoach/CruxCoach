@@ -8,38 +8,6 @@ import org.junit.Test
 
 class BoardBrowserHeaderTest {
     @Test
-    fun `header reserves room for the board picker and overflow menu`() {
-        assertEquals(2, directHeaderActionCount(360))
-        assertEquals(2, directHeaderActionCount(320))
-        assertEquals(1, directHeaderActionCount(300))
-        assertEquals(0, directHeaderActionCount(260))
-        assertEquals(0, directHeaderActionCount(220))
-    }
-
-    @Test
-    fun `compact priority selects visible actions without changing legacy visual order`() {
-        val bluetooth = BoardHeaderAction.BLUETOOTH
-        val filter = BoardHeaderAction.FILTER
-        val logbook = BoardHeaderAction.LOGBOOK
-        val lists = BoardHeaderAction.LISTS
-        val settings = BoardHeaderAction.SETTINGS
-        val legacyOrder = listOf(bluetooth, filter, logbook, lists, settings)
-        val cases = listOf(
-            Triple(360, listOf(bluetooth, filter), listOf(logbook, lists, settings)),
-            Triple(320, listOf(bluetooth, filter), listOf(logbook, lists, settings)),
-            Triple(300, listOf(bluetooth), listOf(filter, logbook, lists, settings)),
-            Triple(260, emptyList(), legacyOrder),
-            Triple(220, emptyList(), legacyOrder),
-            Triple(480, listOf(bluetooth, filter), listOf(logbook, lists, settings)),
-        )
-        for ((width, direct, overflow) in cases) {
-            val actual = boardHeaderActionLayout(width)
-            assertEquals("Direct actions at ${width}dp", direct, actual.direct)
-            assertEquals("Overflow actions at ${width}dp", overflow, actual.overflow)
-        }
-    }
-
-    @Test
     fun `kilter context exposes model and physical subtype`() {
         val context = boardBrowserHeaderContext(
             boardBrand = BoardBrand.KILTER.wireValue,

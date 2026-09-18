@@ -1,60 +1,31 @@
 package com.cruxcoach.android.ui.board
 
-import com.cruxcoach.android.ui.onboarding.*
-import androidx.compose.runtime.DisposableEffect
-
-import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.onboarding.*
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.data.repository.BoardSize
@@ -64,50 +35,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 internal data class BoardBrowserHeaderContext(
     val title: String,
     val subtitle: String,
-)
-
-private const val HEADER_HOME_WIDTH_DP = 48
-private const val HEADER_ANGLE_WIDTH_DP = 64
-private const val HEADER_BOARD_MIN_WIDTH_DP = 56
-private const val HEADER_ACTION_WIDTH_DP = 48
-
-/** Declaration order is the visual order from 0.2.2; priority only selects visibility. */
-internal enum class BoardHeaderAction(val compactPriority: Int) {
-    BLUETOOTH(0), FILTER(1), LOGBOOK(3), LISTS(4), SETTINGS(2),
-}
-
-internal data class BoardHeaderActionLayout(
-    val direct: List<BoardHeaderAction>,
-    val overflow: List<BoardHeaderAction>,
-)
-
-internal fun boardHeaderActionLayout(availableWidthDp: Int): BoardHeaderActionLayout {
-    val visualOrder = BoardHeaderAction.entries
-    val direct = visualOrder.sortedBy { it.compactPriority }
-        .take(directHeaderActionCount(availableWidthDp)).toSet()
-    return BoardHeaderActionLayout(
-        direct = visualOrder.filter { it in direct },
-        overflow = visualOrder.filterNot { it in direct },
-    )
-}
-
-/**
- * Keep enough room for a useful board picker. As soon as any action is hidden,
- * one action slot is reserved for the overflow menu so every destination stays reachable.
- */
-internal fun directHeaderActionCount(availableWidthDp: Int): Int {
-    val actionSpace = availableWidthDp - HEADER_HOME_WIDTH_DP - HEADER_ANGLE_WIDTH_DP - HEADER_BOARD_MIN_WIDTH_DP
-    val availableSlots = (actionSpace / HEADER_ACTION_WIDTH_DP).coerceAtLeast(0)
-    return (availableSlots - 1).coerceIn(0, 2)
-}
-
-private data class HeaderActionSpec(
-    val action: BoardHeaderAction,
-    val icon: ImageVector,
-    @StringRes val contentDescription: Int,
-    val tag: String,
-    val tint: Color? = null,
-    val onClick: () -> Unit,
+    val family: String = title.substringBefore(" "),
 )
 
 internal fun boardBrowserHeaderContext(
@@ -133,13 +61,11 @@ internal fun boardBrowserHeaderContext(
     return BoardBrowserHeaderContext(
         title = title,
         subtitle = size.orEmpty(),
+        family = brand.displayName,
     )
 }
 
-/**
- * One row with room for a readable board label and angle. Bluetooth and filters
- * stay primary; logbook, lists, settings and the introduction live in overflow.
- */
+/** One toolbar row: only board details shrink, never the family or primary actions. */
 @Composable
 internal fun BoardBrowserHeader(
     context: BoardBrowserHeaderContext,
@@ -151,208 +77,62 @@ internal fun BoardBrowserHeader(
     onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
     onFilter: () -> Unit,
-    onLogbook: () -> Unit,
-    onLists: () -> Unit,
-    onSettings: () -> Unit,
-    onTour: () -> Unit,
 ) {
     val angleDescription = stringResource(R.string.board_angle_change, angle)
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val actions = listOf(
-            HeaderActionSpec(
-                action = BoardHeaderAction.BLUETOOTH,
-                icon = if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
-                contentDescription = R.string.cd_bluetooth,
-                tag = "board_ble_button",
-                tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = onBluetooth,
-            ),
-            HeaderActionSpec(BoardHeaderAction.FILTER, Icons.Default.Tune, R.string.cd_filter, "board_filter_toggle", onClick = onFilter),
-            HeaderActionSpec(BoardHeaderAction.LOGBOOK, Icons.Default.Book, R.string.board_logbook_title, "board_logbook_icon", onClick = onLogbook),
-            HeaderActionSpec(
-                BoardHeaderAction.LISTS,
-                Icons.AutoMirrored.Filled.FormatListBulleted,
-                R.string.board_lists_title,
-                "board_lists_button",
-                onClick = onLists,
-            ),
-            HeaderActionSpec(BoardHeaderAction.SETTINGS, Icons.Default.Settings, R.string.cd_settings, "board_settings_button", onClick = onSettings),
-        ).associateBy { it.action }
-        val angleWidth = maxOf(64f, 48f * androidx.compose.ui.platform.LocalDensity.current.fontScale)
-        val actionLayout = boardHeaderActionLayout((maxWidth.value - (angleWidth - 64f)).toInt())
-        val overflowActions = actionLayout.overflow.map(actions::getValue)
-        var overflowExpanded by remember { mutableStateOf(false) }
-        val tourTargets = LocalTourTargets.current
-        DisposableEffect(overflowExpanded, tourTargets) {
-            tourTargets?.menuOpen = overflowExpanded
-            onDispose { tourTargets?.menuOpen = false }
-        }
-
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
-            shadowElevation = 1.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(48.dp)
-                        .fillMaxSize()
-                        .clickable(
-                            onClickLabel = stringResource(R.string.cd_open_menu),
-                            role = Role.Button,
-                            onClick = onOpenMenu,
-                        )
-                        .testTag("board_browser_home"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Image(
-                            painter = painterResource(R.mipmap.ic_launcher_foreground),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, shadowElevation = 1.dp) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp).clickable(role = Role.Button, onClick = onOpenMenu)
+                .testTag("board_browser_home").tourTarget(TourTarget.MENU), contentAlignment = Alignment.Center) {
+                Image(painterResource(R.mipmap.ic_launcher_foreground), stringResource(R.string.cd_open_menu),
+                    Modifier.size(30.dp).clip(CircleShape).background(Color.Black))
+            }
+            BoxWithConstraints(Modifier.weight(1f).heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onBoardPicker)
+                .testTag("board_browser_board_picker").tourTarget(TourTarget.BOARD)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = listOf(context.title, context.subtitle).filter { it.isNotBlank() }.joinToString(", ")
+                }.padding(horizontal = 4.dp)) {
+                val measurer = rememberTextMeasurer()
+                val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                val available = with(LocalDensity.current) { (maxWidth - 12.dp).toPx() }.coerceAtLeast(1f)
+                val fullWidth = measurer.measure(AnnotatedString(context.title), style, softWrap = false).size.width
+                val title = if (fullWidth <= available) context.title else context.family
+                val familyWidth = measurer.measure(AnnotatedString(title), style, softWrap = false).size.width.coerceAtLeast(1)
+                val scale = (available / familyWidth).coerceAtMost(1f)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = style, fontSize = style.fontSize * scale,
+                            maxLines = 1, softWrap = false)
+                        val detail = listOf(if (title == context.title) "" else context.title.removePrefix(context.family).trim(), context.subtitle)
+                            .filter { it.isNotBlank() }.joinToString(" · ")
+                        if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                }
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize()
-                        .clickable(onClick = onBoardPicker)
-                        .testTag("board_browser_board_picker").tourTarget(TourTarget.BOARD)
-                        .padding(start = 2.dp, end = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f).semantics(mergeDescendants = true) {
-                        contentDescription = listOf(context.title, context.subtitle).filter { it.isNotBlank() }.joinToString(", ")
-                    }) {
-                        Text(context.title, style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (context.subtitle.isNotBlank()) {
-                            Text(context.subtitle, style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = stringResource(R.string.board_browser_change_board),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                androidx.compose.material3.TextButton(
-                    onClick = onAngle,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                    modifier = Modifier.width(angleWidth.dp).testTag("board_header_angle").tourTarget(TourTarget.ANGLE)
-                        .semantics { contentDescription = angleDescription },
-                ) {
-                    Text("$angle°", maxLines = 1, fontWeight = FontWeight.SemiBold)
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                }
-                actionLayout.direct.map(actions::getValue).forEach { action ->
-                    HeaderAction(
-                        icon = action.icon,
-                        contentDescription = action.contentDescription,
-                        tag = action.tag,
-                        tint = action.tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                        onClick = action.onClick,
-                        badgeCount = if (action.action == BoardHeaderAction.FILTER) activeFilterCount else 0,
-                    )
-                }
-                if (true) {
-                    Box {
-                        HeaderAction(
-                            icon = Icons.Default.MoreVert,
-                            contentDescription = R.string.action_more_options,
-                            tag = "board_header_overflow",
-                            onClick = { overflowExpanded = true },
-                        )
-                        DropdownMenu(
-                            expanded = overflowExpanded,
-                            onDismissRequest = { overflowExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(if (tourTargets?.active != null) R.string.tour_skip else R.string.tour_replay)) },
-                                onClick = { overflowExpanded = false; if (tourTargets?.active != null) tourTargets.onEnd?.invoke() else onTour() },
-                                modifier = Modifier.testTag("board_tour_replay"),
-                            )
-                            overflowActions.forEach { action ->
-                                DropdownMenuItem(
-                                    enabled = tourTargets?.active == null || when (action.action) {
-                                        BoardHeaderAction.BLUETOOTH -> tourTargets.active == TourTarget.BLUETOOTH
-                                        BoardHeaderAction.FILTER -> tourTargets.active == TourTarget.FILTER
-                                        else -> false
-                                    },
-                                    text = { Text(stringResource(action.contentDescription)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = action.icon,
-                                            contentDescription = null,
-                                            tint = action.tint ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    onClick = {
-                                        overflowExpanded = false
-                                        action.onClick()
-                                    },
-                                    modifier = Modifier.testTag(action.tag).then(when (action.action) {
-                                        BoardHeaderAction.BLUETOOTH -> Modifier.tourMenuTarget(TourTarget.BLUETOOTH)
-                                        BoardHeaderAction.FILTER -> Modifier.tourMenuTarget(TourTarget.FILTER)
-                                        else -> Modifier
-                                    }),
-                                )
-                            }
-                        }
-                    }
+                    Icon(Icons.Default.ArrowDropDown, null, Modifier.size(12.dp), tint = OrangeAccent)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun HeaderAction(
-    icon: ImageVector,
-    @StringRes contentDescription: Int,
-    tag: String,
-    onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    badgeCount: Int = 0,
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .width(48.dp)
-            .testTag(tag)
-            .then(when (tag) {
-                "board_ble_button" -> Modifier.tourTarget(TourTarget.BLUETOOTH)
-                "board_filter_toggle" -> Modifier.tourTarget(TourTarget.FILTER)
-                "board_header_overflow" -> Modifier.tourTarget(TourTarget.OVERFLOW)
-                else -> Modifier
-            }),
-    ) {
-        androidx.compose.material3.BadgedBox(badge = {
-            if (badgeCount > 0) androidx.compose.material3.Badge { Text(badgeCount.toString()) }
-        }) {
-        Icon(
-            imageVector = icon,
-            contentDescription = stringResource(contentDescription),
-            tint = tint,
-            modifier = Modifier.size(22.dp),
-        )
+            TextButton(onClick = onAngle, contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.width(60.dp).heightIn(min = 48.dp).testTag("board_header_angle")
+                    .tourTarget(TourTarget.ANGLE).semantics {
+                        contentDescription = angleDescription
+                    }) {
+                val style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                val measured = rememberTextMeasurer().measure(AnnotatedString("$angle°"), style, softWrap = false).size.width.coerceAtLeast(1)
+                val available = with(LocalDensity.current) { 52.dp.toPx() }
+                Text("$angle°", style = style, fontSize = style.fontSize * (available / measured).coerceAtMost(1f),
+                    maxLines = 1, softWrap = false)
+            }
+            IconButton(onClick = onBluetooth, modifier = Modifier.size(48.dp).testTag("board_ble_button")
+                .tourTarget(TourTarget.BLUETOOTH)) {
+                Icon(if (isBleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                    stringResource(R.string.cd_bluetooth), tint = if (isBleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onFilter, modifier = Modifier.size(48.dp).testTag("board_filter_toggle")
+                .tourTarget(TourTarget.FILTER)) {
+                BadgedBox(badge = { if (activeFilterCount > 0) Badge { Text(activeFilterCount.toString()) } }) {
+                    Icon(Icons.Default.Tune, stringResource(R.string.cd_filter))
+                }
+            }
         }
     }
 }

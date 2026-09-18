@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.onboarding.*
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,7 +41,8 @@ internal fun AscentCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     onToggleSelect: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    highlightEdit: Boolean = false,
 ) {
     val grade = ascent.difficultyAverage?.let {
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
@@ -175,7 +178,8 @@ internal fun AscentCard(
             }
 
             Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp).testTag("logbook_edit")
+                .then(if (highlightEdit) Modifier.tourTarget(TourTarget.EDIT) else Modifier)) {
                 Icon(
                     Icons.Default.Edit,
                     contentDescription = stringResource(R.string.cd_edit),

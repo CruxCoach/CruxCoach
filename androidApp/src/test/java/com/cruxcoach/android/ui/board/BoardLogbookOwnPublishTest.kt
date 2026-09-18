@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import kotlinx.coroutines.flow.first
+
 import android.content.Context
 import app.cash.turbine.test
 import com.cruxcoach.android.community.OwnKilterClimbPublisher
@@ -11,6 +13,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.CommunityClimbRow
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.IntensityZones
+import io.mockk.verify
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -139,6 +142,33 @@ class BoardLogbookOwnPublishTest {
         ownClimbPublisher = ownClimbPublisher,
         context = context,
     )
+
+    @Test
+    fun editAttempt_updatesBidInsteadOfSend() = runTest {
+        val vm = buildViewModel()
+        vm.state.first { !it.isLoading && it.stats.totalSends > 0 }
+        vm.editAscent(ascent("attempt-uuid", ownUuid).copy(isSend = false))
+        assertFalse(vm.state.value.editingIsSend)
+        vm.updateEditBidCount(3)
+        vm.updateEditComment("corrected attempt")
+        vm.saveEdit()
+        vm.state.first { !it.showEditDialog }
+        verify { personalBoardRepo.updateBid("attempt-uuid", 3L, "corrected attempt") }
+        verify(exactly = 0) { personalBoardRepo.updateAscent(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun editSend_retainsSendRepositoryPath() = runTest {
+        val vm = buildViewModel()
+        vm.state.first { !it.isLoading && it.stats.totalSends > 0 }
+        vm.editAscent(ascent("send-uuid", ownUuid))
+        assertTrue(vm.state.value.editingIsSend)
+        vm.updateEditBidCount(2)
+        vm.saveEdit()
+        vm.state.first { !it.showEditDialog }
+        verify { personalBoardRepo.updateAscent("send-uuid", 2L, null, null) }
+        verify(exactly = 0) { personalBoardRepo.updateBid(any(), any(), any()) }
+    }
 
     @Test
     fun publishableSet_containsOnlyOwnUnpublishedClimb_formatBlind() = runTest {

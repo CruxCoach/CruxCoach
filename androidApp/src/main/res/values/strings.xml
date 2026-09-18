@@ -2934,9 +2934,11 @@
     <string name="tour_spotlight_open">Tap this climb to see its holds in the detail view and light it on your board.</string>
     <string name="tour_spotlight_project">Tap here to light the holds of this climb on your connected board.</string>
     <string name="tour_spotlight_detail_connect">Connect your board to light the holds. If you have no board nearby, close the search to continue.</string>
-    <string name="tour_spotlight_log">Open the menu and choose “Log with details…” to record attempts or sends. You can close the form without saving.</string>
     <string name="tour_spotlight_catalogue">Open the board picker. Choose your model and size to get the matching climb catalogue.</string>
     <string name="tour_spotlight_queue">Tap here to add this climb to the shared queue.</string>
-    <string name="tour_spotlight_menu_filter">Open the menu and choose “Filter” to select a grade range, hide climbs you have sent and change the sort order.</string>
-    <string name="tour_spotlight_menu_connect">Open the menu and choose “Bluetooth” to connect your board. If you have no board nearby, close the search to continue.</string>
+    <string name="tour_spotlight_quicklog">“Attempt” records a try; “Top” records a send. Tap your result to save it directly to your logbook.</string>
+    <string name="tour_spotlight_logbook_back">Saved. Go back to the climb list to find your entry in the logbook.</string>
+    <string name="tour_spotlight_logbook_menu">Tap the app logo to open the menu. Your logbook is there.</string>
+    <string name="tour_spotlight_logbook">Open your logbook to see your attempts and sends.</string>
+    <string name="tour_spotlight_entry">This is your entry. Tap the pencil to edit it. You can also delete it from the edit dialog.</string>
 </resources>

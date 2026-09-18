@@ -10,8 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - First-run setup offers optional Bluetooth discovery before board selection,
   shows catalogue downloads explicitly and groups account restoration with imports.
 - A skippable visual tour highlights the actual browser and detail controls.
-  Users advance through normal actions; replay is available from browser overflow.
-- The one-row browser header exposes the board angle directly. Filters prioritise
+  Users advance through normal actions, including Quicklog and editing in the
+  logbook; replay is available from the app menu behind the logo.
+- The one-row browser header keeps the logo, board family, angle, Bluetooth and
+  filter directly accessible. Filters prioritise
   grade, status and sorting, with further restrictions under an expandable section
   and vertical choice lists. Resetting filters preserves the board angle.
 - Settings show compact titles and controls, with optional explanations behind

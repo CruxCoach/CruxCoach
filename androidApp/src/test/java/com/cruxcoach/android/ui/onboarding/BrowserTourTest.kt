@@ -27,6 +27,18 @@ class BrowserTourTest {
         BrowserTour(context).start(replay = true)
         assertEquals(TourStep.CONNECT, BrowserTour(context).step())
     }
+    @Test fun `successful quicklog persists its exact entry and replay clears it`() {
+        val tour = BrowserTour(context)
+        tour.move(TourStep.LOG)
+        assertNull(tour.loggedEntry())
+        tour.logged("saved-attempt-uuid")
+        val restored = BrowserTour(context)
+        assertEquals(TourStep.LOGBOOK, restored.step())
+        assertEquals("saved-attempt-uuid", restored.loggedEntry())
+        restored.start(replay = true)
+        assertNull(restored.loggedEntry())
+        assertEquals(TourStep.CONNECT, restored.step())
+    }
     @Test fun `unknown Aurora names and relays never preselect Kilter`() {
         val unknown = DiscoveredBoard("Unknown Board", "", 2, "test", -45)
         assertNull(onboardingBoardSuggestion(unknown))

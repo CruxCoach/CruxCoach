@@ -30,6 +30,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
 class BrowserUxTest {
@@ -40,13 +41,14 @@ class BrowserUxTest {
         compose.setContent { MaterialTheme { Box(Modifier.width(320.dp)) {
             BoardBrowserHeader(BoardBrowserHeaderContext("Kilter Original", "12x12"), false, 40,
                 onAngle = { angleOpened = true }, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {},
-                onFilter = {}, onLogbook = {}, onLists = {}, onSettings = {}, onTour = {})
+                onFilter = {})
         } } }
         compose.onNodeWithTag("board_header_angle").assertIsDisplayed().performClick()
         compose.onNodeWithTag("board_ble_button").assertIsDisplayed()
         compose.onNodeWithTag("board_filter_toggle").assertIsDisplayed()
-        compose.onNodeWithTag("board_header_overflow").performClick()
-        compose.onNodeWithTag("board_tour_replay").assertIsDisplayed()
+        compose.onNodeWithTag("board_browser_home").assertIsDisplayed()
+        compose.onNodeWithTag("board_browser_board_picker").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_overflow").assertDoesNotExist()
         assertTrue(angleOpened)
     }
 
@@ -79,7 +81,7 @@ class BrowserUxTest {
         assertTrue(ended)
     }
 
-    @Test fun `spotlight follows overflow to the real filter menu item on a narrow header`() {
+    @Test fun `filter and Bluetooth remain direct at 320dp and large font`() {
         var filtered = false
         compose.setContent {
             val density = LocalDensity.current.density
@@ -89,18 +91,73 @@ class BrowserUxTest {
                         Box(Modifier.fillMaxSize()) {
                             BoardBrowserHeader(BoardBrowserHeaderContext("Kilter Original", "12x12"), false, 40,
                                 onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {},
-                                onFilter = { filtered = true }, onLogbook = {}, onLists = {}, onSettings = {}, onTour = {})
+                                onFilter = { filtered = true })
                         }
                     }
                 } }
             }
         }
         compose.onNodeWithTag("tour_spotlight").assertIsDisplayed()
-        compose.onNodeWithTag("board_header_overflow").performTouchInput { click() }
-        compose.onNodeWithTag("tour_spotlight").assertDoesNotExist()
-        compose.onNodeWithTag("board_settings_button").assertIsNotEnabled()
+        compose.onNodeWithTag("board_ble_button").assertIsDisplayed()
+        compose.onNodeWithTag("board_browser_home").assertIsDisplayed()
+        val family = compose.onNodeWithText("Kilter", substring = true, useUnmergedTree = true)
+        family.assertIsDisplayed()
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        family.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val layout = layouts.single()
+        // Text can retain a wider paragraph layout than its wrap-content node.
+        // Check the painted line, not didOverflowWidth (paragraph width vs node).
+        assertEquals(1, layout.lineCount)
+        assertFalse(layout.isLineEllipsized(0))
+        assertTrue("Family line ${layout.getLineLeft(0)}..${layout.getLineRight(0)} must fit ${layout.size.width}",
+            layout.getLineLeft(0) >= 0f && layout.getLineRight(0) <= layout.size.width + 0.5f)
         compose.onNodeWithTag("board_filter_toggle").performTouchInput { click() }
         assertTrue(filtered)
+    }
+
+    @Test fun `quicklog spotlight permits both results but blocks the middle action`() {
+        var attempts = 0
+        var sends = 0
+        var lights = 0
+        compose.setContent { MaterialTheme {
+            Box(Modifier.width(360.dp).height(500.dp)) {
+                TourHost(remember { TourTargets() }, TourTarget.QUICK_ATTEMPT,
+                    R.string.tour_spotlight_quicklog, {}, secondaryTarget = TourTarget.QUICK_SEND) {
+                    Box(Modifier.fillMaxSize()) {
+                        Button(onClick = { attempts++ }, modifier = Modifier.align(Alignment.BottomStart)
+                            .tourTarget(TourTarget.QUICK_ATTEMPT).testTag("attempt")) { Text("Try") }
+                        Button(onClick = { lights++ }, modifier = Modifier.align(Alignment.BottomCenter)
+                            .testTag("light")) { Text("Light") }
+                        Button(onClick = { sends++ }, modifier = Modifier.align(Alignment.BottomEnd)
+                            .tourTarget(TourTarget.QUICK_SEND).testTag("send")) { Text("Top") }
+                    }
+                }
+            }
+        } }
+        compose.onNodeWithTag("attempt").performTouchInput { click() }
+        compose.onNodeWithTag("send").performTouchInput { click() }
+        compose.onNodeWithTag("light").performTouchInput { click() }
+        assertEquals(1, attempts)
+        assertEquals(1, sends)
+        assertEquals(0, lights)
+    }
+
+    @Test fun `logo menu guides to the real logbook and blocks unrelated destinations`() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val tour = BrowserTour(context)
+        tour.logged("saved-entry")
+        var destination: String? = null
+        compose.setContent { MaterialTheme {
+            com.cruxcoach.android.ui.navigation.BrowserMainDrawer(tourVisible = true) { destination = it }
+        } }
+        compose.onNodeWithTag("menu_settings").performTouchInput { click() }
+        compose.waitForIdle()
+        assertNull(destination)
+        compose.onNodeWithTag("menu_logbook").performTouchInput { click() }
+        compose.waitForIdle()
+        assertEquals(com.cruxcoach.android.ui.navigation.Routes.BOARD_LOGBOOK, destination)
+        assertEquals(TourStep.ENTRY, tour.step())
+        tour.move(TourStep.DONE)
     }
 
     @Test fun `filter header leaves controls visible with large text`() {

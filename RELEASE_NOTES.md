@@ -5,7 +5,8 @@ This release focuses on reliable browsing, clearer statistics and quicker board 
 ## Highlights
 - **A guided first session.** Connect your board during setup, choose catalogue
   downloads and optionally import your logbook. A skippable tour then highlights
-  the real app controls; you can replay it from the browser menu.
+  the real app controls, Quicklog and your saved logbook entry. Replay is available
+  from the app menu behind the logo.
 - **Angle selection at hand.** Change the board angle directly in the single-row
   browser header. The filter screen keeps difficulty, status and sorting together,
   with additional restrictions available when needed.

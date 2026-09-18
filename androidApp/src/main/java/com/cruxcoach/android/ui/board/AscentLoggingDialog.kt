@@ -60,7 +60,8 @@ internal fun AscentLoggingDialog(
     onQualityChanged: (Int) -> Unit,
     onCommentChanged: (String) -> Unit,
     onSave: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     val colors = CruxCoachDesign.colors
     val spacing = CruxCoachDesign.spacing
@@ -252,6 +253,11 @@ internal fun AscentLoggingDialog(
                     singleLine = true,
                     shape = shapes.medium,
                 )
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete, modifier = Modifier.testTag("ascent_delete")) {
+                        Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+                    }
+                }
             }
         },
         confirmButton = {

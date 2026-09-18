@@ -2933,9 +2933,11 @@
     <string name="tour_spotlight_open">Tippe auf diesen Boulder. In der Detailansicht siehst du seine Griffe und kannst ihn am Board beleuchten.</string>
     <string name="tour_spotlight_project">Tippe hier, um die Griffe dieses Boulders am verbundenen Board aufleuchten zu lassen.</string>
     <string name="tour_spotlight_detail_connect">Verbinde dein Board, um die Griffe aufleuchten zu lassen. Ohne Board kannst du die Suche wieder schließen.</string>
-    <string name="tour_spotlight_log">Öffne das Menü und wähle „Mit Details loggen…“, um Versuche oder Sends einzutragen. Du kannst das Formular ohne Speichern schließen.</string>
     <string name="tour_spotlight_catalogue">Öffne die Board-Auswahl. Wähle dein Modell und die Größe, damit du den passenden Boulder-Katalog erhältst.</string>
     <string name="tour_spotlight_queue">Tippe hier, um diesen Boulder in die gemeinsame Warteschlange einzureihen.</string>
-    <string name="tour_spotlight_menu_filter">Öffne das Menü und wähle „Filter“. Dort kannst du Schwierigkeitsgrade eingrenzen, geschaffte Boulder ausblenden und die Sortierung ändern.</string>
-    <string name="tour_spotlight_menu_connect">Öffne das Menü und wähle „Bluetooth“, um dein Board zu verbinden. Ohne Board kannst du die Suche wieder schließen.</string>
+    <string name="tour_spotlight_quicklog">„Versuch“ speichert einen Versuch, „Top“ eine erfolgreiche Begehung. Tippe auf dein Ergebnis – es wird direkt im Logbuch gespeichert.</string>
+    <string name="tour_spotlight_logbook_back">Gespeichert. Gehe zurück zur Boulder-Liste, um deinen Eintrag im Logbuch anzusehen.</string>
+    <string name="tour_spotlight_logbook_menu">Öffne das App-Menü über das Logo. Dort findest du dein Logbuch.</string>
+    <string name="tour_spotlight_logbook">Öffne dein Logbuch. Dort findest du deine Versuche und erfolgreichen Begehungen.</string>
+    <string name="tour_spotlight_entry">Das ist dein Eintrag. Mit dem Stift kannst du ihn bearbeiten; im Bearbeiten-Dialog kannst du ihn auch löschen.</string>
 </resources>

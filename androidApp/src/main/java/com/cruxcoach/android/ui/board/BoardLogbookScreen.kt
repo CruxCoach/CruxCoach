@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.onboarding.*
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +46,14 @@ fun BoardLogbookScreen(
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
+    val tourEntry = tour.loggedEntry()
+    LaunchedEffect(tourStep, state.isLoading, state.ascents, state.canLoadMore) {
+        if (tourStep == TourStep.ENTRY && !state.isLoading && state.ascents.none { it.uuid == tourEntry }) {
+            if (state.canLoadMore) viewModel.loadMore() else tour.move(TourStep.DONE)
+        }
+    }
     val hasSelection = state.selectedUuids.isNotEmpty()
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -68,7 +78,7 @@ fun BoardLogbookScreen(
     if (state.showEditDialog) {
         AscentLoggingDialog(
             isEditing = true,
-            isSend = true,
+            isSend = state.editingIsSend,
             bidCount = state.editBidCount,
             quality = state.editQuality,
             comment = state.editComment,
@@ -77,8 +87,23 @@ fun BoardLogbookScreen(
             onQualityChanged = { viewModel.updateEditQuality(it) },
             onCommentChanged = { viewModel.updateEditComment(it) },
             onSave = { viewModel.saveEdit() },
-            onDismiss = { viewModel.dismissEditDialog() }
+            onDismiss = { viewModel.dismissEditDialog() },
+            onDelete = {
+                val uuid = state.editingAscentUuid
+                viewModel.dismissEditDialog()
+                if (uuid != null) viewModel.requestDeleteAscent(uuid)
+            },
         )
+    }
+
+    state.showDeleteConfirm?.let {
+        AlertDialog(onDismissRequest = viewModel::dismissDeleteConfirm,
+            title = { Text(stringResource(R.string.board_logbook_delete_title, 1)) },
+            text = { Text(stringResource(R.string.board_logbook_delete_message)) },
+            confirmButton = { TextButton(onClick = viewModel::confirmDeleteAscent) {
+                Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+            } },
+            dismissButton = { TextButton(onClick = viewModel::dismissDeleteConfirm) { Text(stringResource(R.string.action_cancel)) } })
     }
 
     // Batch delete confirm
@@ -146,6 +171,9 @@ fun BoardLogbookScreen(
         )
     }
 
+    TourHost(tourTargets, if (tourStep == TourStep.ENTRY) TourTarget.EDIT else null,
+        R.string.tour_spotlight_entry, { tour.move(TourStep.DONE) },
+        visible = !state.showEditDialog && state.showDeleteConfirm == null) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -244,6 +272,17 @@ fun BoardLogbookScreen(
                     state.ascents.groupBy { it.climbedAt.take(10) }
                 }
 
+                LaunchedEffect(tourStep, grouped) {
+                    if (tourStep == TourStep.ENTRY) {
+                        var index = 2 // interval and statistics rows
+                        for (entries in grouped.values) {
+                            index++ // date heading
+                            val entryIndex = entries.indexOfFirst { it.uuid == tourEntry }
+                            if (entryIndex >= 0) { listState.scrollToItem(index + entryIndex); break }
+                            index += entries.size
+                        }
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
@@ -294,7 +333,11 @@ fun BoardLogbookScreen(
                                     onNavigateToClimb(ascent.climbUuid, ascent.angle.toInt())
                                 },
                                 onToggleSelect = { viewModel.toggleSelection(ascent.uuid) },
-                                onEdit = { viewModel.editAscent(ascent) }
+                                highlightEdit = tourStep == TourStep.ENTRY && ascent.uuid == tourEntry,
+                                onEdit = {
+                                    viewModel.editAscent(ascent)
+                                    if (tourStep == TourStep.ENTRY && ascent.uuid == tourEntry) tour.move(TourStep.DONE)
+                                }
                             )
                             // Own-Kilter-climb publish action, authorship-gated:
                             // shown ONLY for entries whose climb the connected
@@ -332,6 +375,7 @@ fun BoardLogbookScreen(
             }
         }
     }
+    } // TourHost
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

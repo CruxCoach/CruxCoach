@@ -78,6 +78,7 @@ import com.cruxcoach.android.util.PerfLogger
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardBrowserScreen(
+    isMenuOpen: Boolean = false,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     onOpenMenu: () -> Unit = {},
     onNavigateToSync: () -> Unit = {},
@@ -337,6 +338,7 @@ fun BoardBrowserScreen(
 
     val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
     val tourTarget = when (tourStep) {
+        TourStep.LOGBOOK -> TourTarget.MENU
         TourStep.CONNECT -> TourTarget.BLUETOOTH
         TourStep.ANGLE -> if (catalogueReady) TourTarget.ANGLE else TourTarget.BOARD
         TourStep.FILTER -> if (catalogueReady) TourTarget.FILTER else TourTarget.BOARD
@@ -344,6 +346,7 @@ fun BoardBrowserScreen(
         else -> null
     }
     val tourMessage = when (tourTarget) {
+        TourTarget.MENU -> R.string.tour_spotlight_logbook_menu
         TourTarget.BLUETOOTH -> R.string.tour_spotlight_connect
         TourTarget.ANGLE -> R.string.tour_spotlight_angle
         TourTarget.FILTER -> R.string.tour_spotlight_filter
@@ -351,7 +354,7 @@ fun BoardBrowserScreen(
         else -> R.string.tour_spotlight_catalogue
     }
     TourHost(tourTargets, tourTarget, tourMessage, { tour.move(TourStep.DONE) },
-        visible = !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch && !state.activeBrandImporting) {
+        visible = !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch && !state.activeBrandImporting) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         BoardBrowserHeader(
@@ -368,10 +371,6 @@ fun BoardBrowserScreen(
             onBoardPicker = { showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
-            onLogbook = onNavigateToLogbook,
-            onLists = onNavigateToLists,
-            onSettings = onNavigateToSettings,
-            onTour = { tour.start(replay = true) },
         )
         RestTimerBannerSlot()
         SyncStatusBannerSlot()

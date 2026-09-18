@@ -5,15 +5,20 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 
-internal enum class TourStep { INACTIVE, CONNECT, ANGLE, FILTER, OPEN, PROJECT, LOG, DONE }
+internal enum class TourStep { INACTIVE, CONNECT, ANGLE, FILTER, OPEN, PROJECT, LOG, LOGBOOK, ENTRY, DONE }
 
 /** Separate from setup completion: upgrades remain untouched and dismissal survives restart. */
 internal class BrowserTour(context: Context) {
     private val prefs = context.getSharedPreferences("browser_tour_v1", Context.MODE_PRIVATE)
     fun step(): TourStep = runCatching { TourStep.valueOf(prefs.getString("step", "INACTIVE")!!) }.getOrDefault(TourStep.INACTIVE)
     fun move(step: TourStep) { prefs.edit().putString("step", step.name).apply() }
+    fun loggedEntry(): String? = prefs.getString("entry_uuid", null)
+    fun logged(entryUuid: String) {
+        prefs.edit().putString("entry_uuid", entryUuid).putString("step", TourStep.LOGBOOK.name).apply()
+    }
     fun deferBle() { prefs.edit().putBoolean("defer_ble", true).apply() }
     fun start(replay: Boolean = false) {
+        prefs.edit().remove("entry_uuid").apply()
         if (replay) prefs.edit().putBoolean("defer_ble", false).apply()
         move(if (prefs.getBoolean("defer_ble", false)) TourStep.ANGLE else TourStep.CONNECT)
     }
