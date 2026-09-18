@@ -164,9 +164,10 @@ internal fun requestBiometric(
     context: Context,
     onSuccess: () -> Unit,
     onUnavailable: () -> Unit,
-    onNoHardware: () -> Unit
+    onNoHardware: () -> Unit,
+    onCancelled: () -> Unit = {},
 ) {
-    val activity = context as? FragmentActivity ?: return
+    val activity = context as? FragmentActivity ?: run { onCancelled(); return }
 
     val biometricManager = BiometricManager.from(context)
     val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -181,6 +182,7 @@ internal fun requestBiometric(
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    onCancelled()
                     if (errorCode != BiometricPrompt.ERROR_USER_CANCELED &&
                         errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON
                     ) {

@@ -2011,7 +2011,7 @@
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
     <string name="settings_backup_status_no_key">Backup needs your account key.</string>
-    <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup disabled. No successful backup recorded on this device.</string>
     <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup enabled — no successful backup on this device yet.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup enabled — last sync %1$s.</string>
@@ -2951,4 +2951,23 @@
     <string name="account_import_backup_explanation">Importing your nsec restores account access only. Your data requires an existing backup made with this key. After import, open or restore your data backup before creating a new one; importing the key alone does not activate backups.</string>
     <string name="backup_public_storage_notice">Backups are encrypted on this device and stored on public servers. Operators can see your public account ID, IP address, transfer time and file size. Anyone with your nsec and a retained backup can read its contents. Deletion cannot guarantee removal of every copy.</string>
     <string name="backup_manual_schedule_notice">Automatic backup is off. Use Back up now or choose Daily or Weekly.</string>
+    <string name="account_flow_title">Save your key and data</string>
+    <string name="account_flow_copied_title">Key copied</string>
+    <string name="account_flow_intro">Keep your private key (nsec) in a password manager. It restores account access; your logbook, lists and training data also need a data backup. Never share your key.</string>
+    <string name="account_flow_store">Paste the key into your password manager now. Come back and confirm only after saving it safely outside this phone. The clipboard clears after 60 seconds; you can copy again here.</string>
+    <string name="account_flow_schedule">After you confirm key storage: create the first backup, then back up daily. Nothing is uploaded yet.</string>
+    <string name="account_flow_existing">Already enabled. Your current backup schedule stays unchanged.</string>
+    <string name="backup_storage_short">Encrypted on public servers. Your key unlocks the backup; server operators can see connection metadata. Copies may remain after deletion.</string>
+    <string name="account_flow_copy">Unlock and copy key</string>
+    <string name="account_flow_copy_again">Copy key again</string>
+    <string name="account_flow_store_and_start">Key saved · start backup</string>
+    <string name="account_flow_store_only">Key safely stored</string>
+    <string name="account_flow_running">Completing your backup setup…</string>
+    <string name="account_flow_key_only_success">Key storage confirmed. Data backup remains off. You can set it up later under “Back up &amp; transfer”.</string>
+    <string name="account_flow_success">First data backup completed. Daily backups are now enabled.</string>
+    <string name="account_flow_existing_success">Data backup completed. Your existing schedule stays unchanged.</string>
+    <string name="account_flow_error">Backup setup could not be completed. Your key storage is confirmed. Check your connection and try again.</string>
+    <string name="account_flow_existing_error">The new backup could not be completed. Your key storage is confirmed and your previous backup settings remain unchanged. Try again.</string>
+    <string name="account_flow_retry">Try again</string>
+    <string name="account_flow_already_stored">Confirm that your current account key is safely stored outside this phone. You can also choose to back up your data now.</string>
 </resources>

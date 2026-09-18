@@ -2010,7 +2010,7 @@
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
     <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
-    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert. Auf diesem Gerät ist keine erfolgreiche Sicherung vermerkt.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup aktiviert – auf diesem Gerät noch keine erfolgreiche Sicherung.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
@@ -2950,4 +2950,23 @@
     <string name="account_import_backup_explanation">Der nsec-Import stellt nur den Kontozugang wieder her. Für deine Daten brauchst du ein bereits erstelltes Backup mit diesem Schlüssel. Nach dem Import öffnet sich die Backup-Seite. Stelle ein vorhandenes Backup zuerst wieder her, bevor du ein neues erstellst. Der Schlüsselimport aktiviert kein Backup.</string>
     <string name="backup_public_storage_notice">Backups werden auf diesem Gerät verschlüsselt und auf öffentlichen Servern gespeichert. Betreiber können deine öffentliche Konto-ID, IP-Adresse, Übertragungszeit und Dateigröße sehen. Wer deinen nsec und eine aufbewahrte Sicherung besitzt, kann deren Inhalt lesen. Beim Löschen können Kopien zurückbleiben.</string>
     <string name="backup_manual_schedule_notice">Automatische Sicherungen sind aus. Nutze „Jetzt sichern“ oder wähle täglich oder wöchentlich.</string>
+    <string name="account_flow_title">Schlüssel und Daten sichern</string>
+    <string name="account_flow_copied_title">Schlüssel kopiert</string>
+    <string name="account_flow_intro">Bewahre deinen privaten Schlüssel (nsec) in einem Passwortmanager auf. Er stellt deinen Kontozugang wieder her; Logbuch, Listen und Trainingsdaten benötigen zusätzlich ein Daten-Backup. Teile deinen Schlüssel niemals.</string>
+    <string name="account_flow_store">Füge den Schlüssel jetzt in deinen Passwortmanager ein. Kehre zurück und bestätige erst, wenn er sicher außerhalb dieses Handys aufbewahrt ist. Die Zwischenablage wird nach 60 Sekunden geleert; du kannst ihn hier erneut kopieren.</string>
+    <string name="account_flow_schedule">Nach bestätigter Schlüsselaufbewahrung: erste Sicherung erstellen, danach täglich sichern. Jetzt wird noch nichts hochgeladen.</string>
+    <string name="account_flow_existing">Bereits aktiviert. Dein bisheriges Backup-Intervall bleibt unverändert.</string>
+    <string name="backup_storage_short">Verschlüsselt auf öffentlichen Servern. Dein Schlüssel entsperrt das Backup; Betreiber sehen Verbindungsdaten. Beim Löschen können Kopien zurückbleiben.</string>
+    <string name="account_flow_copy">Schlüssel entsperren und kopieren</string>
+    <string name="account_flow_copy_again">Schlüssel erneut kopieren</string>
+    <string name="account_flow_store_and_start">Schlüssel gespeichert · Backup starten</string>
+    <string name="account_flow_store_only">Schlüssel sicher aufbewahrt</string>
+    <string name="account_flow_running">Deine Sicherung wird abgeschlossen…</string>
+    <string name="account_flow_key_only_success">Schlüsselaufbewahrung bestätigt. Das Daten-Backup bleibt aus. Du kannst es später unter „Sichern &amp; übertragen“ einrichten.</string>
+    <string name="account_flow_success">Erste Datensicherung erfolgreich. Tägliche Backups sind jetzt aktiviert.</string>
+    <string name="account_flow_existing_success">Datensicherung erfolgreich. Dein bisheriges Intervall bleibt unverändert.</string>
+    <string name="account_flow_error">Die Backup-Einrichtung konnte nicht abgeschlossen werden. Deine Schlüsselaufbewahrung ist bestätigt. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="account_flow_existing_error">Die neue Sicherung konnte nicht abgeschlossen werden. Deine Schlüsselaufbewahrung ist bestätigt und deine bisherigen Backup-Einstellungen bleiben erhalten. Versuche es erneut.</string>
+    <string name="account_flow_retry">Erneut versuchen</string>
+    <string name="account_flow_already_stored">Bestätige, dass dein aktueller Kontoschlüssel sicher außerhalb dieses Handys aufbewahrt ist. Optional kannst du jetzt auch deine Daten sichern.</string>
 </resources>

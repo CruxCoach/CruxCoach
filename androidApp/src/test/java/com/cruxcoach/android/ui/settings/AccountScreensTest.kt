@@ -133,7 +133,7 @@ class AccountScreensTest {
         compose.onNodeWithContentDescription(text(R.string.nostr_profile_banner_change)).assertIsNotEnabled()
     }
 
-    @Test fun `recovery help cannot copy a key or acknowledge a backup`() {
+    @Test fun `recovery help is read only and stored key action opens the confirmation flow`() {
         var copies = 0
         var acknowledgements = 0
         compose.setContent {
@@ -150,10 +150,6 @@ class AccountScreensTest {
         compose.onNodeWithText(text(R.string.action_close)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(0, copies); assertEquals(0, acknowledgements) }
         compose.onNodeWithText(text(R.string.backup_key_warning_acknowledged)).performClick()
-        compose.onNodeWithText(text(R.string.backup_key_warning_ack_cancel)).assertIsDisplayed().performClick()
-        compose.runOnIdle { assertEquals(0, acknowledgements) }
-        compose.onNodeWithText(text(R.string.backup_key_warning_acknowledged)).performClick()
-        compose.onNodeWithText(text(R.string.backup_key_warning_ack_confirm)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, acknowledgements); assertEquals(0, copies) }
         compose.onNodeWithTag("account_copy_secret").performTouchInput { click() }
         compose.runOnIdle { assertEquals(1, copies) }

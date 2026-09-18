@@ -278,6 +278,7 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
+            route == Routes.BACKUP_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||

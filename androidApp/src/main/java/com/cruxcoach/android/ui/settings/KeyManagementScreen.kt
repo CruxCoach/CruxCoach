@@ -48,7 +48,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,20 +70,20 @@ fun KeyManagementScreen(
     onNavigateBack: () -> Unit,
     onNavigateToImport: () -> Unit,
     onNavigateToBackup: () -> Unit = {},
-    viewModel: KeyManagementViewModel = hiltViewModel()
+    viewModel: KeyManagementViewModel = hiltViewModel(),
+    backupFlow: AccountBackupViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val npubCopiedMessage = stringResource(R.string.key_toast_npub_copied)
 
-    var showNsecWarning by remember { mutableStateOf(false) }
+    val backupFlowState by backupFlow.state.collectAsStateWithLifecycle()
     var showBiometricUnavailable by remember { mutableStateOf(false) }
     var showNoSecurityWarning by remember { mutableStateOf(false) }
     var noSecurityPendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showAmberNotInstalled by remember { mutableStateOf(false) }
     var pendingAmber by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showLocalSwitch by remember { mutableStateOf(false) }
-    var showBackupDone by remember { mutableStateOf(false) }
 
     // Process restart after identity change (Amber login, switch to local)
     LaunchedEffect(state.requireRestart) {
@@ -126,7 +125,7 @@ fun KeyManagementScreen(
     ) { padding ->
         AccountManagementContent(
             state = state,
-            onCopyNsec = { showNsecWarning = true },
+            onCopyNsec = { backupFlow.open() },
             onImport = onNavigateToImport,
             onOpenBackup = onNavigateToBackup,
             onSetupAmber = {
@@ -141,27 +140,39 @@ fun KeyManagementScreen(
                 copyToClipboard(context, state.npubFull, "npub", sensitive = false)
                 Toast.makeText(context, npubCopiedMessage, Toast.LENGTH_SHORT).show()
             },
-            onAcknowledgeBackup = viewModel::acknowledgeKeyBackup,
+            onAcknowledgeBackup = { backupFlow.open(alreadyStored = true) },
             modifier = Modifier.padding(padding),
         )
     }
 
     // Dialogs
-    if (showNsecWarning) {
-        NsecWarningDialog(
-            onDismiss = { showNsecWarning = false },
-            onConfirm = {
-                showNsecWarning = false
-                val copyAndFinish = { if (viewModel.confirmNsecCopy()) showBackupDone = true }
+    AccountBackupDialog(
+        state = backupFlowState,
+        onChooseBackup = backupFlow::chooseBackup,
+        onConfirmStored = {
+            viewModel.acknowledgeKeyBackup()
+            backupFlow.confirmStored()
+        },
+        onDismiss = backupFlow::close,
+        onCopy = {
+            if (backupFlow.beginAuthentication()) {
+                val copyAndFinish = {
+                    val copied = runCatching { viewModel.confirmNsecCopy() }.getOrDefault(false)
+                    backupFlow.authenticationFinished(copied)
+                    if (!copied) Toast.makeText(context, context.getString(R.string.key_toast_auth_failed), Toast.LENGTH_SHORT).show()
+                }
                 requestBiometric(context, onSuccess = copyAndFinish,
-                    onUnavailable = { showBiometricUnavailable = true },
+                    onUnavailable = { backupFlow.authenticationFinished(false); showBiometricUnavailable = true },
                     onNoHardware = {
+                        backupFlow.authenticationFinished(false)
                         noSecurityPendingAction = copyAndFinish
                         showNoSecurityWarning = true
-                    })
+                    },
+                    onCancelled = { backupFlow.authenticationFinished(false) },
+                )
             }
-        )
-    }
+        },
+    )
 
     if (showBiometricUnavailable) {
         BiometricUnavailableDialog(
@@ -235,19 +246,6 @@ fun KeyManagementScreen(
             toAmber = false,
             onDismiss = { showLocalSwitch = false },
             onConfirm = { showLocalSwitch = false; viewModel.switchToLocalSigner() },
-        )
-    }
-    if (showBackupDone) {
-        AlertDialog(
-            onDismissRequest = { showBackupDone = false },
-            title = { Text(stringResource(R.string.account_backup_finish_title)) },
-            text = { Text(stringResource(R.string.account_backup_finish_body), modifier = Modifier.verticalScroll(rememberScrollState())) },
-            confirmButton = { TextButton(onClick = {
-                showBackupDone = false; viewModel.acknowledgeKeyBackup(); onNavigateToBackup()
-            }) { Text(stringResource(R.string.account_key_saved_open_backup)) } },
-            dismissButton = { TextButton(onClick = { showBackupDone = false }) {
-                Text(stringResource(R.string.action_close))
-            } },
         )
     }
     if (state.showAmberSuccessDialog) {
@@ -366,7 +364,6 @@ internal fun AccountManagementContent(
 
 @Composable
 internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, onAcknowledge: () -> Unit) {
-    var showAckDialog by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         InfoHeading(stringResource(R.string.account_recovery_title), stringResource(R.string.account_recovery_help))
         Text(stringResource(R.string.account_backup_priority), style = MaterialTheme.typography.bodyLarge)
@@ -378,28 +375,12 @@ internal fun AccountRecoverySection(backedUp: Boolean, onCopyNsec: () -> Unit, o
             Text(stringResource(R.string.account_copy_secret))
         }
         if (!backedUp) {
-            TextButton(onClick = { showAckDialog = true }, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = onAcknowledge, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.backup_key_warning_acknowledged))
             }
         }
     }
-    if (showAckDialog) {
-        AlertDialog(
-            onDismissRequest = { showAckDialog = false },
-            title = { Text(stringResource(R.string.backup_key_warning_ack_dialog_title)) },
-            text = { Text(stringResource(R.string.backup_key_warning_ack_dialog_body), modifier = Modifier.verticalScroll(rememberScrollState())) },
-            confirmButton = {
-                TextButton(onClick = { showAckDialog = false; onAcknowledge() }) {
-                    Text(stringResource(R.string.backup_key_warning_ack_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAckDialog = false }) {
-                    Text(stringResource(R.string.backup_key_warning_ack_cancel))
-                }
-            },
-        )
-    }
+
 }
 
 internal fun restartApp(context: Context, openBackup: Boolean = false) {

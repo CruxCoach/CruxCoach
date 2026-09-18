@@ -45,7 +45,8 @@ internal fun BackupSettingsSection(
         SettingsInfoHeading(
             title = stringResource(R.string.settings_backup_title),
             description = stringResource(R.string.settings_backup_description) + "\n\n" +
-                stringResource(R.string.settings_backup_device_local_note),
+                stringResource(R.string.settings_backup_device_local_note) + "\n\n" +
+                stringResource(R.string.backup_public_storage_notice),
         )
 
         Spacer(Modifier.height(12.dp))
@@ -74,7 +75,8 @@ internal fun BackupSettingsSection(
         Spacer(Modifier.height(12.dp))
 
         Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.backup_public_storage_notice), style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.backup_storage_short), style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
 
         // Toggle row
@@ -134,7 +136,7 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onRunBackupNow,
-                enabled = !state.isRunningOneShot,
+                enabled = !state.isRunningOneShot && !state.isRestoring && !state.isDeletingRemote,
             ) {
                 if (state.isRunningOneShot) {
                     CircularProgressIndicator(
