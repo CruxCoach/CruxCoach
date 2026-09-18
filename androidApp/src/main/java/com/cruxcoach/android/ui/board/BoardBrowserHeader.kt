@@ -168,7 +168,7 @@ internal fun BoardBrowserHeader(
                     IconButton(onClick = { overflowOpen = true }, modifier = Modifier.size(48.dp)
                         .testTag("board_header_overflow")
                         .then(if (directCount == 0) Modifier.tourTarget(TourTarget.MENU) else Modifier)) {
-                        Icon(Icons.Default.MoreHoriz, stringResource(R.string.action_more_options))
+                        Icon(Icons.Default.MoreVert, stringResource(R.string.action_more_options))
                     }
                     DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                         actions.drop(directCount).forEachIndexed { index, (label, icon, action) ->
