@@ -4,9 +4,15 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -48,17 +54,22 @@ internal fun rememberBrowserTour(): Pair<BrowserTour, TourStep> {
 internal fun TourHint(title: Int, message: Int, action: Int, onAction: () -> Unit,
                       onEnd: () -> Unit, secondary: Int? = null, onSecondary: () -> Unit = {}) {
     BackHandler(onBack = onEnd)
+    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.45f).coerceAtLeast(160.dp)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer,
         shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(12.dp).testTag("browser_tour_hint")) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(message), style = MaterialTheme.typography.bodyMedium)
-            // Wrap for narrow displays and large text.
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onAction) { Text(stringResource(action)) }
-                if (secondary != null) TextButton(onClick = onSecondary) { Text(stringResource(secondary)) }
-                TextButton(onClick = onEnd) { Text(stringResource(R.string.tour_end)) }
+        Box(Modifier.heightIn(max = maxHeight)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(title), modifier = Modifier.padding(end = 40.dp), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(message), style = MaterialTheme.typography.bodyMedium)
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onAction) { Text(stringResource(action)) }
+                    if (secondary != null) TextButton(onClick = onSecondary) { Text(stringResource(secondary)) }
+                }
+            }
+            // Dismissal stays visible even when large text makes the content scroll.
+            IconButton(onClick = onEnd, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tour_end))
             }
         }
     }

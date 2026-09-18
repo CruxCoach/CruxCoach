@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 class OnboardingDownloadSelectionTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun `first step reveals catalogue choices and only Continue confirms the edited selection`() {
+    @Test fun `first step shows catalogue choices directly and only Continue confirms the edited selection`() {
         val onboarding = mockk<OnboardingViewModel>(relaxed = true)
         every { onboarding.state } returns MutableStateFlow(OnboardingState())
         val sync = mockk<BoardSyncViewModel>(relaxed = true)
@@ -37,7 +37,6 @@ class OnboardingDownloadSelectionTest {
             }
         }
         compose.onNode(isDialog()).assertDoesNotExist()
-        compose.onNodeWithTag("setup_catalogue_choices").performScrollTo().performClick()
         compose.onNodeWithTag("board_selection_kilter").performScrollTo().assertIsOn().performClick()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
         restoration.emulateSavedInstanceStateRestore()

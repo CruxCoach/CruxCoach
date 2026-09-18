@@ -3,6 +3,12 @@ package com.cruxcoach.android.ui.board
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import com.cruxcoach.android.ui.onboarding.TourHint
+import com.cruxcoach.android.R
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -35,6 +41,26 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_header_overflow").performClick()
         compose.onNodeWithTag("board_tour_replay").assertIsDisplayed()
         assertTrue(angleOpened)
+    }
+
+    @Test fun `tour remains dismissible and actions scroll into view with large text`() {
+        var ended = false
+        var connected = false
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+                MaterialTheme { Box(Modifier.width(320.dp).height(400.dp)) {
+                    TourHint(R.string.tour_connect_title, R.string.tour_connect_body,
+                        R.string.cd_board_connect, { connected = true }, { ended = true },
+                        R.string.tour_later)
+                } }
+            }
+        }
+        compose.onNodeWithContentDescription("End tour").assertIsDisplayed()
+        compose.onNodeWithText("Connect board").performScrollTo().assertIsDisplayed().performClick()
+        assertTrue(connected)
+        compose.onNodeWithContentDescription("End tour").assertIsDisplayed().performClick()
+        assertTrue(ended)
     }
 
     @Test fun `compact status keeps multi selection when reopening details`() {

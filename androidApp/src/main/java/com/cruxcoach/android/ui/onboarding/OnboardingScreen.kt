@@ -118,11 +118,6 @@ fun OnboardingScreen(
                     connectedName = ble.connectedBoardName.takeIf { ble.connectionState == com.cruxcoach.android.ble.ConnectionState.CONNECTED },
                     suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
                     onDefer = { BrowserTour(context).deferBle() },
-                    onRestore = {
-                        viewModel.setBackupOptIn(true)
-                        viewModel.setBackupChoice(BackupChoice.RESTORE)
-                        viewModel.requestKeyImport()
-                    },
                 )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
@@ -405,7 +400,6 @@ private fun BoardSetupStep(
     connectedName: String?,
     suggestedBrand: BoardBrand?,
     onDefer: () -> Unit,
-    onRestore: () -> Unit,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
@@ -472,11 +466,11 @@ private fun BoardSetupStep(
 
         Text(stringResource(R.string.setup_download_hint), style = MaterialTheme.typography.bodyMedium)
         downloadSelection?.let { selected ->
-            var showAllDownloads by rememberSaveable { mutableStateOf(false) }
-            TextButton(onClick = { showAllDownloads = !showAllDownloads }, modifier = Modifier.testTag("setup_catalogue_choices")) {
-                Text(stringResource(R.string.setup_more_catalogues, selected.size))
-            }
-            if (showAllDownloads) BoardMultiSelectRows(
+            Text(
+                stringResource(R.string.setup_more_catalogues, selected.size),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            BoardMultiSelectRows(
                 selectedBrands = selected,
                 onToggleBrand = { brand -> onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand) },
                 onToggleSelectAll = {
@@ -485,7 +479,6 @@ private fun BoardSetupStep(
                 }, confirmColor = OrangeAccent,
             )
         }
-        TextButton(onClick = onRestore) { Text(stringResource(R.string.setup_restore)) }
 
     }
 }

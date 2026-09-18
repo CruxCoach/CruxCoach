@@ -355,15 +355,16 @@ fun BoardBrowserScreen(
             onSettings = onNavigateToSettings,
             onTour = { tour.start(replay = true) },
         )
+        val tourCatalogueReady = state.hasBoardData && state.activeBrandHasCatalogue
         when {
             tourStep == TourStep.CONNECT -> TourHint(R.string.tour_connect_title, R.string.tour_connect_body,
                 R.string.cd_board_connect, { showBleSheet = true }, { tour.move(TourStep.DONE) },
                 R.string.tour_later, { tour.deferBle(); tour.move(TourStep.ANGLE) })
-            state.activeBrandHasCatalogue && tourStep == TourStep.ANGLE -> TourHint(R.string.tour_angle_title, R.string.tour_angle_body,
+            tourCatalogueReady && tourStep == TourStep.ANGLE -> TourHint(R.string.tour_angle_title, R.string.tour_angle_body,
                 R.string.tour_angle_action, { showAngleSheet = true }, { tour.move(TourStep.DONE) })
-            state.activeBrandHasCatalogue && tourStep == TourStep.FILTER -> TourHint(R.string.tour_filter_title, R.string.tour_filter_body,
+            tourCatalogueReady && tourStep == TourStep.FILTER -> TourHint(R.string.tour_filter_title, R.string.tour_filter_body,
                 R.string.cd_filter, { tour.move(TourStep.OPEN); onNavigateToFilter() }, { tour.move(TourStep.DONE) })
-            !state.activeBrandHasCatalogue && tourStep in listOf(TourStep.ANGLE, TourStep.FILTER, TourStep.OPEN) -> TourHint(R.string.tour_catalogue_title, R.string.tour_catalogue_body,
+            !tourCatalogueReady && tourStep in listOf(TourStep.ANGLE, TourStep.FILTER, TourStep.OPEN) -> TourHint(R.string.tour_catalogue_title, R.string.tour_catalogue_body,
                 R.string.board_browser_change_board, { showBoardPicker = true }, { tour.move(TourStep.DONE) })
             state.climbs.isNotEmpty() && tourStep == TourStep.OPEN -> TourHint(R.string.tour_open_title, R.string.tour_open_body,
                 R.string.action_done, { tour.move(TourStep.PROJECT) }, { tour.move(TourStep.DONE) })
