@@ -3000,6 +3000,8 @@
     <string name="setup_catalogues_title">Climbs herunterladen</string>
     <string name="setup_catalogues_info">Wähle die Boards, deren Climbs du nutzen möchtest. Mit „Laden und weiter“ startet der Download; diese Kataloge bleiben auch für künftige Updates ausgewählt. Du kannst währenddessen fortfahren.\n\nDu kannst die Auswahl später ändern. Ohne Auswahl wird nichts heruntergeladen.</string>
     <string name="setup_bluetooth_find">Per Bluetooth finden</string>
+    <string name="setup_bluetooth_result_detected">Per Bluetooth wurde ein %1$s-Board erkannt. Wähle jetzt unten Modell und Größe – das kann Bluetooth nicht unterscheiden.</string>
+    <string name="setup_bluetooth_result_none">Keine Board-Familie erkannt. Wähle dein Board unten aus.</string>
     <string name="setup_bluetooth_info">Optional vor Ort: Verbinde dein Board, um bei der Board-Auswahl eine passende Familie vorgeschlagen zu bekommen. Modell und Größe wählst du selbst. Du kannst dich auch später im Board-Browser verbinden.</string>
     <string name="board_preview_unavailable">Kein Vorschaubild verfügbar</string>
     <string name="board_preview_enlarge">Boardbild vergrößern: %1$s</string>

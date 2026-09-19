@@ -3001,6 +3001,8 @@
     <string name="setup_catalogues_title">Download climbs</string>
     <string name="setup_catalogues_info">Choose the boards whose climbs you want to use. Download and continue starts the download and selects these catalogues for future updates. You can continue while they download.\n\nYou can change your selection later. Nothing is downloaded if no boards are selected.</string>
     <string name="setup_bluetooth_find">Find via Bluetooth</string>
+    <string name="setup_bluetooth_result_detected">Bluetooth found a %1$s board. Now choose your model and size below — Bluetooth cannot tell these apart.</string>
+    <string name="setup_bluetooth_result_none">No board family recognised. Choose your board below.</string>
     <string name="setup_bluetooth_info">Optional when at the board: connect to get a suggested family in the board picker. Choose the model and size yourself. You can also connect later in the board browser.</string>
     <string name="board_preview_unavailable">No preview available</string>
     <string name="board_preview_enlarge">Enlarge board image: %1$s</string>

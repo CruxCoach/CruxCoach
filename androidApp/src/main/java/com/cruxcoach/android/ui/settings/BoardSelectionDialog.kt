@@ -108,6 +108,9 @@ internal fun BoardSelectionDialog(
      *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
     onFindViaBluetooth: (() -> Unit)? = null,
+    /** Set once the user came back from the Bluetooth search: the recognised family, or
+     *  [BluetoothFamilyResult.None]. Null = no search happened in this picker session. */
+    bluetoothResult: BluetoothFamilyResult? = null,
     onDismiss: () -> Unit,
 ) {
     val activeBrand = remember(initialBrand) { BoardBrand.fromWire(initialBrand) }
@@ -305,6 +308,25 @@ internal fun BoardSelectionDialog(
                         }
                         com.cruxcoach.android.ui.common.InfoButton(
                             stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
+                    }
+                    // The search only narrows the family. Say so where the decision happens:
+                    // users otherwise assume the board is "found" and confirm the default size.
+                    bluetoothResult?.let { result ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().testTag("setup_bluetooth_result"),
+                        ) {
+                            Text(
+                                when (result) {
+                                    is BluetoothFamilyResult.Detected -> stringResource(
+                                        R.string.setup_bluetooth_result_detected, result.brand.displayName)
+                                    BluetoothFamilyResult.None -> stringResource(R.string.setup_bluetooth_result_none)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(12.dp),
+                            )
+                        }
                     }
                 }
                 // Tier 0 — board category. A single dropdown: the labels are too
@@ -658,4 +680,10 @@ internal fun BoardImageChoiceRow(
             }
         }
     }
+}
+
+/** Outcome of the optional Bluetooth family search shown inside the board picker. */
+sealed interface BluetoothFamilyResult {
+    data class Detected(val brand: BoardBrand) : BluetoothFamilyResult
+    data object None : BluetoothFamilyResult
 }

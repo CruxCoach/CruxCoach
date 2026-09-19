@@ -220,10 +220,31 @@ fun BoardBrowserScreen(
             },
         )
     }
+    // Same optional Bluetooth family search as in setup: close the picker, run the regular
+    // connection sheet, then reopen the picker seeded with the recognised family.
+    var pickerReturnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    var pickerBluetoothSearched by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(showBleSheet) {
+        if (pickerReturnFromBluetooth && !showBleSheet) {
+            pickerReturnFromBluetooth = false
+            pickerBluetoothSearched = true
+            showBoardPicker = true
+        }
+    }
     if (showBoardPicker) {
+        val bluetoothSuggestion = com.cruxcoach.android.ui.onboarding.onboardingBoardSuggestion(bleConnState.connectedBoard)
         BoardPickerDialog(
-            onDismiss = { showBoardPicker = false },
-            onSelected = { showBoardPicker = false },
+            onDismiss = { showBoardPicker = false; pickerBluetoothSearched = false },
+            onSelected = { showBoardPicker = false; pickerBluetoothSearched = false },
+            suggestedBrand = if (pickerBluetoothSearched) bluetoothSuggestion else null,
+            bluetoothResult = if (!pickerBluetoothSearched) null else bluetoothSuggestion
+                ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
+                ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
+            onFindViaBluetooth = {
+                pickerReturnFromBluetooth = true
+                showBoardPicker = false
+                showBleSheet = true
+            },
             onFindViaGym = {
                 showBoardPicker = false
                 showGymSearch = true

@@ -375,9 +375,11 @@ private fun BoardSetupStep(
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
     var returnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    var bluetoothSearched by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(bleSearchOpen) {
         if (returnFromBluetooth && !bleSearchOpen) {
             returnFromBluetooth = false
+            bluetoothSearched = true
             showBoardModelDialog = true
         }
     }
@@ -388,6 +390,9 @@ private fun BoardSetupStep(
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
             deferDownloads = true,
             suggestedBrand = suggestedBrand,
+            bluetoothResult = if (!bluetoothSearched) null else suggestedBrand
+                ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
+                ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
             onFindViaBluetooth = {
                 returnFromBluetooth = true
                 showBoardModelDialog = false
