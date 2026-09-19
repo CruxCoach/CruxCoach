@@ -178,9 +178,12 @@ class BrowserUxTest {
     @Test fun `filter header leaves controls visible with large text`() {
         val viewModel = io.mockk.mockk<BoardBrowserViewModel>(relaxed = true)
         io.mockk.every { viewModel.state } returns kotlinx.coroutines.flow.MutableStateFlow(BoardBrowserState())
+        var reviewView: android.view.View? = null
+        val reviewScale = mutableStateOf(2f)
         compose.setContent {
+            reviewView = androidx.compose.ui.platform.LocalView.current
             val density = LocalDensity.current.density
-            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = reviewScale.value)) {
                 MaterialTheme { Box(Modifier.width(320.dp).height(500.dp)) {
                     BoardFilterScreen(viewModel, {})
                 } }
@@ -190,6 +193,22 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_filter_reset").assertIsDisplayed().performClick()
         io.mockk.verify { viewModel.clearAllBrowseFilters() }
         compose.onNodeWithTag("board_filter_show_results").assertIsDisplayed()
+        System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
+            for (scale in listOf(2f, 1f)) {
+                compose.runOnIdle { reviewScale.value = scale }
+                compose.waitForIdle()
+                compose.runOnIdle {
+                    val root = requireNotNull(reviewView)
+                    val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+                    root.draw(android.graphics.Canvas(bitmap))
+                    java.io.File(directory).mkdirs()
+                    java.io.File(directory, "filter-type-$scale.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+            }
+        }
     }
 
     @Test fun `compact status keeps multi selection when reopening details`() {

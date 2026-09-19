@@ -154,7 +154,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 )
                 Text(
                     stringResource(R.string.board_filter_grade_range, minLabel, maxLabel),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 RangeSlider(
@@ -208,7 +208,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 FilterSwitchRow(stringResource(R.string.board_filter_ungraded_only), state.filter.ungradedOnly, viewModel::updateUngradedOnlyFilter, "board_filter_ungraded_only")
                 FilterSwitchRow(stringResource(R.string.board_filter_my_climbs), state.filter.myClimbsOnly, viewModel::updateMyClimbsFilter, "board_filter_my_climbs")
                 if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark")
-                Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleMedium)
                 Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
                     onValueChangeFinished = { viewModel.commitFilterChange() }, valueRange = 0f..50f, steps = 49,
                     enabled = !state.filter.myClimbsOnly)
@@ -225,7 +225,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 if (activeBrand == BoardBrand.QUANTUM) {
                     Text(
                         stringResource(R.string.board_filter_quantum_rules),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Column(
@@ -243,7 +243,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                             FilterChip(
                                 selected = (state.filter.quantumRuleMask and rule.bit) != 0L,
                                 onClick = { viewModel.toggleQuantumRuleFilter(rule) },
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                                     selectedLabelColor = OrangeAccent
@@ -255,7 +255,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 
                     Text(
                         stringResource(R.string.board_filter_quantum_overlap_title),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     Column(
@@ -276,7 +276,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                 onClick = { viewModel.setQuantumOverlapFilter(option) },
                                 enabled = option == QuantumOverlapFilter.OFF ||
                                     state.quantumLayers.available,
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                                     selectedLabelColor = OrangeAccent,
@@ -300,7 +300,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                             )
                             else -> stringResource(R.string.board_filter_quantum_overlap_hint)
                         },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = if (!state.quantumLayers.complete &&
                             state.quantumLayers.occupied
                         ) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -318,14 +318,14 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, modifier = Modifier.weight(1f)); Switch(checked = checked, onCheckedChange = null)
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); Switch(checked = checked, onCheckedChange = null)
     }
 }
 
 @Composable
 internal fun <T> FilterChoiceRow(title: String, selected: T, choices: List<Pair<T, String>>, tag: String, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    ListItem(headlineContent = { Text(title) }, supportingContent = { Text(choices.firstOrNull { it.first == selected }?.second.orEmpty()) },
+    ListItem(headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) }, supportingContent = { Text(choices.firstOrNull { it.first == selected }?.second.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface) },
         trailingContent = { Text("›") }, modifier = Modifier.clickable { open = true }.testTag(tag))
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {

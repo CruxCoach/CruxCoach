@@ -40,7 +40,7 @@ internal fun BoardStatusFilter(
     Column {
         Text(
             stringResource(R.string.board_filter_status),
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
         val excludesSent = statusFilterExcludesSent(statuses)
@@ -58,7 +58,7 @@ internal fun BoardStatusFilter(
             Text(
                 stringResource(R.string.board_filter_exclude_sent),
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
             )
             Switch(checked = excludesSent, onCheckedChange = null)
         }
@@ -69,7 +69,7 @@ internal fun BoardStatusFilter(
                 if (ClimbStatusFilter.SENT in statuses) add(stringResource(R.string.board_filter_status_sent))
             }
             TextButton(onClick = { details = !details }, modifier = Modifier.testTag("board_filter_status_details")) {
-                Text(stringResource(R.string.board_filter_status) + ": " + if (labels.isEmpty()) stringResource(R.string.board_filter_all) else labels.joinToString(" · "))
+                Text(stringResource(R.string.board_filter_status) + ": " + if (labels.isEmpty()) stringResource(R.string.board_filter_all) else labels.joinToString(" · "), style = MaterialTheme.typography.bodyLarge)
             }
         }
         if (!compact || details) {
@@ -111,7 +111,7 @@ private fun StatusChip(label: String, selected: Boolean, tag: String, onClick: (
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
+        label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
         leadingIcon = if (selected) {
             { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
         } else null,
