@@ -1413,7 +1413,10 @@
     <string name="ble_your_climb">Dein Climb</string>
     <string name="board_ascent_tries">Top · %d Versuche</string>
     <string name="board_climb_frames">%d Frames</string>
-    <string name="board_climb_sends_count">%d Begehungen</string>
+    <plurals name="board_climb_sends_count">
+        <item quantity="one">%d Begehung</item>
+        <item quantity="other">%d Begehungen</item>
+    </plurals>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
     <string name="board_detail_quick_send_logged">Send geloggt</string>
