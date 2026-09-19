@@ -205,6 +205,21 @@ fun KeyImportScreen(
 
                 }
 
+                // A disabled button alone does not tell a beginner what is wrong. Only the
+                // public "npub" prefix is inspected; the input itself is never displayed.
+                val trimmedInput = state.input.trim()
+                if (detectedFormat == ImportFormat.UNKNOWN && trimmedInput.isNotEmpty() && state.error == null) {
+                    Text(
+                        text = stringResource(
+                            if (trimmedInput.startsWith("npub", ignoreCase = true)) R.string.key_import_hint_public_id
+                            else R.string.key_import_hint_unrecognized
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("key_import_format_hint"),
+                    )
+                }
+
                 // Error message
                 val error = state.error
                 if (error != null) {

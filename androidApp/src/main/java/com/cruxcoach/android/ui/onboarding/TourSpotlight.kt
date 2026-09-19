@@ -137,6 +137,10 @@ private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> 
             modifier = Modifier.offset { IntOffset(margin.roundToInt(), hintY.roundToInt()) }
                 .width(maxWidth - 32.dp).heightIn(max = with(density) { available.toDp() })
                 .onSizeChanged { hintHeight = it.height }
+                // The scrim is translucent: banners, tiles and headings underneath otherwise
+                // show through the hint and make it hard to read.
+                .background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState())
                 .pointerInput(Unit) { detectTapGestures { } })
         Button(onClick = onEnd,

@@ -1413,7 +1413,10 @@
     <string name="board_logbook_filter_angle">Angle</string>
     <string name="board_logbook_no_filter_matches">No logbook entries match these filters.</string>
     <string name="board_logbook_best_grade">Best Grade</string>
-    <string name="board_logbook_day_entries">%d entries</string>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%d entry</item>
+        <item quantity="other">%d entries</item>
+    </plurals>
     <string name="board_logbook_empty_message">Record attempts or successful sends from a climb’s detail screen.</string>
     <string name="board_logbook_empty_title">No log entries yet</string>
     <string name="board_logbook_flash">Flash</string>
@@ -1991,6 +1994,8 @@
     <string name="key_import_hide">Hide key</string>
     <string name="key_import_detected">Detected: %1$s</string>
     <string name="key_import_button">Review account</string>
+    <string name="key_import_hint_public_id">This is your public account ID (npub). It cannot restore access. Paste the private key you saved instead.</string>
+    <string name="key_import_hint_unrecognized">This does not look like a key. Supported: nsec, ncryptsec, 64-character hex or recovery words.</string>
     <string name="key_import_success_toast">Key imported</string>
     <string name="key_import_overwrite_title">Switch account?</string>
     <string name="key_import_overwrite_text">Importing switches to the imported key. Your current climbs and lists are kept (not deleted), but become reachable only with your current key — they reappear if you re-import it. Make sure you have a backup of your current key.</string>

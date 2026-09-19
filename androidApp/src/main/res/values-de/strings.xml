@@ -1456,7 +1456,10 @@
     <string name="board_logbook_filter_angle">Winkel</string>
     <string name="board_logbook_no_filter_matches">Keine Logbook-Einträge entsprechen diesen Filtern.</string>
     <string name="board_logbook_best_grade">Bester Grad</string>
-    <string name="board_logbook_day_entries">%d Einträge</string>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%d Eintrag</item>
+        <item quantity="other">%d Einträge</item>
+    </plurals>
     <string name="board_logbook_empty_message">Erfasse Versuche oder erfolgreiche Begehungen in der Detailansicht eines Boulders.</string>
     <string name="board_logbook_empty_title">Noch keine Logeinträge</string>
     <string name="board_logbook_flash">Flash</string>
@@ -1991,6 +1994,8 @@
     <string name="key_import_hide">Schlüssel ausblenden</string>
     <string name="key_import_detected">Erkannt: %1$s</string>
     <string name="key_import_button">Konto prüfen</string>
+    <string name="key_import_hint_public_id">Das ist deine öffentliche Konto-ID (npub). Damit lässt sich der Zugang nicht wiederherstellen. Füge stattdessen den gesicherten privaten Schlüssel ein.</string>
+    <string name="key_import_hint_unrecognized">Das sieht nicht nach einem Schlüssel aus. Unterstützt: nsec, ncryptsec, 64-stelliger Hex-Wert oder Wiederherstellungswörter.</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
     <string name="key_import_overwrite_title">Konto wechseln?</string>
     <string name="key_import_overwrite_text">Der Import wechselt zu dem importierten Schlüssel. Deine aktuellen Climbs und Listen bleiben gespeichert (werden nicht gelöscht), sind aber nur noch mit deinem jetzigen Schlüssel erreichbar — sie erscheinen wieder, wenn du ihn erneut importierst. Sichere deinen jetzigen Schlüssel.</string>

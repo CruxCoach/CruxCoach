@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -61,12 +62,24 @@ internal fun rememberBoardImageBitmaps(
     sizeId: Long,
     layoutId: Long?,
     maxDimension: Int? = null,
-): List<ImageBitmap> {
+): List<ImageBitmap> = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension).orEmpty()
+
+/** Like [rememberBoardImageBitmaps], but distinguishes "still decoding" (null)
+ *  from "no asset resolves" (empty). Decoding a bundled board photo takes
+ *  seconds on slow phones; callers must not claim a missing image meanwhile. */
+@Composable
+internal fun rememberBoardImageLoadState(
+    brand: BoardBrand,
+    sizeId: Long,
+    layoutId: Long?,
+    maxDimension: Int? = null,
+): List<ImageBitmap>? {
     val assets = LocalContext.current.assets
     val candidates = remember(brand, sizeId, layoutId) {
         boardPreviewCandidatePaths(brand, sizeId, layoutId)
     }
-    val bitmaps by produceState(emptyList<ImageBitmap>(), candidates, assets, brand, layoutId, maxDimension) {
+    val bitmaps by produceState<List<ImageBitmap>?>(null, candidates, assets, brand, layoutId, maxDimension) {
+        value = null
         value = withContext(Dispatchers.IO) {
             if (brand == BoardBrand.MOONBOARD) {
                 decodeMoonBoardPreviewAssets(assets, layoutId, maxDimension)
@@ -97,7 +110,15 @@ internal fun BoardPreviewImage(
     showZoomHint: Boolean = false,
     fallback: @Composable () -> Unit = {},
 ) {
-    val bitmaps = rememberBoardImageBitmaps(brand, sizeId, layoutId, maxDimension = 512)
+    val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension = 512)
+    if (loaded == null) {
+        // Still decoding: keep the slot, but never show the "unavailable" fallback yet.
+        Box(modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        }
+        return
+    }
+    val bitmaps: List<ImageBitmap> = loaded
     if (bitmaps.isNotEmpty()) {
         Box(modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier) {
             bitmaps.forEach { bitmap ->

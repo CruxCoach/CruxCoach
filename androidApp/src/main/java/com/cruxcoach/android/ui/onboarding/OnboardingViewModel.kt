@@ -239,7 +239,9 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         currentStep = OnboardingStep.KILTER,
-                        backupOptIn = true,
+                        // Resuming a restore is not a backup consent: the user may cancel the
+                        // key import, find no backup or decline it. Only a successful restore
+                        // (confirmOnboardingRestore) turns the opt-in on; the default stays off.
                         backupChoice = BackupChoice.RESTORE,
                         hasNostrKey = hasRestoreAccount(),
                     )
