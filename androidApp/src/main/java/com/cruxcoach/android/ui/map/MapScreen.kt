@@ -179,15 +179,23 @@ fun MapScreen(
         }
     }
     var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
+    // The query the current results belong to. "No results" may only be claimed for a
+    // finished lookup of exactly the typed text, never while the index or a lookup is pending.
+    var searchedQuery by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(searchQuery, searchIndex) {
         val index = searchIndex
-        if (index == null || searchQuery.trim().length < 2) {
+        if (searchQuery.trim().length < 2) {
             searchResults = emptyList()
+            searchedQuery = searchQuery
             return@LaunchedEffect
         }
+        if (index == null) return@LaunchedEffect
         delay(200)
-        searchResults = withContext(Dispatchers.Default) { index.search(searchQuery) }
+        val query = searchQuery
+        searchResults = withContext(Dispatchers.Default) { index.search(query) }
+        searchedQuery = query
     }
+    val searchPending = searchQuery.trim().length >= 2 && searchedQuery != searchQuery
 
     LaunchedEffect(mapHandle, selectedVenue) {
         val (map, style) = mapHandle ?: return@LaunchedEffect
@@ -342,7 +350,19 @@ fun MapScreen(
                     tonalElevation = 6.dp,
                     shadowElevation = 8.dp,
                 ) {
-                    if (searchResults.isEmpty()) {
+                    if (searchPending && searchResults.isEmpty()) {
+                        Row(
+                            modifier = Modifier.padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                stringResource(R.string.map_search_searching),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (searchResults.isEmpty()) {
                         Text(
                             stringResource(R.string.map_search_no_results),
                             modifier = Modifier.padding(20.dp),

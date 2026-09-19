@@ -288,6 +288,7 @@
     <string name="map_search_close">Suche schließen</string>
     <string name="map_search_hint">Halle, Ort oder Board</string>
     <string name="map_search_no_results">Keine Hallen oder Orte gefunden</string>
+    <string name="map_search_searching">Suche läuft…</string>
     <string name="cd_map">Boards auf der Karte entdecken</string>
     <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>

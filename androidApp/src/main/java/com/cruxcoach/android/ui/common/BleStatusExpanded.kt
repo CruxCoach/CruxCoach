@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.common
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CellTower
@@ -45,6 +47,27 @@ internal fun BleStatusExpanded(
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            // The rows below are full-width tap targets of their own (open climb, open
+            // player), which left no free card area to collapse the banner again. A dedicated
+            // header with a visible 48dp control keeps collapsing always reachable.
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onCollapse),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.settings_sharing_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onCollapse, modifier = Modifier.testTag("ble_status_collapse")) {
+                    Icon(
+                        Icons.Filled.ExpandLess,
+                        contentDescription = stringResource(R.string.cd_collapse),
+                        tint = OrangeAccent,
+                    )
+                }
+            }
             // Bug 1: Session queue section (shown when own session active)
             val session = state.ownSession
             if (session != null) {

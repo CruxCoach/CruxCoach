@@ -2282,9 +2282,9 @@ class BoardBrowserViewModel @Inject constructor(
             viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
                 val summary = withContext(Dispatchers.IO) {
-                    val ascents = personalBoardRepo.getUserAscentsBetween(
-                        session.startedAt, session.endedAt ?: session.startedAt
-                    )
+                    val ascents = SessionSummaryBuilder.sessionRows(
+                    personalBoardRepo, session.startedAt, session.endedAt ?: session.startedAt
+                )
                     // True flashes need the FULL history — a first-try repeat
                     // of an old project must not count as a flash.
                     val flashUuids =

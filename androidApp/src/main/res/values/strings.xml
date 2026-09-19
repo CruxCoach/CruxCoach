@@ -288,6 +288,7 @@
     <string name="map_search_close">Close search</string>
     <string name="map_search_hint">Gym, city or board</string>
     <string name="map_search_no_results">No gyms or places found</string>
+    <string name="map_search_searching">Searching…</string>
     <string name="cd_map">Discover boards on the map</string>
     <string name="map_filter_show_all">All</string>
     <string name="map_filter_show_original">Commercial gyms (Original)</string>
