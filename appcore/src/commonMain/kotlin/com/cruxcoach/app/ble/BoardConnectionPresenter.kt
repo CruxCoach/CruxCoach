@@ -6,6 +6,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,8 @@ data class BoardConnectionUiState(
     val remembered: List<RememberedBoard> = emptyList(),
     val connection: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoard: DiscoveredBoard? = null,
+    /** Quantum only: the model proven by the controller itself. Quantum SENDING is not exposed here yet. */
+    val quantumModel: QuantumBoardModel? = null,
     val connectionCapacity: BoardConnectionCapacity = BoardConnectionCapacity.UNKNOWN,
     val connectFailure: BoardConnectFailure? = null,
     val sending: Boolean = false,
@@ -76,6 +79,7 @@ class BoardConnectionPresenter(
                         remembered = known,
                         connection = link.connection,
                         connectedBoard = link.connectedBoard,
+                        quantumModel = link.quantumModel,
                         connectionCapacity = if (link.connectedBoard == null) {
                             BoardConnectionCapacity.UNKNOWN
                         } else {
