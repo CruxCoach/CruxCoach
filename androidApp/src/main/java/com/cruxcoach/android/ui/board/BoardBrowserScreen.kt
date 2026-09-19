@@ -366,7 +366,6 @@ fun BoardBrowserScreen(
             isBleConnected = isBleConnected,
             angle = state.filter.angle,
             onAngle = { showAngleSheet = true },
-            activeFilterCount = state.filter.activeBrowseFilterCount(),
             onOpenMenu = onOpenMenu,
             onLogbook = { if (tour.step() == TourStep.LOGBOOK) tour.move(TourStep.ENTRY); onNavigateToLogbook() },
             onLists = onNavigateToLists,

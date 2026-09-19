@@ -209,8 +209,5 @@ class BrowserUxTest {
         assertEquals((0..70 step 5).toList(), browserAngleOptions(BrowserFilterState()))
     }
 
-    @Test fun `filter count excludes physical angle and sorting but includes hidden restrictions`() {
-        assertEquals(0, BrowserFilterState(angle = 15).activeBrowseFilterCount())
-        assertEquals(3, BrowserFilterState(benchmarkOnly = true, myClimbsOnly = true, originFilter = OriginFilter.CRUXCOACH).activeBrowseFilterCount())
-    }
+
 }

@@ -73,7 +73,6 @@ internal fun BoardBrowserHeader(
     isBleConnected: Boolean,
     angle: Int,
     onAngle: () -> Unit,
-    activeFilterCount: Int = 0,
     onOpenMenu: () -> Unit,
     onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
@@ -153,9 +152,7 @@ internal fun BoardBrowserHeader(
                 }
                 IconButton(onClick = onFilter, modifier = Modifier.size(48.dp).testTag("board_filter_toggle")
                     .tourTarget(TourTarget.FILTER)) {
-                    BadgedBox(badge = { if (activeFilterCount > 0) Badge { Text(activeFilterCount.toString()) } }) {
-                        Icon(Icons.Default.Tune, stringResource(R.string.cd_filter))
-                    }
+                    Icon(Icons.Default.Tune, stringResource(R.string.cd_filter))
                 }
                 actions.take(directCount).forEachIndexed { index, (label, icon, action) ->
                     IconButton(onClick = action, modifier = Modifier.size(48.dp)

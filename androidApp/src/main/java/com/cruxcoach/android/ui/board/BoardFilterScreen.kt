@@ -338,14 +338,6 @@ internal fun <T> FilterChoiceRow(title: String, selected: T, choices: List<Pair<
     }, confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.action_close)) } })
 }
 
-internal fun BrowserFilterState.activeBrowseFilterCount(): Int = listOf(
-    minGradeIndex != BrowserFilterState.DEFAULT_MIN_GRADE_INDEX || maxGradeIndex != BrowserFilterState.DEFAULT_MAX_GRADE_INDEX,
-    minAscensionists > 0, searchQuery.isNotBlank(),
-    statusFilter.isNotEmpty() && statusFilter.size != ClimbStatusFilter.entries.size,
-    climbTypeFilter != ClimbTypeFilter.BOULDER, benchmarkOnly, originFilter != OriginFilter.ALL,
-    quantumRuleMask != 0L, quantumOverlapFilter.active, myClimbsOnly, ungradedOnly,
-).count { it }
-
 /** Plain-language glossary for the browse filter / sort terms, opened from the
  *  ℹ action. Adapted to 0.2.0's multi-select status model (Neu / Versucht /
  *  Gesendet — no "Unsent" chip) and its added modes (ungraded-only, the
