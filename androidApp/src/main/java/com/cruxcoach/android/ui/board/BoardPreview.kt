@@ -113,7 +113,8 @@ internal fun BoardPreviewImage(
     val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension = 512)
     if (loaded == null) {
         // Still decoding: keep the slot, but never show the "unavailable" fallback yet.
-        Box(modifier, contentAlignment = Alignment.Center) {
+        // Same tap target as the loaded image, so the zoom request is not lost mid-decode.
+        Box(if (onClick != null) modifier.clickable(onClick = onClick) else modifier, contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
         }
         return

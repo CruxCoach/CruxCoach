@@ -422,7 +422,7 @@ class DataExchangeViewModel @Inject constructor(
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val dupNote = if (result.skippedDuplicates > 0)
-                    context.getString(R.string.import_result_duplicates_skipped, result.skippedDuplicates) else ""
+                    " " + context.getString(R.string.import_result_duplicates_skipped, result.skippedDuplicates) else ""
 
                 _state.update { it.copy(
                     isImporting = false,

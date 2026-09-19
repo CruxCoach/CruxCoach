@@ -280,7 +280,7 @@ fun PlaylistDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(state.name) },
+                    title = { Text(state.name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(

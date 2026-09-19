@@ -43,7 +43,8 @@ fun DataImportScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val importBugReportTitle = stringResource(R.string.error_bug_report_import_title)
-    val snackbarHostState = SnackbarHostState()
+    // Remembered: a fresh host per recomposition dropped the import result after a moment.
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()

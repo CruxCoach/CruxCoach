@@ -34,6 +34,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
@@ -390,9 +391,9 @@ private fun ListCard(
                 )
                 Text(
                     if (list.hasPlaybackPlan) {
-                        stringResource(R.string.board_list_climb_count_with_plan, list.climbCount)
+                        pluralStringResource(R.plurals.board_list_climb_count_with_plan, list.climbCount.toInt(), list.climbCount)
                     } else {
-                        stringResource(R.string.board_list_climb_count, list.climbCount)
+                        pluralStringResource(R.plurals.board_list_climb_count, list.climbCount.toInt(), list.climbCount)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

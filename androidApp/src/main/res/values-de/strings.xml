@@ -1441,8 +1441,14 @@
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
-    <string name="board_list_climb_count">%d Climbs</string>
-    <string name="board_list_climb_count_with_plan">%d Climbs · Trainingsablauf</string>
+    <plurals name="board_list_climb_count">
+        <item quantity="one">%d Climb</item>
+        <item quantity="other">%d Climbs</item>
+    </plurals>
+    <plurals name="board_list_climb_count_with_plan">
+        <item quantity="one">%d Climb · Trainingsablauf</item>
+        <item quantity="other">%d Climbs · Trainingsablauf</item>
+    </plurals>
     <string name="board_list_filter_all">Alle</string>
     <string name="board_list_unavailable_count">%d nicht angezeigt — Board nicht geladen</string>
     <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
@@ -1745,7 +1751,7 @@
     <string name="import_result_own_climbs">%1$d eigene Climbs</string>
     <string name="import_result_no_data">Keine Daten</string>
     <string name="import_result_summary">Importiert: %1$s</string>
-    <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>
+    <string name="import_result_duplicates_skipped">(%1$d Duplikate übersprungen)</string>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
     <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>

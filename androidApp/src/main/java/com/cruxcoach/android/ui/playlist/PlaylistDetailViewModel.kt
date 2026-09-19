@@ -104,6 +104,10 @@ class PlaylistDetailViewModel @Inject constructor(
                 // batch; angle-agnostic since playlist rows pin their angle.
                 val uuids = rows.mapNotNull { it.climbUuid }.distinct()
                 val climbs = resolveClimbs(boardRepository, uuids)
+                // The any-angle lookup returns ONE arbitrary angle row per climb. A step pins
+                // its own angle, so its grade must come from that angle's statistics.
+                val pinned = resolveClimbsAtPinnedAngles(
+                    boardRepository, rows.mapNotNull { r -> r.climbUuid?.let { u -> r.angle?.let { a -> u to a.toInt() } } })
                 list to rows.map { row ->
                     PlaylistUiEntry(
                         entryId = row.id,
@@ -111,7 +115,9 @@ class PlaylistDetailViewModel @Inject constructor(
                         restSeconds = row.restSeconds,
                         climbUuid = row.climbUuid,
                         angle = row.angle,
-                        climb = row.climbUuid?.let { climbs[normUuidKey(it)] },
+                        climb = row.climbUuid?.let { uuid ->
+                            gradeForPinnedAngle(climbs[normUuidKey(uuid)], pinned, uuid, row.angle)
+                        },
                     )
                 }
             }
@@ -426,6 +432,33 @@ class PlaylistDetailViewModel @Inject constructor(
          *  community rows nodash-lowercase — while share-link imports and
          *  backup restores may carry dashed and/or lowercased spellings. */
         fun normUuidKey(uuid: String): String = uuid.replace("-", "").lowercase()
+
+        /** Per-angle statistics for the pinned (uuid, angle) pairs, keyed by
+         *  [normUuidKey] + angle. One query per distinct angle. */
+        fun resolveClimbsAtPinnedAngles(
+            boardRepository: BoardRepository,
+            pairs: Collection<Pair<String, Int>>,
+        ): Map<Pair<String, Int>, ClimbWithStats> = buildMap {
+            pairs.groupBy({ it.second }, { it.first }).forEach { (angle, uuids) ->
+                val lookup = uuids.asSequence().flatMap {
+                    val bare = it.replace("-", "")
+                    sequenceOf(it, bare.lowercase(), bare.uppercase())
+                }.distinct().toList()
+                boardRepository.getClimbsByUuids(lookup, angle).forEach { put(normUuidKey(it.uuid) to angle, it) }
+            }
+        }
+
+        /** The step's climb with the grade of its pinned angle. Without statistics at that
+         *  angle no grade is shown, instead of a grade that belongs to another angle. */
+        fun gradeForPinnedAngle(
+            anyAngle: ClimbWithStats?,
+            pinned: Map<Pair<String, Int>, ClimbWithStats>,
+            uuid: String,
+            angle: Long?,
+        ): ClimbWithStats? {
+            if (anyAngle == null || angle == null) return anyAngle
+            return pinned[normUuidKey(uuid) to angle.toInt()] ?: anyAngle.copy(difficultyAverage = null)
+        }
 
         /** Batch-resolve playlist entry uuids against the board DB, tolerant
          *  of spelling differences: query every plausible stored spelling and
