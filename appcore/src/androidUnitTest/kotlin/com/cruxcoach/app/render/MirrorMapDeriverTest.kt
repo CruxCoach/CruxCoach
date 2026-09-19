@@ -1,6 +1,6 @@
 package com.cruxcoach.app.render
 
-import com.cruxcoach.android.ui.board.MirrorMapDeriver.Hold
+import com.cruxcoach.app.render.MirrorMapDeriver.Hold
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
