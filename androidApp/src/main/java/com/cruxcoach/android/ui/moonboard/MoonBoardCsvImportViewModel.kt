@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.moonboard
 
+import com.cruxcoach.android.R
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -34,7 +35,17 @@ class MoonBoardCsvImportViewModel @Inject constructor(
             val result = runCatching {
                 val csv = withContext(Dispatchers.IO) { readBounded(uri) }
                 importer.import(csv)
-            }.getOrElse { MoonBoardCsvImportResult(error = it.message ?: it.javaClass.simpleName) }
+            }.getOrElse {
+                // Parser messages are English developer text; none of them quotes file content.
+                val reason = it.message ?: it.javaClass.simpleName
+                MoonBoardCsvImportResult(
+                    error = when {
+                        reason.contains("header not found") || reason.contains("no logbook entries") ->
+                            context.getString(R.string.moon_csv_error_not_moon_export)
+                        else -> context.getString(R.string.moon_csv_error_row, reason)
+                    }
+                )
+            }
             _state.update { State(result = result) }
         }
     }

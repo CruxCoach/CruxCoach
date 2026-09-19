@@ -1208,17 +1208,20 @@ private fun AutoSyncOverdueBanner(days: Int) {
     }
 }
 
-private fun formatTimestamp(iso: String): String {
+internal fun formatTimestamp(iso: String): String {
+    val formatter = java.time.format.DateTimeFormatter
+        .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
+        .withLocale(java.util.Locale.getDefault())
     return try {
-        java.time.Instant.parse(iso)
-            .atZone(java.time.ZoneId.systemDefault())
-            .format(
-                java.time.format.DateTimeFormatter
-                    .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
-                    .withLocale(java.util.Locale.getDefault()),
-            )
+        java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).format(formatter)
     } catch (_: Exception) {
-        iso
+        // The sync state is stored as a zone-less local timestamp; without this branch the
+        // raw ISO string with microseconds was shown to the user.
+        try {
+            java.time.LocalDateTime.parse(iso).format(formatter)
+        } catch (_: Exception) {
+            iso
+        }
     }
 }
 

@@ -270,7 +270,10 @@ fun PlaylistGeneratorScreen(
                     modifier = Modifier.testTag("playlist_gen_grade_range"),
                 )
                 Text(
-                    stringResource(R.string.playlist_generator_grade_range_hint),
+                    stringResource(
+                        if (state.profilePersonalized) R.string.playlist_generator_grade_range_hint
+                        else R.string.playlist_generator_grade_range_hint_default
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

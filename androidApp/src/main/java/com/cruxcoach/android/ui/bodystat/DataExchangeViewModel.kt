@@ -309,7 +309,7 @@ class DataExchangeViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.update { it.copy(
                     isLoadingPreview = false,
-                    error = context.getString(R.string.error_file_not_readable, e.message ?: "")
+                    error = context.getString(R.string.error_file_not_readable, safeImportErrorReason(context, e))
                 ) }
             }
         }
@@ -440,7 +440,7 @@ class DataExchangeViewModel @Inject constructor(
                     it.copy(
                         isImporting = false,
                         waitingForBoardSync = false,
-                        error = context.getString(R.string.error_import_failed, e.message ?: ""),
+                        error = context.getString(R.string.error_import_failed, safeImportErrorReason(context, e)),
                     )
                 }
             }
@@ -490,4 +490,19 @@ class DataExchangeViewModel @Inject constructor(
     private companion object {
         const val TAG = "DataExchangeVM"
     }
+}
+
+/**
+ * User-facing reason for a failed import. Parser exceptions quote the offending input
+ * ("JSON input: …"), i.e. the user's private file content, and this text is also prefilled
+ * into bug reports. Only our own content-free validation messages pass through.
+ */
+internal fun safeImportErrorReason(context: android.content.Context, e: Exception): String = when {
+    e is kotlinx.serialization.SerializationException ->
+        context.getString(R.string.error_import_invalid_format)
+    e is IllegalArgumentException && e.message?.startsWith("invalid backup: unsupported version") == true ->
+        context.getString(R.string.error_import_newer_version)
+    e is IllegalArgumentException && e.message?.startsWith("invalid backup:") == true ->
+        e.message!!.take(120)
+    else -> e::class.simpleName ?: context.getString(R.string.error_import_invalid_format)
 }

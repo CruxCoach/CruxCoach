@@ -1657,6 +1657,8 @@
     <string name="error_not_cruxcoach_export">Select a CruxCoach JSON export or CSV ZIP</string>
     <string name="error_import_too_large">The CruxCoach export is larger than 64 MB</string>
     <string name="error_file_not_readable">File not readable: %1$s</string>
+    <string name="error_import_invalid_format">not a valid CruxCoach export (the file is damaged, incomplete or has a different format)</string>
+    <string name="error_import_newer_version">this file was created by a newer CruxCoach version. Update the app and try again</string>
     <string name="error_export_failed">Export failed: %1$s</string>
     <string name="error_import_failed">Import failed: %1$s</string>
     <string name="error_label">Error</string>
@@ -2367,6 +2369,7 @@
     <string name="playlist_generator_filter_min_ascents">Minimum sends: %1$d</string>
     <string name="playlist_generator_grade_range">Training grades: %1$s – %2$s</string>
     <string name="playlist_generator_grade_range_hint">Recommended from your logbook. Change the range to control the session; pyramid tiers are spaced evenly between both grades.</string>
+    <string name="playlist_generator_grade_range_hint_default">Starting range without personal data. Change the range to control the session; pyramid tiers are spaced evenly between both grades.</string>
     <string name="playlist_generator_recommended">Recommended</string>
     <string name="playlist_generator_pyramid_per_tier">Climbs per tier: %1$d</string>
     <string name="playlist_goal_pyramid">Pyramid</string>
@@ -2382,7 +2385,7 @@
     <string name="playlist_generator_name_title">Name your list</string>
     <string name="playlist_generator_summary">%1$d climbs · %2$d rests · ~%3$d min · %4$s–%5$s</string>
     <string name="playlist_generator_profile">Your logbook: max %1$s · flash %2$s</string>
-    <string name="playlist_generator_profile_empty">No logbook data yet — grades are based on a ~V5 default. Log some climbs for personal recommendations.</string>
+    <string name="playlist_generator_profile_empty">Not enough sends logged on this board yet — grades start from a general default. Log a few more climbs here for personal recommendations.</string>
     <string name="playlist_generator_downgraded">End of training: max-effort climbing is downgraded to volume — fatigued limit attempts risk injury.</string>
     <string name="playlist_generator_default_profile">Recommendations use default grades until your logbook has a few sends.</string>
     <string name="playlist_generator_error">Not enough matching climbs on this board — try a different type, angle, or fewer problems.</string>
@@ -2590,6 +2593,8 @@
     <string name="moon_csv_done">Import complete</string>
     <string name="moon_csv_failed">Import failed</string>
     <string name="moon_csv_summary">%1$d sends and %2$d projects imported; %3$d duplicates skipped.</string>
+    <string name="moon_csv_error_not_moon_export">This is not a MoonBoard logbook export. The CSV must contain the columns ProblemId, Grade, Tries, Attempts, Rating and Date.</string>
+    <string name="moon_csv_error_row">The MoonBoard CSV could not be read: %1$s</string>
     <string name="moon_csv_unresolved">%1$d ProblemIds were not found in the local MoonBoard catalogue. Sync board data and import the same file again.</string>
     <string name="moon_csv_another">Import another file</string>
     <string name="moon_import_result_title">Transfer complete</string>
