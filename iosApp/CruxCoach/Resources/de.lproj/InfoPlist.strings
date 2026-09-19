@@ -1,0 +1,3 @@
+"NSBluetoothAlwaysUsageDescription" = "CruxCoach verbindet sich direkt mit deinem Kletterboard, um Probleme zu beleuchten.";
+"NSCameraUsageDescription" = "CruxCoach nutzt die Kamera, um QR-Codes für Konten und geteilte Listen zu scannen.";
+"NSFaceIDUsageDescription" = "CruxCoach fragt nach Face ID, bevor dein privater Schlüssel angezeigt wird.";
