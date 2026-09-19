@@ -55,6 +55,13 @@ interface BleCentral {
     fun setListener(listener: BleCentralListener?)
     fun adapterState(): BleAdapterState
 
+    /**
+     * Brings the platform manager up. On iOS this is the call that shows the
+     * Bluetooth permission prompt, so it is separate from construction; the
+     * adapter state then arrives through the listener.
+     */
+    fun activate()
+
     /** Unfiltered scan reporting duplicates, so names and RSSI refresh. */
     fun startScan()
     fun stopScan()

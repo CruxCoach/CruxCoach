@@ -26,6 +26,8 @@ class FakeBleCentral(private val now: () -> Long) : BleCentral {
 
     override fun setListener(listener: BleCentralListener?) { this.listener = listener }
     override fun adapterState() = adapter
+    var activations = 0
+    override fun activate() { activations += 1 }
     override fun startScan() { scanning = true }
     override fun stopScan() { scanning = false }
 

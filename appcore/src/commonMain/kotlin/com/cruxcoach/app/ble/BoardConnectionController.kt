@@ -123,6 +123,7 @@ class BoardConnectionController(
     private var connectionTimeoutJob: Job? = null
     private var idleJob: Job? = null
     private var closeSafetyJob: Job? = null
+    private var scanWhenPoweredOn = false
 
     /** Completed by the disconnect event of a link we cancelled; a new attempt waits for it. */
     private var pendingClose: CompletableDeferred<Unit>? = null
@@ -153,16 +154,28 @@ class BoardConnectionController(
     /** No filter: boards are identified purely by advertised name. Refused unless the adapter is on. */
     fun startScan() {
         if (_state.value.scanning) return
-        if (central.adapterState() != BleAdapterState.POWERED_ON) {
-            _state.update { it.copy(adapter = central.adapterState()) }
+        val adapter = central.adapterState()
+        if (adapter != BleAdapterState.POWERED_ON) {
+            _state.update { it.copy(adapter = adapter) }
+            // First use: the adapter state is not known until the manager is
+            // up (and, on iOS, the user has answered the permission prompt).
+            if (adapter == BleAdapterState.UNKNOWN) {
+                scanWhenPoweredOn = true
+                central.activate()
+            }
             return
         }
+        scanWhenPoweredOn = false
         boardMap.clear()
         _state.update { it.copy(scanning = true, boards = emptyList()) }
         central.startScan()
     }
 
+    /** Brings Bluetooth up without scanning, so the adapter state (and iOS's prompt) resolves. */
+    fun activate() = central.activate()
+
     fun stopScan() {
+        scanWhenPoweredOn = false
         if (!_state.value.scanning) return
         central.stopScan()
         _state.update { it.copy(scanning = false) }
@@ -509,7 +522,11 @@ class BoardConnectionController(
 
     private fun handleAdapterState(adapter: BleAdapterState) {
         _state.update { it.copy(adapter = adapter) }
-        if (adapter == BleAdapterState.POWERED_ON) return
+        if (adapter == BleAdapterState.POWERED_ON) {
+            if (scanWhenPoweredOn) startScan()
+            return
+        }
+        if (adapter != BleAdapterState.UNKNOWN && adapter != BleAdapterState.RESETTING) scanWhenPoweredOn = false
         // CoreBluetooth invalidates scans and links without per-peripheral events.
         _state.update { it.copy(scanning = false) }
         if (connection != ConnectionState.DISCONNECTED) {
