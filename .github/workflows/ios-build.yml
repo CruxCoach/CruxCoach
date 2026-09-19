@@ -58,9 +58,13 @@ jobs:
           xcodebuild -version
           xcrun simctl list devices available | head -40
       - name: Kotlin/Native tests on the simulator
-        run: ./gradlew :shared:iosSimulatorArm64Test :appcore:iosSimulatorArm64Test --console=plain
+        run: |
+          set -o pipefail
+          ./gradlew :shared:iosSimulatorArm64Test :appcore:iosSimulatorArm64Test --console=plain 2>&1 | tee "$RUNNER_TEMP/ci-knative.log"
       - name: Link CruxCoachCore.xcframework
-        run: iosApp/scripts/build-core.sh Release
+        run: |
+          set -o pipefail
+          iosApp/scripts/build-core.sh Release 2>&1 | tee "$RUNNER_TEMP/ci-link.log"
       - name: Generate Xcode project
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
@@ -72,13 +76,23 @@ jobs:
           echo "Simulator: $DEVICE"
           cd iosApp && xcodebuild test -project CruxCoach.xcodeproj -scheme CruxCoach \
             -destination "platform=iOS Simulator,name=$DEVICE" \
-            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO | tail -200
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -200
       - name: Build for device, unsigned
         run: |
           set -o pipefail
           cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -200
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee "$RUNNER_TEMP/ci-device.log" | tail -200
+      # Job logs need a GitHub login; annotations are public. Surface the error lines.
+      - name: Summarise failure
+        if: failure()
+        run: |
+          for f in "$RUNNER_TEMP"/ci-*.log; do
+            [ -f "$f" ] || continue
+            MSG="$(grep -E "^e: |error:|FAILED|Undefined symbol|ld: |XCTAssert|failed -|What went wrong|^> |Test Case .* failed|fatal" "$f" | grep -v "^> Task .*UP-TO-DATE" | tail -45 | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            [ -n "$MSG" ] && echo "::error title=$(basename "$f")::$MSG"
+          done
+          true
       - name: Package unsigned IPA
         run: |
           cd iosApp
