@@ -133,7 +133,7 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `the 4x4 band hangs off the flash, not the working max`() {
+    fun `the 4x4 band hangs off the flash not the working max`() {
         // A climber whose flash sits far below their max used to get a band
         // derived from the max via a fixed gap they do not have.
         val distantFlash = profile.copy(flashDifficulty = 14.0)
@@ -213,7 +213,7 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `a narrow band that the catalogue cannot fill is reported, not substituted`() {
+    fun `a narrow band that the catalogue cannot fill is reported not substituted`() {
         // The pyramid tiers sit one step apart, so a tolerance of one point
         // let neighbouring tiers draw the same climb — a flat pyramid.
         val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID), profile)
@@ -283,7 +283,7 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `power endurance sits three to two V-grades below max, on the real scale`() {
+    fun `power endurance sits three to two V-grades below max on the real scale`() {
         // A V10 climber (27) used to get 21..23 — V5 to V7 — from the linear
         // maths, three grades easier than the band claims.
         val strong = profile.copy(maxDifficulty = 27.0, flashDifficulty = 25.0)
@@ -429,7 +429,7 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `the build-up pyramid stops at the apex, whatever the duration`() {
+    fun `the build-up pyramid stops at the apex whatever the duration`() {
         // The descent used to appear by itself at 90 minutes, so anything
         // shorter was half a pyramid presented as a whole one — and anything
         // longer got a shape the climber never asked for.

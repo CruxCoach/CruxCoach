@@ -25,7 +25,7 @@ class ClimbBoundsTest {
     }
 
     @Test
-    fun `encode produces L,R,B,T format`() {
+    fun `encode produces LRBT format`() {
         assertEquals(
             "10,80,5,200",
             ClimbBounds(left = 10, right = 80, bottom = 5, top = 200).encode()
