@@ -404,7 +404,7 @@ internal fun restartApp(context: Context, openBackup: Boolean = false) {
     exitProcess(0)
 }
 
-private fun openInStoreOrBrowser(
+internal fun openInStoreOrBrowser(
     context: Context,
     storePackage: String,
     storeUri: Uri,

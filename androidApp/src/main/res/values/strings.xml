@@ -225,7 +225,7 @@
     <string name="onboarding_existing_data_subtitle">Choose its source to see the matching import. Otherwise start directly.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Restore encrypted backup</string>
-    <string name="onboarding_cruxcoach_restore_desc">Restore\nImport the same account’s private key to access its encrypted backup. The backup must still be available. A public account ID (npub) alone is not enough.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Restore\nConnect the same account through Amber or import its private key. The encrypted backup must still be available; the public account ID (npub) alone is not enough.</string>
     <string name="onboarding_cruxcoach_restore_action">Restore</string>
     <string name="onboarding_cruxcoach_file_title">Import a CruxCoach file</string>
     <string name="onboarding_cruxcoach_file_desc">Open the existing validated file import with preview and merge controls.</string>
@@ -2119,7 +2119,7 @@
     <string name="onboarding_backup_restore_none_for_key">No backup was found for this account. You can still continue — a fresh backup will be created on the next sync.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to \"Start fresh\".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
-    <string name="onboarding_restart_confirm_body">After importing your key, CruxCoach restarts and automatically continues the restore.</string>
+    <string name="onboarding_restart_confirm_body">After connecting your account, CruxCoach restarts and automatically continues the restore.</string>
     <string name="onboarding_kilter_step_title">Bring your logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: continue with your existing history. Pick the source you used before; imports merge safely with local entries.</string>
     <string name="onboarding_kilter_skip_hint">No previous logbook? Tap “Done”. Every import remains available later under Settings → Data.</string>
@@ -3007,4 +3007,6 @@
     <string name="import_key_access_only">Restores account access. Data is restored separately from a backup.</string>
     <string name="import_moon_device_short">Android accessibility reads your Moon logbook on this device.</string>
     <string name="import_moon_mail_short">Paste the copied request into the email.</string>
+    <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
+    <string name="account_restore_key_method">With a key</string>
 </resources>

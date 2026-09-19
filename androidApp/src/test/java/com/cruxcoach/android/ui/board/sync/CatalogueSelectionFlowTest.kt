@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.board.sync
 
 import android.app.Application
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.Surface
 import androidx.compose.ui.platform.LocalDensity
@@ -37,15 +39,21 @@ class CatalogueSelectionFlowTest {
         compose.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
                 CruxCoachTheme(DarkModeSetting.DARK) {
-                    Surface { BoardSyncInlineCard(viewModel = vm, compact = compact) }
+                    Surface {
+                        androidx.compose.foundation.layout.Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                            BoardSyncInlineCard(viewModel = vm, compact = compact)
+                        }
+                    }
                 }
             }
         }
-        compose.onNodeWithTag("board_download_selection").assertIsEnabled().performClick()
+        if (compact) compose.onNodeWithTag("board_download_selection").assertIsEnabled().performClick()
+        else compose.onNodeWithTag("board_status_moonboard").performScrollTo().performClick()
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOff()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
         verify(exactly = 0) { vm.saveDownloadSelection(any(), any()) }
         compose.onNodeWithText("Abbrechen").performClick()
-        compose.onNodeWithTag("board_download_selection").performClick()
+        compose.onNodeWithTag("board_download_selection").performScrollTo().performClick()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOff().performClick()
         System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
             compose.runOnIdle {

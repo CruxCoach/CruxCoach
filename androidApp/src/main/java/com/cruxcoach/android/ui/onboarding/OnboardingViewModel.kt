@@ -148,6 +148,7 @@ class OnboardingViewModel @Inject constructor(
     private val kilterTokenStore: KilterTokenStore,
     private val kilterSyncEngine: KilterSyncEngine,
     private val keyStore: NostrKeyStore,
+    private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
@@ -163,8 +164,11 @@ class OnboardingViewModel @Inject constructor(
         _state.update { it.copy(auroraSheetOpen = value) }
     }
 
+    private fun hasRestoreAccount(): Boolean =
+        nostrSigner.getStoredSignerMode() == com.cruxcoach.android.nostr.SignerMode.AMBER || keyStore.hasKey()
+
     private val _state = MutableStateFlow(
-        OnboardingState(hasNostrKey = keyStore.hasKey(), currentStep = runCatching {
+        OnboardingState(hasNostrKey = hasRestoreAccount(), currentStep = runCatching {
             OnboardingStep.valueOf(savedStateHandle.get<String>("setupStep") ?: "BOARD_SETUP")
         }.getOrDefault(OnboardingStep.BOARD_SETUP)),
     )
@@ -237,7 +241,7 @@ class OnboardingViewModel @Inject constructor(
                         currentStep = OnboardingStep.KILTER,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
-                        hasNostrKey = keyStore.hasKey(),
+                        hasNostrKey = hasRestoreAccount(),
                     )
                 }
                 triggerBackupCheckIfNeeded()
@@ -501,7 +505,7 @@ class OnboardingViewModel @Inject constructor(
      */
     private fun triggerBackupCheckIfNeeded() {
         val s = _state.value
-        if (!keyStore.hasKey()) {
+        if (!hasRestoreAccount()) {
             _state.update { it.copy(hasNostrKey = false) }
             return
         }

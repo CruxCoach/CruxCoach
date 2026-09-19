@@ -75,7 +75,7 @@ class OnboardingDataStepTest {
         compose.onNodeWithTag("onboarding_cruxcoach_file_import").assertDoesNotExist()
         compose.onNodeWithTag("onboarding_import_source_cruxcoach").performScrollTo().performClick()
         compose.onNodeWithTag("onboarding_cruxcoach_file_import").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Aktiviert auch dein Daten-Backup.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Aktiviert auch dein Daten-Backup.").assertDoesNotExist()
         compose.onNodeWithContentDescription("Informationen zu Verschlüsseltes Backup wiederherstellen anzeigen")
             .performScrollTo().performClick()
         compose.onNodeWithText("Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.")

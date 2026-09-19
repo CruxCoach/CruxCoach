@@ -254,7 +254,7 @@ fun OnboardingScreen(
     if (state.showRestartConfirm) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissRestartConfirm() },
-            title = { Text(stringResource(R.string.onboarding_restart_confirm_title)) },
+            title = { Text(stringResource(R.string.account_restore_title)) },
             text = { Text(stringResource(R.string.onboarding_restart_confirm_body)) },
             confirmButton = {
                 Button(
@@ -799,10 +799,6 @@ private fun DataSetupStep(
                                 },
                                 highlighted = true,
                                 testTag = "onboarding_cruxcoach_restore",
-                            )
-                            Text(
-                                stringResource(R.string.import_restore_backup_enabled),
-                                style = MaterialTheme.typography.bodyMedium,
                             )
                             ImportSourceCard(
                                 icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },

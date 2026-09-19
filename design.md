@@ -36,6 +36,8 @@ Die Katalogauswahl verwendet in beiden Setup-Schritten und den Einstellungen die
 
 Importwege zeigen zuerst die konkrete Aktion, eine kurze Statusmeldung und gegebenenfalls die unmittelbare Folge. Hintergrund zu Dateiformaten, Zugangsdaten, Abgleich und Datenschutz gehört an das zugehörige Info-Symbol. Das gilt auch innerhalb geöffneter Importbereiche und Folgeschritte. Kontowechsel, Schlüsselersatz, Backup-Aktivierung und Berechtigungen dürfen dadurch nicht unsichtbar werden. Bestätigungen nennen diese Folgen knapp; Fehler und Ergebnisse bleiben lesbar. Sammelauswahl steht direkt links vom Info-Symbol.
 
+Die Wiederherstellung bietet „Mit Schlüssel“ und „Mit Amber“ im selben Ablauf an. Die Folgen für das Daten-Backup stehen in der Info-Karte der Wiederherstellung, nicht als losgelöster Satz zwischen Importaktionen. Amber-Konten werden vor dem Wechsel anhand ihrer öffentlichen Konto-ID bestätigt. Abgewählte Katalogzeilen öffnen dieselbe Auswahl wie die Hauptaktion; erst deren Bestätigung übernimmt Änderungen.
+
 ## Der Header zeigt die aktuelle Klettersituation
 
 **Bestand:** Eine kompakte Zeile enthält Logo, Board-Auswahl, Winkel, BLE und Filter. Diese primären Elemente bleiben direkt erreichbar. Die Board-Familie bleibt lesbar; ergänzende Modell- und Größenangaben dürfen gekürzt werden. Der Picker nutzt nicht unbegrenzt freien Platz: Seine derzeitige Breitenobergrenze beträgt 132 dp. Sein Textblock ist innerhalb der Berührungsfläche vertikal zentriert.

@@ -225,7 +225,7 @@
     <string name="onboarding_existing_data_subtitle">Wähle die Quelle, um den passenden Import zu sehen. Sonst kannst du direkt starten.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Verschlüsseltes Backup wiederherstellen</string>
-    <string name="onboarding_cruxcoach_restore_desc">Wiederherstellen\nImportiere den privaten Schlüssel desselben Kontos für dessen verschlüsseltes Backup. Das Backup muss noch verfügbar sein. Die öffentliche Konto-ID (npub) allein reicht nicht aus.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Wiederherstellen\nVerbinde dasselbe Konto über Amber oder importiere seinen privaten Schlüssel. Das verschlüsselte Backup muss noch verfügbar sein; die öffentliche Konto-ID (npub) allein reicht nicht aus.</string>
     <string name="onboarding_cruxcoach_restore_action">Wiederherstellen</string>
     <string name="onboarding_cruxcoach_file_title">CruxCoach-Datei importieren</string>
     <string name="onboarding_cruxcoach_file_desc">Öffne den bestehenden geprüften Dateiimport mit Vorschau und Zusammenführen.</string>
@@ -2118,7 +2118,7 @@
     <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten“.</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
-    <string name="onboarding_restart_confirm_body">Nach dem Schlüsselimport startet CruxCoach neu und setzt die Wiederherstellung automatisch fort.</string>
+    <string name="onboarding_restart_confirm_body">Nach dem Verbinden deines Kontos startet CruxCoach neu und setzt die Wiederherstellung automatisch fort.</string>
     <string name="onboarding_kilter_step_title">Logbuch übernehmen</string>
     <string name="onboarding_kilter_step_subtitle">Optional: Nimm deinen bisherigen Verlauf mit. Wähle die App, die du vorher genutzt hast; vorhandene lokale Einträge bleiben erhalten.</string>
     <string name="onboarding_kilter_skip_hint">Noch kein Logbuch? Tippe „Fertig“. Alle Importe findest du später unter Einstellungen → Daten.</string>
@@ -3006,4 +3006,6 @@
     <string name="import_key_access_only">Stellt den Kontozugang wieder her. Daten werden separat aus dem Backup geladen.</string>
     <string name="import_moon_device_short">Die Android-Bedienungshilfe liest dein Moon-Logbuch auf diesem Gerät.</string>
     <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
+    <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
+    <string name="account_restore_key_method">Mit Schlüssel</string>
 </resources>

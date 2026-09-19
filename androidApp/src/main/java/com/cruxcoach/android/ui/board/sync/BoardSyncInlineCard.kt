@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -481,6 +482,7 @@ fun BoardSyncInlineCard(
                 activeBrand = activeBrand,
                 selectedBrands = downloadBrands.orEmpty(),
                 onStartSync = startSync,
+                onChangeSelection = { selectionDraft = downloadBrands; startAfterSelection = false },
                 onLoadBoard = { viewModel.loadBoard(it) },
                 onDismissError = { viewModel.clearError() },
                 onReportBug = { error ->
@@ -633,6 +635,7 @@ private fun DatabaseImportSection(
     activeBrand: BoardBrand,
     selectedBrands: Set<BoardBrand>,
     onStartSync: () -> Unit,
+    onChangeSelection: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
     onDismissError: () -> Unit,
     onReportBug: (error: String) -> Unit,
@@ -710,6 +713,7 @@ private fun DatabaseImportSection(
                     localShareInProgress = state.localShareInProgress,
                     globalStep = state.importStep,
                     onLoadBoard = onLoadBoard,
+                    onChangeSelection = onChangeSelection,
                 )
 
                 if (!state.isSyncing) {
@@ -913,6 +917,7 @@ private fun BoardCatalogueStatusList(
     globalStep: ImportStep?,
     onLoadBoard: (BoardBrand) -> Unit,
     onlySelected: Boolean = false,
+    onChangeSelection: (() -> Unit)? = null,
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
@@ -945,6 +950,7 @@ private fun BoardCatalogueStatusList(
                 anySyncing = syncing,
                 downloadSelected = brand in selectedBrands,
                 onLoad = { onLoadBoard(brand) },
+                onChangeSelection = onChangeSelection,
             )
         }
     }
@@ -961,6 +967,7 @@ private fun BoardStatusRow(
     anySyncing: Boolean,
     downloadSelected: Boolean,
     onLoad: () -> Unit,
+    onChangeSelection: (() -> Unit)?,
 ) {
     // This board is mid-sync when it has a non-terminal step in the map.
     val boardSyncing = step != null && step !is ImportStep.Done
@@ -1010,7 +1017,10 @@ private fun BoardStatusRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("board_status_${brand.wireValue}"),
+            .testTag("board_status_${brand.wireValue}")
+            .then(if (!downloadSelected && onChangeSelection != null)
+                Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
+                    onClick = onChangeSelection) else Modifier),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             when {
