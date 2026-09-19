@@ -130,6 +130,8 @@ object BoardStatsComputer {
     ): List<AscentWithClimb> {
         if (customFrom != null && customTo != null) {
             val from = customFrom.toString()
+            // Android compares date-only strings against customTo + 1, which also admits the
+            // day AFTER the chosen end. Kept for parity; reported as an upstream defect.
             val to = customTo.plus(DatePeriod(days = 1)).toString()
             return ascents.filter { it.climbedAt.take(10) in from..to }
         }
