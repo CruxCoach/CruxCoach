@@ -40,3 +40,49 @@ object ManifestFixtures {
     /** A moment shortly after every fixture event was signed. */
     const val NOW = 1_789_800_000L
 }
+
+/** Serves canned bodies per URL; enforces the byte ceiling the way a real transport must. */
+class FakeHttp : com.cruxcoach.app.platform.HttpTransport {
+    val bodies = HashMap<String, ByteArray>()
+    val statuses = HashMap<String, Int>()
+    val failures = HashMap<String, com.cruxcoach.app.platform.HttpFailure>()
+    val requested = java.util.Collections.synchronizedList(ArrayList<String>())
+    val ceilings = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    override suspend fun request(
+        method: String, url: String, headers: Map<String, String>, body: ByteArray?, maxResponseBytes: Long, timeoutSeconds: Int,
+    ): com.cruxcoach.app.platform.HttpResult = error("not used")
+
+    override suspend fun download(
+        url: String, destinationPath: String, maxBytes: Long, timeoutSeconds: Int, onProgress: (Long, Long) -> Unit,
+    ): com.cruxcoach.app.platform.HttpResult {
+        requested += url
+        ceilings[url] = maxBytes
+        failures[url]?.let { return com.cruxcoach.app.platform.HttpResult.Failed(it, "scripted") }
+        val data = bodies[url] ?: return com.cruxcoach.app.platform.HttpResult.Failed(com.cruxcoach.app.platform.HttpFailure.OTHER, "no route")
+        if (data.size > maxBytes) return com.cruxcoach.app.platform.HttpResult.Failed(com.cruxcoach.app.platform.HttpFailure.TOO_LARGE, "ceiling")
+        File(destinationPath).writeBytes(data)
+        onProgress(data.size.toLong(), data.size.toLong())
+        return com.cruxcoach.app.platform.HttpResult.Ok(
+            com.cruxcoach.app.platform.HttpResponse(statuses[url] ?: 200, emptyMap(), ByteArray(0)),
+        )
+    }
+}
+
+/**
+ * Stand-in codec: a "compressed" file is `ZST1` + payload. Anything else is
+ * corrupt. Honours the output cap like libzstd streaming does.
+ */
+object FakeZstd : com.cruxcoach.app.platform.ZstdDecompressor {
+    fun compress(payload: ByteArray): ByteArray = "ZST1".toByteArray() + payload
+    override fun decompressFile(sourcePath: String, destinationPath: String, maxOutputBytes: Long): Long {
+        val data = File(sourcePath).readBytes()
+        if (data.size < 4 || String(data, 0, 4) != "ZST1") return -1
+        if (data.size - 4 > maxOutputBytes) return -1
+        File(destinationPath).writeBytes(data.copyOfRange(4, data.size))
+        return (data.size - 4).toLong()
+    }
+}
+
+fun sha256Hex(data: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
