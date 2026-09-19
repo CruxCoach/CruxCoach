@@ -730,7 +730,7 @@
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
-    <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
+    <string name="board_browser_preparing_db_hint">Beim ersten Start und nach einem Update kann das auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
     <string name="board_browser_empty_no_results">Keine Climbs passen zu den aktuellen Filtern</string>
     <string name="board_browser_empty_no_results_hint">Versuch einen größeren Grad-Bereich, einen anderen Winkel oder setz die Filter zurück.</string>
     <string name="board_browser_empty_clear_filters">Filter zurücksetzen</string>

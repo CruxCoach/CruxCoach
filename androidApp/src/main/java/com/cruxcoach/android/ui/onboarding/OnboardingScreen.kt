@@ -793,7 +793,8 @@ private fun DataSetupStep(
                                 description = stringResource(R.string.onboarding_cruxcoach_restore_desc) + "\n\n" + stringResource(R.string.ux_restore_consequence),
                                 action = stringResource(R.string.onboarding_cruxcoach_restore_action),
                                 onClick = {
-                                    viewModel.setBackupOptIn(true)
+                                    // Starting a restore is not a backup consent. The opt-in is set by
+                                    // confirmOnboardingRestore() only after a restore actually succeeded.
                                     viewModel.setBackupChoice(BackupChoice.RESTORE)
                                     viewModel.requestKeyImport()
                                 },
