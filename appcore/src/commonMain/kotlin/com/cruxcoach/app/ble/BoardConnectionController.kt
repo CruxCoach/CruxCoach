@@ -45,6 +45,9 @@ enum class BoardSendResult {
     WRONG_BOARD_FAMILY,
     WRITE_FAILED,
 
+    /** The shared encoder rejected the payload (malformed frames or ids); nothing was written. */
+    INVALID_PAYLOAD,
+
     /** No write callback within 5 s; the link was torn down. */
     WRITE_TIMEOUT,
 
