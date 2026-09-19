@@ -97,11 +97,7 @@ fun OnboardingScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        OnboardingProgressHeader(
-            step = state.currentStep,
-            canSkip = !state.isSaving && !state.restoreInProgress && !state.isKilterImporting && !confirmingDownloads,
-            onSkip = { viewModel.completeOnboarding(onComplete, skipTour = true) },
-        )
+        OnboardingProgressHeader(state.currentStep)
 
         AnimatedContent(
             targetState = state.currentStep,
@@ -349,15 +345,13 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingProgressHeader(step: OnboardingStep, canSkip: Boolean, onSkip: () -> Unit) {
+private fun OnboardingProgressHeader(step: OnboardingStep) {
     val current = if (step == OnboardingStep.BOARD_SETUP) 1 else 2
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.onboarding_progress_step, current, 2),
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onSkip, enabled = canSkip) { Text(stringResource(R.string.setup_skip)) }
-        }
+        Text(stringResource(R.string.onboarding_progress_step, current, 2),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         LinearProgressIndicator(progress = { current / 2f }, modifier = Modifier.fillMaxWidth().height(3.dp),
             color = OrangeAccent, trackColor = MaterialTheme.colorScheme.surfaceVariant)
     }
@@ -444,6 +438,17 @@ private fun BoardSetupStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         downloadSelection?.let { selected ->
+            val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.setup_selected_count, selected.size), Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(
+                    onClick = { onDownloadSelectionChange(if (selected.containsAll(all)) emptySet() else all) },
+                    modifier = Modifier.testTag("setup_toggle_all_catalogues"),
+                ) {
+                    Text(stringResource(if (selected.containsAll(all)) R.string.setup_deselect_all else R.string.cd_select_all))
+                }
+            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
                     val checked = brand in selected

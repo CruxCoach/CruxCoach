@@ -72,7 +72,7 @@ class OnboardingDownloadSelectionTest {
     }
     @Test
     @Config(qualifiers = "de-w320dp-h640dp")
-    fun `large text keeps skip and continue reachable without starting downloads`() {
+    fun `large text keeps catalogue bulk selection and continue reachable without a skip action`() {
         val onboarding = mockk<OnboardingViewModel>(relaxed = true)
         every { onboarding.state } returns MutableStateFlow(OnboardingState())
         val sync = mockk<BoardSyncViewModel>(relaxed = true)
@@ -92,9 +92,18 @@ class OnboardingDownloadSelectionTest {
         compose.onNodeWithTag("onboarding_next_button").assertIsDisplayed().assertIsEnabled()
         compose.onNodeWithTag("settings_change_active_board").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
-        compose.onNodeWithText("Einrichtung überspringen").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("setup_toggle_all_catalogues").performScrollTo().performClick()
+        compose.onNodeWithTag("board_selection_kilter").performScrollTo().assertIsOn()
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOn()
+        compose.onNodeWithTag("setup_toggle_all_catalogues").performScrollTo().performClick()
+        compose.onNodeWithTag("board_selection_kilter").performScrollTo().assertIsOff()
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOff()
+        compose.onNodeWithText("Einrichtung überspringen").assertDoesNotExist()
         coVerify(exactly = 0) { sync.confirmOnboardingDownloads(any()) }
-        verify(exactly = 1) { onboarding.completeOnboarding(any(), skipTour = true) }
+        compose.onNodeWithTag("onboarding_next_button").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        coVerify(exactly = 1) { sync.confirmOnboardingDownloads(emptySet()) }
+        verify(exactly = 1) { onboarding.nextStep() }
     }
 
 }

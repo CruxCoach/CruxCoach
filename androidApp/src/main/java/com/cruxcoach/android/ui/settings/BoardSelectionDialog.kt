@@ -255,51 +255,6 @@ internal fun BoardSelectionDialog(
         }
     }
 
-    // Current selection as (brand, sizeId, layoutId) for the image preview, so
-    // the user can visually match their board instead of decoding a size code.
-    val (previewBrand, previewSizeId, previewLayoutId) = when {
-        isAurora -> Triple(
-            auroraBrand!!,
-            (auroraSizeId ?: auroraVariant?.defaultSizeId ?: 0).toLong(),
-            auroraVariant?.layoutId?.toLong(),
-        )
-        isQuantum -> Triple(
-            BoardBrand.QUANTUM,
-            quantumModel?.productSizeId ?: 0L,
-            quantumModel?.layoutId,
-        )
-        category == BoardCategory.MOONBOARD ->
-            Triple(BoardBrand.MOONBOARD, 0L, mbVariant?.layoutId)
-        isKilter -> Triple(
-            BoardBrand.KILTER,
-            kilterSelection.toLong(),
-            if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
-        )
-        else -> Triple(prefill?.brand ?: activeBrand, 0L, null)
-    }
-
-    val selectionTitle = when {
-        isAurora -> auroraBrand!!.displayName
-        isQuantum -> BoardBrand.QUANTUM.displayName
-        category == BoardCategory.MOONBOARD -> "MoonBoard"
-        category == BoardCategory.KILTER_HOMEWALL -> "Kilter Homewall"
-        category == BoardCategory.KILTER_ORIGINAL -> "Kilter Original"
-        else -> stringResource(R.string.board_mismatch_choose_detail)
-    }
-    val selectionDetail = when {
-        isAurora -> listOfNotNull(
-            auroraVariant?.displayName,
-            auroraBrandSizes[auroraBrand!!.wireValue].orEmpty()
-                .firstOrNull { it.id.toInt() == auroraSizeId }
-                ?.let { BoardConstants.auroraSizeLabel(auroraBrand!!, it) },
-        ).distinct().joinToString(" · ")
-        isQuantum -> quantumModel?.displayName.orEmpty()
-        category == BoardCategory.MOONBOARD -> mbVariant?.displayName.orEmpty()
-        isKilter -> shownSizes.firstOrNull { it.id.toInt() == kilterSelection }
-            ?.let { BoardConstants.sizeLabel(it.id, it.name).removePrefix("Homewall ") }.orEmpty()
-        else -> ""
-    }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -336,35 +291,6 @@ internal fun BoardSelectionDialog(
                 mismatch?.let {
                     BoardMismatchExplanation(it)
                 }
-                // Board-image preview of the current selection — a visual match
-                // beats interpreting a cryptic size code (FEAT-007).
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        ZoomableBoardPreview(
-                            brand = previewBrand,
-                            sizeId = previewSizeId,
-                            layoutId = previewLayoutId,
-                            modifier = Modifier.width(64.dp).height(88.dp),
-                        )
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(selectionTitle, style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold)
-                            if (selectionDetail.isNotBlank()) {
-                                Text(selectionDetail, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-
                 // Tier 0 — board category. A single dropdown: the labels are too
                 // long to share one chip row on a narrow dialog, and the list grows
                 // with each interactive Aurora board (FEAT-031).
@@ -460,10 +386,11 @@ internal fun BoardSelectionDialog(
                             fontWeight = FontWeight.SemiBold,
                         )
                         variants.forEach { v ->
-                            RadioRow(
+                            BoardImageChoiceRow(
                                 label = v.displayName,
                                 selected = auroraVariant?.layoutId == v.layoutId,
                                 onSelect = { auroraVariant = v },
+                                brand = auroraBrand!!, sizeId = v.defaultSizeId.toLong(), layoutId = v.layoutId.toLong(),
                             )
                         }
                     }
@@ -486,12 +413,23 @@ internal fun BoardSelectionDialog(
                             fontWeight = FontWeight.SemiBold,
                         )
                         auroraSizes.forEach { size ->
-                            RadioRow(
+                            BoardImageChoiceRow(
                                 label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
                                 selected = auroraSizeId == size.id.toInt(),
                                 onSelect = { auroraSizeId = size.id.toInt() },
+                                brand = auroraBrand!!, sizeId = size.id, layoutId = auroraVariant?.layoutId?.toLong(),
                             )
                         }
+                    }
+                    if (variants.size <= 1 && auroraSizes.size <= 1) {
+                        BoardImageChoiceRow(
+                            label = listOfNotNull(auroraBrand!!.displayName, auroraVariant?.displayName,
+                                auroraSizes.firstOrNull()?.let { BoardConstants.auroraSizeLabel(auroraBrand!!, it) })
+                                .distinct().joinToString(" · "),
+                            selected = true, onSelect = {}, brand = auroraBrand!!,
+                            sizeId = (auroraSizeId ?: auroraVariant?.defaultSizeId ?: 0).toLong(),
+                            layoutId = auroraVariant?.layoutId?.toLong(),
+                        )
                     }
                     // The download hint is only meaningful before the board is
                     // loaded — once its catalogue is imported it reads wrong
@@ -518,10 +456,12 @@ internal fun BoardSelectionDialog(
                             fontWeight = FontWeight.SemiBold,
                         )
                         shownSizes.forEach { size ->
-                            RadioRow(
+                            BoardImageChoiceRow(
                                 label = BoardConstants.sizeLabel(size.id, size.name),
                                 selected = kilterSelection == size.id.toInt(),
                                 onSelect = { kilterSelection = size.id.toInt() },
+                                brand = BoardBrand.KILTER, sizeId = size.id,
+                                layoutId = if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
                             )
                         }
                         Text(
@@ -537,10 +477,11 @@ internal fun BoardSelectionDialog(
                         fontWeight = FontWeight.SemiBold,
                     )
                     QuantumBoardModel.entries.forEach { model ->
-                            RadioRow(
+                            BoardImageChoiceRow(
                                 label = model.displayName,
                                 selected = quantumModel == model,
                                 onSelect = { quantumModel = model },
+                                brand = BoardBrand.QUANTUM, sizeId = model.productSizeId, layoutId = model.layoutId,
                         )
                     }
                     Text(
@@ -560,10 +501,11 @@ internal fun BoardSelectionDialog(
                         fontWeight = FontWeight.SemiBold,
                     )
                     MoonBoardVariant.entries.forEach { variant ->
-                        RadioRow(
+                        BoardImageChoiceRow(
                             label = variant.displayName,
                             selected = mbVariant == variant,
                             onSelect = { mbVariant = variant },
+                            brand = BoardBrand.MOONBOARD, sizeId = 0L, layoutId = variant.layoutId,
                         )
                     }
                 } else {
@@ -663,33 +605,44 @@ private fun BoardMismatchExplanation(mismatch: BoardConfigurationMismatch) {
     }
 }
 
-/** A single radio-selectable row — shared by the Kilter + MoonBoard tiers. */
+/** Image inspection and radio selection are separate targets: zoom never selects. */
 @Composable
-private fun RadioRow(
+internal fun BoardImageChoiceRow(
     label: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    brand: BoardBrand,
+    sizeId: Long,
+    layoutId: Long?,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                onClick = onSelect,
-                role = Role.RadioButton,
-            )
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
-        RadioButton(
-            selected = selected,
-            onClick = null,
-            colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent),
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            ZoomableBoardPreview(
+                brand = brand, sizeId = sizeId, layoutId = layoutId,
+                modifier = Modifier.width(104.dp).height(144.dp),
+                imageLabel = label,
+                showZoomHint = true,
+                fallback = {
+                    Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
+                        Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+            )
+            Column(
+                Modifier.weight(1f).heightIn(min = 144.dp)
+                    .selectable(selected = selected, onClick = onSelect, role = Role.RadioButton)
+                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                RadioButton(selected = selected, onClick = null,
+                    colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent))
+            }
+        }
     }
 }

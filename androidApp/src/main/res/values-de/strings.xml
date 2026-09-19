@@ -2981,4 +2981,8 @@
     <string name="setup_catalogues_info">Wähle die Boards, deren Climbs du nutzen möchtest. Mit „Laden und weiter“ startet der Download; diese Kataloge bleiben auch für künftige Updates ausgewählt. Du kannst währenddessen fortfahren.\n\nDu kannst die Auswahl später ändern. Ohne Auswahl wird nichts heruntergeladen.</string>
     <string name="setup_bluetooth_find">Per Bluetooth finden</string>
     <string name="setup_bluetooth_info">Optional vor Ort: Verbinde dein Board, um bei der Board-Auswahl eine passende Familie vorgeschlagen zu bekommen. Modell und Größe wählst du selbst. Du kannst dich auch später im Board-Browser verbinden.</string>
+    <string name="board_preview_unavailable">Kein Vorschaubild verfügbar</string>
+    <string name="board_preview_enlarge">Boardbild vergrößern: %1$s</string>
+    <string name="setup_selected_count">%1$d ausgewählt</string>
+    <string name="setup_deselect_all">Auswahl aufheben</string>
 </resources>
