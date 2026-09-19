@@ -51,6 +51,7 @@ fun KilterDataInfoButton(modifier: Modifier = Modifier) {
                     InfoText(
                         listOf(
                             stringResource(R.string.kilter_data_info_login),
+                            stringResource(R.string.kilter_login_privacy),
                             stringResource(R.string.kilter_data_info_offline),
                             stringResource(R.string.kilter_data_info_local),
                             stringResource(R.string.kilter_data_info_publish),

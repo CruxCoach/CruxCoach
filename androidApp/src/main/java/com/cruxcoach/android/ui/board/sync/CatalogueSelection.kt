@@ -65,8 +65,8 @@ internal fun CatalogueSelectionDialog(
         title = { Text(stringResource(R.string.setup_catalogues_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onToggleSelectAll, modifier = Modifier.weight(1f).testTag("catalogue_toggle_all")) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onToggleSelectAll, modifier = Modifier.weight(1f, fill = false).testTag("catalogue_toggle_all")) {
                         Text(stringResource(if (allSelected) R.string.setup_deselect_all else R.string.cd_select_all))
                     }
                     InfoButton(stringResource(R.string.setup_catalogues_title), stringResource(R.string.catalogue_selection_help))

@@ -129,17 +129,10 @@ fun MigrationFlowContent(
         onResult = { uri -> uri?.let(onPickFile) },
     )
 
-    Text(
-        text = stringResource(R.string.aurora_migration_what_happened_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
+    com.cruxcoach.android.ui.common.InfoHeading(
+        stringResource(R.string.aurora_migration_title),
+        stringResource(R.string.aurora_migration_what_happened_body),
     )
-    Text(
-        text = stringResource(R.string.aurora_migration_what_happened_body),
-        style = MaterialTheme.typography.bodyMedium,
-    )
-
-    HorizontalDivider()
 
     NumberedStep(
         number = 1,
@@ -274,15 +267,7 @@ private fun NumberedStep(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            com.cruxcoach.android.ui.common.InfoHeading(title, body)
             content()
         }
     }

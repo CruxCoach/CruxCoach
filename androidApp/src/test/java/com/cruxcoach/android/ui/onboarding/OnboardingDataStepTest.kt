@@ -75,6 +75,25 @@ class OnboardingDataStepTest {
         compose.onNodeWithTag("onboarding_cruxcoach_file_import").assertDoesNotExist()
         compose.onNodeWithTag("onboarding_import_source_cruxcoach").performScrollTo().performClick()
         compose.onNodeWithTag("onboarding_cruxcoach_file_import").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Aktiviert auch dein Daten-Backup.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Informationen zu Verschlüsseltes Backup wiederherstellen anzeigen")
+            .performScrollTo().performClick()
+        compose.onNodeWithText("Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.")
+            .performScrollTo().assertIsDisplayed()
+        verify(exactly = 0) { onboarding.requestKeyImport() }
+        compose.onNodeWithText("Schließen").performClick()
+        compose.onNodeWithTag("onboarding_cruxcoach_file_import").performScrollTo()
+        System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
+            compose.runOnIdle {
+                val root = android.view.inspector.WindowInspector.getGlobalWindowViews().last()
+                val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+                root.draw(android.graphics.Canvas(bitmap))
+                java.io.File(directory, "onboarding-cruxcoach-expanded.png").outputStream().use {
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+                bitmap.recycle()
+            }
+        }
         compose.onNodeWithTag("onboarding_import_source_cruxcoach").performScrollTo().performClick()
         compose.onNodeWithTag("onboarding_cruxcoach_file_import").assertDoesNotExist()
         compose.onNodeWithTag("onboarding_import_source_moonboard").performScrollTo().performClick()

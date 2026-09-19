@@ -257,13 +257,13 @@ fun MoonBoardCsvImportScreen(
                             Text(stringResource(R.string.moon_import_result_unresolved, importResult.unresolvedEntries))
                         }
                         if (importResult.unresolvedLabels.isNotEmpty()) {
-                            Text(importResult.unresolvedLabels.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                            Text(importResult.unresolvedLabels.joinToString("\n"), style = MaterialTheme.typography.bodyMedium)
                         }
                         if (importResult.ambiguousEntries > 0) {
                             Text(stringResource(R.string.moon_import_result_ambiguous, importResult.ambiguousEntries))
                         }
                         if (importResult.ambiguousLabels.isNotEmpty()) {
-                            Text(importResult.ambiguousLabels.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
+                            Text(importResult.ambiguousLabels.joinToString("\n"), style = MaterialTheme.typography.bodyMedium)
                         }
                         // Every session Moon announced but the scan could not
                         // fully read is named here rather than being rolled up
@@ -272,11 +272,11 @@ fun MoonBoardCsvImportScreen(
                             Text(
                                 stringResource(R.string.moon_import_result_warnings),
                                 fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                             )
                             Text(
                                 importResult.warnings.joinToString("\n"),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                             )
                         }
                     }
@@ -320,15 +320,16 @@ fun MoonBoardCsvImportScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.moon_csv_intro), style = MaterialTheme.typography.bodyLarge)
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = .10f)),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(stringResource(R.string.moon_device_title), fontWeight = FontWeight.Bold)
+                    com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.moon_device_title),
+                        stringResource(R.string.moon_device_explanation))
                     Text(
                         stringResource(
-                            if (moonInstalled) R.string.moon_device_explanation
+                            if (moonInstalled) R.string.import_moon_device_short
                             else R.string.moon_device_not_installed,
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -368,7 +369,7 @@ fun MoonBoardCsvImportScreen(
                         ))
                     }
                     if (scanState.running) {
-                        Text(scanState.status, style = MaterialTheme.typography.bodySmall)
+                        Text(scanState.status, style = MaterialTheme.typography.bodyMedium)
                         // Determinate as soon as Moon's logbook header has told
                         // the scan how many training days there are.
                         val progress = scanState.progress
@@ -383,14 +384,14 @@ fun MoonBoardCsvImportScreen(
                                     scanState.sessionsDone,
                                     scanState.sessionsTotal,
                                 ),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                             )
                         } else {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                         Text(
                             stringResource(R.string.moon_device_captured, scanState.captured),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                         // Everything read so far is already stored, so stopping
                         // is cheap and the next run resumes where this one got to.
@@ -407,7 +408,9 @@ fun MoonBoardCsvImportScreen(
                     }
                 }
             }
-            Text(stringResource(R.string.moon_csv_fallback), fontWeight = FontWeight.Bold)
+            com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.moon_csv_fallback),
+                listOf(stringResource(R.string.moon_csv_intro), stringResource(R.string.moon_csv_request_hint),
+                    stringResource(R.string.moon_csv_angle_note), stringResource(R.string.moon_csv_privacy)).joinToString("\n\n"))
             OutlinedButton(
                 onClick = {
                     clipboard.setText(AnnotatedString(requestBody))
@@ -419,9 +422,7 @@ fun MoonBoardCsvImportScreen(
             ) {
                 Text(stringResource(R.string.moon_csv_request_data))
             }
-            Text(stringResource(R.string.moon_csv_request_hint), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.moon_csv_angle_note), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.moon_csv_privacy), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.import_moon_mail_short), style = MaterialTheme.typography.bodyMedium)
             Button(
                 onClick = { picker.launch(arrayOf("text/csv", "text/comma-separated-values", "text/*")) },
                 enabled = !state.importing,

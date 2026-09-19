@@ -440,8 +440,8 @@ private fun BoardSetupStep(
         }
         val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            InfoHeading(stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info),
-                modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.setup_catalogues_title), modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             TextButton(
                 enabled = downloadSelection != null,
                 onClick = { onDownloadSelectionChange(if (downloadSelection?.containsAll(all) == true) emptySet() else all) },
@@ -449,6 +449,8 @@ private fun BoardSetupStep(
             ) {
                 Text(stringResource(if (downloadSelection?.containsAll(all) == true) R.string.setup_deselect_all else R.string.cd_select_all))
             }
+            com.cruxcoach.android.ui.common.InfoButton(
+                stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info))
         }
         downloadSelection?.let { selected ->
             com.cruxcoach.android.ui.board.sync.CatalogueSelectionRows(selected) { brand ->
@@ -788,7 +790,7 @@ private fun DataSetupStep(
                             ImportSourceCard(
                                 icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
                                 title = stringResource(R.string.onboarding_cruxcoach_restore_title),
-                                description = stringResource(R.string.onboarding_cruxcoach_restore_desc),
+                                description = stringResource(R.string.onboarding_cruxcoach_restore_desc) + "\n\n" + stringResource(R.string.ux_restore_consequence),
                                 action = stringResource(R.string.onboarding_cruxcoach_restore_action),
                                 onClick = {
                                     viewModel.setBackupOptIn(true)
@@ -799,7 +801,7 @@ private fun DataSetupStep(
                                 testTag = "onboarding_cruxcoach_restore",
                             )
                             Text(
-                                stringResource(R.string.ux_restore_consequence),
+                                stringResource(R.string.import_restore_backup_enabled),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             ImportSourceCard(
@@ -835,12 +837,7 @@ private fun DataSetupStep(
                                         )
                                         com.cruxcoach.android.ui.common.KilterDataInfoButton()
                                     }
-                                    Text(
-                                        stringResource(R.string.onboarding_kilter_desc),
-                                        modifier = Modifier.padding(horizontal = 16.dp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+
                                     // While the board catalogue is still importing, a Kilter
                                     // import works but its ascents show up nameless/gradeless
                                     // until the catalogue lands — tell the user rather than let
@@ -848,9 +845,9 @@ private fun DataSetupStep(
                                     val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
                                     if (boardSyncing && state.kilterImportResult == null) {
                                         Text(
-                                            stringResource(R.string.kilter_import_board_sync_pending),
+                                            stringResource(R.string.import_catalogue_pending_short),
                                             modifier = Modifier.padding(horizontal = 16.dp),
-                                            style = MaterialTheme.typography.bodySmall,
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = OrangeAccent,
                                         )
                                     }
@@ -1005,11 +1002,7 @@ private fun AuroraOnboardingCard(onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    stringResource(R.string.onboarding_aurora_card_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
             }
         }
     }
@@ -1082,7 +1075,7 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
     if (state.kilterLoginError != null) {
         Text(
             state.kilterLoginError,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = ErrorRed,
         )
     }
@@ -1105,11 +1098,6 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
         }
     }
 
-    Text(
-        stringResource(R.string.onboarding_kilter_credentials_hint),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
@@ -1137,17 +1125,17 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             preview.newBids,
             preview.duplicateCount,
         ),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
     )
 
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(
             onClick = { viewModel.kilterImportOneTime() },
             enabled = !state.isKilterImporting,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
         ) {
             if (state.isKilterImporting) {
@@ -1159,14 +1147,14 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             } else {
                 Text(
                     stringResource(R.string.onboarding_kilter_import_once),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                 )
             }
         }
         Button(
             onClick = { viewModel.kilterImportPersistent() },
             enabled = !state.isKilterImporting,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
             shape = RoundedCornerShape(12.dp),
         ) {
@@ -1179,7 +1167,7 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             } else {
                 Text(
                     stringResource(R.string.onboarding_kilter_import_sync),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                 )
             }
         }

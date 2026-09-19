@@ -34,6 +34,8 @@ Quellen: [OnboardingScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui
 
 Die Katalogauswahl verwendet in beiden Setup-Schritten und den Einstellungen dieselben vollständig antippbaren Zeilen. Laufende Downloads sperren die Auswahl nicht. Änderungen bleiben bis „Übernehmen“ ein Entwurf; Abbrechen verwirft ihn. Bestätigte Ergänzungen werden nach dem laufenden Download mit der zuletzt bestätigten Auswahl geladen. Abwählen löscht keine Daten und unterbricht keinen laufenden Download. Im Dialog stehen Sammelauswahl und Info-Symbol oben, Bestätigung und Abbrechen bleiben außerhalb des scrollenden Inhalts erreichbar. In den Einstellungen stehen Board-Kataloge direkt bei Board und Bluetooth; Auswahl und Status kommen vor dem Update-Intervall.
 
+Importwege zeigen zuerst die konkrete Aktion, eine kurze Statusmeldung und gegebenenfalls die unmittelbare Folge. Hintergrund zu Dateiformaten, Zugangsdaten, Abgleich und Datenschutz gehört an das zugehörige Info-Symbol. Das gilt auch innerhalb geöffneter Importbereiche und Folgeschritte. Kontowechsel, Schlüsselersatz, Backup-Aktivierung und Berechtigungen dürfen dadurch nicht unsichtbar werden. Bestätigungen nennen diese Folgen knapp; Fehler und Ergebnisse bleiben lesbar. Sammelauswahl steht direkt links vom Info-Symbol.
+
 ## Der Header zeigt die aktuelle Klettersituation
 
 **Bestand:** Eine kompakte Zeile enthält Logo, Board-Auswahl, Winkel, BLE und Filter. Diese primären Elemente bleiben direkt erreichbar. Die Board-Familie bleibt lesbar; ergänzende Modell- und Größenangaben dürfen gekürzt werden. Der Picker nutzt nicht unbegrenzt freien Platz: Seine derzeitige Breitenobergrenze beträgt 132 dp. Sein Textblock ist innerhalb der Berührungsfläche vertikal zentriert.

@@ -290,14 +290,15 @@ internal fun BoardSelectionDialog(
                 modifier = Modifier
                     .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 mismatch?.let {
                     BoardMismatchExplanation(it)
                 }
                 onFindViaBluetooth?.let { find ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = find, modifier = Modifier.weight(1f).testTag("setup_connect")) {
+                        TextButton(onClick = find, modifier = Modifier.weight(1f).testTag("setup_connect"),
+                            contentPadding = PaddingValues(horizontal = 0.dp)) {
                             Icon(Icons.Default.Bluetooth, null, Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.setup_bluetooth_find))
@@ -309,10 +310,7 @@ internal fun BoardSelectionDialog(
                 // Tier 0 — board category. A single dropdown: the labels are too
                 // long to share one chip row on a narrow dialog, and the list grows
                 // with each interactive Aurora board (FEAT-031).
-                Text(
-                    stringResource(R.string.board_category_label),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+
                 // Each entry pairs its menu label with the state-write the old chip
                 // did, in the same order. Aurora brands are appended only when
                 // offered (Settings), so other call sites stay Kilter/MoonBoard.
@@ -361,6 +359,7 @@ internal fun BoardSelectionDialog(
                 ) {
                     OutlinedTextField(
                         value = selectedBoardLabel,
+                        label = { Text(stringResource(R.string.board_category_label)) },
                         onValueChange = {},
                         readOnly = true,
                         trailingIcon = {

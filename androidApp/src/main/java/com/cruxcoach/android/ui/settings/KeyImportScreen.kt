@@ -100,14 +100,14 @@ fun KeyImportScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             SettingsSectionCard {
-                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.account_import_help) + "\n\n" + stringResource(R.string.key_import_supported_formats))
+                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.account_import_help) + "\n\n" + stringResource(R.string.key_import_supported_formats) + "\n\n" + stringResource(R.string.account_import_backup_explanation))
                 Text(
                     text = stringResource(R.string.key_import_prompt),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
 
-                Text(stringResource(R.string.account_import_backup_explanation),
+                Text(stringResource(R.string.import_key_access_only),
                     style = MaterialTheme.typography.bodyMedium)
 
                 // Keep input masked by default; never persist the reveal state.
@@ -217,7 +217,7 @@ fun KeyImportScreen(
                     Text(stringResource(if (state.sameAccount) R.string.account_access_same else R.string.account_access_different))
                     Text(state.derivedNpub, style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.account_access_to_local))
-                    Text(stringResource(R.string.account_import_backup_explanation))
+                    Text(stringResource(R.string.import_key_access_only))
                     if (state.replacesLocalKey) Text(stringResource(R.string.account_import_replaces_local))
                 }
             },

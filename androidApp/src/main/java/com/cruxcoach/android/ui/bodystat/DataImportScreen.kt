@@ -130,16 +130,9 @@ fun DataImportScreen(
             }
 
             if (state.importPreview == null) {
-                Text(
+                com.cruxcoach.android.ui.common.InfoHeading(
                     stringResource(R.string.bodystat_select_file),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
                     stringResource(R.string.import_auto_detect_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 OutlinedButton(
@@ -207,17 +200,9 @@ private fun ImportPreviewCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                stringResource(R.string.import_backup_detected),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = InfoBlue
-            )
-
-            Text(
+            com.cruxcoach.android.ui.common.InfoHeading(
                 stringResource(R.string.import_select_categories),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                stringResource(R.string.import_duplicate_hint),
             )
 
             val detected = preview.detectedCategories()
@@ -240,11 +225,6 @@ private fun ImportPreviewCard(
                 )
             }
 
-            Text(
-                stringResource(R.string.import_duplicate_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             if (boardImportInProgress || waitingForBoardSync) {
                 Text(
@@ -255,7 +235,7 @@ private fun ImportPreviewCard(
                             R.string.import_board_data_not_ready
                         },
                     ),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -333,7 +313,7 @@ private fun PubkeyOverrideBanner(sourceNpubTruncated: String) {
                         R.string.import_pubkey_override_banner_body,
                         sourceNpubTruncated,
                     ),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
