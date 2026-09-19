@@ -49,6 +49,8 @@ class BoardCatalogueStatusTest {
             BoardSyncState(alreadyImported = true, moonBoardError = "Failed"))
         compose.onNodeWithText("Offline catalogues are ready.").assertDoesNotExist()
         compose.onNodeWithTag("onboarding_offline_retry").assertIsDisplayed()
+        compose.onNodeWithTag("board_sync_compact_details").performClick()
+        compose.onNodeWithText("Download failed").assertExists()
     }
 
     @Test fun `zero done count cannot claim an absent catalogue is ready`() {
@@ -62,4 +64,24 @@ class BoardCatalogueStatusTest {
         assertEquals(50L, catalogueDisplayCount(50L, ImportStep.Done(0, 0, 0)))
         assertEquals(0L, catalogueDisplayCount(0L, ImportStep.Done(0, 0, 0)))
     }
+    @Test fun `offline status never promises automatic wifi scheduling`() {
+        show(emptyMap(), BoardSyncState(networkAvailable = false))
+        compose.onNodeWithText("No internet connection").assertIsDisplayed()
+        compose.onNodeWithText("Queued — starts automatically on Wi-Fi").assertDoesNotExist()
+    }
+
+    @Test fun `details contain only selected catalogues`() {
+        show(mapOf("kilter" to 100L))
+        compose.onNodeWithTag("board_sync_compact_details").performClick()
+        compose.onNodeWithTag("board_status_kilter").assertExists()
+        compose.onNodeWithTag("board_status_moonboard").assertExists()
+        compose.onNodeWithTag("board_status_tension").assertDoesNotExist()
+    }
+
+    @Test fun `old counts cannot claim readiness while import is running`() {
+        show(mapOf("kilter" to 100L, "moonboard" to 50L), BoardSyncState(isSyncing = true))
+        compose.onNodeWithText("Offline catalogues are ready.").assertDoesNotExist()
+        compose.onNodeWithTag("onboarding_offline_retry").assertDoesNotExist()
+    }
+
 }

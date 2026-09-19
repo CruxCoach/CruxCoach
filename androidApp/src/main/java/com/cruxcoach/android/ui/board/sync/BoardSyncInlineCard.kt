@@ -448,7 +448,7 @@ fun BoardSyncInlineCard(
                 !state.wifiConnected -> NoWifiWarningBanner()
             }
         }
-        state.autoSyncOverdueDays?.takeIf { !downloadBrands.isNullOrEmpty() }
+        state.autoSyncOverdueDays?.takeIf { !compact && !downloadBrands.isNullOrEmpty() }
             ?.let { days -> AutoSyncOverdueBanner(days) }
         val startSync: () -> Unit = {
             if (autoStartIfNeeded && !state.alreadyImported) {
@@ -456,7 +456,7 @@ fun BoardSyncInlineCard(
                 startAfterSelection = true
             } else viewModel.startApiSync()
         }
-        OutlinedButton(
+        if (!compact) OutlinedButton(
             onClick = {
                 selectionDraft = downloadBrands
                 startAfterSelection = false
@@ -466,7 +466,7 @@ fun BoardSyncInlineCard(
         ) {
             Text(stringResource(R.string.board_download_selection_summary, downloadBrands?.size ?: 0))
         }
-        if (downloadBrands?.isEmpty() == true) {
+        if (!compact && downloadBrands?.isEmpty() == true) {
             Text(stringResource(R.string.board_download_selection_empty),
                 style = MaterialTheme.typography.bodySmall)
         }
@@ -478,6 +478,8 @@ fun BoardSyncInlineCard(
                 selectedBrands = downloadBrands.orEmpty(),
                 onRetry = startSync,
                 onLoadBoard = { viewModel.loadBoard(it) },
+                onChangeSelection = { selectionDraft = downloadBrands; startAfterSelection = false },
+                canChangeSelection = downloadBrands != null && !state.isSyncing,
             )
         } else {
             DatabaseImportSection(
@@ -500,6 +502,7 @@ fun BoardSyncInlineCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CompactDatabasePreparation(
     state: BoardSyncState,
@@ -508,121 +511,78 @@ internal fun CompactDatabasePreparation(
     selectedBrands: Set<BoardBrand>,
     onRetry: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
+    onChangeSelection: (() -> Unit)? = null,
+    canChangeSelection: Boolean = true,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val supportedBoards = BoardBrand.entries.filter { it in selectedBrands }
     val readyBoards = supportedBoards.count { brand ->
-        catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, state.boardSteps[brand]) > 0L
+        val step = state.boardSteps[brand]
+        (step == null || step is ImportStep.Done) && brand !in state.boardErrors &&
+            catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, step) > 0L
     }
-    val hasErrors = state.errorMessage != null || state.boardErrors.isNotEmpty()
-    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors
-    Surface(
-        modifier = Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (allReady) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
-                    contentDescription = null,
-                    tint = if (allReady) SuccessGreen else OrangeAccent,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.onboarding_offline_status_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        stringResource(
-                            when {
-                                state.isSyncing -> R.string.onboarding_offline_status_loading
-                                selectedBrands.isEmpty() -> R.string.board_download_selection_empty
-                                allReady -> R.string.onboarding_offline_status_ready
-                                state.waitingForUnmeteredNetwork || !state.networkAvailable ->
-                                    R.string.board_sync_compact_waiting_wifi
-                                hasErrors -> R.string.onboarding_offline_status_waiting
-                                else -> R.string.onboarding_offline_status_starting
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+    val hasErrors = state.errorMessage != null || supportedBoards.any { it in state.boardErrors }
+    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors && !state.isSyncing
+    val status = when {
+        state.isSyncing -> R.string.onboarding_offline_status_loading
+        supportedBoards.isEmpty() -> R.string.setup_download_none
+        allReady -> R.string.onboarding_offline_status_ready
+        !state.networkAvailable -> R.string.setup_download_no_network
+        state.waitingForUnmeteredNetwork -> R.string.board_sync_compact_waiting_wifi
+        hasErrors -> R.string.onboarding_offline_status_waiting
+        else -> R.string.setup_download_pending
+    }
+    Surface(Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
+        shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(when {
+                    allReady -> Icons.Default.CheckCircle
+                    hasErrors && !state.isSyncing -> Icons.Default.Warning
+                    !state.networkAvailable && !state.localShareInProgress -> Icons.Default.SignalWifiOff
+                    else -> Icons.Default.CloudDownload
+                }, null, tint = if (allReady) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(status), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            }
+            if (supportedBoards.isNotEmpty()) {
+                Text(stringResource(R.string.board_sync_compact_progress, readyBoards, supportedBoards.size),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            if (state.isSyncing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (hasErrors && !state.isSyncing) {
+                val failed = supportedBoards.filter { it in state.boardErrors }.joinToString { it.displayName }
+                if (failed.isNotEmpty()) Text(failed, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error)
+            }
+            if (!allReady && !state.isSyncing && supportedBoards.isNotEmpty()) {
+                OutlinedButton(onClick = onRetry, modifier = Modifier.testTag("onboarding_offline_retry")) {
+                    Text(stringResource(if (hasErrors) R.string.action_retry else R.string.setup_download_start))
                 }
-                if (!allReady && !state.isSyncing) {
-                    TextButton(onClick = onRetry, enabled = selectedBrands.isNotEmpty(), modifier = Modifier.testTag("onboarding_offline_retry")) {
-                        Text(stringResource(if (hasErrors) R.string.action_retry else R.string.board_sync_update_online))
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (supportedBoards.isNotEmpty()) {
+                    TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.testTag("board_sync_compact_details")) {
+                        Text(stringResource(if (showDetails) R.string.board_sync_compact_hide_details else R.string.board_sync_compact_show_details))
+                    }
+                }
+                onChangeSelection?.let { change ->
+                    TextButton(onClick = change, enabled = canChangeSelection,
+                        modifier = Modifier.testTag("board_download_selection")) {
+                        Text(stringResource(R.string.setup_download_change))
                     }
                 }
             }
-            Text(
-                stringResource(R.string.board_sync_compact_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (state.isSyncing && readyBoards > 0) {
-                LinearProgressIndicator(
-                    progress = { readyBoards.toFloat() / supportedBoards.size },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = OrangeAccent,
-                    trackColor = OrangeAccent.copy(alpha = 0.16f),
-                )
-                Text(
-                    stringResource(
-                        R.string.board_sync_compact_progress,
-                        readyBoards,
-                        supportedBoards.size,
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (state.isSyncing) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = OrangeAccent,
-                    trackColor = OrangeAccent.copy(alpha = 0.16f),
-                )
-            }
-            TextButton(
-                onClick = { showDetails = !showDetails },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.testTag("board_sync_compact_details"),
-            ) {
-                Text(
-                    stringResource(
-                        if (showDetails) R.string.board_sync_compact_hide_details
-                        else R.string.board_sync_compact_show_details,
-                    ),
-                )
-            }
-            AnimatedVisibility(showDetails) {
+            AnimatedVisibility(showDetails && supportedBoards.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BoardCatalogueStatusList(
-                        boardCounts = boardCounts,
-                        activeBrand = activeBrand,
-                        selectedBrands = selectedBrands,
-                        boardSteps = state.boardSteps,
-                        boardErrors = state.boardErrors,
-                        syncing = state.isSyncing,
-                        localShareInProgress = state.localShareInProgress,
-                        globalStep = state.importStep,
-                        onLoadBoard = onLoadBoard,
-                    )
-                    state.errorMessage?.let { error ->
-                        Text(
-                            error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                    BoardCatalogueStatusList(boardCounts, activeBrand, selectedBrands, state.boardSteps, state.boardErrors,
+                        state.isSyncing, state.localShareInProgress, state.importStep, onLoadBoard, onlySelected = true)
+                    state.errorMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error) }
                 }
             }
+
         }
     }
 }
@@ -959,6 +919,7 @@ private fun BoardCatalogueStatusList(
     localShareInProgress: Boolean,
     globalStep: ImportStep?,
     onLoadBoard: (BoardBrand) -> Unit,
+    onlySelected: Boolean = false,
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
@@ -969,7 +930,7 @@ private fun BoardCatalogueStatusList(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val sharedPhasePending = localShareInProgress &&
             globalStep?.isSharedLocalSharePhase() == true
-        boards.forEach { brand ->
+        boards.filter { !onlySelected || it in selectedBrands }.forEach { brand ->
             // Discovery, snapshot creation, download and verification are
             // global share phases. LocalShareProgressSummary already renders
             // them once above the list; repeating the same (potentially long)
@@ -1117,6 +1078,12 @@ private fun BoardStatusRow(
                     stringResource(R.string.board_sync_status_waiting),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                hasError -> Text(
+                    stringResource(R.string.setup_catalogue_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.widthIn(max = 140.dp),
                 )
                 loaded -> Text(
                     "%,d".format(displayCount),

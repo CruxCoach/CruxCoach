@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -67,6 +69,7 @@ import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
@@ -115,10 +118,10 @@ fun OnboardingScreen(
                 )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
-                OnboardingStep.PRIVACY -> KilterStep(
+                OnboardingStep.PRIVACY -> DataSetupStep(
                     state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport, boardSyncViewModel,
                 )
-                OnboardingStep.KILTER -> KilterStep(
+                OnboardingStep.KILTER -> DataSetupStep(
                     state = state,
                     viewModel = viewModel,
                     onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
@@ -128,8 +131,10 @@ fun OnboardingScreen(
             }
         }
 
-        // Bottom buttons
-        Row(
+        // Wrap actions onto full-width rows for large accessibility text.
+        FlowRow(
+            maxItemsInEachRow = if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 1 else 2,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -743,12 +748,12 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
     }
 }
 
-// ─── Step 3: existing logbook (optional) ──────────────────────────────────
+// ─── Step 2: public catalogues and optional private logbook ───────────────
 
 private enum class LogbookImportSource { CRUXCOACH, KILTER, MOONBOARD }
 
 @Composable
-private fun KilterStep(
+private fun DataSetupStep(
     state: OnboardingState,
     viewModel: OnboardingViewModel,
     onNavigateToMoonBoardImport: () -> Unit,
@@ -775,148 +780,127 @@ private fun KilterStep(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        InfoHeading(stringResource(R.string.setup_database_section), stringResource(R.string.setup_database_info))
         BoardSyncInlineCard(viewModel = boardSyncViewModel, compact = true)
-        Text(
-            stringResource(R.string.onboarding_existing_data_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("onboarding_import"),
-        )
-        Text(
-            stringResource(R.string.onboarding_existing_data_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.Default.Lock, null) },
-                label = stringResource(R.string.onboarding_source_cruxcoach),
-                selected = selectedSource == LogbookImportSource.CRUXCOACH,
-                testTag = "onboarding_import_source_cruxcoach",
-                onClick = { selectedSource = LogbookImportSource.CRUXCOACH },
-            )
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
-                label = BoardBrand.KILTER.displayName,
-                selected = selectedSource == LogbookImportSource.KILTER,
-                testTag = "onboarding_import_source_kilter",
-                onClick = { selectedSource = LogbookImportSource.KILTER },
-            )
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.Default.History, null) },
-                label = BoardBrand.MOONBOARD.displayName,
-                selected = selectedSource == LogbookImportSource.MOONBOARD,
-                testTag = "onboarding_import_source_moonboard",
-                onClick = { selectedSource = LogbookImportSource.MOONBOARD },
-            )
-        }
-
-        AnimatedContent(
-            targetState = selectedSource,
-            label = "logbook_import_source",
-        ) { source ->
-            when (source) {
-                LogbookImportSource.CRUXCOACH -> Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ImportSourceCard(
-                        icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
-                        title = stringResource(R.string.onboarding_cruxcoach_restore_title),
-                        description = stringResource(R.string.onboarding_cruxcoach_restore_desc),
-                        action = stringResource(R.string.onboarding_cruxcoach_restore_action),
-                        onClick = {
-                            viewModel.setBackupOptIn(true)
-                            viewModel.setBackupChoice(BackupChoice.RESTORE)
-                            viewModel.requestKeyImport()
-                        },
-                        highlighted = true,
-                        testTag = "onboarding_cruxcoach_restore",
-                    )
-                    Text(
-                        stringResource(R.string.ux_restore_consequence),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    ImportSourceCard(
-                        icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
-                        title = stringResource(R.string.onboarding_cruxcoach_file_title),
-                        description = stringResource(R.string.onboarding_cruxcoach_file_desc),
-                        action = stringResource(R.string.onboarding_cruxcoach_file_action),
-                        onClick = onNavigateToDataImport,
-                        highlighted = false,
-                        testTag = "onboarding_cruxcoach_file_import",
-                    )
-                }
-                LogbookImportSource.KILTER -> Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = OrangeAccent.copy(alpha = 0.08f),
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(
-                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    stringResource(R.string.onboarding_kilter_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                com.cruxcoach.android.ui.common.KilterDataInfoButton()
-                            }
-                            Text(
-                                stringResource(R.string.onboarding_kilter_desc),
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        HorizontalDivider()
+        InfoHeading(stringResource(R.string.setup_private_section), stringResource(R.string.setup_private_info),
+            modifier = Modifier.testTag("onboarding_import"))
+        Text(stringResource(R.string.setup_private_optional), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LogbookImportSource.entries.forEach { source ->
+                ImportSourceChoiceCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = { Icon(when (source) {
+                        LogbookImportSource.CRUXCOACH -> Icons.Default.Lock
+                        LogbookImportSource.KILTER -> Icons.AutoMirrored.Filled.Login
+                        LogbookImportSource.MOONBOARD -> Icons.Default.History
+                    }, null) },
+                    label = when (source) {
+                        LogbookImportSource.CRUXCOACH -> stringResource(R.string.onboarding_source_cruxcoach)
+                        LogbookImportSource.KILTER -> BoardBrand.KILTER.displayName
+                        LogbookImportSource.MOONBOARD -> BoardBrand.MOONBOARD.displayName
+                    },
+                    selected = selectedSource == source,
+                    testTag = "onboarding_import_source_${source.name.lowercase(java.util.Locale.ROOT)}",
+                    onClick = { selectedSource = if (selectedSource == source) null else source },
+                )
+                AnimatedVisibility(visible = selectedSource == source) {
+                    when (source) {
+                        LogbookImportSource.CRUXCOACH -> Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            ImportSourceCard(
+                                icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
+                                title = stringResource(R.string.onboarding_cruxcoach_restore_title),
+                                description = stringResource(R.string.onboarding_cruxcoach_restore_desc),
+                                action = stringResource(R.string.onboarding_cruxcoach_restore_action),
+                                onClick = {
+                                    viewModel.setBackupOptIn(true)
+                                    viewModel.setBackupChoice(BackupChoice.RESTORE)
+                                    viewModel.requestKeyImport()
+                                },
+                                highlighted = true,
+                                testTag = "onboarding_cruxcoach_restore",
                             )
-                            // While the board catalogue is still importing, a Kilter
-                            // import works but its ascents show up nameless/gradeless
-                            // until the catalogue lands — tell the user rather than let
-                            // them hit that state unwarned. Hidden once a result is shown.
-                            val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
-                            if (boardSyncing && state.kilterImportResult == null) {
-                                Text(
-                                    stringResource(R.string.kilter_import_board_sync_pending),
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OrangeAccent,
-                                )
-                            }
-
-                            Column(
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            Text(
+                                stringResource(R.string.ux_restore_consequence),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            ImportSourceCard(
+                                icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
+                                title = stringResource(R.string.onboarding_cruxcoach_file_title),
+                                description = stringResource(R.string.onboarding_cruxcoach_file_desc),
+                                action = stringResource(R.string.onboarding_cruxcoach_file_action),
+                                onClick = onNavigateToDataImport,
+                                highlighted = false,
+                                testTag = "onboarding_cruxcoach_file_import",
+                            )
+                        }
+                        LogbookImportSource.KILTER -> Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = OrangeAccent.copy(alpha = 0.08f),
+                                ),
+                                shape = RoundedCornerShape(16.dp),
                             ) {
-                                if (state.kilterImportResult != null) {
-                                    KilterImportDoneContent(state, viewModel)
-                                } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                                    KilterPreviewContent(state, viewModel)
-                                } else {
-                                    KilterLoginContent(state, viewModel)
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.onboarding_kilter_title),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        com.cruxcoach.android.ui.common.KilterDataInfoButton()
+                                    }
+                                    Text(
+                                        stringResource(R.string.onboarding_kilter_desc),
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    // While the board catalogue is still importing, a Kilter
+                                    // import works but its ascents show up nameless/gradeless
+                                    // until the catalogue lands — tell the user rather than let
+                                    // them hit that state unwarned. Hidden once a result is shown.
+                                    val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                                    if (boardSyncing && state.kilterImportResult == null) {
+                                        Text(
+                                            stringResource(R.string.kilter_import_board_sync_pending),
+                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = OrangeAccent,
+                                        )
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                                    ) {
+                                        if (state.kilterImportResult != null) {
+                                            KilterImportDoneContent(state, viewModel)
+                                        } else if (state.kilterConnected && state.kilterImportPreview != null) {
+                                            KilterPreviewContent(state, viewModel)
+                                        } else {
+                                            KilterLoginContent(state, viewModel)
+                                        }
+                                    }
                                 }
                             }
+                            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
                         }
+                        LogbookImportSource.MOONBOARD ->
+                            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
                     }
-                    AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
                 }
-                LogbookImportSource.MOONBOARD ->
-                    MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
-                null -> Spacer(Modifier.height(1.dp))
             }
         }
-
     }
 
     if (state.auroraSheetOpen) {
@@ -939,7 +923,7 @@ private fun ImportSourceChoiceCard(
         modifier = modifier
             .heightIn(min = 56.dp)
             .semantics {
-                role = Role.RadioButton
+                role = Role.Button
                 this.selected = selected
             }
             .testTag(testTag),
@@ -966,14 +950,8 @@ private fun ImportSourceChoiceCard(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
-            if (selected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = stringResource(R.string.settings_led_selected),
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(if (selected) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null, modifier = Modifier.size(24.dp))
         }
     }
 }

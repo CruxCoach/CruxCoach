@@ -215,7 +215,7 @@
     <string name="onboarding_board_first_subtitle">Wähle Marke und Modell, das du am häufigsten nutzt. Du kannst später jederzeit wechseln.</string>
     <string name="onboarding_continue">Weiter</string>
     <string name="onboarding_start_without_import">Ohne Import starten</string>
-    <string name="onboarding_start_cruxcoach">CruxCoach starten</string>
+    <string name="onboarding_start_cruxcoach">App starten</string>
     <string name="onboarding_offline_status_title">Offline-Climbs werden vorbereitet</string>
     <string name="onboarding_offline_status_starting">Wähle deine Boards und starte den Download.</string>
     <string name="onboarding_offline_status_loading">Lädt im Hintergrund — du kannst weitergehen.</string>
@@ -2985,4 +2985,15 @@
     <string name="board_preview_enlarge">Boardbild vergrößern: %1$s</string>
     <string name="setup_selected_count">%1$d ausgewählt</string>
     <string name="setup_deselect_all">Auswahl aufheben</string>
+    <string name="setup_database_section">1. Board-Kataloge</string>
+    <string name="setup_database_info">Öffentliche Climbs\nDie gewählten Board-Kataloge werden auf dein Gerät geladen. Danach kannst du sie offline durchsuchen.\n\nIm Hintergrund\nDu kannst währenddessen deine privaten Kletterdaten importieren oder die App starten. Die Climbs erscheinen, sobald ihr Katalog fertig ist.</string>
+    <string name="setup_private_section">2. Private Kletterdaten</string>
+    <string name="setup_private_info">Dein bisheriges Logbuch\nÜbernimm Begehungen und Projekte aus einer anderen App oder stelle ein CruxCoach-Backup wieder her. Wähle dafür die passende Quelle.\n\nOptional\nOhne Import startest du mit einem leeren Logbuch. Du kannst Daten später in den Einstellungen importieren.</string>
+    <string name="setup_private_optional">Schon ein Logbuch? Übernimm es jetzt oder starte ohne Import.</string>
+    <string name="setup_download_none">Keine Kataloge ausgewählt</string>
+    <string name="setup_download_no_network">Keine Internetverbindung</string>
+    <string name="setup_download_pending">Download noch nicht abgeschlossen</string>
+    <string name="setup_download_start">Download starten</string>
+    <string name="setup_download_change">Auswahl ändern</string>
+    <string name="setup_catalogue_failed">Download fehlgeschlagen</string>
 </resources>

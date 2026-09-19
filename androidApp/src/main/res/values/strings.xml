@@ -215,7 +215,7 @@
     <string name="onboarding_board_first_subtitle">Choose the brand and model you use most. You can switch at any time.</string>
     <string name="onboarding_continue">Continue</string>
     <string name="onboarding_start_without_import">Start without import</string>
-    <string name="onboarding_start_cruxcoach">Start CruxCoach</string>
+    <string name="onboarding_start_cruxcoach">Start app</string>
     <string name="onboarding_offline_status_title">Preparing offline climbs</string>
     <string name="onboarding_offline_status_starting">Choose your boards and start the download.</string>
     <string name="onboarding_offline_status_loading">Loading in the background — you can continue.</string>
@@ -2986,4 +2986,15 @@
     <string name="board_preview_enlarge">Enlarge board image: %1$s</string>
     <string name="setup_selected_count">%1$d selected</string>
     <string name="setup_deselect_all">Deselect all</string>
+    <string name="setup_database_section">1. Board catalogues</string>
+    <string name="setup_database_info">Public climbs\nYour selected board catalogues download to this device so you can browse them offline.\n\nIn the background\nYou can import your private climbing data or start the app while they download. Climbs appear once their catalogue is ready.</string>
+    <string name="setup_private_section">2. Private climbing data</string>
+    <string name="setup_private_info">Your existing logbook\nBring ascents and projects from another app, or restore a CruxCoach backup. Choose the matching source.\n\nOptional\nWithout an import, you start with an empty logbook. You can import later in settings.</string>
+    <string name="setup_private_optional">Already have a logbook? Bring it over now or start without an import.</string>
+    <string name="setup_download_none">No catalogues selected</string>
+    <string name="setup_download_no_network">No internet connection</string>
+    <string name="setup_download_pending">Download not yet complete</string>
+    <string name="setup_download_start">Start download</string>
+    <string name="setup_download_change">Change selection</string>
+    <string name="setup_catalogue_failed">Download failed</string>
 </resources>
