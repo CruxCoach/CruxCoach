@@ -46,6 +46,18 @@ fun BoardLogbookScreen(
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        var firstResume = true
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // init already loads once; only later returns need a reload.
+                if (firstResume) firstResume = false else viewModel.refreshAfterReturn()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val (tour, tourStep) = rememberBrowserTour()
     val tourTargets = remember { TourTargets() }
     val tourEntry = tour.loggedEntry()

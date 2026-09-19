@@ -333,6 +333,14 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
+    /** Reload after the screen becomes visible again. The ViewModel survives on the back
+     *  stack, so entries logged, edited or deleted in the climb detail were missing (and the
+     *  totals stale) until the logbook was left and reopened. */
+    fun refreshAfterReturn() {
+        loadAscents()
+        refreshOwnPublishable()
+    }
+
     private fun loadAscents() {
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoading = true, error = null) }
