@@ -1,6 +1,6 @@
 # CruxCoach 0.2.3 — Unreleased
 
-This release focuses on reliable browsing, clearer statistics and quicker board navigation.
+This release brings beta videos, quicker board navigation, a searchable board map, clearer statistics and more reliable browsing.
 
 ## Highlights
 - **A guided first session.** Connect your board during setup, choose catalogue
@@ -28,6 +28,11 @@ This release focuses on reliable browsing, clearer statistics and quicker board 
 - **Beta videos close at hand.** Open videos from the climb detail card. Optional
   beta media synchronizes separately from the board catalogue; previews are verified
   before caching and fall back gracefully when a mirror is unavailable.
+
+- **Find boards on the map.** Search the board map for gyms, cities and boards and
+  open a venue to see every board installed there.
+- **Download only what you climb.** Choose which board catalogues to keep on your
+  phone during setup or later in Settings → Board catalogs.
 
 ## Other improvements
 - Board-aware quick logging and playlist generation, with candidate pools for each
