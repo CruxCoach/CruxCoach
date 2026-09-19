@@ -1,0 +1,99 @@
+name: iOS build (unsigned)
+
+# Credential-free: no secrets, no environments, no signing, no publisher.
+# Produces UNSIGNED artifacts only. An unsigned .ipa proves the device target
+# compiles and links; it does not prove that it installs or runs on a phone.
+#
+# Runs on STANDARD GitHub-hosted runners only (free for public repositories).
+# Never switch these labels to a "large"/"xlarge" runner: those always bill.
+on:
+  push:
+    branches:
+      - 'feat/0.2.3-ios-parity'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # :shared gained iOS targets and portability fixes, so Android must be re-proven.
+  # Same commands as pr-ci.yml, plus the new module's JVM tests.
+  android-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Generated iOS strings are current
+        run: python3 scripts/android_strings_to_ios.py --check
+      - name: Unit tests
+        run: ./gradlew :shared:testDebugUnitTest :appcore:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+      - name: Compile debug APK
+        run: ./gradlew :androidApp:assembleDebug --console=plain
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | head -40
+      - name: Kotlin/Native tests on the simulator
+        run: ./gradlew :shared:iosSimulatorArm64Test :appcore:iosSimulatorArm64Test --console=plain
+      - name: Link CruxCoachCore.xcframework
+        run: iosApp/scripts/build-core.sh Release
+      - name: Generate Xcode project
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          cd iosApp && xcodegen generate
+      - name: Build and test on the simulator
+        run: |
+          set -o pipefail
+          DEVICE="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9]+[^(]*' | sed 's/ *$//')"
+          echo "Simulator: $DEVICE"
+          cd iosApp && xcodebuild test -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO | tail -200
+      - name: Build for device, unsigned
+        run: |
+          set -o pipefail
+          cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -200
+      - name: Package unsigned IPA
+        run: |
+          cd iosApp
+          APP="build/device/Build/Products/Release-iphoneos/CruxCoach.app"
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          NAME="CruxCoach-0.2.3-${GITHUB_SHA:0:12}-UNSIGNED.ipa"
+          zip -qry "$NAME" Payload
+          shasum -a 256 "$NAME" | tee "$NAME.sha256"
+          lipo -info "Payload/CruxCoach.app/CruxCoach"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: CruxCoach-iOS-UNSIGNED-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            iosApp/CruxCoach-*-UNSIGNED.ipa
+            iosApp/CruxCoach-*-UNSIGNED.ipa.sha256

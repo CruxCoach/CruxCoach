@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - 'feat/**'
+      # OWNER REVIEW (iOS parity branch): no Android feature-APK request for this
+      # branch, so the trusted publisher is never triggered by iOS work. Its Android
+      # tests and debug build run credential-free in ios-build.yml instead.
+      # Remove this line to publish this branch as a feature APK.
+      - '!feat/0.2.3-ios-parity'
 
 permissions:
   contents: read

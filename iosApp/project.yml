@@ -1,0 +1,75 @@
+# XcodeGen project definition. Generate with `xcodegen generate` in this directory.
+# The Kotlin core is consumed as a prebuilt XCFramework (Frameworks/CruxCoachCore.xcframework),
+# produced by scripts/build-core.sh, so Xcode itself never needs Gradle, a JDK or the Android SDK.
+name: CruxCoach
+options:
+  bundleIdPrefix: org.cruxcoach
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  # Official Zetetic package. Provides the SQLite symbols the static Kotlin framework links against.
+  SQLCipher:
+    url: https://github.com/sqlcipher/SQLCipher.swift
+    from: 4.10.0
+  # Official facebook/zstd repository; catalogue chunks are zstd-compressed.
+  zstd:
+    url: https://github.com/facebook/zstd
+    from: 1.5.6
+targets:
+  CruxCoach:
+    type: application
+    platform: iOS
+    sources:
+      - path: CruxCoach
+      # Same bundled board images and map data as Android: referenced, not copied.
+      - path: ../androidApp/src/main/assets/board_images
+        type: folder
+        buildPhase: resources
+      - path: ../androidApp/src/main/assets/board_map
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: Frameworks/CruxCoachCore.xcframework
+        embed: false
+      - package: SQLCipher
+        product: SQLCipher
+      - package: zstd
+        product: libzstd
+      - sdk: CoreBluetooth.framework
+      - sdk: Security.framework
+      - sdk: LocalAuthentication.framework
+      - sdk: Network.framework
+      - sdk: libz.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.cruxcoach.ios
+        MARKETING_VERSION: "0.2.3"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.10"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: CruxCoach/Info.plist
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
+        # Do NOT add -lsqlite3: personal data must go through SQLCipher. The Kotlin
+        # SecureDriverFactory refuses to open if `PRAGMA cipher_version` is empty.
+        OTHER_LDFLAGS: "$(inherited) -ObjC"
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        CODE_SIGN_STYLE: Automatic
+  CruxCoachTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [CruxCoachTests]
+    dependencies:
+      - target: CruxCoach
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.cruxcoach.ios.tests
+schemes:
+  CruxCoach:
+    build:
+      targets:
+        CruxCoach: all
+    test:
+      targets: [CruxCoachTests]
