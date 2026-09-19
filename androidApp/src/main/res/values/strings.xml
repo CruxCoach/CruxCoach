@@ -2772,8 +2772,8 @@
     <string name="beta_video_close">Close beta videos</string>
     <string name="board_stats_problem_outcomes_hint">Each climb counts once per board family in this period, across angles: Flash, otherwise Sent, otherwise Attempted.</string>
     <string name="whatsnew_023_title">New in 0.2.3</string>
-    <string name="whatsnew_023_body">• Beta videos: many problems now show a play icon in their details so you can see how others climb them.\n\n• New header: board, angle, Bluetooth and filters are one tap away. Filters are easier to scan and include an “Exclude sent” switch.\n\n• Board map with search: find gyms and boards by place or name.\n\n• Less storage: download only the board catalogues you actually need (Settings → Board catalogs).\n\n• More honest statistics: each problem counts once – as flash, sent later or attempted. Your tries stay visible as training volume.</string>
-    <string name="whatsnew_023_hint">Also: MoonBoard hold sets right in the board picker, a clearer split between your account key and your data backup, account restore with Amber, and a short introduction you can replay from the logo menu.</string>
+    <string name="whatsnew_023_body">• Beta videos – play icon in the problem details.\n• New header – board, angle, Bluetooth and filters one tap away.\n• Filters – easier to scan, with “Exclude sent”.\n• Board map – search gyms and boards by place or name.\n• Choose catalogues – download only the boards you need.\n• Statistics – each problem counts once: flash, sent or attempted.</string>
+    <string name="whatsnew_023_hint">Also: MoonBoard hold sets in the board picker, clearer account &amp; backup, introduction in the logo menu.</string>
     <string name="board_filter_status_hint">Select one or more statuses. All clears the selection.</string>
     <string name="board_filter_exclude_sent">Exclude sent problems</string>
 
