@@ -93,6 +93,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The board picker offers the optional Bluetooth family search in the browser
   too and states what was recognised and that model and size still need to be
   chosen.
+- The board picker in the browser top bar only takes the width its name
+  needs (still capped), so short board names leave room for logbook, lists
+  and settings as direct icons.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer

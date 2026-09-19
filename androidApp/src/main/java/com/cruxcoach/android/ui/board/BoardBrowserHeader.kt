@@ -91,11 +91,17 @@ internal fun BoardBrowserHeader(
             val familyWidth = with(density) {
                 measurer.measure(AnnotatedString(context.family), MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width.toDp()
             }
-            val minimumBoardWidth = (familyWidth + 20.dp).coerceAtLeast(80.dp)
+            // The picker only takes what its content needs (capped), so short names leave room for more direct actions.
+            val preferredBoardWidth = with(density) {
+                val titleWidth = measurer.measure(AnnotatedString(context.title), MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width
+                val subtitleWidth = measurer.measure(AnnotatedString(context.subtitle), MaterialTheme.typography.labelSmall, softWrap = false).size.width
+                maxOf(titleWidth, subtitleWidth).toDp()
+            }.plus(22.dp).coerceIn(56.dp, 132.dp)
+            val minimumBoardWidth = (familyWidth + 20.dp).coerceAtLeast(80.dp).coerceAtMost(preferredBoardWidth)
             val allFit = maxWidth >= 192.dp + minimumBoardWidth + 144.dp
             val directCount = if (allFit) 3 else ((maxWidth - 240.dp - minimumBoardWidth).value / 48f).toInt().coerceIn(0, 2)
             val boardWidth = (maxWidth - 192.dp - (directCount * 48).dp - if (allFit) 0.dp else 48.dp)
-                .coerceAtMost(132.dp).coerceAtLeast(1.dp)
+                .coerceAtMost(preferredBoardWidth).coerceAtLeast(1.dp)
             var overflowOpen by remember { mutableStateOf(false) }
             val actions = listOf(
                 Triple(R.string.board_logbook_title, Icons.Default.Book, onLogbook),

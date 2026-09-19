@@ -175,6 +175,19 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_header_overflow_action_2").assertIsDisplayed()
     }
 
+    @Config(qualifiers = "w411dp-h800dp")
+    @Test fun `short board name shrinks the picker so every action is directly reachable`() {
+        compose.setContent { MaterialTheme { Box(Modifier.width(411.dp)) {
+            BoardBrowserHeader(BoardBrowserHeaderContext("Decoy", "12 x 12"), false, 40,
+                onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {}, onFilter = {})
+        } } }
+        assertTrue(compose.onNodeWithTag("board_browser_board_picker").getUnclippedBoundsInRoot().let { it.right - it.left <= 75.dp })
+        compose.onNodeWithTag("board_header_action_0").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_action_1").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_action_2").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_overflow").assertDoesNotExist()
+    }
+
     @Test fun `filter header leaves controls visible with large text`() {
         val viewModel = io.mockk.mockk<BoardBrowserViewModel>(relaxed = true)
         io.mockk.every { viewModel.state } returns kotlinx.coroutines.flow.MutableStateFlow(BoardBrowserState())
