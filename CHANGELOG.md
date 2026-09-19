@@ -73,6 +73,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   have a generous burst allowance and a sustained rate limit for joined peers.
 - App updates verify the archive package and version name as well as its hash and
   signing history.
+- Board map search no longer freezes the app: results are computed from a
+  prepared index in the background instead of on every keystroke.
+- Starting and then cancelling account restoration during setup no longer turns
+  on the encrypted data backup; only a successful restore does.
+- Importing a backup from another account now moves its local drafts to the
+  active account instead of leaving them invisible. Published problems keep
+  their original author.
+- Custom statistics date ranges no longer include the day after the end date.
+- Training plan steps show the grade for their pinned angle.
+- Import and export results stay visible long enough to read, the board picker
+  shows a loading state instead of "no preview", pasted public account IDs and
+  unrecognised keys are explained, tour hints stay legible over busy screens,
+  long list names no longer fill the top bar, and singular counts read
+  correctly.
 
 ## [0.2.2] - 2026-08-29
 
