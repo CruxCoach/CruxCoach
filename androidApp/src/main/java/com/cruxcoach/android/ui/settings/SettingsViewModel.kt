@@ -796,7 +796,9 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
     }
     fun showDeleteUserDataDialog() {
-        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Irreversible: start with nothing selected so the user names what to delete.
+        // Catalogue data above can be downloaded again and keeps its select-all default.
+        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
     fun dismissDeleteSuccess() { _state.update { it.copy(deleteSuccess = null) } }

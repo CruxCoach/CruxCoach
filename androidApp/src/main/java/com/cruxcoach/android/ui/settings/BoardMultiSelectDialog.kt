@@ -86,6 +86,7 @@ internal fun BoardMultiSelectRows(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .triStateToggleable(
                     state = when {
                         selectedBrands.containsAll(boards) -> ToggleableState.On
@@ -116,6 +117,7 @@ internal fun BoardMultiSelectRows(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .testTag("board_selection_${brand.wireValue}")
                     .toggleable(
                         value = brand in selectedBrands,
@@ -129,7 +131,8 @@ internal fun BoardMultiSelectRows(
                     onCheckedChange = null,
                     colors = CheckboxDefaults.colors(checkedColor = confirmColor)
                 )
-                Text(brand.displayName, style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(brand.displayName, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }
