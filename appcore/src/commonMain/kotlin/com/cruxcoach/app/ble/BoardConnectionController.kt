@@ -8,6 +8,7 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardLedMode
 import com.cruxcoach.domain.board.MoonBoardVariant
+import com.cruxcoach.domain.board.QuantumActivePlayer
 import com.cruxcoach.domain.board.QuantumBoardModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -331,6 +332,47 @@ class BoardConnectionController(
     }
 
     internal fun markReadyFromSetup(current: Link) = markReady(current)
+
+    internal fun centralMaximumWriteLength(identifier: String): Int =
+        central.maximumWriteLength(identifier, withResponse = true)
+
+    internal fun centralRead(identifier: String, service: String, characteristic: String) =
+        central.read(identifier, service, characteristic)
+
+    internal fun centralSetNotify(identifier: String, service: String, characteristic: String) =
+        central.setNotify(identifier, service, characteristic, enabled = true)
+
+    // ── Quantum (see QuantumLinkSupport) ────────────────────────────────
+
+    val quantumState: StateFlow<QuantumControllerState> get() = quantum.state
+
+    suspend fun refreshQuantumState(): Boolean = quantum.refresh()
+
+    fun refreshQuantumStateOnForeground() = quantum.refreshOnForeground()
+
+    /**
+     * Project one climb for one installation-owned [userId]. The caller must
+     * have done the rack preflight (capacity, colour, hold overlap) against
+     * [expectedPlayers]; this only proves the roster has not changed since.
+     */
+    suspend fun sendQuantumClimb(
+        holds: List<BoardHold>,
+        placementToLed: Map<Int, Int>,
+        routeId: String,
+        userId: String,
+        color: Int,
+        expectedPlayers: List<QuantumActivePlayer>,
+        expectedBoard: BoardLayerBoardIdentity,
+    ): BoardSendResult = quantum.sendClimb(holds, placementToLed, routeId, userId, color, expectedPlayers, expectedBoard)
+
+    suspend fun removeQuantumLayer(
+        userId: String,
+        expectedRouteId: String,
+        expectedBoard: BoardLayerBoardIdentity,
+    ): BoardSendResult = quantum.removeLayer(userId, expectedRouteId, expectedBoard)
+
+    suspend fun clearQuantumBoardExplicitly(expectedBoard: BoardLayerBoardIdentity): BoardSendResult =
+        quantum.clearEntireWall(expectedBoard)
 
     internal fun stopConnectTimeout() {
         connectionTimeoutJob?.cancel()

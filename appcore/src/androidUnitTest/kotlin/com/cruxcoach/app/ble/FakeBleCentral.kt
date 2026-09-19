@@ -63,7 +63,11 @@ class FakeBleCentral(private val now: () -> Long) : BleCentral {
 
     override fun read(identifier: String, serviceUuid: String, characteristicUuid: String) {
         operations += "read:$characteristicUuid"
-        if (answerReads) listener?.onCharacteristicRead(identifier, characteristicUuid, reads[characteristicUuid])
+        if (answerReads) listener?.onCharacteristicRead(
+            identifier,
+            characteristicUuid,
+            reads.entries.firstOrNull { BoardBleUuids.sameUuid(it.key, characteristicUuid) }?.value,
+        )
     }
 
     override fun setNotify(identifier: String, serviceUuid: String, characteristicUuid: String, enabled: Boolean) {
