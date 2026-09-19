@@ -106,7 +106,7 @@ class AnchorComparisonTest {
     }
 
     @Test
-    fun `the direction of the change is downward, or unchanged`() {
+    fun `the direction of the change is downward or unchanged`() {
         // Across every shape above, the new anchor never sits HIGHER than the
         // old one. That is the safety property worth stating: the change can
         // make a session easier than before, never harder.

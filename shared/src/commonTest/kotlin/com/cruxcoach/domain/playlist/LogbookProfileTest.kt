@@ -43,7 +43,7 @@ class LogbookProfileTest {
     }
 
     @Test
-    fun `a single send is the anchor, for want of anything better`() {
+    fun `a single send is the anchor for want of anything better`() {
         assertEquals(22.0, LogbookProfile.anchorOf(listOf(send(22.0)), cutoffs))
     }
 
