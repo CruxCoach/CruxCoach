@@ -912,7 +912,7 @@
     <string name="board_browser_connect">Connect board</string>
     <string name="board_browser_connected">Board connected</string>
     <string name="board_lists_delete_title">Delete list?</string>
-    <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
+    <string name="board_lists_delete_message">“%1$s” and all its entries will be deleted. The problems themselves and your logbook stay.</string>
     <string name="board_lists_empty_title">No lists yet</string>
     <string name="board_lists_empty_message">Create a list to organize climbs.</string>
     <string name="board_lists_new_list">New list</string>

@@ -78,11 +78,13 @@ fun BoardListsScreen(
         )
     }
 
-    state.deleteConfirmListId?.let {
+    state.deleteConfirmListId?.let { deleteId ->
+        // Name the list: a generic "Delete list?" does not say which one is about to go.
+        val deleteName = state.lists.firstOrNull { it.id == deleteId }?.name.orEmpty()
         AlertDialog(
             onDismissRequest = { viewModel.dismissDeleteConfirm() },
             title = { Text(stringResource(R.string.board_lists_delete_title), fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.board_lists_delete_message)) },
+            text = { Text(stringResource(R.string.board_lists_delete_message, deleteName)) },
             confirmButton = {
                 Button(
                     onClick = { viewModel.confirmDeleteList() },

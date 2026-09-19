@@ -956,7 +956,7 @@
     <string name="board_browser_connect">Board verbinden</string>
     <string name="board_browser_connected">Board verbunden</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
-    <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
+    <string name="board_lists_delete_message">„%1$s“ und alle Einträge darin werden gelöscht. Die Boulder selbst und dein Logbuch bleiben erhalten.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>
     <string name="board_lists_empty_message">Erstelle eine Liste, um Climbs zu organisieren.</string>
     <string name="board_lists_new_list">Neue Liste</string>
