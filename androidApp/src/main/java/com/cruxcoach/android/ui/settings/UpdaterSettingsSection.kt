@@ -171,8 +171,11 @@ internal fun UpdaterSettingsSection(
                     text = stringResource(R.string.updater_settings_status_title),
                     fontWeight = FontWeight.Bold,
                 )
+                val justNow = stringResource(R.string.relative_time_just_now)
                 val lastCheckText = state.lastCheckAtEpochMs?.let {
-                    val relative = DateUtils.getRelativeTimeSpanString(
+                    // The platform renders the first minute as "0 minutes ago".
+                    val relative = if (System.currentTimeMillis() - it < DateUtils.MINUTE_IN_MILLIS) justNow
+                    else DateUtils.getRelativeTimeSpanString(
                         it,
                         System.currentTimeMillis(),
                         DateUtils.MINUTE_IN_MILLIS,
