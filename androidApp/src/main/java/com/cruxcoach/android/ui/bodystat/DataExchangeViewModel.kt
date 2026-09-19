@@ -403,6 +403,7 @@ class DataExchangeViewModel @Inject constructor(
                         boardRepository = boardRepository,
                         transactionRunner = transactionRunner,
                         expectedNostrPubkey = expectedPubkey,
+                        adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
                     )
                 }
 

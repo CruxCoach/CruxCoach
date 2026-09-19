@@ -963,7 +963,16 @@ object CruxCoachBackup {
          * check (legacy callers and `preview`).
          */
         expectedNostrPubkey: String? = null,
+        /** Active identity (64-char hex) that takes over LOCAL drafts when the user explicitly
+         *  accepted a cross-identity import. Drafts are scoped by `created_by_pubkey`; keeping
+         *  the old owner made them invisible to the importing account, although the import
+         *  promises to move the data into it. Published (`source='nostr'`) climbs keep their
+         *  signed author and are never re-assigned. */
+        adoptLocalDraftsForPubkey: String? = null,
     ): ImportResult {
+        require(adoptLocalDraftsForPubkey == null || HEX64_REGEX.matches(adoptLocalDraftsForPubkey)) {
+            "invalid import: adoptLocalDraftsForPubkey"
+        }
         val backup = json.decodeFromString<Backup>(jsonString).validate()
         val importsOwnClimbData = Category.OWN_CLIMBS in selectedCategories &&
             (backup.boardClimbs.isNotEmpty() || backup.boardClimbStats.isNotEmpty())
@@ -1374,7 +1383,9 @@ object CruxCoachBackup {
                     moveCount = climb.moveCount,
                     isListed = climb.isListed,
                     source = climb.source, syncStatus = climb.syncStatus,
-                    createdByPubkey = climb.createdByPubkey,
+                    createdByPubkey = if (adoptLocalDraftsForPubkey != null && climb.source == "local") {
+                        adoptLocalDraftsForPubkey
+                    } else climb.createdByPubkey,
                     framesHash = climb.framesHash,
                     nostrEventId = climb.nostrEventId,
                     nostrDTag = climb.nostrDTag,

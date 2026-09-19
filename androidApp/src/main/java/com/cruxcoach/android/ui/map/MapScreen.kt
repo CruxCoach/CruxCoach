@@ -36,6 +36,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -166,8 +169,24 @@ fun MapScreen(
         requestedPlace = null
     }
 
-    val searchResults = remember(searchQuery, state.unfilteredVenues, state.places) {
-        searchBoardMap(searchQuery, state.unfilteredVenues, state.places)
+    // Search never runs on the main thread: the corpus (venues plus the bundled city index)
+    // is normalised once in the background, and typing only triggers a debounced lookup.
+    var searchIndex by remember { mutableStateOf<BoardMapSearchIndex?>(null) }
+    LaunchedEffect(state.unfilteredVenues, state.places) {
+        searchIndex = null
+        searchIndex = withContext(Dispatchers.Default) {
+            BoardMapSearchIndex(state.unfilteredVenues, state.places)
+        }
+    }
+    var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
+    LaunchedEffect(searchQuery, searchIndex) {
+        val index = searchIndex
+        if (index == null || searchQuery.trim().length < 2) {
+            searchResults = emptyList()
+            return@LaunchedEffect
+        }
+        delay(200)
+        searchResults = withContext(Dispatchers.Default) { index.search(searchQuery) }
     }
 
     LaunchedEffect(mapHandle, selectedVenue) {
