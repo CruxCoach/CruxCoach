@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, qualifiers = "de-w320dp-h480dp")
 class SettingsKilterDialogsTest {
@@ -44,7 +45,13 @@ class SettingsKilterDialogsTest {
             }
         }
         compose.onNodeWithText("Dein Passwort wird nicht gespeichert", substring = true)
+            .assertDoesNotExist()
+        compose.onNodeWithContentDescription("Kilter-Datenaustausch — Info")
+            .performScrollTo().performClick()
+        compose.onNodeWithText("Dein Passwort wird nicht gespeichert", substring = true)
             .performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, logins) }
+        compose.onNodeWithText("OK").performClick()
         compose.onNodeWithText("Anmelden").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
         compose.runOnIdle { assertEquals(0, logins) }
     }
