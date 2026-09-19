@@ -674,8 +674,12 @@ fun BoardClimbDetailScreen(
                                     modifier = Modifier.testTag("boarddetail_log_button").tourMenuTarget(TourTarget.LOG),
                                 )
                                 if (tourTargets.active != null) {
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.tour_skip)) },
-                                        onClick = { moreExpanded = false; tour.move(TourStep.DONE) })
+                                    FilledTonalButton(onClick = { moreExpanded = false; tour.move(TourStep.DONE) },
+                                        modifier = Modifier.padding(8.dp).fillMaxWidth().heightIn(min = 48.dp)) {
+                                        Icon(Icons.Default.Close, null, Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.tour_skip))
+                                    }
                                 }
                                 HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip

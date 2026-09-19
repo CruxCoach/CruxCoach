@@ -653,7 +653,8 @@ class OnboardingViewModel @Inject constructor(
                     userPreferences.setBoardBrand(BoardBrand.fromWire(s.boardBrand).wireValue)
                 }
                 if (skipTour && !userPreferences.hasBoardDownloadSelection()) userPreferences.setBoardDownloadBrands(emptySet())
-                if (skipTour) BrowserTour(appContext).move(TourStep.DONE) else BrowserTour(appContext).start()
+                if (skipTour) BrowserTour(appContext).move(TourStep.DONE)
+                else BrowserTour(appContext).startForNewUser(userPreferences.isOnboardingCompleted())
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

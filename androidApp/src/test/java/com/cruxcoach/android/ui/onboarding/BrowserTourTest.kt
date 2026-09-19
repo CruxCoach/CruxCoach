@@ -15,9 +15,33 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class)
 class BrowserTourTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
-    @Before fun clean() { context.getSharedPreferences("browser_tour_v1", 0).edit().clear().commit() }
+    @Before fun clean() {
+        context.getSharedPreferences("browser_tour_v1", 0).edit().clear().commit()
+        context.getSharedPreferences("app_cache", 0).edit().clear().commit()
+    }
     @Test fun `existing installations do not automatically start a tour`() {
         assertEquals(TourStep.INACTIVE, BrowserTour(context).step())
+    }
+    @Test fun `only fresh setup starts automatically and repeating setup preserves dismissal`() {
+        val tour = BrowserTour(context)
+        tour.startForNewUser(alreadyOnboarded = true)
+        assertEquals(TourStep.INACTIVE, tour.step())
+        tour.startForNewUser(alreadyOnboarded = false)
+        assertEquals(TourStep.CONNECT, tour.step())
+        tour.move(TourStep.FILTER)
+        tour.startForNewUser(alreadyOnboarded = false)
+        assertEquals(TourStep.FILTER, tour.step())
+        tour.move(TourStep.DONE)
+        BrowserTour(context).startForNewUser(alreadyOnboarded = false)
+        assertEquals(TourStep.DONE, tour.step())
+    }
+    @Test fun `installation evidence blocks auto start even after identity scoped setup resets`() {
+        context.getSharedPreferences("app_cache", 0).edit().putBoolean("has_user_profile", true).commit()
+        val tour = BrowserTour(context)
+        tour.startForNewUser(alreadyOnboarded = false)
+        assertEquals(TourStep.INACTIVE, tour.step())
+        tour.start(replay = true)
+        assertEquals(TourStep.CONNECT, tour.step())
     }
     @Test fun `deferred Bluetooth is skipped on handoff and dismissal survives recreation`() {
         BrowserTour(context).apply { deferBle(); start() }

@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -86,6 +88,7 @@ private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> 
     val density = LocalDensity.current
     var origin by remember { mutableStateOf(Offset.Zero) }
     var hintHeight by remember(message) { mutableIntStateOf(0) }
+    var skipHeight by remember { mutableIntStateOf(0) }
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { origin = it.boundsInRoot().topLeft }
         .testTag("tour_spotlight")) {
         val width = with(density) { maxWidth.toPx() }
@@ -97,9 +100,10 @@ private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> 
         if (holes.isEmpty()) return@BoxWithConstraints
         val target = holes.reduce { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
         val below = target.center.y < height / 2
-        val available = (if (below) height - target.bottom - gap - margin - with(density) { 56.dp.toPx() }
-            else target.top - gap - margin).coerceAtLeast(1f)
-        val hintY = if (below) target.bottom + gap else (target.top - gap - hintHeight).coerceAtLeast(margin)
+        val skipSpace = maxOf(skipHeight.toFloat(), with(density) { 64.dp.toPx() }) + margin * 2
+        val available = (if (below) height - target.bottom - gap - skipSpace
+            else target.top - gap - skipSpace).coerceAtLeast(1f)
+        val hintY = if (below) target.bottom + gap else (target.top - gap - hintHeight).coerceAtLeast(skipSpace)
         Canvas(Modifier.fillMaxSize()) {
             val scrim = Path().apply {
                 fillType = PathFillType.EvenOdd
@@ -135,10 +139,14 @@ private fun TourSpotlight(targetsInRoot: List<Rect>, message: Int, onEnd: () -> 
                 .onSizeChanged { hintHeight = it.height }
                 .verticalScroll(rememberScrollState())
                 .pointerInput(Unit) { detectTapGestures { } })
-        TextButton(onClick = onEnd,
-            colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
-            modifier = Modifier.align(if (below) Alignment.BottomEnd else Alignment.TopEnd)
-                .padding(12.dp).testTag("tour_skip")) {
+        Button(onClick = onEnd,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+            modifier = Modifier.align(if (below) Alignment.BottomCenter else Alignment.TopCenter)
+                .padding(16.dp).widthIn(max = 360.dp).fillMaxWidth()
+                .heightIn(min = 48.dp).onSizeChanged { skipHeight = it.height }.testTag("tour_skip")) {
+            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.tour_skip))
         }
     }

@@ -178,8 +178,15 @@ internal fun BoardBrowserHeader(
                                 modifier = Modifier.testTag("board_header_overflow_action_${directCount + index}"),
                                 onClick = { overflowOpen = false; action() })
                         }
-                        if (logbookTour) DropdownMenuItem(text = { Text(stringResource(R.string.tour_skip)) },
-                            onClick = { overflowOpen = false; onSkipTour() })
+                        if (logbookTour) {
+                            HorizontalDivider()
+                            FilledTonalButton(onClick = { overflowOpen = false; onSkipTour() },
+                                modifier = Modifier.padding(8.dp).fillMaxWidth().heightIn(min = 48.dp)) {
+                                Icon(Icons.Default.Close, null, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.tour_skip))
+                            }
+                        }
                     }
                 }
             }
