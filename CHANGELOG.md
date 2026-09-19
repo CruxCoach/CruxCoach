@@ -87,6 +87,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unrecognised keys are explained, tour hints stay legible over busy screens,
   long list names no longer fill the top bar, and singular counts read
   correctly.
+- The venue sheet on the board map scrolls, so venues with several boards show
+  every board; map search shows a searching state instead of a premature "no
+  results"; the expanded nearby banner has a visible collapse control.
+- The board picker offers the optional Bluetooth family search in the browser
+  too and states what was recognised and that model and size still need to be
+  chosen.
+- Session summaries include attempts, not only sends.
+- Deleting logbook data starts with no board selected and uses full-height rows.
+- Import errors no longer quote the selected file, explain exports from newer
+  versions, and MoonBoard CSV errors are localised. The catalogue page formats
+  the last sync time, and the training list generator no longer claims an empty
+  logbook when a board merely has too few sends.
 
 ## [0.2.2] - 2026-08-29
 
