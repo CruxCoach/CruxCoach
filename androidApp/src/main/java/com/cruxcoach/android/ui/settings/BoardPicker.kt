@@ -281,6 +281,7 @@ internal fun BoardPickerDialog(
     deferDownloads: Boolean = false,
     onBoardChosen: (BoardBrand) -> Unit = {},
     suggestedBrand: BoardBrand? = null,
+    onFindViaBluetooth: (() -> Unit)? = null,
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
@@ -312,6 +313,7 @@ internal fun BoardPickerDialog(
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,
+            onFindViaBluetooth = onFindViaBluetooth,
             onDismiss = onDismiss,
         )
     }

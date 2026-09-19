@@ -6,6 +6,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,6 +107,7 @@ internal fun BoardSelectionDialog(
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
+    onFindViaBluetooth: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     val activeBrand = remember(initialBrand) { BoardBrand.fromWire(initialBrand) }
@@ -290,6 +294,17 @@ internal fun BoardSelectionDialog(
             ) {
                 mismatch?.let {
                     BoardMismatchExplanation(it)
+                }
+                onFindViaBluetooth?.let { find ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = find, modifier = Modifier.weight(1f).testTag("setup_connect")) {
+                            Icon(Icons.Default.Bluetooth, null, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.setup_bluetooth_find))
+                        }
+                        com.cruxcoach.android.ui.common.InfoButton(
+                            stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
+                    }
                 }
                 // Tier 0 — board category. A single dropdown: the labels are too
                 // long to share one chip row on a narrow dialog, and the list grows
@@ -617,7 +632,7 @@ internal fun BoardImageChoiceRow(
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
@@ -626,7 +641,6 @@ internal fun BoardImageChoiceRow(
                 brand = brand, sizeId = sizeId, layoutId = layoutId,
                 modifier = Modifier.width(104.dp).height(144.dp),
                 imageLabel = label,
-                showZoomHint = true,
                 fallback = {
                     Box(Modifier.width(104.dp).height(144.dp), contentAlignment = Alignment.Center) {
                         Text(stringResource(R.string.board_preview_unavailable), style = MaterialTheme.typography.bodySmall)

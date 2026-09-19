@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -113,7 +112,7 @@ fun OnboardingScreen(
                     downloadSelection = downloadSelection,
                     onDownloadSelectionChange = { downloadSelection = it },
                     onConnect = { showBle = true },
-                    connectedName = ble.connectedBoardName.takeIf { ble.connectionState == com.cruxcoach.android.ble.ConnectionState.CONNECTED },
+                    bleSearchOpen = showBle,
                     suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
                 )
                 // Compatibility-only state from an interrupted older
@@ -370,11 +369,18 @@ private fun BoardSetupStep(
     downloadSelection: Set<BoardBrand>?,
     onDownloadSelectionChange: (Set<BoardBrand>) -> Unit,
     onConnect: () -> Unit,
-    connectedName: String?,
+    bleSearchOpen: Boolean,
     suggestedBrand: BoardBrand?,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var returnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(bleSearchOpen) {
+        if (returnFromBluetooth && !bleSearchOpen) {
+            returnFromBluetooth = false
+            showBoardModelDialog = true
+        }
+    }
     if (showBoardModelDialog) {
         // FEAT-031: the one shared board picker (same as Settings / Filter /
         // sync card) — identical state + the full board list incl. the Aurora
@@ -382,6 +388,11 @@ private fun BoardSetupStep(
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
             deferDownloads = true,
             suggestedBrand = suggestedBrand,
+            onFindViaBluetooth = {
+                returnFromBluetooth = true
+                showBoardModelDialog = false
+                onConnect()
+            },
             onBoardChosen = { onDownloadSelectionChange(setOf(it)) },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
@@ -427,38 +438,24 @@ private fun BoardSetupStep(
                 Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_board_model_change))
             }
         }
+        val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onConnect, modifier = Modifier.weight(1f).testTag("setup_connect")) {
-                Icon(if (connectedName == null) Icons.Default.Bluetooth else Icons.Default.CheckCircle, null,
-                    modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (connectedName == null) stringResource(R.string.setup_bluetooth_find)
-                    else stringResource(R.string.setup_connected, connectedName))
+            InfoHeading(stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info),
+                modifier = Modifier.weight(1f))
+            TextButton(
+                enabled = downloadSelection != null,
+                onClick = { onDownloadSelectionChange(if (downloadSelection?.containsAll(all) == true) emptySet() else all) },
+                modifier = Modifier.widthIn(max = 140.dp).testTag("setup_toggle_all_catalogues"),
+            ) {
+                Text(stringResource(if (downloadSelection?.containsAll(all) == true) R.string.setup_deselect_all else R.string.cd_select_all))
             }
-            com.cruxcoach.android.ui.common.InfoButton(
-                stringResource(R.string.setup_bluetooth_find), stringResource(R.string.setup_bluetooth_info))
         }
-        InfoHeading(stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info))
-        Text(stringResource(R.string.setup_download_hint), style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-
         downloadSelection?.let { selected ->
-            val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.setup_selected_count, selected.size), Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(
-                    onClick = { onDownloadSelectionChange(if (selected.containsAll(all)) emptySet() else all) },
-                    modifier = Modifier.testTag("setup_toggle_all_catalogues"),
-                ) {
-                    Text(stringResource(if (selected.containsAll(all)) R.string.setup_deselect_all else R.string.cd_select_all))
-                }
-            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
                     val checked = brand in selected
                     Surface(
-                        color = if (checked) MaterialTheme.colorScheme.secondaryContainer
+                        color = if (checked) OrangeAccent.copy(alpha = 0.10f)
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth(),

@@ -42,7 +42,7 @@ class OnboardingDownloadSelectionTest {
             }
         }
         compose.onNode(isDialog()).assertDoesNotExist()
-        compose.onNodeWithTag("setup_connect").assertIsDisplayed()
+        compose.onNodeWithTag("setup_connect").assertDoesNotExist()
         System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
             compose.runOnIdle {
                 val root = requireNotNull(view)

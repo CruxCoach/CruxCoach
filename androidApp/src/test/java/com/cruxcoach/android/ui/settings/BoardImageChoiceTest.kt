@@ -9,6 +9,7 @@ import com.cruxcoach.android.ui.theme.CruxCoachTheme
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,15 +49,20 @@ class BoardImageChoiceTest {
         val initial = MoonBoardVariant.MOONBOARD_2016
         val other = MoonBoardVariant.entries.first { it != initial }
         var confirmed: MoonBoardVariant? = null
+        var searches = 0
         compose.setContent {
             CruxCoachTheme(DarkModeSetting.DARK) {
                 BoardSelectionDialog(
                     initialBrand = BoardBrand.MOONBOARD.wireValue, productSizes = emptyList(),
                     selectedKilterSizeId = 0, selectedMoonBoardVariant = initial,
                     onConfirmKilter = {}, onConfirmMoonBoard = { variant, _ -> confirmed = variant }, onDismiss = {},
+                    onFindViaBluetooth = { searches++ },
                 )
             }
         }
+        compose.onNodeWithTag("setup_connect").performScrollTo().performClick()
+        assertEquals(1, searches)
+        assertNull(confirmed)
         val image = hasContentDescription("Boardbild vergrößern: ${other.displayName}")
         compose.waitUntil(15_000) { compose.onAllNodes(image).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(image).performScrollTo()
