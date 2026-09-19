@@ -16,10 +16,12 @@ class SettingsBoardGroupingTest {
     }
 
     @Test
-    fun `board hub exposes every interactive board and marks only the active one`() {
+    fun `board hub only exposes families with special settings`() {
         val cards = boardSettingsCards(BoardBrand.QUANTUM)
 
-        assertEquals(BoardBrand.entries.filter { it.isInteractive }, cards.map { it.brand })
-        assertEquals(listOf(BoardBrand.QUANTUM), cards.filter { it.isActive }.map { it.brand })
+        assertEquals(listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), cards.map { it.brand })
+        assertTrue(cards.none { it.isActive })
+        assertEquals(listOf(BoardBrand.MOONBOARD), boardSettingsCards(BoardBrand.MOONBOARD)
+            .filter { it.isActive }.map { it.brand })
     }
 }

@@ -1786,7 +1786,7 @@
     <string name="settings_group_board_catalogs">Board-Kataloge</string>
     <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
     <string name="settings_group_delete_data">Daten löschen</string>
-    <string name="settings_board_hub_desc">Wähle eine Marke, um ihre Einstellungen anzusehen. Das aktive Board der App wechselst du oben. „Alle Boards“ gilt für jede Marke.</string>
+    <string name="settings_board_hub_desc">Wähle Kilter für LED-Farben oder MoonBoard für die LED-Position. Dein aktives Board bleibt dabei unverändert. „Alle Boards“ gilt für jede Marke.</string>
     <string name="settings_board_active_badge">Aktiv</string>
     <string name="settings_board_viewing">Einstellungen für %1$s</string>
     <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>

@@ -26,8 +26,8 @@ class BoardHubComposeTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
-    fun `all boards are visible and viewing another card does not change active marker`() {
-        val active = BoardBrand.QUANTUM
+    fun `special settings cards do not change the active board`() {
+        val active = BoardBrand.MOONBOARD
         var viewed by mutableStateOf(active)
         val cards = boardSettingsCards(active)
         compose.setContent {
@@ -46,7 +46,7 @@ class BoardHubComposeTest {
 
         cards.forEach { compose.onNodeWithTag("settings_board_card_${it.brand.wireValue}").assertExists() }
         compose.onNodeWithText("Active").assertExists()
-        compose.onNodeWithTag("settings_board_card_quantum").assertIsSelected()
+        compose.onNodeWithTag("settings_board_card_moonboard").assertIsSelected()
 
         compose.onNodeWithTag("settings_board_card_kilter").performClick()
 

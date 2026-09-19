@@ -141,7 +141,10 @@ fun SettingsScreen(
             }
             SettingsPage.BOARD -> {
                 val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
-                val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
+                val settingsCards = boardSettingsCards(activeBoardBrand)
+                val settingsBoardBrand = (settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand)
+                    .takeIf { brand -> settingsCards.any { it.brand == brand } }
+                    ?: settingsCards.first().brand
                 SettingsSectionCard {
                     BoardModelSection(
                         titleRes = R.string.settings_active_board_title,
@@ -194,7 +197,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        boardSettingsCards(activeBoardBrand).forEach { card ->
+                        settingsCards.forEach { card ->
                             BoardHubCard(
                                 card = card,
                                 selectedForSettings = settingsBoardBrand == card.brand,
@@ -207,30 +210,11 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
-                    if (settingsBoardBrand != activeBoardBrand) {
-                        Text(
-                            stringResource(R.string.settings_board_inactive_hint, settingsBoardBrand.displayName),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Button(
-                            onClick = {
-                                boardPickerWire = settingsBoardBrand.wireValue
-                                showBoardModelDialog = true
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        ) {
-                            Text(stringResource(R.string.settings_board_make_active))
-                        }
-                    }
                     if (settingsBoardBrand == BoardBrand.MOONBOARD) {
                         MoonBoardLedPositionSection(
                             ledMode = state.moonBoardLedMode,
                             onModeChange = viewModel::updateMoonBoardLedMode,
                         )
-                    }
-                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand != BoardBrand.MOONBOARD) {
-                        BoardProjectionLifecycleHint(activeBoardBrand)
                     }
                     if (showsKilterLedColors(settingsBoardBrand)) {
                         HorizontalDivider()

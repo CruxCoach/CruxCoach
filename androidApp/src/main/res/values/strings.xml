@@ -1743,7 +1743,7 @@
     <string name="settings_group_board_catalogs">Board catalogs</string>
     <string name="settings_group_backup_transfer">Backup &amp; transfer</string>
     <string name="settings_group_delete_data">Delete data</string>
-    <string name="settings_board_hub_desc">Choose a brand to view its settings. Change the app’s active board at the top. “All boards” applies to every brand.</string>
+    <string name="settings_board_hub_desc">Choose Kilter for LED colors or MoonBoard for LED position. This does not change your active board. “All boards” applies to every brand.</string>
     <string name="settings_board_active_badge">Active</string>
     <string name="settings_board_viewing">Viewing settings for %1$s</string>
     <string name="settings_board_make_active">Configure and set active</string>
