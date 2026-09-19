@@ -39,11 +39,11 @@ internal enum class SettingsPage(
 ) {
     DISPLAY(R.string.settings_page_display, R.string.settings_summary_display, R.string.settings_group_climbing, Icons.Outlined.Palette),
     BOARD(R.string.settings_page_board, R.string.settings_summary_board, R.string.settings_group_climbing, Icons.Outlined.Bluetooth),
+    CATALOGUES(R.string.settings_group_board_catalogs, R.string.settings_summary_catalogues, R.string.settings_group_climbing, Icons.Outlined.CloudDownload),
     TIMERS(R.string.settings_page_timers, R.string.settings_summary_timers, R.string.settings_group_climbing, Icons.Outlined.Timer),
     SHARING(R.string.settings_page_sharing, R.string.settings_summary_sharing, R.string.settings_group_climbing, Icons.Outlined.PeopleOutline),
     ACCOUNT(R.string.settings_page_account, R.string.settings_summary_account, R.string.settings_section_accounts_data, Icons.Outlined.Person),
     IMPORTS(R.string.settings_page_imports, R.string.settings_summary_imports, R.string.settings_section_accounts_data, Icons.Outlined.MoveToInbox),
-    CATALOGUES(R.string.settings_group_board_catalogs, R.string.settings_summary_catalogues, R.string.settings_section_accounts_data, Icons.Outlined.CloudDownload),
     BACKUP(R.string.settings_page_backup, R.string.settings_summary_backup, R.string.settings_section_accounts_data, Icons.Outlined.Backup),
     DELETE(R.string.settings_page_delete, R.string.settings_summary_delete, R.string.settings_section_accounts_data, Icons.Outlined.DeleteOutline),
     UPDATES(R.string.updater_settings_title, R.string.settings_summary_updates, R.string.settings_group_app_help, Icons.Outlined.SystemUpdate),

@@ -107,8 +107,15 @@ class BoardSyncViewModel @Inject constructor(
 
     fun saveDownloadSelection(brands: Set<BoardBrand>, startInitial: Boolean = false) {
         viewModelScope.launch {
+            val added = brands - userPreferences.boardDownloadBrands.first()
             userPreferences.setBoardDownloadBrands(brands)
-            if (startInitial && brands.isNotEmpty()) syncManager.startInitialSyncIfNeeded()
+            if (brands.isNotEmpty()) {
+                if (state.value.isSyncing || state.value.alreadyImported || !startInitial) {
+                    if (added.isNotEmpty()) syncManager.startSelectedSyncAfterCurrent()
+                } else {
+                    syncManager.startInitialSyncIfNeeded()
+                }
+            }
         }
     }
 

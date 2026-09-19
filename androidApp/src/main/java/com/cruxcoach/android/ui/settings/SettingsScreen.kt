@@ -315,13 +315,13 @@ fun SettingsScreen(
                 }
             }
             SettingsPage.CATALOGUES -> {
+                BoardSyncInlineCard()
                 SettingsSectionCard {
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
                     )
                 }
-                BoardSyncInlineCard()
             }
             SettingsPage.BACKUP -> {
                 SettingsSectionCard {

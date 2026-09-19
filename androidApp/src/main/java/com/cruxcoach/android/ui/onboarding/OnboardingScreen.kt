@@ -451,30 +451,8 @@ private fun BoardSetupStep(
             }
         }
         downloadSelection?.let { selected ->
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
-                    val checked = brand in selected
-                    Surface(
-                        color = if (checked) OrangeAccent.copy(alpha = 0.10f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                                .testTag("board_selection_${brand.wireValue}")
-                                .toggleable(value = checked, role = Role.Checkbox,
-                                    onValueChange = { onDownloadSelectionChange(if (checked) selected - brand else selected + brand) })
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(brand.displayName, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                            Icon(if (checked) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-                                contentDescription = null, modifier = Modifier.size(24.dp))
-                        }
-                    }
-                }
+            com.cruxcoach.android.ui.board.sync.CatalogueSelectionRows(selected) { brand ->
+                onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
             }
         }
 

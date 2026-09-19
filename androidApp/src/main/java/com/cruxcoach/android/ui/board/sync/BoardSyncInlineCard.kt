@@ -108,15 +108,9 @@ fun BoardSyncInlineCard(
         }
     }
     selectionDraft?.let { draft ->
-        com.cruxcoach.android.ui.settings.BoardMultiSelectDialog(
-            title = stringResource(R.string.board_download_selection_title),
-            message = stringResource(R.string.board_download_selection_description),
-            note = stringResource(R.string.board_download_selection_local_share),
-            confirmLabel = stringResource(
-                if (startAfterSelection) R.string.board_sync_update_online else R.string.action_save,
-            ),
-            confirmColor = OrangeAccent,
+        CatalogueSelectionDialog(
             selectedBrands = draft,
+            isSyncing = state.isSyncing,
             onToggleBrand = { brand ->
                 selectionDraft = if (brand in draft) draft - brand else draft + brand
             },
@@ -129,7 +123,6 @@ fun BoardSyncInlineCard(
                 selectionDraft = null
             },
             onDismiss = { selectionDraft = null },
-            allowEmpty = !startAfterSelection,
         )
     }
 
@@ -461,10 +454,10 @@ fun BoardSyncInlineCard(
                 selectionDraft = downloadBrands
                 startAfterSelection = false
             },
-            enabled = downloadBrands != null && !state.isSyncing,
+            enabled = downloadBrands != null,
             modifier = Modifier.fillMaxWidth().testTag("board_download_selection"),
         ) {
-            Text(stringResource(R.string.board_download_selection_summary, downloadBrands?.size ?: 0))
+            Text(stringResource(R.string.catalogue_choose_action))
         }
         if (!compact && downloadBrands?.isEmpty() == true) {
             Text(stringResource(R.string.board_download_selection_empty),
@@ -479,7 +472,7 @@ fun BoardSyncInlineCard(
                 onRetry = startSync,
                 onLoadBoard = { viewModel.loadBoard(it) },
                 onChangeSelection = { selectionDraft = downloadBrands; startAfterSelection = false },
-                canChangeSelection = downloadBrands != null && !state.isSyncing,
+                canChangeSelection = downloadBrands != null,
             )
         } else {
             DatabaseImportSection(

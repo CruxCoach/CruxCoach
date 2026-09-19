@@ -81,6 +81,32 @@ class BoardDownloadOnboardingTest {
         }
     }
 
+    @Test fun `confirmed additions queue during sync but unchanged and reduced selections do not`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setBoardDownloadBrands(setOf(BoardBrand.KILTER))
+        val sync = mockk<BoardSyncManager>(relaxed = true)
+        every { sync.state } returns MutableStateFlow(BoardSyncState(isSyncing = true))
+        val vm = BoardSyncViewModel(sync, prefs, mockk(relaxed = true))
+        try {
+            val both = setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD)
+            vm.saveDownloadSelection(both)
+            runCurrent()
+            assertEquals(both, prefs.boardDownloadBrands.first())
+            verify(exactly = 1) { sync.startSelectedSyncAfterCurrent() }
+            vm.saveDownloadSelection(both)
+            runCurrent()
+            vm.saveDownloadSelection(emptySet())
+            runCurrent()
+            assertEquals(emptySet<BoardBrand>(), prefs.boardDownloadBrands.first())
+            verify(exactly = 1) { sync.startSelectedSyncAfterCurrent() }
+            verify(exactly = 0) { sync.startInitialSyncIfNeeded() }
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test fun `onboarding revisit preserves an explicit download choice`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val prefs = createTestUserPreferences(backgroundScope)

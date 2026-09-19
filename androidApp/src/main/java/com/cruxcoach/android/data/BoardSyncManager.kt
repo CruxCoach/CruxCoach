@@ -826,10 +826,14 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
-    /** A second onboarding confirmation may add boards after the first run
-     * snapshotted its selection. Keep this request alive outside the screen. */
+    private var selectedSyncFollowUp: Job? = null
+
+    /** Confirmed additions share one follow-up using the latest saved selection.
+     * The application owns this job, so leaving setup does not cancel it. */
+    @Synchronized
     fun startSelectedSyncAfterCurrent() {
-        scope.safeLaunch(TAG) {
+        if (selectedSyncFollowUp?.isActive == true) return
+        selectedSyncFollowUp = scope.safeLaunch(TAG) {
             _state.first { !it.isSyncing }
             if (userPreferences.boardDownloadBrands.first().isNotEmpty()) {
                 startApiSync(queueWhenOffline = true)

@@ -2996,4 +2996,9 @@
     <string name="setup_download_start">Download starten</string>
     <string name="setup_download_change">Auswahl ändern</string>
     <string name="setup_catalogue_failed">Download fehlgeschlagen</string>
+    <string name="catalogue_choose_action">Boards auswählen &amp; herunterladen</string>
+    <string name="catalogue_confirm">Übernehmen</string>
+    <string name="catalogue_queue_hint">Neue Boards werden nach dem laufenden Download geladen.</string>
+    <string name="catalogue_confirm_hint">Neue Boards werden nach deiner Bestätigung geladen.</string>
+    <string name="catalogue_selection_help">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Änderungen gelten erst nach deiner Bestätigung.\n\nAbwählen bricht einen laufenden Download nicht ab und löscht weder geladene Climbs noch dein Logbuch. Vor dem Start eines vorgemerkten Downloads abgewählte Boards werden nicht mitgeladen.\n\nEine direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank.</string>
 </resources>

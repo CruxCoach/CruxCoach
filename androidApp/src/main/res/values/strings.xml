@@ -2997,4 +2997,9 @@
     <string name="setup_download_start">Start download</string>
     <string name="setup_download_change">Change selection</string>
     <string name="setup_catalogue_failed">Download failed</string>
+    <string name="catalogue_choose_action">Choose boards &amp; download</string>
+    <string name="catalogue_confirm">Apply</string>
+    <string name="catalogue_queue_hint">New boards will download after the current download.</string>
+    <string name="catalogue_confirm_hint">New boards will download when you confirm.</string>
+    <string name="catalogue_selection_help">Only selected boards are downloaded online and updated automatically. Changes take effect when you confirm.\n\nDeselecting does not cancel an active download or delete downloaded climbs or your logbook. Boards deselected before a queued download starts will not be included.\n\nA direct transfer from another device includes its entire shared board database.</string>
 </resources>
