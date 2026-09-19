@@ -61,14 +61,17 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew :shared:iosSimulatorArm64Test :appcore:iosSimulatorArm64Test --console=plain 2>&1 | tee "$RUNNER_TEMP/ci-knative.log"
+      # Debug link: the release link of the Kotlin framework takes ~25 min on a standard runner.
       - name: Link CruxCoachCore.xcframework
         run: |
           set -o pipefail
-          iosApp/scripts/build-core.sh Release 2>&1 | tee "$RUNNER_TEMP/ci-link.log"
+          iosApp/scripts/build-core.sh Debug 2>&1 | tee "$RUNNER_TEMP/ci-link.log"
       - name: Generate Xcode project
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           cd iosApp && xcodegen generate
+      # Simulator builds are signed ad hoc by Xcode ("sign to run locally", no identity, no secret);
+      # without it the test host has no keychain entitlement and SecItem calls fail.
       - name: Build and test on the simulator
         run: |
           set -o pipefail
@@ -76,7 +79,7 @@ jobs:
           echo "Simulator: $DEVICE"
           cd iosApp && xcodebuild test -project CruxCoach.xcodeproj -scheme CruxCoach \
             -destination "platform=iOS Simulator,name=$DEVICE" \
-            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -200
+            -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -200
       - name: Build for device, unsigned
         run: |
           set -o pipefail
@@ -89,7 +92,7 @@ jobs:
         run: |
           for f in "$RUNNER_TEMP"/ci-*.log; do
             [ -f "$f" ] || continue
-            MSG="$(grep -E "^e: |error:|FAILED|Undefined symbol|ld: |XCTAssert|failed -|What went wrong|^> |Test Case .* failed|fatal" "$f" | grep -v "^> Task .*UP-TO-DATE" | tail -45 | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            MSG="$(grep -E "^e: |error:|FAILED|Undefined symbol|ld: |XCTAssert|failed -|What went wrong|Test Case .* failed|fatal" "$f" | grep -v "^> Task .*UP-TO-DATE" | tail -45 | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             [ -n "$MSG" ] && echo "::error title=$(basename "$f")::$MSG"
           done
           true

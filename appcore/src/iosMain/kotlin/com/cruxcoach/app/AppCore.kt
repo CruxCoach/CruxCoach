@@ -3,14 +3,20 @@ package com.cruxcoach.app
 import com.cruxcoach.app.ble.BoardConnectionPresenter
 import com.cruxcoach.app.ble.CoreBluetoothCentral
 import com.cruxcoach.app.browse.BoardBrowserPresenter
+import com.cruxcoach.app.detail.ClimbDetailPresenter
 import com.cruxcoach.app.identity.IdentityFailure
 import com.cruxcoach.app.identity.LocalIdentity
+import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
 import com.cruxcoach.app.platform.PlatformServices
 import com.cruxcoach.app.platform.SecretStore
 import com.cruxcoach.app.platform.ZstdDecompressor
+import com.cruxcoach.app.send.BoardSender
+import com.cruxcoach.app.setup.BoardOption
+import com.cruxcoach.app.setup.BoardOptions
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.storage.DatabaseFailure
 import com.cruxcoach.app.storage.IosDatabases
@@ -56,6 +62,20 @@ class AppCore private constructor(
 
     fun newBrowserPresenter(): BoardBrowserPresenter =
         BoardBrowserPresenter(boardRepository, personalRepository, platform.keyValues, { pubkeyHex })
+
+    val boardSender: BoardSender by lazy { BoardSender(boardRepository, boardConnection, platform.keyValues) }
+
+    fun newDetailPresenter(): ClimbDetailPresenter =
+        ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues)
+
+    fun newLogAttemptPresenter(): LogAttemptPresenter = LogAttemptPresenter(personalRepository)
+
+    /** Empty until the brand's catalogue is installed. Never throws into Swift. */
+    fun boardOptions(brand: BoardBrand): List<BoardOption> = try {
+        BoardOptions.forBrand(brand, boardRepository)
+    } catch (e: Exception) {
+        emptyList()
+    }
 
     companion object {
         fun start(
