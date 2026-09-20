@@ -8,6 +8,7 @@ import com.cruxcoach.app.profile.ProfileState
 class ProfileScreenState(
     val isLoading: Boolean,
     val isPublishing: Boolean,
+    val isUploading: Boolean,
     val npub: String,
     val displayName: String,
     val about: String,
@@ -44,6 +45,9 @@ class ProfileScreenModel(private val presenter: ProfilePresenter) {
     fun setNip05(value: String) = presenter.setNip05(value)
     fun setWebsite(value: String) = presenter.setWebsite(value)
     fun setLightningAddress(value: String) = presenter.setLightningAddress(value)
+    /** [bytes] is an already-encoded image; iOS does the resizing. */
+    fun uploadImage(bytes: ByteArray, asBanner: Boolean) = presenter.uploadImage(bytes, asBanner)
+
     fun saveLocal() = presenter.saveLocal()
     fun publish() = presenter.publish()
     fun verifyNip05() = presenter.verifyNip05()
@@ -53,6 +57,7 @@ class ProfileScreenModel(private val presenter: ProfilePresenter) {
     private fun map(state: ProfileState) = ProfileScreenState(
         isLoading = state.isLoading,
         isPublishing = state.isPublishing,
+        isUploading = state.isUploading,
         npub = state.npub,
         displayName = state.displayName,
         about = state.about,
@@ -78,6 +83,7 @@ class ProfileScreenModel(private val presenter: ProfilePresenter) {
             ProfileError.SIGNING_FAILED -> "signingFailed"
             ProfileError.NO_RELAY_ACCEPTED -> "noRelayAccepted"
             ProfileError.INVALID_URL -> "invalidUrl"
+            ProfileError.UPLOAD_FAILED -> "uploadFailed"
         },
     )
 }

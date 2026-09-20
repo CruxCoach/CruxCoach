@@ -33,6 +33,7 @@ struct SettingsView: View {
                 NavigationLink(LI("data_exchange_open")) { DataExchangeView(core: core) }
                 NavigationLink(LI("profile_open")) { ProfileView(core: core) }
                 NavigationLink(LI("devcontact_open")) { DevContactView(core: core) }
+                Button(L("tour_replay")) { core.makeBrowserTour().start(replay: true) }
             }
             Section(LI("settings_about")) {
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")

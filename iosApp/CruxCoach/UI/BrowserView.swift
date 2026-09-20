@@ -7,6 +7,9 @@ struct BrowserView: View {
     let sync: ScreenHost<SyncScreenModel, SyncScreenState>
     @State private var host: ScreenHost<BrowserScreenModel, BrowserScreenState>?
     @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
+    @State private var tour: BrowserTourModel?
+    /// Mirrors the Kotlin model's step so SwiftUI re-renders when it moves.
+    @State private var tourStep = ""
     @State private var search = ""
     @State private var sheet: Sheet?
     @State private var path = NavigationPath()
@@ -31,6 +34,9 @@ struct BrowserView: View {
             ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
                 model.watch(onState: onState)
             }
+            let guided = core.makeBrowserTour()
+            tour = guided
+            tourStep = guided.step
             model.start()
         }
     }
@@ -43,6 +49,9 @@ struct BrowserView: View {
         NavigationStack(path: $path) {
             List {
                 Section { header(model: model, ui: ui) }
+                if let tour, !tourStep.isEmpty, tourStep != "inactive", tourStep != "done" {
+                    Section { TourBanner(tour: tour, step: tourStep) { tourStep = tour.step } }
+                }
                 if !ui.hasCatalogue {
                     ContentUnavailableView(LI("browser_no_catalogue"), systemImage: "square.and.arrow.down",
                                            description: Text(LI("browser_no_catalogue_hint")))
@@ -219,4 +228,46 @@ struct ClimbRow: View {
         }
         .accessibilityElement(children: .combine)
     }
+}
+
+/// One step of the guided first browse.
+///
+/// Android draws a spotlight cut-out around the control it describes; this is
+/// a banner instead, so the text says which control it means. The steps, their
+/// order and their persistence are the Kotlin model's, shared with Android's.
+private struct TourBanner: View {
+    let tour: BrowserTourModel
+    /// Passed in rather than read off the model: a Kotlin object is not
+    /// observable, so the step has to reach SwiftUI as a value.
+    let step: String
+    let onMove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L(Self.text[step] ?? "")).font(.footnote)
+            HStack {
+                Button(L("tour_skip")) { tour.skip(); onMove() }
+                    .buttonStyle(.bordered)
+                Spacer()
+                if step == "connect" {
+                    Button(LI("tour_no_board")) { tour.deferBluetooth(); onMove() }
+                }
+                Button(L("action_next")) { tour.advance(from: step); onMove() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+    }
+
+    /// The Kotlin model's own step codes (lowercase strings, like every
+    /// other code the facade exposes).
+    private static let text = [
+        "connect": "tour_spotlight_connect",
+        "angle": "tour_spotlight_angle",
+        "filter": "tour_spotlight_filter",
+        "open": "tour_spotlight_open",
+        "project": "tour_spotlight_project",
+        "log": "tour_spotlight_quicklog",
+        "logbook": "tour_spotlight_logbook",
+        "entry": "tour_spotlight_entry",
+    ]
 }

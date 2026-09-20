@@ -108,8 +108,10 @@ class ProfilePresenterTest {
         sockets: FakeSockets = FakeSockets(),
         http: HttpTransport = FakeHttp(null),
         identity: String = pubkey,
+        blossom: com.cruxcoach.app.backup.BlossomClient? = null,
     ) = ProfilePresenter(
         store = store,
+        blossom = blossom,
         relays = RelayClient(sockets, JvmHashing, listOf("wss://relay.test")),
         signer = signer,
         http = http,
@@ -237,6 +239,52 @@ class ProfilePresenterTest {
     }
 
     @Test
+    fun `an uploaded picture becomes the profile's picture url`() = runBlocking {
+        // A Blossom server that accepts anything and reports the hash back.
+        val uploads = ArrayList<Pair<String, Int>>()
+        val transport = object : HttpTransport {
+            override suspend fun request(
+                method: String, url: String, headers: Map<String, String>, body: ByteArray?,
+                maxResponseBytes: Long, timeoutSeconds: Int,
+            ): HttpResult {
+                uploads += url to (body?.size ?: 0)
+                assertEquals("image/jpeg", headers["Content-Type"])
+                return HttpResult.Ok(HttpResponse(200, emptyMap(), ByteArray(0)))
+            }
+
+            override suspend fun download(
+                url: String, destinationPath: String, maxBytes: Long, timeoutSeconds: Int,
+                onProgress: (Long, Long) -> Unit,
+            ): HttpResult = error("not used")
+        }
+        val client = com.cruxcoach.app.backup.BlossomClient(
+            transport, JvmHashing, clock,
+            com.cruxcoach.app.backup.LocalEventSigner(JvmHashing) { secret.copyOf() },
+        )
+        val presenter = presenter(blossom = client)
+        presenter.load()
+        await(presenter) { !it.isLoading }
+
+        presenter.uploadImage(byteArrayOf(1, 2, 3), asBanner = false)
+        val done = await(presenter) { it.pictureUrl.isNotEmpty() || it.error != ProfileError.NONE }
+        assertEquals(ProfileError.NONE, done.error)
+        assertTrue(done.pictureUrl.startsWith("https://"), "got ${done.pictureUrl}")
+        assertTrue(done.isDirty, "an uploaded picture is an unsaved edit")
+        assertTrue(uploads.first().first.endsWith("/upload"))
+        presenter.close()
+    }
+
+    @Test
+    fun `without an upload server the screen says so instead of silently doing nothing`() = runBlocking {
+        val presenter = presenter()
+        presenter.load()
+        await(presenter) { !it.isLoading }
+        presenter.uploadImage(byteArrayOf(1), asBanner = false)
+        assertEquals(ProfileError.UPLOAD_FAILED, presenter.state.value.error)
+        presenter.close()
+    }
+
+    @Test
     fun `a picture that is not https is refused before anything is signed`() = runBlocking {
         val sockets = FakeSockets()
         val presenter = presenter(sockets)
@@ -260,4 +308,5 @@ private fun ProfileState.errorCode(): String = when (error) {
     ProfileError.SIGNING_FAILED -> "signingFailed"
     ProfileError.NO_RELAY_ACCEPTED -> "noRelayAccepted"
     ProfileError.INVALID_URL -> "invalidUrl"
+    ProfileError.UPLOAD_FAILED -> "uploadFailed"
 }

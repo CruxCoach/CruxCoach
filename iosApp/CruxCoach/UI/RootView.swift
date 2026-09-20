@@ -74,9 +74,15 @@ struct MainView: View {
         Group {
             if let sync, sync.state.installedKnown {
                 if sync.state.installedCount == 0 && !onboardingDone {
-                    OnboardingView(core: core, sync: sync) { onboardingDone = true }
+                    OnboardingView(core: core, sync: sync) {
+                        onboardingDone = true
+                        // Android starts the guided browse right after the
+                        // first run, and only there.
+                        core.makeBrowserTour().start(replay: false)
+                    }
                 } else {
                     BrowserView(core: core, sync: sync)
+                        .modifier(WhatsNewOverlay(core: core, onboardingDone: true))
                 }
             } else {
                 ProgressView()
@@ -90,4 +96,84 @@ struct MainView: View {
             }
         }
     }
+}
+
+/// Shows each unread release note once, after an upgrade.
+///
+/// The watermark is written by the Kotlin model only after the whole queue
+/// has been read, so a note dismissed by accident comes back next launch
+/// rather than being lost.
+private struct WhatsNewOverlay: ViewModifier {
+    let core: AppCore
+    let onboardingDone: Bool
+    @State private var model: WhatsNewScreenModel?
+    @State private var showing = ""
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                guard model == nil else { return }
+                let created = core.makeWhatsNewScreen()
+                created.start(onboardingCompleted: onboardingDone)
+                model = created
+                showing = created.currentId
+            }
+            .sheet(isPresented: Binding(get: { !showing.isEmpty }, set: { if !$0 { advance() } })) {
+                WhatsNewSheet(id: showing) { advance() }
+            }
+    }
+
+    private func advance() {
+        model?.dismiss()
+        showing = model?.currentId ?? ""
+    }
+}
+
+/// One release note. The strings are Android's, under the same keys.
+private struct WhatsNewSheet: View {
+    let id: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(L(Self.bodyKey[id] ?? ""))
+                    if let hint = Self.hintKey[id] {
+                        Text(L(hint)).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle(L(Self.titleKey[id] ?? ""))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("whatsnew_done")) { onDismiss() }
+                }
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+
+    private static let titleKey = [
+        "nostr-backup": "whatsnew_nostr_backup_title",
+        "aurora-json-import": "whatsnew_aurora_import_title",
+        "release-0.2.1": "whatsnew_021_title",
+        "release-0.2.2": "whatsnew_022_title",
+        "release-0.2.3": "whatsnew_023_title",
+    ]
+    private static let bodyKey = [
+        "nostr-backup": "whatsnew_nostr_backup_body",
+        "aurora-json-import": "whatsnew_aurora_import_body",
+        "release-0.2.1": "whatsnew_021_body",
+        "release-0.2.2": "whatsnew_022_body",
+        "release-0.2.3": "whatsnew_023_body",
+    ]
+    private static let hintKey = [
+        "aurora-json-import": "whatsnew_aurora_import_hint",
+        "release-0.2.1": "whatsnew_021_hint",
+        "release-0.2.2": "whatsnew_022_hint",
+    ]
 }
