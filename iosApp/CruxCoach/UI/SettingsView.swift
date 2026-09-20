@@ -30,6 +30,7 @@ struct SettingsView: View {
             }
             Section(LI("backup_title")) {
                 NavigationLink(LI("backup_open")) { BackupView(core: core) }
+                NavigationLink(LI("data_exchange_open")) { DataExchangeView(core: core) }
             }
             Section(LI("settings_about")) {
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
