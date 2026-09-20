@@ -112,7 +112,17 @@ class CatalogueSyncController internal constructor(
     val state: StateFlow<CatalogueSyncState> = _state.asStateFlow()
 
     init {
-        scope.launch { refreshInstalled() }
+        scope.launch {
+            try {
+                refreshInstalled()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The board database may be unreadable or already closed. An
+                // empty installed list is the honest answer; an exception here
+                // has no receiver and would take the process down with it.
+            }
+        }
     }
 
     val installedBrands: List<BoardBrand> get() = _state.value.installedBrands
