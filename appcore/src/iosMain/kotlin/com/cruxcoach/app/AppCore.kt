@@ -38,6 +38,8 @@ import com.cruxcoach.app.platform.ZstdDecompressor
 import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
+import com.cruxcoach.app.backup.CruxCoachBackupPayloadStore
+import com.cruxcoach.app.backup.FileExchangePresenter
 import com.cruxcoach.app.playlist.GeneratorPresenter
 import com.cruxcoach.app.playlist.ListsPresenter
 import com.cruxcoach.app.playlist.PlayerClimbInfo
@@ -61,6 +63,7 @@ import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
+import com.cruxcoach.app.ui.DataExchangeScreenModel
 import com.cruxcoach.app.ui.GeneratorScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
@@ -154,6 +157,21 @@ class AppCore private constructor(
         )
     }
     val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
+
+    /**
+     * Plain-file export and import of the whole account, beside the encrypted
+     * cloud backup. The written file is NOT encrypted — the screen says so.
+     */
+    fun makeDataExchangeScreen(): DataExchangeScreenModel = DataExchangeScreenModel(
+        FileExchangePresenter(
+            payloads = CruxCoachBackupPayloadStore(
+                secureDatabase, boardRepository, personalRepository,
+            ),
+            files = platform.files,
+            clock = platform.clock,
+            pubkeyHex = { pubkeyHex },
+        )
+    )
 
     /**
      * One settings model for the whole app: the root view reads dark mode and

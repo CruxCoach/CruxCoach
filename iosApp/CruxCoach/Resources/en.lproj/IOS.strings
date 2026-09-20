@@ -298,3 +298,13 @@
 "generator_section_peak" = "peak";
 "generator_section_descent" = "descent";
 "generator_open" = "Generate a training list";
+"data_export_hint" = "Writes every logged climb, your lists and your own problems into one JSON file — the same content the encrypted backup carries. The file is NOT encrypted: anything you share it with can read it.";
+"data_export_ready" = "Export ready (%@). It stays on this device until you delete it.";
+"data_export_discard" = "Delete the exported file";
+"data_export_failed" = "The export could not be written.";
+"data_export_no_identity" = "No identity yet — finish the first run before exporting.";
+"data_import_title" = "Import";
+"data_import_pick" = "Choose a CruxCoach export";
+"data_import_unreadable" = "That file could not be read.";
+"data_import_failed" = "That file is not a CruxCoach export for this identity.";
+"data_exchange_open" = "Export and import data";
