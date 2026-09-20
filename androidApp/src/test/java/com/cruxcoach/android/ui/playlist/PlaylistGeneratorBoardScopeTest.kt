@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 class PlaylistGeneratorBoardScopeTest {
     @Test
-    fun `generation snapshot is filtered in memory by plan and browser ranges`() {
+    fun `generation snapshot is filtered in memory by the plan band and the training range`() {
         val candidates = (10..24).map { difficulty ->
             PlaylistCandidate("climb-$difficulty", difficulty.toDouble())
         }
@@ -19,12 +19,12 @@ class PlaylistGeneratorBoardScopeTest {
             maxDifficulty = 22.0,
             targetMinDifficulty = 14.0,
             targetMaxDifficulty = 20.0,
-            browserMinDifficulty = 16.0,
-            browserMaxDifficulty = 24.0,
             limit = 3,
         )
 
-        assertEquals(listOf(16.0, 17.0, 18.0), selected.map { it.difficulty })
+        // Plan band 12–22 intersected with the training range 14–20; the board browser's own
+        // grade filter is deliberately not part of it any more.
+        assertEquals(listOf(14.0, 15.0, 16.0), selected.map { it.difficulty })
     }
 
     @Test

@@ -95,7 +95,6 @@ fun PlaylistGeneratorScreen(
         GeneratorFilterSheet(
             state = state,
             onDismiss = { showFilterSheet = false },
-            onGradeRangeChange = viewModel::setBrowserGradeRange,
             onMinAscentsChange = viewModel::setMinAscensionists,
             onBenchmarkOnlyChange = viewModel::setBenchmarkOnly,
             onStatusChange = viewModel::setStatusFilter,
@@ -574,25 +573,6 @@ fun PlaylistGeneratorScreen(
                 if (plan.usedDefaultProfile) {
                     WarningNote(stringResource(R.string.playlist_generator_default_profile))
                 }
-                // The browser's grade filter is a hard bound on the candidates. When it does not
-                // overlap the planned range, generation can only fail — say which two numbers
-                // disagree instead of letting the preview promise climbs that cannot be found.
-                val climbSlots = plan.slots.filterIsInstance<PlanSlot.ClimbSlot>()
-                if (climbSlots.isNotEmpty()) {
-                    val planMin = climbSlots.minOf { it.minDifficulty }
-                    val planMax = climbSlots.maxOf { it.maxDifficulty }
-                    if (planMax < state.browserMinDifficulty || planMin > state.browserMaxDifficulty) {
-                        WarningNote(
-                            stringResource(
-                                R.string.playlist_generator_filter_conflict,
-                                GradeDisplayHelper.formatDifficulty(state.browserMinDifficulty, state.gradeScale),
-                                GradeDisplayHelper.formatDifficulty(state.browserMaxDifficulty, state.gradeScale),
-                                GradeDisplayHelper.formatDifficulty(planMin, state.gradeScale),
-                                GradeDisplayHelper.formatDifficulty(planMax, state.gradeScale),
-                            )
-                        )
-                    }
-                }
             }
 
             // ── Generate ────────────────────────────────────────
@@ -784,7 +764,6 @@ private fun generatorGoalLabel(goal: GeneratorGoal): String = stringResource(
 private fun GeneratorFilterSheet(
     state: PlaylistGeneratorState,
     onDismiss: () -> Unit,
-    onGradeRangeChange: (Double, Double) -> Unit,
     onMinAscentsChange: (Int) -> Unit,
     onBenchmarkOnlyChange: (Boolean) -> Unit,
     onStatusChange: (Set<ClimbStatusFilter>) -> Unit,
@@ -808,33 +787,6 @@ private fun GeneratorFilterSheet(
                 stringResource(R.string.playlist_generator_filters_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            SectionTitle(
-                stringResource(
-                    R.string.playlist_generator_filter_grade,
-                    GradeDisplayHelper.formatDifficulty(
-                        state.browserMinDifficulty, state.gradeScale,
-                    ),
-                    GradeDisplayHelper.formatDifficulty(
-                        state.browserMaxDifficulty, state.gradeScale,
-                    ),
-                )
-            )
-            RangeSlider(
-                value = state.browserMinDifficulty.toFloat()..
-                    state.browserMaxDifficulty.toFloat(),
-                onValueChange = {
-                    onGradeRangeChange(
-                        it.start.roundToInt().toDouble(),
-                        it.endInclusive.roundToInt().toDouble(),
-                    )
-                },
-                valueRange = TrainingRanges.MIN_DIFFICULTY.toFloat()..
-                    TrainingRanges.MAX_DIFFICULTY.toFloat(),
-                steps = (TrainingRanges.MAX_DIFFICULTY -
-                    TrainingRanges.MIN_DIFFICULTY).roundToInt() - 1,
-                modifier = Modifier.testTag("playlist_gen_filter_grade"),
             )
 
             SectionTitle(

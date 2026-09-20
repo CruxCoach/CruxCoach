@@ -80,9 +80,8 @@ data class PlaylistGeneratorState(
     val layoutId: Int = 0,
     val productSizeId: Int = 0,
     val gradeScale: GradeScale = GradeScale.FRENCH,
-    /** Compatible filters inherited from the board browser. */
-    val browserMinDifficulty: Double = TrainingRanges.MIN_DIFFICULTY,
-    val browserMaxDifficulty: Double = TrainingRanges.MAX_DIFFICULTY,
+    /** Compatible filters inherited from the board browser — the grade range is deliberately
+     *  not among them: the session's own training range is the single grade authority. */
     val minAscensionists: Int = 0,
     val benchmarkOnly: Boolean = false,
     val originFilter: OriginFilter = OriginFilter.ALL,
@@ -140,20 +139,10 @@ internal fun playlistCandidatesInBand(
     maxDifficulty: Double,
     targetMinDifficulty: Double?,
     targetMaxDifficulty: Double?,
-    browserMinDifficulty: Double,
-    browserMaxDifficulty: Double,
     limit: Int,
 ): List<PlaylistCandidate> {
-    val low = maxOf(
-        minDifficulty,
-        targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY,
-        browserMinDifficulty,
-    )
-    val high = minOf(
-        maxDifficulty,
-        targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
-        browserMaxDifficulty,
-    )
+    val low = maxOf(minDifficulty, targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY)
+    val high = minOf(maxDifficulty, targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY)
     if (low > high || limit <= 0) return emptyList()
     return candidates.asSequence()
         .filter { it.difficulty in low..high }
@@ -196,8 +185,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     layoutId = snapshot.layoutId,
                     productSizeId = productSizeId,
                     gradeScale = snapshot.gradeScale,
-                    browserMinDifficulty = TrainingRanges.MIN_DIFFICULTY + snapshot.minGrade,
-                    browserMaxDifficulty = TrainingRanges.MIN_DIFFICULTY + snapshot.maxGrade,
                     minAscensionists = snapshot.minAscensionists,
                     benchmarkOnly = brand.supportsBenchmarkFilter && snapshot.benchmarkOnly,
                     originFilter = runCatching { OriginFilter.valueOf(snapshot.originFilter) }
@@ -442,17 +429,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
         refreshPlan()
     }
 
-    fun setBrowserGradeRange(low: Double, high: Double) {
-        _state.update {
-            it.copy(
-                browserMinDifficulty = low.coerceIn(
-                    TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY,
-                ),
-                browserMaxDifficulty = high.coerceIn(low, TrainingRanges.MAX_DIFFICULTY),
-            )
-        }
-    }
-
     fun setMinAscensionists(count: Int) {
         _state.update { it.copy(minAscensionists = count.coerceIn(0, 50)) }
     }
@@ -563,8 +539,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
             manualRestSeconds = s.manualRestSeconds,
             manualRepeatRestSeconds = s.manualRepeatRestSeconds,
             minAscensionists = s.minAscensionists,
-            browserMinDifficulty = s.browserMinDifficulty,
-            browserMaxDifficulty = s.browserMaxDifficulty,
             benchmarkOnly = s.benchmarkOnly,
             originFilter = s.originFilter.name,
             statusFilter = s.statusFilter.joinToString(",") { it.name },
@@ -677,14 +651,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
                             }
                         }
 
-                        val overallLow = maxOf(
-                            params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY,
-                            params.browserMinDifficulty,
-                        )
-                        val overallHigh = minOf(
-                            params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
-                            params.browserMaxDifficulty,
-                        )
+                        val overallLow = params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY
+                        val overallHigh = params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY
                         // Query each distinct planned band once. The old
                         // CandidateSource queried again for every slot and
                         // widening step; the broad fallback alone is not
@@ -722,8 +690,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 maxDifficulty = maxDiff,
                                 targetMinDifficulty = params.targetMinDifficulty,
                                 targetMaxDifficulty = params.targetMaxDifficulty,
-                                browserMinDifficulty = params.browserMinDifficulty,
-                                browserMaxDifficulty = params.browserMaxDifficulty,
                                 limit = CANDIDATE_POOL_SIZE,
                             )
                         }
@@ -741,8 +707,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 ).filter { climb ->
                                     val diff = climb.difficultyAverage
                                     diff != null &&
-                                        diff >= params.browserMinDifficulty &&
-                                        diff <= params.browserMaxDifficulty &&
                                         diff >= (params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY) &&
                                         diff <= (params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY) &&
                                         (climb.ascensionistCount ?: 0) >= params.minAscensionists &&

@@ -160,8 +160,6 @@ data class PlaylistGeneratorParams(
     val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
     /** Relevant board-browser filters captured when the list was generated. */
     val minAscensionists: Int = 0,
-    val browserMinDifficulty: Double = TrainingRanges.MIN_DIFFICULTY,
-    val browserMaxDifficulty: Double = TrainingRanges.MAX_DIFFICULTY,
     val benchmarkOnly: Boolean = false,
     val originFilter: String = "ALL",
     val statusFilter: String = "ALL",
