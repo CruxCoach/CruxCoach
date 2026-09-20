@@ -11,7 +11,7 @@ struct BrowserView: View {
     @State private var sheet: Sheet?
     @State private var path = NavigationPath()
 
-    enum Sheet: String, Identifiable { case board, ble, catalogue, filters; var id: String { rawValue } }
+    enum Sheet: String, Identifiable { case board, ble, catalogue, filters, holds; var id: String { rawValue } }
 
     var body: some View {
         Group {
@@ -83,6 +83,7 @@ struct BrowserView: View {
                     }
                     Menu {
                         Button(L("board_filter_title"), systemImage: "line.3.horizontal.decrease") { sheet = .filters }
+                        Button(LI("hold_search_title"), systemImage: "hand.point.up.left") { sheet = .holds }
                         Menu(LI("browser_sort")) {
                             ForEach(model.sortCodes, id: \.self) { code in
                                 Button(sortTitle(code)) { model.setSort(code: code) }
@@ -121,6 +122,8 @@ struct BrowserView: View {
                         CatalogueView(core: core, sync: sync, isOnboarding: false)
                     case .filters:
                         FilterView(model: model, ui: ui)
+                    case .holds:
+                        HoldSearchView(model: model, ui: ui)
                     }
                 }
             }
