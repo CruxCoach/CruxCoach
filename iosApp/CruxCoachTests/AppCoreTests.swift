@@ -145,3 +145,11 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(core.climbUuidFromLink(url: ""), "")
     }
 }
+
+extension AppCoreTests {
+    func testTheAccountIdIsShownAsAnNpub() throws {
+        let core = try startCore()
+        XCTAssertTrue(core.npub.hasPrefix("npub1"), core.npub)
+        XCTAssertEqual(core.npub.count, 63, "a bech32 npub is 63 characters")
+    }
+}

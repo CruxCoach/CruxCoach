@@ -31,7 +31,10 @@ struct SettingsView: View {
             }
             Section(LI("settings_account")) {
                 LabeledContent(LI("settings_pubkey")) {
-                    Text(core.pubkeyHex).font(.footnote.monospaced()).textSelection(.enabled)
+                    Text(core.npub.isEmpty ? core.pubkeyHex : core.npub)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(3)
                 }
                 Text(LI("settings_account_hint")).font(.footnote).foregroundStyle(.secondary)
             }
