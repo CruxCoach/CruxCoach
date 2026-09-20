@@ -51,7 +51,7 @@ struct MainView: View {
 
     var body: some View {
         Group {
-            if let sync {
+            if let sync, sync.state.installedKnown {
                 if sync.state.installedCount == 0 {
                     NavigationStack { CatalogueView(core: core, sync: sync, isOnboarding: true) }
                 } else {
