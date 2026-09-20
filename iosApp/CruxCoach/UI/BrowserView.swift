@@ -88,6 +88,8 @@ struct BrowserView: View {
                             }
                         }
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
+                        NavigationLink(L("board_logbook_title")) { LogbookView(core: core) }
+                        NavigationLink(LI("history_title")) { HistoryView(core: core) }
                         NavigationLink(L("settings_title")) { SettingsView(core: core) }
                     } label: {
                         Label(LI("browser_more"), systemImage: "ellipsis.circle")

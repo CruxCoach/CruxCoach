@@ -66,6 +66,11 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: org.cruxcoach.ios.tests
+        # Hosted in the app: the tests read the app bundle's resources and need
+        # the app's keychain access group. An unhosted bundle fails both.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/CruxCoach.app/CruxCoach"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_TARGET_NAME: CruxCoach
 schemes:
   CruxCoach:
     build:
