@@ -58,6 +58,8 @@ class DetailScreenState(
     val canUndoQuickLog: Boolean,
     val logFailed: Boolean,
     val browserDirty: Boolean,
+    /** none | noClimb | unknownBrand | noBoardGeometry | noHolds — why a send could not even be built. */
+    val sendRequestFailure: String,
     val showLogDialog: Boolean,
     val logIsSend: Boolean,
     val logTries: Int,
@@ -79,19 +81,21 @@ class DetailScreenModel(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val moonLayout = MutableStateFlow<MoonLayout?>(null)
+    private val sendFailure = MutableStateFlow("none")
     private var lastDetail: ClimbDetailUiState? = null
     private var lastTargetKey: String = ""
 
     private class MoonLayout(val geometry: MoonBoardMappedGeometry, val imagePath: String)
 
-    val currentState: DetailScreenState get() = map(detail.state.value, logger.state.value, moonLayout.value)
+    val currentState: DetailScreenState
+        get() = map(detail.state.value, logger.state.value, moonLayout.value, sendFailure.value)
 
     fun watch(onState: (DetailScreenState) -> Unit): Subscription {
         val job = scope.launch {
-            combine(detail.state, logger.state, moonLayout) { d, l, moon ->
+            combine(detail.state, logger.state, moonLayout, sendFailure) { d, l, moon, failure ->
                 lastDetail = d
                 syncLogTarget(d)
-                map(d, l, moon)
+                map(d, l, moon, failure)
             }.collect { onState(it) }
         }
         return Subscription { job.cancel() }
@@ -112,9 +116,17 @@ class DetailScreenModel(
     fun setIgnored(ignored: Boolean) = detail.setIgnored(ignored)
     fun saveNote(note: String) = detail.saveNote(note)
 
+    /** Explicit "light it up". The BLE outcome arrives on the connection screen. */
     fun sendToBoard() {
-        lastDetail?.let { sender.send(it) }
+        val detail = lastDetail ?: return
+        val code = sender.send(detail)
+        sendFailure.value = if (code == "started") "none" else code
     }
+
+    fun dismissSendFailure() { sendFailure.value = "none" }
+
+    /** Late failure from the send's background half. Not part of the Swift API. */
+    internal fun reportSendFailure(code: String) { sendFailure.value = code }
 
     fun showLogDialog() = logger.showDialog()
     fun dismissLogDialog() = logger.dismissDialog()
@@ -154,7 +166,12 @@ class DetailScreenModel(
         )
     }
 
-    private fun map(state: ClimbDetailUiState, log: LogAttemptState, moon: MoonLayout?): DetailScreenState {
+    private fun map(
+        state: ClimbDetailUiState,
+        log: LogAttemptState,
+        moon: MoonLayout?,
+        sendRequestFailure: String,
+    ): DetailScreenState {
         val data = state.data
         val climb = data?.climb
         val brand = data?.boardSize?.boardBrand
@@ -211,6 +228,7 @@ class DetailScreenModel(
             canUndoQuickLog = log.quickLogFeedback != null,
             logFailed = log.quickLogFailed,
             browserDirty = state.browserDirty,
+            sendRequestFailure = sendRequestFailure,
             showLogDialog = log.ascent.showDialog,
             logIsSend = log.ascent.isSend,
             logTries = log.ascent.bidCount,

@@ -77,6 +77,14 @@ struct ClimbDetailView: View {
         }
     }
 
+    private func sendRequestMessage(_ code: String) -> String {
+        switch code {
+        case "noBoardGeometry": return LI("detail_send_no_geometry")
+        case "noHolds": return LI("detail_send_no_holds")
+        default: return LI("detail_send_failed", code)
+        }
+    }
+
     /// The MoonBoard coordinate map is a bundle resource; Kotlin owns the geometry, Swift the file access.
     private func loadMoonLayout(model: DetailScreenModel, path: String) {
         guard !path.isEmpty, path != loadedMoonPath,
@@ -126,7 +134,9 @@ struct ClimbDetailView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(ble.state.sending)
-            if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
+            if ui.sendRequestFailure != "none" {
+                Text(sendRequestMessage(ui.sendRequestFailure)).font(.footnote).foregroundStyle(.red)
+            } else if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
                 Text(LI("detail_send_failed", ble.state.sendResult)).font(.footnote).foregroundStyle(.red)
             }
             HStack {

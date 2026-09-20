@@ -41,7 +41,7 @@ class LogbookFacadeTest {
             CoroutineScope(Dispatchers.Default), today = { LocalDate(2026, 3, 15) },
         )
         val model = LogbookScreenModel(presenter)
-        withTimeout(5_000) { presenter.state.first { it.stats.totalSends == 1 } }
+        withTimeout(CI_WAIT_MS) { presenter.state.first { it.stats.totalSends == 1 } }
 
         val s = model.currentState
         assertEquals(listOf("2026-03-05", "2026-03-01"), s.days.map { it.date })
@@ -92,7 +92,7 @@ class LogbookFacadeTest {
         assertEquals("kilter", model.currentState.listBoardFilter)
         model.setListBoardFilter("")
         model.setInterval("days90")
-        withTimeout(5_000) { presenter.state.first { it.statsInterval == StatsTimeInterval.DAYS_90 && it.stats.periodComparison != null } }
+        withTimeout(CI_WAIT_MS) { presenter.state.first { it.statsInterval == StatsTimeInterval.DAYS_90 && it.stats.periodComparison != null } }
         assertEquals("days90", model.currentState.intervalCode)
         assertEquals("days90", model.currentState.stats.periodComparison.intervalCode)
         assertEquals("isoWeek", model.currentState.stats.sendsOverTime.single().kind)
@@ -109,7 +109,7 @@ class LogbookFacadeTest {
 
         var seen = 0
         val sub = model.watch { seen++ }
-        withTimeout(5_000) { while (seen == 0) kotlinx.coroutines.delay(5) }
+        withTimeout(CI_WAIT_MS) { while (seen == 0) kotlinx.coroutines.delay(5) }
         sub.cancel()
         model.close()
     }
@@ -123,7 +123,7 @@ class LogbookFacadeTest {
             CoroutineScope(Dispatchers.Default),
         ) { LocalDateTime(2026, 3, 15, 12, 0) }
         val model = HistoryScreenModel(presenter)
-        withTimeout(5_000) { presenter.state.first { it.entries.size == 1 } }
+        withTimeout(CI_WAIT_MS) { presenter.state.first { it.entries.size == 1 } }
 
         val entry = model.currentState.entries.single()
         assertEquals("Alpha", entry.climbName)
@@ -144,3 +144,6 @@ class LogbookFacadeTest {
         model.close()
     }
 }
+
+/** Real-time waits: generous so a loaded machine cannot fail an otherwise correct test. */
+private const val CI_WAIT_MS = 30_000L

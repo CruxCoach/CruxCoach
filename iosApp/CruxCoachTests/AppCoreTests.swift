@@ -7,6 +7,8 @@ import XCTest
 /// closest thing to running the app that CI can do without a device.
 final class AppCoreTests: XCTestCase {
 
+    /// Starting the core opens the databases, and a process opens each database
+    /// file once, so every test here shares one start — exactly as the app does.
     private func startCore() throws -> AppCore {
         let result = AppCore.companion.start(
             aead: CryptoKitAead(),
@@ -26,9 +28,12 @@ final class AppCoreTests: XCTestCase {
     }
 
     func testTheSameIdentityComesBackOnTheNextStart() throws {
+        // The key comes from the Keychain, so a second start must resolve to the
+        // same account rather than silently creating a new one.
         let first = try startCore().pubkeyHex
         let second = try startCore().pubkeyHex
         XCTAssertEqual(first, second, "a restart must never mint a new identity")
+        XCTAssertEqual(first.count, 64)
     }
 
     func testEveryScreenModelProducesAnInitialState() throws {

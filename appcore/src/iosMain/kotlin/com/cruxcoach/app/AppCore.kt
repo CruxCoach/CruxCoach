@@ -87,8 +87,9 @@ class AppCore private constructor(
     private val boardConnection: BoardConnectionPresenter by lazy {
         BoardConnectionPresenter(CoreBluetoothCentral(), platform.keyValues, platform.clock)
     }
+    private var sendFailureSink: (String) -> Unit = {}
     private val boardSender: BoardSender by lazy {
-        BoardSender(boardRepository, boardConnection, platform.keyValues)
+        BoardSender(boardRepository, boardConnection, platform.keyValues, { sendFailureSink(it) })
     }
 
     val syncScreen: SyncScreenModel by lazy { SyncScreenModel(catalogueSync, connectivity) }
@@ -101,12 +102,17 @@ class AppCore private constructor(
         settings.gradeFormatter(),
     )
 
-    fun makeDetailScreen(): DetailScreenModel = DetailScreenModel(
-        ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
-        LogAttemptPresenter(personalRepository),
-        boardSender,
-        settings.gradeFormatter(),
-    )
+    fun makeDetailScreen(): DetailScreenModel {
+        val model = DetailScreenModel(
+            ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
+            LogAttemptPresenter(personalRepository),
+            boardSender,
+            settings.gradeFormatter(),
+        )
+        // One detail screen is visible at a time; the newest owns the shared sender.
+        sendFailureSink = { code -> model.reportSendFailure(code) }
+        return model
+    }
 
     private val climbLookup by lazy { BoardRepositoryClimbLookup(boardRepository) }
 

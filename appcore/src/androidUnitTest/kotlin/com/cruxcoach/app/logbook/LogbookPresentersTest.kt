@@ -46,7 +46,7 @@ class LogbookPresentersTest {
     )
 
     private suspend fun LogbookPresenter.await(predicate: (LogbookState) -> Boolean) =
-        withTimeout(5_000) { state.first(predicate) }
+        withTimeout(CI_WAIT_MS) { state.first(predicate) }
 
     @Test
     fun `groups by day, newest first, and computes period statistics`() = runBlocking {
@@ -156,11 +156,11 @@ class LogbookPresentersTest {
         val kv = MapKeyValueStore(mapOf("climb_history_retention_days" to "90", "grade_scale" to "V_SCALE"))
         val p = HistoryPresenter(repo, kv, CoroutineScope(Dispatchers.Default)) { LocalDateTime(2026, 3, 15, 12, 0) }
         assertEquals(HistoryRetention.DAYS_90, p.state.value.retention)
-        withTimeout(5_000) { p.state.first { it.entries.size == 4 } }
+        withTimeout(CI_WAIT_MS) { p.state.first { it.entries.size == 4 } }
 
         p.setRetention(HistoryRetention.DAYS_30)
         assertEquals("30", kv.map["climb_history_retention_days"])
-        val pruned = withTimeout(5_000) { p.state.first { it.entries.size == 3 } }
+        val pruned = withTimeout(CI_WAIT_MS) { p.state.first { it.entries.size == 3 } }
         assertEquals(listOf("newest", "new", "mid"), pruned.entries.map { it.climbUuid })
 
         p.toggleSelectAll()
@@ -170,12 +170,15 @@ class LogbookPresentersTest {
         p.toggleSelection(pruned.entries[0].id)
         p.toggleSelection(pruned.entries[2].id)
         p.deleteSelected()
-        val left = withTimeout(5_000) { p.state.first { it.entries.size == 1 && it.selectedIds.isEmpty() } }
+        val left = withTimeout(CI_WAIT_MS) { p.state.first { it.entries.size == 1 && it.selectedIds.isEmpty() } }
         assertEquals("new", left.entries.single().climbUuid)
 
         p.setRetention(HistoryRetention.OFF)
         p.clearHistory()
-        withTimeout(5_000) { p.state.first { it.entries.isEmpty() } }
+        withTimeout(CI_WAIT_MS) { p.state.first { it.entries.isEmpty() } }
         assertEquals(0L, repo.climbHistoryCount())
     }
 }
+
+/** Real-time waits: generous so a loaded machine cannot fail an otherwise correct test. */
+private const val CI_WAIT_MS = 30_000L
