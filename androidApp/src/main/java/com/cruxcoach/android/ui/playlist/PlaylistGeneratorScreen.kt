@@ -574,6 +574,25 @@ fun PlaylistGeneratorScreen(
                 if (plan.usedDefaultProfile) {
                     WarningNote(stringResource(R.string.playlist_generator_default_profile))
                 }
+                // The browser's grade filter is a hard bound on the candidates. When it does not
+                // overlap the planned range, generation can only fail — say which two numbers
+                // disagree instead of letting the preview promise climbs that cannot be found.
+                val climbSlots = plan.slots.filterIsInstance<PlanSlot.ClimbSlot>()
+                if (climbSlots.isNotEmpty()) {
+                    val planMin = climbSlots.minOf { it.minDifficulty }
+                    val planMax = climbSlots.maxOf { it.maxDifficulty }
+                    if (planMax < state.browserMinDifficulty || planMin > state.browserMaxDifficulty) {
+                        WarningNote(
+                            stringResource(
+                                R.string.playlist_generator_filter_conflict,
+                                GradeDisplayHelper.formatDifficulty(state.browserMinDifficulty, state.gradeScale),
+                                GradeDisplayHelper.formatDifficulty(state.browserMaxDifficulty, state.gradeScale),
+                                GradeDisplayHelper.formatDifficulty(planMin, state.gradeScale),
+                                GradeDisplayHelper.formatDifficulty(planMax, state.gradeScale),
+                            )
+                        )
+                    }
+                }
             }
 
             // ── Generate ────────────────────────────────────────

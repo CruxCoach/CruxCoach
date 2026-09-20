@@ -2407,6 +2407,7 @@
     <string name="playlist_generator_title">Training list generator</string>
     <string name="playlist_generator_filters">Candidate filters</string>
     <string name="playlist_generator_filters_hint">Starts with your current board-browser filters. These are hard limits: generated climbs must match them.</string>
+    <string name="playlist_generator_filter_conflict">Your grade filter from the board browser (%1$s – %2$s) does not overlap the planned range (%3$s – %4$s). Change one of them, or the search finds nothing.</string>
     <string name="playlist_generator_filter_grade">Browser grade filter: %1$s – %2$s</string>
     <string name="playlist_generator_filter_min_ascents">Minimum sends: %1$d</string>
     <string name="playlist_generator_grade_range">Training grades: %1$s – %2$s</string>

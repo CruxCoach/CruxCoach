@@ -2406,6 +2406,7 @@
     <string name="playlist_generator_title">Trainingslisten-Generator</string>
     <string name="playlist_generator_filters">Kandidatenfilter</string>
     <string name="playlist_generator_filters_hint">Startet mit deinen aktuellen Filtern aus dem Board-Browser. Das sind harte Grenzen: generierte Climbs müssen dazu passen.</string>
+    <string name="playlist_generator_filter_conflict">Dein Gradfilter aus dem Board-Browser (%1$s – %2$s) passt nicht zum geplanten Bereich (%3$s – %4$s). Ändere einen der beiden, sonst findet die Suche nichts.</string>
     <string name="playlist_generator_filter_grade">Browser-Gradfilter: %1$s – %2$s</string>
     <string name="playlist_generator_filter_min_ascents">Mindestens Sends: %1$d</string>
     <string name="playlist_generator_grade_range">Trainingsgrade: %1$s – %2$s</string>
