@@ -12,6 +12,8 @@ import com.cruxcoach.app.community.RelayCommunityRelay
 import com.cruxcoach.app.creator.ClimbDraftStore
 import com.cruxcoach.app.creator.ClimbEditor
 import com.cruxcoach.app.identity.LocalIdentity
+import com.cruxcoach.app.imports.AuroraImporter
+import com.cruxcoach.app.imports.MoonBoardCsvImporter
 import com.cruxcoach.app.nostr.RelayClient
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterLogImporter
@@ -54,6 +56,7 @@ import com.cruxcoach.app.ui.CreatorScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
+import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
@@ -303,6 +306,12 @@ class AppCore private constructor(
         )
         return CreatorScreenModel(editor, settings.gradeFormatter())
     }
+
+    /** File import. Swift picks and reads the file; Kotlin parses and writes. */
+    fun makeImportScreen(): ImportScreenModel = ImportScreenModel(
+        MoonBoardCsvImporter(secureDatabase, boardDb.database, platform.hashing),
+        AuroraImporter(secureDatabase, boardDb.database, boardRepository, platform.hashing, ownPubkey = { pubkeyHex }),
+    )
 
     fun makeMapScreen(boardMapDirectory: String): MapScreenModel = MapScreenModel(
         MapPresenter(
