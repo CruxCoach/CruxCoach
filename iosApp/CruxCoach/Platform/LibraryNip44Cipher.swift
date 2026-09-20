@@ -15,15 +15,13 @@ import NostrSDK
 /// partially decrypted result to hand on.
 final class LibraryNip44Cipher: NSObject, Nip44Cipher {
     func encrypt(secretKey: KotlinByteArray, peerPublicKeyHex: String, plaintext: String) -> String? {
-        keys(secretKey, peerPublicKeyHex).flatMap { secret, peer in
-            try? nip44Encrypt(secretKey: secret, publicKey: peer, content: plaintext, version: .v2)
-        }
+        guard let (secret, peer) = keys(secretKey, peerPublicKeyHex) else { return nil }
+        return try? nip44Encrypt(secretKey: secret, publicKey: peer, content: plaintext, version: .v2)
     }
 
     func decrypt(secretKey: KotlinByteArray, peerPublicKeyHex: String, payload: String) -> String? {
-        keys(secretKey, peerPublicKeyHex).flatMap { secret, peer in
-            try? nip44Decrypt(secretKey: secret, publicKey: peer, payload: payload)
-        }
+        guard let (secret, peer) = keys(secretKey, peerPublicKeyHex) else { return nil }
+        return try? nip44Decrypt(secretKey: secret, publicKey: peer, payload: payload)
     }
 
     /// Parses both keys, or nothing. The secret's bytes are copied into the
@@ -36,12 +34,5 @@ final class LibraryNip44Cipher: NSObject, Nip44Cipher {
         guard let secret = try? SecretKey.fromBytes(bytes: bytes),
               let peer = try? PublicKey.parse(publicKey: peerPublicKeyHex) else { return nil }
         return (secret, peer)
-    }
-}
-
-private extension Optional where Wrapped == (SecretKey, PublicKey) {
-    func flatMap<T>(_ transform: (SecretKey, PublicKey) -> T?) -> T? {
-        guard let self else { return nil }
-        return transform(self.0, self.1)
     }
 }

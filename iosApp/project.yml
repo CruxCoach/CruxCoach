@@ -68,14 +68,10 @@ targets:
   CruxCoachTests:
     type: bundle.unit-test
     platform: iOS
-    sources:
-      - path: CruxCoachTests
-        excludes: [Fixtures]
-      # The official NIP-44 vector file, so the implementation that actually
-      # ships is held to it — not only the Kotlin one the JVM tests run.
-      - path: CruxCoachTests/Fixtures
-        type: folder
-        buildPhase: resources
+    # Fixtures/nip44.vectors.json comes along as a resource: the official
+    # vectors have to reach the implementation that actually ships, not only
+    # the Kotlin one the JVM tests run.
+    sources: [CruxCoachTests]
     dependencies:
       - target: CruxCoach
       - package: NostrSDK
