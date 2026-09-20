@@ -405,7 +405,9 @@ fun BoardBrowserScreen(
             logbookTour = tourStep == TourStep.LOGBOOK,
             onLogbookPlacement = { logbookInOverflow = it },
             onBoardPicker = {
-                if (tour.step() == TourStep.BOARD) tour.move(tour.afterBoardStep()) showBoardPicker = true },
+                if (tour.step() == TourStep.BOARD) tour.move(tour.afterBoardStep())
+                showBoardPicker = true
+            },
             onBluetooth = { showBleSheet = true },
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
         )
