@@ -32,18 +32,11 @@ class ListsPresenterTest {
      * Default pool the two race, and an assertion that reads the repository
      * straight after awaiting state fails at random.
      */
-    private val scopeExecutor = Executors.newSingleThreadExecutor()
-    private val ioExecutor = Executors.newSingleThreadExecutor()
-    private val serial = scopeExecutor.asCoroutineDispatcher()
-    private val serialIo = ioExecutor.asCoroutineDispatcher()
-
-    @AfterTest
-    fun shutDownDispatchers() {
-        serial.close()
-        serialIo.close()
-        scopeExecutor.shutdownNow()
-        ioExecutor.shutdownNow()
-    }
+    // Daemon threads that are never shut down: closing one while a presenter
+    // still has work queued throws into its scope and fails an unrelated test.
+    private val serialOwner = com.cruxcoach.app.logbook.SerialDispatcher()
+    private val serial = serialOwner.dispatcher
+    private val serialIo = serial
 
 
     /** Catalogue stand-in: the personal DB never holds climb metadata. */

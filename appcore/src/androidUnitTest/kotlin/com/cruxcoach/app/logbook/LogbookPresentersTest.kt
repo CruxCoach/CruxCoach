@@ -49,7 +49,7 @@ class LogbookPresentersTest {
     }
 
     private fun logbook(repo: PersonalBoardRepository) = LogbookPresenter(
-        repo, MapKeyValueStore(), CoroutineScope(serial), today = { LocalDate(2026, 3, 15) },
+        repo, MapKeyValueStore(), CoroutineScope(serial), serial, today = { LocalDate(2026, 3, 15) },
     )
 
     private suspend fun LogbookPresenter.await(predicate: (LogbookState) -> Boolean) =
