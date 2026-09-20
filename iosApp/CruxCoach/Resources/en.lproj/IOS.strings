@@ -308,3 +308,16 @@
 "data_import_unreadable" = "That file could not be read.";
 "data_import_failed" = "That file is not a CruxCoach export for this identity.";
 "data_exchange_open" = "Export and import data";
+"profile_npub" = "Your public key";
+"profile_images" = "Images";
+"profile_image_url_hint" = "Paste an https link to an image. Uploading from the photo library is not implemented yet.";
+"profile_verify_nip05" = "Check this address";
+"profile_verifying" = "Checking…";
+"profile_website" = "Website";
+"profile_published_to" = "Stored by %1$ld of %2$ld relays.";
+"profile_error_no_identity" = "No identity yet — finish the first run first.";
+"profile_error_signing" = "The profile could not be signed.";
+"profile_error_no_relay" = "No relay stored the profile, so nothing was changed for anyone else.";
+"profile_error_invalid_url" = "Image and website links have to start with https://.";
+"profile_error_load" = "The profile could not be loaded.";
+"profile_open" = "My Nostr profile";
