@@ -237,7 +237,16 @@ class CruxRelayManager(
     val manualStart get() = userPreferences.relayManualStart
 
     fun setShareAutomatically(automatic: Boolean) {
-        scope.launch { userPreferences.setRelayManualStart(!automatic) }
+        scope.launch {
+            userPreferences.setRelayManualStart(!automatic)
+            if (automatic) {
+                // The switch sits under the disclosure text, so switching it on is the informed
+                // consent — otherwise automatic sharing would silently never start.
+                userPreferences.setRelayDisclosureSeen()
+                autoDisclosureDismissedBoardAddress = null
+                if (!enabledFlow.value) requestAutomaticEnable()
+            }
+        }
     }
 
     private fun requestAutomaticEnable() {
@@ -335,8 +344,12 @@ class CruxRelayManager(
         _state.update { it.copy(pendingDisclosure = false) }
     }
 
-    /** One-tap stop used by every UI/service surface. */
-    fun disable() {
+    /** One-tap stop used by every UI/service surface.
+     *  @param byUser a deliberate stop; automatic sharing then stays off until the board link
+     *   is re-established or sharing is started again by hand. Restarting it seconds later
+     *   because "share automatically" is on ignores what the user just asked for. */
+    fun disable(byUser: Boolean = false) {
+        if (byUser) autoDisclosureDismissedBoardAddress = bleConnection.connectedBoard?.address
         disclosureJob?.cancel()
         disclosureJob = null
         pendingDisclosureBoardAddress = null

@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 
-internal enum class TourStep { INACTIVE, CONNECT, ANGLE, FILTER, OPEN, PROJECT, LOG, LOGBOOK, ENTRY, DONE }
+internal enum class TourStep { INACTIVE, BOARD, CONNECT, ANGLE, FILTER, OPEN, PROJECT, LOG, LOGBOOK, ENTRY, DONE }
 
 /** Separate from setup completion: upgrades remain untouched and dismissal survives restart. */
 internal class BrowserTour(context: Context) {
@@ -18,6 +18,9 @@ internal class BrowserTour(context: Context) {
         prefs.edit().putString("entry_uuid", entryUuid).putString("step", TourStep.LOGBOOK.name).apply()
     }
     fun deferBle() { prefs.edit().putBoolean("defer_ble", true).apply() }
+    /** Step after the board picker: setup may have deferred the Bluetooth part. */
+    fun afterBoardStep(): TourStep =
+        if (prefs.getBoolean("defer_ble", false)) TourStep.ANGLE else TourStep.CONNECT
     fun startForNewUser(alreadyOnboarded: Boolean) {
         // The setup flag is identity-scoped; the installation cache also protects
         // returning users whose account restoration re-enters setup.
@@ -28,7 +31,9 @@ internal class BrowserTour(context: Context) {
         if (!replay && step() != TourStep.INACTIVE) return
         prefs.edit().remove("entry_uuid").apply()
         if (replay) prefs.edit().putBoolean("defer_ble", false).apply()
-        move(if (prefs.getBoolean("defer_ble", false)) TourStep.ANGLE else TourStep.CONNECT)
+        // Always start at the board picker: model and size decide the whole catalogue, and a
+        // connection made during setup must not hide where that choice lives.
+        move(TourStep.BOARD)
     }
     fun listen(listener: SharedPreferences.OnSharedPreferenceChangeListener) = prefs.registerOnSharedPreferenceChangeListener(listener)
     fun unlisten(listener: SharedPreferences.OnSharedPreferenceChangeListener) = prefs.unregisterOnSharedPreferenceChangeListener(listener)

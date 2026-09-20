@@ -38,7 +38,7 @@ class RelayShareViewModel @Inject constructor(
 
     /** One-tap stop. A CruxCoach queue and the direct board link keep running. */
     fun disableSharing() {
-        relayManager.disable()
+        relayManager.disable(byUser = true)
     }
 
     fun clearError() {
