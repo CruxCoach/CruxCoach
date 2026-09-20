@@ -311,7 +311,16 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
             }
-            _state.update { initialState }
+            // The batch result is built from scratch. Keep what the independent collectors in init
+            // may already have delivered, otherwise e.g. the manual relay start switch always
+            // showed "off" regardless of the stored value.
+            _state.update {
+                initialState.copy(
+                    relayManualStart = it.relayManualStart,
+                    boardSizeFrequency = it.boardSizeFrequency,
+                    boardSearchEnabled = it.boardSearchEnabled,
+                )
+            }
 
             launch {
                 kilterSyncEngine.uploadStatus.collect { upload ->
