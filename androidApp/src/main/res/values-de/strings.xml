@@ -1570,7 +1570,7 @@
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
     <string name="board_stats_week_streak">Wochen-Serie</string>
-    <string name="board_stats_most_sends_day">Meiste Begehungen pro Tag</string>
+    <string name="board_stats_most_sends_day">Begehungen/Tag</string>
     <string name="board_stats_outcome_distribution">Geschaffte Boulder: Flash oder später</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>
     <string name="board_stats_sends_over_time">Logeinträge im Zeitverlauf</string>

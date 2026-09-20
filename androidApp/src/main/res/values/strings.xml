@@ -1527,7 +1527,7 @@
     <string name="board_stats_interval_90d">90 Days</string>
     <string name="board_stats_interval_all">All Time</string>
     <string name="board_stats_week_streak">Week streak</string>
-    <string name="board_stats_most_sends_day">Most sends in a day</string>
+    <string name="board_stats_most_sends_day">Sends per day</string>
     <string name="board_stats_outcome_distribution">Sent climbs: flash or later send</string>
     <string name="board_stats_period_comparison">Period Comparison</string>
     <string name="board_stats_sends_over_time">Log entries over time</string>

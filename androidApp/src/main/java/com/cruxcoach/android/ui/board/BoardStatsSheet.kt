@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
@@ -104,6 +105,9 @@ private fun BoardComparisonSection(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
+    // Wide enough for "Begehungen" on one line at the default font scale.
+    val SENDS_COLUMN_WIDTH = 88.dp
+    val GRADE_COLUMN_WIDTH = 76.dp
     ChartSection(stringResource(R.string.board_stats_board_comparison)) {
         // Column header.
         Row(
@@ -121,14 +125,20 @@ private fun BoardComparisonSection(
                 stringResource(R.string.board_sends),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp),
+                // A single long word has no wrap point, so a narrow column split it into
+                // "Begehunge / n". Keep the header on one line and shorten it if it must.
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(SENDS_COLUMN_WIDTH),
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
             )
             Text(
                 stringResource(R.string.board_logbook_best_grade),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(72.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(GRADE_COLUMN_WIDTH),
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
             )
         }
@@ -163,7 +173,7 @@ private fun BoardComparisonSection(
                         fontWeight = FontWeight.Bold,
                         color = SuccessGreen,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(64.dp),
+                        modifier = Modifier.width(SENDS_COLUMN_WIDTH),
                     )
                     Text(
                         entry.hardestGrade ?: "-",
@@ -171,7 +181,7 @@ private fun BoardComparisonSection(
                         fontWeight = FontWeight.Bold,
                         color = GradeHard,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(72.dp),
+                        modifier = Modifier.width(GRADE_COLUMN_WIDTH),
                     )
                 }
             }
