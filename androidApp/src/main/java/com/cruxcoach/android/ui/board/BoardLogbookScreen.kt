@@ -48,12 +48,10 @@ fun BoardLogbookScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, viewModel) {
-        var firstResume = true
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                // init already loads once; only later returns need a reload.
-                if (firstResume) firstResume = false else viewModel.refreshAfterReturn()
-            }
+            // The view model decides whether this is the initial resume: this effect restarts
+            // whenever the screen re-enters composition, the view model survives the back stack.
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.onScreenResumed()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

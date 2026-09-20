@@ -336,17 +336,26 @@ class BoardLogbookViewModel @Inject constructor(
     /** Reload after the screen becomes visible again. The ViewModel survives on the back
      *  stack, so entries logged, edited or deleted in the climb detail were missing (and the
      *  totals stale) until the logbook was left and reopened. */
+    private var resumedOnce = false
+
+    /** init already loads once; every later resume (return from a detail, app switch) reloads. */
+    fun onScreenResumed() {
+        if (resumedOnce) refreshAfterReturn() else resumedOnce = true
+    }
+
     fun refreshAfterReturn() {
-        loadAscents()
+        // Silent and at least as many rows as shown: a spinner would drop the scroll position.
+        loadAscents(silent = true)
         refreshOwnPublishable()
     }
 
-    private fun loadAscents() {
+    private fun loadAscents(silent: Boolean = false) {
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoading = true, error = null) }
+            val limit = if (silent) maxOf(PAGE_SIZE, _state.value.ascents.size) else PAGE_SIZE
+            if (!silent) _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
-                    val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0).toMutableList()
+                    val list = personalBoardRepo.getUserLogbookPage(limit, 0).toMutableList()
                     val total = personalBoardRepo.countUserLogbook()
                     repairMissingDenormalized(list)
                     list to total
@@ -355,7 +364,7 @@ class BoardLogbookViewModel @Inject constructor(
                     isLoading = false,
                     ascents = ascents,
                     totalCount = count,
-                    canLoadMore = ascents.size >= PAGE_SIZE,
+                    canLoadMore = ascents.size >= limit,
                     hasData = ascents.isNotEmpty()
                 ) }
                 // Preload stats data in background so sheet opens instantly
