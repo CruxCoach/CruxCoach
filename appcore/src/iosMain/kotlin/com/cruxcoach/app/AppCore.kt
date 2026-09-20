@@ -15,6 +15,8 @@ import com.cruxcoach.app.logbook.LogbookPresenter
 import com.cruxcoach.app.links.DeepLink
 import com.cruxcoach.app.links.DeepLinkParser
 import com.cruxcoach.app.nostr.Nip19
+import com.cruxcoach.app.notify.NotificationScheduler
+import com.cruxcoach.app.notify.RestTimerNotifier
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
@@ -29,10 +31,12 @@ import com.cruxcoach.app.playlist.PlayerClimbInfo
 import com.cruxcoach.app.playlist.PlaylistPlayerPresenter
 import com.cruxcoach.app.send.BoardPlaybackTransport
 import com.cruxcoach.app.send.BoardSender
+import com.cruxcoach.app.settings.SettingsStore
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.app.setup.BoardOptions
 import com.cruxcoach.app.storage.DatabaseFailure
 import com.cruxcoach.app.storage.IosDatabases
+import com.cruxcoach.app.sync.CatalogueAutoSync
 import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.app.ui.BackupScreenModel
 import com.cruxcoach.app.ui.BleScreenModel
@@ -43,8 +47,10 @@ import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
+import com.cruxcoach.app.ui.OnboardingScreenModel
 import com.cruxcoach.app.ui.PlayerScreenModel
 import com.cruxcoach.app.ui.SettingsModel
+import com.cruxcoach.app.ui.SettingsScreenModel
 import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
 import kotlinx.coroutines.MainScope
@@ -85,6 +91,13 @@ class AppCore private constructor(
 
     val settings = SettingsModel(platform.keyValues)
 
+    /**
+     * Typed settings on Android's keys and defaults. Per-identity settings
+     * (`onboarding_completed` and friends) are scoped to this pubkey, exactly
+     * as Android scopes its key-bound DataStore file.
+     */
+    private val settingsStore = SettingsStore(platform.keyValues, pubkeyHex)
+
     /** The account id users actually exchange; empty only if encoding fails. */
     val npub: String = Nip19.encodeNpub(pubkeyHex) ?: ""
 
@@ -123,7 +136,58 @@ class AppCore private constructor(
     }
     val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
 
-    fun startConnectivity() = connectivity.start()
+    /**
+     * One settings model for the whole app: the root view reads dark mode and
+     * keep-screen-on from it while the settings pages write to it, and a second
+     * instance would give them two separate snapshots of the same store.
+     */
+    val settingsScreen: SettingsScreenModel by lazy {
+        SettingsScreenModel(
+            settings = settingsStore,
+            keyValues = platform.keyValues,
+            boardRepository = boardRepository,
+            personalRepository = personalRepository,
+            catalogueSync = catalogueSync,
+            onAutoDisconnectSeconds = { boardConnection.setAutoDisconnectSeconds(it) },
+        )
+    }
+
+    /** First-run setup. Cheap enough to rebuild per presentation; it owns no I/O. */
+    fun makeOnboardingScreen(): OnboardingScreenModel =
+        OnboardingScreenModel(settingsStore, platform.keyValues, boardRepository)
+
+    /**
+     * `sync_interval`, as far as iOS can honour it: a foreground refresh only.
+     * Returns the brands a refresh was started for, empty when nothing was due.
+     */
+    fun refreshCataloguesIfDue(): List<String> = try {
+        autoSync.refreshIfDue()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private val autoSync: CatalogueAutoSync by lazy {
+        CatalogueAutoSync(catalogueSync, settingsStore, platform.keyValues, connectivity, platform.clock)
+    }
+
+    /**
+     * Hands the core the host's local-notification service. Kept out of [start]
+     * so a host without notifications still gets a working app; until this is
+     * called a rest that ends in the background simply does not alert.
+     */
+    fun attachNotifications(scheduler: NotificationScheduler): RestTimerNotifier =
+        RestTimerNotifier(scheduler, settingsStore, platform.clock).also { restTimer = it }
+
+    /** Null until [attachNotifications]. */
+    var restTimer: RestTimerNotifier? = null
+        private set
+
+    fun startConnectivity() {
+        connectivity.start()
+        // The idle timeout is a preference the link has to be told about; it is
+        // not read on every send.
+        boardConnection.setAutoDisconnectSeconds(settingsStore.snapshot.bleAutoDisconnectSeconds)
+    }
 
     fun makeBrowserScreen(): BrowserScreenModel = BrowserScreenModel(
         BoardBrowserPresenter(boardRepository, personalRepository, platform.keyValues, { pubkeyHex }),

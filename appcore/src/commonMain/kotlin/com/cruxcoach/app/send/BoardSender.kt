@@ -4,6 +4,7 @@ import com.cruxcoach.app.ble.BoardConnectionPresenter
 import com.cruxcoach.app.ble.resolveRoleColors
 import com.cruxcoach.app.detail.ClimbDetailUiState
 import com.cruxcoach.app.platform.KeyValueStore
+import com.cruxcoach.app.settings.UserLedColors
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
@@ -64,7 +65,8 @@ class BoardSender(
                 onRequestFailed("noBoardGeometry")
                 return@launch
             }
-            connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, null), brandWire)
+            // The catalogue's own placement_roles win; the user's colours are Kilter's fallback, as on Android.
+            connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, UserLedColors.read(keyValues)), brandWire)
         }
         return "started"
     }

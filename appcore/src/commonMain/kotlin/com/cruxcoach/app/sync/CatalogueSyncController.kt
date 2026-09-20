@@ -166,6 +166,21 @@ class CatalogueSyncController internal constructor(
         track(brand)?.let { ManifestTrackStore(keyValues, it.prefsName, clock).clear() }
     }
 
+    /**
+     * Settings deleted these catalogues behind the controller's back. Their
+     * chunk hashes have to go with the data — otherwise the next run diffs the
+     * new manifest against pre-deletion hashes, finds nothing changed and
+     * leaves the user with an empty board and a "up to date" message. The
+     * revision bump tells every screen holding catalogue-derived state to re-ask.
+     */
+    fun catalogueDeleted(brands: List<BoardBrand>) {
+        brands.forEach { resetBrand(it) }
+        scope.launch {
+            refreshInstalledQuietly()
+            _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
+        }
+    }
+
     // ── lanes ────────────────────────────────────────────────────────
 
     private class Track(val dTag: String, val prefsName: String, val importVersion: String?)

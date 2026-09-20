@@ -5,6 +5,7 @@ import com.cruxcoach.app.ble.ConnectionState
 import com.cruxcoach.app.ble.resolveRoleColors
 import com.cruxcoach.app.playlist.PlaybackTransport
 import com.cruxcoach.app.platform.KeyValueStore
+import com.cruxcoach.app.settings.UserLedColors
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
@@ -63,7 +64,8 @@ class BoardPlaybackTransport(
             } else {
                 val holds = BoardClimbParser.parseFrames(prepared.frames)
                 if (holds.isEmpty() || prepared.ledMap.isEmpty()) return@launch
-                connection.sendClimb(holds, prepared.ledMap, resolveRoleColors(brand, prepared.roleColors, null), brandWire)
+                val colors = resolveRoleColors(brand, prepared.roleColors, UserLedColors.read(keyValues))
+                connection.sendClimb(holds, prepared.ledMap, colors, brandWire)
             }
         }
     }
