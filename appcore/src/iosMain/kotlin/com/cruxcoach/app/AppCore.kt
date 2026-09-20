@@ -11,6 +11,7 @@ import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.logbook.LogbookPresenter
 import com.cruxcoach.app.links.DeepLink
 import com.cruxcoach.app.links.DeepLinkParser
+import com.cruxcoach.app.nostr.Nip19
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
@@ -71,6 +72,10 @@ class AppCore private constructor(
     private val connectivity = IosConnectivityMonitor()
 
     val settings = SettingsModel(platform.keyValues)
+
+    /** The account id users actually exchange; empty only if encoding fails. */
+    val npub: String = Nip19.encodeNpub(pubkeyHex) ?: ""
+
 
     // One catalogue sync and one board link for the whole app, as on Android.
     private val catalogueSync: CatalogueSyncController by lazy {
