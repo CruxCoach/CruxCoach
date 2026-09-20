@@ -188,8 +188,11 @@ internal fun BoardImageZoomDialog(
     layoutId: Long?,
     onDismiss: () -> Unit,
 ) {
-    val bitmaps = rememberBoardImageBitmaps(brand, sizeId, layoutId)
-    if (bitmaps.isEmpty()) return
+    // Full-resolution decode takes seconds on slow devices: open at once with a
+    // progress indicator instead of leaving the tap without any visible effect.
+    val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId)
+    if (loaded != null && loaded.isEmpty()) return
+    val bitmaps = loaded.orEmpty()
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -207,6 +210,7 @@ internal fun BoardImageZoomDialog(
         ) {
             var scale by remember { mutableFloatStateOf(1f) }
             var offset by remember { mutableStateOf(Offset.Zero) }
+            if (loaded == null) CircularProgressIndicator(color = Color.White)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
