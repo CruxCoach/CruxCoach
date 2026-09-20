@@ -6,7 +6,9 @@ import com.cruxcoach.app.browse.BoardBrowserPresenter
 import com.cruxcoach.app.detail.ClimbDetailPresenter
 import com.cruxcoach.app.identity.IdentityFailure
 import com.cruxcoach.app.identity.LocalIdentity
+import com.cruxcoach.app.logbook.HistoryPresenter
 import com.cruxcoach.app.logbook.LogAttemptPresenter
+import com.cruxcoach.app.logbook.LogbookPresenter
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
@@ -23,6 +25,8 @@ import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.app.ui.BleScreenModel
 import com.cruxcoach.app.ui.BrowserScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
+import com.cruxcoach.app.ui.HistoryScreenModel
+import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.data.BoardDatabaseHandle
@@ -91,6 +95,12 @@ class AppCore private constructor(
         boardSender,
         settings.gradeFormatter(),
     )
+
+    fun makeLogbookScreen(): LogbookScreenModel =
+        LogbookScreenModel(LogbookPresenter(personalRepository, platform.keyValues))
+
+    fun makeHistoryScreen(): HistoryScreenModel =
+        HistoryScreenModel(HistoryPresenter(personalRepository, platform.keyValues))
 
     /** Empty until that brand's catalogue is installed. */
     fun boardOptions(brandWire: String): List<BoardOption> = try {
