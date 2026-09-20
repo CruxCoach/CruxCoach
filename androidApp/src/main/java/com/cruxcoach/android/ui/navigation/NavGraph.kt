@@ -1162,7 +1162,28 @@ private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager)
 @Composable
 private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
     val relayState by relayManager.state.collectAsStateWithLifecycle()
-    if (!relayState.pendingDisclosure) return
+    if (!relayState.pendingDisclosure) {
+        // One-time follow-up after a manual start that came after a declined automatic prompt.
+        if (relayState.pendingAutoReoffer) {
+            AlertDialog(
+                onDismissRequest = { relayManager.resolveAutoReoffer(false) },
+                modifier = Modifier.testTag("relay_auto_reoffer_dialog"),
+                title = { Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_title)) },
+                text = { Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_text)) },
+                confirmButton = {
+                    Button(onClick = { relayManager.resolveAutoReoffer(true) }) {
+                        Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { relayManager.resolveAutoReoffer(false) }) {
+                        Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_dismiss))
+                    }
+                },
+            )
+        }
+        return
+    }
     AlertDialog(
         onDismissRequest = relayManager::dismissDisclosure,
         modifier = Modifier.testTag("relay_disclosure_dialog"),

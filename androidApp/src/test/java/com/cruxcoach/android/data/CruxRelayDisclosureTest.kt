@@ -87,6 +87,50 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
+    fun `manual start after a declined prompt asks once whether to share automatically again`() = runTest {
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55", advertisesWhileConnected = false),
+        )
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        val reofferPending = MutableStateFlow(true)
+        every { preferences.relayManualStart } returns flowOf(true)
+        every { preferences.relayDisclosureSeen } returns flowOf(true)
+        every { preferences.relayAutoReofferPending } returns reofferPending
+        coEvery { preferences.setRelayAutoReofferPending(any()) } answers { reofferPending.value = firstArg() }
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertFalse(manager.state.value.pendingAutoReoffer)
+
+        manager.requestEnable()
+        runCurrent()
+        assertTrue(manager.state.value.pendingAutoReoffer)
+
+        manager.resolveAutoReoffer(shareAutomaticallyAgain = true)
+        runCurrent()
+        assertFalse(manager.state.value.pendingAutoReoffer)
+        coVerify(exactly = 1) { preferences.setRelayManualStart(false) }
+
+        // Asked once: a later manual start stays silent.
+        manager.disable()
+        manager.requestEnable()
+        runCurrent()
+        assertFalse(manager.state.value.pendingAutoReoffer)
+    }
+
+    @Test
     fun `cancelled automatic disclosure is not repeated after a board send`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
@@ -97,7 +141,9 @@ class CruxRelayDisclosureTest {
         every { connection.connectedBoardDescriptor } returns connectedBoard
         every { connection.connectedBoard } answers { connectedBoard.value }
         val preferences = mockk<UserPreferences>(relaxed = true)
-        every { preferences.relayManualStart } returns flowOf(false)
+        val manualStart = MutableStateFlow(false)
+        every { preferences.relayManualStart } returns manualStart
+        coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
         every { preferences.relayDisclosureSeen } returns flowOf(false)
         val manager = CruxRelayManager(
             context = context,
@@ -124,14 +170,16 @@ class CruxRelayDisclosureTest {
         runCurrent()
         assertTrue(manager.state.value.pendingDisclosure)
 
-        // Cancelling again is scoped only to this connection. A real
-        // disconnect/reconnect may offer automatic sharing once more.
+        // Declining the unprompted dialog is a lasting answer: the relay switched to manual
+        // start, so a real disconnect/reconnect must not ask again.
         manager.dismissDisclosure()
         connectionState.value = ConnectionState.DISCONNECTED
         runCurrent()
         connectionState.value = ConnectionState.CONNECTED
         runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
+        assertFalse(manager.state.value.pendingDisclosure)
+        assertTrue(manualStart.value)
+        coVerify(exactly = 1) { preferences.setRelayAutoReofferPending(true) }
     }
 
     @Test

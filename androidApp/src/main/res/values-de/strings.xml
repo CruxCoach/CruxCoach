@@ -2475,6 +2475,10 @@
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
     <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
     <string name="settings_relay_manual_start_desc">Andere können über dein Handy Boulder am Board aufleuchten lassen. Für unterstützte Boards mit nur einer direkten Verbindung.\n\nAus\nStartet nach deiner Freigabe beim Verbinden.\n\nEin\nDu startest im Bluetooth-Menü.\n\nEndet beim Trennen vom Board.</string>
+    <string name="relay_auto_reoffer_title">Automatisch freigeben?</string>
+    <string name="relay_auto_reoffer_text">Du hattest die automatische Freigabe abgelehnt. Soll CruxCoach ab jetzt wieder bei jeder Board-Verbindung automatisch für andere Board-Apps freigeben? Das lässt sich jederzeit in den Einstellungen unter „CruxRelay manuell starten“ ändern.</string>
+    <string name="relay_auto_reoffer_confirm">Wieder automatisch</string>
+    <string name="relay_auto_reoffer_dismiss">Nur dieses Mal</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
     <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxCoach…\". Andere Board-Apps können Climbs über CruxCoach senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
