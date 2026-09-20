@@ -76,12 +76,9 @@ class BackupScreenModel(
     /** Pushes every state to [onState] until the returned handle is cancelled. */
     fun watch(onState: (BackupScreenState) -> Unit): Subscription {
         val job = scope.launch { states.collect { onState(it) } }
-        return Subscription(job)
+        return Subscription { job.cancel() }
     }
 
-    class Subscription internal constructor(private val job: Job) {
-        fun cancel() = job.cancel()
-    }
 
     fun setBackupEnabled(enabled: Boolean) {
         backupState.backupEnabled = enabled

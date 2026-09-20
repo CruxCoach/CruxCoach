@@ -98,6 +98,9 @@ class ListDetailPresenter(
 
     private suspend fun load() {
         val angle = defaultAngle()
+        // A settings edit that happens while this read is in flight must win: the
+        // row we are about to read predates it.
+        val settingsAtStart = settingsRevision
         val loaded = withContext(ioDispatcher) {
             val list = personalBoardRepo.getClimbListById(listId)
             val entries = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
@@ -133,9 +136,9 @@ class ListDetailPresenter(
                     )
                 },
                 hasPlaybackPlan = loaded.steps.isNotEmpty(),
-                playbackOrder = list.playbackOrder,
-                playbackAdvance = list.playbackAdvance,
-                playbackRestSeconds = list.playbackRestSeconds,
+                playbackOrder = if (settingsRevision == settingsAtStart) list.playbackOrder else it.playbackOrder,
+                playbackAdvance = if (settingsRevision == settingsAtStart) list.playbackAdvance else it.playbackAdvance,
+                playbackRestSeconds = if (settingsRevision == settingsAtStart) list.playbackRestSeconds else it.playbackRestSeconds,
                 unavailableCount = members.count { m -> m.climb == null },
                 error = ListDetailError.NONE,
             )
@@ -185,6 +188,9 @@ class ListDetailPresenter(
 
     fun setPlaybackRestSeconds(seconds: Long) = savePlayback(restSeconds = seconds.coerceIn(0L, MAX_REST_SECONDS))
 
+    /** Bumped by every settings edit, so an in-flight [load] cannot undo one. */
+    private var settingsRevision = 0
+
     private fun savePlayback(
         order: ListPlaybackOrder? = null,
         advance: ListPlaybackAdvance? = null,
@@ -193,6 +199,7 @@ class ListDetailPresenter(
         // Apply to state first: the three settings are independent controls, and a
         // second change must not be computed from a snapshot the first one already
         // superseded (it would silently write the old value back).
+        settingsRevision++
         var next = Triple(ListPlaybackOrder.LIST, ListPlaybackAdvance.MANUAL, 0L)
         _state.update { s ->
             next = Triple(
@@ -202,14 +209,13 @@ class ListDetailPresenter(
             )
             s.copy(playbackOrder = next.first, playbackAdvance = next.second, playbackRestSeconds = next.third)
         }
-        // Persist what the state says AT WRITE TIME, not a captured snapshot: three
-        // rapid changes may reach the database out of order, and every write must
-        // then still carry the complete, final triple.
-        mutate(ListDetailError.EDIT_FAILED) {
-            val current = _state.value
-            personalBoardRepo.updatePlaybackSettings(
-                listId, current.playbackOrder, current.playbackAdvance, current.playbackRestSeconds,
-            )
+        // Persist the triple this call computed. Reading the state again at write
+        // time looks safer but is not: the initial load, or any other refresh,
+        // can land in between and the write then stores the row's old values
+        // back over the user's change.
+        val (order0, advance0, rest0) = next
+        mutate(ListDetailError.EDIT_FAILED, reload = false) {
+            personalBoardRepo.updatePlaybackSettings(listId, order0, advance0, rest0)
         }
     }
 
@@ -320,11 +326,17 @@ class ListDetailPresenter(
 
     private fun PlanStep.toNewStep() = NewListPlaybackStep(climbUuid, angle, restSeconds)
 
-    private fun mutate(onFailure: ListDetailError, block: suspend () -> Unit) {
+    /**
+     * [reload] re-reads the row after the write, which plan edits need because
+     * the database assigns step ids. Settings edits must NOT reload: a reload
+     * that lands after a newer edit has already updated the state overwrites it
+     * with the older row, and the user watches their second toggle flip back.
+     */
+    private fun mutate(onFailure: ListDetailError, reload: Boolean = true, block: suspend () -> Unit) {
         scope.launch {
             try {
                 withContext(ioDispatcher) { block() }
-                load()
+                if (reload) load()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
