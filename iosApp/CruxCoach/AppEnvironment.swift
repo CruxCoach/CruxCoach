@@ -1,14 +1,13 @@
 import CruxCoachCore
-import Foundation
 import Observation
 
-/// Composition root: hands the Swift-implemented platform services to the Kotlin core.
+/// Composition root: hands the four Swift-implemented platform services to the Kotlin core.
 @Observable
 final class AppEnvironment {
     enum Phase {
         case starting
         case ready(AppCore)
-        case failed(AppStartFailure, String)
+        case failed(code: String, detail: String)
     }
 
     private(set) var phase: Phase = .starting
@@ -22,10 +21,10 @@ final class AppEnvironment {
             deviceAuth: BiometricAuthenticator()
         )
         if let core = result.core {
-            core.connectivity.start()
+            core.startConnectivity()
             phase = .ready(core)
         } else {
-            phase = .failed(result.failure ?? .databaseOpenFailed, result.detail ?? "")
+            phase = .failed(code: result.failureCode, detail: result.detail)
         }
     }
 }

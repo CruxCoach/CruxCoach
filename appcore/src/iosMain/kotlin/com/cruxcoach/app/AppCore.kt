@@ -13,29 +13,39 @@ import com.cruxcoach.app.platform.IosConnectivityMonitor
 import com.cruxcoach.app.platform.PlatformServices
 import com.cruxcoach.app.platform.SecretStore
 import com.cruxcoach.app.platform.ZstdDecompressor
+import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.send.BoardSender
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.app.setup.BoardOptions
-import com.cruxcoach.domain.board.BoardBrand
-import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.storage.DatabaseFailure
 import com.cruxcoach.app.storage.IosDatabases
 import com.cruxcoach.app.sync.CatalogueSyncController
+import com.cruxcoach.app.ui.BleScreenModel
+import com.cruxcoach.app.ui.BrowserScreenModel
+import com.cruxcoach.app.ui.DetailScreenModel
+import com.cruxcoach.app.ui.SettingsModel
+import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.data.BoardDatabaseHandle
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardRepositoryImpl
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.board.BoardBrand
 
-enum class AppStartFailure { KEYCHAIN_UNAVAILABLE, STORED_KEY_INVALID, ENCRYPTION_UNAVAILABLE, DATABASE_OPEN_FAILED }
-
-class AppStartResult(val core: AppCore?, val failure: AppStartFailure?, val detail: String?)
+/**
+ * Result of [AppCore.start]. [failureCode] is one of
+ * "keychainUnavailable", "storedKeyInvalid", "encryptionUnavailable",
+ * "databaseOpenFailed", or "" when [core] is present.
+ */
+class AppStartResult(val core: AppCore?, val failureCode: String, val detail: String)
 
 /**
  * Composition root of the Kotlin core. Swift passes in the four services it
- * implements and gets ready-made presenters, so no dispatcher or repository
- * wiring happens in Swift.
+ * implements and gets ready-made screen models back, so no dependency wiring,
+ * dispatcher handling or repository access happens in Swift.
+ *
+ * Nothing here throws into Swift: failures are values.
  */
 class AppCore private constructor(
     val platform: PlatformServices,
@@ -45,34 +55,46 @@ class AppCore private constructor(
     private val boardDb: BoardDatabaseHandle,
     secureDb: SecureDatabase,
 ) {
-    val boardRepository: BoardRepository = BoardRepositoryImpl(boardDb.database, boardDb.driver)
-    val personalRepository: PersonalBoardRepository = PersonalBoardRepositoryImpl(secureDb)
-    val connectivity = IosConnectivityMonitor()
+    private val boardRepository: BoardRepository = BoardRepositoryImpl(boardDb.database, boardDb.driver)
+    private val personalRepository: PersonalBoardRepository = PersonalBoardRepositoryImpl(secureDb)
+    private val connectivity = IosConnectivityMonitor()
 
-    // One sync controller and one BLE link for the whole app, like Android's singletons.
-    val catalogueSync: CatalogueSyncController by lazy {
+    val settings = SettingsModel(platform.keyValues)
+
+    // One catalogue sync and one board link for the whole app, as on Android.
+    private val catalogueSync: CatalogueSyncController by lazy {
         CatalogueSyncController(
             platform.webSockets, platform.http, platform.files, platform.hashing,
             platform.zstd, platform.keyValues, platform.clock, boardDb,
         )
     }
-    val boardConnection: BoardConnectionPresenter by lazy {
+    private val boardConnection: BoardConnectionPresenter by lazy {
         BoardConnectionPresenter(CoreBluetoothCentral(), platform.keyValues, platform.clock)
     }
+    private val boardSender: BoardSender by lazy {
+        BoardSender(boardRepository, boardConnection, platform.keyValues)
+    }
 
-    fun newBrowserPresenter(): BoardBrowserPresenter =
-        BoardBrowserPresenter(boardRepository, personalRepository, platform.keyValues, { pubkeyHex })
+    val syncScreen: SyncScreenModel by lazy { SyncScreenModel(catalogueSync, connectivity) }
+    val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
 
-    val boardSender: BoardSender by lazy { BoardSender(boardRepository, boardConnection, platform.keyValues) }
+    fun startConnectivity() = connectivity.start()
 
-    fun newDetailPresenter(): ClimbDetailPresenter =
-        ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues)
+    fun makeBrowserScreen(): BrowserScreenModel = BrowserScreenModel(
+        BoardBrowserPresenter(boardRepository, personalRepository, platform.keyValues, { pubkeyHex }),
+        settings.gradeFormatter(),
+    )
 
-    fun newLogAttemptPresenter(): LogAttemptPresenter = LogAttemptPresenter(personalRepository)
+    fun makeDetailScreen(): DetailScreenModel = DetailScreenModel(
+        ClimbDetailPresenter(boardRepository, personalRepository, platform.keyValues),
+        LogAttemptPresenter(personalRepository),
+        boardSender,
+        settings.gradeFormatter(),
+    )
 
-    /** Empty until the brand's catalogue is installed. Never throws into Swift. */
-    fun boardOptions(brand: BoardBrand): List<BoardOption> = try {
-        BoardOptions.forBrand(brand, boardRepository)
+    /** Empty until that brand's catalogue is installed. */
+    fun boardOptions(brandWire: String): List<BoardOption> = try {
+        BoardBrand.fromWireOrNull(brandWire)?.let { BoardOptions.forBrand(it, boardRepository) } ?: emptyList()
     } catch (e: Exception) {
         emptyList()
     }
@@ -84,37 +106,32 @@ class AppCore private constructor(
             zstd: ZstdDecompressor,
             deviceAuth: DeviceAuthenticator,
         ): AppStartResult = try {
-            val platform = createIosPlatformServices(aead, secrets, zstd, deviceAuth, "org.cruxcoach.prefs")
+            val platform = createIosPlatformServices(aead, secrets, zstd, deviceAuth, USER_DEFAULTS_SUITE)
             val loaded = LocalIdentity(secrets, platform.hashing).loadOrCreate()
             val identity = loaded.identity
             if (identity == null) {
-                AppStartResult(
-                    null,
-                    if (loaded.failure == IdentityFailure.STORED_KEY_INVALID) AppStartFailure.STORED_KEY_INVALID
-                    else AppStartFailure.KEYCHAIN_UNAVAILABLE,
-                    null,
-                )
+                val code = if (loaded.failure == IdentityFailure.STORED_KEY_INVALID) "storedKeyInvalid" else "keychainUnavailable"
+                AppStartResult(null, code, "")
             } else {
                 val opened = IosDatabases.open(identity.secureDbKey, identity.secureDbName)
                 identity.secureDbKey.fill(0)
                 val board = opened.board
                 val secure = opened.secure
                 if (board == null || secure == null) {
-                    AppStartResult(
-                        null,
-                        if (opened.failure == DatabaseFailure.ENCRYPTION_UNAVAILABLE) AppStartFailure.ENCRYPTION_UNAVAILABLE
-                        else AppStartFailure.DATABASE_OPEN_FAILED,
-                        opened.detail,
-                    )
+                    val code = if (opened.failure == DatabaseFailure.ENCRYPTION_UNAVAILABLE) "encryptionUnavailable" else "databaseOpenFailed"
+                    AppStartResult(null, code, opened.detail ?: "")
                 } else {
                     AppStartResult(
                         AppCore(platform, identity.pubkeyHex, loaded.created, opened.cipherVersion ?: "", board, secure),
-                        null, null,
+                        "", "",
                     )
                 }
             }
         } catch (e: Throwable) {
-            AppStartResult(null, AppStartFailure.DATABASE_OPEN_FAILED, e.message)
+            AppStartResult(null, "databaseOpenFailed", e.message ?: "")
         }
+
+        /** Must not be the bundle identifier: NSUserDefaults rejects that as a suite name. */
+        const val USER_DEFAULTS_SUITE = "org.cruxcoach.prefs"
     }
 }

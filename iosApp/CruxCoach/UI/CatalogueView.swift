@@ -1,45 +1,43 @@
 import CruxCoachCore
 import SwiftUI
 
-/// Download/refresh of the signed board catalogues (Android: onboarding step 1 + "Sync board data").
+/// Download and refresh of the signed board catalogues (Android: onboarding step 1 and "Sync board data").
 struct CatalogueView: View {
     let core: AppCore
-    let sync: Observed<CatalogueSyncState>
+    let sync: ScreenHost<SyncScreenModel, SyncScreenState>
     let isOnboarding: Bool
     @State private var selected: Set<String> = []
-    @State private var online: Observed<KotlinBoolean>
+    @Environment(\.dismiss) private var dismiss
 
-    init(core: AppCore, sync: Observed<CatalogueSyncState>, isOnboarding: Bool) {
-        self.core = core; self.sync = sync; self.isOnboarding = isOnboarding
-        _online = State(initialValue: Observed(core.connectivity.isOnline, initial: core.connectivity.isOnline.value as! KotlinBoolean))
-    }
-
-    private var brands: [BoardBrand] { BoardOptions.shared.downloadableBrands }
+    private var state: SyncScreenState { sync.state }
 
     var body: some View {
         List {
             if isOnboarding {
                 Section { Text(LI("catalogue_intro")) }
             }
-            if !online.value.boolValue {
-                Section { Label(LI("catalogue_offline"), systemImage: "wifi.slash").foregroundStyle(.orange) }
+            if !state.online {
+                Section {
+                    Label(LI("catalogue_offline"), systemImage: "wifi.slash").foregroundStyle(.orange)
+                }
             }
             Section(LI("catalogue_choose")) {
-                ForEach(brands, id: \.wireValue) { brand in
-                    BrandRow(brand: brand,
-                             state: sync.value.brands.first { $0.brand == brand },
-                             installed: sync.value.installedBrands.contains(brand),
-                             isSelected: selected.contains(brand.wireValue)) {
-                        if selected.contains(brand.wireValue) { selected.remove(brand.wireValue) } else { selected.insert(brand.wireValue) }
+                ForEach(state.rows, id: \.brandWire) { row in
+                    BrandRow(row: row, isSelected: selected.contains(row.brandWire)) {
+                        if selected.contains(row.brandWire) {
+                            selected.remove(row.brandWire)
+                        } else {
+                            selected.insert(row.brandWire)
+                        }
                     }
                 }
             }
             Section {
-                if sync.value.running {
-                    Button(L("action_cancel"), role: .cancel) { core.catalogueSync.cancel() }
+                if state.running {
+                    Button(L("action_cancel"), role: .cancel) { sync.model.cancel() }
                 } else {
                     Button(LI("catalogue_download")) {
-                        core.catalogueSync.start(brands: brands.filter { selected.contains($0.wireValue) })
+                        sync.model.start(brandWires: Array(selected))
                     }
                     .disabled(selected.isEmpty)
                 }
@@ -48,13 +46,16 @@ struct CatalogueView: View {
             }
         }
         .navigationTitle(L("board_sync_title"))
+        .toolbar {
+            if !isOnboarding {
+                ToolbarItem(placement: .cancellationAction) { Button(L("action_close")) { dismiss() } }
+            }
+        }
     }
 }
 
 private struct BrandRow: View {
-    let brand: BoardBrand
-    let state: BrandSyncState?
-    let installed: Bool
+    let row: SyncBrandRow
     let isSelected: Bool
     let toggle: () -> Void
 
@@ -64,10 +65,12 @@ private struct BrandRow: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(brand.displayNameForUi).foregroundStyle(.primary)
-                    if let status { Text(status).font(.footnote).foregroundStyle(isFailure ? .red : .secondary) }
-                    if let state, state.phase == .downloading, state.totalBytes > 0 {
-                        ProgressView(value: Double(state.receivedBytes), total: Double(state.totalBytes))
+                    Text(row.title).foregroundStyle(.primary)
+                    if let status {
+                        Text(status).font(.footnote).foregroundStyle(row.phase == "failed" ? .red : .secondary)
+                    }
+                    if row.phase == "downloading", row.totalBytes > 0 {
+                        ProgressView(value: Double(row.receivedBytes), total: Double(row.totalBytes))
                     }
                 }
             }
@@ -75,35 +78,16 @@ private struct BrandRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var isFailure: Bool { state?.phase == .failed }
-
     private var status: String? {
-        guard let state else { return installed ? LI("catalogue_installed") : nil }
-        switch state.phase {
-        case .checking: return LI("catalogue_checking")
-        case .downloading: return LI("catalogue_downloading")
-        case .verifying: return LI("catalogue_verifying")
-        case .importing: return LI("catalogue_importing")
-        case .upToDate: return LI("catalogue_up_to_date")
-        case .done: return LI("catalogue_done", Int(state.climbCount))
-        case .failed: return LI("catalogue_failed", String(describing: state.failure))
-        default: return installed ? LI("catalogue_installed") : nil
-        }
-    }
-}
-
-extension BoardBrand {
-    var displayNameForUi: String {
-        switch self {
-        case .kilter: return "Kilter Board"
-        case .moonboard: return "MoonBoard"
-        case .tension: return "Tension Board"
-        case .grasshopper: return "Grasshopper"
-        case .decoy: return "Decoy"
-        case .soill: return "So iLL"
-        case .touchstone: return "Touchstone"
-        case .quantum: return "Quantum"
-        default: return wireValue
+        switch row.phase {
+        case "checking": return LI("catalogue_checking")
+        case "downloading": return LI("catalogue_downloading")
+        case "verifying": return LI("catalogue_verifying")
+        case "importing": return LI("catalogue_importing")
+        case "upToDate": return LI("catalogue_up_to_date")
+        case "done": return LI("catalogue_done", Int(row.climbCount))
+        case "failed": return LI("catalogue_failed", row.failure)
+        default: return row.installed ? LI("catalogue_installed") : nil
         }
     }
 }
