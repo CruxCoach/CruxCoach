@@ -509,6 +509,8 @@ class BoardBleConnection(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    private var linkWatchdogJob: Job? = null
+
     // Some stacks never deliver STATE_DISCONNECTED when the adapter is switched off. The link
     // then stayed "connected" on every screen and sends failed silently; retire it ourselves.
     private val adapterStateReceiver = object : BroadcastReceiver() {
@@ -528,6 +530,20 @@ class BoardBleConnection(
         runCatching {
             context.registerReceiver(adapterStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         }
+        // Every path that reaches CONNECTED gets the watchdog — sends, resends and the relay
+        // guest path each set the state themselves, and tying it to one of them missed the rest.
+        scope.launch {
+            _connectionState.collect { state ->
+                if (state == ConnectionState.DISCONNECTED) {
+                    linkWatchdogJob?.cancel()
+                    linkWatchdogJob = null
+                } else {
+                    currentBoard?.address?.let { address ->
+                        if (linkWatchdogJob?.isActive != true) startLinkWatchdog(address)
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -535,7 +551,6 @@ class BoardBleConnection(
      * taken over by another phone does not always produce a STATE_DISCONNECTED callback on every
      * stack, and the app then kept claiming a link that no longer carries sends.
      */
-    private var linkWatchdogJob: Job? = null
 
     @SuppressLint("MissingPermission")
     private fun startLinkWatchdog(address: String) {
@@ -928,7 +943,6 @@ class BoardBleConnection(
         connectionTimeoutJob = null
         Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
         _connectionState.value = ConnectionState.CONNECTED
-        currentBoard?.address?.let(::startLinkWatchdog)
         resetIdleTimer()
         onRestartScannersAfterConnect?.invoke()
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
