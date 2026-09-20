@@ -94,6 +94,7 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalOpenClimbDetail
 import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
@@ -333,6 +334,9 @@ fun CruxCoachNavHost(
         LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
         LocalOpenPlaylistPlayer provides {
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
+        },
+        LocalOpenClimbDetail provides { uuid, angle ->
+            navController.navigate(Routes.boardClimbDetail(uuid, angle)) { launchSingleTop = true }
         },
     ) {
     CruxRelayDisclosureEffect(startViewModel.cruxRelayManager)

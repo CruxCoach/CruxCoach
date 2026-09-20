@@ -31,7 +31,7 @@ internal fun BleStatusExpanded(
     state: BleShareUiState,
     effectiveOnBoard: OnBoardClimbEntry?,
     onCollapse: () -> Unit,
-    onClimbTapped: ((uuid: String, angle: Int) -> Unit)?,
+    onClimbTapped: (uuid: String, angle: Int) -> Unit,
     onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
@@ -39,19 +39,17 @@ internal fun BleStatusExpanded(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onCollapse),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = OrangeAccent.copy(alpha = 0.10f)
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // The rows below are full-width tap targets of their own (open climb, open
-            // player), which left no free card area to collapse the banner again. A dedicated
-            // header with a visible 48dp control keeps collapsing always reachable.
+            // Collapsing belongs to the arrow alone: the rows below are tap targets of their
+            // own (open climb, open player), and a card-wide collapse swallowed those taps.
             Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onCollapse),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -188,7 +186,7 @@ private fun SessionQueueSection(
 @Composable
 private fun OnBoardClimbSection(
     climb: OnBoardClimbEntry,
-    onClimbTapped: ((uuid: String, angle: Int) -> Unit)?
+    onClimbTapped: (uuid: String, angle: Int) -> Unit,
 ) {
     val name = climb.name ?: stringResource(R.string.ble_unknown_climb)
     val statusText = when (climb.source) {
@@ -206,11 +204,8 @@ private fun OnBoardClimbSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (onClimbTapped != null) Modifier.clickable {
-                    onClimbTapped(climb.climbUuid, climb.angle)
-                } else Modifier
-            )
+            .clickable { onClimbTapped(climb.climbUuid, climb.angle) }
+            .heightIn(min = 48.dp)
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -237,9 +232,7 @@ private fun OnBoardClimbSection(
             SignalIndicator(rssi = climb.rssi)
             Spacer(Modifier.width(4.dp))
         }
-        if (onClimbTapped != null) {
-            Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
