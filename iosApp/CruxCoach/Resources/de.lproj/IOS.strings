@@ -288,3 +288,13 @@
 "hold_search_hint" = "Tippe die Griffe an, die ein Problem verwenden muss. Ein nochmaliger Tipp entfernt einen Griff wieder.";
 "hold_search_selected" = "%ld Griffe ausgewählt";
 "hold_search_clear" = "Zurücksetzen";
+"generator_manual_repeats" = "Versuche pro Problem: %ld";
+"generator_manual_rest" = "Pause zwischen Problemen: %ld s";
+"generator_manual_repeat_rest" = "Pause zwischen Versuchen: %ld s";
+"generator_rest_step" = "Pause %ld:%02ld";
+"generator_same_climb" = "gleiches Problem";
+"generator_section_warmup" = "Aufwärmen";
+"generator_section_main" = "Hauptteil";
+"generator_section_peak" = "Höhepunkt";
+"generator_section_descent" = "Abstieg";
+"generator_open" = "Trainingsliste generieren";

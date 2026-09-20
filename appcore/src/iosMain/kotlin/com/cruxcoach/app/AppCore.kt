@@ -38,6 +38,7 @@ import com.cruxcoach.app.platform.ZstdDecompressor
 import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
+import com.cruxcoach.app.playlist.GeneratorPresenter
 import com.cruxcoach.app.playlist.ListsPresenter
 import com.cruxcoach.app.playlist.PlayerClimbInfo
 import com.cruxcoach.app.playlist.PlaylistPlayerPresenter
@@ -60,6 +61,7 @@ import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
+import com.cruxcoach.app.ui.GeneratorScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
@@ -240,6 +242,15 @@ class AppCore private constructor(
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
+
+    /** Playlist generator: plans a session from the logbook and the catalogue. */
+    fun makeGeneratorScreen(): GeneratorScreenModel = GeneratorScreenModel(
+        GeneratorPresenter(
+            boardRepository,
+            personalRepository,
+            BrowsePreferences(platform.keyValues),
+        )
+    )
 
     fun makeListDetailScreen(listId: Long): ListDetailScreenModel = ListDetailScreenModel(
         ListDetailPresenter(personalRepository, listId, climbLookup, { browseAngle() }),
