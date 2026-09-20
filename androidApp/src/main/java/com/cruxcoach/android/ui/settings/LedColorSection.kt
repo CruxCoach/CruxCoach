@@ -203,9 +203,10 @@ private fun ColorPickerBottomSheet(
                                     }
                                 )
                                 .clickable { onColorSelected(color.byte) }
-                                // A bare colour circle announces nothing: name the colour and
-                                // whether it is the current one.
-                                .semantics {
+                                // A bare colour circle announces nothing. Merge, so the name and
+                                // the selected state land on the clickable node itself instead of
+                                // a sibling the reader never focuses.
+                                .semantics(mergeDescendants = true) {
                                     contentDescription = colorName
                                     this.selected = isSelected
                                     role = Role.Button
