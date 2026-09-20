@@ -186,7 +186,8 @@ class DataExchangeViewModel @Inject constructor(
                         stream.write(content)
                     } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
                 }
-                val label = context.getString(R.string.export_categories_exported, s.exportCategories.size)
+                val count = s.exportCategories.size
+                val label = context.resources.getQuantityString(R.plurals.export_categories_exported, count, count)
                 _state.update { it.copy(isExporting = false, message = label) }
             } catch (e: Exception) {
                 _state.update { it.copy(isExporting = false, error = context.getString(R.string.error_export_failed, e.message ?: "")) }

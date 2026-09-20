@@ -1688,7 +1688,10 @@
     <string name="export_save_file">Save to device</string>
     <string name="export_share_app">Share with app</string>
     <string name="export_share_chooser">Share CruxCoach data</string>
-    <string name="export_categories_exported">%1$d category(ies) exported</string>
+    <plurals name="export_categories_exported">
+        <item quantity="one">%d category exported</item>
+        <item quantity="other">%d categories exported</item>
+    </plurals>
     <string name="export_category_profile">Profile &amp; settings</string>
     <string name="export_category_assessments">Fitness assessments</string>
     <string name="export_category_body_stats">Body stats</string>

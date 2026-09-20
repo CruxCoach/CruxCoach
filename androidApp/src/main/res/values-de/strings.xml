@@ -1731,7 +1731,10 @@
     <string name="export_save_file">Auf Gerät speichern</string>
     <string name="export_share_app">Mit App teilen</string>
     <string name="export_share_chooser">CruxCoach-Daten teilen</string>
-    <string name="export_categories_exported">%1$d Kategorie(n) exportiert</string>
+    <plurals name="export_categories_exported">
+        <item quantity="one">%d Kategorie exportiert</item>
+        <item quantity="other">%d Kategorien exportiert</item>
+    </plurals>
     <string name="export_category_profile">Profil &amp; Einstellungen</string>
     <string name="export_category_assessments">Fitness-Assessments</string>
     <string name="export_category_body_stats">Körperdaten</string>
