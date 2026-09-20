@@ -288,3 +288,13 @@
 "hold_search_hint" = "Tap the holds a problem has to use. Tap a selected hold again to remove it.";
 "hold_search_selected" = "%ld holds selected";
 "hold_search_clear" = "Clear";
+"generator_manual_repeats" = "Tries per problem: %ld";
+"generator_manual_rest" = "Rest between problems: %ld s";
+"generator_manual_repeat_rest" = "Rest between tries: %ld s";
+"generator_rest_step" = "Rest %ld:%02ld";
+"generator_same_climb" = "same problem";
+"generator_section_warmup" = "warm-up";
+"generator_section_main" = "main";
+"generator_section_peak" = "peak";
+"generator_section_descent" = "descent";
+"generator_open" = "Generate a training list";

@@ -5,6 +5,7 @@ import SwiftUI
 struct ListsView: View {
     let core: AppCore
     @State private var host: ScreenHost<ListsScreenModel, ListsScreenState>?
+    @State private var generating = false
 
     var body: some View {
         Group {
@@ -50,9 +51,24 @@ struct ListsView: View {
                 }
             }
         }
+        .sheet(isPresented: $generating) {
+            NavigationStack {
+                GeneratorView(core: core) { _ in model.refresh() }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(L("action_cancel")) { generating = false }
+                        }
+                    }
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { model.showCreateDialog() } label: { Label(LI("lists_new"), systemImage: "plus") }
+                Menu {
+                    Button { model.showCreateDialog() } label: { Label(LI("lists_new"), systemImage: "plus") }
+                    Button { generating = true } label: {
+                        Label(LI("generator_open"), systemImage: "wand.and.stars")
+                    }
+                } label: { Image(systemName: "plus") }
             }
         }
         .alert(LI("lists_new"), isPresented: Binding(get: { ui.showCreateDialog }, set: { if !$0 { model.dismissCreateDialog() } })) {
