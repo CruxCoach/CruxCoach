@@ -39,6 +39,8 @@ import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
 import com.cruxcoach.app.backup.CruxCoachBackupPayloadStore
+import com.cruxcoach.app.profile.NostrProfileStore
+import com.cruxcoach.app.profile.ProfilePresenter
 import com.cruxcoach.app.backup.FileExchangePresenter
 import com.cruxcoach.app.playlist.GeneratorPresenter
 import com.cruxcoach.app.playlist.ListsPresenter
@@ -65,6 +67,7 @@ import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.DataExchangeScreenModel
 import com.cruxcoach.app.ui.GeneratorScreenModel
+import com.cruxcoach.app.ui.ProfileScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
@@ -260,6 +263,22 @@ class AppCore private constructor(
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
+
+    /** The user's own Nostr profile — what other climbers see next to a climb. */
+    fun makeProfileScreen(): ProfileScreenModel = ProfileScreenModel(
+        ProfilePresenter(
+            store = NostrProfileStore(secureDatabase, platform.clock),
+            relays = RelayClient(platform.webSockets, platform.hashing),
+            signer = LocalEventSigner(platform.hashing) {
+                platform.secrets.read(LocalIdentity.NOSTR_KEY)
+            },
+            http = platform.http,
+            hashing = platform.hashing,
+            clock = platform.clock,
+            pubkeyHex = { pubkeyHex },
+            npubOf = { Nip19.encodeNpub(it) ?: "" },
+        )
+    )
 
     /** Playlist generator: plans a session from the logbook and the catalogue. */
     fun makeGeneratorScreen(): GeneratorScreenModel = GeneratorScreenModel(
