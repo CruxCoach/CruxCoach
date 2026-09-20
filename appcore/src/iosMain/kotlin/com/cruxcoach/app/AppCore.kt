@@ -8,6 +8,7 @@ import com.cruxcoach.app.identity.IdentityFailure
 import com.cruxcoach.app.backup.LocalEventSigner
 import com.cruxcoach.app.browse.BrowsePreferences
 import com.cruxcoach.app.community.CommunityPublisher
+import com.cruxcoach.app.community.CommunitySubscriber
 import com.cruxcoach.app.community.RelayCommunityRelay
 import com.cruxcoach.app.creator.ClimbDraftStore
 import com.cruxcoach.app.creator.ClimbEditor
@@ -52,6 +53,7 @@ import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.app.ui.BackupScreenModel
 import com.cruxcoach.app.ui.BleScreenModel
 import com.cruxcoach.app.ui.BrowserScreenModel
+import com.cruxcoach.app.ui.CommunityScreenModel
 import com.cruxcoach.app.ui.CreatorScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
@@ -315,6 +317,20 @@ class AppCore private constructor(
         personalRepository,
         catalogueSync,
         onAutoDisconnectSeconds = { seconds -> boardConnection.setAutoDisconnectSeconds(seconds) },
+    )
+
+    /**
+     * Community problems others published. Android keeps a live subscription;
+     * iOS cannot hold one in the background, so this is an explicit pull.
+     */
+    fun makeCommunityScreen(): CommunityScreenModel = CommunityScreenModel(
+        CommunitySubscriber(
+            boardRepository,
+            RelayCommunityRelay(RelayClient(platform.webSockets, platform.hashing)),
+            platform.keyValues,
+            platform.hashing,
+            platform.clock,
+        ) { pubkeyHex }
     )
 
     /** File import. Swift picks and reads the file; Kotlin parses and writes. */

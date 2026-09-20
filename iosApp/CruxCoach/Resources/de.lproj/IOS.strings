@@ -278,3 +278,9 @@
 "onboarding_finish" = "Los geht's";
 "onboarding_back" = "Zurück";
 "onboarding_skip" = "Überspringen";
+"community_title" = "Community-Probleme";
+"community_hint" = "Probleme, die andere CruxCoach-Nutzer veröffentlicht haben. iOS kann kein Abo im Hintergrund laufen lassen, deshalb holst du sie, wenn du sie brauchst.";
+"community_fetch" = "Neue Probleme holen";
+"community_fetching" = "Wird geholt…";
+"community_result" = "%1$ld neue von %2$ld empfangen";
+"community_failed" = "Die Relays waren nicht erreichbar.";

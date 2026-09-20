@@ -33,6 +33,13 @@ struct CatalogueView: View {
                 }
             }
             Section {
+                CommunityFetchRow(core: core)
+            } header: {
+                Text(LI("community_title"))
+            } footer: {
+                Text(LI("community_hint"))
+            }
+            Section {
                 if state.running {
                     Button(L("action_cancel"), role: .cancel) { sync.model.cancel() }
                 } else {
@@ -88,6 +95,42 @@ private struct BrandRow: View {
         case "done": return LI("catalogue_done", Int(row.climbCount))
         case "failed": return LI("catalogue_failed", row.failure)
         default: return row.installed ? LI("catalogue_installed") : nil
+        }
+    }
+}
+
+/// An explicit pull of community problems. Android keeps a live subscription;
+/// iOS cannot hold one in the background, so the user asks for it.
+private struct CommunityFetchRow: View {
+    let core: AppCore
+    @State private var host: ScreenHost<CommunityScreenModel, CommunityScreenState>?
+
+    var body: some View {
+        Group {
+            if let host {
+                let model = host.model
+                let ui = host.state
+                Button(LI("community_fetch")) { model.fetch() }.disabled(ui.busy)
+                if ui.busy {
+                    HStack { ProgressView(); Text(LI("community_fetching")) }
+                } else if ui.finished {
+                    if ui.failure == "none" {
+                        Text(LI("community_result", Int(ui.imported), Int(ui.received)))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        Text(LI("community_failed")).font(.footnote).foregroundStyle(.red)
+                    }
+                }
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            guard host == nil else { return }
+            let model = core.makeCommunityScreen()
+            host = ScreenHost(model: model, initial: model.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
         }
     }
 }
