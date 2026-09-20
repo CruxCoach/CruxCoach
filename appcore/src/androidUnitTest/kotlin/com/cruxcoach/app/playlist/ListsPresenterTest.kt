@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.withTimeout
 
 class ListsPresenterTest {
@@ -338,53 +339,43 @@ private const val CI_WAIT_MS = 30_000L
 /**
  * Two settings changed in quick succession: the second must survive.
  *
- * Writing a setting used to reload the row afterwards, and a reload that landed
- * after a newer edit overwrote it with the older row — the user watched their
- * second toggle flip back.
+ * Writing a setting used to re-read the state at write time and to reload the
+ * row afterwards, so the initial load could store the old values back and a
+ * reload could flip the user's second toggle back in the UI.
+ *
+ * Virtual time only: no real-time waiting, so a loaded machine cannot turn a
+ * correct result into a failure.
  */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PlaybackSettingsRaceTest {
-    private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private val serial = executor.asCoroutineDispatcher()
-
-    @kotlin.test.AfterTest
-    fun shutDown() {
-        serial.close()
-        executor.shutdownNow()
-    }
 
     @kotlin.test.Test
-    fun `a rapid second settings change is not reverted by the first write`() = kotlinx.coroutines.runBlocking {
-        val repo = com.cruxcoach.app.logbook.newPersonalRepo()
-        val listId = kotlinx.coroutines.withContext(serial) { repo.createClimbList("Session") }
-        val detail = ListDetailPresenter(
-            repo, listId, scope = kotlinx.coroutines.CoroutineScope(serial), ioDispatcher = serial,
-        )
-        try {
-            detail.setPlaybackOrder(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE)
-            detail.setPlaybackAdvance(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG)
-
-            // The state is optimistic, so it must show the final pair immediately.
-            com.cruxcoach.app.logbook.awaitValue(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG) {
-                detail.state.value.playbackAdvance
-            }
+    fun `a rapid second settings change survives both the initial load and the write`() {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher()
+        kotlinx.coroutines.test.runTest(dispatcher) {
+            val repo = com.cruxcoach.app.logbook.newPersonalRepo()
+            val listId = repo.createClimbList("Session")
+            val detail = ListDetailPresenter(
+                repo,
+                listId,
+                scope = kotlinx.coroutines.CoroutineScope(dispatcher),
+                ioDispatcher = dispatcher,
+            )
             try {
-                com.cruxcoach.app.logbook.awaitValue(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG) {
-                    kotlinx.coroutines.withContext(serial) { repo.getClimbListById(listId)!!.playbackAdvance }
-                }
-            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                throw AssertionError(
-                    "row never updated; presenter error=" + detail.state.value.error +
-                        " row=" + kotlinx.coroutines.withContext(serial) { repo.getClimbListById(listId) },
-                    e,
-                )
+                detail.setPlaybackOrder(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE)
+                detail.setPlaybackAdvance(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG)
+                advanceUntilIdle()
+
+                val state = detail.state.value
+                kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE, state.playbackOrder)
+                kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG, state.playbackAdvance)
+
+                val row = repo.getClimbListById(listId)!!
+                kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE, row.playbackOrder)
+                kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG, row.playbackAdvance)
+            } finally {
+                detail.close()
             }
-            // Both the state and the row must show the final pair.
-            kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackAdvance.AFTER_LOG, detail.state.value.playbackAdvance)
-            kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE, detail.state.value.playbackOrder)
-            val row = kotlinx.coroutines.withContext(serial) { repo.getClimbListById(listId)!! }
-            kotlin.test.assertEquals(com.cruxcoach.data.repository.ListPlaybackOrder.SHUFFLE, row.playbackOrder)
-        } finally {
-            detail.close()
         }
     }
 }
