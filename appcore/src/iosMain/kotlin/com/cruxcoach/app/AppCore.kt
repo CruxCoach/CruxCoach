@@ -307,6 +307,16 @@ class AppCore private constructor(
         return CreatorScreenModel(editor, settings.gradeFormatter())
     }
 
+    /** The settings that mean something on iOS, on Android's preference keys. */
+    fun makeSettingsScreen(): SettingsScreenModel = SettingsScreenModel(
+        SettingsStore(platform.keyValues, pubkeyHex),
+        platform.keyValues,
+        boardRepository,
+        personalRepository,
+        catalogueSync,
+        onAutoDisconnectSeconds = { seconds -> boardConnection.setAutoDisconnectSeconds(seconds) },
+    )
+
     /** File import. Swift picks and reads the file; Kotlin parses and writes. */
     fun makeImportScreen(): ImportScreenModel = ImportScreenModel(
         MoonBoardCsvImporter(secureDatabase, boardDb.database, platform.hashing),

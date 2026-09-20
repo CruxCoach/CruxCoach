@@ -4,6 +4,21 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
 
+    private var keepScreenOn: Bool {
+        guard case .ready(let core) = environment.phase else { return false }
+        return core.settings.keepScreenOn
+    }
+
+    /// Android offers system/light/dark; nil means "follow the system".
+    private var colorScheme: ColorScheme? {
+        guard case .ready(let core) = environment.phase else { return nil }
+        switch core.settings.darkMode {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
+
     var body: some View {
         Group {
             switch environment.phase {
@@ -15,7 +30,12 @@ struct RootView: View {
                 StartFailureView(code: code, detail: detail)
             }
         }
+        .preferredColorScheme(colorScheme)
         .task { environment.start() }
+        .onChange(of: keepScreenOn) { _, keepOn in
+            UIApplication.shared.isIdleTimerDisabled = keepOn
+        }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
     }
 }
 
