@@ -43,14 +43,17 @@ class RestTimerNotifier(
             cancel()
             return
         }
-        if (endsAtEpochSeconds == scheduledEndsAt) return
         val lead = endsAtEpochSeconds - clock.epochSeconds()
+        // Check expiry BEFORE the unchanged-end short circuit: when the app comes
+        // back after the rest was already over, the end has not changed but the
+        // pending notification must still go, or it fires late.
         // A trigger in the past (or this same second) is rejected by
         // UNTimeIntervalNotificationTrigger; the in-app state already shows the end.
         if (lead < MIN_LEAD_SECONDS) {
             cancel()
             return
         }
+        if (endsAtEpochSeconds == scheduledEndsAt) return
         scheduledEndsAt = endsAtEpochSeconds
         scheduler.schedule(REST_ID, lead.toInt(), TITLE_KEY, BODY_KEY)
     }

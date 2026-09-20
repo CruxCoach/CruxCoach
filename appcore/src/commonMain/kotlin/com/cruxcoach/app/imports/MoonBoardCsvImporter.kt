@@ -46,10 +46,13 @@ class MoonBoardCsvImporter(
     /**
      * Imports one MoonBoard account export.
      *
-     * [progress] is called with `(done, total)` while rows are written; it must
-     * not touch the database.
+     * [progress] is called with `(phase, done, total)` while rows are written;
+     * it must not touch the database.
      */
-    fun import(csv: String, progress: (Int, Int) -> Unit = { _, _ -> }): FileImportResult {
+    fun import(
+        csv: String,
+        progress: (String, Int, Int) -> Unit = { _, _, _ -> },
+    ): FileImportResult {
         val format = ImportCodes.FORMAT_MOONBOARD_CSV
         if (csv.isBlank()) return FileImportResult.failed(format, ImportCodes.EMPTY)
         finalizePendingIfCatalogueReady()
@@ -73,7 +76,7 @@ class MoonBoardCsvImporter(
 
         secureDb.transaction {
             export.entries.forEachIndexed { index, entry ->
-                progress(index, total)
+                progress(ImportCodes.PHASE_ROWS, index, total)
                 val signature = listOf(
                     entry.problemId, entry.climbedAt, entry.tries,
                     entry.attempts, entry.rating ?: "",
@@ -109,7 +112,7 @@ class MoonBoardCsvImporter(
                 }
             }
         }
-        progress(total, total)
+        progress(ImportCodes.PHASE_DONE, total, total)
         return FileImportResult(
             formatCode = format,
             rowsSeen = total,

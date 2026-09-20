@@ -1,6 +1,10 @@
 package com.cruxcoach.app.creator
 
 import com.cruxcoach.app.browse.BrowsePreferences
+import com.cruxcoach.app.community.AutoNoteSpec
+import com.cruxcoach.app.community.CommunityPublishResult
+import com.cruxcoach.app.community.CommunityPublisher
+import com.cruxcoach.app.community.PublishFailure
 import com.cruxcoach.app.logbook.StateWatch
 import com.cruxcoach.app.logbook.watchState
 import com.cruxcoach.app.render.LedHoldColors
@@ -48,6 +52,9 @@ enum class EditorError {
     EDIT_LOCKED_BY_KILTER,
 }
 
+/** Where the publish flow currently stands. */
+enum class PublishPhase { IDLE, PUBLISHING, PUBLISHED, FAILED }
+
 /**
  * Board topology plus the editor draft. [editor] is the portable
  * [ClimbEditorState]; everything else is what the screen needs to draw it.
@@ -80,6 +87,11 @@ data class ClimbEditorUiState(
     val ledColors: LedHoldColors = LedHoldColors(),
     /** One-shot: uuid of the draft the last save wrote. */
     val savedDraftUuid: String? = null,
+    val publishPhase: PublishPhase = PublishPhase.IDLE,
+    /** Set once a publish has finished, so the screen can report reach honestly. */
+    val publishResult: CommunityPublishResult? = null,
+    /** True while the duplicate warning is waiting on the user's decision. */
+    val pendingDuplicateConfirm: Boolean = false,
     val error: EditorError = EditorError.NONE,
 )
 
@@ -119,6 +131,8 @@ class ClimbEditor(
     private val boardRepository: BoardRepository,
     private val drafts: ClimbDraftStore,
     private val preferences: BrowsePreferences,
+    /** Null when this build cannot publish; [publish] then fails loudly rather than pretending. */
+    private val publisher: CommunityPublisher? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -390,6 +404,132 @@ class ClimbEditor(
     fun consumeSavedDraft() = _state.update { it.copy(savedDraftUuid = null) }
 
     fun consumeError() = _state.update { it.copy(error = EditorError.NONE) }
+
+    // ── Publish ──────────────────────────────────────────────────
+
+    /**
+     * Saves the draft and pushes it to the relays.
+     *
+     * Duplicate detection runs first and pauses on a hit, exactly as Android
+     * does: the user confirms through [confirmPublishWithDuplicate] or backs out
+     * through [cancelPublish]. [autoNoteText] is the localized announcement
+     * template the host owns; blank means no announcement note.
+     */
+    fun publish(autoNoteText: String = "", maintainerPubkeyHex: String = "", mentionMaintainer: Boolean = false) {
+        val current = _state.value.editor
+        val issues = validate(current)
+        if (issues.isNotEmpty()) {
+            _state.update { it.copy(validationIssues = issues) }
+            return
+        }
+        // Atomic claim: a second tap arriving while the duplicate lookup is in
+        // flight would otherwise launch a parallel publish.
+        var claimed = false
+        _state.update { s ->
+            if (s.publishPhase == PublishPhase.PUBLISHING) {
+                s
+            } else {
+                claimed = true
+                s.copy(publishPhase = PublishPhase.PUBLISHING, publishResult = null)
+            }
+        }
+        if (!claimed) return
+
+        val layoutId = _state.value.layoutId
+        scope.launch {
+            try {
+                val duplicate = withContext(ioDispatcher) { drafts.findDuplicate(current, layoutId) }
+                val loaded = _state.value.loadedDraftUuid
+                if (duplicate != null && duplicate.uuid != loaded) {
+                    _state.update { it.copy(duplicateOf = duplicate, pendingDuplicateConfirm = true) }
+                    return@launch
+                }
+                runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
+            }
+        }
+    }
+
+    fun confirmPublishWithDuplicate(
+        autoNoteText: String = "",
+        maintainerPubkeyHex: String = "",
+        mentionMaintainer: Boolean = false,
+    ) {
+        _state.update { it.copy(duplicateOf = null, pendingDuplicateConfirm = false) }
+        scope.launch {
+            try {
+                runPublish(autoNoteText, maintainerPubkeyHex, mentionMaintainer)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
+            }
+        }
+    }
+
+    /** Backs out of the duplicate warning and releases the publish claim. */
+    fun cancelPublish() = _state.update {
+        it.copy(duplicateOf = null, pendingDuplicateConfirm = false, publishPhase = PublishPhase.IDLE)
+    }
+
+    fun consumePublishResult() = _state.update {
+        it.copy(publishPhase = PublishPhase.IDLE, publishResult = null)
+    }
+
+    private suspend fun runPublish(
+        autoNoteText: String,
+        maintainerPubkeyHex: String,
+        mentionMaintainer: Boolean,
+    ) {
+        val publisher = this.publisher
+        if (publisher == null) {
+            _state.update { it.copy(publishPhase = PublishPhase.FAILED, publishResult = null) }
+            return
+        }
+        val current = _state.value.editor
+        val layoutId = _state.value.layoutId
+        // The climb is always durable locally before it is sent, so a relay
+        // failure leaves something to retry rather than nothing.
+        val uuid = withContext(ioDispatcher) {
+            val existing = _state.value.loadedDraftUuid
+            if (existing != null) {
+                if (drafts.updateDraft(existing, current, layoutId)) existing else null
+            } else {
+                drafts.saveDraft(current, layoutId)
+            }
+        }
+        if (uuid == null) {
+            _state.update { it.copy(publishPhase = PublishPhase.FAILED, error = EditorError.SAVE_FAILED) }
+            return
+        }
+        val sizeLabel = _state.value.boardSize?.name.orEmpty()
+        val result = publisher.publish(
+            uuid = uuid,
+            layoutId = layoutId,
+            boardBrand = BoardBrand.fromWire(current.boardBrand),
+            state = current,
+            sizeLabel = sizeLabel,
+            autoNote = autoNoteText.takeIf { it.isNotBlank() }?.let {
+                AutoNoteSpec(
+                    template = it,
+                    maintainerPubkeyHex = maintainerPubkeyHex.takeIf { hex -> hex.isNotBlank() },
+                    mentionMaintainer = mentionMaintainer,
+                )
+            },
+        )
+        val refreshed = withContext(ioDispatcher) { drafts.drafts(current.boardBrand) }
+        _state.update {
+            it.copy(
+                publishPhase = if (result.failure == PublishFailure.NONE) PublishPhase.PUBLISHED else PublishPhase.FAILED,
+                publishResult = result,
+                loadedDraftUuid = uuid,
+                drafts = refreshed,
+            )
+        }
+    }
 
     fun close() = scope.cancel()
 

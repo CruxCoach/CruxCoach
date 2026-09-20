@@ -90,7 +90,15 @@ struct BrowserView: View {
                         }
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
                         NavigationLink(L("board_lists_title")) { ListsView(core: core) }
+                        NavigationLink(LI("map_title")) {
+                            // Only Swift can resolve the bundled map folder.
+                            MapView(makeModel: {
+                                core.makeMapScreen(boardMapDirectory:
+                                    Bundle.main.resourceURL?.appendingPathComponent("board_map").path ?? "")
+                            })
+                        }
                         NavigationLink(L("board_logbook_title")) { LogbookView(core: core) }
+                        NavigationLink(LI("stats_title")) { StatsView(core: core) }
                         NavigationLink(LI("history_title")) { HistoryView(core: core) }
                         NavigationLink(L("settings_title")) { SettingsView(core: core) }
                     } label: {
