@@ -84,7 +84,6 @@ internal fun BoardBrowserHeader(
     onLists: () -> Unit = {},
     onSettings: () -> Unit = {},
     logbookTour: Boolean = false,
-    onSkipTour: () -> Unit = {},
     /** Reports whether the logbook action currently sits in the overflow menu, so the tour can
      *  point at where it actually is instead of hedging about narrow screens. */
     onLogbookPlacement: (inOverflow: Boolean) -> Unit = {},
@@ -200,15 +199,6 @@ internal fun BoardBrowserHeader(
                                         }
                                     ),
                                 onClick = { overflowOpen = false; action() })
-                        }
-                        if (logbookTour) {
-                            HorizontalDivider()
-                            FilledTonalButton(onClick = { overflowOpen = false; onSkipTour() },
-                                modifier = Modifier.padding(8.dp).fillMaxWidth().heightIn(min = 48.dp)) {
-                                Icon(Icons.Default.Close, null, Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.tour_skip))
-                            }
                         }
                     }
                 }

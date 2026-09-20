@@ -399,7 +399,6 @@ fun BoardBrowserScreen(
             onSettings = onNavigateToSettings,
             logbookTour = tourStep == TourStep.LOGBOOK,
             onLogbookPlacement = { logbookInOverflow = it },
-            onSkipTour = { tour.move(TourStep.DONE) },
             onBoardPicker = { showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
