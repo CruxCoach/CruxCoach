@@ -6,6 +6,9 @@ import com.cruxcoach.app.browse.BoardBrowserPresenter
 import com.cruxcoach.app.detail.ClimbDetailPresenter
 import com.cruxcoach.app.identity.IdentityFailure
 import com.cruxcoach.app.identity.LocalIdentity
+import com.cruxcoach.app.kilter.KilterApi
+import com.cruxcoach.app.kilter.KilterLogImporter
+import com.cruxcoach.app.kilter.KilterTokens
 import com.cruxcoach.app.logbook.HistoryPresenter
 import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.logbook.LogbookPresenter
@@ -37,6 +40,7 @@ import com.cruxcoach.app.ui.BrowserScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
+import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.PlayerScreenModel
@@ -139,6 +143,19 @@ class AppCore private constructor(
     }
 
     private val climbLookup by lazy { BoardRepositoryClimbLookup(boardRepository) }
+
+    /**
+     * Kilter account. Session tokens are scoped to this identity and live in
+     * the Keychain; the password only ever passes through the sign-in call.
+     */
+    val kilterScreen: KilterScreenModel by lazy {
+        val tokens = KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16))
+        KilterScreenModel(
+            KilterApi(platform.http, platform.clock, tokens),
+            tokens,
+            KilterLogImporter(boardRepository, personalRepository),
+        )
+    }
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
