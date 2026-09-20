@@ -3,11 +3,14 @@ package com.cruxcoach.app.nostr
 import com.cruxcoach.app.testing.JvmHashing
 import com.cruxcoach.app.util.hexToBytesOrNull
 import com.cruxcoach.app.util.toHex
+import com.vitorpamplona.quartz.nip01Core.crypto.EventHasher
 import com.vitorpamplona.quartz.nip01Core.crypto.Nip01Crypto
+import com.vitorpamplona.quartz.nip19Bech32.entities.NPub
 import com.vitorpamplona.quartz.nip44Encryption.Nip44v2
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -142,6 +145,64 @@ class QuartzCrossCheckTest {
         // Quartz out, ours in — this is the direction a restore takes.
         val theirWrap = nip44.encrypt(dataKeyHex, selfKey).encodePayload()
         assertEquals(dataKeyHex, Nip44.decryptFromSelf(JvmHashing, secret, theirWrap))
+    }
+
+    @Test
+    fun `the id of an event carrying a control character is not agreed across clients`() {
+        // Not a round trip and not a bug in either side: NIP-01 says the
+        // remaining control characters go in verbatim, and nobody does that.
+        // JS, Rust and Kotlin escape them lowercase; Jackson — so Quartz, so
+        // CruxCoach's own Android app — escapes them uppercase, which hashes
+        // differently. We follow the lowercase majority, including the library
+        // the iOS app links. Pinned here so the disagreement is visible rather
+        // than discovered again by someone else.
+        val pubkey = "ff".repeat(32)
+        val content = "a\u001fb"
+        assertNotEquals(
+            EventHasher.hashId(pubkey, 1L, 1, arrayOf(), content),
+            NostrEvents.computeId(JvmHashing, pubkey, 1L, 1, emptyList(), content),
+            "Quartz has started agreeing with us — re-read NIP-01 and drop this test",
+        )
+    }
+
+    @Test
+    fun `canonicalisation agrees on the content a naive serializer would break`() {
+        // The event id is a hash of a JSON array, so every escaping decision is
+        // part of the protocol. These are the strings where a hand-written
+        // serializer and a real one diverge: quotes, backslashes, the control
+        // characters JSON spells two ways, and text outside the BMP.
+        val nasty = listOf(
+            "a \"quoted\" word",
+            "back\\slash",
+            "line\nbreak\ttab",
+            // Control characters are deliberately absent: see the test above.
+            "emoji 😀 and äöü",
+            "",
+            "\u007f delete",
+        )
+        val pubkey = "ff".repeat(32)
+        for (content in nasty) {
+            val ourId = NostrEvents.computeId(
+                JvmHashing, pubkey, 1_790_000_000L, 1,
+                listOf(listOf("t", content), listOf("p", pubkey, "")), content,
+            )
+            val theirId = EventHasher.hashId(
+                pubkey, 1_790_000_000L, 1,
+                arrayOf(arrayOf("t", content), arrayOf("p", pubkey, "")), content,
+            )
+            assertEquals(theirId, ourId, "event id diverges for: " + content)
+        }
+    }
+
+    @Test
+    fun `npub encoding agrees`() {
+        repeat(5) {
+            val pubkey = NostrKeys.publicKeyHex(NostrKeys.generateSecretKey(JvmHashing)!!)!!
+            assertEquals(NPub.create(pubkey), Nip19.encodeNpub(pubkey), "npub diverges")
+        }
+        // And a known key, so a shared mistake in both generators cannot hide.
+        val known = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        assertEquals(NPub.create(known), Nip19.encodeNpub(known))
     }
 
     @Test

@@ -69,7 +69,27 @@ data class NostrEvent(
 object NostrEvents {
     private val json = Json
 
-    /** NIP-01 id: sha256 of the canonical `[0,pubkey,created_at,kind,tags,content]` array. */
+    /**
+     * NIP-01 id: sha256 of the canonical `[0,pubkey,created_at,kind,tags,content]`
+     * array, serialized here rather than handed to a JSON library, so the
+     * escaping rule is stated instead of inherited.
+     *
+     * NIP-01 names seven escapes — line feed, quote, backslash, carriage
+     * return, tab, backspace, form feed — and says everything else goes in
+     * verbatim. **The ecosystem does not actually do that** for the remaining
+     * control characters, and it does not agree with itself either: JS
+     * (`JSON.stringify`), Rust (`serde_json`) and Kotlin (`kotlinx`) escape
+     * them as lowercase `\u001f`, while Jackson — and therefore Quartz, and
+     * therefore CruxCoach's own Android app — emits uppercase `\u001F`, which
+     * hashes differently. Established by probing Quartz directly; see
+     * NOSTR-DEPENDENCY-MIGRATION.md §4.1a.
+     *
+     * We follow the lowercase majority, which is what this code already did
+     * through `kotlinx` and what the library the iOS app now links uses. An
+     * event carrying a raw control character therefore still has no single
+     * agreed id across clients — that is a gap in NIP-01, not something this
+     * function can fix, and it is recorded rather than papered over.
+     */
     fun computeId(
         hashing: Hashing,
         pubkey: String,
@@ -78,16 +98,52 @@ object NostrEvents {
         tags: List<List<String>>,
         content: String,
     ): String {
-        val canonical = buildJsonArray {
-            add(JsonPrimitive(0))
-            add(JsonPrimitive(pubkey))
-            add(JsonPrimitive(createdAt))
-            add(JsonPrimitive(kind))
-            add(tagsToJson(tags))
-            add(JsonPrimitive(content))
+        val canonical = StringBuilder()
+        canonical.append("[0,")
+        appendCanonicalString(canonical, pubkey)
+        canonical.append(',').append(createdAt).append(',').append(kind).append(",[")
+        tags.forEachIndexed { tagIndex, tag ->
+            if (tagIndex > 0) canonical.append(',')
+            canonical.append('[')
+            tag.forEachIndexed { index, value ->
+                if (index > 0) canonical.append(',')
+                appendCanonicalString(canonical, value)
+            }
+            canonical.append(']')
         }
-        return hashing.sha256(json.encodeToString(JsonArray.serializer(), canonical).encodeToByteArray()).toHex()
+        canonical.append("],")
+        appendCanonicalString(canonical, content)
+        canonical.append(']')
+        return hashing.sha256(canonical.toString().encodeToByteArray()).toHex()
     }
+
+    /** NIP-01's seven escapes, then lowercase `\uXXXX` for any other control
+     *  character — byte-for-byte what this code produced before, now explicit. */
+    private fun appendCanonicalString(out: StringBuilder, value: String) {
+        out.append('"')
+        for (character in value) {
+            when {
+                character == '\n' -> out.append("\\n")
+                character == '"' -> out.append("\\\"")
+                character == '\\' -> out.append("\\\\")
+                character == '\r' -> out.append("\\r")
+                character == '\t' -> out.append("\\t")
+                character == '\b' -> out.append("\\b")
+                character == '\u000C' -> out.append("\\f")
+                character < '\u0020' -> {
+                    out.append("\\u")
+                    val code = character.code
+                    for (shift in intArrayOf(12, 8, 4, 0)) {
+                        out.append(HEX_DIGITS[(code shr shift) and 0xF])
+                    }
+                }
+                else -> out.append(character)
+            }
+        }
+        out.append('"')
+    }
+
+    private const val HEX_DIGITS = "0123456789abcdef"
 
     /**
      * True only when the id binds the body AND the BIP-340 signature verifies
