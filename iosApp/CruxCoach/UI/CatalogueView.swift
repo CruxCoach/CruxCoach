@@ -111,6 +111,7 @@ private struct CommunityFetchRow: View {
                 let model = host.model
                 let ui = host.state
                 Button(LI("community_fetch")) { model.fetch() }.disabled(ui.busy)
+                NavigationLink(LI("setters_open")) { SettersView(core: core) }
                 if ui.busy {
                     HStack { ProgressView(); Text(LI("community_fetching")) }
                 } else if ui.finished {

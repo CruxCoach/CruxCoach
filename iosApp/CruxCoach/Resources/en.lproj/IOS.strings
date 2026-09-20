@@ -321,3 +321,5 @@
 "profile_error_invalid_url" = "Image and website links have to start with https://.";
 "profile_error_load" = "The profile could not be loaded.";
 "profile_open" = "My Nostr profile";
+"setter_climb_meta" = "%1$ld° · %2$@ · ★%3$@ · %4$ld sends";
+"setters_open" = "Browse setters";

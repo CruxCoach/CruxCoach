@@ -39,7 +39,10 @@ import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
 import com.cruxcoach.app.backup.CruxCoachBackupPayloadStore
+import com.cruxcoach.app.community.SetterDetailPresenter
+import com.cruxcoach.app.community.SettersListPresenter
 import com.cruxcoach.app.profile.NostrProfileStore
+import com.cruxcoach.app.profile.ProfileLookup
 import com.cruxcoach.app.profile.ProfilePresenter
 import com.cruxcoach.app.backup.FileExchangePresenter
 import com.cruxcoach.app.playlist.GeneratorPresenter
@@ -68,6 +71,8 @@ import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.DataExchangeScreenModel
 import com.cruxcoach.app.ui.GeneratorScreenModel
 import com.cruxcoach.app.ui.ProfileScreenModel
+import com.cruxcoach.app.ui.SetterDetailScreenModel
+import com.cruxcoach.app.ui.SettersScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
@@ -263,6 +268,24 @@ class AppCore private constructor(
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
+
+    /** Community setters on the active board, most problems first. */
+    fun makeSettersScreen(): SettersScreenModel = SettersScreenModel(
+        SettersListPresenter(boardRepository, BrowsePreferences(platform.keyValues))
+    )
+
+    fun makeSetterDetailScreen(pubkey: String): SetterDetailScreenModel = SetterDetailScreenModel(
+        SetterDetailPresenter(
+            boardRepository = boardRepository,
+            preferences = BrowsePreferences(platform.keyValues),
+            profiles = ProfileLookup(
+                NostrProfileStore(secureDatabase, platform.clock),
+                RelayClient(platform.webSockets, platform.hashing),
+            ),
+            pubkey = pubkey,
+        ),
+        settings.gradeScale,
+    )
 
     /** The user's own Nostr profile — what other climbers see next to a climb. */
     fun makeProfileScreen(): ProfileScreenModel = ProfileScreenModel(
