@@ -216,7 +216,9 @@ private fun ColorPickerBottomSheet(
                             if (isSelected) {
                                 Icon(
                                     Icons.Default.Check,
-                                    contentDescription = stringResource(R.string.settings_led_selected),
+                                    // The merged parent already announces the colour and that it
+                                    // is selected; a second description would split the node.
+                                    contentDescription = null,
                                     modifier = Modifier.size(20.dp),
                                     tint = checkTint
                                 )
