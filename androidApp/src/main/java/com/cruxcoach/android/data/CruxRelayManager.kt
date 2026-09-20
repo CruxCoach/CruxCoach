@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -69,8 +68,6 @@ data class CruxRelayState(
      * so this state is rendered at the navigation root, not only in the
      * connection sheet. */
     val pendingDisclosure: Boolean = false,
-    /** Asked once after a manual start that follows a declined automatic prompt. */
-    val pendingAutoReoffer: Boolean = false,
 )
 
 /**
@@ -135,7 +132,8 @@ class CruxRelayManager(
      * CONNECTED and must not turn that transition into another prompt. */
     private var autoDisclosureDismissedBoardAddress: String? = null
     private var pendingDisclosureIsAutomatic = false
-    private var manualStartRequested = false
+    /** Set when the caller showed the disclosure inline, so the deliberate tap is the consent. */
+    private var disclosureShownInline = false
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
             if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
@@ -221,8 +219,24 @@ class CruxRelayManager(
     fun requestEnable() {
         autoDisclosureDismissedBoardAddress = null
         pendingDisclosureIsAutomatic = false
-        manualStartRequested = true
         requestEnableInternal()
+    }
+
+    /** Manual start from a surface that displays the disclosure text itself: the tap is the
+     *  one-time consent, so no separate dialog is needed. */
+    fun requestEnableWithShownDisclosure() {
+        disclosureShownInline = true
+        requestEnable()
+    }
+
+    /** Whether the one-time disclosure was accepted; drives the inline info card. */
+    val disclosureSeen get() = userPreferences.relayDisclosureSeen
+
+    /** False means sharing follows the board connection (after the one-time consent). */
+    val manualStart get() = userPreferences.relayManualStart
+
+    fun setShareAutomatically(automatic: Boolean) {
+        scope.launch { userPreferences.setRelayManualStart(!automatic) }
     }
 
     private fun requestAutomaticEnable() {
@@ -242,7 +256,7 @@ class CruxRelayManager(
             )
         ) return
         pendingDisclosureIsAutomatic = true
-        manualStartRequested = false
+        disclosureShownInline = false
         requestEnableInternal()
     }
 
@@ -270,7 +284,15 @@ class CruxRelayManager(
                 BoardRelayPolicy.availability(currentBoard) != BoardRelayAvailability.AVAILABLE
             ) return@launch
             if (seen) enableInternal()
-            else {
+            else if (pendingDisclosureIsAutomatic) {
+                // Never interrupt with an unprompted consent: automatic sharing simply waits
+                // until the user has started sharing once from the connection sheet.
+                return@launch
+            } else if (disclosureShownInline) {
+                disclosureShownInline = false
+                userPreferences.setRelayDisclosureSeen()
+                enableInternal()
+            } else {
                 pendingDisclosureBoardAddress = expectedAddress
                 _state.update {
                     it.copy(
@@ -305,30 +327,11 @@ class CruxRelayManager(
     }
 
     fun dismissDisclosure() {
-        // Declining the unprompted dialog is a lasting answer: switch to manual start (visible
-        // and reversible in settings) instead of asking again after every new connection.
-        if (pendingDisclosureIsAutomatic && _state.value.pendingDisclosure) {
-            scope.launch {
-                userPreferences.setRelayManualStart(true)
-                userPreferences.setRelayAutoReofferPending(true)
-            }
-        }
-        manualStartRequested = false
         autoDisclosureDismissedBoardAddress = pendingDisclosureBoardAddress
         disclosureJob?.cancel()
         disclosureJob = null
         pendingDisclosureBoardAddress = null
         _state.update { it.copy(pendingDisclosure = false) }
-    }
-
-    /** Answers the one-time question after a manual start; never asked again either way. */
-    fun resolveAutoReoffer(shareAutomaticallyAgain: Boolean) {
-        if (!_state.value.pendingAutoReoffer) return
-        _state.update { it.copy(pendingAutoReoffer = false) }
-        scope.launch {
-            userPreferences.setRelayAutoReofferPending(false)
-            if (shareAutomaticallyAgain) userPreferences.setRelayManualStart(false)
-        }
     }
 
     /** One-tap stop used by every UI/service surface. */
@@ -343,14 +346,6 @@ class CruxRelayManager(
     private fun enableInternal() {
         pendingDisclosureBoardAddress = null
         enabledFlow.value = true
-        if (manualStartRequested) {
-            manualStartRequested = false
-            scope.launch {
-                if (userPreferences.relayAutoReofferPending.firstOrNull() == true) {
-                    _state.update { it.copy(pendingAutoReoffer = true) }
-                }
-            }
-        }
         _state.update {
             it.copy(
                 pendingDisclosure = false,

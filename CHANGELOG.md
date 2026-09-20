@@ -102,9 +102,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in the app too, instead of still showing the board as connected.
 - Shorter top bar titles (Logbook, Editor, Account key) so they no longer wrap
   next to the action icons.
-- Declining the automatic share-with-board-apps prompt is remembered: CruxRelay
-  switches to manual start (changeable in settings) instead of asking after every
-  connection. The next manual start asks once whether sharing should be automatic again.
+- Sharing the board with other apps (CruxRelay) no longer interrupts with a dialog
+  after every connection. The connection sheet explains it on an info card, the first
+  tap on "share" is the one-time consent, and a switch there chooses whether sharing
+  starts automatically with every board connection.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer

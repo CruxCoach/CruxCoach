@@ -296,7 +296,6 @@ object PreferenceKeys {
     // is about the device, not the Nostr identity.
     val RELAY_DISCLOSURE_SEEN = booleanPreferencesKey("relay_disclosure_seen")
     val RELAY_MANUAL_START = booleanPreferencesKey("relay_manual_start_v022")
-    val RELAY_AUTO_REOFFER_PENDING = booleanPreferencesKey("relay_auto_reoffer_pending")
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
@@ -1662,16 +1661,6 @@ class UserPreferences(
 
     suspend fun setRelayManualStart(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.RELAY_MANUAL_START] = enabled }
-    }
-
-    /** Set when declining the automatic sharing prompt switched the relay to manual start.
-     *  The next manual start then asks once whether automatic sharing should return. */
-    val relayAutoReofferPending: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.RELAY_AUTO_REOFFER_PENDING] ?: false
-    }
-
-    suspend fun setRelayAutoReofferPending(pending: Boolean) {
-        dataStore.edit { it[PreferenceKeys.RELAY_AUTO_REOFFER_PENDING] = pending }
     }
 
     val leaderboardDisplayName: Flow<String> = keyScoped.data.map {

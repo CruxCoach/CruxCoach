@@ -19,6 +19,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
+import androidx.compose.ui.semantics.Role
+import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -104,12 +109,40 @@ fun RelaySharingSection(
         }
     }
 
+    val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle(initialValue = true)
+    val shareAutomatically by viewModel.shareAutomatically.collectAsStateWithLifecycle(initialValue = false)
+
     if (!state.enabled) {
-        Text(
-            stringResource(R.string.relay_share_description),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // Everything the user must know sits on the card itself: no dialog interrupts a
+        // connection, and the first deliberate tap below is the one-time consent.
+        Card(
+            modifier = Modifier.fillMaxWidth().testTag("relay_info_card"),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.relay_disclosure_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    InfoButton(
+                        stringResource(R.string.relay_disclosure_title),
+                        stringResource(R.string.relay_disclosure_text),
+                    )
+                }
+                Text(
+                    stringResource(
+                        if (disclosureSeen) R.string.relay_share_description else R.string.relay_disclosure_text
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
+        }
         OutlinedButton(
             onClick = { viewModel.requestSharing() },
             modifier = Modifier
@@ -126,6 +159,7 @@ fun RelaySharingSection(
             Spacer(Modifier.width(8.dp))
             Text(stringResource(R.string.relay_share_button), fontWeight = FontWeight.Bold)
         }
+        if (disclosureSeen) RelayAutomaticRow(shareAutomatically, viewModel::setShareAutomatically)
     } else {
         RelayActiveCard(
             clientCount = state.clientCount,
@@ -133,6 +167,27 @@ fun RelaySharingSection(
             boardName = state.boardName ?: connectedBoard.displayName,
             onStop = { viewModel.disableSharing() }
         )
+        RelayAutomaticRow(shareAutomatically, viewModel::setShareAutomatically)
+    }
+}
+
+/** Replaces any follow-up question: the choice is visible where sharing is controlled. */
+@Composable
+private fun RelayAutomaticRow(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .testTag("relay_share_automatically"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.relay_share_automatically),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
+        )
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

@@ -673,11 +673,7 @@ class SettingsViewModel @Inject constructor(
     /** Opt in to starting CruxRelay manually instead of with the board link. */
     fun updateRelayManualStart(enabled: Boolean) {
         _state.update { it.copy(relayManualStart = enabled) }
-        viewModelScope.safeLaunch(TAG) {
-            userPreferences.setRelayManualStart(enabled)
-            // Deciding here settles it; the one-time follow-up question is no longer needed.
-            userPreferences.setRelayAutoReofferPending(false)
-        }
+        viewModelScope.safeLaunch(TAG) { userPreferences.setRelayManualStart(enabled) }
     }
 
     fun updateNearbyClimbSharing(enabled: Boolean) {

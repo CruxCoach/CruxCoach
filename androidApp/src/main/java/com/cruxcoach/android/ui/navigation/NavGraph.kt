@@ -1157,33 +1157,12 @@ private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager)
     }
 }
 
-/** App-global one-time disclosure. Automatic sharing may be requested while
- * the connection sheet is closed, so this trust gate overlays every route. */
+/** Fallback only: the connection sheet shows the disclosure inline and takes the consent
+ * there. This dialog remains for a manual start from a surface without that card. */
 @Composable
 private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
     val relayState by relayManager.state.collectAsStateWithLifecycle()
-    if (!relayState.pendingDisclosure) {
-        // One-time follow-up after a manual start that came after a declined automatic prompt.
-        if (relayState.pendingAutoReoffer) {
-            AlertDialog(
-                onDismissRequest = { relayManager.resolveAutoReoffer(false) },
-                modifier = Modifier.testTag("relay_auto_reoffer_dialog"),
-                title = { Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_title)) },
-                text = { Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_text)) },
-                confirmButton = {
-                    Button(onClick = { relayManager.resolveAutoReoffer(true) }) {
-                        Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_confirm))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { relayManager.resolveAutoReoffer(false) }) {
-                        Text(stringResource(com.cruxcoach.android.R.string.relay_auto_reoffer_dismiss))
-                    }
-                },
-            )
-        }
-        return
-    }
+    if (!relayState.pendingDisclosure) return
     AlertDialog(
         onDismissRequest = relayManager::dismissDisclosure,
         modifier = Modifier.testTag("relay_disclosure_dialog"),

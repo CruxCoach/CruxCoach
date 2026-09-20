@@ -87,7 +87,7 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
-    fun `manual start after a declined prompt asks once whether to share automatically again`() = runTest {
+    fun `automatic sharing never raises the consent and the sheet tap is the consent`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
         val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
@@ -97,53 +97,7 @@ class CruxRelayDisclosureTest {
         every { connection.connectedBoardDescriptor } returns connectedBoard
         every { connection.connectedBoard } answers { connectedBoard.value }
         val preferences = mockk<UserPreferences>(relaxed = true)
-        val reofferPending = MutableStateFlow(true)
-        every { preferences.relayManualStart } returns flowOf(true)
-        every { preferences.relayDisclosureSeen } returns flowOf(true)
-        every { preferences.relayAutoReofferPending } returns reofferPending
-        coEvery { preferences.setRelayAutoReofferPending(any()) } answers { reofferPending.value = firstArg() }
-        val manager = CruxRelayManager(
-            context = context,
-            relayServer = mockk<RelayGattServer>(relaxed = true),
-            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
-            bleConnection = connection,
-            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
-            userPreferences = preferences,
-            scope = backgroundScope,
-        )
-        runCurrent()
-        assertFalse(manager.state.value.pendingAutoReoffer)
-
-        manager.requestEnable()
-        runCurrent()
-        assertTrue(manager.state.value.pendingAutoReoffer)
-
-        manager.resolveAutoReoffer(shareAutomaticallyAgain = true)
-        runCurrent()
-        assertFalse(manager.state.value.pendingAutoReoffer)
-        coVerify(exactly = 1) { preferences.setRelayManualStart(false) }
-
-        // Asked once: a later manual start stays silent.
-        manager.disable()
-        manager.requestEnable()
-        runCurrent()
-        assertFalse(manager.state.value.pendingAutoReoffer)
-    }
-
-    @Test
-    fun `cancelled automatic disclosure is not repeated after a board send`() = runTest {
-        val connection = mockk<BoardBleConnection>(relaxed = true)
-        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
-        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
-            board("00:11:22:33:44:55", advertisesWhileConnected = false),
-        )
-        every { connection.connectionState } returns connectionState
-        every { connection.connectedBoardDescriptor } returns connectedBoard
-        every { connection.connectedBoard } answers { connectedBoard.value }
-        val preferences = mockk<UserPreferences>(relaxed = true)
-        val manualStart = MutableStateFlow(false)
-        every { preferences.relayManualStart } returns manualStart
-        coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
+        every { preferences.relayManualStart } returns flowOf(false)
         every { preferences.relayDisclosureSeen } returns flowOf(false)
         val manager = CruxRelayManager(
             context = context,
@@ -155,35 +109,27 @@ class CruxRelayDisclosureTest {
             scope = backgroundScope,
         )
         runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
 
-        manager.dismissDisclosure()
+        // Connecting, sending and reconnecting must never interrupt with a dialog.
+        assertFalse(manager.state.value.pendingDisclosure)
         connectionState.value = ConnectionState.SENDING
         runCurrent()
-        connectionState.value = ConnectionState.CONNECTED
-        runCurrent()
-
-        assertFalse(manager.state.value.pendingDisclosure)
-
-        // A deliberate action remains able to ask again without reconnecting.
-        manager.requestEnable()
-        runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
-
-        // Declining the unprompted dialog is a lasting answer: the relay switched to manual
-        // start, so a real disconnect/reconnect must not ask again.
-        manager.dismissDisclosure()
         connectionState.value = ConnectionState.DISCONNECTED
         runCurrent()
         connectionState.value = ConnectionState.CONNECTED
         runCurrent()
         assertFalse(manager.state.value.pendingDisclosure)
-        assertTrue(manualStart.value)
-        coVerify(exactly = 1) { preferences.setRelayAutoReofferPending(true) }
+        coVerify(exactly = 0) { preferences.setRelayDisclosureSeen() }
+
+        // The connection sheet shows the disclosure on its card; that tap is the consent.
+        manager.requestEnableWithShownDisclosure()
+        runCurrent()
+        assertFalse(manager.state.value.pendingDisclosure)
+        coVerify(exactly = 1) { preferences.setRelayDisclosureSeen() }
     }
 
     @Test
-    fun `automatic disclosure waits for capacity and multi-connect suppresses it`() = runTest {
+    fun `automatic sharing waits for capacity and multi-connect suppresses it`() = runTest {
         org.robolectric.Shadows.shadowOf(context as android.app.Application)
             .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
         val connection = mockk<BoardBleConnection>(relaxed = true)
@@ -222,7 +168,7 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
-    fun `automatic disclosure starts after controller proves single-connect`() = runTest {
+    fun `proven single-connect without consent neither asks nor shares`() = runTest {
         org.robolectric.Shadows.shadowOf(context as android.app.Application)
             .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
         val connection = mockk<BoardBleConnection>(relaxed = true)
@@ -255,7 +201,8 @@ class CruxRelayDisclosureTest {
         )
         runCurrent()
 
-        assertTrue(manager.state.value.pendingDisclosure)
+        // Proven single-connect, but consent was never given: stay silent, share nothing.
+        assertFalse(manager.state.value.pendingDisclosure)
         assertFalse(manager.state.value.enabled)
     }
 

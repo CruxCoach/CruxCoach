@@ -2476,10 +2476,7 @@
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
     <string name="settings_relay_manual_start">Start CruxRelay manually</string>
     <string name="settings_relay_manual_start_desc">Others can light climbs on the board through your phone. For supported boards with only one direct connection.\n\nOff\nStarts when connecting, after your initial approval.\n\nOn\nYou start it in the Bluetooth menu.\n\nStops when you disconnect from the board.</string>
-    <string name="relay_auto_reoffer_title">Share automatically?</string>
-    <string name="relay_auto_reoffer_text">You declined automatic sharing earlier. Should CruxCoach share with other board apps automatically again on every board connection? You can change this any time in settings under “Start CruxRelay manually”.</string>
-    <string name="relay_auto_reoffer_confirm">Automatically again</string>
-    <string name="relay_auto_reoffer_dismiss">Only this time</string>
+    <string name="relay_share_automatically">Share automatically on every board connection</string>
     <string name="relay_disclosure_title">Share with board apps</string>
     <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxCoach…\". Other board apps can send climbs through CruxCoach. The latest successful send controls the lights. Your Bluetooth name is restored when sharing stops.</string>
     <string name="relay_disclosure_confirm">Allow board apps</string>
