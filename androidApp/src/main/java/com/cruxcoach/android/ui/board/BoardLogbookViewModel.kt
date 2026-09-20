@@ -102,6 +102,8 @@ data class BoardLogbookState(
     val editComment: String = "",
     // Delete confirm
     val showDeleteConfirm: String? = null,
+    /** The delete confirmation was opened from the edit dialog; cancelling returns there. */
+    val reopenEditAfterDeleteCancel: Boolean = false,
     // Multi-select
     val selectedUuids: Set<String> = emptySet(),
     val showBatchDeleteConfirm: Boolean = false,
@@ -820,8 +822,22 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(showDeleteConfirm = uuid) }
     }
 
+    /** Delete tapped inside the edit dialog: hide it, but bring it back if the user cancels. */
+    fun requestDeleteFromEdit() {
+        val uuid = _state.value.editingAscentUuid ?: return
+        _state.update {
+            it.copy(showEditDialog = false, showDeleteConfirm = uuid, reopenEditAfterDeleteCancel = true)
+        }
+    }
+
     fun dismissDeleteConfirm() {
-        _state.update { it.copy(showDeleteConfirm = null) }
+        _state.update {
+            it.copy(
+                showDeleteConfirm = null,
+                showEditDialog = it.reopenEditAfterDeleteCancel,
+                reopenEditAfterDeleteCancel = false,
+            )
+        }
     }
 
     fun confirmDeleteAscent() {
@@ -833,14 +849,21 @@ class BoardLogbookViewModel @Inject constructor(
                     if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                     else personalBoardRepo.deleteAscent(uuid)
                 }
-                _state.update { it.copy(showDeleteConfirm = null, selectedUuids = it.selectedUuids - uuid) }
+                _state.update {
+                    it.copy(
+                        showDeleteConfirm = null,
+                        reopenEditAfterDeleteCancel = false,
+                        editingAscentUuid = null,
+                        selectedUuids = it.selectedUuids - uuid,
+                    )
+                }
                 reloadAscents()
                 zoneManager.recompute()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "confirmDeleteAscent failed uuid=$uuid", e)
-                _state.update { it.copy(showDeleteConfirm = null) }
+                _state.update { it.copy(showDeleteConfirm = null, reopenEditAfterDeleteCancel = false) }
             }
         }
     }

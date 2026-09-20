@@ -10,6 +10,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -170,6 +175,7 @@ private fun ColorPickerBottomSheet(
                 ) {
                     colors.forEach { color ->
                         val isSelected = color.byte == currentByte
+                        val colorName = rgb332ColorName(LocalContext.current, color.byte)
                         val checkTint = if (color.displayColor.luminance() > 0.5f) {
                             Color.Black
                         } else {
@@ -196,7 +202,14 @@ private fun ColorPickerBottomSheet(
                                         )
                                     }
                                 )
-                                .clickable { onColorSelected(color.byte) },
+                                .clickable { onColorSelected(color.byte) }
+                                // A bare colour circle announces nothing: name the colour and
+                                // whether it is the current one.
+                                .semantics {
+                                    contentDescription = colorName
+                                    this.selected = isSelected
+                                    role = Role.Button
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isSelected) {

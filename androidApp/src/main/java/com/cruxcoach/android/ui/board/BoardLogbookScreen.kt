@@ -98,11 +98,7 @@ fun BoardLogbookScreen(
             onCommentChanged = { viewModel.updateEditComment(it) },
             onSave = { viewModel.saveEdit() },
             onDismiss = { viewModel.dismissEditDialog() },
-            onDelete = {
-                val uuid = state.editingAscentUuid
-                viewModel.dismissEditDialog()
-                if (uuid != null) viewModel.requestDeleteAscent(uuid)
-            },
+            onDelete = { viewModel.requestDeleteFromEdit() },
         )
     }
 

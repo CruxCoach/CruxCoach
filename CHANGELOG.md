@@ -106,6 +106,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   after every connection. The connection sheet explains it on an info card, the first
   tap on "share" is the one-time consent, and a switch there chooses whether sharing
   starts automatically with every board connection.
+- The custom statistics date range keeps its OK and Cancel buttons reachable when
+  the keyboard opens in text entry mode.
+- Cancelling "delete entry?" returns to the entry you were editing instead of
+  closing both dialogs.
+- LED colour swatches announce their colour name and selection to screen readers.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer

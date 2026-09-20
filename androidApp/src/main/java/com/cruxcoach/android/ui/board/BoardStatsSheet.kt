@@ -640,7 +640,14 @@ private fun CustomDateRangeDialog(
     ) {
         DateRangePicker(
             state = datePickerState,
-            modifier = Modifier.height(460.dp),
+            // The calendar needs a bounded height for its month list, but the text-input mode
+            // must not keep it: with the keyboard open the fixed height pushed OK/Cancel off
+            // screen (M-008). Input mode wraps its two fields instead.
+            modifier = if (datePickerState.displayMode == DisplayMode.Input) {
+                Modifier.heightIn(max = 460.dp)
+            } else {
+                Modifier.height(460.dp)
+            },
             title = { Text(stringResource(R.string.board_stats_select_date_range), modifier = Modifier.padding(16.dp)) }
         )
     }
