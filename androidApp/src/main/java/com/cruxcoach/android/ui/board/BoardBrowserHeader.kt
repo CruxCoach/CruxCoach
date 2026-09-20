@@ -2,6 +2,9 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -179,10 +182,23 @@ internal fun BoardBrowserHeader(
                     }
                     DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                         actions.drop(directCount).forEachIndexed { index, (label, icon, action) ->
+                            // During the tour the menu is the spotlight's continuation: mark the
+                            // one entry to tap the same way the highlighted button was marked.
+                            val isTourTarget = logbookTour && directCount + index == 0
                             DropdownMenuItem(text = { Text(stringResource(label)) },
                                 leadingIcon = { Icon(icon, null) },
-                                enabled = !logbookTour || directCount + index == 0,
-                                modifier = Modifier.testTag("board_header_overflow_action_${directCount + index}"),
+                                enabled = !logbookTour || isTourTarget,
+                                modifier = Modifier
+                                    .testTag("board_header_overflow_action_${directCount + index}")
+                                    .then(
+                                        if (isTourTarget) {
+                                            Modifier
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                .border(2.dp, OrangeAccent, RoundedCornerShape(8.dp))
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 onClick = { overflowOpen = false; action() })
                         }
                         if (logbookTour) {
