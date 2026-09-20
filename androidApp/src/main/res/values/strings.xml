@@ -1601,7 +1601,6 @@
     <string name="cd_select_all">Select all</string>
     <string name="cd_select_view">Select view</string>
     <string name="cd_settings">Settings</string>
-    <string name="cd_signal">Signal: %1$d dBm</string>
     <string name="cd_signal_strength">Signal strength</string>
     <string name="cd_stars">%d stars</string>
     <string name="cd_stop">Stop</string>

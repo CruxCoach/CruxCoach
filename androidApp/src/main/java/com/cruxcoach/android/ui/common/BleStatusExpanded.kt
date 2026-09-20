@@ -228,10 +228,6 @@ private fun OnBoardClimbSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (climb.rssi != null) {
-            SignalIndicator(rssi = climb.rssi)
-            Spacer(Modifier.width(4.dp))
-        }
         Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

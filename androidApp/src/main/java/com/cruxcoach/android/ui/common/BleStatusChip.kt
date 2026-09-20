@@ -5,10 +5,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,10 +114,6 @@ internal fun BleStatusChip(
                 modifier = Modifier.weight(1f)
             )
 
-            if (effectiveOnBoard != null) {
-                SignalIndicator(rssi = effectiveOnBoard.rssi ?: -80)
-                Spacer(Modifier.width(4.dp))
-            }
             Icon(
                 Icons.Default.ExpandMore,
                 contentDescription = stringResource(R.string.cd_expand),
@@ -333,34 +325,6 @@ internal fun SessionChipContent(
     }
 }
 
-@Composable
-internal fun SignalIndicator(rssi: Int) {
-    // Material's one-bar icon draws a lone stub that reads as a stray orange dash next to the
-    // text. Three bars with dimmed placeholders stay recognisable as a meter at every strength.
-    val bars = when {
-        rssi >= -50 -> 3
-        rssi >= -65 -> 2
-        else -> 1
-    }
-    val description = stringResource(R.string.cd_signal, rssi)
-    Row(
-        modifier = Modifier.size(16.dp).semantics { contentDescription = description },
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        repeat(3) { index ->
-            Box(
-                Modifier
-                    .width(4.dp)
-                    .height((6 + index * 3).dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(
-                        if (index < bars) OrangeAccent else OrangeAccent.copy(alpha = 0.22f)
-                    )
-            )
-        }
-    }
-}
 
 @Composable
 internal fun buildChipSummary(

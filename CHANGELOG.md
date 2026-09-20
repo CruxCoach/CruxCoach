@@ -113,6 +113,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - LED colour swatches announce their colour name and selection to screen readers.
 - In the expanded nearby banner, tapping the climb opens it on every screen and only
   the arrow collapses the banner; the card no longer swallowed those taps.
+- The nearby banner drops the board signal strength; the connection sheet still shows
+  it where it helps to pick a board.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer
