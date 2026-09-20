@@ -120,3 +120,11 @@
 "lists_unavailable" = "nicht im Katalog";
 "detail_send_no_geometry" = "Die Griffpositionen dieses Boards fehlen, deshalb kann nichts beleuchtet werden. Lade den Board-Katalog erneut herunter.";
 "detail_send_no_holds" = "Dieses Problem hat keine Griffe zum Beleuchten.";
+"player_start" = "Abspielen";
+"player_stop" = "Session beenden";
+"player_finished" = "Playlist beendet";
+"player_skip_rest" = "Pause überspringen";
+"player_no_board" = "Kein Board verbunden — es leuchtet nichts.";
+"player_attempt" = "Versuch %1$ld von %2$ld";
+"player_position" = "%1$ld von %2$ld";
+"player_rest_a11y" = "Noch %ld Sekunden Pause";

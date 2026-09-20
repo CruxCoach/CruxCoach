@@ -22,6 +22,9 @@ import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
 import com.cruxcoach.app.playlist.ListsPresenter
+import com.cruxcoach.app.playlist.PlayerClimbInfo
+import com.cruxcoach.app.playlist.PlaylistPlayerPresenter
+import com.cruxcoach.app.send.BoardPlaybackTransport
 import com.cruxcoach.app.send.BoardSender
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.app.setup.BoardOptions
@@ -35,6 +38,7 @@ import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
+import com.cruxcoach.app.ui.PlayerScreenModel
 import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.data.BoardDatabaseHandle
@@ -122,6 +126,7 @@ class AppCore private constructor(
     fun makeListDetailScreen(listId: Long): ListDetailScreenModel = ListDetailScreenModel(
         ListDetailPresenter(personalRepository, listId, climbLookup, { browseAngle() }),
         settings.gradeScale,
+        browseAngle(),
     )
 
     /**
@@ -136,6 +141,29 @@ class AppCore private constructor(
 
     /** The browser's persisted angle, so links and lists resolve at the user's angle. */
     private fun browseAngle(): Int = platform.keyValues.getString("board_angle")?.toIntOrNull() ?: 40
+
+    /** Playback puts each climb on the wall through the one shared board link. */
+    private val playbackTransport: BoardPlaybackTransport by lazy {
+        BoardPlaybackTransport(boardRepository, boardConnection, platform.keyValues)
+    }
+
+    fun makePlayerScreen(): PlayerScreenModel {
+        val grades = settings.gradeFormatter()
+        return PlayerScreenModel(
+            PlaylistPlayerPresenter(
+                transport = playbackTransport,
+                climbInfo = { uuid ->
+                    try {
+                        boardRepository.getClimbByUuid(uuid, browseAngle())
+                            ?.let { PlayerClimbInfo(it.name, it.difficultyAverage) }
+                    } catch (e: Exception) {
+                        null
+                    }
+                },
+                gradeLabel = { grades.label(it) },
+            )
+        )
+    }
 
     fun makeLogbookScreen(): LogbookScreenModel =
         LogbookScreenModel(LogbookPresenter(personalRepository, platform.keyValues))

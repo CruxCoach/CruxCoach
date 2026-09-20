@@ -120,3 +120,11 @@
 "lists_unavailable" = "not in the catalogue";
 "detail_send_no_geometry" = "This board's hold positions are missing, so nothing can be lit. Download the board catalogue again.";
 "detail_send_no_holds" = "This problem has no holds to light.";
+"player_start" = "Play";
+"player_stop" = "End session";
+"player_finished" = "Playlist finished";
+"player_skip_rest" = "Skip rest";
+"player_no_board" = "No board connected — nothing will light up.";
+"player_attempt" = "Try %1$ld of %2$ld";
+"player_position" = "%1$ld of %2$ld";
+"player_rest_a11y" = "%ld seconds of rest left";

@@ -1,6 +1,7 @@
 package com.cruxcoach.app.logbook
 
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +16,12 @@ import kotlinx.coroutines.withTimeout
 
 /** Port of Android AscentLoggerQuickLogTest, against real SQLite instead of mocks. */
 class AscentLoggerQuickLogTest {
+    private val serialOwner = SerialDispatcher()
+    private val serial = serialOwner.dispatcher
+
+    @AfterTest
+    fun closeSerialDispatcher() = serialOwner.close()
+
 
     private val target = LogTarget(
         climbUuid = "climb-1",
@@ -45,7 +52,7 @@ class AscentLoggerQuickLogTest {
     }
 
     private fun presenter(repo: PersonalBoardRepository, session: Session, listener: Listener) =
-        LogAttemptPresenter(repo, session, listener, CoroutineScope(Dispatchers.Default)).also {
+        LogAttemptPresenter(repo, session, listener, CoroutineScope(serial)).also {
             it.setTarget(target)
         }
 

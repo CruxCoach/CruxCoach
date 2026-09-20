@@ -107,8 +107,22 @@ struct ListDetailView: View {
                     }
                 }
                 .toolbar {
-                    if !ui.isBuiltin {
-                        ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        if !ui.members.isEmpty {
+                            NavigationLink {
+                                PlayerView(core: core,
+                                           listName: ui.name,
+                                           climbUuids: playbackUuids(ui),
+                                           angles: playbackAngles(ui),
+                                           restsAfter: playbackRests(ui),
+                                           orderCode: ui.orderCode,
+                                           advanceCode: ui.advanceCode,
+                                           defaultRestSeconds: ui.defaultRestSeconds)
+                            } label: {
+                                Label(LI("player_start"), systemImage: "play.fill")
+                            }
+                        }
+                        if !ui.isBuiltin {
                             Button(LI("lists_rename")) { model.showRenameDialog() }
                         }
                     }
@@ -132,4 +146,28 @@ struct ListDetailView: View {
             model.refresh()
         }
     }
+}
+
+private extension ListDetailView {
+    /// A saved plan wins over plain membership: it carries repeats, pinned
+    /// angles and rests. Rest steps become the rest that follows the climb
+    /// before them, which is how the player consumes them.
+    func playbackSteps(_ ui: ListDetailScreenState) -> [(uuid: String, angle: Int32, rest: Int32)] {
+        if !ui.planSteps.isEmpty {
+            var steps: [(uuid: String, angle: Int32, rest: Int32)] = []
+            for step in ui.planSteps {
+                if step.isRest {
+                    if !steps.isEmpty { steps[steps.count - 1].rest = step.restSeconds }
+                } else {
+                    steps.append((step.climbUuid, step.angle >= 0 ? step.angle : ui.defaultAngle, 0))
+                }
+            }
+            return steps
+        }
+        return ui.members.map { ($0.climbUuid, ui.defaultAngle, 0) }
+    }
+
+    func playbackUuids(_ ui: ListDetailScreenState) -> [String] { playbackSteps(ui).map { $0.uuid } }
+    func playbackAngles(_ ui: ListDetailScreenState) -> [Int32] { playbackSteps(ui).map { $0.angle } }
+    func playbackRests(_ ui: ListDetailScreenState) -> [Int32] { playbackSteps(ui).map { $0.rest } }
 }

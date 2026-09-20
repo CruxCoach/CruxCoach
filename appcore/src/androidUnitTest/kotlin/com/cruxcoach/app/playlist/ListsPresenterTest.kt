@@ -8,18 +8,37 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ListPlaybackAdvance
 import com.cruxcoach.data.repository.ListPlaybackOrder
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.app.logbook.awaitValue
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
 class ListsPresenterTest {
+    /**
+     * One thread for both the presenter scope and its IO, so a state change
+     * implies the database write that produced it has finished. On the shared
+     * Default pool the two race, and an assertion that reads the repository
+     * straight after awaiting state fails at random.
+     */
+    private val executor = Executors.newSingleThreadExecutor()
+    private val serial = executor.asCoroutineDispatcher()
+
+    @AfterTest
+    fun shutDownDispatcher() {
+        serial.close()
+        executor.shutdownNow()
+    }
+
 
     /** Catalogue stand-in: the personal DB never holds climb metadata. */
     private class FakeLookup(climbs: List<ClimbWithStats>) : ListClimbLookup {
@@ -41,7 +60,7 @@ class ListsPresenterTest {
     )
 
     private fun lists(repo: PersonalBoardRepository, lookup: ListClimbLookup = EmptyClimbLookup) =
-        ListsPresenter(repo, lookup, CoroutineScope(Dispatchers.Default))
+        ListsPresenter(repo, lookup, CoroutineScope(serial), serial)
 
     private suspend fun ListsPresenter.await(predicate: (ListsState) -> Boolean) =
         withTimeout(CI_WAIT_MS) { state.first(predicate) }
@@ -138,7 +157,8 @@ class ListsPresenterTest {
         repo.addClimbToList(listId, "missing")
         val lookup = FakeLookup(listOf(climb("aaa111", "Alpha"), climb("BBB222", "Bravo")))
         val detail = ListDetailPresenter(
-            repo, listId, lookup, defaultAngle = { 40 }, scope = CoroutineScope(Dispatchers.Default),
+            repo, listId, lookup, defaultAngle = { 40 }, scope = CoroutineScope(serial),
+            ioDispatcher = serial,
         )
         val loaded = detail.await { !it.isLoading }
         assertEquals("Session", loaded.name)
@@ -187,10 +207,10 @@ class ListsPresenterTest {
             it.playbackOrder == ListPlaybackOrder.SHUFFLE &&
                 it.playbackAdvance == ListPlaybackAdvance.AFTER_SEND && it.playbackRestSeconds == 120L
         }
-        val stored = repo.getClimbListById(listId)!!
-        assertEquals(ListPlaybackOrder.SHUFFLE, stored.playbackOrder)
-        assertEquals(ListPlaybackAdvance.AFTER_SEND, stored.playbackAdvance)
-        assertEquals(120L, stored.playbackRestSeconds)
+        // The presenter updates state before it writes, so wait for the row.
+        awaitValue(ListPlaybackOrder.SHUFFLE) { repo.getClimbListById(listId)!!.playbackOrder }
+        awaitValue(ListPlaybackAdvance.AFTER_SEND) { repo.getClimbListById(listId)!!.playbackAdvance }
+        awaitValue(120L) { repo.getClimbListById(listId)!!.playbackRestSeconds }
 
         detail.removeFromList("AAA-111")
         val removed = detail.await { it.members.size == 2 }
@@ -212,7 +232,7 @@ class ListsPresenterTest {
     fun `built-in lists cannot be renamed and a missing list reports notFound`() = runBlocking<Unit> {
         val repo = newPersonalRepo()
         val favorites = repo.ensureFavoritesListExists()
-        val detail = ListDetailPresenter(repo, favorites, scope = CoroutineScope(Dispatchers.Default))
+        val detail = ListDetailPresenter(repo, favorites, scope = CoroutineScope(serial), ioDispatcher = serial)
         val loaded = detail.await { !it.isLoading }
         assertTrue(loaded.isBuiltin)
         detail.showRenameDialog()
@@ -221,7 +241,7 @@ class ListsPresenterTest {
         detail.await { !it.showRenameDialog }
         assertEquals(loaded.name, repo.getClimbListById(favorites)?.name)
 
-        val gone = ListDetailPresenter(repo, 9999L, scope = CoroutineScope(Dispatchers.Default))
+        val gone = ListDetailPresenter(repo, 9999L, scope = CoroutineScope(serial), ioDispatcher = serial)
         gone.await { it.error == ListDetailError.NOT_FOUND }
         assertNull(repo.getClimbListById(9999L))
     }
@@ -253,7 +273,8 @@ class ListsPresenterTest {
 
         val detail = ListDetailPresenter(
             repo, listId, FakeLookup(listOf(climb("aaa", "Alpha"))),
-            scope = CoroutineScope(Dispatchers.Default),
+            scope = CoroutineScope(serial),
+            ioDispatcher = serial,
         )
         val detailModel = ListDetailScreenModel(detail, "V_SCALE")
         detail.await { !it.isLoading }
