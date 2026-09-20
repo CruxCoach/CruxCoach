@@ -89,6 +89,7 @@ struct BrowserView: View {
                             }
                         }
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
+                        NavigationLink(LI("creator_title")) { CreatorView(core: core) }
                         NavigationLink(L("board_lists_title")) { ListsView(core: core) }
                         NavigationLink(LI("map_title")) {
                             // Only Swift can resolve the bundled map folder.

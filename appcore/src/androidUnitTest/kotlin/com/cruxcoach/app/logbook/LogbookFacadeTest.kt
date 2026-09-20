@@ -45,7 +45,7 @@ class LogbookFacadeTest {
         val repo = newPersonalRepo().apply { seed() }
         val presenter = LogbookPresenter(
             repo, MapKeyValueStore(mapOf("grade_scale" to "V_SCALE")),
-            CoroutineScope(serial), today = { LocalDate(2026, 3, 15) },
+            CoroutineScope(serial), serial, today = { LocalDate(2026, 3, 15) },
         )
         val model = LogbookScreenModel(presenter)
         withTimeout(CI_WAIT_MS) { presenter.state.first { it.stats.totalSends == 1 } }

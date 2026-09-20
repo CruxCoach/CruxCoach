@@ -5,7 +5,14 @@ import com.cruxcoach.app.ble.CoreBluetoothCentral
 import com.cruxcoach.app.browse.BoardBrowserPresenter
 import com.cruxcoach.app.detail.ClimbDetailPresenter
 import com.cruxcoach.app.identity.IdentityFailure
+import com.cruxcoach.app.backup.LocalEventSigner
+import com.cruxcoach.app.browse.BrowsePreferences
+import com.cruxcoach.app.community.CommunityPublisher
+import com.cruxcoach.app.community.RelayCommunityRelay
+import com.cruxcoach.app.creator.ClimbDraftStore
+import com.cruxcoach.app.creator.ClimbEditor
 import com.cruxcoach.app.identity.LocalIdentity
+import com.cruxcoach.app.nostr.RelayClient
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterLogImporter
 import com.cruxcoach.app.kilter.KilterTokens
@@ -43,6 +50,7 @@ import com.cruxcoach.app.sync.CatalogueSyncController
 import com.cruxcoach.app.ui.BackupScreenModel
 import com.cruxcoach.app.ui.BleScreenModel
 import com.cruxcoach.app.ui.BrowserScreenModel
+import com.cruxcoach.app.ui.CreatorScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
@@ -274,6 +282,28 @@ class AppCore private constructor(
      * Board map. [boardMapDirectory] is the absolute path of the bundled
      * `board_map` folder, which only Swift can resolve.
      */
+    /**
+     * Climb editor. Publishing signs with the identity's key, read fresh from
+     * the Keychain each time, and goes out over the shared relay set.
+     */
+    fun makeCreatorScreen(): CreatorScreenModel {
+        val signer = LocalEventSigner(platform.hashing) { platform.secrets.read(LocalIdentity.NOSTR_KEY) }
+        val publisher = CommunityPublisher(
+            boardRepository,
+            RelayCommunityRelay(RelayClient(platform.webSockets, platform.hashing)),
+            signer,
+            platform.hashing,
+            platform.clock,
+        ) { pubkeyHex }
+        val editor = ClimbEditor(
+            boardRepository,
+            ClimbDraftStore(boardRepository, platform.hashing, platform.clock) { pubkeyHex },
+            BrowsePreferences(platform.keyValues),
+            publisher,
+        )
+        return CreatorScreenModel(editor, settings.gradeFormatter())
+    }
+
     fun makeMapScreen(boardMapDirectory: String): MapScreenModel = MapScreenModel(
         MapPresenter(
             BoardLocationRepositoryImpl(boardDb.database),
