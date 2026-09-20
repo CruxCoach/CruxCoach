@@ -99,6 +99,14 @@ struct KilterView: View {
         }
     }
 
+    private func busyLabel(_ ui: KilterScreenState) -> String {
+        switch ui.phase {
+        case "importing": return LI("kilter_importing")
+        case "pushing": return LI("kilter_pushing")
+        default: return LI("kilter_signing_in")
+        }
+    }
+
     private func failureText(_ ui: KilterScreenState) -> String {
         switch ui.failure {
         case "invalidCredentials": return LI("kilter_bad_credentials")
