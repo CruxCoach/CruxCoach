@@ -175,6 +175,68 @@ class PlaylistFillerTest {
     }
 
     @Test
+    fun `the training range binds the work and not the warm-up`() {
+        val plan = PlaylistPlan(
+            slots = listOf(
+                PlanSlot.ClimbSlot(13.0, 15.0, PlanSection.WARM_UP),
+                PlanSlot.ClimbSlot(18.0, 19.0, PlanSection.MAIN),
+                PlanSlot.ClimbSlot(18.0, 19.0, PlanSection.MAIN),
+            ),
+            effectiveType = GeneratorType.VOLUME,
+            hardCeiling = 19.0,
+            maxWidening = 4.0,
+            workFloor = 18.0,
+        )
+        val board = listOf(candidate("easy", 14.0), candidate("below-range", 17.0), candidate("work", 18.0))
+        val result = PlaylistFiller.fill(
+            plan = plan,
+            source = poolSource(board),
+            boardCandidates = board,
+            random = Random(1),
+        )
+
+        // The ladder is served from under the range; the second work slot would
+        // rather stay empty than widen down to the 17 beneath it.
+        assertEquals(
+            listOf(14.0, 18.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty },
+        )
+        assertEquals(1, result.droppedClimbs)
+    }
+
+    @Test
+    fun `a warm-up slot never widens up into the work`() {
+        val plan = PlaylistPlan(
+            slots = listOf(PlanSlot.ClimbSlot(13.0, 15.0, PlanSection.WARM_UP)),
+            effectiveType = GeneratorType.LIMIT,
+            hardCeiling = 22.0,
+            maxWidening = 1.0,
+            workFloor = 17.0,
+        )
+        val board = listOf(candidate("work-grade", 18.0), candidate("floor", 10.0))
+        val result = PlaylistFiller.fill(
+            plan = plan,
+            source = poolSource(board),
+            boardCandidates = board,
+            random = Random(1),
+        )
+
+        // Four grades down is further than the one grade up — and still the
+        // right answer: the ladder takes mileage, whatever the work tolerates.
+        assertEquals(
+            listOf(10.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty },
+        )
+    }
+
+    @Test
+    fun `candidates carry the grade they are displayed as`() {
+        assertEquals(16.0, candidate("a", 15.5).grade)
+        assertEquals(16.0, candidate("b", 16.49).grade)
+        assertEquals(17.0, candidate("c", 16.5).grade)
+    }
+
+    @Test
     fun `drops the slot and its leading rest when nothing fits`() {
         val pool = listOf(candidate("only", 15.0))
         val result = PlaylistFiller.fill(

@@ -71,7 +71,7 @@ data class PlaylistGeneratorState(
      * as an initial value it showed "0 tiers" on screen while the planner,
      * seeing no size at all, quietly planned four.
      */
-    val structureSize: Int = GeneratorType.PYRAMID.structureRange().first,
+    val structureSize: Int = GeneratorType.PYRAMID.structureRange().midpoint(),
     val position: SessionPosition = SessionPosition.START_COLD,
     val angle: Int = 40,
     /** MoonBoard walls are fixed-angle — hide the angle stepper. */
@@ -133,21 +133,25 @@ internal fun playlistCandidateMatchesBrowserFilters(
         (ClimbStatusFilter.NEW in statuses && uuid !in sent && uuid !in attempted)
 }
 
+/**
+ * Candidates the app DISPLAYS as a grade inside the band. The training range is not applied
+ * here: it binds the working slots only, and the filler enforces it per slot — applied to
+ * every query it also starved the warm-up ladder, which then got filled from the work band.
+ */
 internal fun playlistCandidatesInBand(
     candidates: List<PlaylistCandidate>,
     minDifficulty: Double,
     maxDifficulty: Double,
-    targetMinDifficulty: Double?,
-    targetMaxDifficulty: Double?,
-    limit: Int,
 ): List<PlaylistCandidate> {
-    val low = maxOf(minDifficulty, targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY)
-    val high = minOf(maxDifficulty, targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY)
-    if (low > high || limit <= 0) return emptyList()
-    return candidates.asSequence()
-        .filter { it.difficulty in low..high }
-        .take(limit)
-        .toList()
+    if (minDifficulty > maxDifficulty) return emptyList()
+    return candidates.filter { it.grade in minDifficulty..maxDifficulty }
+}
+
+/** Every whole grade a band [low, high] covers — the units candidates are loaded in. */
+internal fun playlistGradesInBand(low: Double, high: Double): List<Int> {
+    val first = kotlin.math.ceil(low).toInt()
+    val last = kotlin.math.floor(high).toInt()
+    return if (first > last) emptyList() else (first..last).toList()
 }
 
 @HiltViewModel
@@ -554,9 +558,13 @@ class PlaylistGeneratorViewModel @Inject constructor(
             if (work.isNotEmpty()) {
                 _state.update {
                     it.copy(
-                        targetMinDifficulty = work.minOf { slot -> slot.minDifficulty }
+                        // Whole grades, rounded INWARDS. A pyramid tier is planned as
+                        // grade ± ½, so its outer edges sit between two grades; taken
+                        // as they were, the recommendation read one grade wider than
+                        // the session and rebuilt the pyramid on half-grade tiers.
+                        targetMinDifficulty = kotlin.math.ceil(work.minOf { slot -> slot.minDifficulty })
                             .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
-                        targetMaxDifficulty = work.maxOf { slot -> slot.maxDifficulty }
+                        targetMaxDifficulty = kotlin.math.floor(work.maxOf { slot -> slot.maxDifficulty })
                             .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
                     )
                 }
@@ -610,6 +618,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
                             minDifficulty: Double,
                             maxDifficulty: Double,
                             limit: Int,
+                            sortField: ClimbSortField = ClimbSortField.DIFFICULTY,
+                            sortDirection: SortDirection = SortDirection.ASC,
                         ): List<PlaylistCandidate> {
                             if (minDifficulty > maxDifficulty) return emptyList()
                             return boardRepository.searchClimbsSorted(
@@ -619,8 +629,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 minDifficulty = minDifficulty,
                                 maxDifficulty = maxDifficulty,
                                 minAscensionists = params.minAscensionists,
-                                sortField = ClimbSortField.DIFFICULTY,
-                                sortDirection = SortDirection.ASC,
+                                sortField = sortField,
+                                sortDirection = sortDirection,
                                 limit = limit,
                                 climbType = climbType,
                                 selProductSizeId = params.productSizeId,
@@ -653,29 +663,54 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
                         val overallLow = params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY
                         val overallHigh = params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY
-                        // Query each distinct planned band once. The old
-                        // CandidateSource queried again for every slot and
-                        // widening step; the broad fallback alone is not
-                        // sufficient because a large board's easiest grade can
-                        // consume its whole row limit before upper tiers appear.
+                        // Load once per planned GRADE, best and most-climbed first.
+                        // Per band and by ascending difficulty — as it was — a
+                        // large board spent the whole row limit on the easiest
+                        // tenth of a grade, so every slot was filled from the
+                        // bottom edge of its band. A grade is every climb shown
+                        // as it: the average within half a point either side.
+                        // The training range clips the working slots only; the
+                        // warm-up ladder sits below it on purpose.
                         val plannedCandidates = plan.slots
                             .filterIsInstance<com.cruxcoach.domain.playlist.PlanSlot.ClimbSlot>()
-                            .map { slot ->
-                                maxOf(slot.minDifficulty, overallLow) to
-                                    minOf(slot.maxDifficulty, overallHigh)
+                            .flatMap { slot ->
+                                val warmUp = slot.section ==
+                                    com.cruxcoach.domain.playlist.PlanSection.WARM_UP
+                                playlistGradesInBand(
+                                    if (warmUp) slot.minDifficulty else maxOf(slot.minDifficulty, overallLow),
+                                    if (warmUp) slot.maxDifficulty else minOf(slot.maxDifficulty, overallHigh),
+                                )
                             }
-                            .filter { (low, high) -> low <= high }
                             .distinct()
-                            .flatMap { (low, high) ->
-                                PerfLogger.traceQuery("playlist.plannedBand") {
-                                    loadCandidateSnapshot(low, high, CANDIDATE_POOL_SIZE)
+                            .flatMap { grade ->
+                                PerfLogger.traceQuery("playlist.plannedGrade") {
+                                    loadCandidateSnapshot(
+                                        grade - GRADE_HALF_WIDTH,
+                                        grade + GRADE_HALF_WIDTH,
+                                        CANDIDATE_POOL_SIZE,
+                                        ClimbSortField.QUALITY_SENDS,
+                                        SortDirection.DESC,
+                                    )
                                 }
                             }
                         // Real board distribution for last-resort grade
-                        // adaptation. One bounded broad query is retained, but
-                        // it no longer has to represent every planned tier.
+                        // adaptation: the working range, and — when the plan
+                        // warms up — whatever the board has underneath it.
+                        val hasWarmUp = plan.slots.any {
+                            it.section == com.cruxcoach.domain.playlist.PlanSection.WARM_UP
+                        }
                         val boardCandidates = PerfLogger.traceQuery("playlist.boardGradePool") {
-                            loadCandidateSnapshot(overallLow, overallHigh, BOARD_GRADE_POOL_SIZE)
+                            loadCandidateSnapshot(
+                                overallLow - GRADE_HALF_WIDTH,
+                                overallHigh + GRADE_HALF_WIDTH,
+                                BOARD_GRADE_POOL_SIZE,
+                            ) + if (hasWarmUp && overallLow > TrainingRanges.MIN_DIFFICULTY) {
+                                loadCandidateSnapshot(
+                                    TrainingRanges.MIN_DIFFICULTY - GRADE_HALF_WIDTH,
+                                    overallLow + GRADE_HALF_WIDTH,
+                                    WARM_UP_POOL_SIZE,
+                                )
+                            } else emptyList()
                         }
                         val candidateSnapshot = (plannedCandidates + boardCandidates)
                             .distinctBy { it.climbUuid }
@@ -688,9 +723,6 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 candidates = candidateSnapshot,
                                 minDifficulty = minDiff,
                                 maxDifficulty = maxDiff,
-                                targetMinDifficulty = params.targetMinDifficulty,
-                                targetMaxDifficulty = params.targetMaxDifficulty,
-                                limit = CANDIDATE_POOL_SIZE,
                             )
                         }
 
@@ -705,10 +737,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 projectCandidates = boardRepository.getClimbsByUuids(
                                     profile.openProjectUuids, params.angle,
                                 ).filter { climb ->
-                                    val diff = climb.difficultyAverage
-                                    diff != null &&
-                                        diff >= (params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY) &&
-                                        diff <= (params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY) &&
+                                    // By displayed grade, like every other candidate.
+                                    val grade = climb.difficultyAverage
+                                        ?.let { kotlin.math.floor(it + GRADE_HALF_WIDTH) }
+                                    grade != null && grade >= overallLow && grade <= overallHigh &&
                                         (climb.ascensionistCount ?: 0) >= params.minAscensionists &&
                                         playlistCandidateMatchesBrowserFilters(
                                             origin = climb.origin,
@@ -802,6 +834,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
         private const val CANDIDATE_POOL_SIZE = 120
         private const val BOARD_GRADE_POOL_SIZE = 1000
+        private const val WARM_UP_POOL_SIZE = 300
+
+        /** A grade is every climb averaging within this of it. */
+        private const val GRADE_HALF_WIDTH = 0.5
 
         /** Bids across all sessions before a climb counts as a project. */
         private const val MIN_PROJECT_ATTEMPTS = 3L

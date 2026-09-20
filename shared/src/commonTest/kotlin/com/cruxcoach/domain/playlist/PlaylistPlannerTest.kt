@@ -340,15 +340,15 @@ class PlaylistPlannerTest {
     // ── Pyramid ─────────────────────────────────────────────────
 
     @Test
-    fun `pyramid climbs Font steps up to one V below max`() {
+    fun `pyramid climbs Font steps up to one grade below the anchor`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID, duration = 60), profile)
         val climbs = plan.climbs()
         assertEquals(10, climbs.size, "4+3+2+1")
-        // Font-step tiers 17, 18, 19, 20 — apex = max − 2 points (1 V),
-        // because every tier of a session pyramid should actually get
-        // TOPPED, and half-grade steps match what boards actually carry.
+        // Font-step tiers 18, 19, 20, 21 — apex = anchor − 1: every tier of a
+        // session pyramid should get TOPPED, but two below the anchor put the
+        // apex on the flash grade, a volume block with four-minute rests.
         val centers = climbs.map { (it.minDifficulty + it.maxDifficulty) / 2 }
-        assertEquals(listOf(17.0, 17.0, 17.0, 17.0, 18.0, 18.0, 18.0, 19.0, 19.0, 20.0), centers)
+        assertEquals(listOf(18.0, 18.0, 18.0, 18.0, 19.0, 19.0, 19.0, 20.0, 20.0, 21.0), centers)
         // Apex slot is PEAK.
         assertEquals(PlanSection.PEAK, climbs.last().section)
     }
@@ -461,6 +461,55 @@ class PlaylistPlannerTest {
 
         assertEquals(listOf(14.0, 16.0, 18.0, 20.0), centers.distinct())
         assertEquals(listOf(3, 3, 3, 3), centers.groupingBy { it }.eachCount().values.toList())
+    }
+
+    @Test
+    fun `a custom pyramid never plans a tier between two grades`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID).copy(
+                structureSize = 4,
+                targetMinDifficulty = 16.0,
+                targetMaxDifficulty = 20.0,
+            ),
+            profile,
+        )
+        // 16, 17.33, 18.67, 20 — no climb is displayed as 17.33.
+        assertEquals(
+            listOf(16.0, 17.0, 19.0, 20.0),
+            plan.climbs().map { it.minDifficulty }.distinct(),
+        )
+    }
+
+    @Test
+    fun `a chosen range is the ceiling and the working floor`() {
+        // Above the profile ceiling of 24 on purpose: the climber set it, as
+        // in manual mode, and capping it as well left every slot empty.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.LIMIT).copy(
+                targetMinDifficulty = 25.0,
+                targetMaxDifficulty = 26.0,
+            ),
+            profile,
+        )
+        assertEquals(26.0, plan.hardCeiling)
+        assertEquals(25.0, plan.workFloor)
+        assertNull(PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile).workFloor)
+    }
+
+    @Test
+    fun `the warm-up never climbs past the work anchor`() {
+        // Projecting starts a grade ABOVE the anchor. Hung off that, the top
+        // ladder tier reached the anchor itself — limit grade as a warm-up.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PROJECTING, position = SessionPosition.START_COLD).copy(
+                targetMinDifficulty = 23.0,
+                targetMaxDifficulty = 24.0,
+            ),
+            profile,
+        )
+        val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
+        assertTrue(warmUp.isNotEmpty())
+        assertTrue(warmUp.all { it.maxDifficulty < 22.0 }, "ladder reached ${warmUp.maxOf { it.maxDifficulty }}")
     }
 
     @Test

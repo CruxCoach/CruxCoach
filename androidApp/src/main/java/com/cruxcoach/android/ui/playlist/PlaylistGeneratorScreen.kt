@@ -644,6 +644,12 @@ private fun PlanPreviewCard(
     val minDiff = climbSlots.minOf { it.minDifficulty }
     val maxDiff = climbSlots.maxOf { it.maxDifficulty }
     val span = (maxDiff - minDiff).coerceAtLeast(1.0)
+    // The summary names the WORKING grades, the same ones the range slider shows. Spanning
+    // the warm-up as well, it read "4a–6b" under a slider that said "5c–6b+".
+    val workSlots = climbSlots.filter { it.section != com.cruxcoach.domain.playlist.PlanSection.WARM_UP }
+        .ifEmpty { climbSlots }
+    val workLow = kotlin.math.ceil(workSlots.minOf { it.minDifficulty })
+    val workHigh = kotlin.math.floor(workSlots.maxOf { it.maxDifficulty }).coerceAtLeast(workLow)
 
     Card(
         colors = CardDefaults.cardColors(
@@ -695,8 +701,8 @@ private fun PlanPreviewCard(
                     climbSlots.size,
                     restCount,
                     estimatedMinutes,
-                    GradeDisplayHelper.formatDifficulty(minDiff, gradeScale),
-                    GradeDisplayHelper.formatDifficulty(maxDiff, gradeScale),
+                    GradeDisplayHelper.formatDifficulty(workLow, gradeScale),
+                    GradeDisplayHelper.formatDifficulty(workHigh, gradeScale),
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

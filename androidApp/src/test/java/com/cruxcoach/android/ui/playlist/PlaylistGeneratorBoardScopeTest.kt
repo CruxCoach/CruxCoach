@@ -8,23 +8,27 @@ import kotlin.test.assertTrue
 
 class PlaylistGeneratorBoardScopeTest {
     @Test
-    fun `generation snapshot is filtered in memory by the plan band and the training range`() {
-        val candidates = (10..24).map { difficulty ->
-            PlaylistCandidate("climb-$difficulty", difficulty.toDouble())
+    fun `generation snapshot is filtered in memory by displayed grade`() {
+        val candidates = listOf(15.4, 15.5, 16.0, 18.4, 18.5).map { difficulty ->
+            PlaylistCandidate("climb-$difficulty", difficulty)
         }
 
         val selected = playlistCandidatesInBand(
             candidates = candidates,
-            minDifficulty = 12.0,
-            maxDifficulty = 22.0,
-            targetMinDifficulty = 14.0,
-            targetMaxDifficulty = 20.0,
-            limit = 3,
+            minDifficulty = 16.0,
+            maxDifficulty = 18.0,
         )
 
-        // Plan band 12–22 intersected with the training range 14–20; the board browser's own
-        // grade filter is deliberately not part of it any more.
-        assertEquals(listOf(14.0, 15.0, 16.0), selected.map { it.difficulty })
+        // 6a…6b is every climb the app shows as 6a, 6a+ or 6b: 15.5 rounds up into the band,
+        // 18.5 rounds up out of it. The board browser's grade filter is not part of it.
+        assertEquals(listOf(15.5, 16.0, 18.4), selected.map { it.difficulty })
+    }
+
+    @Test
+    fun `candidates are loaded per whole grade of a band`() {
+        assertEquals(listOf(15, 16, 17, 18), playlistGradesInBand(15.0, 18.0))
+        assertEquals(listOf(17), playlistGradesInBand(16.5, 17.5))
+        assertEquals(emptyList(), playlistGradesInBand(16.2, 16.8))
     }
 
     @Test

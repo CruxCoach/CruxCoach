@@ -1,6 +1,7 @@
 package com.cruxcoach.domain.playlist
 
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
@@ -67,13 +68,23 @@ data class PlaylistPlan(
      * mileage.
      */
     val maxWidening: Double = TrainingRanges.WIDEN_MAX_DEFAULT,
+    /**
+     * The bottom of the training range the climber chose, or null when there
+     * is none. Working slots may not widen below it; the warm-up ladder lives
+     * underneath it by design and is exempt — a grade range is a statement
+     * about the work, and applying it to the ladder served "warm-up" climbs at
+     * working grade.
+     */
+    val workFloor: Double? = null,
 )
 
 /**
  * Pure planner: (params, profile) → ordered slot plan with explicit rest
  * blocks. No I/O, no randomness — fully deterministic and unit-testable.
- * Grade math happens in Aurora difficulty points (+2 ≈ 1 V-grade); all
- * bands are clamped to [V0, max + 1 V].
+ * Grade math happens in Aurora difficulty points (one point = one Font
+ * grade); recommended bands are clamped to [4a, peak + 2 points]. A slot's
+ * bounds are GRADES: the filler matches a climb by the grade it is displayed
+ * as, so "6a…6b" means every climb the app calls 6a, 6a+ or 6b.
  */
 object PlaylistPlanner {
 
@@ -117,9 +128,14 @@ object PlaylistPlanner {
         fun ladderFor(mainMinutes: Int) =
             if (params.position == SessionPosition.START_COLD) {
                 buildWarmUpLadder(
-                    anchor,
-                    params.targetMinDifficulty ?: firstWorkGrade(
-                        effectiveType, anchor, flashDiff, mainMinutes, size,
+                    // Never warm up past the work anchor: a projecting range
+                    // starts above it, and a ladder hung off that would put
+                    // limit-grade problems into the warm-up.
+                    min(
+                        params.targetMinDifficulty ?: firstWorkGrade(
+                            effectiveType, anchor, flashDiff, mainMinutes, size, params,
+                        ),
+                        anchor,
                     ),
                 )
             } else emptyList()
@@ -164,27 +180,27 @@ object PlaylistPlanner {
             effectiveType = effectiveType,
             downgradedFromType = if (downgraded) params.type else null,
             usedDefaultProfile = !profile.isPersonalized,
-            hardCeiling = min(
-                params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
-                profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS,
-            ),
+            // A range the climber set is theirs to set, exactly as in manual
+            // mode: capping it at the profile ceiling as well left every slot
+            // of a deliberately harder range without a single candidate. The
+            // recommended range never exceeds that ceiling in the first place.
+            hardCeiling = params.targetMaxDifficulty
+                ?: (profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS),
             maxWidening = TrainingRanges.maxWideningFor(effectiveType),
+            workFloor = params.targetMinDifficulty,
         )
     }
 
     // ── Sections ────────────────────────────────────────────────
 
     /**
-     * Progressive ladder up to ONE V-grade below the first working grade
-     * (Hörst: "boulder up" to near working intensity — the old ladder
-     * stopped 3 V short of a limit set, an intensity jump). Start is
-     * 5 V below max, pulled DOWN to firstWork − 3 V for easy sessions
-     * (a volume block should not warm up at volume grade). Easy tiers
-     * carry 2 problems; tiers within taper distance of the working grade
-     * carry 1 (activation, not fatigue). Short rests between problems,
-     * then the long transition rest.
+     * Progressive ladder from six to two points below the first working
+     * grade, in two-point tiers (Hörst: "boulder up" to near working
+     * intensity). Easy tiers carry 2 problems; tiers within taper distance of
+     * the working grade carry 1 (activation, not fatigue). Short rests
+     * between problems, then the long transition rest.
      */
-    private fun buildWarmUpLadder(maxDiff: Double, firstWorkDiff: Double): List<PlanSlot> {
+    private fun buildWarmUpLadder(firstWorkDiff: Double): List<PlanSlot> {
         val climbs = mutableListOf<PlanSlot.ClimbSlot>()
         var tier = clampLow(firstWorkDiff - TrainingRanges.WARMUP_START_BELOW_FIRST_WORK)
         val ceiling = firstWorkDiff - TrainingRanges.WARMUP_END_BELOW_FIRST_WORK
@@ -304,10 +320,7 @@ object PlaylistPlanner {
         // outlier peak keeps the band at the repeatable level so the
         // session consolidates the peak instead of assuming it's the norm.
         val low = anchor
-        val high = clamp(
-            min(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak + TrainingRanges.LIMIT_BAND_ABOVE_MAX),
-            peak,
-        )
+        val high = clamp(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak)
         return workBlocks(
             problems = count,
             attemptsPerProblem = attempts,
@@ -444,8 +457,8 @@ object PlaylistPlanner {
         return slots
     }
 
-    /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex), 1-V steps; long
-     *  sessions add the mirrored descent. */
+    /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex) in one-grade steps;
+     *  the shape decides whether the mirrored descent follows. */
     private fun planPyramid(
         minutes: Int,
         anchor: Double,
@@ -455,7 +468,8 @@ object PlaylistPlanner {
         targetMax: Double? = null,
         climbsPerTier: Int? = null,
     ): List<PlanSlot> {
-        // Apex 1 V below the REPEATABLE max: every tier should top.
+        // Apex one grade below the work anchor: every tier should top, but
+        // the top one should take a few goes — see PYRAMID_APEX_BELOW_MAX.
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         // However many were asked for, but never more than there is room for:
         // below the bottom of the scale the tiers clamp onto each other and
@@ -476,7 +490,10 @@ object PlaylistPlanner {
 
         val ascent = (0 until tiers).map { i ->
             Tier(
-                diff = if (tiers == 1) top else base + (top - base) * i / (tiers - 1),
+                // Whole grades: a tier "between 6a+ and 6b" is a grade no climb
+                // is displayed as, and would only ever be filled by widening.
+                diff = if (tiers == 1) top
+                else floor(base + (top - base) * i / (tiers - 1) + 0.5),
                 count = climbsPerTier?.coerceIn(TrainingRanges.PYRAMID_CLIMBS_PER_TIER)
                     ?: (tiers - i),
                 section = if (i == tiers - 1) PlanSection.PEAK else PlanSection.MAIN,
@@ -574,6 +591,7 @@ object PlaylistPlanner {
         flashDiff: Double,
         mainMinutes: Int,
         size: Int?,
+        params: PlaylistGeneratorParams,
     ): Double =
         when (type) {
             GeneratorType.VOLUME -> clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
@@ -583,8 +601,10 @@ object PlaylistPlanner {
                 size ?: pyramidTiers(mainMinutes), anchor,
             )
             GeneratorType.LIMIT, GeneratorType.PROJECTING -> anchor
-            // The bottom of what the climber asked for.
-            GeneratorType.MANUAL -> anchor
+            // The bottom of what the climber asked for — capped at the anchor
+            // by the caller, like everything else.
+            GeneratorType.MANUAL -> params.manualMinDifficulty.takeIf { it > 0.0 }
+                ?: clampLow(anchor - TrainingRanges.MANUAL_SEED_HALF_BAND)
         }
 
     private fun climbSlot(
@@ -610,8 +630,8 @@ object PlaylistPlanner {
 
     private fun clampLow(diff: Double): Double = max(diff, TrainingRanges.MIN_DIFFICULTY)
 
-    /** Clamp into [V0, min(scale max, user max + 1 V)] — the hard safety
-     *  ceiling that no mode may plan past. */
+    /** Clamp into [4a, min(scale max, peak + 2 points)] — the safety ceiling
+     *  no recommended band is planned past. */
     private fun clamp(diff: Double, userMax: Double): Double =
         min(
             min(diff, userMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS),

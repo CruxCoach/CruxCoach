@@ -85,9 +85,10 @@ object TrainingRanges {
     const val PROJECT_BAND_LOW_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
     const val PROJECT_BAND_TOP_ABOVE_MAX = 2 * DIFF_PER_FONT_STEP
 
-    /** Power endurance: max − 3 V … max − 2 V (fresh: 1-2 tries; lap 4:
-     *  barely topping — the classic 4x4 window). */
     /**
+     * Power endurance: flash − 2 … flash − 1 (fresh: first or second try;
+     * lap four: barely topping — the classic 4x4 window).
+     *
      * Anchored on the repeatable FLASH, not on the working max.
      *
      * A 4x4 only works if the fourth lap still tops out, and what a climber
@@ -107,10 +108,20 @@ object TrainingRanges {
      *  constant: see PlaylistPlanner.pyramidBase. */
     const val PYRAMID_STEP = 1 * DIFF_PER_FONT_STEP
 
-    /** Pyramid apex sits 2 Font steps (1 V) below max: a session pyramid
-     *  only works when every tier actually gets TOPPED — an apex at the
-     *  all-time max is a limit session in disguise. */
-    const val PYRAMID_APEX_BELOW_MAX = 2 * DIFF_PER_FONT_STEP
+    /**
+     * Pyramid apex sits one grade below the WORK ANCHOR.
+     *
+     * A session pyramid only works when every tier gets topped, so the apex
+     * may not be the anchor itself — that is a hard-bouldering session in
+     * disguise. Two grades below it, though, landed the apex on the flash
+     * grade: the whole pyramid was flashable, which made it a volume block
+     * with a shape, while its top tiers were given four-minute rests meant for
+     * real efforts. One below is the step between the two — above the volume
+     * band, below the hard-bouldering band, and what those rests are for. The
+     * anchor is already the outlier-robust mean, typically a grade under the
+     * all-time peak, so this is not "max minus one".
+     */
+    const val PYRAMID_APEX_BELOW_MAX = 1 * DIFF_PER_FONT_STEP
 
     /**
      * Warm-up ladder, defined entirely against the FIRST WORKING GRADE.
@@ -132,8 +143,8 @@ object TrainingRanges {
     /** Within this of the work grade, one problem per tier instead of two. */
     const val WARMUP_TAPER_DISTANCE = 3 * DIFF_PER_FONT_STEP
 
-    /** Per-tier tolerance when matching climbs to a planned grade (± half
-     *  a V-grade keeps "a V5 slot" honest while accepting 6b vs 6b+). */
+    /** Tolerance around a warm-up tier: one grade either side, so the
+     *  two-point ladder covers its range without gaps. */
     const val SLOT_TOLERANCE = 1.0
 
     /** Tighter, for tiers that are only one step apart — see
