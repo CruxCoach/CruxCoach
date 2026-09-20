@@ -369,14 +369,22 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `extreme outlier peak cannot drag the band past the background level`() {
-        // A single soft-graded 7b (24) over a 6c+ (19) background: the
-        // whole session anchors at the background, the fluke send only
-        // caps the ceiling.
+    fun `a peak far above the background makes hard bouldering a ramp up to it`() {
+        // A single 7b (24) over a 6b+ (19) background. The session still
+        // STARTS at the background — but it reaches the max: a range that
+        // stops at 6c reads as wrong to someone with a 7b in the book.
         val fluke = profile.copy(maxDifficulty = 24.0, secondMaxDifficulty = 19.0)
         val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), fluke).climbs()
         assertEquals(19.0, limit.first().minDifficulty)
         assertEquals(20.0, limit.first().maxDifficulty)
+        assertEquals(23.0, limit.last().minDifficulty)
+        assertEquals(24.0, limit.last().maxDifficulty)
+        // Never a lottery over the whole range: every problem has two grades.
+        assertTrue(limit.all { it.maxDifficulty - it.minDifficulty == 1.0 })
+        // And the project starts where that ends.
+        val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), fluke).climbs()
+        assertEquals(24.0, proj.first().minDifficulty)
+        assertEquals(25.0, proj.first().maxDifficulty)
     }
 
     @Test

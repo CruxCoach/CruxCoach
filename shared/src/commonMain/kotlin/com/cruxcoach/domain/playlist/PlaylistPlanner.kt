@@ -151,7 +151,10 @@ object PlaylistPlanner {
 
         val unconstrainedMain = when (effectiveType) {
             GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, peak, size)
-            GeneratorType.LIMIT -> planLimit(mainMinutes, anchor, peak, size)
+            GeneratorType.LIMIT -> planLimit(
+                mainMinutes, anchor, peak, size,
+                params.targetMinDifficulty, params.targetMaxDifficulty,
+            )
             GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
             GeneratorType.POWER_ENDURANCE -> planPowerEndurance(
                 mainMinutes, flashDiff, size,
@@ -299,6 +302,8 @@ object PlaylistPlanner {
         anchor: Double,
         peak: Double,
         size: Int?,
+        targetMin: Double? = null,
+        targetMax: Double? = null,
     ): List<PlanSlot> {
         // A 21-minute block per problem with a floor of two problems meant the
         // shortest session the slider offers produced three times the time
@@ -315,18 +320,33 @@ object PlaylistPlanner {
         ) {
             attempts--
         }
-        // anchor…anchor+1, additionally capped one step past the PEAK:
-        // a consolidated climber (anchor == peak) trains max…max+1; an
-        // outlier peak keeps the band at the repeatable level so the
-        // session consolidates the peak instead of assuming it's the norm.
-        val low = anchor
-        val high = clamp(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak)
+        // From the repeatable level up to the hardest send — and always at
+        // least one grade past the anchor. Stopping at anchor + 1 told a
+        // climber with a 7a in the book that hard bouldering ends at 6c: the
+        // range has to reach their max to be believed, and to be hard.
+        // A range the climber chose is ramped over in the same way, rather
+        // than planned off the profile and then clipped flat against it.
+        val low = targetMin ?: anchor
+        val high = (targetMax ?: clamp(max(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak), peak))
+            .coerceAtLeast(low)
+        // A wide range is a ramp, not a lottery: the first problem sits at the
+        // repeatable level, the last at the top, each in a two-grade window.
+        val span = high - low
         return workBlocks(
             problems = count,
             attemptsPerProblem = attempts,
             attemptRest = TrainingRanges.REST_LIMIT_BETWEEN_ATTEMPTS,
             problemRest = TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS,
             low = low, high = high,
+            bandFor = { p ->
+                if (span <= TrainingRanges.LIMIT_BAND_ABOVE_MAX || count == 1) low to high
+                else {
+                    val start = low + floor(
+                        (span - TrainingRanges.LIMIT_BAND_ABOVE_MAX) * p / (count - 1) + 0.5,
+                    )
+                    start to start + TrainingRanges.LIMIT_BAND_ABOVE_MAX
+                }
+            },
         )
     }
 
@@ -345,8 +365,14 @@ object PlaylistPlanner {
         // One step above the limit band, off the same robust anchor — for
         // the outlier climber (one 7b, background 7a+) the project IS the
         // 7b…7b+ range, not 7c. The peak-based clamp() ceiling still holds.
-        val low = clamp(anchor + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, peak)
-        val high = clamp(anchor + TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX, peak)
+        // Starts where hard bouldering ends: at the hardest send, or a grade
+        // past the anchor if that is higher. A project below one's own max is
+        // not a project.
+        val low = clamp(max(anchor + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, peak), peak)
+        val high = clamp(
+            low + (TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX - TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX),
+            peak,
+        )
         return workBlocks(
             problems = count,
             attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
@@ -418,13 +444,15 @@ object PlaylistPlanner {
         problemRest: Int,
         low: Double,
         high: Double,
+        bandFor: (Int) -> Pair<Double, Double> = { low to high },
     ): List<PlanSlot> {
         val slots = mutableListOf<PlanSlot>()
         for (p in 0 until problems) {
             if (p > 0) slots.add(PlanSlot.RestSlot(problemRest, PlanSection.PEAK))
+            val (problemLow, problemHigh) = bandFor(p)
             for (attempt in 0 until attemptsPerProblem) {
                 if (attempt > 0) slots.add(PlanSlot.RestSlot(attemptRest, PlanSection.PEAK))
-                slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.PEAK, repeatKey = p))
+                slots.add(PlanSlot.ClimbSlot(problemLow, problemHigh, PlanSection.PEAK, repeatKey = p))
             }
         }
         return slots

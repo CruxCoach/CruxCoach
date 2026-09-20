@@ -74,14 +74,16 @@ object TrainingRanges {
      *  Lattice) — the old 2-V band reached needlessly easy terrain. */
     const val VOLUME_BAND_BELOW_FLASH = 3 * DIFF_PER_FONT_STEP
 
-    /** Limit: max … max + 1 Font step — hard enough to need 3-5 tries,
-     *  close enough to send within the session (Hörst). A full V above
-     *  max is project territory, not limit bouldering. */
+    /** Hard bouldering: from the work anchor up to the hardest send, and at
+     *  least this far past the anchor — hard enough to need 3-5 tries, close
+     *  enough to send within the session (Hörst). Also the width of one
+     *  problem's window when the range is wide enough to be ramped. */
     const val LIMIT_BAND_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
 
-    /** Projecting: max + 1 … max + 2 Font steps — deliberately ABOVE the
-     *  limit band; a project is multi-session difficulty. (Open projects
-     *  from the logbook still take precedence over fresh candidates.) */
+    /** Projecting: starts where hard bouldering ends — at the hardest send,
+     *  or one grade past the anchor if that is higher — and spans
+     *  TOP − LOW grades. A project is multi-session difficulty. (Open
+     *  projects from the logbook still take precedence over fresh climbs.) */
     const val PROJECT_BAND_LOW_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
     const val PROJECT_BAND_TOP_ABOVE_MAX = 2 * DIFF_PER_FONT_STEP
 

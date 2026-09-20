@@ -213,6 +213,13 @@ fun PlaylistGeneratorScreen(
             }
             val siblingTypes = GeneratorGoal.forType(state.type).types
             if (siblingTypes.size > 1) {
+                // Named as what it is. Without the caption this was a second row of chips
+                // under the first, one of them carrying the same label as the goal above it.
+                Text(
+                    stringResource(R.string.playlist_generator_variant),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -222,6 +229,9 @@ fun PlaylistGeneratorScreen(
                             selected = state.type == type,
                             onClick = { viewModel.setType(type) },
                             label = { Text(typeLabel(type)) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
+                            ),
                             modifier = Modifier.testTag(
                                 "playlist_gen_type_${type.name.lowercase()}"
                             ),
