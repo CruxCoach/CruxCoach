@@ -94,6 +94,12 @@ data class PlaylistGeneratorState(
     val maxGradeLabel: String? = null,
     val flashGradeLabel: String? = null,
     val profilePersonalized: Boolean = false,
+    /**
+     * False while the logbook profile for the current board and angle is still being read.
+     * Until then the plan on screen is the default one, and on a slow phone that window is
+     * long enough to generate from grades that are about to change under the climber.
+     */
+    val profileLoaded: Boolean = false,
     val isGenerating: Boolean = false,
     /** Set after a successful generate — the screen navigates to it. */
     val createdListId: Long? = null,
@@ -464,7 +470,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
     fun setAngle(angle: Int) {
         if (!_state.value.angleAdjustable) return
-        _state.update { it.copy(angle = angle.coerceIn(0, 70)) }
+        _state.update { it.copy(angle = angle.coerceIn(0, 70), profileLoaded = false) }
         val request = ++profileRequest
         refreshPlan()
         viewModelScope.safeLaunch(TAG) { refreshProfile(request) }
@@ -472,12 +478,22 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
     private suspend fun refreshProfile(request: Int) {
         val selection = _state.value
-        val loadedProfile = withContext(Dispatchers.IO) {
-            val range = loadBoardGradeRange(
-                selection.angle, selection.boardBrand, selection.layoutId, selection.productSizeId,
-            )
-            loadProfile(selection.angle, selection.boardBrand, selection.layoutId)
-                .adaptedToBoardGrades(range.first, range.second)
+        val loadedProfile = try {
+            withContext(Dispatchers.IO) {
+                val range = loadBoardGradeRange(
+                    selection.angle, selection.boardBrand, selection.layoutId, selection.productSizeId,
+                )
+                loadProfile(selection.angle, selection.boardBrand, selection.layoutId)
+                    .adaptedToBoardGrades(range.first, range.second)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A profile that cannot be read must not lock the button for good: the default
+            // plan is still a plan, and the screen already says when it is one.
+            Log.w(TAG, "Profile load failed", e)
+            if (request == profileRequest) _state.update { it.copy(profileLoaded = true) }
+            return
         }
         // Catalogue queries may finish out of order after rapid angle changes.
         // Only the latest request may update the plan and its profile labels.
@@ -492,6 +508,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     GradeDisplayHelper.formatDifficulty(difficulty, it.gradeScale)
                 },
                 profilePersonalized = loadedProfile.isPersonalized,
+                profileLoaded = true,
             )
         }
         refreshPlan()

@@ -578,7 +578,7 @@ fun PlaylistGeneratorScreen(
             // ── Generate ────────────────────────────────────────
             Button(
                 onClick = { showNameDialog = true },
-                enabled = !state.isGenerating && state.plan != null,
+                enabled = !state.isGenerating && state.plan != null && state.profileLoaded,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
