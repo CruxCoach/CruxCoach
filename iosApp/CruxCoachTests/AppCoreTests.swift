@@ -119,3 +119,29 @@ final class BundleContentsTests: XCTestCase {
         }
     }
 }
+
+/// Link handling has no universal-link entitlement on a free team, so the
+/// custom scheme and pasted URLs are the whole story and must parse identically.
+final class DeepLinkTests: XCTestCase {
+
+    private func core() throws -> AppCore {
+        let result = AppCore.companion.start(
+            aead: CryptoKitAead(),
+            secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.links"),
+            zstd: ZstdFileDecompressor(),
+            deviceAuth: BiometricAuthenticator()
+        )
+        return try XCTUnwrap(result.core)
+    }
+
+    func testCruxCoachClimbLinksResolveAndForeignLinksDoNot() throws {
+        let core = try core()
+        let uuid = "0123456789abcdef0123456789abcdef"
+        XCTAssertEqual(core.climbUuidFromLink(url: "cruxcoach://c/\(uuid)"), uuid)
+        XCTAssertEqual(core.climbUuidFromLink(url: "https://cruxcoach.org/c/\(uuid)"), uuid)
+        XCTAssertEqual(core.climbUuidFromLink(url: "https://evil.example/c/\(uuid)"), "")
+        XCTAssertEqual(core.climbUuidFromLink(url: "cruxcoach://l/AAAA"), "", "playlist links have no screen yet")
+        XCTAssertEqual(core.climbUuidFromLink(url: "not a url"), "")
+        XCTAssertEqual(core.climbUuidFromLink(url: ""), "")
+    }
+}

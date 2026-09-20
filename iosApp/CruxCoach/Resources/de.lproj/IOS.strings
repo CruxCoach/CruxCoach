@@ -111,3 +111,10 @@
 "retention_90" = "90 Tage";
 "retention_365" = "1 Jahr";
 "history_clear" = "Verlauf löschen";
+"lists_new" = "Neue Liste";
+"lists_name" = "Name";
+"lists_delete_confirm" = "Diese Liste löschen? Die Probleme selbst bleiben erhalten.";
+"lists_empty" = "Diese Liste ist leer";
+"lists_remove" = "Entfernen";
+"lists_rename" = "Umbenennen";
+"lists_unavailable" = "nicht im Katalog";

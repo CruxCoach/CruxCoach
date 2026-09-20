@@ -9,6 +9,8 @@ import com.cruxcoach.app.identity.LocalIdentity
 import com.cruxcoach.app.logbook.HistoryPresenter
 import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.logbook.LogbookPresenter
+import com.cruxcoach.app.links.DeepLink
+import com.cruxcoach.app.links.DeepLinkParser
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
@@ -16,6 +18,9 @@ import com.cruxcoach.app.platform.PlatformServices
 import com.cruxcoach.app.platform.SecretStore
 import com.cruxcoach.app.platform.ZstdDecompressor
 import com.cruxcoach.app.platform.createIosPlatformServices
+import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
+import com.cruxcoach.app.playlist.ListDetailPresenter
+import com.cruxcoach.app.playlist.ListsPresenter
 import com.cruxcoach.app.send.BoardSender
 import com.cruxcoach.app.setup.BoardOption
 import com.cruxcoach.app.setup.BoardOptions
@@ -26,6 +31,8 @@ import com.cruxcoach.app.ui.BleScreenModel
 import com.cruxcoach.app.ui.BrowserScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
+import com.cruxcoach.app.ui.ListDetailScreenModel
+import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SyncScreenModel
@@ -95,6 +102,29 @@ class AppCore private constructor(
         boardSender,
         settings.gradeFormatter(),
     )
+
+    private val climbLookup by lazy { BoardRepositoryClimbLookup(boardRepository) }
+
+    fun makeListsScreen(): ListsScreenModel =
+        ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
+
+    fun makeListDetailScreen(listId: Long): ListDetailScreenModel = ListDetailScreenModel(
+        ListDetailPresenter(personalRepository, listId, climbLookup, { browseAngle() }),
+        settings.gradeScale,
+    )
+
+    /**
+     * Resolves a `cruxcoach://` link or a pasted CruxCoach URL. Returns the
+     * climb uuid to open, or "" when the link is not one of ours or is a
+     * playlist link (playlist import has no screen yet).
+     */
+    fun climbUuidFromLink(url: String): String {
+        val parsed = DeepLinkParser(defaultAngle = { browseAngle() }).parse(url)
+        return (parsed as? DeepLink.Climb)?.climbUuid ?: ""
+    }
+
+    /** The browser's persisted angle, so links and lists resolve at the user's angle. */
+    private fun browseAngle(): Int = platform.keyValues.getString("board_angle")?.toIntOrNull() ?: 40
 
     fun makeLogbookScreen(): LogbookScreenModel =
         LogbookScreenModel(LogbookPresenter(personalRepository, platform.keyValues))
