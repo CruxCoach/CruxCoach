@@ -323,3 +323,13 @@
 "profile_open" = "Mein Nostr-Profil";
 "setter_climb_meta" = "%1$ld° · %2$@ · ★%3$@ · %4$ld Begehungen";
 "setters_open" = "Setter durchsuchen";
+"devcontact_subject" = "Betreff (optional)";
+"devcontact_you" = "Du";
+"devcontact_fetch" = "Auf Antworten prüfen";
+"devcontact_privacy_hint" = "Nachrichten sind Ende-zu-Ende-verschlüsselt und gehen über Nostr. Relays sehen nur, dass jemand dem Maintainer geschrieben hat — nicht wer und nicht was.";
+"devcontact_error_empty" = "Schreib zuerst etwas.";
+"devcontact_error_not_delivered" = "Kein Relay hat die Nachricht angenommen. Sie bleibt hier — versuch es erneut, wenn du online bist.";
+"devcontact_error_fetch" = "Die Relays waren nicht erreichbar.";
+"devcontact_error_send" = "Die Nachricht konnte nicht gesendet werden.";
+"devcontact_open" = "Entwickler kontaktieren";
+"payment_no_wallet_hint" = "Kopiere die Adresse in deine Lightning-Wallet oder nutze den Ko-fi-Link. CruxCoach wickelt selbst keine Zahlungen ab.";

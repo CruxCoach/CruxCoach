@@ -40,6 +40,8 @@ import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
 import com.cruxcoach.app.backup.CruxCoachBackupPayloadStore
 import com.cruxcoach.app.community.SetterDetailPresenter
+import com.cruxcoach.app.messages.DevContactPresenter
+import com.cruxcoach.app.messages.DevContactRepository
 import com.cruxcoach.app.community.SettersListPresenter
 import com.cruxcoach.app.profile.NostrProfileStore
 import com.cruxcoach.app.profile.ProfileLookup
@@ -69,6 +71,7 @@ import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.DataExchangeScreenModel
+import com.cruxcoach.app.ui.DevContactScreenModel
 import com.cruxcoach.app.ui.GeneratorScreenModel
 import com.cruxcoach.app.ui.ProfileScreenModel
 import com.cruxcoach.app.ui.SetterDetailScreenModel
@@ -268,6 +271,33 @@ class AppCore private constructor(
 
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
+
+    /**
+     * Where to send the maintainer a thank-you. Plain properties rather than
+     * the `AppConfig` object itself: Kotlin/Native's Objective-C export
+     * renames SCREAMING_CASE members, and guessing that from a machine
+     * without Xcode has cost this branch two CI rounds already.
+     */
+    val kofiUrl: String = AppConfig.KOFI_URL
+    val maintainerLightningAddress: String = AppConfig.MAINTAINER_LIGHTNING_ADDRESS
+
+    /**
+     * The maintainer conversation: bug reports, feature requests and replies,
+     * as NIP-17 private messages. Same maintainer key as the Android build.
+     */
+    fun makeDevContactScreen(language: String): DevContactScreenModel = DevContactScreenModel(
+        DevContactPresenter(
+            DevContactRepository(
+                database = secureDatabase,
+                relays = RelayClient(platform.webSockets, platform.hashing),
+                hashing = platform.hashing,
+                clock = platform.clock,
+                devPubkey = AppConfig.MAINTAINER_PUBKEY,
+                secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+            ),
+            language,
+        )
+    )
 
     /** Community setters on the active board, most problems first. */
     fun makeSettersScreen(): SettersScreenModel = SettersScreenModel(
