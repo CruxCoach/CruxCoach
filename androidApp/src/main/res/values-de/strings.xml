@@ -935,7 +935,9 @@
     <string name="board_holdsearch_clear">Aufheben</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board-Logbuch</string>
+    <string name="key_management_title">Kontoschlüssel</string>
+    <string name="account_restore_topbar_title">Konto wiederherstellen</string>
+    <string name="board_logbook_title">Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
     <string name="board_logbook_delete_title">%d Logeinträge löschen?</string>
     <string name="board_logbook_delete_message">Alle ausgewählten Logeinträge, auch erfolglose Versuche, werden unwiderruflich gelöscht.</string>
@@ -2570,7 +2572,7 @@
     <string name="ble_mesh_climb">Im Mesh auf dem Board</string>
     <string name="settings_moon_csv_title">MoonBoard-Logbuch importieren</string>
     <string name="settings_moon_csv_desc">Übernimmt dein Logbuch aus der Moon-App oder einer exportierten CSV-Datei. Danach siehst du importierte und nicht zugeordnete Einträge.</string>
-    <string name="moon_csv_title">MoonBoard-Logbuchimport</string>
+    <string name="moon_csv_title">MoonBoard-Import</string>
     <string name="moon_csv_intro">Übernimm deinen vorhandenen MoonBoard-Verlauf in CruxCoach. Die direkte Übertragung auf dem Gerät ist am schnellsten; CSV bleibt als Ausweichweg verfügbar.</string>
     <string name="moon_device_title">Aus der installierten Moon-App übernehmen</string>
     <string name="moon_device_explanation">Android bittet dich einmalig, eine Bedienungshilfe zu aktivieren. Nach dem Start öffnet CruxCoach Moon und liest ausschließlich die sichtbaren Logbook-Beschriftungen der Moon-App auf diesem Gerät. Andere Apps können nicht gelesen werden; dein Moon-Passwort wird nie abgefragt. Am Ende der Übertragung gibt CruxCoach den Bedienungshilfen-Zugriff automatisch wieder frei.</string>

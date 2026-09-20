@@ -118,7 +118,7 @@ fun KeyImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.account_restore_title)) },
+                title = { Text(stringResource(R.string.account_restore_topbar_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))

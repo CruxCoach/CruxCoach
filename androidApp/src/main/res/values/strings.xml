@@ -891,7 +891,9 @@
     <string name="board_holdsearch_clear">Clear</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board logbook</string>
+    <string name="key_management_title">Account key</string>
+    <string name="account_restore_topbar_title">Restore account</string>
+    <string name="board_logbook_title">Logbook</string>
     <string name="board_logbook_selected">%d selected</string>
     <string name="board_logbook_delete_title">Delete %d log entries?</string>
     <string name="board_logbook_delete_message">All selected log entries, including unsuccessful attempts, will be permanently deleted.</string>
@@ -2571,7 +2573,7 @@
     <string name="ble_mesh_climb">On the board via mesh</string>
     <string name="settings_moon_csv_title">Import MoonBoard logbook</string>
     <string name="settings_moon_csv_desc">Imports your logbook from the Moon app or an exported CSV file. Then shows imported and unmatched entries.</string>
-    <string name="moon_csv_title">MoonBoard logbook import</string>
+    <string name="moon_csv_title">MoonBoard import</string>
     <string name="moon_csv_intro">Move your existing MoonBoard history into CruxCoach. The direct on-device transfer is fastest; CSV remains available as a fallback.</string>
     <string name="moon_device_title">Copy from the installed Moon app</string>
     <string name="moon_device_explanation">Android will ask you to enable a one-time accessibility service. After you start the transfer, CruxCoach opens Moon and reads only Moon’s visible Logbook labels on this device. It cannot read other apps and never asks for your Moon password. CruxCoach automatically relinquishes accessibility access when the transfer ends.</string>
