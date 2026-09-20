@@ -339,3 +339,6 @@
 "profile_image_upload_hint" = "Images are uploaded to public Blossom servers and are then readable by anyone who has the link. You can also paste an https link instead.";
 "profile_error_upload" = "The image could not be uploaded.";
 "tour_no_board" = "I have no board here";
+"kilter_pushing" = "Uploading to Kilter…";
+"kilter_upload_wall_hint" = "Log one climb in the Kilter app first — that tells this app which gym, wall and layout your account uses.";
+"kilter_conflict" = "Kilter already has an entry with this id but different content. Nothing was overwritten.";

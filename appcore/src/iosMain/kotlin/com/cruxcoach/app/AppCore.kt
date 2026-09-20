@@ -18,6 +18,7 @@ import com.cruxcoach.app.imports.MoonBoardCsvImporter
 import com.cruxcoach.app.nostr.RelayClient
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterLogImporter
+import com.cruxcoach.app.kilter.KilterUploader
 import com.cruxcoach.app.kilter.KilterTokens
 import com.cruxcoach.app.map.BundledPagesBoardMapSource
 import com.cruxcoach.app.map.MapPresenter
@@ -265,10 +266,12 @@ class AppCore private constructor(
      */
     val kilterScreen: KilterScreenModel by lazy {
         val tokens = KilterTokens(platform.secrets, platform.keyValues, pubkeyHex.take(16))
+        val api = KilterApi(platform.http, platform.clock, tokens)
         KilterScreenModel(
-            KilterApi(platform.http, platform.clock, tokens),
+            api,
             tokens,
             KilterLogImporter(boardRepository, personalRepository),
+            KilterUploader(api, tokens, personalRepository),
         )
     }
 

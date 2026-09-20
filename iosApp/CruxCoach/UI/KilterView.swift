@@ -36,7 +36,27 @@ struct KilterView: View {
                         LabeledContent(LI("kilter_user"), value: String(ui.userUuid.prefix(8)))
                     }
                     Button(LI("kilter_import")) { model.importLogs() }.disabled(ui.busy)
+                    Button(L("kilter_push_label")) { model.pushLogs() }.disabled(ui.busy)
+                    Text(L("kilter_push_desc")).font(.footnote).foregroundStyle(.secondary)
                     Button(LI("kilter_sign_out"), role: .destructive) { model.signOut() }.disabled(ui.busy)
+                }
+                if ui.phase == "pushed" {
+                    Section {
+                        Label(L("kilter_upload_counts", Int(ui.uploaded), Int(ui.pendingUpload)),
+                              systemImage: "arrow.up.circle")
+                            .foregroundStyle(ui.pendingUpload == 0 ? Color.green : .primary)
+                        Text(ui.pendingUpload == 0
+                             ? L("kilter_upload_done")
+                             : L("kilter_upload_pending"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                if ui.missingWallContext {
+                    Section {
+                        Label(L("kilter_upload_wall"), systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                        Text(LI("kilter_upload_wall_hint")).font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
                 if ui.phase == "done" {
                     Section {
@@ -68,7 +88,7 @@ struct KilterView: View {
                 }
             }
             if ui.busy {
-                Section { HStack { ProgressView(); Text(ui.phase == "importing" ? LI("kilter_importing") : LI("kilter_signing_in")) } }
+                Section { HStack { ProgressView(); Text(busyLabel(ui)) } }
             }
             if ui.failure != "none" {
                 Section {
@@ -86,6 +106,7 @@ struct KilterView: View {
         case "offline": return LI("catalogue_offline")
         case "timeout": return LI("kilter_timeout")
         case "notSignedIn": return LI("kilter_session_expired")
+        case "conflict": return LI("kilter_conflict")
         default: return LI("kilter_server_error")
         }
     }
