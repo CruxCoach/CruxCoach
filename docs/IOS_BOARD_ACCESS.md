@@ -4,8 +4,11 @@
 > into the 0.2.3 preparation line or published 0.2.2. Hardware procedures and
 > implementation claims below apply to that experiment. [Current scope](README.md).
 
-Status: **architecture note and feasibility plan, not an implemented iOS
-client.** Platform facts and distribution terms were last checked on
+Status: **architecture note and feasibility plan.** A native iOS client has
+since been implemented on the 0.2.3 line — see [the iOS app](IOS_APP.md) for
+what exists and what it cannot do. This document remains the record of the
+options that were weighed before that, including the web-delivery routes that
+were not taken. Platform facts and distribution terms were last checked on
 2026-08-15 and must be revalidated before committing to a release channel.
 
 ## 1. Non-negotiable product requirement
