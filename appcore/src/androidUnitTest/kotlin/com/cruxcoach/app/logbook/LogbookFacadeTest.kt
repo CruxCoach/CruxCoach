@@ -3,6 +3,7 @@ package com.cruxcoach.app.logbook
 import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,6 +18,12 @@ import kotlinx.datetime.LocalDateTime
 
 /** Pins the Swift-facing mapping: string codes, flattened stats, no nulls. */
 class LogbookFacadeTest {
+    private val serialOwner = SerialDispatcher()
+    private val serial = serialOwner.dispatcher
+
+    @AfterTest
+    fun closeSerialDispatcher() = serialOwner.close()
+
 
     private fun PersonalBoardRepository.seed() {
         insertBid(
@@ -38,7 +45,7 @@ class LogbookFacadeTest {
         val repo = newPersonalRepo().apply { seed() }
         val presenter = LogbookPresenter(
             repo, MapKeyValueStore(mapOf("grade_scale" to "V_SCALE")),
-            CoroutineScope(Dispatchers.Default), today = { LocalDate(2026, 3, 15) },
+            CoroutineScope(serial), today = { LocalDate(2026, 3, 15) },
         )
         val model = LogbookScreenModel(presenter)
         withTimeout(CI_WAIT_MS) { presenter.state.first { it.stats.totalSends == 1 } }
@@ -120,7 +127,7 @@ class LogbookFacadeTest {
         repo.recordClimbHistory("A", "Alpha", 40, 18.0, "kilter", 1, "2026-03-05T10:00", "2026-03-05T10:00")
         val presenter = HistoryPresenter(
             repo, MapKeyValueStore(mapOf("grade_scale" to "FRENCH")),
-            CoroutineScope(Dispatchers.Default),
+            CoroutineScope(serial),
         ) { LocalDateTime(2026, 3, 15, 12, 0) }
         val model = HistoryScreenModel(presenter)
         withTimeout(CI_WAIT_MS) { presenter.state.first { it.entries.size == 1 } }
@@ -144,6 +151,3 @@ class LogbookFacadeTest {
         model.close()
     }
 }
-
-/** Real-time waits: generous so a loaded machine cannot fail an otherwise correct test. */
-private const val CI_WAIT_MS = 30_000L

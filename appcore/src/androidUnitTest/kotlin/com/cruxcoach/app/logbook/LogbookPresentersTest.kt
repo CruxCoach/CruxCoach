@@ -2,6 +2,7 @@ package com.cruxcoach.app.logbook
 
 import com.cruxcoach.app.settings.HistoryRetention
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +16,12 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
 class LogbookPresentersTest {
+    private val serialOwner = SerialDispatcher()
+    private val serial = serialOwner.dispatcher
+
+    @AfterTest
+    fun closeSerialDispatcher() = serialOwner.close()
+
 
     private fun PersonalBoardRepository.send(
         uuid: String, climb: String, at: String, tries: Long = 1, angle: Long = 40,
@@ -42,7 +49,7 @@ class LogbookPresentersTest {
     }
 
     private fun logbook(repo: PersonalBoardRepository) = LogbookPresenter(
-        repo, MapKeyValueStore(), CoroutineScope(Dispatchers.Default), today = { LocalDate(2026, 3, 15) },
+        repo, MapKeyValueStore(), CoroutineScope(serial), today = { LocalDate(2026, 3, 15) },
     )
 
     private suspend fun LogbookPresenter.await(predicate: (LogbookState) -> Boolean) =
@@ -154,7 +161,7 @@ class LogbookPresentersTest {
         record("new", "2026-03-14T10:00")
         record("newest", "2026-03-15T09:00")
         val kv = MapKeyValueStore(mapOf("climb_history_retention_days" to "90", "grade_scale" to "V_SCALE"))
-        val p = HistoryPresenter(repo, kv, CoroutineScope(Dispatchers.Default)) { LocalDateTime(2026, 3, 15, 12, 0) }
+        val p = HistoryPresenter(repo, kv, CoroutineScope(serial)) { LocalDateTime(2026, 3, 15, 12, 0) }
         assertEquals(HistoryRetention.DAYS_90, p.state.value.retention)
         withTimeout(CI_WAIT_MS) { p.state.first { it.entries.size == 4 } }
 
@@ -179,6 +186,3 @@ class LogbookPresentersTest {
         assertEquals(0L, repo.climbHistoryCount())
     }
 }
-
-/** Real-time waits: generous so a loaded machine cannot fail an otherwise correct test. */
-private const val CI_WAIT_MS = 30_000L

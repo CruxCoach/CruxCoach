@@ -77,6 +77,8 @@ class ListDetailScreenState(
     /** manual | afterSend | afterLog */
     val advanceCode: String,
     val defaultRestSeconds: Int,
+    /** Angle a plan step without a pinned angle plays at (the browser's angle). */
+    val defaultAngle: Int,
     val unavailableCount: Int,
     val showRenameDialog: Boolean,
     val renameValue: String,
@@ -174,6 +176,8 @@ class ListDetailScreenModel(
     private val presenter: ListDetailPresenter,
     /** "FRENCH" or "V_SCALE", as `SettingsModel.gradeScale` spells it. */
     gradeScale: String,
+    /** Same angle the browser and the presenter resolve catalogue rows at. */
+    private val defaultAngle: Int = 40,
 ) {
     private val scale = if (gradeScale == "V_SCALE") GradeScale.V_SCALE else GradeScale.FRENCH
 
@@ -235,6 +239,7 @@ class ListDetailScreenModel(
         orderCode = ListCodes.order(state.playbackOrder),
         advanceCode = ListCodes.advance(state.playbackAdvance),
         defaultRestSeconds = state.playbackRestSeconds.toInt(),
+        defaultAngle = defaultAngle,
         unavailableCount = state.unavailableCount,
         showRenameDialog = state.showRenameDialog,
         renameValue = state.renameValue,
