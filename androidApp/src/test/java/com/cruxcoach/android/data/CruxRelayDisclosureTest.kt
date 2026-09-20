@@ -131,6 +131,8 @@ class CruxRelayDisclosureTest {
 
     @Test
     fun `the sharing switch is the consent, starts the transport and off keeps it off`() = runTest {
+        org.robolectric.Shadows.shadowOf(context as android.app.Application)
+            .grantPermissions(Manifest.permission.BLUETOOTH_ADVERTISE)
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
         val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
@@ -154,6 +156,10 @@ class CruxRelayDisclosureTest {
         every { advertiser.startRelayAdvertising() } returns "started"
         coEvery { advertiser.awaitRelayAdvertisingStart() } returns
             AdvertisingSetCallback.ADVERTISE_SUCCESS
+        var adapterName = "Test phone"
+        val adapter = mockk<BluetoothAdapter>(relaxed = true)
+        every { adapter.name } answers { adapterName }
+        every { adapter.setName(any()) } answers { adapterName = firstArg(); true }
         val manager = CruxRelayManager(
             context = context,
             relayServer = server,
@@ -162,6 +168,7 @@ class CruxRelayDisclosureTest {
             projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
             userPreferences = preferences,
             scope = backgroundScope,
+            adapterProvider = { adapter },
         )
         advanceUntilIdle()
         // Sharing is off, so nothing starts on its own and no dialog is raised.
