@@ -410,21 +410,21 @@ class DataExchangeViewModel @Inject constructor(
 
                 val parts = mutableListOf<String>()
                 if (result.profileImported) parts.add(context.getString(R.string.import_result_profile))
-                if (result.assessments > 0) parts.add(context.getString(R.string.import_result_assessments, result.assessments))
-                if (result.bodyStats > 0) parts.add(context.getString(R.string.import_result_body_stats, result.bodyStats))
-                if (result.workoutLogs > 0) parts.add(context.getString(R.string.import_result_workouts, result.workoutLogs))
-                if (result.climbLogs > 0) parts.add(context.getString(R.string.import_result_climbs, result.climbLogs))
-                if (result.trainingPlans > 0) parts.add(context.getString(R.string.import_result_plans, result.trainingPlans))
-                if (result.boardAscents > 0) parts.add(context.getString(R.string.import_result_board_sends, result.boardAscents))
-                if (result.boardBids > 0) parts.add(context.getString(R.string.import_result_board_bids, result.boardBids))
-                if (result.boardSessions > 0) parts.add(context.getString(R.string.import_result_board_sessions, result.boardSessions))
-                if (result.climbLists > 0) parts.add(context.getString(R.string.import_result_lists, result.climbLists))
-                if (result.ownClimbs > 0) parts.add(context.getString(R.string.import_result_own_climbs, result.ownClimbs))
-                if (result.climbNotes > 0) parts.add(context.getString(R.string.import_result_notes, result.climbNotes))
+                if (result.assessments > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_assessments, result.assessments.toInt(), result.assessments))
+                if (result.bodyStats > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_body_stats, result.bodyStats.toInt(), result.bodyStats))
+                if (result.workoutLogs > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_workouts, result.workoutLogs.toInt(), result.workoutLogs))
+                if (result.climbLogs > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_climbs, result.climbLogs.toInt(), result.climbLogs))
+                if (result.trainingPlans > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_plans, result.trainingPlans.toInt(), result.trainingPlans))
+                if (result.boardAscents > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_board_sends, result.boardAscents.toInt(), result.boardAscents))
+                if (result.boardBids > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_board_bids, result.boardBids.toInt(), result.boardBids))
+                if (result.boardSessions > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_board_sessions, result.boardSessions.toInt(), result.boardSessions))
+                if (result.climbLists > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_lists, result.climbLists.toInt(), result.climbLists))
+                if (result.ownClimbs > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_own_climbs, result.ownClimbs.toInt(), result.ownClimbs))
+                if (result.climbNotes > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_notes, result.climbNotes.toInt(), result.climbNotes))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val dupNote = if (result.skippedDuplicates > 0)
-                    " " + context.getString(R.string.import_result_duplicates_skipped, result.skippedDuplicates) else ""
+                    " " + context.resources.getQuantityString(R.plurals.import_result_duplicates_skipped, result.skippedDuplicates, result.skippedDuplicates) else ""
 
                 _state.update { it.copy(
                     isImporting = false,

@@ -1750,19 +1750,52 @@
     <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
     <string name="import_no_data">Keine Daten gefunden</string>
     <string name="import_result_profile">Profil</string>
-    <string name="import_result_assessments">%1$d Assessments</string>
-    <string name="import_result_body_stats">%1$d Körperdaten</string>
-    <string name="import_result_workouts">%1$d Workouts</string>
-    <string name="import_result_climbs">%1$d Boulder</string>
-    <string name="import_result_plans">%1$d Trainingspläne</string>
-    <string name="import_result_board_sends">%1$d Board-Sends</string>
-    <string name="import_result_board_bids">%1$d Board-Versuche</string>
-    <string name="import_result_board_sessions">%1$d Board-Sessions</string>
-    <string name="import_result_lists">%1$d Listen</string>
-    <string name="import_result_own_climbs">%1$d eigene Climbs</string>
+    <plurals name="import_result_assessments">
+        <item quantity="one">%1$d Assessment</item>
+        <item quantity="other">%1$d Assessments</item>
+    </plurals>
+    <plurals name="import_result_body_stats">
+        <item quantity="one">%1$d Körperdatensatz</item>
+        <item quantity="other">%1$d Körperdaten</item>
+    </plurals>
+    <plurals name="import_result_workouts">
+        <item quantity="one">%1$d Workout</item>
+        <item quantity="other">%1$d Workouts</item>
+    </plurals>
+    <plurals name="import_result_climbs">
+        <item quantity="one">%1$d Boulder</item>
+        <item quantity="other">%1$d Boulder</item>
+    </plurals>
+    <plurals name="import_result_plans">
+        <item quantity="one">%1$d Trainingsplan</item>
+        <item quantity="other">%1$d Trainingspläne</item>
+    </plurals>
+    <plurals name="import_result_board_sends">
+        <item quantity="one">%1$d Board-Send</item>
+        <item quantity="other">%1$d Board-Sends</item>
+    </plurals>
+    <plurals name="import_result_board_bids">
+        <item quantity="one">%1$d Board-Versuch</item>
+        <item quantity="other">%1$d Board-Versuche</item>
+    </plurals>
+    <plurals name="import_result_board_sessions">
+        <item quantity="one">%1$d Board-Session</item>
+        <item quantity="other">%1$d Board-Sessions</item>
+    </plurals>
+    <plurals name="import_result_lists">
+        <item quantity="one">%1$d Liste</item>
+        <item quantity="other">%1$d Listen</item>
+    </plurals>
+    <plurals name="import_result_own_climbs">
+        <item quantity="one">%1$d eigener Climb</item>
+        <item quantity="other">%1$d eigene Climbs</item>
+    </plurals>
     <string name="import_result_no_data">Keine Daten</string>
     <string name="import_result_summary">Importiert: %1$s</string>
-    <string name="import_result_duplicates_skipped">(%1$d Duplikate übersprungen)</string>
+    <plurals name="import_result_duplicates_skipped">
+        <item quantity="one">(%1$d Duplikat übersprungen)</item>
+        <item quantity="other">(%1$d Duplikate übersprungen)</item>
+    </plurals>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
     <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>
@@ -2700,7 +2733,10 @@
     <string name="board_layers_open">Board-Ebenen öffnen</string>
     <string name="board_layer_group_owns_board">Diese geteilte Session steuert die Wand. Layer können geändert werden, wenn keine geteilte Session sie steuert – auch in einer lokalen, nicht beitretbaren Playlist.</string>
     <string name="export_category_climb_notes">Private Climb-Notizen</string>
-    <string name="import_result_notes">%1$d Climb-Notizen</string>
+    <plurals name="import_result_notes">
+        <item quantity="one">%1$d Climb-Notiz</item>
+        <item quantity="other">%1$d Climb-Notizen</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Auf diesem Board liegt noch kein Climb, also hat der Würfel nichts zum Abgleichen. Füge zuerst einen Climb hinzu.</string>
     <string name="board_layer_color_green">Grün</string>
     <string name="board_layer_color_cyan">Cyan</string>

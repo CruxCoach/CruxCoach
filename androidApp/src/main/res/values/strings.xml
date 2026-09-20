@@ -1707,19 +1707,52 @@
     <string name="import_duplicate_hint">Duplicates are automatically skipped</string>
     <string name="import_no_data">No data found</string>
     <string name="import_result_profile">Profile</string>
-    <string name="import_result_assessments">%1$d assessments</string>
-    <string name="import_result_body_stats">%1$d body stats</string>
-    <string name="import_result_workouts">%1$d workouts</string>
-    <string name="import_result_climbs">%1$d climbs</string>
-    <string name="import_result_plans">%1$d training plans</string>
-    <string name="import_result_board_sends">%1$d board sends</string>
-    <string name="import_result_board_bids">%1$d board bids</string>
-    <string name="import_result_board_sessions">%1$d board sessions</string>
-    <string name="import_result_lists">%1$d lists</string>
-    <string name="import_result_own_climbs">%1$d own climbs</string>
+    <plurals name="import_result_assessments">
+        <item quantity="one">%1$d assessment</item>
+        <item quantity="other">%1$d assessments</item>
+    </plurals>
+    <plurals name="import_result_body_stats">
+        <item quantity="one">%1$d body stat</item>
+        <item quantity="other">%1$d body stats</item>
+    </plurals>
+    <plurals name="import_result_workouts">
+        <item quantity="one">%1$d workout</item>
+        <item quantity="other">%1$d workouts</item>
+    </plurals>
+    <plurals name="import_result_climbs">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="import_result_plans">
+        <item quantity="one">%1$d training plan</item>
+        <item quantity="other">%1$d training plans</item>
+    </plurals>
+    <plurals name="import_result_board_sends">
+        <item quantity="one">%1$d board send</item>
+        <item quantity="other">%1$d board sends</item>
+    </plurals>
+    <plurals name="import_result_board_bids">
+        <item quantity="one">%1$d board attempt</item>
+        <item quantity="other">%1$d board attempts</item>
+    </plurals>
+    <plurals name="import_result_board_sessions">
+        <item quantity="one">%1$d board session</item>
+        <item quantity="other">%1$d board sessions</item>
+    </plurals>
+    <plurals name="import_result_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="import_result_own_climbs">
+        <item quantity="one">%1$d own climb</item>
+        <item quantity="other">%1$d own climbs</item>
+    </plurals>
     <string name="import_result_no_data">No data</string>
     <string name="import_result_summary">Imported: %1$s</string>
-    <string name="import_result_duplicates_skipped">(%1$d duplicates skipped)</string>
+    <plurals name="import_result_duplicates_skipped">
+        <item quantity="one">(%1$d duplicate skipped)</item>
+        <item quantity="other">(%1$d duplicates skipped)</item>
+    </plurals>
     <string name="import_select_categories">Select categories to import:</string>
     <string name="import_pubkey_mismatch_title">Different CruxCoach Account</string>
     <string name="import_pubkey_mismatch_body">This backup was created with a different CruxCoach account (%1$s). The data will be merged into your current account. This is the right path if you lost your previous nsec key or are deliberately migrating accounts. Note: any climbs you import and later republish to Kilter will appear under your current Kilter account.</string>
@@ -2701,7 +2734,10 @@
     <string name="board_layers_open">Open board layers</string>
     <string name="board_layer_group_owns_board">This shared session controls the wall. Layer changes are available when no shared session controls it, including in a local, non-joinable playlist.</string>
     <string name="export_category_climb_notes">Private climb notes</string>
-    <string name="import_result_notes">%1$d climb notes</string>
+    <plurals name="import_result_notes">
+        <item quantity="one">%1$d climb note</item>
+        <item quantity="other">%1$d climb notes</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Nobody has put a climb on this board yet, so the dice has nothing to match. Add one climb first.</string>
     <string name="board_layer_color_green">Green</string>
     <string name="board_layer_color_cyan">Cyan</string>
