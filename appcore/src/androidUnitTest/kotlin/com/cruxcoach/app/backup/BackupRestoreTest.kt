@@ -42,6 +42,7 @@ class BackupRestoreTest {
     private val blossom = BlossomClient(http, JvmHashing, clock, signer)
     private val repository = BackupRepository(
         hashing = JvmHashing,
+        nip44 = com.cruxcoach.app.nostr.KotlinNip44Cipher(JvmHashing),
         aead = JvmAead,
         gzip = JvmGzip,
         clock = clock,

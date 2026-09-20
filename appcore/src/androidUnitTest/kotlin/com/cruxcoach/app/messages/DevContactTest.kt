@@ -2,6 +2,7 @@ package com.cruxcoach.app.messages
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.app.nostr.KIND_GIFT_WRAP
+import com.cruxcoach.app.nostr.KotlinNip44Cipher
 import com.cruxcoach.app.nostr.Nip17
 import com.cruxcoach.app.nostr.NostrEvent
 import com.cruxcoach.app.nostr.NostrKeys
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * would show is asserted on the stored rows.
  */
 class DevContactTest {
+    private val cipher = KotlinNip44Cipher(JvmHashing)
     private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         .also { SecureDatabase.Schema.create(it) }
     private val database = SecureDatabase(driver)
@@ -80,6 +82,7 @@ class DevContactTest {
         database = database,
         relays = RelayClient(relay, JvmHashing, listOf("wss://relay.test")),
         hashing = JvmHashing,
+        nip44 = KotlinNip44Cipher(JvmHashing),
         clock = clock,
         devPubkey = devPubkey,
         secretKeyProvider = { userSecret.copyOf() },
@@ -95,7 +98,7 @@ class DevContactTest {
         assertEquals(2, relay.published.size)
         assertTrue(relay.published.all { it.kind == KIND_GIFT_WRAP })
         val toDev = relay.published.first { it.firstTagValue("p") == devPubkey }
-        val read = Nip17.unwrap(JvmHashing, devSecret, toDev)!!
+        val read = Nip17.unwrap(JvmHashing, cipher, devSecret, toDev)!!
         assertEquals("[BUG] the logbook loses my bids", read.content)
         assertEquals(userPubkey, read.pubkey)
         assertTrue(read.tags.any { it.getOrNull(1) == "bug-report" })
@@ -127,7 +130,7 @@ class DevContactTest {
         // The maintainer replies, quoting the wrap id they received.
         val theirCopy = relay.published.first { it.firstTagValue("p") == devPubkey }
         val (_, replyWraps) = Nip17.wrap(
-            JvmHashing, devSecret, userPubkey, "fixed in the next build",
+            JvmHashing, cipher, devSecret, userPubkey, "fixed in the next build",
             tags = listOf(
                 listOf("L", DevContactRepository.TYPE_NAMESPACE),
                 listOf("l", "bug-report", DevContactRepository.TYPE_NAMESPACE),
@@ -154,7 +157,7 @@ class DevContactTest {
         val repo = repository(relay)
         val strangerSecret = NostrKeys.generateSecretKey(JvmHashing)!!
         val (_, wraps) = Nip17.wrap(
-            JvmHashing, strangerSecret, userPubkey, "buy my coin",
+            JvmHashing, cipher, strangerSecret, userPubkey, "buy my coin",
             createdAt = clock.epochSeconds(),
         )!!
         relay.serve += wraps.first { it.firstTagValue("p") == userPubkey }
@@ -168,7 +171,7 @@ class DevContactTest {
         val relay = LoopbackRelay()
         val repo = repository(relay)
         val (_, wraps) = Nip17.wrap(
-            JvmHashing, devSecret, userPubkey, "hello",
+            JvmHashing, cipher, devSecret, userPubkey, "hello",
             createdAt = clock.epochSeconds(),
         )!!
         relay.serve += wraps.first { it.firstTagValue("p") == userPubkey }
@@ -181,6 +184,7 @@ class DevContactTest {
 
 /** The announcement lane of the same private channel. */
 class AnnouncementIngestTest {
+    private val cipher = KotlinNip44Cipher(JvmHashing)
     private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         .also { SecureDatabase.Schema.create(it) }
     private val database = SecureDatabase(driver)
@@ -219,6 +223,7 @@ class AnnouncementIngestTest {
         database = database,
         relays = RelayClient(relay, JvmHashing, listOf("wss://relay.test")),
         hashing = JvmHashing,
+        nip44 = KotlinNip44Cipher(JvmHashing),
         clock = clock,
         devPubkey = devPubkey,
         secretKeyProvider = { userSecret.copyOf() },
@@ -229,7 +234,7 @@ class AnnouncementIngestTest {
         val relay = ServingRelay()
         val repo = repository(relay)
         val (_, wraps) = Nip17.wrap(
-            JvmHashing, devSecret, userPubkey,
+            JvmHashing, cipher, devSecret, userPubkey,
             "🇬🇧 0.2.3 is out.\n\n🇩🇪 0.2.3 ist da.",
             tags = listOf(
                 listOf("L", com.cruxcoach.app.AppConfig.ANNOUNCE_NAMESPACE),

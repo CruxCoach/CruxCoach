@@ -93,6 +93,7 @@ class RelayBackupEventSourceTest {
 
     private fun repository(network: FakeRelayNetwork, state: BackupState) = BackupRepository(
         hashing = JvmHashing,
+        nip44 = com.cruxcoach.app.nostr.KotlinNip44Cipher(JvmHashing),
         aead = JvmAead,
         gzip = JvmGzip,
         clock = clock,

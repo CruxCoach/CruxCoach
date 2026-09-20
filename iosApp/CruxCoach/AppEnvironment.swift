@@ -18,7 +18,8 @@ final class AppEnvironment {
             aead: CryptoKitAead(),
             secrets: KeychainSecretStore(),
             zstd: ZstdFileDecompressor(),
-            deviceAuth: BiometricAuthenticator()
+            deviceAuth: BiometricAuthenticator(),
+            nip44: LibraryNip44Cipher()
         )
         if let core = result.core {
             core.startConnectivity()
