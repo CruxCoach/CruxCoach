@@ -278,3 +278,9 @@
 "onboarding_finish" = "Start climbing";
 "onboarding_back" = "Back";
 "onboarding_skip" = "Skip";
+"community_title" = "Community problems";
+"community_hint" = "Problems other CruxCoach users published. iOS cannot keep a subscription running in the background, so you fetch them when you want them.";
+"community_fetch" = "Fetch new problems";
+"community_fetching" = "Fetching…";
+"community_result" = "%1$ld new of %2$ld received";
+"community_failed" = "Could not reach the relays.";
