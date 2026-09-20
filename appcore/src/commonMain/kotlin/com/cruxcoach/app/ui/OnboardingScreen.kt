@@ -86,7 +86,9 @@ class OnboardingScreenModel(
     }
 
     fun toggleDownloadBrand(brandWire: String) {
-        val brand = BoardBrand.fromWireOrNull(brandWire)?.takeIf { it.isInteractive } ?: return
+        // Only brands this app can actually install a catalogue for: offering
+        // Quantum here would promise a download that reports UNSUPPORTED.
+        val brand = downloadable.firstOrNull { it.wireValue == brandWire } ?: return
         val current = selection.value
         selection.value = if (brand.wireValue in current) current - brand.wireValue else current + brand.wireValue
     }

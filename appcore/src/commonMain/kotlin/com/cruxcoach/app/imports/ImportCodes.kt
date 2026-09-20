@@ -44,7 +44,33 @@ object ImportCodes {
     const val ROW_UNKNOWN_LAYOUT = "rowUnknownLayout"
     const val ROW_NO_HOLDS = "rowNoHolds"
     const val ROW_WRITE_FAILED = "rowWriteFailed"
+    const val ROW_NAME_TOO_LONG = "rowNameTooLong"
+    const val ROW_TOO_MANY_HOLDS = "rowTooManyHolds"
+
+    // ── Progress phases ────────────────────────────────────────────────
+    const val PHASE_IDLE = "idle"
+    const val PHASE_PARSING = "parsing"
+    const val PHASE_ROWS = "rows"
+    const val PHASE_CLIMBS = "climbs"
+    const val PHASE_ASCENTS = "ascents"
+    const val PHASE_BIDS = "bids"
+    const val PHASE_LISTS = "lists"
+    const val PHASE_DONE = "done"
+
+    // ── Entities a per-format result can count ─────────────────────────
+    const val ENTITY_ASCENTS = "ascents"
+    const val ENTITY_BIDS = "bids"
+    const val ENTITY_LISTS = "lists"
+    const val ENTITY_CLIMBS = "climbs"
 }
+
+/** Per-entity counters, for formats that carry more than one kind of row. */
+class ImportEntityCount(
+    val entityCode: String,
+    val imported: Int,
+    val skippedDuplicates: Int,
+    val rejected: Int,
+)
 
 /**
  * One rejected row. [code] is an `ImportCodes.ROW_*` value; [row] is the
@@ -75,6 +101,8 @@ class FileImportResult(
     val rejections: List<ImportRejection> = emptyList(),
     /** Distinct labels the catalogue could not resolve. Bounded. */
     val unresolvedLabels: List<String> = emptyList(),
+    /** Empty for single-entity formats. */
+    val entities: List<ImportEntityCount> = emptyList(),
 ) {
     val accepted: Boolean get() = failureCode == ImportCodes.OK
 

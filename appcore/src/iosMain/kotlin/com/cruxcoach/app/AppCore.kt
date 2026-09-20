@@ -9,6 +9,8 @@ import com.cruxcoach.app.identity.LocalIdentity
 import com.cruxcoach.app.kilter.KilterApi
 import com.cruxcoach.app.kilter.KilterLogImporter
 import com.cruxcoach.app.kilter.KilterTokens
+import com.cruxcoach.app.map.BundledPagesBoardMapSource
+import com.cruxcoach.app.map.MapPresenter
 import com.cruxcoach.app.logbook.HistoryPresenter
 import com.cruxcoach.app.logbook.LogAttemptPresenter
 import com.cruxcoach.app.logbook.LogbookPresenter
@@ -46,6 +48,7 @@ import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
+import com.cruxcoach.app.ui.MapScreenModel
 import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
 import com.cruxcoach.app.ui.PlayerScreenModel
@@ -55,6 +58,7 @@ import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
 import kotlinx.coroutines.MainScope
 import com.cruxcoach.data.BoardDatabaseHandle
+import com.cruxcoach.data.repository.BoardLocationRepositoryImpl
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardRepositoryImpl
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -265,6 +269,18 @@ class AppCore private constructor(
             )
         )
     }
+
+    /**
+     * Board map. [boardMapDirectory] is the absolute path of the bundled
+     * `board_map` folder, which only Swift can resolve.
+     */
+    fun makeMapScreen(boardMapDirectory: String): MapScreenModel = MapScreenModel(
+        MapPresenter(
+            BoardLocationRepositoryImpl(boardDb.database),
+            BundledPagesBoardMapSource(platform.files, boardMapDirectory),
+            platform.keyValues,
+        )
+    )
 
     fun makeLogbookScreen(): LogbookScreenModel =
         LogbookScreenModel(LogbookPresenter(personalRepository, platform.keyValues))
