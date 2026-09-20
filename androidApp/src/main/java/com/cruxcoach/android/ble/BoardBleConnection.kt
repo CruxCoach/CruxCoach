@@ -436,7 +436,7 @@ class BoardBleConnection(
         const val QUANTUM_REFRESH_INTERVAL_MS = 10_000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
         /** Long enough to ride out a brief stack hiccup, short enough to notice a dead link. */
-        const val LINK_WATCHDOG_INTERVAL_MS = 15_000L
+        const val LINK_WATCHDOG_INTERVAL_MS = 8_000L
 
         // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
         // routinely fail a first direct connect with a transient status 133;
@@ -542,7 +542,7 @@ class BoardBleConnection(
         linkWatchdogJob?.cancel()
         linkWatchdogJob = scope.launch {
             // Two strikes: a single miss can be a momentary stack inconsistency, and dropping a
-            // healthy link would be worse than showing a stale one for another 15 seconds.
+            // healthy link would be worse than showing a stale one for another 8 seconds.
             var misses = 0
             while (true) {
                 delay(LINK_WATCHDOG_INTERVAL_MS)
@@ -550,7 +550,15 @@ class BoardBleConnection(
                 if (currentBoard?.address != address) return@launch
                 val stackConnected = runCatching {
                     val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-                    manager.getConnectedDevices(BluetoothProfile.GATT).any { it.address == address }
+                    // Two independent signals: a relay operator that simply disappears leaves one
+                    // of them stale on some stacks, so a link counts as alive only if both agree.
+                    val listed = manager.getConnectedDevices(BluetoothProfile.GATT)
+                        .any { it.address == address }
+                    val reported = manager.adapter?.getRemoteDevice(address)?.let { device ->
+                        manager.getConnectionState(device, BluetoothProfile.GATT) ==
+                            BluetoothProfile.STATE_CONNECTED
+                    } ?: false
+                    listed && reported
                 }.getOrElse { return@launch }
                 misses = if (stackConnected) 0 else misses + 1
                 if (misses >= 2) {
