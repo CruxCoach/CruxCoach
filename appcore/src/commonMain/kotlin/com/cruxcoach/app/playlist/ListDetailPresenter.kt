@@ -98,9 +98,7 @@ class ListDetailPresenter(
 
     private suspend fun load() {
         val angle = defaultAngle()
-        // A settings edit that happens while this read is in flight must win: the
-        // row we are about to read predates it.
-        val settingsAtStart = settingsRevision
+
         val loaded = withContext(ioDispatcher) {
             val list = personalBoardRepo.getClimbListById(listId)
             val entries = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
@@ -136,9 +134,12 @@ class ListDetailPresenter(
                     )
                 },
                 hasPlaybackPlan = loaded.steps.isNotEmpty(),
-                playbackOrder = if (settingsRevision == settingsAtStart) list.playbackOrder else it.playbackOrder,
-                playbackAdvance = if (settingsRevision == settingsAtStart) list.playbackAdvance else it.playbackAdvance,
-                playbackRestSeconds = if (settingsRevision == settingsAtStart) list.playbackRestSeconds else it.playbackRestSeconds,
+                // While a settings write is queued or running, the row is older
+                // than what the user just chose: keep the state's values, or the
+                // toggle visibly flips back.
+                playbackOrder = if (pendingSettingsWrites == 0) list.playbackOrder else it.playbackOrder,
+                playbackAdvance = if (pendingSettingsWrites == 0) list.playbackAdvance else it.playbackAdvance,
+                playbackRestSeconds = if (pendingSettingsWrites == 0) list.playbackRestSeconds else it.playbackRestSeconds,
                 unavailableCount = members.count { m -> m.climb == null },
                 error = ListDetailError.NONE,
             )
@@ -188,8 +189,8 @@ class ListDetailPresenter(
 
     fun setPlaybackRestSeconds(seconds: Long) = savePlayback(restSeconds = seconds.coerceIn(0L, MAX_REST_SECONDS))
 
-    /** Bumped by every settings edit, so an in-flight [load] cannot undo one. */
-    private var settingsRevision = 0
+    /** Settings writes queued or running; a [load] must not overwrite them. */
+    private var pendingSettingsWrites = 0
 
     private fun savePlayback(
         order: ListPlaybackOrder? = null,
@@ -199,7 +200,7 @@ class ListDetailPresenter(
         // Apply to state first: the three settings are independent controls, and a
         // second change must not be computed from a snapshot the first one already
         // superseded (it would silently write the old value back).
-        settingsRevision++
+        pendingSettingsWrites++
         var next = Triple(ListPlaybackOrder.LIST, ListPlaybackAdvance.MANUAL, 0L)
         _state.update { s ->
             next = Triple(
@@ -215,7 +216,11 @@ class ListDetailPresenter(
         // back over the user's change.
         val (order0, advance0, rest0) = next
         mutate(ListDetailError.EDIT_FAILED, reload = false) {
-            personalBoardRepo.updatePlaybackSettings(listId, order0, advance0, rest0)
+            try {
+                personalBoardRepo.updatePlaybackSettings(listId, order0, advance0, rest0)
+            } finally {
+                pendingSettingsWrites--
+            }
         }
     }
 
