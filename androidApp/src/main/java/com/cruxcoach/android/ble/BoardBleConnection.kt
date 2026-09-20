@@ -511,6 +511,15 @@ class BoardBleConnection(
 
     private var linkWatchdogJob: Job? = null
 
+    /** The GATT whose services are being re-read after onServiceChanged, if any. */
+    @Volatile private var serviceRecheckGatt: BluetoothGatt? = null
+
+    private fun dropAfterServiceLoss(detail: String) {
+        Log.w(TAG, "Board service gone from a live link ($detail) — disconnecting")
+        disconnect()
+        onRestartScannersAfterConnect?.invoke()
+    }
+
     // Some stacks never deliver STATE_DISCONNECTED when the adapter is switched off. The link
     // then stayed "connected" on every screen and sends failed silently; retire it ourselves.
     private val adapterStateReceiver = object : BroadcastReceiver() {
@@ -1065,7 +1074,53 @@ class BoardBleConnection(
         }
 
         @SuppressLint("MissingPermission")
+        /**
+         * The remote GATT table changed under a live link.
+         *
+         * A real board never does this; a CruxRelay phone does exactly this when its owner
+         * stops sharing. The relay closes its GATT server, but the radio link between the two
+         * phones survives — cancelConnection() from the server side does not drop a link the
+         * other phone opened — so no disconnect ever arrives and the link watchdog, which
+         * looks at the link, sees nothing wrong. The guest stayed "connected" to a service
+         * that no longer existed. Look again, and leave if the board service is gone.
+         */
+        override fun onServiceChanged(gatt: BluetoothGatt) {
+            if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+            if (_connectionState.value != ConnectionState.CONNECTED) return
+            Log.i(TAG, "onServiceChanged — re-checking the board service")
+            serviceRecheckGatt = gatt
+            val queued = try {
+                gatt.discoverServices()
+            } catch (e: SecurityException) {
+                false
+            }
+            if (!queued) {
+                serviceRecheckGatt = null
+                dropAfterServiceLoss("rediscovery could not be queued")
+            }
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (serviceRecheckGatt === gatt) {
+                serviceRecheckGatt = null
+                if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+                val stillThere = status == BluetoothGatt.GATT_SUCCESS && (
+                    gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                        ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR) != null ||
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE) != null ||
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null
+                    )
+                if (stillThere) {
+                    Log.i(TAG, "Service change re-check: board service still present")
+                    // Rediscovery invalidates the old characteristic objects.
+                    gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                        ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
+                        ?.let { writeCharacteristic = it }
+                } else {
+                    dropAfterServiceLoss("status=$status")
+                }
+                return
+            }
             if (!serviceDiscoveryCompletionAllowed(
                     connecting = _connectionState.value == ConnectionState.CONNECTING,
                     currentGattMatches = this@BoardBleConnection.gatt === gatt,
