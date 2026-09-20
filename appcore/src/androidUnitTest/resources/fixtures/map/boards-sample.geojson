@@ -1,0 +1,63 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [13.4000, 52.5000] },
+      "properties": {
+        "name": "  Boulderwelt Berlin  ",
+        "country": "de",
+        "city": "Berlin",
+        "city_nearest_de": "Berlin",
+        "website": "https://boulderwelt.example",
+        "wellpass": true,
+        "boards": [
+          {
+            "board": "kilter",
+            "address": "Musterstrasse 1",
+            "instagram": "boulderwelt",
+            "walls": [
+              { "layout": "Original", "size_label": "12x12", "size_id": 10, "adjustable": true, "wall_name": "Main" },
+              { "layout": "Homewall", "size_label": "10x10", "size_id": 21, "adjustable": false, "angle": 40 }
+            ]
+          },
+          {
+            "board": "moonboard",
+            "variant": "mb2016",
+            "commercial": true,
+            "angle": 40,
+            "led": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [11.5, 48.1] },
+      "properties": {
+        "name": "Private Moon",
+        "country": "DEU",
+        "boards": [
+          { "board": "moonboard", "variant": "mb2019-masters", "commercial": false, "led": false },
+          { "board": "tension" },
+          { "board": "not-a-board" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [1.0, 2.0] },
+      "properties": { "name": "   ", "country": "AT", "boards": [ { "board": "kilter" } ] }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [1.0] },
+      "properties": { "name": "Broken geometry", "country": "AT", "boards": [ { "board": "kilter" } ] }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [7.0, 8.0] },
+      "properties": { "name": "Kilter without walls", "country": "CH", "boards": [ { "board": "kilter" } ] }
+    }
+  ]
+}
