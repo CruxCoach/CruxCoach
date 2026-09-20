@@ -98,6 +98,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and settings as direct icons.
 - Closing the climb search with its "clear search" button really clears the
   query instead of leaving an invisible filter on the list.
+- Switching Bluetooth off while a board is connected now ends the connection
+  in the app too, instead of still showing the board as connected.
+- Shorter top bar titles (Logbook, Editor, Account key) so they no longer wrap
+  next to the action icons.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer

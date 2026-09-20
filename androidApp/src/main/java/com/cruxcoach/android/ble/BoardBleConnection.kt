@@ -2,7 +2,10 @@ package com.cruxcoach.android.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -503,6 +506,27 @@ class BoardBleConnection(
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // Some stacks never deliver STATE_DISCONNECTED when the adapter is switched off. The link
+    // then stayed "connected" on every screen and sends failed silently; retire it ourselves.
+    private val adapterStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+            if (state == BluetoothAdapter.STATE_OFF &&
+                _connectionState.value != ConnectionState.DISCONNECTED
+            ) {
+                Log.w(TAG, "Bluetooth adapter turned off while connected; disconnecting")
+                disconnect()
+            }
+        }
+    }
+
+    init {
+        runCatching {
+            context.registerReceiver(adapterStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        }
+    }
     private var disconnectJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var closeSafetyJob: Job? = null
