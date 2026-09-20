@@ -1417,6 +1417,7 @@
     <string name="board_list_empty_message">Add climbs from the browser</string>
     <string name="board_list_empty_title">List is empty</string>
     <string name="board_logbook_attempts">Total attempts</string>
+    <string name="board_logbook_select_entry">Select %1$s</string>
     <string name="board_logbook_filters">Filter logbook</string>
     <string name="board_logbook_filter_outcome">Result</string>
     <string name="board_logbook_filter_board">Board</string>

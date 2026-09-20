@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
@@ -49,6 +51,8 @@ internal fun AscentCard(
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
     } ?: "?"
 
+    val selectLabel = stringResource(R.string.board_logbook_select_entry, ascent.climbName)
+
     val containerColor = if (isSelected) {
         OrangeAccent.copy(alpha = 0.15f)
     } else {
@@ -71,7 +75,7 @@ internal fun AscentCard(
                 checked = isSelected,
                 onCheckedChange = { onToggleSelect() },
                 colors = CheckboxDefaults.colors(checkedColor = OrangeAccent),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(36.dp).semantics { contentDescription = selectLabel }
             )
             Spacer(modifier = Modifier.width(8.dp))
 

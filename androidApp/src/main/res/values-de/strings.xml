@@ -241,7 +241,7 @@
     <string name="onboarding_board_setup_title">Climbs offline verfügbar machen</string>
     <string name="onboarding_board_setup_subtitle">CruxCoach lädt die öffentlichen Kataloge einmal herunter. Danach funktionieren Browsen und Board-Steuerung ohne Internet. Du kannst währenddessen fortfahren.</string>
     <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
-    <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
+    <string name="onboarding_kilter_title">Kilter-Logbuch importieren</string>
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
     <string name="onboarding_kilter_logged_in">Angemeldet als %s</string>
@@ -1460,11 +1460,12 @@
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>
     <string name="board_logbook_attempts">Versuche gesamt</string>
-    <string name="board_logbook_filters">Logbook filtern</string>
+    <string name="board_logbook_select_entry">%1$s auswählen</string>
+    <string name="board_logbook_filters">Logbuch filtern</string>
     <string name="board_logbook_filter_outcome">Ergebnis</string>
     <string name="board_logbook_filter_board">Board</string>
     <string name="board_logbook_filter_angle">Winkel</string>
-    <string name="board_logbook_no_filter_matches">Keine Logbook-Einträge entsprechen diesen Filtern.</string>
+    <string name="board_logbook_no_filter_matches">Keine Logbuch-Einträge entsprechen diesen Filtern.</string>
     <string name="board_logbook_best_grade">Bester Grad</string>
     <plurals name="board_logbook_day_entries">
         <item quantity="one">%d Eintrag</item>
@@ -2580,7 +2581,7 @@
     <string name="moon_device_open_app_info">App-Info öffnen</string>
     <string name="moon_device_start">Automatische Übertragung starten</string>
     <string name="moon_device_running">Übertragung läuft…</string>
-    <string name="moon_device_captured">%1$d Logbook-Einträge gefunden</string>
+    <string name="moon_device_captured">%1$d Logbuch-Einträge gefunden</string>
     <string name="moon_device_unresolved">%1$d Einträge konnten nicht eindeutig dem lokalen MoonBoard-Katalog zugeordnet werden.</string>
     <string name="moon_device_service_label">MoonBoard-Logbuchübertragung</string>
     <string name="moon_device_service_description">Vom Nutzer gestartete, lokale Übernahme sichtbarer Logbook-Einträge aus der offiziellen Moon-App nach CruxCoach. Auf das Moon-App-Paket beschränkt.</string>
