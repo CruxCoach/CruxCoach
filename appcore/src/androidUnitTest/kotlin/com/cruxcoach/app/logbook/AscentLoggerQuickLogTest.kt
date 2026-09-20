@@ -50,19 +50,11 @@ class AscentLoggerQuickLogTest {
         }
 
     private suspend fun LogAttemptPresenter.awaitFeedback(predicate: (QuickLogFeedback) -> Boolean = { true }) =
-        withTimeout(WAIT_MS) {
+        withTimeout(CI_WAIT_MS) {
             state.first { s -> !s.isQuickLogging && s.quickLogFeedback?.let(predicate) == true }.quickLogFeedback!!
         }
 
-    /**
-     * These waits are wall-clock: the logger finalises a quick log after a real
-     * undo window. Five seconds was enough on an idle machine but not on a
-     * loaded CI runner, which made the suite flaky. The assertions are
-     * unchanged; only the patience is.
-     */
-    private val WAIT_MS = 30_000L
-
-    private suspend fun awaitUntil(condition: () -> Boolean) = withTimeout(WAIT_MS) {
+    private suspend fun awaitUntil(condition: () -> Boolean) = withTimeout(CI_WAIT_MS) {
         while (!condition()) kotlinx.coroutines.delay(10)
     }
 
@@ -94,7 +86,7 @@ class AscentLoggerQuickLogTest {
         val p = presenter(newPersonalRepo(), Session(), listener)
         repeat(2) {
             p.quickLog(isSend = false)
-            withTimeout(WAIT_MS) { listener.quick.receive() }
+            withTimeout(CI_WAIT_MS) { listener.quick.receive() }
         }
         assertTrue(listener.quick.tryReceive().isFailure)
     }
@@ -194,7 +186,7 @@ class AscentLoggerQuickLogTest {
         assertEquals(5, p.state.value.ascent.quality)
         p.updateComment("  ")
         p.save()
-        withTimeout(WAIT_MS) { p.state.first { it.userAscents.size == 1 } }
+        withTimeout(CI_WAIT_MS) { p.state.first { it.userAscents.size == 1 } }
         val bid = repo.getUserHistoryForClimb("climb-1").single()
         assertFalse(bid.isSend)
         assertEquals(4L, bid.bidCount)
@@ -205,11 +197,11 @@ class AscentLoggerQuickLogTest {
         p.edit(bid)
         p.updateBidCount(6)
         p.save()
-        withTimeout(WAIT_MS) { p.state.first { it.userAscents.singleOrNull()?.bidCount == 6L } }
+        withTimeout(CI_WAIT_MS) { p.state.first { it.userAscents.singleOrNull()?.bidCount == 6L } }
 
         p.requestDelete(bid.uuid)
         p.confirmDelete()
-        withTimeout(WAIT_MS) { p.state.first { it.userAscents.isEmpty() && it.ascent.deleteConfirmUuid == null } }
+        withTimeout(CI_WAIT_MS) { p.state.first { it.userAscents.isEmpty() && it.ascent.deleteConfirmUuid == null } }
         assertTrue(repo.getUserHistoryForClimb("climb-1").isEmpty())
     }
 
@@ -227,7 +219,7 @@ class AscentLoggerQuickLogTest {
         val p = presenter(failing, session, Listener())
 
         p.quickLog(isSend = false)
-        val failed = withTimeout(WAIT_MS) { p.state.first { it.quickLogFailed } }
+        val failed = withTimeout(CI_WAIT_MS) { p.state.first { it.quickLogFailed } }
 
         assertFalse(failed.isQuickLogging)
         assertNull(failed.quickLogFeedback)

@@ -1,5 +1,6 @@
 package com.cruxcoach.app.playlist
 
+import com.cruxcoach.app.logbook.CI_WAIT_MS
 import com.cruxcoach.app.logbook.newPersonalRepo
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
