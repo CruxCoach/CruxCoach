@@ -4,158 +4,197 @@ import SwiftUI
 /// Board browser: the app's start destination, as on Android.
 struct BrowserView: View {
     let core: AppCore
-    let sync: Observed<CatalogueSyncState>
-    private let presenter: BoardBrowserPresenter
-    @State private var state: Observed<BoardBrowserUiState>
-    @State private var ble: Observed<BoardConnectionUiState>
+    let sync: ScreenHost<SyncScreenModel, SyncScreenState>
+    @State private var host: ScreenHost<BrowserScreenModel, BrowserScreenState>?
+    @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
     @State private var search = ""
     @State private var sheet: Sheet?
 
     enum Sheet: String, Identifiable { case board, ble, catalogue, filters; var id: String { rawValue } }
 
-    init(core: AppCore, sync: Observed<CatalogueSyncState>) {
-        self.core = core; self.sync = sync
-        let presenter = core.newBrowserPresenter()
-        self.presenter = presenter
-        _state = State(initialValue: Observed(presenter.state, initial: presenter.state.value as! BoardBrowserUiState))
-        _ble = State(initialValue: Observed(core.boardConnection.state, initial: core.boardConnection.state.value as! BoardConnectionUiState))
+    var body: some View {
+        Group {
+            if let host, let ble {
+                content(host: host, ble: ble)
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            guard host == nil else { return }
+            let model = core.makeBrowserScreen()
+            host = ScreenHost(model: model, initial: model.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
+            let bleModel = core.bleScreen
+            ble = ScreenHost(model: bleModel, initial: bleModel.currentState) { model, onState in
+                model.watch(onState: onState)
+            }
+            model.start()
+        }
     }
 
-    private var ui: BoardBrowserUiState { state.value }
-    private var useFrench: Bool { (core.platform.keyValues.getString(key: "grade_scale") ?? "FRENCH") != "V_SCALE" }
-
-    var body: some View {
+    @ViewBuilder
+    private func content(host: ScreenHost<BrowserScreenModel, BrowserScreenState>,
+                         ble: ScreenHost<BleScreenModel, BleScreenState>) -> some View {
+        let model = host.model
+        let ui = host.state
         NavigationStack {
             List {
-                Section { header }
-                if !ui.board.hasCatalogue {
+                Section { header(model: model, ui: ui) }
+                if !ui.hasCatalogue {
                     ContentUnavailableView(LI("browser_no_catalogue"), systemImage: "square.and.arrow.down",
                                            description: Text(LI("browser_no_catalogue_hint")))
-                } else if ui.loadState == .failed {
+                } else if ui.loadState == "failed" {
                     ContentUnavailableView(LI("browser_failed"), systemImage: "exclamationmark.triangle")
-                    Button(L("action_retry")) { presenter.refresh() }
+                    Button(L("action_retry")) { model.refresh() }
                 } else {
                     ForEach(ui.climbs, id: \.uuid) { climb in
-                        NavigationLink(value: climb.uuid) { ClimbRow(climb: climb, useFrench: useFrench) }
+                        NavigationLink(value: climb.uuid) { ClimbRow(climb: climb) }
                     }
                     if ui.canLoadMore {
-                        ProgressView().frame(maxWidth: .infinity).onAppear { presenter.loadMore() }
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .onAppear { model.loadMore() }
                     }
                 }
             }
             .listStyle(.plain)
-            .overlay { if ui.loadState == .loading && ui.climbs.isEmpty { ProgressView() } }
+            .overlay {
+                if ui.loadState == "loading" && ui.climbs.isEmpty { ProgressView() }
+            }
             .searchable(text: $search, prompt: L("board_search_placeholder"))
-            .onChange(of: search) { _, query in presenter.setSearch(query: query) }
+            .onChange(of: search) { _, query in model.setSearch(query: query) }
             .navigationTitle(L("board_browser_title"))
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { uuid in
-                ClimbDetailView(core: core, uuid: uuid, angle: ui.filter.angle, brandWire: ui.filter.boardBrand) { presenter.refresh() }
+                ClimbDetailView(core: core, uuid: uuid, angle: ui.angle, ble: ble) { model.refresh() }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { sheet = .board } label: { Label(LI("browser_board"), systemImage: "square.grid.3x3") }
+                    Button { sheet = .board } label: {
+                        Label(LI("browser_board"), systemImage: "square.grid.3x3")
+                    }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button { sheet = .ble } label: {
-                        Label(L("board_ble_title"), systemImage: ble.value.connection == .connected || ble.value.connection == .sending
-                              ? "lightbulb.fill" : "lightbulb")
+                        Label(L("board_ble_title"), systemImage: ble.state.connected ? "lightbulb.fill" : "lightbulb")
                     }
                     Menu {
                         Button(L("board_filter_title"), systemImage: "line.3.horizontal.decrease") { sheet = .filters }
-                        Button(L("board_sort_random"), systemImage: "shuffle") { presenter.setSort(field: .random, direction: .desc) }
+                        Menu(LI("browser_sort")) {
+                            ForEach(model.sortCodes, id: \.self) { code in
+                                Button(sortTitle(code)) { model.setSort(code: code) }
+                            }
+                        }
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
                         NavigationLink(L("settings_title")) { SettingsView(core: core) }
-                    } label: { Label(LI("browser_more"), systemImage: "ellipsis.circle") }
+                    } label: {
+                        Label(LI("browser_more"), systemImage: "ellipsis.circle")
+                    }
                 }
             }
             .sheet(item: $sheet) { which in
                 NavigationStack {
                     switch which {
-                    case .board: BoardPickerView(core: core, installed: sync.value.installedBrands) { option in
-                        presenter.switchBoard(boardBrand: option.brandWire, layoutId: option.layoutId,
-                                              productSizeId: option.productSizeId == 0 ? nil : KotlinInt(int: option.productSizeId), angle: nil)
-                        sheet = nil
-                    }
-                    case .ble: BleView(core: core, ble: ble)
-                    case .catalogue: CatalogueView(core: core, sync: sync, isOnboarding: false)
-                    case .filters: FilterView(presenter: presenter, state: state)
+                    case .board:
+                        BoardPickerView(core: core, brandWires: sync.state.rows.filter { $0.installed }.map { $0.brandWire }) { option in
+                            model.switchBoard(option: option)
+                            sheet = nil
+                        }
+                    case .ble:
+                        BleView(ble: ble)
+                    case .catalogue:
+                        CatalogueView(core: core, sync: sync, isOnboarding: false)
+                    case .filters:
+                        FilterView(model: model, ui: ui)
                     }
                 }
             }
-            .onChange(of: sync.value.catalogueRevision) { _, _ in presenter.refresh() }
+            .onChange(of: sync.state.catalogueRevision) { _, _ in model.refresh() }
         }
-        .task { presenter.start() }
+        .task { model.start() }
     }
 
-    @ViewBuilder private var header: some View {
+    private func sortTitle(_ code: String) -> String {
+        switch code {
+        case "quality": return LI("sort_quality")
+        case "qualitySends": return L("board_sort_quality_sends")
+        case "hardest": return LI("sort_hardest")
+        case "easiest": return LI("sort_easiest")
+        case "name": return LI("sort_name")
+        case "newest": return L("board_sort_newest")
+        case "random": return L("board_sort_random")
+        default: return LI("sort_popular")
+        }
+    }
+
+    @ViewBuilder private func header(model: BrowserScreenModel, ui: BrowserScreenState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(ui.board.boardSize?.name ?? BoardBrand.companion.fromWire(wire: ui.filter.boardBrand).displayNameForUi).font(.headline)
+                Text(ui.boardTitle).font(.headline)
                 Spacer()
                 if ui.totalCount >= 0 {
-                    Text(LI("browser_count", Int(ui.totalCount))).font(.subheadline).foregroundStyle(.secondary)
+                    Text("\(ui.totalCount)")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
                         .accessibilityLabel(LI("browser_count_a11y", Int(ui.totalCount)))
                 }
             }
-            AnglePicker(filter: ui.filter) { presenter.setAngle(angle: Int32($0)) }
-            Toggle(L("board_filter_exclude_sent"), isOn: Binding(get: { ui.excludesSent }, set: { presenter.setExcludeSent(exclude: $0) }))
+            AnglePicker(state: ui) { model.setAngle(angle: Int32($0)) }
+            Toggle(L("board_filter_exclude_sent"),
+                   isOn: Binding(get: { ui.excludesSent }, set: { model.setExcludeSent(exclude: $0) }))
         }
     }
 }
 
 private struct AnglePicker: View {
-    let filter: BrowserFilterState
+    let state: BrowserScreenState
     let onPick: (Int) -> Void
 
     var body: some View {
-        let chips = filter.angleChips.map { $0.intValue }
+        let chips = state.angleChips.map { Int(truncating: $0) }
         HStack {
             Text(L("board_angle"))
             Spacer()
             if chips.isEmpty {
-                Stepper("\(filter.angle)°", value: Binding(get: { Int(filter.angle) }, set: onPick), in: 0...70, step: 5)
-                    .accessibilityValue("\(filter.angle)°")
+                // Kilter's continuous range, as on Android.
+                Stepper("\(state.angle)°", value: Binding(get: { Int(state.angle) }, set: onPick), in: 0...70, step: 5)
+                    .accessibilityValue("\(state.angle)°")
             } else {
-                Picker(L("board_angle"), selection: Binding(get: { Int(filter.angle) }, set: onPick)) {
+                Picker(L("board_angle"), selection: Binding(get: { Int(state.angle) }, set: onPick)) {
                     ForEach(chips, id: \.self) { Text("\($0)°").tag($0) }
-                }.pickerStyle(.menu)
+                }
+                .pickerStyle(.menu)
             }
         }
     }
 }
 
 struct ClimbRow: View {
-    let climb: ClimbWithStats
-    let useFrench: Bool
+    let climb: ClimbRowUi
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(climb.name).font(.body)
-                if let setter = climb.setterUsername, !setter.isEmpty {
-                    Text(setter).font(.footnote).foregroundStyle(.secondary)
+                if !climb.setter.isEmpty {
+                    Text(climb.setter).font(.footnote).foregroundStyle(.secondary)
                 }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(Grades.label(climb.difficultyAverage?.doubleValue, french: useFrench)).font(.body.monospacedDigit())
+                Text(climb.grade.isEmpty ? "–" : climb.grade).font(.body.monospacedDigit())
                 HStack(spacing: 6) {
-                    if let quality = climb.qualityAverage?.doubleValue {
-                        Label(String(format: "%.1f", quality), systemImage: "star.fill").labelStyle(.titleAndIcon)
+                    if !climb.quality.isEmpty {
+                        Label(climb.quality, systemImage: "star.fill").labelStyle(.titleAndIcon)
                     }
-                    if let sends = climb.ascensionistCount?.int64Value { Text("\(sends)") }
-                }.font(.footnote).foregroundStyle(.secondary)
+                    Text("\(climb.sends)")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-enum Grades {
-    static func label(_ difficulty: Double?, french: Bool) -> String {
-        guard let difficulty else { return "–" }
-        return french ? KilterGradeMapper.shared.difficultyToFont(difficulty: difficulty)
-                      : KilterGradeMapper.shared.difficultyToVScale(difficulty: difficulty)
     }
 }

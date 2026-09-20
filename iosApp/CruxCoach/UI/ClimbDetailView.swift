@@ -5,165 +5,193 @@ struct ClimbDetailView: View {
     let core: AppCore
     let uuid: String
     let angle: Int32
-    let brandWire: String
+    let ble: ScreenHost<BleScreenModel, BleScreenState>
     let onChanged: () -> Void
 
-    private let presenter: ClimbDetailPresenter
-    private let logger: LogAttemptPresenter
-    @State private var state: Observed<ClimbDetailUiState>
-    @State private var log: Observed<LogAttemptState>
-    @State private var ble: Observed<BoardConnectionUiState>
+    @State private var host: ScreenHost<DetailScreenModel, DetailScreenState>?
     @State private var note = ""
+    @State private var noteLoaded = false
     @State private var showBle = false
-
-    init(core: AppCore, uuid: String, angle: Int32, brandWire: String, onChanged: @escaping () -> Void) {
-        self.core = core; self.uuid = uuid; self.angle = angle; self.brandWire = brandWire; self.onChanged = onChanged
-        let presenter = core.newDetailPresenter(), logger = core.newLogAttemptPresenter()
-        self.presenter = presenter; self.logger = logger
-        _state = State(initialValue: Observed(presenter.state, initial: presenter.state.value as! ClimbDetailUiState))
-        _log = State(initialValue: Observed(logger.state, initial: logger.state.value as! LogAttemptState))
-        _ble = State(initialValue: Observed(core.boardConnection.state, initial: core.boardConnection.state.value as! BoardConnectionUiState))
-    }
-
-    private var ui: ClimbDetailUiState { state.value }
-    private var useFrench: Bool { (core.platform.keyValues.getString(key: "grade_scale") ?? "FRENCH") != "V_SCALE" }
-    private var connected: Bool { ble.value.connection == .connected || ble.value.connection == .sending }
+    @State private var loadedMoonPath = ""
 
     var body: some View {
         Group {
-            switch ui.status {
-            case .loading: ProgressView()
-            case .notFound, .failed: ContentUnavailableView(LI("detail_unavailable"), systemImage: "questionmark.square.dashed")
-            default: content
+            if let host {
+                screen(model: host.model, ui: host.state)
+            } else {
+                ProgressView()
             }
         }
-        .navigationTitle(ui.data?.climb.name ?? "")
+        .task {
+            guard host == nil else { return }
+            let model = core.makeDetailScreen()
+            host = ScreenHost(model: model, initial: model.currentState,
+                              subscribe: { model, onState in model.watch(onState: onState) },
+                              onClose: { model in model.close() })
+            model.open(uuid: uuid, angle: angle)
+        }
+        .onDisappear {
+            if host?.state.browserDirty == true { onChanged() }
+            host?.close()
+        }
+    }
+
+    @ViewBuilder
+    private func screen(model: DetailScreenModel, ui: DetailScreenState) -> some View {
+        Group {
+            switch ui.status {
+            case "loading":
+                ProgressView()
+            case "notFound", "failed":
+                ContentUnavailableView(LI("detail_unavailable"), systemImage: "questionmark.square.dashed")
+            default:
+                content(model: model, ui: ui)
+            }
+        }
+        .navigationTitle(ui.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { presenter.toggleFavourite() } label: {
-                    Label(LI("detail_favourite"), systemImage: ui.isFavorited ? "heart.fill" : "heart")
+                Button { model.toggleFavourite() } label: {
+                    Label(LI("detail_favourite"), systemImage: ui.isFavourite ? "heart.fill" : "heart")
                 }
                 Menu {
-                    if ui.data?.isMirrorable == true {
-                        Button(LI("detail_mirror"), systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") { presenter.toggleMirror() }
+                    if ui.isMirrorable {
+                        Button(LI("detail_mirror"), systemImage: "arrow.left.and.right") { model.toggleMirror() }
                     }
-                    Button(ui.isIgnored ? LI("detail_unignore") : LI("detail_ignore"), systemImage: "eye.slash") { presenter.setIgnored(ignored: !ui.isIgnored) }
-                } label: { Label(LI("browser_more"), systemImage: "ellipsis.circle") }
+                    Button(ui.isIgnored ? LI("detail_unignore") : LI("detail_ignore"), systemImage: "eye.slash") {
+                        model.setIgnored(ignored: !ui.isIgnored)
+                    }
+                } label: {
+                    Label(LI("browser_more"), systemImage: "ellipsis.circle")
+                }
             }
         }
-        .sheet(isPresented: $showBle) { NavigationStack { BleView(core: core, ble: ble) } }
-        .sheet(isPresented: Binding(get: { log.value.ascent.showDialog }, set: { if !$0 { logger.dismissDialog() } })) {
-            NavigationStack { LogSheet(logger: logger, log: log) }.presentationDetents([.medium, .large])
+        .sheet(isPresented: $showBle) { NavigationStack { BleView(ble: ble) } }
+        .sheet(isPresented: Binding(get: { ui.showLogDialog }, set: { if !$0 { model.dismissLogDialog() } })) {
+            NavigationStack { LogSheet(model: model, ui: ui) }.presentationDetents([.medium, .large])
         }
-        .task { presenter.open(uuid: uuid, angle: angle) }
-        .onChange(of: ui.data?.climb.uuid) { _, _ in syncLogTarget(); note = ui.personalNote }
-        .onChange(of: ui.angle) { _, _ in syncLogTarget() }
-        .onChange(of: ui.isMirrored) { _, _ in syncLogTarget() }
-        .onChange(of: log.value.userAscents.count) { _, _ in onChanged() }
-        .onDisappear { if ui.browserDirty { onChanged() }; presenter.close(); logger.close() }
+        .onChange(of: ui.moonLayoutPath) { _, path in loadMoonLayout(model: model, path: path) }
+        .onChange(of: ui.personalNote) { _, value in
+            if !noteLoaded { note = value; noteLoaded = true }
+        }
     }
 
-    private func syncLogTarget() {
-        guard let climb = ui.data?.climb else { return }
-        logger.setTarget(target: LogTarget(climbUuid: climb.uuid, climbName: climb.name, frames: climb.frames,
-                                           framesCount: climb.framesCount, difficultyAverage: climb.difficultyAverage,
-                                           boardBrand: brandWire, layoutId: KotlinLong(value: climb.layoutId),
-                                           angle: ui.angle, isMirrored: ui.isMirrored))
+    /// The MoonBoard coordinate map is a bundle resource; Kotlin owns the geometry, Swift the file access.
+    private func loadMoonLayout(model: DetailScreenModel, path: String) {
+        guard !path.isEmpty, path != loadedMoonPath,
+              let url = Bundle.main.resourceURL?.appendingPathComponent(path),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        loadedMoonPath = path
+        model.setMoonLayoutJson(jsonText: text)
     }
 
-    @ViewBuilder private var content: some View {
+    @ViewBuilder private func content(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let data = ui.data {
-                    BoardCanvasView(data: data, holds: ui.holds, brandWire: brandWire)
-                    stats(data)
-                    actions
-                    if !data.climb.description_.isEmpty { Text(data.climb.description_).font(.callout) }
-                    betaLinks(data)
-                    noteEditor
-                    history
-                }
-            }.padding()
+                BoardCanvasView(imagePaths: ui.imagePaths, holds: ui.holds, aspect: CGFloat(ui.boardAspect))
+                stats(model: model, ui: ui)
+                actions(model: model, ui: ui)
+                if !ui.notes.isEmpty { Text(ui.notes).font(.callout) }
+                betaLinks(ui: ui)
+                noteEditor(model: model, ui: ui)
+                history(ui: ui)
+            }
+            .padding()
         }
     }
 
-    private func stats(_ data: ClimbDetailData) -> some View {
+    private func stats(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Picker(L("board_angle"), selection: Binding(get: { ui.angle }, set: { presenter.selectAngle(angle: $0) })) {
-                ForEach(data.availableAngles, id: \.angle) { option in
-                    Text("\(option.angle)° · \(Grades.label(option.difficultyAverage?.doubleValue, french: useFrench)) · \(option.ascensionistCount?.int64Value ?? 0)")
-                        .tag(option.angle)
+            Picker(L("board_angle"), selection: Binding(get: { ui.angle }, set: { model.selectAngle(angle: $0) })) {
+                ForEach(ui.angles, id: \.angle) { option in
+                    Text("\(option.angle)° · \(option.grade.isEmpty ? "–" : option.grade) · \(option.sends)").tag(option.angle)
                 }
-            }.pickerStyle(.menu)
-            if let setter = data.climb.setterUsername, !setter.isEmpty {
-                Label(setter, systemImage: "person").font(.footnote).foregroundStyle(.secondary)
+            }
+            .pickerStyle(.menu)
+            if !ui.setter.isEmpty {
+                Label(ui.setter, systemImage: "person").font(.footnote).foregroundStyle(.secondary)
             }
         }
     }
 
-    private var actions: some View {
+    private func actions(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(spacing: 10) {
             Button {
-                if connected { core.boardSender.send(detail: ui) } else { showBle = true }
+                if ble.state.connected { model.sendToBoard() } else { showBle = true }
             } label: {
-                Label(connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
+                Label(ble.state.connected ? LI("detail_light_up") : L("board_ble_title"), systemImage: "lightbulb.max")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(ble.value.sending)
-            if let result = ble.value.lastSendResult, result != .ok {
-                Text(LI("detail_send_failed", String(describing: result))).font(.footnote).foregroundStyle(.red)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(ble.state.sending)
+            if ble.state.sendResult != "none" && ble.state.sendResult != "ok" {
+                Text(LI("detail_send_failed", ble.state.sendResult)).font(.footnote).foregroundStyle(.red)
             }
             HStack {
-                Button { logger.quickLog(isSend: false) } label: { Label(LI("detail_attempt"), systemImage: "plus").frame(maxWidth: .infinity) }
-                Button { logger.quickLog(isSend: true) } label: { Label(LI("detail_sent"), systemImage: "checkmark").frame(maxWidth: .infinity) }
-                Button { logger.showDialog() } label: { Label(LI("detail_log"), systemImage: "square.and.pencil").frame(maxWidth: .infinity) }
+                Button { model.quickLog(isSend: false) } label: {
+                    Label(LI("detail_attempt"), systemImage: "plus").frame(maxWidth: .infinity)
+                }
+                Button { model.quickLog(isSend: true) } label: {
+                    Label(LI("detail_sent"), systemImage: "checkmark").frame(maxWidth: .infinity)
+                }
+                Button { model.showLogDialog() } label: {
+                    Label(LI("detail_log"), systemImage: "square.and.pencil").frame(maxWidth: .infinity)
+                }
             }
-            .buttonStyle(.bordered).disabled(log.value.isQuickLogging)
-            if log.value.quickLogFeedback != nil {
-                Button(LI("detail_undo")) { logger.undoQuickLog() }.font(.footnote)
+            .buttonStyle(.bordered)
+            .disabled(ui.quickLogging)
+            if ui.canUndoQuickLog {
+                Button(LI("detail_undo")) { model.undoQuickLog() }.font(.footnote)
             }
-            if log.value.quickLogFailed { Text(LI("detail_log_failed")).font(.footnote).foregroundStyle(.red) }
+            if ui.logFailed {
+                Text(LI("detail_log_failed")).font(.footnote).foregroundStyle(.red)
+            }
         }
     }
 
-    @ViewBuilder private func betaLinks(_ data: ClimbDetailData) -> some View {
-        if !data.betaLinks.isEmpty {
+    @ViewBuilder private func betaLinks(ui: DetailScreenState) -> some View {
+        if !ui.beta.isEmpty {
             VStack(alignment: .leading) {
                 Text(LI("detail_beta")).font(.headline)
-                ForEach(data.betaLinks, id: \.link.url) { item in
-                    if let url = URL(string: item.link.url), url.scheme == "https" {
-                        Link(destination: url) { Label(item.link.foreignUsername ?? item.link.provider, systemImage: "play.rectangle") }
+                ForEach(ui.beta, id: \.url) { link in
+                    if let url = URL(string: link.url) {
+                        Link(destination: url) { Label(link.label, systemImage: "play.rectangle") }
                     }
                 }
             }
         }
     }
 
-    private var noteEditor: some View {
+    private func noteEditor(model: DetailScreenModel, ui: DetailScreenState) -> some View {
         VStack(alignment: .leading) {
             Text(LI("detail_note")).font(.headline)
-            TextField(LI("detail_note_hint"), text: $note, axis: .vertical).textFieldStyle(.roundedBorder)
-                .onSubmit { presenter.saveNote(note: note) }
-            if note != ui.personalNote { Button(L("action_save")) { presenter.saveNote(note: note) } }
-            if ui.noteStatus == .failed { Text(LI("detail_log_failed")).font(.footnote).foregroundStyle(.red) }
+            TextField(LI("detail_note_hint"), text: $note, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { model.saveNote(note: note) }
+            if note != ui.personalNote {
+                Button(L("action_save")) { model.saveNote(note: note) }
+            }
+            if ui.noteFailed {
+                Text(LI("detail_log_failed")).font(.footnote).foregroundStyle(.red)
+            }
         }
     }
 
-    @ViewBuilder private var history: some View {
-        let entries = log.value.userAscents
-        if !entries.isEmpty {
+    @ViewBuilder private func history(ui: DetailScreenState) -> some View {
+        if !ui.ascents.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("board_logbook_title")).font(.headline)
-                ForEach(entries, id: \.uuid) { entry in
+                ForEach(ui.ascents, id: \.uuid) { entry in
                     HStack {
                         Image(systemName: entry.isSend ? "checkmark.circle.fill" : "circle.dotted")
-                        Text(String(entry.climbedAt.prefix(10)))
+                        Text(entry.date)
                         Text("\(entry.angle)°").foregroundStyle(.secondary)
                         Spacer()
-                        Text("×\(entry.bidCount)").foregroundStyle(.secondary)
-                    }.font(.footnote)
+                        Text("×\(entry.tries)").foregroundStyle(.secondary)
+                    }
+                    .font(.footnote)
                 }
             }
         }

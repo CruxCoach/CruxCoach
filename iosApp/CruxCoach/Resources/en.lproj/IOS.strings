@@ -73,3 +73,10 @@
 "settings_about" = "About";
 "settings_storage" = "Encrypted storage";
 "settings_preview_notice" = "iOS preview. Not all Android features are available yet.";
+"browser_sort" = "Sort";
+"sort_popular" = "Most popular";
+"sort_quality" = "Best rated";
+"sort_hardest" = "Hardest first";
+"sort_easiest" = "Easiest first";
+"sort_name" = "Name";
+"settings_grade_restart" = "Takes effect on the next screen you open.";

@@ -73,3 +73,10 @@
 "settings_about" = "Über";
 "settings_storage" = "Verschlüsselter Speicher";
 "settings_preview_notice" = "iOS-Vorschau. Noch nicht alle Android-Funktionen sind verfügbar.";
+"browser_sort" = "Sortieren";
+"sort_popular" = "Beliebteste";
+"sort_quality" = "Beste Bewertung";
+"sort_hardest" = "Schwerste zuerst";
+"sort_easiest" = "Leichteste zuerst";
+"sort_name" = "Name";
+"settings_grade_restart" = "Wirkt beim nächsten Öffnen eines Bildschirms.";

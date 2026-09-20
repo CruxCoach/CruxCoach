@@ -8,6 +8,8 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 /** One selectable physical board: what Android's board picker resolves to. [productSizeId] is 0 for MoonBoard. */
 data class BoardOption(
     val brandWire: String,
+    /** Product name for headers, e.g. "Kilter Board". */
+    val brandTitle: String,
     val layoutId: Int,
     val productSizeId: Int,
     val layoutName: String,
@@ -26,6 +28,8 @@ object BoardOptions {
         BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION, BoardBrand.GRASSHOPPER,
         BoardBrand.DECOY, BoardBrand.SOILL, BoardBrand.TOUCHSTONE,
     )
+
+    private fun title(brand: BoardBrand): String = com.cruxcoach.app.ui.UiCodes.brandTitle(brand)
 
     private class Variant(val layoutId: Int, val productId: Long, val name: String)
 
@@ -46,7 +50,7 @@ object BoardOptions {
     fun forBrand(brand: BoardBrand, repository: BoardRepository): List<BoardOption> {
         if (brand == BoardBrand.MOONBOARD) {
             return MoonBoardVariant.entries.map {
-                BoardOption(brand.wireValue, it.layoutId.toInt(), 0, it.displayName, "")
+                BoardOption(brand.wireValue, title(brand), it.layoutId.toInt(), 0, it.displayName, "")
             }
         }
         val sizes: List<BoardSize> = repository.getSelectableProductSizesForBrand(brand.wireValue)
@@ -54,7 +58,7 @@ object BoardOptions {
         val multiProduct = variants.map { it.productId }.distinct().size > 1
         return variants.flatMap { variant ->
             sizes.filter { !multiProduct && variants.size == 1 || it.productId == variant.productId }
-                .map { BoardOption(brand.wireValue, variant.layoutId, it.id.toInt(), variant.name, it.name) }
+                .map { BoardOption(brand.wireValue, title(brand), variant.layoutId, it.id.toInt(), variant.name, it.name) }
         }
     }
 }
