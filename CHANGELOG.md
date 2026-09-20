@@ -117,6 +117,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   it where it helps to pick a board.
 - The tour points at where the logbook actually is: the direct icon when it fits in the
   top bar, otherwise the overflow button, without hedging about narrow screens.
+- Shorter, more focused tour and sharing explanations.
 - Session summaries include attempts, not only sends.
 - Deleting logbook data starts with no board selected and uses full-height rows.
 - Import errors no longer quote the selected file, explain exports from newer
