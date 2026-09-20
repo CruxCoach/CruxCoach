@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
@@ -170,30 +169,44 @@ class CruxRelayDisclosureTest {
             scope = backgroundScope,
             adapterProvider = { adapter },
         )
-        advanceUntilIdle()
+        // advanceUntilIdle skips backgroundScope-only work. Drain the manager's
+        // initial collectors before changing the switch.
+        runCurrent()
         // Sharing is off, so nothing starts on its own and no dialog is raised.
         coVerify(exactly = 0) { server.start() }
         assertFalse(manager.state.value.pendingDisclosure)
 
         manager.setSharingEnabled(true)
-        advanceUntilIdle()
+        runCurrent()
+        // Startup persists the adapter name on Dispatchers.IO. Await the observable
+        // result instead of assuming that draining the test scheduler finishes IO.
+        val started = manager.state.first { it.advertising || it.error != null }
+        assertTrue("Relay startup failed: $started", started.enabled && started.advertising)
         // Switching it on is the consent and starts the transport right away.
         assertTrue(seen.value)
         assertFalse(manualStart.value)
         assertFalse(manager.state.value.pendingDisclosure)
-        coVerify(atLeast = 1) { server.start() }
+        coVerify(exactly = 1) { server.start() }
+        verify(exactly = 1) { advertiser.startRelayAdvertising() }
 
         manager.setSharingEnabled(false)
-        advanceUntilIdle()
+        runCurrent()
+        manager.state.first { !it.enabled && !it.advertising }
         assertTrue(manualStart.value)
         assertFalse(manager.state.value.enabled)
+        coVerify(exactly = 1) { server.stop() }
+        verify(exactly = 1) { advertiser.stopRelayAdvertising() }
+        assertTrue(adapterName == "Test phone")
 
         // A reconnect must not revive what the switch turned off.
         connectionState.value = ConnectionState.DISCONNECTED
-        advanceUntilIdle()
+        runCurrent()
         connectionState.value = ConnectionState.CONNECTED
-        advanceUntilIdle()
+        runCurrent()
         assertFalse(manager.state.value.enabled)
+        assertFalse(manager.state.value.advertising)
+        coVerify(exactly = 1) { server.start() }
+        verify(exactly = 1) { advertiser.startRelayAdvertising() }
     }
 
     @Test
