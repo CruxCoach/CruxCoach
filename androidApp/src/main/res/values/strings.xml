@@ -2504,14 +2504,13 @@
     <string name="list_plan_clear_action">Remove training plan</string>
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
     <string name="relay_share_description">Other phones send their climbs to the board through you.</string>
-    <string name="relay_share_button">Start sharing</string>
     <string name="relay_multi_connect_direct">This board accepts several apps at once — CruxRelay is not needed.</string>
     <string name="relay_unsupported_explanation">Quantum manages several apps through its own layers. Connect other apps to the board directly.</string>
     <string name="relay_chip_text">Relay for %1$s · %2$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
-    <string name="settings_relay_manual_start">Start CruxRelay manually</string>
-    <string name="settings_relay_manual_start_desc">Others light climbs on the board through your phone — for boards with a single connection.\n\nOff: starts with the board connection.\nOn: you start it in the Bluetooth menu.</string>
-    <string name="relay_share_automatically">Share automatically on every board connection</string>
+    <string name="settings_relay_manual_start">Share the board with other apps</string>
+    <string name="settings_relay_manual_start_desc">Others light climbs on the board through your phone — for boards with a single connection. Runs while a board is connected.</string>
+    <string name="relay_status_waiting">Starts as soon as a board is connected.</string>
     <string name="relay_disclosure_title">Share with board apps</string>
     <string name="relay_disclosure_text">Your phone is called “CruxCoach…” while sharing and accepts climbs from other board apps. The last climb sent lights up. Afterwards your phone gets its name back.</string>
     <string name="relay_disclosure_confirm">Allow board apps</string>
@@ -3001,6 +3000,8 @@
     <string name="tour_spotlight_queue">Add this climb to the shared queue.</string>
     <string name="tour_spotlight_quicklog">Tap “Attempt” or “Top” — it goes straight to your logbook.</string>
     <string name="tour_spotlight_logbook_back">Saved. Back to the list, then open the logbook.</string>
+    <string name="tour_spotlight_board_picker">Pick board, model and size here — that decides the catalogue.</string>
+    <string name="tour_spotlight_connect_done">Board connected. This is where you connect it next time.</string>
     <string name="tour_spotlight_logbook_direct">Open your logbook using the highlighted button.</string>
     <string name="tour_spotlight_logbook_overflow">Your logbook sits under More (…).</string>
     <string name="tour_spotlight_logbook">Your logbook: every attempt and send.</string>

@@ -27,7 +27,9 @@ class BrowserTourTest {
         tour.startForNewUser(alreadyOnboarded = true)
         assertEquals(TourStep.INACTIVE, tour.step())
         tour.startForNewUser(alreadyOnboarded = false)
-        assertEquals(TourStep.CONNECT, tour.step())
+        // The board picker is now the first stop: it decides the catalogue everything else uses.
+        assertEquals(TourStep.BOARD, tour.step())
+        assertEquals(TourStep.CONNECT, tour.afterBoardStep())
         tour.move(TourStep.FILTER)
         tour.startForNewUser(alreadyOnboarded = false)
         assertEquals(TourStep.FILTER, tour.step())
@@ -41,15 +43,18 @@ class BrowserTourTest {
         tour.startForNewUser(alreadyOnboarded = false)
         assertEquals(TourStep.INACTIVE, tour.step())
         tour.start(replay = true)
-        assertEquals(TourStep.CONNECT, tour.step())
+        assertEquals(TourStep.BOARD, tour.step())
     }
     @Test fun `deferred Bluetooth is skipped on handoff and dismissal survives recreation`() {
         BrowserTour(context).apply { deferBle(); start() }
-        assertEquals(TourStep.ANGLE, BrowserTour(context).step())
+        // The board step always runs; only the Bluetooth step is skipped after a setup handoff.
+        assertEquals(TourStep.BOARD, BrowserTour(context).step())
+        assertEquals(TourStep.ANGLE, BrowserTour(context).afterBoardStep())
         BrowserTour(context).move(TourStep.DONE)
         assertEquals(TourStep.DONE, BrowserTour(context).step())
         BrowserTour(context).start(replay = true)
-        assertEquals(TourStep.CONNECT, BrowserTour(context).step())
+        assertEquals(TourStep.BOARD, BrowserTour(context).step())
+        assertEquals(TourStep.CONNECT, BrowserTour(context).afterBoardStep())
     }
     @Test fun `successful quicklog persists its exact entry and replay clears it`() {
         val tour = BrowserTour(context)
@@ -61,7 +66,7 @@ class BrowserTourTest {
         assertEquals("saved-attempt-uuid", restored.loggedEntry())
         restored.start(replay = true)
         assertNull(restored.loggedEntry())
-        assertEquals(TourStep.CONNECT, restored.step())
+        assertEquals(TourStep.BOARD, restored.step())
     }
     @Test fun `unknown Aurora names and relays never preselect Kilter`() {
         val unknown = DiscoveredBoard("Unknown Board", "", 2, "test", -45)

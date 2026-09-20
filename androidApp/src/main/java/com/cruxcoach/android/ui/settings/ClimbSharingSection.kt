@@ -110,8 +110,10 @@ internal fun ClimbSharingSection(
     SettingsToggleRow(
         title = stringResource(R.string.settings_relay_manual_start),
         description = stringResource(R.string.settings_relay_manual_start_desc),
-        checked = relayManualStart,
-        onCheckedChange = onRelayManualStartChange,
+        // Shown as what it does, not as its negation: "manually start" forced everyone to
+        // reason backwards about a feature that otherwise follows the board connection.
+        checked = !relayManualStart,
+        onCheckedChange = { onRelayManualStartChange(!it) },
         modifier = Modifier.testTag("settings_relay_manual_start"),
     )
 

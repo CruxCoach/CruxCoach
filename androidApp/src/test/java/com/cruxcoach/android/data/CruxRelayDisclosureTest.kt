@@ -129,6 +129,55 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
+    fun `the sharing switch is consent, starts at once and switching it off keeps it off`() = runTest {
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55", advertisesWhileConnected = false),
+        )
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        val manualStart = MutableStateFlow(true)
+        val seen = MutableStateFlow(false)
+        every { preferences.relayManualStart } returns manualStart
+        every { preferences.relayDisclosureSeen } returns seen
+        coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
+        coEvery { preferences.setRelayDisclosureSeen() } answers { seen.value = true }
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = mockk<RelayGattServer>(relaxed = true),
+            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertFalse(manager.state.value.enabled)
+
+        manager.setSharingEnabled(true)
+        runCurrent()
+        assertTrue(seen.value)
+        assertFalse(manualStart.value)
+        assertTrue(manager.state.value.enabled)
+        assertFalse(manager.state.value.pendingDisclosure)
+
+        manager.setSharingEnabled(false)
+        runCurrent()
+        assertTrue(manualStart.value)
+        assertFalse(manager.state.value.enabled)
+
+        // A reconnect must not revive what the switch turned off.
+        connectionState.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+        assertFalse(manager.state.value.enabled)
+    }
+
+    @Test
     fun `automatic sharing waits for capacity and multi-connect suppresses it`() = runTest {
         org.robolectric.Shadows.shadowOf(context as android.app.Application)
             .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)

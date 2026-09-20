@@ -346,9 +346,8 @@ fun BoardBrowserScreen(
         )
     }
 
-    LaunchedEffect(isBleConnected, tourStep) {
-        if (isBleConnected && tourStep == TourStep.CONNECT) tour.move(TourStep.ANGLE)
-    }
+    // A board connected during setup used to skip this step silently, leaving the user without
+    // the one place where connecting happens later. The step stays; its text says it is done.
     var showAngleSheet by remember { mutableStateOf(false) }
     if (showAngleSheet) {
         BoardBrowserAngleSheet(
@@ -363,6 +362,7 @@ fun BoardBrowserScreen(
     var logbookInOverflow by remember { mutableStateOf(false) }
     val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
     val tourTarget = when (tourStep) {
+        TourStep.BOARD -> TourTarget.BOARD
         TourStep.LOGBOOK -> TourTarget.MENU
         TourStep.CONNECT -> TourTarget.BLUETOOTH
         TourStep.ANGLE -> if (catalogueReady) TourTarget.ANGLE else TourTarget.BOARD
@@ -371,10 +371,15 @@ fun BoardBrowserScreen(
         else -> null
     }
     val tourMessage = when (tourTarget) {
+        TourTarget.BOARD ->
+            if (tourStep == TourStep.BOARD) R.string.tour_spotlight_board_picker
+            else R.string.tour_spotlight_catalogue
+        TourTarget.BLUETOOTH ->
+            if (isBleConnected) R.string.tour_spotlight_connect_done
+            else R.string.tour_spotlight_connect
         TourTarget.MENU ->
             if (logbookInOverflow) R.string.tour_spotlight_logbook_overflow
             else R.string.tour_spotlight_logbook_direct
-        TourTarget.BLUETOOTH -> R.string.tour_spotlight_connect
         TourTarget.ANGLE -> R.string.tour_spotlight_angle
         TourTarget.FILTER -> R.string.tour_spotlight_filter
         TourTarget.CLIMB -> R.string.tour_spotlight_open
@@ -399,7 +404,8 @@ fun BoardBrowserScreen(
             onSettings = onNavigateToSettings,
             logbookTour = tourStep == TourStep.LOGBOOK,
             onLogbookPlacement = { logbookInOverflow = it },
-            onBoardPicker = { showBoardPicker = true },
+            onBoardPicker = {
+                if (tour.step() == TourStep.BOARD) tour.move(tour.afterBoardStep()) showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
         )

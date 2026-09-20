@@ -24,22 +24,13 @@ class RelayShareViewModel @Inject constructor(
 
     val relayState: StateFlow<CruxRelayState> = relayManager.state
 
-    /** The sharing card shows the disclosure text until it was accepted once. */
+    /** The card shows the full disclosure until sharing was accepted once. */
     val disclosureSeen: Flow<Boolean> = relayManager.disclosureSeen
 
-    /** True when sharing follows the board connection instead of a manual start. */
-    val shareAutomatically: Flow<Boolean> = relayManager.manualStart.map { !it }
+    /** The single switch: sharing follows the board connection while it is on. */
+    val sharingOn: Flow<Boolean> = relayManager.manualStart.map { !it }
 
-    /** Deliberate user action on the card that displays the disclosure: the tap is the
-     *  one-time consent; the manager still owns the permission gate. */
-    fun requestSharing() = relayManager.requestEnableWithShownDisclosure()
-
-    fun setShareAutomatically(automatic: Boolean) = relayManager.setShareAutomatically(automatic)
-
-    /** One-tap stop. A CruxCoach queue and the direct board link keep running. */
-    fun disableSharing() {
-        relayManager.disable(byUser = true)
-    }
+    fun setSharing(enabled: Boolean) = relayManager.setSharingEnabled(enabled)
 
     fun clearError() {
         relayManager.clearError()

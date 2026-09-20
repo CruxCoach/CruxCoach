@@ -12,17 +12,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Switch
-import androidx.compose.ui.semantics.Role
 import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -112,145 +107,71 @@ fun RelaySharingSection(
     // Until the stored answer arrives, assume it is missing: never show the short summary
     // to someone who has not read the full disclosure yet.
     val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle(initialValue = false)
-    val shareAutomatically by viewModel.shareAutomatically.collectAsStateWithLifecycle(initialValue = false)
+    val sharingOn by viewModel.sharingOn.collectAsStateWithLifecycle(initialValue = false)
 
-    if (!state.enabled) {
-        // Everything the user must know sits on the card itself: no dialog interrupts a
-        // connection, and the first deliberate tap below is the one-time consent.
-        Card(
-            modifier = Modifier.fillMaxWidth().testTag("relay_info_card"),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.relay_disclosure_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    InfoButton(
-                        stringResource(R.string.relay_disclosure_title),
-                        stringResource(R.string.relay_disclosure_text),
-                    )
-                }
-                Text(
-                    stringResource(
-                        if (disclosureSeen) R.string.relay_share_description else R.string.relay_disclosure_text
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 12.dp),
-                )
-            }
-        }
-        OutlinedButton(
-            onClick = { viewModel.requestSharing() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("relay_share_button"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-        ) {
-            Icon(
-                Icons.Default.CellTower,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.relay_share_button), fontWeight = FontWeight.Bold)
-        }
-        if (disclosureSeen) RelayAutomaticRow(shareAutomatically, viewModel::setShareAutomatically)
-    } else {
-        RelayActiveCard(
-            clientCount = state.clientCount,
-            advertisedName = state.advertisedName,
-            boardName = state.boardName ?: connectedBoard.displayName,
-            onStop = { viewModel.disableSharing() }
-        )
-        RelayAutomaticRow(shareAutomatically, viewModel::setShareAutomatically)
-    }
-}
-
-/** Replaces any follow-up question: the choice is visible where sharing is controlled. */
-@Composable
-private fun RelayAutomaticRow(checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-            .testTag("relay_share_automatically"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            stringResource(R.string.relay_share_automatically),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
-        )
-        Switch(checked = checked, onCheckedChange = null)
-    }
-}
-
-@Composable
-private fun RelayActiveCard(
-    clientCount: Int,
-    advertisedName: String?,
-    boardName: String,
-    onStop: () -> Unit
-) {
+    // One control, one meaning: on shares this board while it is connected, off stops now and
+    // stays off. A start button plus a separate "automatic" switch contradicted each other.
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("relay_active_card"),
+        modifier = Modifier.fillMaxWidth().testTag("relay_info_card"),
         colors = CardDefaults.cardColors(
-            containerColor = SuccessGreen.copy(alpha = 0.08f)
+            containerColor = if (state.enabled) SuccessGreen.copy(alpha = 0.08f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.CellTower,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
-                    tint = SuccessGreen
+                    tint = if (state.enabled) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    stringResource(R.string.relay_chip_text, boardName, clientCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
+                    stringResource(R.string.relay_disclosure_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                InfoButton(
+                    stringResource(R.string.relay_disclosure_title),
+                    stringResource(R.string.relay_disclosure_text),
+                )
+                Switch(
+                    checked = sharingOn,
+                    onCheckedChange = viewModel::setSharing,
+                    modifier = Modifier.testTag("relay_share_switch"),
                 )
             }
-            if (advertisedName != null) {
+            val status = when {
+                state.enabled -> stringResource(
+                    R.string.relay_chip_text,
+                    state.boardName ?: connectedBoard.displayName,
+                    state.clientCount,
+                )
+                sharingOn -> stringResource(R.string.relay_status_waiting)
+                disclosureSeen -> stringResource(R.string.relay_share_description)
+                else -> stringResource(R.string.relay_disclosure_text)
+            }
+            Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, end = 8.dp),
+            )
+            state.advertisedName?.takeIf { state.enabled }?.let { name ->
                 Text(
-                    stringResource(R.string.relay_advertised_as, advertisedName),
+                    stringResource(R.string.relay_advertised_as, name),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp, end = 8.dp),
                 )
-            }
-            OutlinedButton(
-                onClick = onStop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("relay_stop_button"),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(stringResource(R.string.relay_notification_stop))
             }
         }
     }
 }
 
-/** Shared with [com.cruxcoach.android.ui.common.BleStatusArea]'s transient
- *  relay-error row — the sheet is usually gone when a BOARD_LOST lands. */
 @Composable
 internal fun relayErrorText(error: RelayError, detail: String?): String {
     val base = when (error) {

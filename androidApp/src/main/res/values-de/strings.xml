@@ -2503,14 +2503,13 @@
     <string name="list_plan_clear_action">Trainingsablauf entfernen</string>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
     <string name="relay_share_description">Andere Handys senden ihre Boulder über dich ans Board.</string>
-    <string name="relay_share_button">Freigabe starten</string>
     <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere Apps gleichzeitig – CruxRelay ist nicht nötig.</string>
     <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps über eigene Layer. Verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
-    <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
-    <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung.\n\nAus: startet mit der Board-Verbindung.\nEin: du startest es im Bluetooth-Menü.</string>
-    <string name="relay_share_automatically">Bei jeder Board-Verbindung automatisch freigeben</string>
+    <string name="settings_relay_manual_start">Board für andere Apps freigeben</string>
+    <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
+    <string name="relay_status_waiting">Startet, sobald ein Board verbunden ist.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
     <string name="relay_disclosure_text">Dein Handy heißt währenddessen „CruxCoach…“ und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
@@ -3000,6 +2999,8 @@
     <string name="tour_spotlight_queue">Boulder in die gemeinsame Warteschlange einreihen.</string>
     <string name="tour_spotlight_quicklog">„Versuch“ oder „Top“ antippen – landet direkt im Logbuch.</string>
     <string name="tour_spotlight_logbook_back">Gespeichert. Zurück zur Liste, dann ins Logbuch.</string>
+    <string name="tour_spotlight_board_picker">Hier wählst du Board, Modell und Größe – das bestimmt den Katalog.</string>
+    <string name="tour_spotlight_connect_done">Board ist verbunden. Hier verbindest du es künftig.</string>
     <string name="tour_spotlight_logbook_direct">Öffne dein Logbuch über den markierten Button.</string>
     <string name="tour_spotlight_logbook_overflow">Dein Logbuch liegt unter Mehr (…).</string>
     <string name="tour_spotlight_logbook">Dein Logbuch: alle Versuche und Begehungen.</string>
