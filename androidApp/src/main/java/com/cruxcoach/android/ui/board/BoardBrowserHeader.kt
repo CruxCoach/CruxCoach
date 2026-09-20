@@ -82,6 +82,9 @@ internal fun BoardBrowserHeader(
     onSettings: () -> Unit = {},
     logbookTour: Boolean = false,
     onSkipTour: () -> Unit = {},
+    /** Reports whether the logbook action currently sits in the overflow menu, so the tour can
+     *  point at where it actually is instead of hedging about narrow screens. */
+    onLogbookPlacement: (inOverflow: Boolean) -> Unit = {},
 ) {
     val angleDescription = stringResource(R.string.board_angle_change, angle)
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, shadowElevation = 1.dp) {
@@ -102,6 +105,7 @@ internal fun BoardBrowserHeader(
             val directCount = if (allFit) 3 else ((maxWidth - 240.dp - minimumBoardWidth).value / 48f).toInt().coerceIn(0, 2)
             val boardWidth = (maxWidth - 192.dp - (directCount * 48).dp - if (allFit) 0.dp else 48.dp)
                 .coerceAtMost(preferredBoardWidth).coerceAtLeast(1.dp)
+            LaunchedEffect(directCount) { onLogbookPlacement(directCount == 0) }
             var overflowOpen by remember { mutableStateOf(false) }
             val actions = listOf(
                 Triple(R.string.board_logbook_title, Icons.Default.Book, onLogbook),

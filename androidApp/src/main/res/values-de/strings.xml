@@ -2961,7 +2961,8 @@
     <string name="tour_spotlight_queue">Tippe hier, um diesen Boulder in die gemeinsame Warteschlange einzureihen.</string>
     <string name="tour_spotlight_quicklog">„Versuch“ speichert einen Versuch, „Top“ eine erfolgreiche Begehung. Tippe auf dein Ergebnis – es wird direkt im Logbuch gespeichert.</string>
     <string name="tour_spotlight_logbook_back">Gespeichert. Gehe zurück zur Boulder-Liste, um deinen Eintrag im Logbuch anzusehen.</string>
-    <string name="tour_spotlight_logbook_menu">Öffne dein Logbuch über den markierten Button. Auf schmalen Bildschirmen findest du es unter Mehr (…).</string>
+    <string name="tour_spotlight_logbook_direct">Öffne dein Logbuch über den markierten Button.</string>
+    <string name="tour_spotlight_logbook_overflow">Dein Logbuch liegt unter Mehr (…). Tippe den markierten Button an und wähle „Logbuch“.</string>
     <string name="tour_spotlight_logbook">Öffne dein Logbuch. Dort findest du deine Versuche und erfolgreichen Begehungen.</string>
     <string name="tour_spotlight_entry">Das ist dein Eintrag. Mit dem Stift kannst du ihn bearbeiten; im Bearbeiten-Dialog kannst du ihn auch löschen.</string>
     <string name="board_logbook_delete_entry_title">Logeintrag löschen?</string>

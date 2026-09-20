@@ -358,6 +358,9 @@ fun BoardBrowserScreen(
         )
     }
 
+    // The header decides at layout time whether the logbook is a direct icon or sits in the
+    // overflow; the tour text follows that instead of mentioning a menu that may not apply.
+    var logbookInOverflow by remember { mutableStateOf(false) }
     val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
     val tourTarget = when (tourStep) {
         TourStep.LOGBOOK -> TourTarget.MENU
@@ -368,7 +371,9 @@ fun BoardBrowserScreen(
         else -> null
     }
     val tourMessage = when (tourTarget) {
-        TourTarget.MENU -> R.string.tour_spotlight_logbook_menu
+        TourTarget.MENU ->
+            if (logbookInOverflow) R.string.tour_spotlight_logbook_overflow
+            else R.string.tour_spotlight_logbook_direct
         TourTarget.BLUETOOTH -> R.string.tour_spotlight_connect
         TourTarget.ANGLE -> R.string.tour_spotlight_angle
         TourTarget.FILTER -> R.string.tour_spotlight_filter
@@ -393,6 +398,7 @@ fun BoardBrowserScreen(
             onLists = onNavigateToLists,
             onSettings = onNavigateToSettings,
             logbookTour = tourStep == TourStep.LOGBOOK,
+            onLogbookPlacement = { logbookInOverflow = it },
             onSkipTour = { tour.move(TourStep.DONE) },
             onBoardPicker = { showBoardPicker = true },
             onBluetooth = { showBleSheet = true },
