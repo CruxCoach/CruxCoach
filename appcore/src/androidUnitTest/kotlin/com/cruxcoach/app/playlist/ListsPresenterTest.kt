@@ -21,6 +21,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 class ListsPresenterTest {
@@ -30,13 +31,17 @@ class ListsPresenterTest {
      * Default pool the two race, and an assertion that reads the repository
      * straight after awaiting state fails at random.
      */
-    private val executor = Executors.newSingleThreadExecutor()
-    private val serial = executor.asCoroutineDispatcher()
+    private val scopeExecutor = Executors.newSingleThreadExecutor()
+    private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val serial = scopeExecutor.asCoroutineDispatcher()
+    private val serialIo = ioExecutor.asCoroutineDispatcher()
 
     @AfterTest
-    fun shutDownDispatcher() {
+    fun shutDownDispatchers() {
         serial.close()
-        executor.shutdownNow()
+        serialIo.close()
+        scopeExecutor.shutdownNow()
+        ioExecutor.shutdownNow()
     }
 
 
@@ -59,14 +64,36 @@ class ListsPresenterTest {
         origin = "kilter", source = "kilter", syncStatus = "synced",
     )
 
+    /**
+     * Runs a repository call on the same thread the presenters use for IO.
+     *
+     * One SQLDelight JDBC driver holds a single connection and a single current
+     * transaction, so the test thread and a presenter touching it at the same
+     * time corrupt each other's transaction state. Funnelling every database
+     * call through one thread removes that race; it does not weaken anything
+     * the tests assert.
+     */
+    private suspend fun <T> db(block: suspend () -> T): T = withContext(serial) { block() }
+
     private fun lists(repo: PersonalBoardRepository, lookup: ListClimbLookup = EmptyClimbLookup) =
         ListsPresenter(repo, lookup, CoroutineScope(serial), serial)
 
+    // The presenter turns any load exception into LOAD_FAILED, so a wait that
+    // never completes would otherwise surface as a bare timeout. Report the
+    // state instead: it says whether the load failed and what it holds.
     private suspend fun ListsPresenter.await(predicate: (ListsState) -> Boolean) =
-        withTimeout(CI_WAIT_MS) { state.first(predicate) }
+        try {
+            withTimeout(CI_WAIT_MS) { state.first(predicate) }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError("ListsPresenter never matched; last state = ${state.value}", e)
+        }
 
     private suspend fun ListDetailPresenter.await(predicate: (ListDetailState) -> Boolean) =
-        withTimeout(CI_WAIT_MS) { state.first(predicate) }
+        try {
+            withTimeout(CI_WAIT_MS) { state.first(predicate) }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError("ListDetailPresenter never matched; last state = ${state.value}", e)
+        }
 
     @Test
     fun `both built-in lists exist and custom lists are created once per name`() = runBlocking<Unit> {
@@ -116,21 +143,21 @@ class ListsPresenterTest {
 
         p.toggleList(listId)
         p.await { listId in it.membershipListIds }
-        assertEquals(setOf("climb-1"), repo.getClimbListEntryUuids(listId, 50, 0).map { it.first }.toSet())
-        assertEquals(1L, repo.countClimbListEntries(listId))
+        assertEquals(setOf("climb-1"), db { repo.getClimbListEntryUuids(listId, 50, 0).map { it.first }.toSet() })
+        assertEquals(1L, db { repo.countClimbListEntries(listId) })
 
         p.toggleFavorite()
         p.await { it.isFavorite }
-        assertTrue(repo.isClimbFavorited("climb-1"))
-        assertTrue(repo.ensureFavoritesListExists() in p.state.value.membershipListIds)
+        assertTrue(db { repo.isClimbFavorited("climb-1") })
+        assertTrue(db { repo.ensureFavoritesListExists() in p.state.value.membershipListIds })
 
         p.toggleIgnored()
         p.await { it.isIgnored }
-        assertEquals(setOf("climb-1"), repo.getIgnoredClimbUuids())
+        assertEquals(setOf("climb-1"), db { repo.getIgnoredClimbUuids() })
 
         p.toggleList(listId)
         p.await { listId !in it.membershipListIds }
-        assertEquals(0L, repo.countClimbListEntries(listId))
+        assertEquals(0L, db { repo.countClimbListEntries(listId) })
 
         // A new name creates the list and adds the climb in one step.
         p.updateNewListName("Warmup")
@@ -138,7 +165,7 @@ class ListsPresenterTest {
         val after = p.await { it.lists.size == 4 }
         val warmup = after.lists.single { it.name == "Warmup" }
         assertTrue(warmup.id in p.state.value.membershipListIds)
-        assertEquals(1L, repo.countClimbListEntries(warmup.id))
+        assertEquals(1L, db { repo.countClimbListEntries(warmup.id) })
         assertEquals("", p.state.value.newListName)
 
         // An existing name only toggles membership; it never creates a second list.
@@ -151,10 +178,10 @@ class ListsPresenterTest {
     @Test
     fun `list detail resolves members, renames and edits the plan`() = runBlocking<Unit> {
         val repo = newPersonalRepo()
-        val listId = repo.createClimbList("Session")
-        repo.addClimbToList(listId, "AAA-111")
-        repo.addClimbToList(listId, "bbb-222")
-        repo.addClimbToList(listId, "missing")
+        val listId = db { repo.createClimbList("Session") }
+        db { repo.addClimbToList(listId, "AAA-111") }
+        db { repo.addClimbToList(listId, "bbb-222") }
+        db { repo.addClimbToList(listId, "missing") }
         val lookup = FakeLookup(listOf(climb("aaa111", "Alpha"), climb("BBB222", "Bravo")))
         val detail = ListDetailPresenter(
             repo, listId, lookup, defaultAngle = { 40 }, scope = CoroutineScope(serial),
@@ -208,9 +235,11 @@ class ListsPresenterTest {
                 it.playbackAdvance == ListPlaybackAdvance.AFTER_SEND && it.playbackRestSeconds == 120L
         }
         // The presenter updates state before it writes, so wait for the row.
-        awaitValue(ListPlaybackOrder.SHUFFLE) { repo.getClimbListById(listId)!!.playbackOrder }
-        awaitValue(ListPlaybackAdvance.AFTER_SEND) { repo.getClimbListById(listId)!!.playbackAdvance }
-        awaitValue(120L) { repo.getClimbListById(listId)!!.playbackRestSeconds }
+        // Poll on the database thread: polling from here would be a second
+        // thread on the one JDBC connection the presenter is writing through.
+        awaitValue(ListPlaybackOrder.SHUFFLE) { db { repo.getClimbListById(listId)!!.playbackOrder } }
+        awaitValue(ListPlaybackAdvance.AFTER_SEND) { db { repo.getClimbListById(listId)!!.playbackAdvance } }
+        awaitValue(120L) { db { repo.getClimbListById(listId)!!.playbackRestSeconds } }
 
         detail.removeFromList("AAA-111")
         val removed = detail.await { it.members.size == 2 }
@@ -231,7 +260,7 @@ class ListsPresenterTest {
     @Test
     fun `built-in lists cannot be renamed and a missing list reports notFound`() = runBlocking<Unit> {
         val repo = newPersonalRepo()
-        val favorites = repo.ensureFavoritesListExists()
+        val favorites = db { repo.ensureFavoritesListExists() }
         val detail = ListDetailPresenter(repo, favorites, scope = CoroutineScope(serial), ioDispatcher = serial)
         val loaded = detail.await { !it.isLoading }
         assertTrue(loaded.isBuiltin)
@@ -239,18 +268,18 @@ class ListsPresenterTest {
         detail.updateRenameValue("Mine")
         detail.confirmRename()
         detail.await { !it.showRenameDialog }
-        assertEquals(loaded.name, repo.getClimbListById(favorites)?.name)
+        assertEquals(loaded.name, db { repo.getClimbListById(favorites)?.name })
 
         val gone = ListDetailPresenter(repo, 9999L, scope = CoroutineScope(serial), ioDispatcher = serial)
         gone.await { it.error == ListDetailError.NOT_FOUND }
-        assertNull(repo.getClimbListById(9999L))
+        assertNull(db { repo.getClimbListById(9999L) })
     }
 
     @Test
     fun `facade exposes plain codes and flags`() = runBlocking<Unit> {
         val repo = newPersonalRepo()
-        val listId = repo.createClimbList("Session")
-        repo.addClimbToList(listId, "aaa")
+        val listId = db { repo.createClimbList("Session") }
+        db { repo.addClimbToList(listId, "aaa") }
         val presenter = lists(repo)
         val model = ListsScreenModel(presenter)
         presenter.await { it.lists.size == 3 }

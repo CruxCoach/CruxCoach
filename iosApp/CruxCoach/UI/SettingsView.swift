@@ -38,6 +38,9 @@ struct SettingsView: View {
                 }
                 Text(LI("settings_account_hint")).font(.footnote).foregroundStyle(.secondary)
             }
+            Section(LI("backup_title")) {
+                NavigationLink(LI("backup_open")) { BackupView(core: core) }
+            }
             Section(LI("settings_about")) {
                 LabeledContent("CruxCoach iOS", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                 LabeledContent(LI("settings_storage"), value: "SQLCipher \(core.cipherVersion)")

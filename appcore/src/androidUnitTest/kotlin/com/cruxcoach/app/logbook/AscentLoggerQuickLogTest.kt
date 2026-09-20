@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /** Port of Android AscentLoggerQuickLogTest, against real SQLite instead of mocks. */
@@ -51,8 +52,18 @@ class AscentLoggerQuickLogTest {
         override fun onClimbStatusChanged(climbUuid: String) = Unit
     }
 
+    /**
+     * Runs a repository call on the presenter's IO thread.
+     *
+     * One SQLDelight JDBC driver holds a single connection and a single current
+     * transaction, so a read from the test thread while the presenter writes
+     * corrupts the transaction state. One thread for the database removes that
+     * race without changing what the tests assert.
+     */
+    private suspend fun <T> db(block: suspend () -> T): T = withContext(serial) { block() }
+
     private fun presenter(repo: PersonalBoardRepository, session: Session, listener: Listener) =
-        LogAttemptPresenter(repo, session, listener, CoroutineScope(serial)).also {
+        LogAttemptPresenter(repo, session, listener, CoroutineScope(serial), serial).also {
             it.setTarget(target)
         }
 
@@ -75,7 +86,7 @@ class AscentLoggerQuickLogTest {
         p.quickLog(isSend = false)
         val feedback = p.awaitFeedback()
 
-        val row = repo.getUserHistoryForClimb("climb-1").single()
+        val row = db { repo.getUserHistoryForClimb("climb-1").single() }
         assertEquals(feedback.entryUuid, row.uuid)
         assertFalse(row.isSend)
         assertEquals(1L, row.bidCount)
@@ -107,13 +118,13 @@ class AscentLoggerQuickLogTest {
 
         p.quickLog(isSend = true)
         p.awaitFeedback()
-        assertEquals(1, repo.getUserHistoryForClimb("climb-1").size)
-        assertEquals(1L, repo.climbHistoryCount())
+        assertEquals(1, db { repo.getUserHistoryForClimb("climb-1").size })
+        assertEquals(1L, db { repo.climbHistoryCount() })
 
         p.undoQuickLog()
         awaitUntil { session.calls == listOf("ascent", "undoAscent") }
-        assertTrue(repo.getUserHistoryForClimb("climb-1").isEmpty())
-        assertEquals(0L, repo.climbHistoryCount())
+        assertTrue(db { repo.getUserHistoryForClimb("climb-1").isEmpty() })
+        assertEquals(0L, db { repo.climbHistoryCount() })
         assertEquals(0, listener.finalized)
     }
 
@@ -127,7 +138,7 @@ class AscentLoggerQuickLogTest {
         p.quickLog(isSend = false)
         p.awaitFeedback { it.entryUuid == entryUuid }
 
-        val row = repo.getUserHistoryForClimb("climb-1").single()
+        val row = db { repo.getUserHistoryForClimb("climb-1").single() }
         assertEquals(entryUuid, row.uuid)
         assertEquals(2L, row.bidCount)
         assertFalse(row.isSend)
@@ -149,19 +160,19 @@ class AscentLoggerQuickLogTest {
         val sendFeedback = p.awaitFeedback { it.isSend }
         assertEquals(entryUuid, sendFeedback.entryUuid)
 
-        val promoted = repo.getUserHistoryForClimb("climb-1").single()
+        val promoted = db { repo.getUserHistoryForClimb("climb-1").single() }
         assertEquals(entryUuid, promoted.uuid)
         assertTrue(promoted.isSend)
         assertEquals(3L, promoted.bidCount)
-        assertEquals(1L, repo.climbHistoryCount())
+        assertEquals(1L, db { repo.climbHistoryCount() })
 
         p.undoQuickLog()
         awaitUntil { session.calls.lastOrNull() == "undoAscent" }
-        val restored = repo.getUserHistoryForClimb("climb-1").single()
+        val restored = db { repo.getUserHistoryForClimb("climb-1").single() }
         assertEquals(entryUuid, restored.uuid)
         assertFalse(restored.isSend)
         assertEquals(2L, restored.bidCount)
-        assertEquals(0L, repo.climbHistoryCount())
+        assertEquals(0L, db { repo.climbHistoryCount() })
     }
 
     @Test
@@ -174,7 +185,7 @@ class AscentLoggerQuickLogTest {
         p.quickLog(isSend = true)
         p.awaitFeedback { it.isSend }
 
-        val rows = repo.getUserHistoryForClimb("climb-1")
+        val rows = db { repo.getUserHistoryForClimb("climb-1") }
         assertEquals(2, rows.size)
         assertEquals(1L, rows.single { it.isSend }.bidCount)
     }
@@ -194,11 +205,11 @@ class AscentLoggerQuickLogTest {
         p.updateComment("  ")
         p.save()
         withTimeout(CI_WAIT_MS) { p.state.first { it.userAscents.size == 1 } }
-        val bid = repo.getUserHistoryForClimb("climb-1").single()
+        val bid = db { repo.getUserHistoryForClimb("climb-1").single() }
         assertFalse(bid.isSend)
         assertEquals(4L, bid.bidCount)
         assertNull(bid.comment)
-        assertEquals(0L, repo.climbHistoryCount())
+        assertEquals(0L, db { repo.climbHistoryCount() })
         awaitUntil { listener.finalized == 1 }
 
         p.edit(bid)
@@ -209,7 +220,7 @@ class AscentLoggerQuickLogTest {
         p.requestDelete(bid.uuid)
         p.confirmDelete()
         withTimeout(CI_WAIT_MS) { p.state.first { it.userAscents.isEmpty() && it.ascent.deleteConfirmUuid == null } }
-        assertTrue(repo.getUserHistoryForClimb("climb-1").isEmpty())
+        assertTrue(db { repo.getUserHistoryForClimb("climb-1").isEmpty() })
     }
 
     @Test

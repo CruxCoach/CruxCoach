@@ -15,7 +15,7 @@ const val CI_WAIT_MS = 30_000L
  * state does not imply the database write has landed. A test that asserts
  * persistence must therefore wait for the repository, not for the state.
  */
-suspend fun <T> awaitValue(expected: T, read: () -> T): T =
+suspend fun <T> awaitValue(expected: T, read: suspend () -> T): T =
     kotlinx.coroutines.withTimeout(CI_WAIT_MS) {
         var seen = read()
         while (seen != expected) {
