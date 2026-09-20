@@ -663,7 +663,11 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
                         val overallLow = params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY
                         val overallHigh = params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY
-                        // Load once per planned GRADE, best and most-climbed first.
+                        // Load once per planned GRADE, most-climbed first — the one
+                        // order besides difficulty the catalogue has an index for.
+                        // QUALITY_SENDS reads better and took nine seconds per grade
+                        // on a mid-range phone; the filler ranks by quality within
+                        // the pool anyway.
                         // Per band and by ascending difficulty — as it was — a
                         // large board spent the whole row limit on the easiest
                         // tenth of a grade, so every slot was filled from the
@@ -688,7 +692,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                         grade - GRADE_HALF_WIDTH,
                                         grade + GRADE_HALF_WIDTH,
                                         CANDIDATE_POOL_SIZE,
-                                        ClimbSortField.QUALITY_SENDS,
+                                        ClimbSortField.ASCENSIONISTS,
                                         SortDirection.DESC,
                                     )
                                 }
