@@ -20,7 +20,7 @@ data class KilterScreenState(
     val signedIn: Boolean,
     val userUuid: String,
     val busy: Boolean,
-    /** idle | signingIn | importing | done */
+    /** idle | signingIn | importing | pushing | done | pushed */
     val phase: String,
     /** none | invalidCredentials | throttled | offline | timeout | serverError | malformedResponse | notSignedIn */
     val failure: String,
@@ -28,6 +28,12 @@ data class KilterScreenState(
     val imported: Int,
     val alreadyPresent: Int,
     val unknownClimb: Int,
+    /** Logs this device sent to the portal on the last push. */
+    val uploaded: Int = 0,
+    /** Own logs still waiting to go up. */
+    val pendingUpload: Int = 0,
+    /** True when no log upstream names a gym, wall and layout yet. */
+    val missingWallContext: Boolean = false,
 )
 
 /**
@@ -39,6 +45,8 @@ class KilterScreenModel(
     private val api: KilterApi,
     private val tokens: KilterTokens,
     private val importer: KilterLogImporter,
+    /** Null leaves the screen import-only. */
+    private val uploader: com.cruxcoach.app.kilter.KilterUploader? = null,
     main: CoroutineDispatcher = Dispatchers.Main,
     private val io: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -110,6 +118,35 @@ class KilterScreenModel(
         }
     }
 
+    /**
+     * Sends this device's own ascents and attempts to the portal.
+     *
+     * Separate from the import and never automatic: writing into someone's
+     * Kilter account is their decision, and Android gates it behind the same
+     * explicit switch.
+     */
+    fun pushLogs() {
+        val pusher = uploader ?: return
+        if (job?.isActive == true) return
+        job = scope.launch {
+            _state.update {
+                it.copy(busy = true, phase = "pushing", failure = "none", missingWallContext = false)
+            }
+            val outcome = withContext(io) { pusher.push() }
+            _state.update {
+                it.copy(
+                    busy = false,
+                    phase = if (outcome.failure == KilterFailure.NONE) "pushed" else "idle",
+                    failure = code(outcome.failure),
+                    uploaded = outcome.uploaded,
+                    pendingUpload = outcome.pending,
+                    missingWallContext = outcome.missingWallContext,
+                    signedIn = tokens.isSignedIn,
+                )
+            }
+        }
+    }
+
     fun signOut() {
         if (job?.isActive == true) return
         job = scope.launch {
@@ -134,5 +171,6 @@ class KilterScreenModel(
         KilterFailure.SERVER_ERROR -> "serverError"
         KilterFailure.MALFORMED_RESPONSE -> "malformedResponse"
         KilterFailure.NOT_SIGNED_IN -> "notSignedIn"
+        KilterFailure.CONFLICT -> "conflict"
     }
 }

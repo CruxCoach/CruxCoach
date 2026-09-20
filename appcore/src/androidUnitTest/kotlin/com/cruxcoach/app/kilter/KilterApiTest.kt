@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -152,6 +153,22 @@ class KilterApiTest {
         http.responder = { _, _, _ -> ok("""[{"log_uuid":"l2","climb_uuid":"c2","angle":30}]""") }
         assertEquals(1, api.fetchLogs().logs.size)
 
+        // The live portal speaks camelCase — this is the shape Android
+        // decodes. Reading it as snake_case only would have produced a
+        // logbook of blank rows, every one of them dropped without a word.
+        http.responder = { _, _, _ ->
+            ok("""[{"logUuid":"l3","climbUuid":"c3","angle":40,"topped":true,"attempts":2,
+                 "gymUuid":"g1","wallUuid":"w1","productLayoutUuid":"p1"}]""")
+        }
+        val camel = api.fetchLogs().logs.single()
+        assertEquals("l3", camel.logUuid)
+        assertEquals("c3", camel.climbUuid)
+        assertEquals("g1", camel.gymUuid)
+        assertEquals("w1", camel.wallUuid)
+        assertEquals("p1", camel.productLayoutUuid)
+        assertEquals(2, camel.attempts)
+        assertTrue(camel.topped)
+
         http.responder = { _, _, _ -> ok("<html>not json</html>") }
         assertEquals(KilterFailure.MALFORMED_RESPONSE, api.fetchLogs().failure)
 
@@ -218,6 +235,65 @@ class KilterApiTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test
+    fun `an upload skips what the portal already has and posts the rest`() = runTest {
+        tokens.store(access = "a", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        var posted: String? = null
+        http.responder = { method, url, text ->
+            when {
+                method == "GET" && url.endsWith("/logs") ->
+                    ok("""[{"logUuid":"known","climbUuid":"c1","angle":40,"topped":true,"attempts":1}]""")
+                method == "POST" && url.endsWith("/logs/bulk") -> { posted = text; ok("{}") }
+                else -> HttpResult.Failed(HttpFailure.OTHER, "unexpected")
+            }
+        }
+        val outcome = api.uploadLogs(
+            listOf(
+                KilterLog(logUuid = "known", climbUuid = "c1", angle = 40, topped = true, attempts = 1),
+                KilterLog(logUuid = "fresh", climbUuid = "abcdef0123456789abcdef0123456789", angle = 40),
+            )
+        )
+        assertEquals(KilterFailure.NONE, outcome.failure)
+        assertEquals(1, outcome.uploaded, "a bulk insert is not an upsert: a known id would 500")
+        val body = assertNotNull(posted)
+        assertTrue("fresh" in body)
+        assertFalse("known" in body)
+        // Compact catalogue ids are matched uppercase upstream.
+        assertTrue("ABCDEF0123456789ABCDEF0123456789" in body, body)
+        // And the wire shape is the portal's camelCase.
+        assertTrue("logUuid" in body, body)
+    }
+
+    @Test
+    fun `a log the portal has with different content is a conflict, not a duplicate`() = runTest {
+        tokens.store(access = "a", refresh = "r", expiresAtEpochSeconds = clock.epochSeconds() + 3600)
+        http.responder = { method, url, _ ->
+            if (method == "GET" && url.endsWith("/logs")) {
+                ok("""[{"logUuid":"l1","climbUuid":"c1","angle":40,"topped":true,"attempts":5}]""")
+            } else ok("{}")
+        }
+        val outcome = api.uploadLogs(
+            listOf(KilterLog(logUuid = "l1", climbUuid = "c1", angle = 40, topped = true, attempts = 1))
+        )
+        assertEquals(KilterFailure.CONFLICT, outcome.failure)
+        assertEquals(0, outcome.uploaded)
+        assertTrue(http.requests.none { it.first == "POST" }, "nothing may be overwritten upstream")
+    }
+
+    @Test
+    fun `the wall context comes from a log that actually has one`() {
+        assertNull(api.wallContextFromLogs(listOf(KilterLog(logUuid = "l1", climbUuid = "c1"))))
+        val context = api.wallContextFromLogs(
+            listOf(
+                KilterLog(logUuid = "l1", climbUuid = "c1"),
+                KilterLog(logUuid = "l2", climbUuid = "c2", gymUuid = "g", wallUuid = "w", productLayoutUuid = "p"),
+            )
+        )
+        assertEquals("g", assertNotNull(context).gymUuid)
+        assertEquals("w", context.wallUuid)
+        assertEquals("p", context.productLayoutUuid)
     }
 
     @Test

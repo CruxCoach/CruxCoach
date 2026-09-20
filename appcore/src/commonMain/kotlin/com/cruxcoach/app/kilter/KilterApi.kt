@@ -5,21 +5,43 @@ import com.cruxcoach.app.platform.HttpResult
 import com.cruxcoach.app.platform.HttpTransport
 import com.cruxcoach.app.platform.WallClock
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** One ascent as the Kilter portal reports it. Field names are the portal's. */
+/**
+ * One ascent as the Kilter portal reports it.
+ *
+ * The portal speaks **camelCase** — that is what Android's `KilterApiClient`
+ * decodes into and posts, and it is the shape the live logbook returns. The
+ * snake_case alternatives are accepted as well so a portal that ever switches
+ * does not silently produce a logbook of blank rows: every field has a
+ * default, so a name mismatch parses as empty rather than failing loudly.
+ */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable
 data class KilterLog(
-    @SerialName("log_uuid") val logUuid: String = "",
-    @SerialName("user_uuid") val userUuid: String = "",
-    @SerialName("climb_uuid") val climbUuid: String = "",
+    @SerialName("logUuid") @JsonNames("log_uuid") val logUuid: String = "",
+    @SerialName("userUuid") @JsonNames("user_uuid") val userUuid: String = "",
+    @SerialName("climbUuid") @JsonNames("climb_uuid") val climbUuid: String = "",
+    /** Wall context the portal requires when a log is uploaded. */
+    @SerialName("gymUuid") @JsonNames("gym_uuid") val gymUuid: String = "",
+    @SerialName("wallUuid") @JsonNames("wall_uuid") val wallUuid: String = "",
+    @SerialName("productLayoutUuid") @JsonNames("product_layout_uuid")
+    val productLayoutUuid: String = "",
     val angle: Int = 0,
     val flashed: Boolean = false,
     val topped: Boolean = false,
     val attempts: Int = 1,
-    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("createdAt") @JsonNames("created_at") val createdAt: String = "",
     val comment: String? = null,
+)
+
+/** Gym, wall and layout a log has to name for the portal to accept it. */
+class KilterWallContext(
+    val gymUuid: String,
+    val wallUuid: String,
+    val productLayoutUuid: String,
 )
 
 @Serializable
@@ -42,7 +64,13 @@ enum class KilterFailure {
     SERVER_ERROR,
     MALFORMED_RESPONSE,
     NOT_SIGNED_IN,
+
+    /** The portal already has a log with this id but different content. */
+    CONFLICT,
 }
+
+/** How many logs the portal took, and why it stopped if it did. */
+class KilterUploadOutcome(val uploaded: Int, val failure: KilterFailure)
 
 class KilterAuthOutcome(val userUuid: String, val failure: KilterFailure, val retryAfterSeconds: Long = 0)
 
@@ -63,7 +91,10 @@ class KilterApi(
     private val logoutUrl: String = LOGOUT_URL,
     private val apiBase: String = API_BASE,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    // encodeDefaults matches Android's client: the portal is sent every field
+    // explicitly, so an attempt really says `topped: false` rather than
+    // leaving the server to assume what a missing key meant.
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     /** Password grant. On success the tokens are stored and only the user uuid is returned. */
     suspend fun signIn(email: String, password: String): KilterAuthOutcome {
@@ -163,6 +194,83 @@ class KilterApi(
         return KilterLogsOutcome(logs.filter { it.climbUuid.isNotBlank() }, KilterFailure.NONE)
     }
 
+    /**
+     * Posts logs the portal does not have yet.
+     *
+     * Kilter's bulk insert is not an upsert — a log uuid it already knows
+     * returns 500 — so the remote logbook is read first and anything already
+     * there is dropped. A row that exists remotely with *different* content is
+     * a conflict rather than a duplicate: it is left alone and reported, since
+     * overwriting someone's portal data from here is not this app's call.
+     */
+    suspend fun uploadLogs(
+        logs: List<KilterLog>,
+        /** Remote logs the caller has already fetched; null fetches them. */
+        remote: List<KilterLog>? = null,
+    ): KilterUploadOutcome {
+        if (logs.isEmpty()) return KilterUploadOutcome(0, KilterFailure.NONE)
+        val token = validAccessToken() ?: return KilterUploadOutcome(0, KilterFailure.NOT_SIGNED_IN)
+        // Legacy catalogue ids are case-sensitive upstream: compact ids go up
+        // uppercase. Hyphenated native ids and local identities stay as they are.
+        val wire = logs.map { log ->
+            if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
+                log.copy(climbUuid = log.climbUuid.uppercase())
+            } else log
+        }
+        val known = if (remote != null) {
+            remote.associateBy { it.logUuid }
+        } else {
+            val existing = fetchLogs()
+            if (existing.failure != KilterFailure.NONE) return KilterUploadOutcome(0, existing.failure)
+            existing.logs.associateBy { it.logUuid }
+        }
+        var conflicts = 0
+        val missing = wire.filter { log ->
+            val remote = known[log.logUuid]
+            if (remote != null && !sameUploadedLog(log, remote)) conflicts++
+            remote == null
+        }
+        if (conflicts > 0) return KilterUploadOutcome(0, KilterFailure.CONFLICT)
+        if (missing.isEmpty()) return KilterUploadOutcome(0, KilterFailure.NONE)
+
+        val payload = json.encodeToString(
+            kotlinx.serialization.builtins.ListSerializer(KilterLog.serializer()), missing,
+        )
+        val result = http.request(
+            method = "POST",
+            url = "$apiBase/logs/bulk",
+            headers = mapOf(
+                "Authorization" to "Bearer $token",
+                "Content-Type" to "application/json",
+                "Accept" to "application/json",
+            ),
+            body = payload.encodeToByteArray(),
+            maxResponseBytes = MAX_TOKEN_BYTES,
+            timeoutSeconds = TIMEOUT_SECONDS,
+        )
+        val response = when (result) {
+            is HttpResult.Failed -> return KilterUploadOutcome(0, result.reason.toFailure())
+            is HttpResult.Ok -> result.response
+        }
+        // The body is never kept: an error response can echo private log data.
+        if (response.status == 401) return KilterUploadOutcome(0, KilterFailure.NOT_SIGNED_IN)
+        if (response.status !in 200..299) return KilterUploadOutcome(0, KilterFailure.SERVER_ERROR)
+        return KilterUploadOutcome(missing.size, KilterFailure.NONE)
+    }
+
+    /**
+     * Gym, wall and layout taken from a log the user already has upstream.
+     *
+     * Null means "no log carries one yet", which is a different answer from a
+     * failed fetch: a transient error must never be allowed to replace a real
+     * wall context with a guess.
+     */
+    fun wallContextFromLogs(logs: List<KilterLog>): KilterWallContext? = logs
+        .firstOrNull {
+            it.gymUuid.isNotEmpty() && it.wallUuid.isNotEmpty() && it.productLayoutUuid.isNotEmpty()
+        }
+        ?.let { KilterWallContext(it.gymUuid, it.wallUuid, it.productLayoutUuid) }
+
     private suspend fun validAccessToken(): String? {
         val current = tokens.accessToken()
         if (current != null && clock.epochSeconds() < tokens.expiresAtEpochSeconds() - EXPIRY_MARGIN_SECONDS) {
@@ -212,6 +320,16 @@ class KilterApi(
         const val MAX_TOKEN_BYTES = 64L * 1024
         const val MAX_LOGS_BYTES = 32L * 1024 * 1024
         const val EXPIRY_MARGIN_SECONDS = 60L
+
+        /** A catalogue id without hyphens; the portal matches those uppercase. */
+        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
+
+        /** Two logs are the same upload when every field the portal stores matches. */
+        internal fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
+            local.climbUuid.equals(remote.climbUuid, ignoreCase = true) &&
+                local.angle == remote.angle &&
+                local.topped == remote.topped &&
+                local.attempts == remote.attempts
 
         /** `sub` claim of a JWT, without verifying it: the server is the authority, this is only a label. */
         fun subjectOf(accessToken: String): String {
