@@ -124,7 +124,7 @@ final class BundleContentsTests: XCTestCase {
 /// custom scheme and pasted URLs are the whole story and must parse identically.
 final class DeepLinkTests: XCTestCase {
 
-    private func core() throws -> AppCore {
+    private func startCore() throws -> AppCore {
         let result = AppCore.companion.start(
             aead: CryptoKitAead(),
             secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.links"),
@@ -135,7 +135,7 @@ final class DeepLinkTests: XCTestCase {
     }
 
     func testCruxCoachClimbLinksResolveAndForeignLinksDoNot() throws {
-        let core = try core()
+        let core = try startCore()
         let uuid = "0123456789abcdef0123456789abcdef"
         XCTAssertEqual(core.climbUuidFromLink(url: "cruxcoach://c/\(uuid)"), uuid)
         XCTAssertEqual(core.climbUuidFromLink(url: "https://cruxcoach.org/c/\(uuid)"), uuid)
