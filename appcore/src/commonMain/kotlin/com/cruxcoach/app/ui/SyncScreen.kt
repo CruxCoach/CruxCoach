@@ -30,6 +30,8 @@ class SyncScreenState(
     val online: Boolean,
     val rows: List<SyncBrandRow>,
     val installedCount: Int,
+    /** False until the first database read answered; the UI shows a spinner, not onboarding. */
+    val installedKnown: Boolean,
     val catalogueRevision: Int,
 )
 
@@ -72,6 +74,7 @@ class SyncScreenModel(
                 )
             },
             installedCount = installed.size,
+            installedKnown = sync.installedKnown,
             catalogueRevision = sync.catalogueRevision,
         )
     }

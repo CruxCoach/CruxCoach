@@ -64,6 +64,12 @@ data class CatalogueSyncState(
     val installedBrands: List<BoardBrand> = emptyList(),
     /** Bumped whenever catalogue contents changed, so browsers know to re-query. */
     val catalogueRevision: Int = 0,
+    /**
+     * False until the first database read has answered which catalogues are
+     * installed. The UI must not conclude "nothing installed" before this, or a
+     * returning user is shown first-run onboarding for a moment.
+     */
+    val installedKnown: Boolean = false,
 )
 
 /**
@@ -345,7 +351,9 @@ class CatalogueSyncController internal constructor(
     private fun refreshInstalled() {
         val wires = database.database.boardQueries.countClimbsByBrand().executeAsList()
             .filter { it.climbCount > 0 }.map { it.boardBrand }.toSet()
-        _state.update { it.copy(installedBrands = BoardBrand.entries.filter { b -> b.wireValue in wires }) }
+        _state.update {
+            it.copy(installedBrands = BoardBrand.entries.filter { b -> b.wireValue in wires }, installedKnown = true)
+        }
     }
 
     private fun ChunkFailure.toSyncFailure() = when (this) {
