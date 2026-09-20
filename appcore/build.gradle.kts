@@ -59,6 +59,13 @@ kotlin {
     }
 }
 
+// The suite opens many in-memory SQLite databases and loads libsecp256k1. On the
+// default worker heap it spent its last tests in GC, which made timing-sensitive
+// presenter tests fail at random while the same tests passed in isolation.
+tasks.withType<Test>().configureEach {
+    maxHeapSize = "1500m"
+}
+
 android {
     namespace = "com.cruxcoach.appcore"
     compileSdk = 36

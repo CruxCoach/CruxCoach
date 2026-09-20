@@ -15,12 +15,23 @@ import kotlinx.coroutines.asCoroutineDispatcher
  * asynchronous while making the order observable.
  */
 class SerialDispatcher {
-    private val executor: ExecutorService = Executors.newSingleThreadExecutor()
-    val dispatcher: ExecutorCoroutineDispatcher = executor.asCoroutineDispatcher()
+    private val scopeExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    /** For a presenter's own scope. */
+    val dispatcher: ExecutorCoroutineDispatcher = scopeExecutor.asCoroutineDispatcher()
+
+    /**
+     * For a presenter's IO. Deliberately a second thread: one thread for both
+     * deadlocks as soon as a coroutine on it waits for another that also needs it.
+     */
+    val io: ExecutorCoroutineDispatcher = ioExecutor.asCoroutineDispatcher()
 
     fun close() {
         dispatcher.close()
-        executor.shutdownNow()
+        io.close()
+        scopeExecutor.shutdownNow()
+        ioExecutor.shutdownNow()
     }
 }
 

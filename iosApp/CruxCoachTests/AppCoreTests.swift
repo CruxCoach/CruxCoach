@@ -158,3 +158,23 @@ extension AppCoreTests {
         XCTAssertEqual(core.npub.count, 63, "a bech32 npub is 63 characters")
     }
 }
+
+/// The backup screen reaches the network, so CI only asserts that it composes
+/// and reports a clean idle state. A restore against a real relay is the
+/// owner's test on a device, not something a sandboxed runner should attempt.
+final class BackupCompositionTests: XCTestCase {
+    func testBackupScreenComposesWithoutTouchingTheNetwork() throws {
+        let result = AppCore.companion.start(
+            aead: CryptoKitAead(),
+            secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.backup"),
+            zstd: ZstdFileDecompressor(),
+            deviceAuth: BiometricAuthenticator()
+        )
+        let core = try XCTUnwrap(result.core)
+        let state = core.backupScreen.currentState
+        XCTAssertEqual(state.phase, BackupScreenState.companion.PHASE_IDLE)
+        XCTAssertFalse(state.busy)
+        XCTAssertFalse(state.hasBackup)
+        XCTAssertNil(state.failureCode)
+    }
+}

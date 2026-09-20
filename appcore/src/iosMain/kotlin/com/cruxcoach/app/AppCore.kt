@@ -31,6 +31,7 @@ import com.cruxcoach.app.setup.BoardOptions
 import com.cruxcoach.app.storage.DatabaseFailure
 import com.cruxcoach.app.storage.IosDatabases
 import com.cruxcoach.app.sync.CatalogueSyncController
+import com.cruxcoach.app.ui.BackupScreenModel
 import com.cruxcoach.app.ui.BleScreenModel
 import com.cruxcoach.app.ui.BrowserScreenModel
 import com.cruxcoach.app.ui.DetailScreenModel
@@ -41,6 +42,8 @@ import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.PlayerScreenModel
 import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SyncScreenModel
+import com.cruxcoach.app.ui.createBackupScreenModel
+import kotlinx.coroutines.MainScope
 import com.cruxcoach.data.BoardDatabaseHandle
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardRepositoryImpl
@@ -73,6 +76,7 @@ class AppCore private constructor(
 ) {
     private val boardRepository: BoardRepository = BoardRepositoryImpl(boardDb.database, boardDb.driver)
     private val personalRepository: PersonalBoardRepository = PersonalBoardRepositoryImpl(secureDb)
+    private val secureDatabase: SecureDatabase = secureDb
     private val connectivity = IosConnectivityMonitor()
 
     val settings = SettingsModel(platform.keyValues)
@@ -97,6 +101,22 @@ class AppCore private constructor(
     }
 
     val syncScreen: SyncScreenModel by lazy { SyncScreenModel(catalogueSync, connectivity) }
+
+    /**
+     * Encrypted Nostr backup, wire-compatible with Android. The private key is
+     * read fresh from the Keychain on every use and zeroed by the pipeline, so
+     * it is never held in a field here.
+     */
+    val backupScreen: BackupScreenModel by lazy {
+        createBackupScreenModel(
+            platform = platform,
+            secureDb = secureDatabase,
+            boardRepository = boardRepository,
+            personalBoardRepo = personalRepository,
+            scope = MainScope(),
+            secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+        )
+    }
     val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
 
     fun startConnectivity() = connectivity.start()
