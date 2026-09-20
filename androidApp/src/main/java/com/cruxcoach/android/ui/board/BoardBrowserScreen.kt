@@ -97,7 +97,8 @@ fun BoardBrowserScreen(
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
-    var searchVisible by remember { mutableStateOf(false) }
+    // Returning from a climb recreates this state while the view model keeps the query: show the field then.
+    var searchVisible by remember { mutableStateOf(state.filter.searchQuery.isNotEmpty()) }
     var showMismatchPicker by remember { mutableStateOf(false) }
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
@@ -795,7 +796,11 @@ fun BoardBrowserScreen(
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
                 }
                 FloatingActionButton(
-                    onClick = { searchVisible = !searchVisible },
+                    onClick = {
+                        // Closing is labelled "clear search": a hidden field must not keep filtering.
+                        if (searchVisible && state.filter.searchQuery.isNotEmpty()) viewModel.updateSearchQuery("")
+                        searchVisible = !searchVisible
+                    },
                     containerColor = OrangeAccent,
                     contentColor = DarkBackground,
                     modifier = Modifier.testTag("board_search_fab")
