@@ -5,7 +5,7 @@
     <string name="settings_board_connections_info">Board connections</string>
 
     <!-- Climb Creator (FEAT-003) -->
-    <string name="climb_creator_title">New climb</string>
+    <string name="climb_creator_title">Editor</string>
     <string name="climb_creator_open">Create a climb</string>
     <string name="climb_creator_undo">Undo</string>
     <string name="climb_creator_redo">Redo</string>
