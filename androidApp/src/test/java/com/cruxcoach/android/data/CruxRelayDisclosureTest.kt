@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
@@ -129,7 +130,7 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
-    fun `the sharing switch is consent, starts at once and switching it off keeps it off`() = runTest {
+    fun `the sharing switch is the consent, starts the transport and off keeps it off`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
         val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
@@ -145,7 +146,6 @@ class CruxRelayDisclosureTest {
         every { preferences.relayDisclosureSeen } returns seen
         coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
         coEvery { preferences.setRelayDisclosureSeen() } answers { seen.value = true }
-        // A transport that actually starts, so "enabled" reflects the switch and not a mock.
         val server = mockk<RelayGattServer>(relaxed = true)
         coEvery { server.start() } returns true
         every { server.climbs } returns MutableSharedFlow<RelayInboundClimb>()
@@ -163,26 +163,29 @@ class CruxRelayDisclosureTest {
             userPreferences = preferences,
             scope = backgroundScope,
         )
-        runCurrent()
-        assertFalse(manager.state.value.enabled)
-
-        manager.setSharingEnabled(true)
-        runCurrent()
-        assertTrue(seen.value)
-        assertFalse(manualStart.value)
-        assertTrue(manager.state.value.enabled)
+        advanceUntilIdle()
+        // Sharing is off, so nothing starts on its own and no dialog is raised.
+        coVerify(exactly = 0) { server.start() }
         assertFalse(manager.state.value.pendingDisclosure)
 
+        manager.setSharingEnabled(true)
+        advanceUntilIdle()
+        // Switching it on is the consent and starts the transport right away.
+        assertTrue(seen.value)
+        assertFalse(manualStart.value)
+        assertFalse(manager.state.value.pendingDisclosure)
+        coVerify(atLeast = 1) { server.start() }
+
         manager.setSharingEnabled(false)
-        runCurrent()
+        advanceUntilIdle()
         assertTrue(manualStart.value)
         assertFalse(manager.state.value.enabled)
 
         // A reconnect must not revive what the switch turned off.
         connectionState.value = ConnectionState.DISCONNECTED
-        runCurrent()
+        advanceUntilIdle()
         connectionState.value = ConnectionState.CONNECTED
-        runCurrent()
+        advanceUntilIdle()
         assertFalse(manager.state.value.enabled)
     }
 
