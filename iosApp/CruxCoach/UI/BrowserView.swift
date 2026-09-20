@@ -9,6 +9,7 @@ struct BrowserView: View {
     @State private var ble: ScreenHost<BleScreenModel, BleScreenState>?
     @State private var search = ""
     @State private var sheet: Sheet?
+    @State private var path = NavigationPath()
 
     enum Sheet: String, Identifiable { case board, ble, catalogue, filters; var id: String { rawValue } }
 
@@ -39,7 +40,7 @@ struct BrowserView: View {
                          ble: ScreenHost<BleScreenModel, BleScreenState>) -> some View {
         let model = host.model
         let ui = host.state
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section { header(model: model, ui: ui) }
                 if !ui.hasCatalogue {
@@ -88,6 +89,7 @@ struct BrowserView: View {
                             }
                         }
                         Button(L("board_sync_title"), systemImage: "arrow.down.circle") { sheet = .catalogue }
+                        NavigationLink(L("board_lists_title")) { ListsView(core: core) }
                         NavigationLink(L("board_logbook_title")) { LogbookView(core: core) }
                         NavigationLink(LI("history_title")) { HistoryView(core: core) }
                         NavigationLink(L("settings_title")) { SettingsView(core: core) }
@@ -114,6 +116,12 @@ struct BrowserView: View {
                 }
             }
             .onChange(of: sync.state.catalogueRevision) { _, _ in model.refresh() }
+            .onOpenURL { url in
+                // Universal links need a paid team, so `cruxcoach://c/<uuid>`
+                // and a pasted CruxCoach URL go through the same parser.
+                let uuid = core.climbUuidFromLink(url: url.absoluteString)
+                if !uuid.isEmpty { path.append(uuid) }
+            }
         }
         .task { model.start() }
     }

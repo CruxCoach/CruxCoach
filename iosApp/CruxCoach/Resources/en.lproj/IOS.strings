@@ -111,3 +111,10 @@
 "retention_90" = "90 days";
 "retention_365" = "1 year";
 "history_clear" = "Clear history";
+"lists_new" = "New list";
+"lists_name" = "Name";
+"lists_delete_confirm" = "Delete this list? The problems themselves stay.";
+"lists_empty" = "This list is empty";
+"lists_remove" = "Remove";
+"lists_rename" = "Rename";
+"lists_unavailable" = "not in the catalogue";
