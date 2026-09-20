@@ -89,16 +89,10 @@ jobs:
           cd iosApp && xcodebuild build -project CruxCoach.xcodeproj -scheme CruxCoach \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee "$RUNNER_TEMP/ci-device.log" | tail -200
-      # Job logs need a GitHub login; annotations are public. Surface the error lines.
+      # Job logs need admin rights on the repository; annotations are public.
       - name: Summarise failure
         if: failure()
-        run: |
-          for f in "$RUNNER_TEMP"/ci-*.log; do
-            [ -f "$f" ] || continue
-            MSG="$(grep -E "^e: |error:|FAILED|Undefined symbol|ld: |XCTAssert|failed -|What went wrong|Test Case .* failed|fatal" "$f" | grep -v "^> Task .*UP-TO-DATE" | tail -45 | cut -c1-400 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
-            [ -n "$MSG" ] && echo "::error title=$(basename "$f")::$MSG"
-          done
-          true
+        run: python3 scripts/ci_log_tail.py "$RUNNER_TEMP/ci-*.log"
       - name: Package unsigned IPA
         run: |
           cd iosApp
