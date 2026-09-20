@@ -14,7 +14,8 @@ final class AppCoreTests: XCTestCase {
             aead: CryptoKitAead(),
             secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.core"),
             zstd: ZstdFileDecompressor(),
-            deviceAuth: BiometricAuthenticator()
+            deviceAuth: BiometricAuthenticator(),
+            nip44: LibraryNip44Cipher()
         )
         XCTAssertEqual(result.failureCode, "", result.detail)
         return try XCTUnwrap(result.core)
@@ -134,7 +135,8 @@ final class DeepLinkTests: XCTestCase {
             aead: CryptoKitAead(),
             secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.links"),
             zstd: ZstdFileDecompressor(),
-            deviceAuth: BiometricAuthenticator()
+            deviceAuth: BiometricAuthenticator(),
+            nip44: LibraryNip44Cipher()
         )
         return try XCTUnwrap(result.core)
     }
@@ -168,7 +170,8 @@ final class BackupCompositionTests: XCTestCase {
             aead: CryptoKitAead(),
             secrets: KeychainSecretStore(service: "org.cruxcoach.ios.tests.backup"),
             zstd: ZstdFileDecompressor(),
-            deviceAuth: BiometricAuthenticator()
+            deviceAuth: BiometricAuthenticator(),
+            nip44: LibraryNip44Cipher()
         )
         let core = try XCTUnwrap(result.core)
         let state = core.backupScreen.currentState
