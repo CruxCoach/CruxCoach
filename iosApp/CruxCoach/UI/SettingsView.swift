@@ -38,6 +38,9 @@ struct SettingsView: View {
                 }
                 Text(LI("settings_account_hint")).font(.footnote).foregroundStyle(.secondary)
             }
+            Section(LI("import_title")) {
+                NavigationLink(LI("import_title")) { ImportView(core: core) }
+            }
             Section(LI("kilter_title")) {
                 NavigationLink(LI("kilter_title")) { KilterView(core: core) }
             }
