@@ -47,7 +47,7 @@ examined experimental branch, not to this release line.
 - FIPS comparison: [Deutsch](de/FIPS_MESH_ARCHITECTURE_COMPARISON.md) · [English](en/FIPS_MESH_ARCHITECTURE_COMPARISON.md)
 - [BoardCell design](specs/0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md) and [experimental device protocol](FIPS_DEVICE_TEST_PROTOCOL.md)
 - [Competition design](specs/0.2.3/FEAT-058-competitions.md) and its linked contracts/decision register
-- [iOS feasibility](IOS_BOARD_ACCESS.md), [Myco/FIPS research](research/2026-08-12-myco-fips-evaluation.md)
+- [iOS feasibility](IOS_BOARD_ACCESS.md) and the implemented [iOS app](IOS_APP.md), [Myco/FIPS research](research/2026-08-12-myco-fips-evaluation.md)
 
 ## Maintaining this guide
 
