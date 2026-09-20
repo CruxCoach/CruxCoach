@@ -60,8 +60,8 @@ import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
-import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
+import com.cruxcoach.app.ui.LogbookScreenModel
 import com.cruxcoach.app.ui.PlayerScreenModel
 import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SettingsScreenModel

@@ -266,3 +266,15 @@
 "settings_delete_user_confirm" = "Delete your logbook entries for the selected boards? This cannot be undone.";
 "settings_delete_done" = "Done: %@";
 "settings_all" = "Display, board, timers, data";
+"onboarding_title" = "Step %1$ld of %2$ld";
+"onboarding_board_intro" = "Tell CruxCoach which board you climb on, and which catalogues to download. You can change both later.";
+"onboarding_your_board" = "Your board";
+"onboarding_catalogues" = "Download catalogues";
+"onboarding_catalogues_hint" = "Each catalogue is verified against the publisher's signature before anything is imported. Kilter is the largest.";
+"onboarding_toggle_all" = "Select all / none";
+"onboarding_continue" = "Continue";
+"onboarding_data_intro" = "If you already have a history, bring it with you. You can also skip this and start fresh.";
+"onboarding_bring_data" = "Existing data";
+"onboarding_finish" = "Start climbing";
+"onboarding_back" = "Back";
+"onboarding_skip" = "Skip";
