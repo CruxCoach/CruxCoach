@@ -72,6 +72,9 @@ class PlayerScreenModel(private val presenter: PlaylistPlayerPresenter) {
     fun previous() = presenter.previous()
     fun setCurrent(index: Int) = presenter.setCurrent(index)
     fun skipRest() = presenter.skipRest()
+
+    /** Rest-timer auto-start after a log; ignored while a planned rest runs. */
+    fun startRest(seconds: Int) = presenter.startRestNow(seconds)
     fun acknowledgeRestFinished() = presenter.acknowledgeRestFinished()
     fun resendCurrentClimb() = presenter.resendCurrentClimb()
     fun refreshConnection() = presenter.refreshConnection()

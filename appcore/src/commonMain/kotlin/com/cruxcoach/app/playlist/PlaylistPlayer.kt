@@ -187,6 +187,17 @@ class PlaylistPlayerPresenter(
         cancelRest()
     }
 
+    /**
+     * Starts a rest of [seconds] right now — Android's rest-timer auto-start
+     * after a logged attempt (`rest_timer_duration_seconds`). A rest that is
+     * already running wins; an auto-start must never cut a planned pause short.
+     */
+    fun startRestNow(seconds: Int) {
+        val current = _state.value
+        if (!current.isActive || current.isResting || seconds <= 0) return
+        startRest(seconds)
+    }
+
     fun acknowledgeRestFinished() = _state.update { it.copy(restFinished = false) }
 
     /** Puts the current climb back on the wall. */
