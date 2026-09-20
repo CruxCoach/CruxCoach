@@ -57,12 +57,14 @@ struct BackupView: View {
                         .foregroundStyle(.green)
                 }
             }
-            Section(LI("backup_own")) {
+            Section {
                 Button(LI("backup_now")) { model.backUpNow(exportedAt: ISO8601DateFormatter().string(from: Date())) }
                     .disabled(ui.busy)
                 if ui.lastBackupAt > 0 {
                     Text(LI("backup_last", dateText(ui.lastBackupAt))).font(.footnote).foregroundStyle(.secondary)
                 }
+            } header: {
+                Text(LI("backup_own"))
             } footer: {
                 Text(LI("backup_own_hint"))
             }

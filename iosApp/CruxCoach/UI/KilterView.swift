@@ -48,7 +48,7 @@ struct KilterView: View {
                     }
                 }
             } else {
-                Section(LI("kilter_sign_in")) {
+                Section {
                     TextField(LI("kilter_email"), text: $email)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
@@ -61,6 +61,8 @@ struct KilterView: View {
                         password = ""
                     }
                     .disabled(ui.busy || email.isEmpty || password.isEmpty)
+                } header: {
+                    Text(LI("kilter_sign_in"))
                 } footer: {
                     Text(LI("kilter_privacy"))
                 }
