@@ -145,10 +145,19 @@ class CruxRelayDisclosureTest {
         every { preferences.relayDisclosureSeen } returns seen
         coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
         coEvery { preferences.setRelayDisclosureSeen() } answers { seen.value = true }
+        // A transport that actually starts, so "enabled" reflects the switch and not a mock.
+        val server = mockk<RelayGattServer>(relaxed = true)
+        coEvery { server.start() } returns true
+        every { server.climbs } returns MutableSharedFlow<RelayInboundClimb>()
+        every { server.connectionEvents } returns MutableSharedFlow<GattConnectionEvent>()
+        val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+        every { advertiser.startRelayAdvertising() } returns "started"
+        coEvery { advertiser.awaitRelayAdvertisingStart() } returns
+            AdvertisingSetCallback.ADVERTISE_SUCCESS
         val manager = CruxRelayManager(
             context = context,
-            relayServer = mockk<RelayGattServer>(relaxed = true),
-            advertiser = mockk<ClimbBleAdvertiser>(relaxed = true),
+            relayServer = server,
+            advertiser = advertiser,
             bleConnection = connection,
             projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
             userPreferences = preferences,
