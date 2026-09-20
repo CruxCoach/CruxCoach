@@ -24,21 +24,34 @@ class BoardSender(
     private val boardRepository: BoardRepository,
     private val connection: BoardConnectionPresenter,
     private val keyValues: KeyValueStore,
+    /** Called when the LED map could not be read after the request was accepted. */
+    private val onRequestFailed: (String) -> Unit = {},
     main: CoroutineDispatcher = Dispatchers.Main,
     private val io: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + main)
 
-    fun send(detail: ClimbDetailUiState) {
-        val data = detail.data ?: return
+    /**
+     * Starts an explicit send. The result of the BLE write itself arrives on
+     * the connection presenter's state; this returns only whether the request
+     * could be built at all, so the UI never looks like nothing happened.
+     *
+     * Returns "started", "noClimb", "unknownBrand", "noBoardGeometry" or
+     * "noHolds".
+     */
+    fun send(detail: ClimbDetailUiState): String {
+        val data = detail.data ?: return "noClimb"
         val brandWire = data.boardSize?.boardBrand?.wireValue ?: keyValues.getString("board_brand") ?: "kilter"
-        val brand = BoardBrand.fromWireOrNull(brandWire) ?: return
+        val brand = BoardBrand.fromWireOrNull(brandWire) ?: return "unknownBrand"
         if (brand == BoardBrand.MOONBOARD) {
             connection.sendMoonBoardClimb(data.climb.frames, data.climb.layoutId, keyValues.getString("moonboard_led_mode"))
-            return
+            return "started"
         }
-        val sizeId = data.boardSize?.id?.toInt() ?: return
+        // Without the product size there is no LED map, so the board could not
+        // be told which holds to light: say so rather than doing nothing.
+        val sizeId = data.boardSize?.id?.toInt() ?: return "noBoardGeometry"
         val holds = detail.holds.map { BoardHold(it.placementId, it.roleId) }
+        if (holds.isEmpty()) return "noHolds"
         scope.launch {
             val maps = try {
                 withContext(io) {
@@ -46,8 +59,13 @@ class BoardSender(
                 }
             } catch (e: Exception) {
                 null
-            } ?: return@launch
+            }
+            if (maps == null) {
+                onRequestFailed("noBoardGeometry")
+                return@launch
+            }
             connection.sendClimb(holds, maps.first, resolveRoleColors(brand, maps.second, null), brandWire)
         }
+        return "started"
     }
 }

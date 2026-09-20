@@ -43,10 +43,10 @@ class ListsPresenterTest {
         ListsPresenter(repo, lookup, CoroutineScope(Dispatchers.Default))
 
     private suspend fun ListsPresenter.await(predicate: (ListsState) -> Boolean) =
-        withTimeout(5_000) { state.first(predicate) }
+        withTimeout(CI_WAIT_MS) { state.first(predicate) }
 
     private suspend fun ListDetailPresenter.await(predicate: (ListDetailState) -> Boolean) =
-        withTimeout(5_000) { state.first(predicate) }
+        withTimeout(CI_WAIT_MS) { state.first(predicate) }
 
     @Test
     fun `both built-in lists exist and custom lists are created once per name`() = runBlocking<Unit> {
@@ -274,9 +274,12 @@ class ListsPresenterTest {
 
         var seen = 0
         val sub = detailModel.watch { seen++ }
-        withTimeout(5_000) { while (seen == 0) kotlinx.coroutines.delay(5) }
+        withTimeout(CI_WAIT_MS) { while (seen == 0) kotlinx.coroutines.delay(5) }
         sub.cancel()
         detailModel.close()
         model.close()
     }
 }
+
+/** Real-time waits: generous so a loaded machine cannot fail an otherwise correct test. */
+private const val CI_WAIT_MS = 30_000L

@@ -118,3 +118,5 @@
 "lists_remove" = "Remove";
 "lists_rename" = "Rename";
 "lists_unavailable" = "not in the catalogue";
+"detail_send_no_geometry" = "This board's hold positions are missing, so nothing can be lit. Download the board catalogue again.";
+"detail_send_no_holds" = "This problem has no holds to light.";

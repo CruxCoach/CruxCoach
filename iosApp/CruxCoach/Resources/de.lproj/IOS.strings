@@ -118,3 +118,5 @@
 "lists_remove" = "Entfernen";
 "lists_rename" = "Umbenennen";
 "lists_unavailable" = "nicht im Katalog";
+"detail_send_no_geometry" = "Die Griffpositionen dieses Boards fehlen, deshalb kann nichts beleuchtet werden. Lade den Board-Katalog erneut herunter.";
+"detail_send_no_holds" = "Dieses Problem hat keine Griffe zum Beleuchten.";

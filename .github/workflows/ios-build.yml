@@ -38,6 +38,9 @@ jobs:
         run: python3 scripts/android_strings_to_ios.py --check
       - name: Unit tests
         run: ./gradlew :shared:testDebugUnitTest :appcore:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+      - name: Report failing tests
+        if: failure()
+        run: python3 scripts/ci_test_failures.py
       - name: Compile debug APK
         run: ./gradlew :androidApp:assembleDebug --console=plain
 
