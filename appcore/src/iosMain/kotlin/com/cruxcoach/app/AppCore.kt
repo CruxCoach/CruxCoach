@@ -38,6 +38,7 @@ import com.cruxcoach.app.platform.ZstdDecompressor
 import com.cruxcoach.app.platform.createIosPlatformServices
 import com.cruxcoach.app.playlist.BoardRepositoryClimbLookup
 import com.cruxcoach.app.playlist.ListDetailPresenter
+import com.cruxcoach.app.backup.BlossomClient
 import com.cruxcoach.app.backup.CruxCoachBackupPayloadStore
 import com.cruxcoach.app.community.SetterDetailPresenter
 import com.cruxcoach.app.messages.DevContactPresenter
@@ -71,11 +72,13 @@ import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ImportScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.DataExchangeScreenModel
+import com.cruxcoach.app.ui.BrowserTourModel
 import com.cruxcoach.app.ui.DevContactScreenModel
 import com.cruxcoach.app.ui.GeneratorScreenModel
 import com.cruxcoach.app.ui.ProfileScreenModel
 import com.cruxcoach.app.ui.SetterDetailScreenModel
 import com.cruxcoach.app.ui.SettersScreenModel
+import com.cruxcoach.app.ui.WhatsNewScreenModel
 import com.cruxcoach.app.ui.ListsScreenModel
 import com.cruxcoach.app.ui.MapScreenModel
 import com.cruxcoach.app.ui.OnboardingScreenModel
@@ -272,6 +275,12 @@ class AppCore private constructor(
     fun makeListsScreen(): ListsScreenModel =
         ListsScreenModel(ListsPresenter(personalRepository, climbLookup))
 
+    /** The guided first browse. */
+    fun makeBrowserTour(): BrowserTourModel = BrowserTourModel(platform.keyValues)
+
+    /** Release notes to show once, after an upgrade. */
+    fun makeWhatsNewScreen(): WhatsNewScreenModel = WhatsNewScreenModel(platform.keyValues)
+
     /**
      * Where to send the maintainer a thank-you. Plain properties rather than
      * the `AppConfig` object itself: Kotlin/Native's Objective-C export
@@ -321,6 +330,12 @@ class AppCore private constructor(
     fun makeProfileScreen(): ProfileScreenModel = ProfileScreenModel(
         ProfilePresenter(
             store = NostrProfileStore(secureDatabase, platform.clock),
+            blossom = BlossomClient(
+                platform.http, platform.hashing, platform.clock,
+                LocalEventSigner(platform.hashing) {
+                    platform.secrets.read(LocalIdentity.NOSTR_KEY)
+                },
+            ),
             relays = RelayClient(platform.webSockets, platform.hashing),
             signer = LocalEventSigner(platform.hashing) {
                 platform.secrets.read(LocalIdentity.NOSTR_KEY)

@@ -88,6 +88,30 @@ class BlossomClient(
         }
     }
 
+    /**
+     * Uploads an image and returns the URL of the first server that took it.
+     *
+     * Separate from [upload] because a profile picture is public, is served
+     * to other clients by URL, and needs its real MIME type — the backup blob
+     * is opaque ciphertext and deliberately uploaded as octet-stream.
+     */
+    suspend fun uploadImage(
+        blob: ByteArray,
+        contentType: String = CONTENT_TYPE_JPEG,
+        servers: List<String> = DEFAULT_SERVERS,
+    ): String? {
+        if (servers.isEmpty()) return null
+        val sha256 = hashing.sha256(blob).toHex()
+        val auth = authHeader("upload", sha256, "CruxCoach profile image upload") ?: return null
+        for (server in servers) {
+            val attempt = attemptUpload(server, blob, sha256, auth, contentType)
+            // Same-bytes idempotency: re-uploading one image is a no-op that
+            // returns the same hash, so a retry costs nothing.
+            if (attempt.accepted) return server.trimEnd('/') + "/" + sha256
+        }
+        return null
+    }
+
     /** HEAD /<sha256>: true as soon as one server has the blob. */
     suspend fun verifyExists(sha256Hex: String, servers: List<String>): Boolean {
         for (server in servers) {
@@ -176,6 +200,7 @@ class BlossomClient(
         const val KIND_BLOSSOM_AUTH = 24242
         const val KIND_BLOSSOM_SERVER_LIST = 10063
         private const val AUTH_EXPIRATION_SECONDS = 5L * 60L
+        const val CONTENT_TYPE_JPEG = "image/jpeg"
         private const val CONTENT_TYPE_OCTET = "application/octet-stream"
         private const val CONTENT_TYPE_ALT = "application/x-cruxcoach-backup"
         private const val MAX_RESPONSE_BYTES = 64L * 1024

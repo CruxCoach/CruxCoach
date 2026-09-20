@@ -32,7 +32,9 @@ import kotlinx.serialization.json.put
 /** Nostr kind of a metadata (profile) event. */
 internal const val KIND_METADATA = 0
 
-enum class ProfileError { NONE, LOAD_FAILED, NO_IDENTITY, SIGNING_FAILED, NO_RELAY_ACCEPTED, INVALID_URL }
+enum class ProfileError {
+    NONE, LOAD_FAILED, NO_IDENTITY, SIGNING_FAILED, NO_RELAY_ACCEPTED, INVALID_URL, UPLOAD_FAILED,
+}
 
 /** Result of checking a NIP-05 identifier against its own domain. */
 enum class Nip05Status { UNKNOWN, CHECKING, MATCHES, MISMATCH, UNREACHABLE }
@@ -51,6 +53,8 @@ data class ProfileState(
     val lightningAddress: String = "",
     /** True once an edit has not yet been saved locally. */
     val isDirty: Boolean = false,
+    /** True while an image is on its way to a Blossom server. */
+    val isUploading: Boolean = false,
     val nip05Status: Nip05Status = Nip05Status.UNKNOWN,
     /** Relays that stored the last publish, out of those dialed. */
     val publishedTo: Int = 0,
@@ -69,6 +73,8 @@ data class ProfileState(
  */
 class ProfilePresenter(
     private val store: NostrProfileStore,
+    /** Null disables image upload; the screen then only takes a URL. */
+    private val blossom: com.cruxcoach.app.backup.BlossomClient? = null,
     private val relays: RelayClient,
     private val signer: EventSigner,
     private val http: HttpTransport,
@@ -269,6 +275,40 @@ class ProfilePresenter(
                 Nip05Status.UNREACHABLE
             }
             _state.update { it.copy(nip05Status = status) }
+        }
+    }
+
+    /**
+     * Uploads an image and puts its URL in the picture (or banner) field.
+     *
+     * The bytes are already the encoded image — resizing and JPEG encoding
+     * belong to the platform that has the photo library. A Blossom server
+     * stores by content hash, so re-uploading the same picture is free.
+     */
+    fun uploadImage(bytes: ByteArray, asBanner: Boolean) {
+        val client = blossom
+        if (client == null || bytes.isEmpty()) {
+            _state.update { it.copy(error = ProfileError.UPLOAD_FAILED) }
+            return
+        }
+        if (_state.value.isUploading) return
+        _state.update { it.copy(isUploading = true, error = ProfileError.NONE) }
+        scope.launch {
+            val url = try {
+                client.uploadImage(bytes)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (url == null) {
+                _state.update { it.copy(isUploading = false, error = ProfileError.UPLOAD_FAILED) }
+            } else {
+                _state.update {
+                    val next = if (asBanner) it.copy(bannerUrl = url) else it.copy(pictureUrl = url)
+                    next.copy(isUploading = false, isDirty = true)
+                }
+            }
         }
     }
 

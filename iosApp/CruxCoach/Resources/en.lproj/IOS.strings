@@ -333,3 +333,9 @@
 "devcontact_error_send" = "The message could not be sent.";
 "devcontact_open" = "Contact the developer";
 "payment_no_wallet_hint" = "Copy the address into your Lightning wallet, or use the Ko-fi link. CruxCoach does not handle payments itself.";
+"profile_pick_picture" = "Pick a profile picture";
+"profile_pick_banner" = "Pick a cover image";
+"profile_uploading" = "Uploading…";
+"profile_image_upload_hint" = "Images are uploaded to public Blossom servers and are then readable by anyone who has the link. You can also paste an https link instead.";
+"profile_error_upload" = "The image could not be uploaded.";
+"tour_no_board" = "I have no board here";

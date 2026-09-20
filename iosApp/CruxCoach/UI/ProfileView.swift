@@ -1,4 +1,5 @@
 import CruxCoachCore
+import PhotosUI
 import SwiftUI
 
 /// The user's own Nostr profile — what other climbers see next to a problem
@@ -7,6 +8,8 @@ struct ProfileView: View {
     let core: AppCore
     @State private var host: ScreenHost<ProfileScreenModel, ProfileScreenState>?
     @State private var confirmingPublish = false
+    @State private var pickedPicture: PhotosPickerItem?
+    @State private var pickedBanner: PhotosPickerItem?
 
     var body: some View {
         Group {
@@ -47,11 +50,24 @@ struct ProfileView: View {
                 TextField(L("nostr_profile_picture_change"),
                           text: binding(ui.pictureUrl) { model.setPictureUrl(value: $0) })
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
+                PhotosPicker(selection: $pickedPicture, matching: .images) {
+                    Label(LI("profile_pick_picture"), systemImage: "photo")
+                }
+                .disabled(ui.isUploading)
                 TextField(L("nostr_profile_banner_label"),
                           text: binding(ui.bannerUrl) { model.setBannerUrl(value: $0) })
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                Text(LI("profile_image_url_hint")).font(.footnote).foregroundStyle(.secondary)
+                PhotosPicker(selection: $pickedBanner, matching: .images) {
+                    Label(LI("profile_pick_banner"), systemImage: "photo.on.rectangle")
+                }
+                .disabled(ui.isUploading)
+                if ui.isUploading {
+                    HStack { ProgressView(); Text(LI("profile_uploading")) }
+                }
+                Text(LI("profile_image_upload_hint")).font(.footnote).foregroundStyle(.secondary)
             }
+            .onChange(of: pickedPicture) { _, item in upload(item, asBanner: false, model: model) }
+            .onChange(of: pickedBanner) { _, item in upload(item, asBanner: true, model: model) }
             Section {
                 TextField(L("nostr_profile_nip05_label"),
                           text: binding(ui.nip05) { model.setNip05(value: $0) })
@@ -99,6 +115,28 @@ struct ProfileView: View {
         }
     }
 
+    /// Downsizes and JPEG-encodes before anything leaves the device: a
+    /// modern phone photo is several megabytes, and a profile picture that
+    /// size is a needless upload and a slow render for everyone else.
+    private func upload(_ item: PhotosPickerItem?, asBanner: Bool, model: ProfileScreenModel) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data),
+                  let jpeg = Self.encode(image, maxEdge: asBanner ? 1200 : 512) else { return }
+            model.uploadImage(bytes: jpeg.toKotlinByteArray(), asBanner: asBanner)
+        }
+    }
+
+    private static func encode(_ image: UIImage, maxEdge: CGFloat) -> Data? {
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxEdge ? maxEdge / longest : 1
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        return resized.jpegData(compressionQuality: 0.85)
+    }
+
     private func binding(_ value: String, _ set: @escaping (String) -> Void) -> Binding<String> {
         Binding(get: { value }, set: set)
     }
@@ -119,6 +157,7 @@ struct ProfileView: View {
         case "signingFailed": return "profile_error_signing"
         case "noRelayAccepted": return "profile_error_no_relay"
         case "invalidUrl": return "profile_error_invalid_url"
+        case "uploadFailed": return "profile_error_upload"
         default: return "profile_error_load"
         }
     }
