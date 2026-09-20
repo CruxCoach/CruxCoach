@@ -2468,7 +2468,7 @@
     <string name="list_plan_clear_action">Trainingsablauf entfernen</string>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
     <string name="relay_share_description">Dieses Handy bleibt mit dem Board verbunden und leitet Boulder von anderen Handys an die Wand weiter.</string>
-    <string name="relay_share_button">Für andere Board-Apps freigeben</string>
+    <string name="relay_share_button">Freigabe starten</string>
     <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere direkte App-Verbindungen. Verbinde die andere Board-App direkt mit der Wand; ein CruxRelay ist nicht nötig.</string>
     <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps bereits über eigene Layer. CruxRelay kann diese Layer-Identitäten derzeit nicht sicher weiterleiten; verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>

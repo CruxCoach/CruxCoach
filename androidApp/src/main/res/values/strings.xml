@@ -2469,7 +2469,7 @@
     <string name="list_plan_clear_action">Remove training plan</string>
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
     <string name="relay_share_description">This phone stays connected to the board and forwards climbs sent from other phones.</string>
-    <string name="relay_share_button">Share with other board apps</string>
+    <string name="relay_share_button">Start sharing</string>
     <string name="relay_multi_connect_direct">This board accepts multiple direct app connections. Connect the other board app directly to the wall; CruxRelay is not needed.</string>
     <string name="relay_unsupported_explanation">Quantum already manages multiple apps through its own layers. CruxRelay cannot safely forward those layer identities yet; connect additional apps directly to the board.</string>
     <string name="relay_chip_text">Relay for %1$s · %2$d connected</string>

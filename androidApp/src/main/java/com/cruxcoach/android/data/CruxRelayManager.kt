@@ -216,18 +216,19 @@ class CruxRelayManager(
 
     /** The sole start entry point for manual, automatic and permission-retry
      * paths. No caller can enable transport before the persisted disclosure. */
-    fun requestEnable() {
+    fun requestEnable() = requestEnable(disclosureShown = false)
+
+    private fun requestEnable(disclosureShown: Boolean) {
         autoDisclosureDismissedBoardAddress = null
         pendingDisclosureIsAutomatic = false
+        // Bound to this very request: an early rejection must not leave a consent behind.
+        disclosureShownInline = disclosureShown
         requestEnableInternal()
     }
 
     /** Manual start from a surface that displays the disclosure text itself: the tap is the
      *  one-time consent, so no separate dialog is needed. */
-    fun requestEnableWithShownDisclosure() {
-        disclosureShownInline = true
-        requestEnable()
-    }
+    fun requestEnableWithShownDisclosure() = requestEnable(disclosureShown = true)
 
     /** Whether the one-time disclosure was accepted; drives the inline info card. */
     val disclosureSeen get() = userPreferences.relayDisclosureSeen

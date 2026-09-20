@@ -109,7 +109,9 @@ fun RelaySharingSection(
         }
     }
 
-    val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle(initialValue = true)
+    // Until the stored answer arrives, assume it is missing: never show the short summary
+    // to someone who has not read the full disclosure yet.
+    val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle(initialValue = false)
     val shareAutomatically by viewModel.shareAutomatically.collectAsStateWithLifecycle(initialValue = false)
 
     if (!state.enabled) {
