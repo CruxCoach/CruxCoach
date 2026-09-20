@@ -1,0 +1,128 @@
+package com.cruxcoach.app.map
+
+import com.cruxcoach.data.repository.AccessType
+import com.cruxcoach.data.repository.Adjustability
+import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
+
+/** `layout_id` of Kilter Board Original — Android `BoardConstants.KILTER_ORIGINAL_LAYOUT`. */
+const val KILTER_ORIGINAL_LAYOUT = 1
+
+/** `layout_id` of Kilter Board Homewall — Android `BoardConstants.KILTER_HOMEWALL_LAYOUT`. */
+const val KILTER_HOMEWALL_LAYOUT = 8
+
+/**
+ * Port of Android `com.cruxcoach.android.ui.map.MapFilters`.
+ *
+ * Single source of truth for all map-side filtering. Applied in Kotlin because
+ * (a) the dataset is small (~3k rows, sub-millisecond to filter) and (b) keeping
+ * the rendered pin list and the stats aggregations in sync is much simpler when
+ * one function produces both.
+ *
+ * Empty sets mean "no filter on this dimension" — the wildcard semantic.
+ * [showOriginal] and [showHomewalls] are explicit booleans because they are
+ * commonly toggled together and bind to two separate switches.
+ */
+data class MapFilters(
+    val showOriginal: Boolean = true,
+    val showHomewalls: Boolean = true,
+    val matchesMyBoard: Boolean = false,
+    val countries: Set<String> = emptySet(),
+    val accessTypes: Set<AccessType> = emptySet(),
+    val adjustabilities: Set<Adjustability> = emptySet(),
+    val sizeIds: Set<Int> = emptySet(),
+    /** Board families to show. Empty = all brands (the wildcard). */
+    val brands: Set<BoardBrand> = emptySet(),
+    /** When true, keep only venues/boards that accept egym Wellpass. */
+    val wellpassOnly: Boolean = false,
+    /** MoonBoard variants (layout ids); empty is the wildcard including
+     *  unknown variants, mirroring the Pages map's all-on default. */
+    val moonLayoutIds: Set<Int> = emptySet(),
+    /** MoonBoard LED hardware states; empty is the wildcard. */
+    val moonLedStates: Set<MoonLedState> = emptySet(),
+) {
+    /** True when no user-applied filter is active. */
+    val isAtDefault: Boolean
+        get() = showOriginal && showHomewalls && !matchesMyBoard &&
+            countries.isEmpty() && accessTypes.isEmpty() &&
+            adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty() &&
+            !wellpassOnly && moonLayoutIds.isEmpty() && moonLedStates.isEmpty()
+
+    fun apply(
+        locations: List<BoardLocation>,
+        userBoardLayoutId: Int? = null,
+        userBoardSizeId: Int? = null,
+        userBoardBrand: BoardBrand? = null,
+    ): List<BoardLocation> {
+        if (locations.isEmpty()) return locations
+        return locations.filter { loc ->
+            // Brand gate (empty = all brands).
+            if (brands.isNotEmpty() && loc.boardBrand !in brands) return@filter false
+
+            // egym-Wellpass gate. Only venues curated as accepting Wellpass
+            // (wellpass == true) pass; unknown (null) and explicit-no are
+            // both excluded when the filter is on.
+            if (wellpassOnly && loc.wellpass != true) return@filter false
+
+            // Layout family gate (Original / Homewall) is a Kilter-only
+            // concept — MoonBoard gyms are gated by the brand filter above,
+            // not by the Original/Homewall toggles, so they always pass here.
+            if (loc.boardBrand == BoardBrand.KILTER) {
+                val layoutAllowed = when (loc.layoutId) {
+                    KILTER_ORIGINAL_LAYOUT -> showOriginal
+                    KILTER_HOMEWALL_LAYOUT -> showHomewalls
+                    else -> showOriginal || showHomewalls
+                }
+                if (!layoutAllowed) return@filter false
+
+                // These are Kilter wall dimensions. Applying them globally
+                // used to make every MoonBoard/other-brand row disappear
+                // because those rows legitimately have no Kilter size id.
+                if (adjustabilities.isNotEmpty() && loc.adjustability !in adjustabilities) return@filter false
+                if (sizeIds.isNotEmpty()) {
+                    val sizeId = loc.productSizeId ?: return@filter false
+                    if (sizeId !in sizeIds) return@filter false
+                }
+            }
+
+            if (loc.boardBrand == BoardBrand.MOONBOARD) {
+                if (accessTypes.isNotEmpty() && loc.accessType !in accessTypes) return@filter false
+                if (moonLayoutIds.isNotEmpty()) {
+                    val layoutId = loc.layoutId ?: return@filter false
+                    if (layoutId !in moonLayoutIds) return@filter false
+                }
+                if (moonLedStates.isNotEmpty() && MoonLedState.from(loc.hasLed) !in moonLedStates) {
+                    return@filter false
+                }
+            }
+
+            if (matchesMyBoard && userBoardLayoutId != null) {
+                // Brand-scope the match: Aurora layout ids overlap Kilter's, so
+                // without the brand check a Kilter Original (layout 1) would also
+                // match a Tension venue that happens to carry layout id 1.
+                // userBoardBrand == null (legacy callers) skips the brand gate.
+                if (userBoardBrand != null && loc.boardBrand != userBoardBrand) return@filter false
+                if (loc.layoutId != userBoardLayoutId) return@filter false
+                if (userBoardSizeId != null) {
+                    val sizeOk = loc.productSizeId == null || loc.productSizeId == userBoardSizeId
+                    if (!sizeOk) return@filter false
+                }
+            }
+
+            if (countries.isNotEmpty() && loc.countryCode !in countries) return@filter false
+            true
+        }
+    }
+}
+
+enum class MoonLedState {
+    LED, NO_LED, UNKNOWN;
+
+    companion object {
+        fun from(value: Boolean?): MoonLedState = when (value) {
+            true -> LED
+            false -> NO_LED
+            null -> UNKNOWN
+        }
+    }
+}
