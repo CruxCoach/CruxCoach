@@ -68,12 +68,13 @@ struct StartFailureView: View {
 struct MainView: View {
     let core: AppCore
     @State private var sync: ScreenHost<SyncScreenModel, SyncScreenState>?
+    @State private var onboardingDone = false
 
     var body: some View {
         Group {
             if let sync, sync.state.installedKnown {
-                if sync.state.installedCount == 0 {
-                    NavigationStack { CatalogueView(core: core, sync: sync, isOnboarding: true) }
+                if sync.state.installedCount == 0 && !onboardingDone {
+                    OnboardingView(core: core, sync: sync) { onboardingDone = true }
                 } else {
                     BrowserView(core: core, sync: sync)
                 }

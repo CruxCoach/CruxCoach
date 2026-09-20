@@ -266,3 +266,15 @@
 "settings_delete_user_confirm" = "Deine Logbuch-Einträge für die gewählten Boards löschen? Das lässt sich nicht rückgängig machen.";
 "settings_delete_done" = "Fertig: %@";
 "settings_all" = "Anzeige, Board, Timer, Daten";
+"onboarding_title" = "Schritt %1$ld von %2$ld";
+"onboarding_board_intro" = "Sag CruxCoach, an welchem Board du kletterst und welche Kataloge geladen werden sollen. Beides kannst du später ändern.";
+"onboarding_your_board" = "Dein Board";
+"onboarding_catalogues" = "Kataloge herunterladen";
+"onboarding_catalogues_hint" = "Jeder Katalog wird vor dem Import gegen die Signatur des Herausgebers geprüft. Kilter ist der größte.";
+"onboarding_toggle_all" = "Alle / keine auswählen";
+"onboarding_continue" = "Weiter";
+"onboarding_data_intro" = "Wenn du schon eine Historie hast, nimm sie mit. Du kannst das auch überspringen und neu anfangen.";
+"onboarding_bring_data" = "Vorhandene Daten";
+"onboarding_finish" = "Los geht's";
+"onboarding_back" = "Zurück";
+"onboarding_skip" = "Überspringen";
