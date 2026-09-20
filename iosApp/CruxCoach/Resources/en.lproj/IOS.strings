@@ -284,3 +284,7 @@
 "community_fetching" = "Fetching…";
 "community_result" = "%1$ld new of %2$ld received";
 "community_failed" = "Could not reach the relays.";
+"hold_search_title" = "Hold search";
+"hold_search_hint" = "Tap the holds a problem has to use. Tap a selected hold again to remove it.";
+"hold_search_selected" = "%ld holds selected";
+"hold_search_clear" = "Clear";

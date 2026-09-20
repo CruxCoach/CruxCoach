@@ -44,7 +44,16 @@ class BrowserScreenState(
     val ungradedOnly: Boolean,
     val sortCode: String,
     val randomClimbUuid: String,
+    /** Placement ids currently required by the hold search; empty = off. */
+    val holdFilter: List<Int>,
+    /** Every hold of the active board, for the hold-search canvas. */
+    val boardHolds: List<BrowseBoardHoldUi>,
+    val boardImagePaths: List<String>,
+    val boardAspect: Float,
 )
+
+/** One selectable hold: [x]/[y] are normalized over the board image. */
+class BrowseBoardHoldUi(val placementId: Int, val x: Float, val y: Float)
 
 /** Board browser screen. Wraps the ported Android filter/count/pagination pipeline. */
 class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private val grades: GradeFormatter) {
@@ -84,6 +93,16 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
             ungradedOnly = filter.ungradedOnly,
             sortCode = UiCodes.sortCode(filter.sortField, filter.sortDirection),
             randomClimbUuid = state.randomClimb?.uuid ?: "",
+            holdFilter = holdFilter.toList(),
+            boardHolds = boardHolds(state),
+            boardImagePaths = state.board.boardSize?.let {
+                com.cruxcoach.app.render.boardImageCandidatePaths(brand, it.id, filter.layoutId.toLong())
+            } ?: emptyList(),
+            boardAspect = state.board.boardSize?.let { size ->
+                val w = (size.edgeRight - size.edgeLeft).toFloat()
+                val h = (size.edgeTop - size.edgeBottom).toFloat()
+                if (w > 0f && h > 0f) w / h else DEFAULT_BOARD_ASPECT
+            } ?: DEFAULT_BOARD_ASPECT,
         )
     }
 
@@ -95,6 +114,32 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
         quality = climb.qualityAverage?.let { grades.oneDecimal(it) } ?: "",
         sends = climb.ascensionistCount ?: 0L,
     )
+
+    private var holdFilter: MutableSet<Int> = linkedSetOf()
+
+    /**
+     * Hold search: a climb matches when it uses every selected hold. Tapping a
+     * selected hold clears it; an empty selection turns the filter off.
+     */
+    fun toggleHoldFilter(placementId: Int) {
+        if (!holdFilter.add(placementId)) holdFilter.remove(placementId)
+        presenter.applyHoldFilter(holdFilter.toSet(), null)
+    }
+
+    fun clearHoldFilter() {
+        if (holdFilter.isEmpty()) return
+        holdFilter = linkedSetOf()
+        presenter.applyHoldFilter(emptySet(), null)
+    }
+
+    private fun boardHolds(state: BoardBrowserUiState): List<BrowseBoardHoldUi> {
+        val size = state.board.boardSize ?: return emptyList()
+        val geometry = com.cruxcoach.app.render.AuroraBoardGeometry.of(size)
+        return state.board.placements.map { (id, placement) ->
+            val point = geometry.normalized(placement.x, placement.y)
+            BrowseBoardHoldUi(id, point.x, point.y)
+        }
+    }
 
     fun start() = presenter.start()
     fun close() = presenter.close()
@@ -157,6 +202,8 @@ class BrowserScreenModel(private val presenter: BoardBrowserPresenter, private v
     val sortCodes: List<String> = listOf("popular", "quality", "qualitySends", "hardest", "easiest", "name", "newest", "random")
 
     companion object {
+        const val DEFAULT_BOARD_ASPECT = 0.65f
+
         /** Kilter's continuous angle range; other boards use [BrowserScreenState.angleChips]. */
         const val MIN_ANGLE = 0
         const val MAX_ANGLE = 70
