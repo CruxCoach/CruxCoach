@@ -435,6 +435,8 @@ class BoardBleConnection(
         const val QUANTUM_CONFIRM_TIMEOUT_MS = 3000L
         const val QUANTUM_REFRESH_INTERVAL_MS = 10_000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
+        /** Long enough to ride out a brief stack hiccup, short enough to notice a dead link. */
+        const val LINK_WATCHDOG_INTERVAL_MS = 15_000L
 
         // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
         // routinely fail a first direct connect with a transient status 133;
@@ -525,6 +527,38 @@ class BoardBleConnection(
     init {
         runCatching {
             context.registerReceiver(adapterStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        }
+    }
+
+    /**
+     * Periodic reality check while we believe we are connected. A board that is switched off or
+     * taken over by another phone does not always produce a STATE_DISCONNECTED callback on every
+     * stack, and the app then kept claiming a link that no longer carries sends.
+     */
+    private var linkWatchdogJob: Job? = null
+
+    @SuppressLint("MissingPermission")
+    private fun startLinkWatchdog(address: String) {
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = scope.launch {
+            // Two strikes: a single miss can be a momentary stack inconsistency, and dropping a
+            // healthy link would be worse than showing a stale one for another 15 seconds.
+            var misses = 0
+            while (true) {
+                delay(LINK_WATCHDOG_INTERVAL_MS)
+                if (_connectionState.value == ConnectionState.DISCONNECTED) return@launch
+                if (currentBoard?.address != address) return@launch
+                val stackConnected = runCatching {
+                    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                    manager.getConnectedDevices(BluetoothProfile.GATT).any { it.address == address }
+                }.getOrElse { return@launch }
+                misses = if (stackConnected) 0 else misses + 1
+                if (misses >= 2) {
+                    Log.w(TAG, "Link watchdog: $address gone from the stack twice; dropping stale state")
+                    disconnect()
+                    return@launch
+                }
+            }
         }
     }
     private var disconnectJob: Job? = null
@@ -886,6 +920,7 @@ class BoardBleConnection(
         connectionTimeoutJob = null
         Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
         _connectionState.value = ConnectionState.CONNECTED
+        currentBoard?.address?.let(::startLinkWatchdog)
         resetIdleTimer()
         onRestartScannersAfterConnect?.invoke()
         if (_connectedBoardBrand.value == BoardBrand.QUANTUM) {
@@ -2173,6 +2208,8 @@ class BoardBleConnection(
     fun disconnect() {
         Log.d(TAG, "disconnect() called (SDK=${Build.VERSION.SDK_INT})")
         val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = null
         connectJob?.cancel()
         connectJob = null
         connectionTimeoutJob?.cancel()
