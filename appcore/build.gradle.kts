@@ -55,6 +55,12 @@ kotlin {
             // portable sync/Nostr logic is exercised without an Apple host.
             implementation(libs.sqldelight.sqlite.driver)
             implementation(libs.secp256k1.kmp.jni.jvm)
+            // Test-only: Quartz, the library Android's app uses, as an
+            // independent implementation to check ours against. It is built
+            // with a newer Kotlin than this project uses, which is why the
+            // metadata check is relaxed for the test compilation only — see
+            // NOSTR-DEPENDENCY-MIGRATION.md. Never a production dependency.
+            implementation(libs.quartz.kmp.jvm)
         }
     }
 }
@@ -77,5 +83,15 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+// The test-only Quartz reference is compiled with Kotlin 2.4.x while this
+// project is on 2.3. Relaxing the metadata check for the *unit-test*
+// compilation lets the real library run beside our implementation so the two
+// can be checked against each other. Production code is untouched by this.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (name.contains("UnitTest", ignoreCase = true)) {
+        compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }

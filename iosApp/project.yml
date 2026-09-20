@@ -16,6 +16,13 @@ packages:
   zstd:
     url: https://github.com/facebook/zstd
     from: 1.5.6
+  # rust-nostr's Swift bindings. Supplies NIP-44 v2 so the shipped app does
+  # not carry a hand-written stream cipher — see NOSTR-DEPENDENCY-MIGRATION.md
+  # in the run directory. Pinned exactly: the package vendors a prebuilt
+  # XCFramework, and its own manifest pins that binary by SHA-256.
+  NostrSDK:
+    url: https://github.com/nostrdevkit/nostr-sdk-swift
+    exactVersion: 0.45.1
 targets:
   CruxCoach:
     type: application
@@ -36,6 +43,8 @@ targets:
         product: SQLCipher
       - package: zstd
         product: libzstd
+      - package: NostrSDK
+        product: NostrSDK
       - sdk: CoreBluetooth.framework
       - sdk: Security.framework
       - sdk: LocalAuthentication.framework
@@ -59,9 +68,18 @@ targets:
   CruxCoachTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [CruxCoachTests]
+    sources:
+      - path: CruxCoachTests
+        excludes: [Fixtures]
+      # The official NIP-44 vector file, so the implementation that actually
+      # ships is held to it — not only the Kotlin one the JVM tests run.
+      - path: CruxCoachTests/Fixtures
+        type: folder
+        buildPhase: resources
     dependencies:
       - target: CruxCoach
+      - package: NostrSDK
+        product: NostrSDK
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

@@ -43,6 +43,7 @@ class DevContactRepository(
     private val database: SecureDatabase,
     private val relays: RelayClient,
     private val hashing: Hashing,
+    private val nip44: com.cruxcoach.app.platform.Nip44Cipher,
     private val clock: WallClock,
     private val devPubkey: String,
     private val secretKeyProvider: () -> ByteArray?,
@@ -75,7 +76,7 @@ class DevContactRepository(
             if (replyToId != null) add(listOf("e", replyToId, "", "reply"))
         }
         val wrapped = try {
-            Nip17.wrap(hashing, secret, devPubkey, body, tags, clock.epochSeconds())
+            Nip17.wrap(hashing, nip44, secret, devPubkey, body, tags, clock.epochSeconds())
         } finally {
             secret.fill(0)
         } ?: return null
@@ -123,7 +124,7 @@ class DevContactRepository(
         var stored = 0
         try {
             for (wrap in events) {
-                val rumor = Nip17.unwrap(hashing, secret, wrap) ?: continue
+                val rumor = Nip17.unwrap(hashing, nip44, secret, wrap) ?: continue
                 // Only the maintainer's own messages belong in this inbox.
                 if (rumor.pubkey != devPubkey) continue
                 // An announcement travels the same private channel as a

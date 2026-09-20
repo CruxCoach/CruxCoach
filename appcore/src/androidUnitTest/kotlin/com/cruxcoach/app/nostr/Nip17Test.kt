@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
  * so these cases assert the negatives as hard as the round trip.
  */
 class Nip17Test {
+    private val cipher = KotlinNip44Cipher(JvmHashing)
     private val alice = NostrKeys.generateSecretKey(JvmHashing)!!
     private val bob = NostrKeys.generateSecretKey(JvmHashing)!!
     private val mallory = NostrKeys.generateSecretKey(JvmHashing)!!
@@ -24,7 +25,7 @@ class Nip17Test {
     @Test
     fun `the recipient and the sender can both read the message`() {
         val (rumor, wraps) = Nip17.wrap(
-            JvmHashing, alice, bobPub, "the crux is the left heel",
+            JvmHashing, cipher, alice, bobPub, "the crux is the left heel",
             tags = listOf(listOf("l", "bug-report", "com.cruxcoach.type")),
             createdAt = now,
         )!!
@@ -33,7 +34,7 @@ class Nip17Test {
         val toBob = wraps.first { it.firstTagValue("p") == bobPub }
         val toAlice = wraps.first { it.firstTagValue("p") == alicePub }
 
-        val read = Nip17.unwrap(JvmHashing, bob, toBob)!!
+        val read = Nip17.unwrap(JvmHashing, cipher, bob, toBob)!!
         assertEquals("the crux is the left heel", read.content)
         assertEquals(alicePub, read.pubkey)
         assertEquals(rumor.id, read.id)
@@ -41,12 +42,12 @@ class Nip17Test {
         assertTrue(read.tags.any { it.getOrNull(1) == "bug-report" })
 
         // The sender's own devices can still read what was sent.
-        assertEquals("the crux is the left heel", Nip17.unwrap(JvmHashing, alice, toAlice)!!.content)
+        assertEquals("the crux is the left heel", Nip17.unwrap(JvmHashing, cipher, alice, toAlice)!!.content)
     }
 
     @Test
     fun `a wrap tells a relay nothing but who may read it`() {
-        val (_, wraps) = Nip17.wrap(JvmHashing, alice, bobPub, "secret", createdAt = now)!!
+        val (_, wraps) = Nip17.wrap(JvmHashing, cipher, alice, bobPub, "secret", createdAt = now)!!
         val toBob = wraps.first { it.firstTagValue("p") == bobPub }
 
         assertEquals(KIND_GIFT_WRAP, toBob.kind)
@@ -65,7 +66,7 @@ class Nip17Test {
     @Test
     fun `timestamps are pushed into the past and never into the future`() {
         repeat(20) {
-            val (rumor, wraps) = Nip17.wrap(JvmHashing, alice, bobPub, "x", createdAt = now)!!
+            val (rumor, wraps) = Nip17.wrap(JvmHashing, cipher, alice, bobPub, "x", createdAt = now)!!
             assertEquals(now, rumor.createdAt, "the rumor keeps the real time — it is encrypted")
             for (wrap in wraps) {
                 assertTrue(wrap.createdAt <= now, "a wrap must not be dated in the future")
@@ -79,9 +80,9 @@ class Nip17Test {
 
     @Test
     fun `a stranger cannot read the message`() {
-        val (_, wraps) = Nip17.wrap(JvmHashing, alice, bobPub, "secret", createdAt = now)!!
+        val (_, wraps) = Nip17.wrap(JvmHashing, cipher, alice, bobPub, "secret", createdAt = now)!!
         val toBob = wraps.first { it.firstTagValue("p") == bobPub }
-        assertNull(Nip17.unwrap(JvmHashing, mallory, toBob))
+        assertNull(Nip17.unwrap(JvmHashing, cipher, mallory, toBob))
     }
 
     @Test
@@ -104,7 +105,7 @@ class Nip17Test {
         )!!
 
         assertNull(
-            Nip17.unwrap(JvmHashing, bob, wrap),
+            Nip17.unwrap(JvmHashing, cipher, bob, wrap),
             "the seal's signature is the only proof of authorship",
         )
     }
@@ -127,12 +128,12 @@ class Nip17Test {
                 Json.encodeToString(JsonObject.serializer(), seal.toJson()),
             )!!,
         )!!
-        assertNull(Nip17.unwrap(JvmHashing, bob, wrap), "the id has to bind the body")
+        assertNull(Nip17.unwrap(JvmHashing, cipher, bob, wrap), "the id has to bind the body")
     }
 
     @Test
     fun `an event that is not a gift wrap is refused`() {
         val note = NostrKeys.sign(JvmHashing, alice, now, 1, emptyList(), "hello")!!
-        assertNull(Nip17.unwrap(JvmHashing, bob, note))
+        assertNull(Nip17.unwrap(JvmHashing, cipher, bob, note))
     }
 }

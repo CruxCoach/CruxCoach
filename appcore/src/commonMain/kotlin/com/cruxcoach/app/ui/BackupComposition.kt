@@ -36,6 +36,7 @@ fun createBackupScreenModel(
     val state = BackupState(platform.keyValues, platform.hashing)
     val repository = BackupRepository(
         hashing = platform.hashing,
+        nip44 = platform.nip44,
         aead = platform.aead,
         gzip = platform.gzip,
         clock = platform.clock,

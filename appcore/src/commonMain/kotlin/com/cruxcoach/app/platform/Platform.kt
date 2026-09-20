@@ -22,6 +22,8 @@ class PlatformServices(
     val zstd: ZstdDecompressor,
     val gzip: Gzip,
     val deviceAuth: DeviceAuthenticator,
+    /** NIP-44 v2; on iOS this is a library, not code written here. */
+    val nip44: Nip44Cipher,
     val clock: WallClock,
 )
 
@@ -43,6 +45,24 @@ interface AeadCipher {
 
     /** Takes `ciphertext || tag(16)`. Null when authentication fails. */
     fun aesGcmOpen(key: ByteArray, nonce: ByteArray, ciphertextAndTag: ByteArray): ByteArray?
+}
+
+/**
+ * NIP-44 v2 payloads, supplied by the platform.
+ *
+ * This exists so the shipped iOS app does not carry a hand-written ChaCha20:
+ * the Apple implementation delegates to a maintained Nostr library, while the
+ * Kotlin implementation in `app.nostr.Nip44` stays as the reference the JVM
+ * tests exercise and cross-check against Quartz. Both are held to the official
+ * NIP-44 vectors.
+ *
+ * [peerPublicKeyHex] is the other party's x-only key; encrypting to oneself
+ * passes one's own. Null means the payload was rejected — never a partially
+ * decrypted result.
+ */
+interface Nip44Cipher {
+    fun encrypt(secretKey: ByteArray, peerPublicKeyHex: String, plaintext: String): String?
+    fun decrypt(secretKey: ByteArray, peerPublicKeyHex: String, payload: String): String?
 }
 
 /**

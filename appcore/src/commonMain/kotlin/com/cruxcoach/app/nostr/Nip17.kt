@@ -1,6 +1,7 @@
 package com.cruxcoach.app.nostr
 
 import com.cruxcoach.app.platform.Hashing
+import com.cruxcoach.app.platform.Nip44Cipher
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -57,6 +58,7 @@ object Nip17 {
      */
     fun wrap(
         hashing: Hashing,
+        cipher: Nip44Cipher,
         senderSecret: ByteArray,
         recipientPubkey: String,
         content: String,
@@ -74,7 +76,7 @@ object Nip17 {
 
         // One wrap per reader: the recipient, and the sender's own devices.
         val wraps = listOf(recipientPubkey, senderPubkey).mapNotNull { reader ->
-            wrapFor(hashing, senderSecret, senderPubkey, reader, rumorJson, createdAt, randomSeconds())
+            wrapFor(hashing, cipher, senderSecret, reader, rumorJson, createdAt, randomSeconds())
         }
         if (wraps.size != 2) return null
         return rumor to wraps
@@ -82,19 +84,14 @@ object Nip17 {
 
     private fun wrapFor(
         hashing: Hashing,
+        cipher: Nip44Cipher,
         senderSecret: ByteArray,
-        senderPubkey: String,
         readerPubkey: String,
         rumorJson: String,
         createdAt: Long,
         backdate: Long,
     ): NostrEvent? {
-        val sealKey = Nip44.conversationKey(hashing, senderSecret, readerPubkey) ?: return null
-        val sealedContent = try {
-            Nip44.encrypt(hashing, sealKey, rumorJson)
-        } finally {
-            sealKey.fill(0)
-        } ?: return null
+        val sealedContent = cipher.encrypt(senderSecret, readerPubkey, rumorJson) ?: return null
         // The seal carries the sender's identity and is itself timestamped in
         // the past: its created_at is inside the wrap, but a recipient's relay
         // could still correlate an exact match with the wrap it arrived in.
@@ -106,15 +103,10 @@ object Nip17 {
         // attributable to the sender at all.
         val ephemeral = NostrKeys.generateSecretKey(hashing) ?: return null
         try {
-            val wrapKey = Nip44.conversationKey(hashing, ephemeral, readerPubkey) ?: return null
-            val wrappedContent = try {
-                Nip44.encrypt(
-                    hashing, wrapKey,
-                    JSON.encodeToString(JsonObject.serializer(), seal.toJson()),
-                )
-            } finally {
-                wrapKey.fill(0)
-            } ?: return null
+            val wrappedContent = cipher.encrypt(
+                ephemeral, readerPubkey,
+                JSON.encodeToString(JsonObject.serializer(), seal.toJson()),
+            ) ?: return null
             return NostrKeys.sign(
                 hashing,
                 ephemeral,
@@ -136,27 +128,22 @@ object Nip17 {
      * must be the rumor's author. Without that check anyone could seal a rumor
      * claiming to come from someone else.
      */
-    fun unwrap(hashing: Hashing, readerSecret: ByteArray, wrap: NostrEvent): Rumor? {
+    fun unwrap(
+        hashing: Hashing,
+        cipher: Nip44Cipher,
+        readerSecret: ByteArray,
+        wrap: NostrEvent,
+    ): Rumor? {
         if (wrap.kind != KIND_GIFT_WRAP) return null
         if (!NostrEvents.verify(hashing, wrap)) return null
-        val wrapKey = Nip44.conversationKey(hashing, readerSecret, wrap.pubkey) ?: return null
-        val sealJson = try {
-            Nip44.decrypt(hashing, wrapKey, wrap.content)
-        } finally {
-            wrapKey.fill(0)
-        } ?: return null
+        val sealJson = cipher.decrypt(readerSecret, wrap.pubkey, wrap.content) ?: return null
         val seal = try {
             NostrEvent.fromJson(JSON.parseToJsonElement(sealJson) as? JsonObject ?: return null)
         } catch (_: Exception) {
             null
         } ?: return null
         if (seal.kind != KIND_SEAL || !NostrEvents.verify(hashing, seal)) return null
-        val sealKey = Nip44.conversationKey(hashing, readerSecret, seal.pubkey) ?: return null
-        val rumorJson = try {
-            Nip44.decrypt(hashing, sealKey, seal.content)
-        } finally {
-            sealKey.fill(0)
-        } ?: return null
+        val rumorJson = cipher.decrypt(readerSecret, seal.pubkey, seal.content) ?: return null
         val rumor = parseRumor(rumorJson) ?: return null
         // The seal's signature is the only proof of authorship there is.
         if (rumor.pubkey != seal.pubkey) return null

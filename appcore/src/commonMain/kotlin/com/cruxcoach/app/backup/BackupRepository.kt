@@ -8,6 +8,7 @@ import com.cruxcoach.app.nostr.UrlValidation
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.Gzip
 import com.cruxcoach.app.platform.Hashing
+import com.cruxcoach.app.platform.Nip44Cipher
 import com.cruxcoach.app.platform.WallClock
 import com.cruxcoach.app.util.hexToBytesOrNull
 import com.cruxcoach.app.util.toHex
@@ -56,6 +57,8 @@ sealed class BackupOutcome {
  */
 class BackupRepository(
     private val hashing: Hashing,
+    /** NIP-44 v2; a library on iOS, the Kotlin reference in tests. */
+    private val nip44: Nip44Cipher,
     private val aead: AeadCipher,
     private val gzip: Gzip,
     private val clock: WallClock,
@@ -104,13 +107,8 @@ class BackupRepository(
                 return CheckOutcome.NotFound
             }
 
-            val conversationKey = Nip44.conversationKey(hashing, secret, pubkey)
-                ?: return CheckOutcome.Failed(BackupFailure.NO_IDENTITY)
-            val pointerJson = try {
-                Nip44.decrypt(hashing, conversationKey, pointerEvent.content)
-            } finally {
-                conversationKey.fill(0)
-            } ?: return CheckOutcome.DecryptFailed
+            val pointerJson = nip44.decrypt(secret, pubkey, pointerEvent.content)
+                ?: return CheckOutcome.DecryptFailed
             val pointer = BackupPointer.decode(pointerJson)
                 ?: return CheckOutcome.Failed(BackupFailure.POINTER_INVALID)
             if (!pointer.validate(clock.epochSeconds())) {
@@ -145,7 +143,7 @@ class BackupRepository(
             if (!pointer.validate(clock.epochSeconds())) {
                 return RestoreOutcome.Failed(BackupFailure.POINTER_INVALID)
             }
-            val dataKeyHex = Nip44.decryptFromSelf(hashing, secret, info.keyEvent.content)
+            val dataKeyHex = nip44.decrypt(secret, NostrKeys.publicKeyHex(secret) ?: "", info.keyEvent.content)
                 ?: return RestoreOutcome.Failed(BackupFailure.DATA_KEY_UNWRAP_FAILED)
             val dataKey = dataKeyHex.hexToBytesOrNull()?.takeIf { it.size == 32 }
                 ?: return RestoreOutcome.Failed(BackupFailure.DATA_KEY_UNWRAP_FAILED)
@@ -177,7 +175,7 @@ class BackupRepository(
                     ?: return RestoreOutcome.Failed(BackupFailure.IMPORT_FAILED)
 
                 // Keep the data key for future backups from this device.
-                Nip44.encryptToSelf(hashing, secret, dataKeyHex)?.let { state.wrappedDataKey = it }
+                nip44.encrypt(secret, NostrKeys.publicKeyHex(secret) ?: "", dataKeyHex)?.let { state.wrappedDataKey = it }
                 return RestoreOutcome.Restored(summary)
             } finally {
                 dataKey.fill(0)
@@ -283,7 +281,7 @@ class BackupRepository(
         if (hasPriorHistory) return DataKey.Failed(BackupFailure.KEY_FETCH_AMBIGUOUS)
 
         val fresh = BackupCrypto.generateKey(hashing) ?: return DataKey.Failed(BackupFailure.ENCRYPT_FAILED)
-        val wrapped = Nip44.encryptToSelf(hashing, secret, fresh.toHex())
+        val wrapped = nip44.encrypt(secret, NostrKeys.publicKeyHex(secret) ?: "", fresh.toHex())
             ?: return DataKey.Failed(BackupFailure.ENCRYPT_FAILED)
         // Publish first: persisting locally before the relays accept would mask
         // the failure and upload blobs no other device could ever decrypt.
@@ -295,7 +293,7 @@ class BackupRepository(
     }
 
     private fun unwrapDataKey(secret: ByteArray, wrapped: String): ByteArray? =
-        Nip44.decryptFromSelf(hashing, secret, wrapped)?.hexToBytesOrNull()?.takeIf { it.size == 32 }
+        nip44.decrypt(secret, NostrKeys.publicKeyHex(secret) ?: "", wrapped)?.hexToBytesOrNull()?.takeIf { it.size == 32 }
 
     private suspend fun fetchWrappedKeyFromRelays(secret: ByteArray, pubkey: String): String? {
         val keyDTag = dTag(secret, DTagDeriver.IDENTIFIER_KEY) ?: return null
@@ -321,7 +319,7 @@ class BackupRepository(
 
     private suspend fun publishPointerEvent(secret: ByteArray, pointer: BackupPointer): Boolean {
         val dTag = dTag(secret, DTagDeriver.IDENTIFIER_BACKUP) ?: return false
-        val ciphertext = Nip44.encryptToSelf(hashing, secret, pointer.encode()) ?: return false
+        val ciphertext = nip44.encrypt(secret, NostrKeys.publicKeyHex(secret) ?: "", pointer.encode()) ?: return false
         val event = signer.sign(
             createdAt = clock.epochSeconds(),
             kind = KIND_PARAMETERIZED_REPLACEABLE,

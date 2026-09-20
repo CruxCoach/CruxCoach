@@ -33,6 +33,7 @@ import com.cruxcoach.app.notify.RestTimerNotifier
 import com.cruxcoach.app.platform.AeadCipher
 import com.cruxcoach.app.platform.DeviceAuthenticator
 import com.cruxcoach.app.platform.IosConnectivityMonitor
+import com.cruxcoach.app.platform.Nip44Cipher
 import com.cruxcoach.app.platform.PlatformServices
 import com.cruxcoach.app.platform.SecretStore
 import com.cruxcoach.app.platform.ZstdDecompressor
@@ -303,6 +304,7 @@ class AppCore private constructor(
                 database = secureDatabase,
                 relays = RelayClient(platform.webSockets, platform.hashing),
                 hashing = platform.hashing,
+                nip44 = platform.nip44,
                 clock = platform.clock,
                 devPubkey = AppConfig.MAINTAINER_PUBKEY,
                 secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
@@ -485,8 +487,10 @@ class AppCore private constructor(
             secrets: SecretStore,
             zstd: ZstdDecompressor,
             deviceAuth: DeviceAuthenticator,
+            nip44: Nip44Cipher,
         ): AppStartResult = try {
-            val platform = createIosPlatformServices(aead, secrets, zstd, deviceAuth, USER_DEFAULTS_SUITE)
+            val platform =
+                createIosPlatformServices(aead, secrets, zstd, deviceAuth, nip44, USER_DEFAULTS_SUITE)
             val loaded = LocalIdentity(secrets, platform.hashing).loadOrCreate()
             val identity = loaded.identity
             if (identity == null) {
