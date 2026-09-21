@@ -107,11 +107,15 @@ object PlaylistPlanner {
         // and the outlier-robust work ANCHOR (repeatable/second-best max).
         // One lucky 7b against a 7a/7a+ background must plan a session
         // that CONSOLIDATES the 7b, not one that assumes 7b+ is in reach.
-        val peak = profile.effectiveMax - shift
-        val anchor = min(profile.effectiveRepeatableMax, profile.effectiveMax) - shift
+        // Whole grades throughout. The logbook's hardest send is a raw
+        // community average — 21.6 for a climb everyone calls 7a — and planned
+        // from as it was, "max … max + 1" came out as 21.6…22.6: a projecting
+        // range that read "7a – 7a" and could never offer a 7a+.
+        val peak = gradeOf(profile.effectiveMax) - shift
+        val anchor = min(gradeOf(profile.effectiveRepeatableMax), gradeOf(profile.effectiveMax)) - shift
         // Volume anchor: outlier-robust flash, never above the work anchor
         // (a flash "above" what you can repeatedly send is itself a fluke).
-        val flashDiff = min(profile.effectiveRepeatableFlash - shift, anchor)
+        val flashDiff = min(gradeOf(profile.effectiveRepeatableFlash) - shift, anchor)
 
         // Warm-up ladder only when starting cold; its ACTUAL minutes come
         // off the main-set budget (a 2-problem easy-session warm-up must
@@ -188,7 +192,7 @@ object PlaylistPlanner {
             // of a deliberately harder range without a single candidate. The
             // recommended range never exceeds that ceiling in the first place.
             hardCeiling = params.targetMaxDifficulty
-                ?: (profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS),
+                ?: (gradeOf(profile.effectiveMax) + TrainingRanges.CEILING_ABOVE_MAX_STEPS),
             maxWidening = TrainingRanges.maxWideningFor(effectiveType),
             workFloor = params.targetMinDifficulty,
         )
@@ -655,6 +659,9 @@ object PlaylistPlanner {
      */
     private fun pyramidSlot(center: Double, section: PlanSection) =
         climbSlot(center, section, tolerance = TrainingRanges.PYRAMID_SLOT_TOLERANCE)
+
+    /** The grade a difficulty is displayed as: rounded half up. */
+    private fun gradeOf(diff: Double): Double = floor(diff + 0.5)
 
     private fun clampLow(diff: Double): Double = max(diff, TrainingRanges.MIN_DIFFICULTY)
 

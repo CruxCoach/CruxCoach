@@ -414,6 +414,19 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `a raw logbook average is planned as the grade it is shown as`() {
+        // Found on the device: hardest send averaging 21.6 (shown as 7a) gave
+        // a projecting range of 21.6…22.6, displayed as "7a – 7a".
+        val raw = profile.copy(maxDifficulty = 21.6, flashDifficulty = 16.4)
+        val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), raw).climbs()
+        assertEquals(23.0, proj.first().minDifficulty)
+        assertEquals(24.0, proj.first().maxDifficulty)
+        // A lone flash is demoted one step (16.4 → 15.4) and then reads as 15.
+        val volume = PlaylistPlanner.plan(params(GeneratorType.VOLUME), raw).climbs()
+        assertEquals(15.0, volume.maxOf { it.maxDifficulty })
+    }
+
+    @Test
     fun `projecting band sits above the limit band`() {
         val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile).climbs()
         val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), profile).climbs()
