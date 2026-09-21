@@ -572,6 +572,15 @@ class BoardSyncManager(
         }
     }
 
+    /** The first setup screen could not present the offer (the sender named no catalogues):
+     *  fall back to the dialog, with its ordinary "use the internet" answer. */
+    fun presentDiscoveredShareAsDialog() {
+        _state.update { state ->
+            if (state.pendingDiscoveredShare == null || !state.discoveredShareInline) state
+            else state.copy(discoveredShareInline = false, pendingDiscoveredShareFallsBackOnline = true)
+        }
+    }
+
     @Volatile private var onboardingShareProbe: kotlinx.coroutines.Job? = null
 
     /** Set when the receiver chose the internet over an inline offer: do not find and offer

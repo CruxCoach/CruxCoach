@@ -171,7 +171,7 @@ fun BoardSyncInlineCard(
             runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
         }
         val offered = remember(found.manifest) {
-            found.manifest.board?.catalogues.orEmpty().mapNotNull { catalogue ->
+            found.manifest.declaredCatalogues.mapNotNull { catalogue ->
                 BoardBrand.fromWireOrNull(catalogue.boardBrand)
                     ?.takeIf { it.isInteractive }
                     ?.let { OfferedCatalogue(it, catalogue.climbCount) }

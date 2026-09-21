@@ -103,18 +103,19 @@ fun OnboardingScreen(
         runCatching { android.net.Uri.parse(offer.baseUrl).host }.getOrNull() ?: offer.baseUrl
     }
     val shareChoice = shareOffer?.let { offer ->
-        val offered = offer.manifest.board?.catalogues.orEmpty().mapNotNull { catalogue ->
+        val offered = offer.manifest.declaredCatalogues.mapNotNull { catalogue ->
             BoardBrand.fromWireOrNull(catalogue.boardBrand)?.takeIf { it.isInteractive }
                 ?.let { com.cruxcoach.android.ui.board.sync.OfferedCatalogue(it, catalogue.climbCount) }
         }.distinctBy { it.brand }
-        // Nothing declared (an old sender): no inline choice; the plain dialog handles it later.
+        // Nothing declared (an older sender still preparing its snapshot): no inline choice.
         if (offered.isEmpty()) null
         // A first run has made no choice yet: everything the sender offers starts ticked.
         else com.cruxcoach.android.ui.board.sync.rememberShareChoice(offer.baseUrl, offered, savedSelection = null)
     }
-    LaunchedEffect(shareChoice, state.boardBrand) {
-        // The board being set up is wanted either way — from the sender if it has it.
-        shareChoice?.include(BoardBrand.fromWire(state.boardBrand))
+    LaunchedEffect(shareOffer, shareChoice) {
+        // An offer this screen cannot present must not stay claimed by it: hand it back to
+        // the ordinary dialog, or nothing would ever ask the receiver and nothing would load.
+        if (shareOffer != null && shareChoice == null) boardSyncViewModel.presentDiscoveredShareAsDialog()
     }
     LaunchedEffect(state.currentStep) {
         if (downloadSelection == null || (downloadsConfirmed && state.currentStep == OnboardingStep.BOARD_SETUP)) {
@@ -511,6 +512,19 @@ private fun BoardSetupStep(
                 }
             }
             com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(shareHost, shareChoice)
+            // The board shown above is only the app's starting value until somebody picks one.
+            // Ticking its family for an internet download here would load Kilter for a climber
+            // whose friend — and wall — is MoonBoard. Say that nothing is selected for it and
+            // leave both ways out open: change the board, or tick it below.
+            val activeBrand = BoardBrand.fromWire(state.boardBrand)
+            if (activeBrand !in shareChoice.shareBrands && activeBrand !in shareChoice.onlineBrands) {
+                Text(
+                    stringResource(R.string.setup_share_active_board_missing, activeBrand.displayName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("onboarding_share_board_missing"),
+                )
+            }
             TextButton(
                 onClick = onUseInternetInstead,
                 modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),

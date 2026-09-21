@@ -3007,6 +3007,7 @@
     <string name="setup_share_found_title">Ein Gerät in der Nähe teilt seine Boards</string>
     <string name="setup_share_found_body">Dafür brauchst du kein Internet. Wähle, welche du haben willst.</string>
     <string name="setup_share_use_internet">Stattdessen alles aus dem Internet laden</string>
+    <string name="setup_share_active_board_missing">Für %1$s sind keine Climbs ausgewählt. Ändere oben dein Board oder hake es unter „Weitere Boards“ an.</string>
     <string name="tour_replay">Einführung ansehen</string>
     <string name="tour_skip">Tour überspringen</string>
     <string name="tour_spotlight_connect">Board per Bluetooth verbinden. Ohne Board einfach die Suche schließen.</string>

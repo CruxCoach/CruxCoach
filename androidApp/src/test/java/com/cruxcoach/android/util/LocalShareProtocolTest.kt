@@ -782,6 +782,28 @@ class LocalShareProtocolTest {
         assertFalse(target.exists())
     }
 
+    @Test
+    fun `a preparing sender may already name its catalogues`() {
+        val hash = "a".repeat(64)
+        val plain = LocalShareProtocol.parseManifest(manifestJson("/CruxCoach.apk", hash))
+        // An older sender: still preparing, nothing declared, nothing to choose from yet.
+        assertEquals(null, plain.board)
+        assertEquals(emptyList(), plain.declaredCatalogues)
+
+        val declaring = LocalShareProtocol.parseManifest(
+            manifestJson("/CruxCoach.apk", hash).replace(
+                "\"status\": \"preparing\"",
+                "\"status\": \"preparing\", \"catalogues\": [{\"boardBrand\": \"moonboard\", \"climbCount\": 289231}]",
+            ),
+        )
+        // The snapshot is not there, the choice already is.
+        assertEquals(null, declaring.board)
+        assertEquals(
+            listOf(LocalShareProtocol.BoardCatalogue("moonboard", 289231L)),
+            declaring.declaredCatalogues,
+        )
+    }
+
     private fun manifestJson(apkPath: String, hash: String): String = """
         {
           "protocolVersion": 1,
