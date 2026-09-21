@@ -1074,12 +1074,13 @@
     <string name="board_sync_discovered_share_title">Use a nearby CruxCoach share?</string>
     <string name="board_sync_discovered_share_message">A device at %1$s is offering board data on this local network. This peer is not authenticated. Choose whether to use it before CruxCoach downloads anything.</string>
     <string name="board_sync_discovered_share_from">Boards from the nearby device</string>
+    <string name="board_sync_discovered_share_unverified">This device is not verified. Only load from someone you trust.</string>
     <string name="board_sync_discovered_share_info">The device at %1$s offers its board data on this local network. It can only share the boards it has downloaded itself, and it is not authenticated — so you choose before anything is transferred. Boards it does not have are fetched from the internet afterwards.</string>
     <string name="board_sync_discovered_share_others">Other boards (internet needed)</string>
     <string name="board_sync_discovered_share_others_hint">Not available from this device</string>
     <plurals name="board_sync_share_climbs">
-        <item quantity="one">%d climb</item>
-        <item quantity="other">%d climbs</item>
+        <item quantity="one">%s climb</item>
+        <item quantity="other">%s climbs</item>
     </plurals>
     <string name="board_sync_discovered_share_confirm">Use nearby share</string>
     <string name="board_sync_discovered_share_internet">Use internet</string>

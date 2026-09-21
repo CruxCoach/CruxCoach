@@ -110,4 +110,79 @@ class OnboardingDownloadSelectionTest {
         verify(exactly = 1) { onboarding.nextStep() }
     }
 
+    /** A sender that only has MoonBoard, found while the receiver's board still says Kilter. */
+    private fun shareOfferState() = com.cruxcoach.android.data.BoardSyncState(
+        pendingDiscoveredShare = com.cruxcoach.android.util.LocalShareDiscovery.Found(
+            network = mockk(relaxed = true),
+            baseUrl = "http://10.215.150.77:4949",
+            manifest = com.cruxcoach.android.util.LocalShareProtocol.Manifest(
+                protocolVersion = 2,
+                sessionId = "01234567-89ab-cdef-0123-456789abcdef",
+                apkVersionCode = 1L,
+                apkVersionName = "test",
+                apk = com.cruxcoach.android.util.LocalShareProtocol.Artifact("/CruxCoach.apk", 1L, "a".repeat(64)),
+                board = null,
+                boardStatus = "preparing",
+                declaredCatalogues = listOf(
+                    com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue("kilter", 5L),
+                    com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue("moonboard", 284_253L),
+                ),
+            ),
+        ),
+        discoveredShareInline = true,
+    )
+
+    private fun showShareOffer(fontScale: Float): BoardSyncViewModel {
+        val onboarding = mockk<OnboardingViewModel>(relaxed = true)
+        every { onboarding.state } returns MutableStateFlow(OnboardingState())
+        val sync = mockk<BoardSyncViewModel>(relaxed = true)
+        every { sync.state } returns MutableStateFlow(shareOfferState())
+        coEvery { sync.initialDownloadSelection() } returns setOf(BoardBrand.KILTER)
+        val ble = mockk<com.cruxcoach.android.ui.board.BleConnectionViewModel>(relaxed = true)
+        every { ble.state } returns MutableStateFlow(com.cruxcoach.android.ui.board.BleConnectionState())
+        compose.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides
+                    androidx.compose.ui.unit.Density(density.density, fontScale)
+            ) {
+                MaterialTheme {
+                    OnboardingScreen(onComplete = {}, viewModel = onboarding, boardSyncViewModel = sync, bleViewModel = ble)
+                }
+            }
+        }
+        return sync
+    }
+
+    @Test fun `a nearby sender's real catalogues are the choice and confirming is the one consent`() {
+        val sync = showShareOffer(fontScale = 1f)
+        compose.onNode(isDialog()).assertDoesNotExist()
+        compose.onNodeWithTag("onboarding_share_offer").performScrollTo().assertIsDisplayed()
+        // What the consent rests on is on the screen, not only behind the info button.
+        compose.onNodeWithTag("discovered_share_unverified").performScrollTo().assertIsDisplayed()
+        // MoonBoard is offered, grouped like every other count; five community climbs are not
+        // a Kilter catalogue, and no family is offered as downloadable that needs the internet.
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOn()
+        compose.onNodeWithText("284.253 Climbs").assertExists()
+        compose.onNodeWithTag("board_selection_kilter").assertDoesNotExist()
+        // The board above still says Kilter: say so, with the way out.
+        compose.onNodeWithTag("onboarding_board_not_loaded").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("onboarding_change_board").performScrollTo().assertIsDisplayed()
+
+        compose.onNodeWithTag("onboarding_next_button").assertIsEnabled().performClick()
+        verify(exactly = 1) { sync.confirmDiscoveredShare(setOf(BoardBrand.MOONBOARD), emptySet()) }
+        coVerify(exactly = 0) { sync.confirmOnboardingDownloads(any()) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w320dp-h640dp")
+    fun `the share offer stays usable at 320 dp with large text`() {
+        val sync = showShareOffer(fontScale = 1.6f)
+        compose.onNodeWithTag("onboarding_next_button").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("discovered_share_others").performScrollTo().performClick()
+        compose.onNodeWithTag("board_selection_kilter").performScrollTo().performClick().assertIsOn()
+        compose.onNodeWithTag("onboarding_share_use_internet").performScrollTo().assertIsDisplayed().performClick()
+        verify(exactly = 1) { sync.dismissDiscoveredShare() }
+    }
 }

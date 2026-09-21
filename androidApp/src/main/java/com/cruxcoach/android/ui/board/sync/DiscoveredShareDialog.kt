@@ -139,17 +139,33 @@ internal fun ShareCatalogueChoice(host: String, choice: ShareChoice) {
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
+            // Named after the heading it sits beside, so a screen reader announces what the
+            // information is about rather than the title of a dialog that may not be open.
             InfoButton(
-                stringResource(R.string.board_sync_discovered_share_title),
+                stringResource(R.string.board_sync_discovered_share_from),
                 stringResource(R.string.board_sync_discovered_share_info, host),
             )
         }
+        // The one fact the consent rests on stays in plain sight (design.md: an essential
+        // consent may not live in an info card alone); the address and the detail are behind
+        // the info button.
+        Text(
+            stringResource(R.string.board_sync_discovered_share_unverified),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("discovered_share_unverified"),
+        )
         CatalogueSelectionRows(
             selectedBrands = choice.shareBrands,
             brands = choice.offeredBrands,
             detail = { brand ->
-                choice.offered.firstOrNull { it.brand == brand }?.climbCount?.toInt()?.let {
-                    pluralStringResource(R.plurals.board_sync_share_climbs, it, it)
+                choice.offered.firstOrNull { it.brand == brand }?.climbCount?.let { count ->
+                    // Grouped like every other climb count in the app: "284.253", not "284253".
+                    pluralStringResource(
+                        R.plurals.board_sync_share_climbs,
+                        count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                        java.text.NumberFormat.getIntegerInstance().format(count),
+                    )
                 }
             },
             onToggleBrand = choice::toggle,
