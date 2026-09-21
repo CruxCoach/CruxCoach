@@ -3008,7 +3008,8 @@
     <string name="setup_share_found_title">A nearby device shares its boards</string>
     <string name="setup_share_found_body">No internet needed for these. Choose which ones you want.</string>
     <string name="setup_share_use_internet">Load everything from the internet instead</string>
-    <string name="setup_share_active_board_missing">No climbs are selected for %1$s. Change your board above, or tick it under “Other boards”.</string>
+    <string name="setup_board_not_among_downloads">Your board is set to %1$s, but you are only loading %2$s. Switch your board so the app opens with climbs you have.</string>
+    <string name="setup_board_change_now">Change board</string>
     <string name="tour_replay">Show introduction</string>
     <string name="tour_skip">Skip tour</string>
     <string name="tour_spotlight_connect">Connect your board over Bluetooth. No board? Just close the search.</string>

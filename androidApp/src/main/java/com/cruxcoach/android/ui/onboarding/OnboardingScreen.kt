@@ -435,7 +435,11 @@ private fun BoardSetupStep(
         // family. The selection persists via the shared VM.
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
             deferDownloads = true,
-            suggestedBrand = suggestedBrand,
+            // Bluetooth knows best; failing that, a single family being loaded is the obvious
+            // candidate for the board that is about to be changed.
+            suggestedBrand = suggestedBrand
+                ?: (shareChoice?.let { it.shareBrands + it.onlineBrands } ?: downloadSelection.orEmpty())
+                    .singleOrNull(),
             bluetoothResult = if (!bluetoothSearched) null else suggestedBrand
                 ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
                 ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
@@ -509,19 +513,7 @@ private fun BoardSetupStep(
                 }
             }
             com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(shareHost, shareChoice)
-            // The board shown above is only the app's starting value until somebody picks one.
-            // Ticking its family for an internet download here would load Kilter for a climber
-            // whose friend — and wall — is MoonBoard. Say that nothing is selected for it and
-            // leave both ways out open: change the board, or tick it below.
-            val activeBrand = BoardBrand.fromWire(state.boardBrand)
-            if (activeBrand !in shareChoice.shareBrands && activeBrand !in shareChoice.onlineBrands) {
-                Text(
-                    stringResource(R.string.setup_share_active_board_missing, activeBrand.displayName),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag("onboarding_share_board_missing"),
-                )
-            }
+            BoardNotAmongDownloadsHint(state, shareChoice.shareBrands + shareChoice.onlineBrands) { showBoardModelDialog = true }
             TextButton(
                 onClick = onUseInternetInstead,
                 modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),
@@ -547,7 +539,43 @@ private fun BoardSetupStep(
                 onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
             }
         }
+        BoardNotAmongDownloadsHint(state, downloadSelection.orEmpty()) { showBoardModelDialog = true }
 
+    }
+}
+
+/**
+ * The board at the top of this screen decides what the browser opens with. Whoever loads only
+ * MoonBoard while that still says Kilter lands on "the catalogue for this board has not been
+ * downloaded" — seen in the two-phone share test. Say so where both choices are made, with the
+ * way out one tap away. Silent while nothing is ticked: then there is nothing to contradict.
+ */
+@Composable
+private fun BoardNotAmongDownloadsHint(
+    state: OnboardingState,
+    chosen: Set<BoardBrand>,
+    onChangeBoard: () -> Unit,
+) {
+    val activeBrand = BoardBrand.fromWire(state.boardBrand)
+    if (chosen.isEmpty() || activeBrand in chosen) return
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().testTag("onboarding_board_not_loaded"),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(
+                    R.string.setup_board_not_among_downloads,
+                    activeBrand.displayName,
+                    chosen.joinToString(", ") { it.displayName },
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onChangeBoard, modifier = Modifier.testTag("onboarding_change_board")) {
+                Text(stringResource(R.string.setup_board_change_now))
+            }
+        }
     }
 }
 

@@ -47,8 +47,13 @@ class CatalogueSelectionFlowTest {
                 }
             }
         }
+        // A deselected, unloaded family has no row of its own any more: the overview lists only
+        // what is or is being loaded, and the selection opens from its button in both layouts.
         if (compact) compose.onNodeWithTag("board_download_selection").assertIsEnabled().performClick()
-        else compose.onNodeWithTag("board_status_moonboard").performScrollTo().performClick()
+        else {
+            compose.onNodeWithTag("board_status_moonboard").assertDoesNotExist()
+            compose.onNodeWithTag("board_download_selection").performScrollTo().performClick()
+        }
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOff()
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().performClick().assertIsOn()
         verify(exactly = 0) { vm.saveDownloadSelection(any(), any()) }

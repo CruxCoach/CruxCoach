@@ -920,7 +920,15 @@ private fun BoardCatalogueStatusList(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val sharedPhasePending = localShareInProgress &&
             globalStep?.isSharedLocalSharePhase() == true
-        boards.filter { !onlySelected || it in selectedBrands }.forEach { brand ->
+        // Only what is, or is being, loaded. The overview used to list every family there is,
+        // most of them as "deselected —": eight rows to find the one that was downloading.
+        // Adding another board is what the selection button above the list is for.
+        boards.filter { brand ->
+            brand in selectedBrands || (!onlySelected && (
+                (boardCounts[brand.wireValue] ?: 0L) > 0L ||
+                    boardSteps.containsKey(brand) || boardErrors.containsKey(brand)
+                ))
+        }.forEach { brand ->
             // Discovery, snapshot creation, download and verification are
             // global share phases. LocalShareProgressSummary already renders
             // them once above the list; repeating the same (potentially long)
