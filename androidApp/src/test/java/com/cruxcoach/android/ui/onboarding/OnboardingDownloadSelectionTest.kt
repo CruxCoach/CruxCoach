@@ -166,8 +166,9 @@ class OnboardingDownloadSelectionTest {
         compose.onNodeWithText("284.253 Climbs").assertExists()
         compose.onNodeWithTag("board_selection_kilter").assertDoesNotExist()
         // The board above still says Kilter: say so, with the way out.
-        compose.onNodeWithTag("onboarding_board_not_loaded").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("onboarding_change_board").performScrollTo().assertIsDisplayed()
+        // …on the board card itself, which is also the way to change it.
+        compose.onNodeWithTag("onboarding_board_not_loaded", useUnmergedTree = true)
+            .performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithTag("onboarding_next_button").assertIsEnabled().performClick()
         verify(exactly = 1) { sync.confirmDiscoveredShare(setOf(BoardBrand.MOONBOARD), emptySet()) }

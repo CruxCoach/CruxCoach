@@ -479,17 +479,35 @@ private fun BoardSetupStep(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         InfoHeading(stringResource(R.string.setup_board_title), stringResource(R.string.setup_confirm_model))
+        // The board decides what the browser opens with. Whoever loads only MoonBoard while this
+        // still says Kilter lands on "the catalogue for this board has not been downloaded" —
+        // seen in the two-phone share test. The card it concerns says so itself, in one line,
+        // and is already the way to change it: no separate notice, no second button. Silent
+        // while nothing is ticked, because then there is nothing to contradict.
+        val chosenFamilies = shareChoice?.let { it.shareBrands + it.onlineBrands } ?: downloadSelection.orEmpty()
+        val boardNotLoaded = chosenFamilies.isNotEmpty() && BoardBrand.fromWire(state.boardBrand) !in chosenFamilies
         OutlinedCard(
             onClick = { showBoardModelDialog = true },
+            border = if (boardNotLoaded) androidx.compose.foundation.BorderStroke(1.dp, OrangeAccent)
+                else CardDefaults.outlinedCardBorder(),
             modifier = Modifier.fillMaxWidth().testTag("settings_change_active_board"),
         ) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(com.cruxcoach.android.ui.settings.boardSelectionLabel(
-                    brand = BoardBrand.fromWire(state.boardBrand), layoutId = state.boardLayoutId,
-                    detail = state.boardProductSizeName,
-                ), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold)
+                Column(Modifier.weight(1f)) {
+                    Text(com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                        brand = BoardBrand.fromWire(state.boardBrand), layoutId = state.boardLayoutId,
+                        detail = state.boardProductSizeName,
+                    ), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    if (boardNotLoaded) {
+                        Text(
+                            stringResource(R.string.setup_board_not_among_downloads),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OrangeAccent,
+                            modifier = Modifier.testTag("onboarding_board_not_loaded"),
+                        )
+                    }
+                }
                 Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_board_model_change))
             }
         }
@@ -513,7 +531,6 @@ private fun BoardSetupStep(
                 }
             }
             com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(shareHost, shareChoice)
-            BoardNotAmongDownloadsHint(state, shareChoice.shareBrands + shareChoice.onlineBrands) { showBoardModelDialog = true }
             TextButton(
                 onClick = onUseInternetInstead,
                 modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),
@@ -539,43 +556,7 @@ private fun BoardSetupStep(
                 onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
             }
         }
-        BoardNotAmongDownloadsHint(state, downloadSelection.orEmpty()) { showBoardModelDialog = true }
 
-    }
-}
-
-/**
- * The board at the top of this screen decides what the browser opens with. Whoever loads only
- * MoonBoard while that still says Kilter lands on "the catalogue for this board has not been
- * downloaded" — seen in the two-phone share test. Say so where both choices are made, with the
- * way out one tap away. Silent while nothing is ticked: then there is nothing to contradict.
- */
-@Composable
-private fun BoardNotAmongDownloadsHint(
-    state: OnboardingState,
-    chosen: Set<BoardBrand>,
-    onChangeBoard: () -> Unit,
-) {
-    val activeBrand = BoardBrand.fromWire(state.boardBrand)
-    if (chosen.isEmpty() || activeBrand in chosen) return
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().testTag("onboarding_board_not_loaded"),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                stringResource(
-                    R.string.setup_board_not_among_downloads,
-                    activeBrand.displayName,
-                    chosen.joinToString(", ") { it.displayName },
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            TextButton(onClick = onChangeBoard, modifier = Modifier.testTag("onboarding_change_board")) {
-                Text(stringResource(R.string.setup_board_change_now))
-            }
-        }
     }
 }
 
