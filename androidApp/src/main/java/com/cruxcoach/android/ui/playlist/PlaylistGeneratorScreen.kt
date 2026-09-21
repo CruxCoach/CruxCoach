@@ -595,7 +595,9 @@ fun PlaylistGeneratorScreen(
                     .fillMaxWidth()
                     .testTag("playlist_gen_generate"),
             ) {
-                if (state.isGenerating) {
+                if (state.isGenerating || !state.profileLoaded) {
+                    // Also while the logbook profile loads: a greyed-out button with its
+                    // normal label gives no reason for being greyed out.
                     CircularProgressIndicator(
                         modifier = Modifier.width(20.dp).height(20.dp),
                         color = DarkBackground,

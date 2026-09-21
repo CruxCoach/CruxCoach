@@ -480,11 +480,19 @@ class PlaylistGeneratorViewModel @Inject constructor(
         val selection = _state.value
         val loadedProfile = try {
             withContext(Dispatchers.IO) {
-                val range = loadBoardGradeRange(
-                    selection.angle, selection.boardBrand, selection.layoutId, selection.productSizeId,
-                )
-                loadProfile(selection.angle, selection.boardBrand, selection.layoutId)
-                    .adaptedToBoardGrades(range.first, range.second)
+                val fromLogbook = loadProfile(selection.angle, selection.boardBrand, selection.layoutId)
+                // The board's grade range only ever adjusts a DEFAULT profile, and finding it
+                // means two sorted scans of the whole catalogue — half a minute on a mid-range
+                // phone, during which "Generate" is locked. A climber with a logbook never
+                // needs it, so they no longer wait for it.
+                if (fromLogbook.isPersonalized) fromLogbook
+                else {
+                    val range = loadBoardGradeRange(
+                        selection.angle, selection.boardBrand, selection.layoutId,
+                        selection.productSizeId,
+                    )
+                    fromLogbook.adaptedToBoardGrades(range.first, range.second)
+                }
             }
         } catch (e: CancellationException) {
             throw e
