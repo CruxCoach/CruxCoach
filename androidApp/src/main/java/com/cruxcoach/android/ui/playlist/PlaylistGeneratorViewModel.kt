@@ -728,7 +728,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
                         val hasWarmUp = plan.slots.any {
                             it.section == com.cruxcoach.domain.playlist.PlanSection.WARM_UP
                         }
-                        val boardCandidates = PerfLogger.traceQuery("playlist.boardGradePool") {
+                        // Loaded only if the first fill leaves a slot empty. It is a scan of
+                        // the catalogue sorted by difficulty — 18 s on a mid-range phone —
+                        // and a board with climbs at every planned grade never needs it.
+                        fun loadBoardPool() = PerfLogger.traceQuery("playlist.boardGradePool") {
                             loadCandidateSnapshot(
                                 overallLow - GRADE_HALF_WIDTH,
                                 overallHigh + GRADE_HALF_WIDTH,
@@ -741,8 +744,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 )
                             } else emptyList()
                         }
-                        val candidateSnapshot = (plannedCandidates + boardCandidates)
-                            .distinctBy { it.climbUuid }
+                        var candidateSnapshot = plannedCandidates.distinctBy { it.climbUuid }
 
                         // Grade-band widening is cheap and deterministic over
                         // the immutable snapshot. Browser, logbook and ignored
@@ -755,15 +757,9 @@ class PlaylistGeneratorViewModel @Inject constructor(
                             )
                         }
 
-                        val filled = PerfLogger.trace("playlist.fill") {
-                            PlaylistFiller.fill(
-                                plan = plan,
-                                source = source,
-                                openProjects = profile.openProjectUuids,
-                                // Resolve projects by uuid: they may sit
-                                // outside the planned bands and therefore not
-                                // be present in the bounded snapshot.
-                                projectCandidates = boardRepository.getClimbsByUuids(
+                        // Resolve projects by uuid: they may sit outside the planned
+                        // bands and therefore not be present in the bounded snapshot.
+                        val projectCandidates = boardRepository.getClimbsByUuids(
                                     profile.openProjectUuids, params.angle,
                                 ).filter { climb ->
                                     // By displayed grade, like every other candidate.
@@ -793,11 +789,25 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                             attempted = true,
                                         )
                                     }
-                                },
-                                boardCandidates = boardCandidates,
-                                selection = params.selection,
-                                random = Random(System.currentTimeMillis()),
-                            )
+                                }
+                        fun fillWith(boardCandidates: List<PlaylistCandidate>) =
+                            PerfLogger.trace("playlist.fill") {
+                                PlaylistFiller.fill(
+                                    plan = plan,
+                                    source = source,
+                                    openProjects = profile.openProjectUuids,
+                                    projectCandidates = projectCandidates,
+                                    boardCandidates = boardCandidates,
+                                    selection = params.selection,
+                                    random = Random(System.currentTimeMillis()),
+                                )
+                            }
+                        var filled = fillWith(emptyList())
+                        if (filled.droppedClimbs > 0) {
+                            val boardCandidates = loadBoardPool()
+                            candidateSnapshot = (candidateSnapshot + boardCandidates)
+                                .distinctBy { it.climbUuid }
+                            filled = fillWith(boardCandidates)
                         }
                         if (filled.entries.none { it is GeneratedEntry.Climb }) return@withContext null
 
