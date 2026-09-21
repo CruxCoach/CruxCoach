@@ -58,15 +58,118 @@ internal fun initialShareSelection(
 }
 
 /**
- * The nearby-share offer: still one question, but the answer now says WHICH boards.
- *
- * A share is one database with whatever the sender happens to have. Listing all families here
- * as if they could be downloaded would offer boards this peer cannot deliver; importing
- * everything it has would fill the phone with walls the receiver never climbs. So the
- * sender's catalogues are the choice, in the same rows as every other catalogue selection,
- * and the remaining families sit one tap away under their real condition — they need the
- * internet, and are fetched after the share.
+ * What is ticked in a share offer: the sender's families to take, and the other families to
+ * fetch from the internet afterwards. Held as wire values so it survives rotation.
  */
+internal class ShareChoice(
+    val offered: List<OfferedCatalogue>,
+    private val fromShare: androidx.compose.runtime.MutableState<List<String>>,
+    private val fromInternet: androidx.compose.runtime.MutableState<List<String>>,
+    val othersOpen: androidx.compose.runtime.MutableState<Boolean>,
+) {
+    val offeredBrands: List<BoardBrand> get() = offered.map { it.brand }
+    val otherBrands: List<BoardBrand>
+        get() = BoardBrand.entries.filter { it.isInteractive && it !in offeredBrands }
+    val shareBrands: Set<BoardBrand> get() = offeredBrands.filter { it.wireValue in fromShare.value }.toSet()
+    val onlineBrands: Set<BoardBrand> get() = otherBrands.filter { it.wireValue in fromInternet.value }.toSet()
+
+    fun toggle(brand: BoardBrand) {
+        val target = if (brand in offeredBrands) fromShare else fromInternet
+        target.value = if (brand.wireValue in target.value) target.value - brand.wireValue
+        else target.value + brand.wireValue
+    }
+
+    /** Make sure a family is wanted — from the sender if it has it, otherwise from the internet. */
+    fun include(brand: BoardBrand) {
+        if (!brand.isInteractive) return
+        val target = if (brand in offeredBrands) fromShare else fromInternet
+        if (brand.wireValue !in target.value) target.value = target.value + brand.wireValue
+        if (brand !in offeredBrands) othersOpen.value = true
+    }
+}
+
+@Composable
+internal fun rememberShareChoice(
+    key: String,
+    offered: List<OfferedCatalogue>,
+    savedSelection: Set<BoardBrand>?,
+): ShareChoice {
+    val initial = initialShareSelection(offered.map { it.brand }, savedSelection)
+    val fromShare = rememberSaveable(key) { mutableStateOf(initial.first.map { it.wireValue }) }
+    val fromInternet = rememberSaveable(key) { mutableStateOf(initial.second.map { it.wireValue }) }
+    // Open from the start when it already holds a choice: a ticked box nobody can see is a
+    // download nobody agreed to.
+    val othersOpen = rememberSaveable(key) { mutableStateOf(initial.second.isNotEmpty()) }
+    return androidx.compose.runtime.remember(offered, fromShare, fromInternet, othersOpen) {
+        ShareChoice(offered, fromShare, fromInternet, othersOpen)
+    }
+}
+
+/**
+ * The two-source catalogue choice of a share offer, used by the offer dialog and by onboarding.
+ *
+ * A share is one database with whatever the sender happens to have. Listing all families as
+ * if they could be downloaded would offer boards this peer cannot deliver; importing
+ * everything it has would fill the phone with walls the receiver never climbs. So the
+ * sender's catalogues are the choice, in the same rows as every other catalogue selection and
+ * with their climb counts, and the remaining families sit one tap away under their real
+ * condition — they need the internet, and are fetched after the share.
+ */
+@Composable
+internal fun ShareCatalogueChoice(host: String, choice: ShareChoice) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.board_sync_discovered_share_from, host),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            InfoButton(
+                stringResource(R.string.board_sync_discovered_share_title),
+                stringResource(R.string.board_sync_discovered_share_info, host),
+            )
+        }
+        CatalogueSelectionRows(
+            selectedBrands = choice.shareBrands,
+            brands = choice.offeredBrands,
+            detail = { brand ->
+                choice.offered.firstOrNull { it.brand == brand }?.climbCount?.toInt()?.let {
+                    pluralStringResource(R.plurals.board_sync_share_climbs, it, it)
+                }
+            },
+            onToggleBrand = choice::toggle,
+        )
+        if (choice.otherBrands.isNotEmpty()) {
+            val online = choice.onlineBrands
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .clickable(role = Role.Button) { choice.othersOpen.value = !choice.othersOpen.value }
+                    .testTag("discovered_share_others"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.board_sync_discovered_share_others),
+                        style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (online.isEmpty()) stringResource(R.string.board_sync_discovered_share_others_hint)
+                        else online.joinToString(" · ") { it.displayName },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(if (choice.othersOpen.value) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null)
+            }
+            if (choice.othersOpen.value) {
+                CatalogueSelectionRows(
+                    selectedBrands = online, brands = choice.otherBrands, onToggleBrand = choice::toggle,
+                )
+            }
+        }
+    }
+}
+
+/** The nearby-share offer outside onboarding: still one question, but the answer says WHICH boards. */
 @Composable
 internal fun DiscoveredShareDialog(
     host: String,
@@ -76,17 +179,7 @@ internal fun DiscoveredShareDialog(
     onConfirm: (shareBrands: Set<BoardBrand>, onlineBrands: Set<BoardBrand>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val offeredBrands = offered.map { it.brand }
-    val otherBrands = BoardBrand.entries.filter { it.isInteractive && it !in offeredBrands }
-    val initial = initialShareSelection(offeredBrands, savedSelection)
-    var fromShare by rememberSaveable(host) { mutableStateOf(initial.first.map { it.wireValue }) }
-    var fromInternet by rememberSaveable(host) { mutableStateOf(initial.second.map { it.wireValue }) }
-    // Open from the start when it already holds a choice: a ticked box nobody can see is
-    // a download nobody agreed to.
-    var othersOpen by rememberSaveable(host) { mutableStateOf(initial.second.isNotEmpty()) }
-    val shareSet = offeredBrands.filter { it.wireValue in fromShare }.toSet()
-    val onlineSet = otherBrands.filter { it.wireValue in fromInternet }.toSet()
-
+    val choice = rememberShareChoice(host, offered, savedSelection)
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -95,68 +188,14 @@ internal fun DiscoveredShareDialog(
         },
         title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
         text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.board_sync_discovered_share_from, host),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    InfoButton(
-                        stringResource(R.string.board_sync_discovered_share_title),
-                        stringResource(R.string.board_sync_discovered_share_info, host),
-                    )
-                }
-                CatalogueSelectionRows(
-                    selectedBrands = shareSet,
-                    brands = offeredBrands,
-                    detail = { brand ->
-                        offered.firstOrNull { it.brand == brand }?.climbCount?.toInt()?.let {
-                            pluralStringResource(R.plurals.board_sync_share_climbs, it, it)
-                        }
-                    },
-                ) { brand ->
-                    fromShare = if (brand.wireValue in fromShare) fromShare - brand.wireValue
-                    else fromShare + brand.wireValue
-                }
-                if (otherBrands.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                            .clickable(role = Role.Button) { othersOpen = !othersOpen }
-                            .testTag("discovered_share_others"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.board_sync_discovered_share_others),
-                                style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                if (onlineSet.isEmpty()) stringResource(R.string.board_sync_discovered_share_others_hint)
-                                else onlineSet.joinToString(" · ") { it.displayName },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Icon(if (othersOpen) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null)
-                    }
-                    if (othersOpen) {
-                        CatalogueSelectionRows(selectedBrands = onlineSet, brands = otherBrands) { brand ->
-                            fromInternet = if (brand.wireValue in fromInternet) fromInternet - brand.wireValue
-                            else fromInternet + brand.wireValue
-                        }
-                    }
-                }
-            }
+            Column(Modifier.verticalScroll(rememberScrollState())) { ShareCatalogueChoice(host, choice) }
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(shareSet, onlineSet) },
+                onClick = { onConfirm(choice.shareBrands, choice.onlineBrands) },
                 // Nothing from this peer is not an answer to this question; the other
                 // button is.
-                enabled = shareSet.isNotEmpty(),
+                enabled = choice.shareBrands.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
             ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }

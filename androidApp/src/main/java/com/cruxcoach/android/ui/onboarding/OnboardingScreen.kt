@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
@@ -92,6 +93,29 @@ fun OnboardingScreen(
     var confirmingDownloads by androidx.compose.runtime.remember { mutableStateOf(false) }
     var downloadSelectionFailed by androidx.compose.runtime.remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // Somebody who got the APK from a friend's hotspot is still on that network. Look for the
+    // sender before asking which catalogues to load, so the first screen can show what this
+    // sender really has instead of every family as if it were downloadable here.
+    val syncState by boardSyncViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { boardSyncViewModel.probeOnboardingShare() }
+    val shareOffer = syncState.pendingDiscoveredShare?.takeIf { syncState.discoveredShareInline }
+    val shareHost = shareOffer?.let { offer ->
+        runCatching { android.net.Uri.parse(offer.baseUrl).host }.getOrNull() ?: offer.baseUrl
+    }
+    val shareChoice = shareOffer?.let { offer ->
+        val offered = offer.manifest.board?.catalogues.orEmpty().mapNotNull { catalogue ->
+            BoardBrand.fromWireOrNull(catalogue.boardBrand)?.takeIf { it.isInteractive }
+                ?.let { com.cruxcoach.android.ui.board.sync.OfferedCatalogue(it, catalogue.climbCount) }
+        }.distinctBy { it.brand }
+        // Nothing declared (an old sender): no inline choice; the plain dialog handles it later.
+        if (offered.isEmpty()) null
+        // A first run has made no choice yet: everything the sender offers starts ticked.
+        else com.cruxcoach.android.ui.board.sync.rememberShareChoice(offer.baseUrl, offered, savedSelection = null)
+    }
+    LaunchedEffect(shareChoice, state.boardBrand) {
+        // The board being set up is wanted either way — from the sender if it has it.
+        shareChoice?.include(BoardBrand.fromWire(state.boardBrand))
+    }
     LaunchedEffect(state.currentStep) {
         if (downloadSelection == null || (downloadsConfirmed && state.currentStep == OnboardingStep.BOARD_SETUP)) {
             downloadSelection = boardSyncViewModel.initialDownloadSelection()
@@ -111,6 +135,9 @@ fun OnboardingScreen(
                     state = state,
                     downloadSelection = downloadSelection,
                     onDownloadSelectionChange = { downloadSelection = it },
+                    shareHost = shareHost,
+                    shareChoice = shareChoice,
+                    onUseInternetInstead = { boardSyncViewModel.dismissDiscoveredShare() },
                     onConnect = { showBle = true },
                     bleSearchOpen = showBle,
                     suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
@@ -151,9 +178,22 @@ fun OnboardingScreen(
 
             when (state.currentStep) {
                 OnboardingStep.BOARD_SETUP -> {
+                    val fromShare = shareChoice?.shareBrands.orEmpty()
                     Button(
                         onClick = {
-                            val selected = downloadSelection ?: return@Button
+                            if (shareChoice != null && fromShare.isNotEmpty()) {
+                                // This tap IS the consent the offer needs: it names the sender,
+                                // lists what is taken, and nothing was transferred before it.
+                                boardSyncViewModel.confirmDiscoveredShare(fromShare, shareChoice.onlineBrands)
+                                downloadsConfirmed = true
+                                viewModel.nextStep()
+                                return@Button
+                            }
+                            val selected = if (shareChoice != null) {
+                                // Nothing wanted from the sender: an ordinary download of the rest.
+                                boardSyncViewModel.dismissDiscoveredShare()
+                                shareChoice.onlineBrands
+                            } else downloadSelection ?: return@Button
                             confirmingDownloads = true
                             downloadSelectionFailed = false
                             scope.launch {
@@ -178,7 +218,12 @@ fun OnboardingScreen(
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(stringResource(if (downloadSelection.isNullOrEmpty()) R.string.action_next else R.string.setup_confirm_downloads))
+                        Text(stringResource(when {
+                            fromShare.isNotEmpty() -> R.string.setup_confirm_share
+                            shareChoice != null && shareChoice.onlineBrands.isEmpty() -> R.string.action_next
+                            shareChoice == null && downloadSelection.isNullOrEmpty() -> R.string.action_next
+                            else -> R.string.setup_confirm_downloads
+                        }))
                     }
                 }
                 OnboardingStep.PRIVACY -> {
@@ -368,6 +413,9 @@ private fun BoardSetupStep(
     state: OnboardingState,
     downloadSelection: Set<BoardBrand>?,
     onDownloadSelectionChange: (Set<BoardBrand>) -> Unit,
+    shareHost: String?,
+    shareChoice: com.cruxcoach.android.ui.board.sync.ShareChoice?,
+    onUseInternetInstead: () -> Unit,
     onConnect: () -> Unit,
     bleSearchOpen: Boolean,
     suggestedBrand: BoardBrand?,
@@ -398,7 +446,7 @@ private fun BoardSetupStep(
                 showBoardModelDialog = false
                 onConnect()
             },
-            onBoardChosen = { onDownloadSelectionChange(setOf(it)) },
+            onBoardChosen = { if (shareChoice != null) shareChoice.include(it) else onDownloadSelectionChange(setOf(it)) },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
@@ -410,7 +458,7 @@ private fun BoardSetupStep(
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
             deferDownloads = true,
-            onBoardChosen = { onDownloadSelectionChange(setOf(it)) },
+            onBoardChosen = { if (shareChoice != null) shareChoice.include(it) else onDownloadSelectionChange(setOf(it)) },
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
@@ -442,6 +490,32 @@ private fun BoardSetupStep(
                     fontWeight = FontWeight.SemiBold)
                 Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_board_model_change))
             }
+        }
+        if (shareChoice != null && shareHost != null) {
+            // A sender is in reach: say so, show exactly what it has, and let the rest be what
+            // it is — boards that need the internet. No second question after this screen.
+            Surface(
+                color = OrangeAccent.copy(alpha = 0.10f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().testTag("onboarding_share_offer"),
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.NetworkWifi, contentDescription = null, tint = OrangeAccent)
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.setup_share_found_title),
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.setup_share_found_body),
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(shareHost, shareChoice)
+            TextButton(
+                onClick = onUseInternetInstead,
+                modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),
+            ) { Text(stringResource(R.string.setup_share_use_internet)) }
+            return@Column
         }
         val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

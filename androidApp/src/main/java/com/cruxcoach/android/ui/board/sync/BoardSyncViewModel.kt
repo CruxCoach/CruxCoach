@@ -144,6 +144,7 @@ class BoardSyncViewModel @Inject constructor(
     fun confirmOfflineShare(invitation: com.cruxcoach.android.util.LocalShareProtocol.Invitation) =
         syncManager.confirmOfflineShare(invitation)
     fun dismissOfflineShare() = syncManager.dismissOfflineShare()
+    fun probeOnboardingShare() = syncManager.probeOnboardingShare()
     fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
     fun confirmDiscoveredShare(shareBrands: Set<BoardBrand>, onlineBrands: Set<BoardBrand>) =
         syncManager.confirmDiscoveredShare(shareBrands, onlineBrands)

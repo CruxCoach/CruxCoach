@@ -3003,6 +3003,10 @@
     <string name="setup_download_hint">Lade die Climbs deiner Boards zum Offline-Browsen.</string>
     <string name="setup_more_catalogues">Katalog-Auswahl · %1$d ausgewählt</string>
     <string name="setup_confirm_downloads">Laden und weiter</string>
+    <string name="setup_confirm_share">Vom Gerät in der Nähe laden</string>
+    <string name="setup_share_found_title">Ein Gerät in der Nähe teilt seine Boards</string>
+    <string name="setup_share_found_body">Dafür brauchst du kein Internet. Wähle, welche du haben willst.</string>
+    <string name="setup_share_use_internet">Stattdessen alles aus dem Internet laden</string>
     <string name="tour_replay">Einführung ansehen</string>
     <string name="tour_skip">Tour überspringen</string>
     <string name="tour_spotlight_connect">Board per Bluetooth verbinden. Ohne Board einfach die Suche schließen.</string>

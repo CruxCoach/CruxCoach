@@ -540,9 +540,51 @@ class BoardSyncManager(
      * that network first. Only when no valid CruxCoach manifest is present do
      * we fall back to the normal online Blossom sync.
      */
+    /**
+     * Onboarding's first screen looks for the sender BEFORE asking which catalogues to load.
+     *
+     * A receiver who installed the APK from a friend's hotspot used to tick board families
+     * blind — all of them offered, with a note about Wi-Fi and data volume, on a network that
+     * has no internet — and only after confirming was told that a device nearby could supply
+     * some of them, and asked again. Probing first lets that screen show what this sender
+     * really has, so the question is asked once and with the facts on the table.
+     *
+     * Only a probe: nothing is transferred and nothing is staged as a dialog. The offer sits
+     * in [BoardSyncState.pendingDiscoveredShare] marked inline, for the screen to present.
+     */
+    fun probeOnboardingShare() {
+        val current = _state.value
+        if (current.alreadyImported || current.isSyncing || current.pendingDiscoveredShare != null ||
+            onboardingShareProbe?.isActive == true
+        ) return
+        onboardingShareProbe = scope.launch {
+            val found = runCatching { discoverInitialShare() }
+                .onFailure { Log.w(TAG, "Onboarding share probe failed", it) }
+                .getOrNull() ?: return@launch
+            _state.update { state ->
+                if (state.isSyncing || state.alreadyImported || state.pendingDiscoveredShare != null) state
+                else state.copy(
+                    pendingDiscoveredShare = found,
+                    pendingDiscoveredShareFallsBackOnline = false,
+                    discoveredShareInline = true,
+                )
+            }
+        }
+    }
+
+    @Volatile private var onboardingShareProbe: kotlinx.coroutines.Job? = null
+
+    /** Set when the receiver chose the internet over an inline offer: do not find and offer
+     *  the same sender again a moment later. */
+    @Volatile private var initialShareDeclined = false
+
     fun startInitialSyncIfNeeded() {
         val current = _state.value
         if (current.alreadyImported || current.isSyncing || current.pendingDiscoveredShare != null) return
+        if (initialShareDeclined) {
+            startInitialOnlineFallback()
+            return
+        }
         // Discovery is only a probe at this point. Do not advertise a nearby
         // transfer in the UI until a valid peer manifest has actually been
         // found; on an ordinary fresh install this probe simply falls through
@@ -622,6 +664,7 @@ class BoardSyncManager(
                     syncGeneration = current.syncGeneration + 1,
                     pendingDiscoveredShare = null,
                     pendingDiscoveredShareFallsBackOnline = false,
+                    discoveredShareInline = false,
                 )
             }
         }
@@ -653,9 +696,11 @@ class BoardSyncManager(
             if (current.pendingDiscoveredShare == null) current
             else {
                 fallBackOnline = current.pendingDiscoveredShareFallsBackOnline
+                if (current.discoveredShareInline) initialShareDeclined = true
                 current.copy(
                     pendingDiscoveredShare = null,
                     pendingDiscoveredShareFallsBackOnline = false,
+                    discoveredShareInline = false,
                 )
             }
         }
@@ -2290,6 +2335,8 @@ data class BoardSyncState(
     val pendingDiscoveredShare: LocalShareDiscovery.Found? = null,
     /** True only for first-run discovery, where decline means ordinary sync. */
     val pendingDiscoveredShareFallsBackOnline: Boolean = false,
+    /** The offer is presented by onboarding's first screen, not as a dialog. */
+    val discoveredShareInline: Boolean = false,
     /** A newer, hash- and signer-verified APK downloaded from the peer. */
     val localShareUpdate: LocalShareUpdate? = null,
     /** True from local sender discovery through the final local DB refresh. */

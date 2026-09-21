@@ -165,7 +165,8 @@ fun BoardSyncInlineCard(
         )
     }
 
-    state.pendingDiscoveredShare?.let { found ->
+    // An inline offer belongs to onboarding's first screen; no dialog on top of it.
+    state.pendingDiscoveredShare?.takeIf { !state.discoveredShareInline }?.let { found ->
         val host = remember(found.baseUrl) {
             runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
         }
