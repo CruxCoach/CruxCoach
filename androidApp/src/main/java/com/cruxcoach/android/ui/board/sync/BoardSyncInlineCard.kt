@@ -169,62 +169,50 @@ fun BoardSyncInlineCard(
         val host = remember(found.baseUrl) {
             runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
         }
-        val offeredCatalogues = remember(found.manifest) {
-            found.manifest.board?.catalogues.orEmpty().joinToString(", ") { catalogue ->
-                val brand = BoardBrand.fromWireOrNull(catalogue.boardBrand)
-                val name = brand?.displayName ?: catalogue.boardBrand
-                "$name (${catalogue.climbCount})"
-            }
+        val offered = remember(found.manifest) {
+            found.manifest.board?.catalogues.orEmpty().mapNotNull { catalogue ->
+                BoardBrand.fromWireOrNull(catalogue.boardBrand)
+                    ?.takeIf { it.isInteractive }
+                    ?.let { OfferedCatalogue(it, catalogue.climbCount) }
+            }.distinctBy { it.brand }
         }
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissDiscoveredShare() },
-            icon = {
-                Icon(
-                    Icons.Default.NetworkWifi,
-                    contentDescription = null,
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(40.dp),
-                )
-            },
-            title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.board_sync_discovered_share_message, host))
-                    if (offeredCatalogues.isNotBlank()) {
-                        Text(
-                            stringResource(
-                                R.string.board_sync_discovered_share_catalogues,
-                                offeredCatalogues,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+        val savedSelection by viewModel.downloadBrands.collectAsStateWithLifecycle()
+        if (offered.isEmpty()) {
+            // An old sender that declares no catalogues: nothing to choose from, so the
+            // question stays the plain yes/no it always was and the share is taken whole.
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissDiscoveredShare() },
+                title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
+                text = { Text(stringResource(R.string.board_sync_discovered_share_message, host)) },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.confirmDiscoveredShare() },
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                        modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
+                    ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { viewModel.dismissDiscoveredShare() },
+                        modifier = Modifier.testTag("board_sync_discovered_share_internet"),
+                    ) {
+                        Text(stringResource(
+                            if (state.pendingDiscoveredShareFallsBackOnline) R.string.board_sync_discovered_share_internet
+                            else R.string.action_cancel,
+                        ))
                     }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.confirmDiscoveredShare() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                    modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
-                ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { viewModel.dismissDiscoveredShare() },
-                    modifier = Modifier.testTag("board_sync_discovered_share_internet"),
-                ) {
-                    Text(
-                        stringResource(
-                            if (state.pendingDiscoveredShareFallsBackOnline) {
-                                R.string.board_sync_discovered_share_internet
-                            } else {
-                                R.string.action_cancel
-                            },
-                        ),
-                    )
-                }
-            },
-        )
+                },
+            )
+        } else {
+            DiscoveredShareDialog(
+                host = host,
+                offered = offered,
+                savedSelection = savedSelection,
+                fallsBackOnline = state.pendingDiscoveredShareFallsBackOnline,
+                onConfirm = { share, online -> viewModel.confirmDiscoveredShare(share, online) },
+                onDismiss = { viewModel.dismissDiscoveredShare() },
+            )
+        }
     }
 
     // Local-share import consent. The tap on the hotspot's landing page

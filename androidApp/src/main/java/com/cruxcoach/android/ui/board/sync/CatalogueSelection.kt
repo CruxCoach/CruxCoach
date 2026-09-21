@@ -23,9 +23,16 @@ import com.cruxcoach.domain.board.BoardBrand
 
 /** One selection language throughout setup and catalogue settings. Taps only edit a draft. */
 @Composable
-internal fun CatalogueSelectionRows(selectedBrands: Set<BoardBrand>, onToggleBrand: (BoardBrand) -> Unit) {
+internal fun CatalogueSelectionRows(
+    selectedBrands: Set<BoardBrand>,
+    // Which families to offer, and an optional second line for each — the nearby-share dialog
+    // offers the sender's catalogues with their climb counts through the same rows.
+    brands: List<BoardBrand> = BoardBrand.entries.filter { it.isInteractive },
+    detail: @Composable (BoardBrand) -> String? = { null },
+    onToggleBrand: (BoardBrand) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
+        brands.forEach { brand ->
             val checked = brand in selectedBrands
             Surface(
                 color = if (checked) OrangeAccent.copy(alpha = 0.10f)
@@ -41,7 +48,13 @@ internal fun CatalogueSelectionRows(selectedBrands: Set<BoardBrand>, onToggleBra
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(brand.displayName, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Column(Modifier.weight(1f)) {
+                        Text(brand.displayName, style = MaterialTheme.typography.bodyLarge)
+                        detail(brand)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     Icon(if (checked) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
                         contentDescription = null, modifier = Modifier.size(24.dp))
                 }
@@ -71,7 +84,7 @@ internal fun CatalogueSelectionDialog(
                     }
                     InfoButton(stringResource(R.string.setup_catalogues_title), stringResource(R.string.catalogue_selection_help))
                 }
-                CatalogueSelectionRows(selectedBrands, onToggleBrand)
+                CatalogueSelectionRows(selectedBrands, onToggleBrand = onToggleBrand)
                 Text(stringResource(if (isSyncing) R.string.catalogue_queue_hint else R.string.catalogue_confirm_hint),
                     style = MaterialTheme.typography.bodyMedium)
             }

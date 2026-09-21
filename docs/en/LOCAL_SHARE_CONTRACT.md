@@ -71,6 +71,24 @@ Resume records written across an APK replacement persist both protocol and
 artifact path. Records written before 0.2.2 have neither field and are treated
 as v1. A persisted protocol/path mismatch is discarded.
 
+## Receiver-side catalogue selection
+
+A share is one database holding every catalogue the sender has. Where the manifest is known
+before consent (first-run discovery and the connected landing-page lane), the consent dialog
+lists the sender's declared catalogues as the choice, with the remaining families collapsed
+under "needs internet". The ticked set becomes the download selection; families the sender
+lacks are fetched the ordinary way after the share, and only if not already present. A QR
+invitation is accepted before the manifest exists, so there an existing download selection
+decides, falling back to the whole share when it would leave nothing.
+
+Filtering is a receiver-only step and changes nothing on the wire: after the compressed and
+uncompressed hashes verify, `LocalShareSnapshotPruner` deletes, in the receiver's temporary
+copy, every row that names another board brand and everything keyed to a removed climb
+(stats, beta links, the Quantum route bridge and metadata). Rows without a brand and legacy
+single-family snapshots are left untouched. The import boundary below then runs unchanged.
+A snapshot that was cut is not recorded as "already imported", so the same sender can still
+supply the families left out.
+
 ## Database import boundary
 
 A modern CruxCoach database is untrusted peer input. Listed, non-draft,

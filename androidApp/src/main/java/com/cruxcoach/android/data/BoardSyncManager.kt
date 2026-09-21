@@ -589,7 +589,17 @@ class BoardSyncManager(
     /** Accept the exact peer/session the user saw. Consuming the offer and
      * claiming the sync slot happen in one StateFlow update, so another sync
      * cannot slip between those decisions. */
-    fun confirmDiscoveredShare() {
+    /**
+     * @param shareBrands the sender's catalogues the receiver wants; null takes the default
+     *   (see [resolveShareBrands]). Everything else in the snapshot is cut before the import.
+     * @param onlineBrands families the sender does not have, to be fetched the ordinary way
+     *   once the share has finished.
+     */
+    fun confirmDiscoveredShare(
+        shareBrands: Set<BoardBrand>? = null,
+        onlineBrands: Set<BoardBrand> = emptySet(),
+    ) {
+        chosenShareBrands = shareBrands
         var claimed: LocalShareDiscovery.Found? = null
         _state.update { current ->
             val found = current.pendingDiscoveredShare
@@ -606,7 +616,8 @@ class BoardSyncManager(
                     localShareBoardSteps = sharedBoardBrands(
                         found.manifest.board,
                         found.manifest.protocolVersion,
-                    ).associateWith { ImportStep.FetchingManifest },
+                    ).filter { shareBrands == null || it in shareBrands }
+                        .associateWith { ImportStep.FetchingManifest },
                     auroraSteps = emptyMap(),
                     syncGeneration = current.syncGeneration + 1,
                     pendingDiscoveredShare = null,
@@ -616,6 +627,11 @@ class BoardSyncManager(
         }
         val found = claimed ?: return
         scope.launch {
+            if (shareBrands != null) {
+                // The dialog showed every family — the sender's and the rest — so what was
+                // ticked there IS the download selection from now on.
+                userPreferences.setBoardDownloadBrands(shareBrands + onlineBrands)
+            }
             try {
                 initialShareRunner?.invoke(found) ?: runOfflineShare(
                         network = found.network,
@@ -644,6 +660,24 @@ class BoardSyncManager(
             }
         }
         if (fallBackOnline) startInitialOnlineFallback()
+    }
+
+    /** What the receiver ticked in the share dialog; null on the lanes that show no choice. */
+    @Volatile private var chosenShareBrands: Set<BoardBrand>? = null
+
+    /**
+     * Which of the sender's families to keep.
+     *
+     * The dialog's choice wins. Without one — a QR invitation is accepted before the manifest
+     * is known — an existing download selection decides, because somebody who set up for
+     * Kilter only did not ask for the sender's MoonBoard. If that leaves nothing, or there is
+     * no selection yet, the whole share is taken: better everything than an empty import.
+     */
+    private suspend fun resolveShareBrands(offered: List<BoardBrand>): List<BoardBrand> {
+        chosenShareBrands?.let { chosen -> return offered.filter { it in chosen }.ifEmpty { offered } }
+        if (!userPreferences.hasBoardDownloadSelection()) return offered
+        val saved = userPreferences.boardDownloadBrands.first()
+        return offered.filter { it in saved }.ifEmpty { offered }
     }
 
     private fun interactiveBoardBrands(): List<BoardBrand> =
@@ -1562,7 +1596,8 @@ class BoardSyncManager(
         board: LocalShareProtocol.BoardArtifact,
         protocolVersion: Int,
     ) {
-        val brands = sharedBoardBrands(board, protocolVersion)
+        val offeredBrands = sharedBoardBrands(board, protocolVersion)
+        val brands = resolveShareBrands(offeredBrands)
         require(board.uncompressedSizeBytes in 1..MAX_LOCAL_SHARE_DB_BYTES) {
             "Shared board snapshot exceeds size limit"
         }
@@ -1596,6 +1631,15 @@ class BoardSyncManager(
             ) {
                 throw java.io.IOException("Shared board snapshot failed verification")
             }
+            // Verified first, cut second: the hash vouches for what the sender sent, and the
+            // cut is ours. The import then only ever sees the chosen families.
+            val cutToSelection = brands.size < offeredBrands.size
+            if (cutToSelection) {
+                val removed = withBackgroundThreadPriority {
+                    LocalShareSnapshotPruner.prune(raw, brands.toSet())
+                }
+                Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
+            }
             withBackgroundThreadPriority {
                 importer.importFromLocalDb(
                     raw,
@@ -1612,7 +1656,11 @@ class BoardSyncManager(
             }
             updateLocalShareProgress(ImportStep.Finalizing, brands)
             bumpCatalogueRevision()
-            userPreferences.setLastLocalShareSnapshotSha256(board.uncompressedSha256)
+            // "Already have this snapshot" is only true of a snapshot taken whole. After a cut
+            // the same sender must still be able to supply the families left out this time.
+            userPreferences.setLastLocalShareSnapshotSha256(
+                if (cutToSelection) null else board.uncompressedSha256,
+            )
             refreshDenormalizedData()
             val completedSteps = completedLocalShareSteps(brands)
             _state.update { current ->
@@ -1818,9 +1866,23 @@ class BoardSyncManager(
             emptyMap()
         } else {
             completedLocalShareSteps(
-                sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion),
+                resolveShareBrands(
+                    sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion),
+                ),
             )
         }
+        // The families the sender does not have follow the ordinary way, one after the
+        // other, as soon as the share has released the sync slot.
+        if (chosenShareBrands != null) {
+            val savedSelection = userPreferences.boardDownloadBrands.first()
+            val fromShare = sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion).toSet()
+            // Only what is still missing: a family this install already has is kept current
+            // by the regular sync and needs no download of its own here.
+            val present = boardRepository.getClimbCountsByBrand()
+                .filterValues { it > 0 }.keys.mapNotNull { BoardBrand.fromWireOrNull(it) }.toSet()
+            (savedSelection - fromShare - present).forEach(::loadBoardCatalogue)
+        }
+        chosenShareBrands = null
         val networkAvailable = isNetworkAvailable(appContext)
         val wifiConnected = isWifiConnected(appContext)
         _state.update {
@@ -1844,6 +1906,7 @@ class BoardSyncManager(
 
     private fun failOfflineShare(error: Throwable) {
         Log.e(TAG, "Offline share failed", error)
+        chosenShareBrands = null
         _state.update {
             it.copy(
                 isSyncing = false,
