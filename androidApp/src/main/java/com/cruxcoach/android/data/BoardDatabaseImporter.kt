@@ -63,6 +63,9 @@ class BoardDatabaseImporter(
         private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+
+        /** Per-connection temp table of the peer climbs whose stats may be imported. */
+        private const val PEER_STAT_CLIMBS = "peer_stat_climbs"
         private val QUANTUM_MODELS = setOf("xl", "l", "m", "s", "belay")
 
         // Hot-path indexes for the climbs table — dropped before bulk
@@ -2363,29 +2366,48 @@ class BoardDatabaseImporter(
             // peer catalogue policy and whose target climb has the same brand
             // are eligible. Authenticated/legacy catalogue imports retain their
             // historical unfiltered behavior.
+            //
+            // The eligible peer climbs are normalised ONCE into an indexed temp table. The join
+            // used to compare LOWER(TRIM(sc.uuid)) with LOWER(TRIM(s.climb_uuid)) directly — an
+            // expression on both sides, so no index could serve it and every stats row scanned
+            // the whole peer climbs table. With a real three-board share (~870k stats rows
+            // against ~700k climbs) that is 6·10^11 comparisons: on a Nokia 6.1 the import sat
+            // at "Stats: 0 / 0" for a quarter of an hour inside the COUNT alone, holding the
+            // write lock so the rest of the app ran into "database is locked". Fixtures with a
+            // few dozen rows never showed it.
             val peerJoin = peerClimbsTable?.let { climbsTable ->
                 val sourceBrand = if ("board_brand" in peerClimbColumns) {
                     "LOWER(COALESCE(sc.board_brand,'kilter'))"
                 } else {
                     "'kilter'"
                 }
-                """JOIN src.$climbsTable sc
-                       ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(s.climb_uuid))
+                val eligible = buildString {
+                    append("sc.is_listed=1")
+                    if ("source" in peerClimbColumns) {
+                        append(" AND LOWER(COALESCE(sc.source,'kilter'))!='local'")
+                    }
+                    if ("is_deleted" in peerClimbColumns) {
+                        append(" AND COALESCE(sc.is_deleted,0)=0")
+                    }
+                }
+                targetDb.execSQL("DROP TABLE IF EXISTS temp.$PEER_STAT_CLIMBS")
+                targetDb.execSQL(
+                    "CREATE TEMP TABLE $PEER_STAT_CLIMBS(" +
+                        "uuid TEXT NOT NULL, brand TEXT NOT NULL, PRIMARY KEY(uuid, brand)) WITHOUT ROWID"
+                )
+                targetDb.execSQL(
+                    "INSERT OR IGNORE INTO temp.$PEER_STAT_CLIMBS(uuid, brand) " +
+                        "SELECT LOWER(TRIM(sc.uuid)), $sourceBrand FROM src.$climbsTable sc " +
+                        "WHERE sc.uuid IS NOT NULL AND $eligible"
+                )
+                """JOIN temp.$PEER_STAT_CLIMBS pc
+                       ON pc.uuid=LOWER(TRIM(s.climb_uuid))
                    JOIN main.climbs tc
-                       ON tc.uuid=LOWER(TRIM(s.climb_uuid))
-                      AND LOWER(tc.board_brand)=$sourceBrand""".trimIndent()
+                       ON tc.uuid=pc.uuid
+                      AND LOWER(tc.board_brand)=pc.brand""".trimIndent()
             }.orEmpty()
-            val peerFilter = if (peerClimbsTable == null) {
-                ""
-            } else buildString {
-                append(" AND sc.is_listed=1")
-                if ("source" in peerClimbColumns) {
-                    append(" AND LOWER(COALESCE(sc.source,'kilter'))!='local'")
-                }
-                if ("is_deleted" in peerClimbColumns) {
-                    append(" AND COALESCE(sc.is_deleted,0)=0")
-                }
-            }
+            // Already applied while the temp table was built.
+            val peerFilter = ""
             // A peer catalogue is additive: its aggregate row may fill a
             // missing (climb_uuid, angle), but it must never replace an
             // already-authoritative receiver row after a same-brand UUID
@@ -2444,6 +2466,8 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
+
+            if (peerClimbsTable != null) targetDb.execSQL("DROP TABLE IF EXISTS temp.$PEER_STAT_CLIMBS")
 
             val inserted = if (freshInstall && peerClimbsTable == null) {
                 scanned
@@ -3064,15 +3088,19 @@ class BoardDatabaseImporter(
             // carry the table next to an older brandless climbs shape; without
             // the brand discriminator there is no safe way to prove that both
             // ends are MoonBoard identities, so treat it like an older sender.
+            // Every join below is column = expression, so the peer's own uuid indexes serve
+            // them. The alias table only exists from 0.2.3 on, whose uuids are canonical; the
+            // earlier LOWER(TRIM(uuid)) on the looked-up side scanned a whole table per alias.
+            // A non-canonical peer row now simply contributes no alias.
             if (has("moonboard_climb_aliases") && "board_brand" in columns("climbs")) add(
                 """INSERT OR IGNORE INTO moonboard_climb_aliases(
                        alias_uuid,canonical_uuid,match_kind)
                    SELECT LOWER(TRIM(a.alias_uuid)),LOWER(TRIM(a.canonical_uuid)),a.match_kind
                    FROM src.moonboard_climb_aliases a
                    JOIN src.climbs alias_climb
-                     ON LOWER(TRIM(alias_climb.uuid))=LOWER(TRIM(a.alias_uuid))
+                     ON alias_climb.uuid=LOWER(TRIM(a.alias_uuid))
                    JOIN src.climbs canonical_climb
-                     ON LOWER(TRIM(canonical_climb.uuid))=LOWER(TRIM(a.canonical_uuid))
+                     ON canonical_climb.uuid=LOWER(TRIM(a.canonical_uuid))
                    JOIN main.climbs imported_canonical
                      ON imported_canonical.uuid=LOWER(TRIM(a.canonical_uuid))
                     AND LOWER(imported_canonical.board_brand)='moonboard'
@@ -3085,7 +3113,7 @@ class BoardDatabaseImporter(
                      AND alias_climb.frames=canonical_climb.frames
                      AND NOT EXISTS (
                        SELECT 1 FROM src.moonboard_climb_aliases chained
-                       WHERE LOWER(TRIM(chained.alias_uuid))=LOWER(TRIM(a.canonical_uuid))
+                       WHERE chained.alias_uuid=LOWER(TRIM(a.canonical_uuid))
                      )""".trimIndent(),
             )
             if (includeQuantum) {
