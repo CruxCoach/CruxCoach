@@ -749,6 +749,9 @@
     <string name="climb_card_draft_badge">Entwurf</string>
     <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
     <string name="board_filter_ungraded_only">Ohne Schwierigkeitsgrad</string>
+    <string name="board_filter_ungraded_only_count">Ohne Schwierigkeitsgrad (%1$d)</string>
+    <string name="board_filter_ungraded_only_active">Zeigt nur Climbs, die noch niemand bewertet hat. Gradbereich, Min. Begehungen und Benchmarks gelten dabei nicht.</string>
+    <string name="board_filter_ungraded_only_none">Auf diesem Board gibt es bei diesem Winkel keine — hier hat jeder Climb einen Grad.</string>
     <string name="board_filter_info_action">Filterbegriffe erklären</string>
     <string name="board_filter_info_title">Filter- &amp; Sortierbegriffe</string>
     <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch in deinem CruxCoach-Logbuch.</string>

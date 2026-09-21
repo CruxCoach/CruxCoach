@@ -457,6 +457,14 @@ data class BoardBrowserState(
      *  board-config change, never cached across variants. */
     val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
+    /**
+     * How many climbs on this board and angle have no grade at all; null until counted.
+     *
+     * The "without a grade" switch is only worth offering where this is not zero. The Kilter
+     * and MoonBoard catalogues grade every climb, so there the switch could only ever produce
+     * an empty list — and nothing said why.
+     */
+    val ungradedAvailable: Long? = null,
     val ble: BrowserBleState = BrowserBleState(),
     val holdSearch: HoldSearchState = HoldSearchState(),
     val quantumLayers: BrowserQuantumLayerState = BrowserQuantumLayerState(),
@@ -1262,9 +1270,35 @@ class BoardBrowserViewModel @Inject constructor(
      *  ONLY ungraded climbs and the grade slider is inert (see
      *  [BrowserFilterState.ungradedOnly]). */
     fun updateUngradedOnlyFilter(enabled: Boolean) {
-        _state.update { it.copy(filter = it.filter.copy(ungradedOnly = enabled)) }
+        _state.update {
+            it.copy(
+                filter = if (enabled) {
+                    // A climb without a grade has no ascents and is no benchmark: left on,
+                    // either of these turned the mode into a guaranteed empty list.
+                    it.filter.copy(ungradedOnly = true, minAscensionists = 0, benchmarkOnly = false)
+                } else it.filter.copy(ungradedOnly = false),
+            )
+        }
         persistFilters()
         searchClimbs()
+    }
+
+    /** Counts the climbs the "without a grade" switch would show — see [BoardBrowserState.ungradedAvailable]. */
+    fun refreshUngradedAvailable() {
+        val f = _state.value.filter
+        viewModelScope.safeLaunch(TAG) {
+            val count = withContext(Dispatchers.IO) {
+                boardRepository.countFilteredClimbs(
+                    f.angle, f.layoutId, f.boardBrand, UNGRADED_ONLY_MIN_DIFF, UNGRADED_ONLY_MAX_DIFF,
+                    0, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(),
+                    showUngraded = true,
+                )
+            }
+            val now = _state.value.filter
+            if (now.angle == f.angle && now.layoutId == f.layoutId && now.boardBrand == f.boardBrand) {
+                _state.update { it.copy(ungradedAvailable = count) }
+            }
+        }
     }
 
     private suspend fun ensureStatusLoaded() {

@@ -209,13 +209,31 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 modifier = Modifier.fillMaxWidth().clickable { advanced = !advanced }.testTag("board_filter_more"),
             )
             if (advanced) {
-                FilterSwitchRow(stringResource(R.string.board_filter_ungraded_only), state.filter.ungradedOnly, viewModel::updateUngradedOnlyFilter, "board_filter_ungraded_only")
+                // Offered with its count, and not at all where the catalogue grades every climb.
+                LaunchedEffect(state.filter.angle, state.filter.layoutId, state.filter.boardBrand, state.filter.climbTypeFilter) {
+                    viewModel.refreshUngradedAvailable()
+                }
+                val ungraded = state.ungradedAvailable
+                FilterSwitchRow(
+                    label = if (ungraded != null && ungraded > 0) stringResource(R.string.board_filter_ungraded_only_count, ungraded.toInt())
+                    else stringResource(R.string.board_filter_ungraded_only),
+                    checked = state.filter.ungradedOnly,
+                    onChange = viewModel::updateUngradedOnlyFilter,
+                    tag = "board_filter_ungraded_only",
+                    // Still switchable when it is on, so a stale "on" can always be turned off.
+                    enabled = state.filter.ungradedOnly || (ungraded ?: 0L) > 0L,
+                    supporting = when {
+                        state.filter.ungradedOnly -> stringResource(R.string.board_filter_ungraded_only_active)
+                        ungraded == 0L -> stringResource(R.string.board_filter_ungraded_only_none)
+                        else -> null
+                    },
+                )
                 FilterSwitchRow(stringResource(R.string.board_filter_my_climbs), state.filter.myClimbsOnly, viewModel::updateMyClimbsFilter, "board_filter_my_climbs")
-                if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark")
+                if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark", enabled = !state.filter.ungradedOnly)
                 Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleMedium)
                 Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
                     onValueChangeFinished = { viewModel.commitFilterChange() }, valueRange = 0f..50f, steps = 49,
-                    enabled = !state.filter.myClimbsOnly)
+                    enabled = !state.filter.myClimbsOnly && !state.filter.ungradedOnly)
                 if (activeBrand.supportsClimbTypeFilter) FilterChoiceRow(stringResource(R.string.board_filter_type), state.filter.climbTypeFilter,
                     listOf(ClimbTypeFilter.BOULDER to stringResource(R.string.board_filter_type_boulder), ClimbTypeFilter.ROUTE to stringResource(R.string.board_filter_type_routes), ClimbTypeFilter.ALL to stringResource(R.string.board_filter_all)),
                     "board_filter_type", viewModel::updateClimbTypeFilter)
@@ -319,10 +337,14 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 }
 
 @Composable
-internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).testTag(tag),
+internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String, enabled: Boolean = true, supporting: String? = null) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); Switch(checked = checked, onCheckedChange = null)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            if (supporting != null) Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

@@ -748,6 +748,9 @@
     <string name="climb_card_draft_badge">Draft</string>
     <string name="board_filter_grade_range">Grade: %1$s – %2$s</string>
     <string name="board_filter_ungraded_only">Ungraded only</string>
+    <string name="board_filter_ungraded_only_count">Without a grade (%1$d)</string>
+    <string name="board_filter_ungraded_only_active">Shows only climbs nobody has graded yet. Grade range, minimum ascents and benchmarks do not apply.</string>
+    <string name="board_filter_ungraded_only_none">None on this board at this angle — every climb here has a grade.</string>
     <string name="board_filter_info_action">Explain filter terms</string>
     <string name="board_filter_info_title">Filter &amp; sort terms</string>
     <string name="board_filter_info_status_new">Climbs with no send or attempt recorded in your CruxCoach logbook.</string>
