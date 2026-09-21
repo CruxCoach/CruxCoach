@@ -41,6 +41,21 @@ import com.cruxcoach.domain.board.BoardBrand
 internal data class OfferedCatalogue(val brand: BoardBrand, val climbCount: Long)
 
 /**
+ * The catalogues worth offering. A sender counts every listed climb per family, so a phone
+ * that only ever loaded MoonBoard still reports "Kilter: 5" for the community climbs it has
+ * seen. Current senders leave those out themselves; this is the backstop for the others —
+ * no real catalogue is anywhere near this small.
+ */
+internal fun offeredCatalogues(manifest: com.cruxcoach.android.util.LocalShareProtocol.Manifest): List<OfferedCatalogue> =
+    manifest.declaredCatalogues.mapNotNull { catalogue ->
+        BoardBrand.fromWireOrNull(catalogue.boardBrand)
+            ?.takeIf { it.isInteractive && catalogue.climbCount >= MIN_CATALOGUE_CLIMBS }
+            ?.let { OfferedCatalogue(it, catalogue.climbCount) }
+    }.distinctBy { it.brand }
+
+internal const val MIN_CATALOGUE_CLIMBS = 50L
+
+/**
  * What the receiver starts with.
  *
  * From the sender: what they already chose, where that overlaps — somebody set up for Kilter
@@ -120,7 +135,7 @@ internal fun ShareCatalogueChoice(host: String, choice: ShareChoice) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.board_sync_discovered_share_from, host),
+                stringResource(R.string.board_sync_discovered_share_from),
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )

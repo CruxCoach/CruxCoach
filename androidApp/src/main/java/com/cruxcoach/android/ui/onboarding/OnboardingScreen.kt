@@ -103,10 +103,7 @@ fun OnboardingScreen(
         runCatching { android.net.Uri.parse(offer.baseUrl).host }.getOrNull() ?: offer.baseUrl
     }
     val shareChoice = shareOffer?.let { offer ->
-        val offered = offer.manifest.declaredCatalogues.mapNotNull { catalogue ->
-            BoardBrand.fromWireOrNull(catalogue.boardBrand)?.takeIf { it.isInteractive }
-                ?.let { com.cruxcoach.android.ui.board.sync.OfferedCatalogue(it, catalogue.climbCount) }
-        }.distinctBy { it.brand }
+        val offered = com.cruxcoach.android.ui.board.sync.offeredCatalogues(offer.manifest)
         // Nothing declared (an older sender still preparing its snapshot): no inline choice.
         if (offered.isEmpty()) null
         // A first run has made no choice yet: everything the sender offers starts ticked.

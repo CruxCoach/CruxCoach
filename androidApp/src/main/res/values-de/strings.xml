@@ -1117,7 +1117,7 @@
     <string name="board_sync_offline_share_confirm">Verbinden und vergleichen</string>
     <string name="board_sync_discovered_share_title">CruxCoach-Share in der Nähe verwenden?</string>
     <string name="board_sync_discovered_share_message">Ein Gerät unter %1$s bietet Board-Daten in diesem lokalen Netzwerk an. Dieser Peer ist nicht authentifiziert. Wähle vor jedem Download, ob CruxCoach ihn verwenden soll.</string>
-    <string name="board_sync_discovered_share_from">Boards von %1$s</string>
+    <string name="board_sync_discovered_share_from">Boards vom Gerät in der Nähe</string>
     <string name="board_sync_discovered_share_info">Das Gerät unter %1$s bietet seine Board-Daten in diesem lokalen Netzwerk an. Es kann nur die Boards teilen, die es selbst geladen hat, und es ist nicht authentifiziert — deshalb wählst du, bevor etwas übertragen wird. Boards, die es nicht hat, lädt CruxCoach danach aus dem Internet.</string>
     <string name="board_sync_discovered_share_others">Weitere Boards (Internet nötig)</string>
     <string name="board_sync_discovered_share_others_hint">Von diesem Gerät nicht verfügbar</string>

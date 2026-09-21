@@ -170,13 +170,7 @@ fun BoardSyncInlineCard(
         val host = remember(found.baseUrl) {
             runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
         }
-        val offered = remember(found.manifest) {
-            found.manifest.declaredCatalogues.mapNotNull { catalogue ->
-                BoardBrand.fromWireOrNull(catalogue.boardBrand)
-                    ?.takeIf { it.isInteractive }
-                    ?.let { OfferedCatalogue(it, catalogue.climbCount) }
-            }.distinctBy { it.brand }
-        }
+        val offered = remember(found.manifest) { offeredCatalogues(found.manifest) }
         val savedSelection by viewModel.downloadBrands.collectAsStateWithLifecycle()
         if (offered.isEmpty()) {
             // An old sender that declares no catalogues: nothing to choose from, so the
