@@ -224,15 +224,14 @@ class BrowserUxTest {
         }
     }
 
-    @Test fun `compact status keeps multi selection when reopening details`() {
+    @Test fun `status multi selection is open without an extra tap`() {
         val selected = mutableStateOf(setOf(ClimbStatusFilter.NEW))
-        compose.setContent { MaterialTheme { BoardStatusFilter(selected.value, compact = true) { selected.value = it } } }
-        compose.onNodeWithTag("board_filter_status_new").assertDoesNotExist()
-        compose.onNodeWithTag("board_filter_status_details").performClick()
+        compose.setContent { MaterialTheme { BoardStatusFilter(selected.value) { selected.value = it } } }
+        compose.onNodeWithTag("board_filter_status_details").assertDoesNotExist()
         compose.onNodeWithTag("board_filter_status_new").assertIsSelected()
         compose.onNodeWithTag("board_filter_status_attempted").performClick()
-        compose.onNodeWithTag("board_filter_status_details").performClick().performClick()
         compose.onNodeWithTag("board_filter_status_attempted").assertIsSelected()
+        compose.onNodeWithTag("board_filter_status_new").assertIsSelected()
     }
 
     @Test fun `angle set retains negative and nonuniform catalogue angles`() {

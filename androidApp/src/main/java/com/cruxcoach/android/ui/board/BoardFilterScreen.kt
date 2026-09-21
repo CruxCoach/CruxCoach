@@ -181,7 +181,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 
             if (state.filter.myClimbsOnly) Text(stringResource(R.string.board_filter_own_scope), style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
-            BoardStatusFilter(statuses = state.filter.statusFilter, onChange = viewModel::updateStatusFilter, compact = true)
+            BoardStatusFilter(statuses = state.filter.statusFilter, onChange = viewModel::updateStatusFilter)
             HorizontalDivider()
             val sortOptions = listOf(
                 ClimbSortField.ASCENSIONISTS to stringResource(R.string.board_sends),
