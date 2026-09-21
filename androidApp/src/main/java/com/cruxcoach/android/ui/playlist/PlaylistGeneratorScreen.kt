@@ -169,7 +169,14 @@ fun PlaylistGeneratorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.playlist_generator_title)) },
+                // One line, always: at 320 dp with large type the old title broke inside a word.
+                title = {
+                    Text(
+                        stringResource(R.string.playlist_generator_title),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(

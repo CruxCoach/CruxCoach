@@ -2406,9 +2406,9 @@
     <string name="playlist_rest_decrease_second">Pausendauer um eine Sekunde verringern</string>
     <string name="playlist_rest_increase_second">Pausendauer um eine Sekunde erhöhen</string>
     <string name="playlist_rest_range">10 s bis 60 min</string>
-    <string name="playlist_generator_title">Trainingslisten-Generator</string>
+    <string name="playlist_generator_title">Generator</string>
     <string name="playlist_generator_filters_hint">Selten gebrauchte Einschränkungen. Grade, Mindest-Begehungen und die Climb-Auswahl stellst du direkt im Generator ein.</string>
-    <string name="playlist_generator_grade_range">Trainingsgrade: %1$s – %2$s</string>
+    <string name="playlist_generator_grade_range">Trainingsgrade: %1$s\u00A0–\u00A0%2$s</string>
     <string name="playlist_generator_grade_range_hint">Empfohlen aus deinem Logbuch. Passe den Bereich an, um die Einheit zu steuern; Pyramidenstufen werden gleichmäßig zwischen beiden Graden verteilt.</string>
     <string name="playlist_generator_grade_range_hint_default">Startbereich ohne persönliche Daten. Passe den Bereich an, um die Einheit zu steuern; Pyramidenstufen werden gleichmäßig zwischen beiden Graden verteilt.</string>
     <string name="playlist_generator_pyramid_per_tier">Climbs je Stufe: %1$d</string>
