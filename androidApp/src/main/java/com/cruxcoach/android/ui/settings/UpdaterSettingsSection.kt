@@ -1,5 +1,10 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -418,6 +423,11 @@ private fun PendingUpdateRow(
                             else R.string.updater_settings_release_notes_more
                         ),
                         style = MaterialTheme.typography.labelMedium,
+                    )
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }

@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -201,7 +204,8 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
             ListItem(
                 headlineContent = { Text(stringResource(R.string.board_filter_more)) },
                 supportingContent = { Text(if (advancedLabels.isEmpty()) stringResource(R.string.board_filter_more_hint) else advancedLabels.joinToString(" · ")) },
-                trailingContent = { Text(if (advanced) "−" else "+") },
+                // A chevron, like every other collapsible section — "+" read as "add a filter".
+                trailingContent = { Icon(if (advanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth().clickable { advanced = !advanced }.testTag("board_filter_more"),
             )
             if (advanced) {
@@ -326,7 +330,8 @@ internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean
 internal fun <T> FilterChoiceRow(title: String, selected: T, choices: List<Pair<T, String>>, tag: String, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     ListItem(headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) }, supportingContent = { Text(choices.firstOrNull { it.first == selected }?.second.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface) },
-        trailingContent = { Text("›") }, modifier = Modifier.clickable { open = true }.testTag(tag))
+        // Opens a list of choices, so it looks like one: the drop-down arrow, not "›".
+        trailingContent = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) }, modifier = Modifier.clickable { open = true }.testTag(tag))
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             choices.forEach { (value, label) ->

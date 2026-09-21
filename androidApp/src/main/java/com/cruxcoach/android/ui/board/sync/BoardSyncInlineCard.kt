@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.board.sync
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -560,6 +564,11 @@ internal fun CompactDatabasePreparation(
                 if (supportedBoards.isNotEmpty()) {
                     TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.testTag("board_sync_compact_details")) {
                         Text(stringResource(if (showDetails) R.string.board_sync_compact_hide_details else R.string.board_sync_compact_show_details))
+                        Icon(
+                        if (showDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
                     }
                 }
                 onChangeSelection?.let { change ->
