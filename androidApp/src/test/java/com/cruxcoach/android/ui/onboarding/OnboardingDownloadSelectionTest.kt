@@ -26,6 +26,8 @@ class OnboardingDownloadSelectionTest {
         val onboarding = mockk<OnboardingViewModel>(relaxed = true)
         every { onboarding.state } returns MutableStateFlow(OnboardingState())
         val sync = mockk<BoardSyncViewModel>(relaxed = true)
+        // The first step now reads the sync state to look for a nearby sender.
+        every { sync.state } returns MutableStateFlow(com.cruxcoach.android.data.BoardSyncState())
         coEvery { sync.initialDownloadSelection() } returns setOf(BoardBrand.KILTER)
         val ble = mockk<com.cruxcoach.android.ui.board.BleConnectionViewModel>(relaxed = true)
         every { ble.state } returns MutableStateFlow(com.cruxcoach.android.ui.board.BleConnectionState())
@@ -76,6 +78,8 @@ class OnboardingDownloadSelectionTest {
         val onboarding = mockk<OnboardingViewModel>(relaxed = true)
         every { onboarding.state } returns MutableStateFlow(OnboardingState())
         val sync = mockk<BoardSyncViewModel>(relaxed = true)
+        // The first step now reads the sync state to look for a nearby sender.
+        every { sync.state } returns MutableStateFlow(com.cruxcoach.android.data.BoardSyncState())
         coEvery { sync.initialDownloadSelection() } returns emptySet()
         val ble = mockk<com.cruxcoach.android.ui.board.BleConnectionViewModel>(relaxed = true)
         every { ble.state } returns MutableStateFlow(com.cruxcoach.android.ui.board.BleConnectionState())
