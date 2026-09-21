@@ -32,6 +32,13 @@ class PlaylistGeneratorBoardScopeTest {
     }
 
     @Test
+    fun `minimum ascents offers the usual thresholds and keeps an inherited value`() {
+        assertEquals(listOf(0, 5, 20, 100, 500), minAscentOptions(0))
+        // 30 came from the board browser's filter: selectable, in its place.
+        assertEquals(listOf(0, 5, 20, 30, 100, 500), minAscentOptions(30))
+    }
+
+    @Test
     fun `moonboard ignores stale aurora product size`() {
         assertEquals(0, playlistProductSizeFilter("moonboard", 12))
     }

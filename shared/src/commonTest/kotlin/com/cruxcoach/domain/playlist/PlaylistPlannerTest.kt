@@ -306,6 +306,28 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `the climber sets problems and tries directly`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.LIMIT).copy(structureSize = 8, attemptsPerProblem = 2),
+            profile,
+        )
+        assertEquals(8, plan.climbs().mapNotNull { it.repeatKey }.distinct().size)
+        assertEquals(16, plan.climbs().size)
+        val burns = PlaylistPlanner.plan(
+            params(GeneratorType.PROJECTING).copy(structureSize = 4, attemptsPerProblem = 6),
+            profile,
+        )
+        assertEquals(24, burns.climbs().size)
+        // Wider than the old 8-30, in both directions.
+        listOf(4, 40).forEach { size ->
+            val volume = PlaylistPlanner.plan(
+                params(GeneratorType.VOLUME).copy(structureSize = size), profile,
+            )
+            assertEquals(size, volume.climbs().size)
+        }
+    }
+
+    @Test
     fun `projecting plans 1-3 projects with explicit burns`() {
         val short = PlaylistPlanner.plan(params(GeneratorType.PROJECTING, duration = 25), profile)
         assertEquals(1, short.climbs().mapNotNull { it.repeatKey }.distinct().size)

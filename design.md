@@ -66,6 +66,12 @@ Zurücksetzen, Winkelwahl und Rückkehr zu den Ergebnissen bleiben auch bei gro�
 
 Quellen: [BoardFilterScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/board/BoardFilterScreen.kt), [BoardStatusFilter.kt](androidApp/src/main/java/com/cruxcoach/android/ui/board/BoardStatusFilter.kt), [BoardBrowserViewModel.kt](androidApp/src/main/java/com/cruxcoach/android/ui/board/BoardBrowserViewModel.kt) und die Kernkonzepte.
 
+## Der Trainingslisten-Generator folgt denselben Regeln
+
+**Bestand (Quellcode, Geräteabnahme ausstehend):** Eine Karte je Entscheidung — Ziel und Variante, Umfang, Grade, Position im Training, Climb-Auswahl. Jede Karte zeigt ihren aktuellen Wert; Erklärungen stehen am Info-Symbol. Zahlen (Boulder, Versuche je Boulder, Sätze, Stufen, Winkel) werden mit 48-dp-Schritttasten exakt gesetzt, lange Bereiche zusätzlich per Regler. Auswahlen umbrechen, statt seitlich wegzuscrollen. Es gibt genau einen Gradbereich. Mindest-Begehungen stehen direkt bei der Climb-Auswahl; seltene Einschränkungen liegen unter „Weitere Filter“ und werden dort namentlich genannt, solange sie wirken. Geplante Einheit (Climbs, Dauer, Arbeitsgrade), Fehlermeldung und „Generieren“ bleiben unten fixiert.
+
+Quelle: [PlaylistGeneratorScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/playlist/PlaylistGeneratorScreen.kt).
+
 ## Kurze Zustände, zusätzliche Erklärung bei Bedarf
 
 Titel, aktueller Wert und Handlung geben die erste Orientierung. Kurze Statusmeldungen sagen, was gerade geschieht und was als Nächstes möglich ist. Detailerklärungen öffnen sich über Info-Aktionen oder aufklappbare Bereiche. Hilfe zu öffnen verändert keine Einstellung. Fehler, fehlende Voraussetzungen und Warnungen vor Datenverlust bleiben direkt an der betroffenen Handlung sichtbar.

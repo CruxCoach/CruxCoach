@@ -127,7 +127,13 @@ object PlaylistPlanner {
         // The size the climber chose, clamped to what the type can carry.
         // Null means a playlist saved before the slider selected structure
         // directly, so the old division from the duration still applies.
-        val size = params.structureSize?.coerceIn(effectiveType.structureRange())
+        // A size chosen for hard bouldering counts something else: three limit
+        // problems do not become a three-problem volume block when the session
+        // is downgraded, they become an ordinary one.
+        val size = params.structureSize?.let {
+            if (downgraded) effectiveType.defaultStructureSize()
+            else it.coerceIn(effectiveType.structureRange())
+        }
 
         fun ladderFor(mainMinutes: Int) =
             if (params.position == SessionPosition.START_COLD) {
@@ -158,8 +164,12 @@ object PlaylistPlanner {
             GeneratorType.LIMIT -> planLimit(
                 mainMinutes, anchor, peak, size,
                 params.targetMinDifficulty, params.targetMaxDifficulty,
+                params.attemptsPerProblem?.coerceIn(TrainingRanges.ATTEMPTS_RANGE),
             )
-            GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
+            GeneratorType.PROJECTING -> planProjecting(
+                mainMinutes, anchor, peak, size,
+                params.attemptsPerProblem?.coerceIn(TrainingRanges.ATTEMPTS_RANGE),
+            )
             GeneratorType.POWER_ENDURANCE -> planPowerEndurance(
                 mainMinutes, flashDiff, size,
                 params.problemsPerSet?.coerceIn(TrainingRanges.PE_PROBLEMS_PER_SET_RANGE)
@@ -308,6 +318,7 @@ object PlaylistPlanner {
         size: Int?,
         targetMin: Double? = null,
         targetMax: Double? = null,
+        chosenAttempts: Int? = null,
     ): List<PlanSlot> {
         // A 21-minute block per problem with a floor of two problems meant the
         // shortest session the slider offers produced three times the time
@@ -317,8 +328,10 @@ object PlaylistPlanner {
         val budget = minutes.coerceAtLeast(TrainingRanges.LIMIT_SLOT_MINUTES / 2)
         val count = size
             ?: (budget / TrainingRanges.LIMIT_SLOT_MINUTES).coerceIn(TrainingRanges.LIMIT_COUNT)
-        var attempts = TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM
-        while (count == TrainingRanges.LIMIT_COUNT.first &&
+        var attempts = chosenAttempts ?: TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM
+        // Only the protocol's own number gives way to a short budget; one the
+        // climber chose is planned as chosen.
+        while (chosenAttempts == null && count == TrainingRanges.LIMIT_COUNT.first &&
             attempts > TrainingRanges.MIN_ATTEMPTS_PER_LIMIT_PROBLEM &&
             limitBlockMinutes(count, attempts) > budget
         ) {
@@ -362,6 +375,7 @@ object PlaylistPlanner {
         anchor: Double,
         peak: Double,
         size: Int?,
+        chosenBurns: Int? = null,
     ): List<PlanSlot> {
         val count = size
             ?: (minutes / TrainingRanges.PROJECT_SLOT_MINUTES)
@@ -379,7 +393,7 @@ object PlaylistPlanner {
         )
         return workBlocks(
             problems = count,
-            attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
+            attemptsPerProblem = chosenBurns ?: TrainingRanges.BURNS_PER_PROJECT,
             attemptRest = TrainingRanges.REST_PROJECT_BETWEEN_BURNS,
             problemRest = TrainingRanges.REST_PROJECT_BETWEEN_PROJECTS,
             low = low, high = high,

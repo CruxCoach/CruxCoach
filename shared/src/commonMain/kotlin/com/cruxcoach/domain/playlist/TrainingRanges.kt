@@ -228,6 +228,19 @@ object TrainingRanges {
 
     // ── Count clamps per type ────────────────────────────────────
 
+    /**
+     * What the size control offers. Wider than the *_COUNT clamps below, which
+     * only bound the old duration-derived sizes of saved playlists: a climber
+     * choosing a number directly may want a four-problem top-up after a rope
+     * session as much as a forty-problem mileage day.
+     */
+    val VOLUME_SIZE = 4..40
+    val LIMIT_SIZE = 1..8
+    val PROJECT_SIZE = 1..4
+
+    /** Tries per problem the climber may ask for (hard bouldering, projects). */
+    val ATTEMPTS_RANGE = 1..6
+
     val VOLUME_COUNT = 8..30
     /** One hard problem with full rests is a legitimate short session; two
      *  was a floor that made the shortest slider setting overshoot threefold. */

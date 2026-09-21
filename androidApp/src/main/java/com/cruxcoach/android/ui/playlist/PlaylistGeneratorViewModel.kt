@@ -17,6 +17,8 @@ import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.domain.playlist.CandidateSelection
 import com.cruxcoach.domain.playlist.PyramidShape
 import com.cruxcoach.domain.playlist.structureRange
+import com.cruxcoach.domain.playlist.defaultAttempts
+import com.cruxcoach.domain.playlist.defaultStructureSize
 import com.cruxcoach.domain.playlist.CandidateSource
 import com.cruxcoach.domain.playlist.GeneratedEntry
 import com.cruxcoach.domain.playlist.GeneratorType
@@ -71,7 +73,9 @@ data class PlaylistGeneratorState(
      * as an initial value it showed "0 tiers" on screen while the planner,
      * seeing no size at all, quietly planned four.
      */
-    val structureSize: Int = GeneratorType.PYRAMID.structureRange().midpoint(),
+    val structureSize: Int = GeneratorType.PYRAMID.defaultStructureSize(),
+    /** Hard bouldering and projects: tries per problem. */
+    val attemptsPerProblem: Int = TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM,
     val position: SessionPosition = SessionPosition.START_COLD,
     val angle: Int = 40,
     /** MoonBoard walls are fixed-angle — hide the angle stepper. */
@@ -190,7 +194,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 it.copy(
                     angle = snapshot.angle,
                     angleAdjustable = snapshot.boardBrand != "moonboard",
-                    structureSize = it.type.structureRange().midpoint(),
+                    structureSize = it.type.defaultStructureSize(),
                     boardBrand = snapshot.boardBrand,
                     layoutId = snapshot.layoutId,
                     productSizeId = productSizeId,
@@ -329,7 +333,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
         _state.update {
             // Each type counts something else, and the ranges barely overlap —
             // four 4x4 sets and four volume problems are not the same session.
-            // Re-seat on the new type's midpoint rather than carry a number
+            // Re-seat on the new type's usual session rather than carry a number
             // that meant something different a moment ago.
             val seeded = if (type == GeneratorType.MANUAL && it.manualMinDifficulty == 0.0) {
                 val anchor = profile.effectiveRepeatableMax
@@ -340,7 +344,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
             } else it
             seeded.copy(
                 type = type,
-                structureSize = type.structureRange().midpoint(),
+                structureSize = type.defaultStructureSize(),
+                attemptsPerProblem = type.defaultAttempts() ?: it.attemptsPerProblem,
                 targetMinDifficulty = null,
                 targetMaxDifficulty = null,
                 gradeRangeCustomized = false,
@@ -397,6 +402,11 @@ class PlaylistGeneratorViewModel @Inject constructor(
         refreshPlan()
     }
 
+    fun setAttemptsPerProblem(attempts: Int) {
+        _state.update { it.copy(attemptsPerProblem = attempts.coerceIn(TrainingRanges.ATTEMPTS_RANGE)) }
+        refreshPlan()
+    }
+
     fun setStructureSize(size: Int) {
         _state.update { it.copy(structureSize = size.coerceIn(it.type.structureRange())) }
         refreshPlan()
@@ -440,7 +450,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
     }
 
     fun setMinAscensionists(count: Int) {
-        _state.update { it.copy(minAscensionists = count.coerceIn(0, 50)) }
+        _state.update { it.copy(minAscensionists = count.coerceIn(0, MAX_MIN_ASCENSIONISTS)) }
     }
 
     fun setBenchmarkOnly(enabled: Boolean) {
@@ -561,6 +571,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
             targetMaxDifficulty = if (includeTargetRange) s.targetMaxDifficulty else null,
             pyramidClimbsPerTier = s.pyramidClimbsPerTier,
             structureSize = s.structureSize,
+            attemptsPerProblem = s.attemptsPerProblem.takeIf { s.type.defaultAttempts() != null },
             manualMinDifficulty = s.manualMinDifficulty,
             manualMaxDifficulty = s.manualMaxDifficulty,
             manualRepeats = s.manualRepeats,
@@ -872,6 +883,8 @@ class PlaylistGeneratorViewModel @Inject constructor(
         private const val NEARBY_ANGLE_TOLERANCE = 10
 
         private const val CANDIDATE_POOL_SIZE = 120
+        /** Far above the old 50: on a big board a popular climb has thousands. */
+        const val MAX_MIN_ASCENSIONISTS = 5000
         private const val BOARD_GRADE_POOL_SIZE = 1000
         private const val WARM_UP_POOL_SIZE = 300
 
@@ -884,4 +897,3 @@ class PlaylistGeneratorViewModel @Inject constructor(
 }
 
 /** Where a fresh slider starts: the middle of what the type offers. */
-private fun IntRange.midpoint(): Int = first + (last - first) / 2
