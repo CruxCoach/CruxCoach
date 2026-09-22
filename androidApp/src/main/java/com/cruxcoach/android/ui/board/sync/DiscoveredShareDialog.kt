@@ -57,21 +57,15 @@ internal fun offeredCatalogues(declared: List<com.cruxcoach.android.util.LocalSh
     }.distinctBy { it.brand }
 
 /**
- * What the receiver starts with.
- *
- * From the sender: what they already chose, where that overlaps — somebody set up for Kilter
- * did not ask for the sender's MoonBoard — and otherwise everything on offer, because a first
- * run with no choice yet is here to get boards. From the internet: exactly what they had
- * chosen that this sender cannot supply, and nothing new.
+ * What the receiver starts with: everything the sender offers, ticked — a share is the cheap
+ * way to get boards, and unticking one is one tap. From the internet: exactly what they had
+ * chosen before that this sender cannot supply, and nothing new.
  */
 internal fun initialShareSelection(
     offered: List<BoardBrand>,
     saved: Set<BoardBrand>?,
-): Pair<Set<BoardBrand>, Set<BoardBrand>> {
-    val chosen = saved.orEmpty()
-    val fromShare = offered.filter { it in chosen }.ifEmpty { offered }.toSet()
-    return fromShare to (chosen - offered.toSet())
-}
+): Pair<Set<BoardBrand>, Set<BoardBrand>> =
+    offered.toSet() to (saved.orEmpty() - offered.toSet())
 
 /**
  * What is ticked in a share offer: the sender's families to take, and the other families to

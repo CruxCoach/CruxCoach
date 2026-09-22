@@ -33,12 +33,12 @@ class DiscoveredShareSelectionTest {
     }
 
     @Test
-    fun `an earlier choice decides what comes from the share and what from the internet`() {
+    fun `everything offered starts ticked and an earlier choice only adds internet boards`() {
         val (fromShare, fromInternet) = initialShareSelection(
             offered, saved = setOf(BoardBrand.KILTER, BoardBrand.TENSION),
         )
-        // Not the sender's MoonBoard — nobody asked for it. Tension they cannot supply.
-        assertEquals(setOf(BoardBrand.KILTER), fromShare)
+        assertEquals(offered.toSet(), fromShare)
+        // Tension they cannot supply; it stays on the internet list.
         assertEquals(setOf(BoardBrand.TENSION), fromInternet)
     }
 
