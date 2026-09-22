@@ -126,20 +126,22 @@ internal fun rememberShareChoice(
  * condition — they need the internet, and are fetched after the share.
  */
 @Composable
-internal fun ShareCatalogueChoice(host: String, choice: ShareChoice) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+internal fun ShareCatalogueChoice(
+    host: String,
+    choice: ShareChoice,
+    title: String = stringResource(R.string.board_sync_discovered_share_from),
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.board_sync_discovered_share_from),
+                title,
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
             // Named after the heading it sits beside, so a screen reader announces what the
             // information is about rather than the title of a dialog that may not be open.
-            InfoButton(
-                stringResource(R.string.board_sync_discovered_share_from),
-                stringResource(R.string.board_sync_discovered_share_info, host),
-            )
+            InfoButton(title, stringResource(R.string.board_sync_discovered_share_info, host))
         }
         // The one fact the consent rests on stays in plain sight (design.md: an essential
         // consent may not live in an info card alone); the address and the detail are behind

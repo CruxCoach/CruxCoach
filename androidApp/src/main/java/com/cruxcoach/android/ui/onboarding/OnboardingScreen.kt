@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
@@ -512,25 +511,14 @@ private fun BoardSetupStep(
             }
         }
         if (shareChoice != null && shareHost != null) {
-            // A sender is in reach: say so, show exactly what it has, and let the rest be what
-            // it is — boards that need the internet. No second question after this screen.
-            Surface(
-                color = OrangeAccent.copy(alpha = 0.10f),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().testTag("onboarding_share_offer"),
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Default.NetworkWifi, contentDescription = null, tint = OrangeAccent)
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.setup_share_found_title),
-                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(stringResource(R.string.setup_share_found_body),
-                            style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(shareHost, shareChoice)
+            // A sender is in reach: one heading says so, the rows show exactly what it has, and
+            // the rest is what it is — boards that need the internet. No second question after
+            // this screen. (A highlight card above the same heading said the same thing twice.)
+            com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(
+                host = shareHost, choice = shareChoice,
+                title = stringResource(R.string.setup_share_found_title),
+                modifier = Modifier.testTag("onboarding_share_offer"),
+            )
             TextButton(
                 onClick = onUseInternetInstead,
                 modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),

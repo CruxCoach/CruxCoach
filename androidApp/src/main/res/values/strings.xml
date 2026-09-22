@@ -3006,7 +3006,6 @@
     <string name="setup_confirm_downloads">Download and continue</string>
     <string name="setup_confirm_share">Load from nearby device</string>
     <string name="setup_share_found_title">A nearby device shares its boards</string>
-    <string name="setup_share_found_body">No internet needed for these. Choose which ones you want.</string>
     <string name="setup_share_use_internet">Load everything from the internet instead</string>
     <string name="setup_board_not_among_downloads">No climbs are being loaded for this board — tap to change it.</string>
     <string name="tour_replay">Show introduction</string>

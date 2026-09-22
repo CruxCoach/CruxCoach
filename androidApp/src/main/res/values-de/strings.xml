@@ -3005,7 +3005,6 @@
     <string name="setup_confirm_downloads">Laden und weiter</string>
     <string name="setup_confirm_share">Vom Gerät in der Nähe laden</string>
     <string name="setup_share_found_title">Ein Gerät in der Nähe teilt seine Boards</string>
-    <string name="setup_share_found_body">Dafür brauchst du kein Internet. Wähle, welche du haben willst.</string>
     <string name="setup_share_use_internet">Stattdessen alles aus dem Internet laden</string>
     <string name="setup_board_not_among_downloads">Für dieses Board lädst du keine Climbs – tippe, um es zu ändern.</string>
     <string name="tour_replay">Einführung ansehen</string>
