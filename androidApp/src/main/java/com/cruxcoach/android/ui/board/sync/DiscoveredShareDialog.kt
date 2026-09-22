@@ -49,11 +49,9 @@ internal data class OfferedCatalogue(val brand: BoardBrand, val climbCount: Long
 internal fun offeredCatalogues(manifest: com.cruxcoach.android.util.LocalShareProtocol.Manifest): List<OfferedCatalogue> =
     manifest.declaredCatalogues.mapNotNull { catalogue ->
         BoardBrand.fromWireOrNull(catalogue.boardBrand)
-            ?.takeIf { it.isInteractive && catalogue.climbCount >= MIN_CATALOGUE_CLIMBS }
+            ?.takeIf { it.isInteractive && catalogue.climbCount >= com.cruxcoach.android.util.LocalShareProtocol.MIN_CATALOGUE_CLIMBS }
             ?.let { OfferedCatalogue(it, catalogue.climbCount) }
     }.distinctBy { it.brand }
-
-internal const val MIN_CATALOGUE_CLIMBS = 50L
 
 /**
  * What the receiver starts with.

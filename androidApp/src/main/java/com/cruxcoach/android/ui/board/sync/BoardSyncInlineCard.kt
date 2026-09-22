@@ -564,7 +564,7 @@ internal fun CompactDatabasePreparation(
             AnimatedVisibility(showDetails && supportedBoards.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     BoardCatalogueStatusList(boardCounts, activeBrand, selectedBrands, state.boardSteps, state.boardErrors,
-                        state.isSyncing, state.localShareInProgress, state.importStep, onLoadBoard, onlySelected = true)
+                        state.isSyncing, state.localShareInProgress, onLoadBoard, onlySelected = true)
                     state.errorMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error) }
                 }
@@ -658,17 +658,18 @@ private fun DatabaseImportSection(
                 )
             }
 
-            Text(
-                stringResource(R.string.board_sync_db_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // "Wi-Fi recommended, the data can be large" is advice about the internet; while
+            // a nearby device is sending, the transfer summary says what is happening instead.
+            if (!state.localShareInProgress) {
+                Text(
+                    stringResource(R.string.board_sync_db_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             if (state.localShareInProgress && state.importStep != null) {
-                LocalShareProgressSummary(
-                    step = state.importStep,
-                    boardCount = state.localShareBoardSteps.size,
-                )
+                LocalShareProgressSummary(step = state.importStep)
             }
 
             if (!state.alreadyImported && !state.isSyncing) {
@@ -703,7 +704,6 @@ private fun DatabaseImportSection(
                     boardErrors = state.boardErrors,
                     syncing = state.isSyncing,
                     localShareInProgress = state.localShareInProgress,
-                    globalStep = state.importStep,
                     onLoadBoard = onLoadBoard,
                     onChangeSelection = onChangeSelection,
                 )
@@ -749,10 +749,7 @@ private fun DatabaseImportSection(
 }
 
 @Composable
-private fun LocalShareProgressSummary(
-    step: ImportStep,
-    boardCount: Int,
-) {
+private fun LocalShareProgressSummary(step: ImportStep) {
     val label = when (step) {
         is ImportStep.DiscoveringLocalShare ->
             stringResource(R.string.board_sync_step_discover_local_share)
@@ -868,15 +865,6 @@ private fun LocalShareProgressSummary(
                     trackColor = OrangeAccent.copy(alpha = 0.18f),
                 )
             }
-            if (step !is ImportStep.DiscoveringLocalShare &&
-                step !is ImportStep.PreparingSnapshot && boardCount > 0
-            ) {
-                Text(
-                    stringResource(R.string.board_sync_local_catalogue_count, boardCount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
@@ -906,7 +894,6 @@ private fun BoardCatalogueStatusList(
     boardErrors: Map<BoardBrand, String>,
     syncing: Boolean,
     localShareInProgress: Boolean,
-    globalStep: ImportStep?,
     onLoadBoard: (BoardBrand) -> Unit,
     onlySelected: Boolean = false,
     onChangeSelection: (() -> Unit)? = null,
@@ -918,8 +905,6 @@ private fun BoardCatalogueStatusList(
             }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val sharedPhasePending = localShareInProgress &&
-            globalStep?.isSharedLocalSharePhase() == true
         // Only what is, or is being, loaded. The overview used to list every family there is,
         // most of them as "deselected —": eight rows to find the one that was downloading.
         // Adding another board is what the selection button above the list is for.
@@ -929,24 +914,19 @@ private fun BoardCatalogueStatusList(
                     boardSteps.containsKey(brand) || boardErrors.containsKey(brand)
                 ))
         }.forEach { brand ->
-            // Discovery, snapshot creation, download and verification are
-            // global share phases. LocalShareProgressSummary already renders
-            // them once above the list; repeating the same (potentially long)
-            // sentence in every board row made the onboarding layout explode.
-            val rowStep = boardSteps[brand]?.takeUnless {
-                localShareInProgress && it.isSharedLocalSharePhase()
-            }
+            // A nearby share is ONE transfer and one import for all of its boards. The
+            // summary above the list carries its step and progress; the boards it brings
+            // wait in a neutral state until it is done, so the same sentence is not repeated
+            // per row — and a board that is not part of it (loaded earlier) keeps its count.
+            val step = boardSteps[brand]
+            val inShare = localShareInProgress && step != null && step !is ImportStep.Done
             BoardStatusRow(
                 brand = brand,
                 count = boardCounts[brand.wireValue] ?: 0L,
                 isActive = brand == activeBrand,
-                step = rowStep,
-                // Discovery/snapshot/download are one global operation. A
-                // missing per-board step during that window is not a Kilter
-                // failure (and stale errors must not leak into the waiting
-                // UI): every catalogue gets the same neutral pending state.
-                sharedPhasePending = sharedPhasePending,
-                hasError = !sharedPhasePending && boardErrors.containsKey(brand),
+                step = if (inShare) null else step,
+                sharedPhasePending = inShare,
+                hasError = !inShare && boardErrors.containsKey(brand),
                 anySyncing = syncing,
                 downloadSelected = brand in selectedBrands,
                 onLoad = { onLoadBoard(brand) },
@@ -1148,39 +1128,6 @@ private fun BoardStatusRow(
     }
 }
 
-private fun ImportStep.isSharedLocalSharePhase(): Boolean = when (this) {
-    is ImportStep.DiscoveringLocalShare,
-    is ImportStep.PreparingSnapshot,
-    is ImportStep.CheckingUpdate,
-    is ImportStep.FetchingManifest,
-    is ImportStep.Download,
-    is ImportStep.DownloadApk,
-    is ImportStep.VerifyingSnapshot,
-    is ImportStep.VerifyingApk,
-    is ImportStep.Extract,
-    is ImportStep.Decompress -> true
-    is ImportStep.ImportClimbs,
-    is ImportStep.ImportStats,
-    is ImportStep.ImportLayout,
-    is ImportStep.Finalizing,
-    is ImportStep.DownloadChunk,
-    is ImportStep.Done -> false
-}
-
-/**
- * Render an ISO-8601 timestamp string as a short, locale-aware date+time.
- * The previous implementation hand-concatenated `dd.MM.yyyy, HH:mm`
- * unconditionally, which is the German format but was also shown to
- * English-locale users. SHORT-style formatting gives `25.04.26, 14:32`
- * for `de`, `4/25/26, 2:32 PM` for `en-US`, etc.
- */
-/**
- * Automatic syncing has not produced anything for several cycles.
- *
- * The background worker cannot report to anyone — it fails, retries, and the
- * app looks unchanged. Without this the catalogue can go a month out of date
- * with "daily" configured and nothing on screen ever says so.
- */
 @Composable
 private fun AutoSyncOverdueBanner(days: Int) {
     Surface(

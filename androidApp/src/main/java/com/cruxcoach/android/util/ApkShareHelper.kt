@@ -1057,6 +1057,7 @@ class LocalApkServer(
                     FROM climbs
                     WHERE is_listed = 1
                     GROUP BY COALESCE(board_brand, 'kilter')
+                    HAVING SUM(CASE WHEN source IN ('nostr','local') THEN 0 ELSE 1 END) > 0
                     ORDER BY COALESCE(board_brand, 'kilter')
                     """.trimIndent(),
                     null,

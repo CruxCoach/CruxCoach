@@ -737,6 +737,7 @@
     <string name="board_browser_empty_clear_filters">Filter zurücksetzen</string>
     <string name="board_browser_empty_no_catalogue">Der Katalog für dieses Board wurde noch nicht heruntergeladen</string>
     <string name="board_browser_empty_load_catalogue">Katalog laden</string>
+    <string name="board_browser_empty_change_board">Board ändern</string>
     <string name="board_browser_empty_catalogue_loading">Katalog wird geladen…</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
@@ -1200,7 +1201,6 @@
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
     <string name="board_sync_local_progress_title">Board-Daten vom Gerät in der Nähe laden</string>
-    <string name="board_sync_local_catalogue_count">%d Board-Kataloge enthalten</string>
     <string name="board_sync_local_complete">Lokaler Import abgeschlossen</string>
     <string name="sync_finalizing">Finalisieren…</string>
     <!-- FEAT-031: per-board sync sections are titled by the board's name; a
@@ -2956,7 +2956,6 @@
     <string name="account_public_optional">Optional: öffentliche Konto-ID. Kein Schlüssel zur Wiederherstellung.</string>
     <string name="board_download_selection_title">Boards zum Herunterladen</string>
     <string name="board_download_selection_description">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Abwählen behält bereits geladene Daten und dein Logbuch.</string>
-    <string name="board_download_selection_local_share">Die direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank. Diese Auswahl gilt für Online-Downloads.</string>
     <string name="board_download_selection_summary">Board-Auswahl: %1$d ausgewählt</string>
     <string name="board_download_selection_empty">Keine automatischen Board-Downloads. Wähle Boards aus, um Daten herunterzuladen.</string>
     <string name="board_download_disabled">Downloads für dieses Board sind abgewählt. Du kannst sie in der Board-Auswahl für Downloads aktivieren.</string>

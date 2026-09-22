@@ -412,7 +412,8 @@ fun BoardBrowserScreen(
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
         )
         RestTimerBannerSlot()
-        SyncStatusBannerSlot()
+        // While the sync card itself is on this screen the banner would only repeat it.
+        if (state.hasBoardData) SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
             // First DB access lazily runs any pending schema migration +
             // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
@@ -643,6 +644,15 @@ fun BoardBrowserScreen(
                             modifier = Modifier.testTag("board_empty_load_catalogue")
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                        // Somebody who loaded only MoonBoard from a friend lands here with the
+                        // app's default Kilter; a 94 MB download is not the only way out.
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.showModelDialog() },
+                            modifier = Modifier.testTag("board_empty_change_board"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_change_board))
                         }
                     } else {
                         Text(

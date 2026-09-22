@@ -23,6 +23,13 @@ object LocalShareProtocol {
      *  exact bounded sender session. */
     const val SESSION_HEADER = "X-CruxCoach-Share-Session"
 
+    /**
+     * Below this many climbs a declared family is not a catalogue but a handful of community
+     * climbs the sender happened to see. Current senders leave those out themselves; this is
+     * the receiver's backstop for the others — no real catalogue is anywhere near this small.
+     */
+    const val MIN_CATALOGUE_CLIMBS = 50L
+
     data class Invitation(
         val baseUrl: String,
         val ssid: String,

@@ -516,11 +516,9 @@ class BoardSyncManager(
                     errorMessage = null,
                     importStep = initialStep,
                     localShareInProgress = localShare,
-                    localShareBoardSteps = if (localShare) {
-                        interactiveBoardBrands().associateWith { initialStep }
-                    } else {
-                        emptyMap()
-                    },
+                    // Which boards a share brings is known once its manifest is; until then
+                    // the summary carries the progress and no board row claims it.
+                    localShareBoardSteps = emptyMap(),
                     // Drop the previous run's per-board terminal steps so a
                     // fresh sync doesn't render stale Done rows (and their
                     // old counts) for boards whose lane hasn't started yet.
@@ -664,10 +662,8 @@ class BoardSyncManager(
                     errorMessage = null,
                     importStep = ImportStep.FetchingManifest,
                     localShareInProgress = true,
-                    localShareBoardSteps = sharedBoardBrands(
-                        found.manifest.board,
-                        found.manifest.protocolVersion,
-                    ).filter { shareBrands == null || it in shareBrands }
+                    localShareBoardSteps = sharedBoardBrands(found.manifest)
+                        .filter { shareBrands == null || it in shareBrands }
                         .associateWith { ImportStep.FetchingManifest },
                     auroraSteps = emptyMap(),
                     syncGeneration = current.syncGeneration + 1,
@@ -734,21 +730,27 @@ class BoardSyncManager(
         return offered.filter { it in saved }.ifEmpty { offered }
     }
 
-    private fun interactiveBoardBrands(): List<BoardBrand> =
-        BoardBrand.entries.filter { it.isInteractive }
+    /**
+     * The board families a share carries, from what its manifest declares — the snapshot's
+     * contents once it is ready, the sender's live catalogues while it is still preparing.
+     * A family the sender only has a few community climbs of is not one of them, and a
+     * v1 artifact carries no Quantum. Nothing is assumed for a sender that declares nothing:
+     * the transfer summary shows its progress, and no board row claims a board it may not
+     * contain. (Every family used to be listed then — eight rows "wird vorbereitet" for a
+     * share of one board.)
+     */
+    private fun sharedBoardBrands(manifest: LocalShareProtocol.Manifest): List<BoardBrand> =
+        catalogueBrands(manifest.declaredCatalogues, manifest.protocolVersion)
 
-    private fun sharedBoardBrands(
-        board: LocalShareProtocol.BoardArtifact?,
-        protocolVersion: Int = LocalShareProtocol.VERSION,
+    private fun catalogueBrands(
+        catalogues: List<LocalShareProtocol.BoardCatalogue>,
+        protocolVersion: Int,
     ): List<BoardBrand> =
-        board?.catalogues
-            ?.mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
-            ?.filter { it.isInteractive }
-            ?.distinct()
-            ?.takeIf { it.isNotEmpty() }
-            ?: interactiveBoardBrands().filter {
-                protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM
-            }
+        catalogues
+            .filter { it.climbCount >= LocalShareProtocol.MIN_CATALOGUE_CLIMBS }
+            .mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
+            .filter { it.isInteractive && (protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM) }
+            .distinct()
 
     private fun updateLocalShareProgress(step: ImportStep, brands: List<BoardBrand>) {
         _state.update {
@@ -1096,11 +1098,12 @@ class BoardSyncManager(
         recordFullSync: Boolean,
     ): Boolean {
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        _state.update { it.copy(importStep = null, moonBoardStep = null, moonBoardError = null,
+        _state.update { it.copy(importStep = null, kilterSyncing = false, moonBoardStep = null, moonBoardError = null,
             auroraSteps = emptyMap(), auroraErrors = emptyMap()) }
         var changed = false
         for (brand in catalogueSyncOrder(activeBrand, selectedBrands)) {
             if (brand == BoardBrand.KILTER) {
+                _state.update { it.copy(kilterSyncing = true) }
                 try {
                     if (syncKilterCatalogue()) changed = true
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1125,6 +1128,7 @@ class BoardSyncManager(
             errorMessage = if (failed) _state.value.errorMessage
                 ?: appContext.getString(R.string.board_sync_error_download) else null,
             importStep = null,
+            kilterSyncing = false,
             lastSyncCompletedAtMillis = System.currentTimeMillis(),
         ) }
         return changed
@@ -1614,7 +1618,10 @@ class BoardSyncManager(
         }
         if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
         try {
-            importDownloadedBoard(compressed, board, pending.protocolVersion)
+            importDownloadedBoard(
+                compressed, board, pending.protocolVersion,
+                offeredBrands = catalogueBrands(board.catalogues, pending.protocolVersion),
+            )
             pending.apkPath?.let(::File)?.delete()
             localShareResumeStore.clear()
             val timestamp = DateTimeUtil.nowIso()
@@ -1649,8 +1656,8 @@ class BoardSyncManager(
         compressed: File,
         board: LocalShareProtocol.BoardArtifact,
         protocolVersion: Int,
+        offeredBrands: List<BoardBrand>,
     ) {
-        val offeredBrands = sharedBoardBrands(board, protocolVersion)
         val brands = resolveShareBrands(offeredBrands)
         require(board.uncompressedSizeBytes in 1..MAX_LOCAL_SHARE_DB_BYTES) {
             "Shared board snapshot exceeds size limit"
@@ -1767,13 +1774,9 @@ class BoardSyncManager(
         var boardArtifact: LocalShareProtocol.BoardArtifact? = null
         val receivedManifest: LocalShareProtocol.Manifest
         try {
-            updateLocalShareProgress(ImportStep.FetchingManifest, interactiveBoardBrands())
+            updateLocalShareProgress(ImportStep.FetchingManifest, emptyList())
             val firstManifest = initialManifest ?: client.fetchManifest(network, baseUrl)
-            val initialBrands = sharedBoardBrands(
-                firstManifest.board,
-                firstManifest.protocolVersion,
-            )
-                .ifEmpty { interactiveBoardBrands() }
+            val initialBrands = resolveShareBrands(sharedBoardBrands(firstManifest))
 
             // The APK is the bootstrapping artifact: transfer it before any
             // 500 MB snapshot copy/VACUUM/gzip work starts on the sender.
@@ -1828,7 +1831,7 @@ class BoardSyncManager(
             } else firstManifest
 
             val offeredBoard = receivedManifest.board
-            val brands = sharedBoardBrands(offeredBoard, receivedManifest.protocolVersion)
+            val brands = resolveShareBrands(sharedBoardBrands(receivedManifest))
             updateLocalShareProgress(ImportStep.CheckingUpdate, brands)
             val lastSnapshotHash = userPreferences.lastLocalShareSnapshotSha256.first()
             val needsBoard = offeredBoard != null &&
@@ -1907,6 +1910,7 @@ class BoardSyncManager(
                 compressedBoard,
                 offeredBoard,
                 receivedManifest.protocolVersion,
+                offeredBrands = sharedBoardBrands(receivedManifest),
             )
             boardImported = true
         }
@@ -1919,17 +1923,13 @@ class BoardSyncManager(
             // leave non-terminal spinners behind in the old process.
             emptyMap()
         } else {
-            completedLocalShareSteps(
-                resolveShareBrands(
-                    sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion),
-                ),
-            )
+            completedLocalShareSteps(resolveShareBrands(sharedBoardBrands(receivedManifest)))
         }
         // The families the sender does not have follow the ordinary way, one after the
         // other, as soon as the share has released the sync slot.
         if (chosenShareBrands != null) {
             val savedSelection = userPreferences.boardDownloadBrands.first()
-            val fromShare = sharedBoardBrands(receivedManifest.board, receivedManifest.protocolVersion).toSet()
+            val fromShare = sharedBoardBrands(receivedManifest).toSet()
             // Only what is still missing: a family this install already has is kept current
             // by the regular sync and needs no download of its own here.
             val present = boardRepository.getClimbCountsByBrand()
@@ -2325,6 +2325,13 @@ data class BoardSyncState(
      * MoonBoard phase starts.
      */
     val moonBoardStep: ImportStep? = null,
+    /**
+     * True while the Kilter catalogue is the one being synced. [importStep] is the run's
+     * global step and, for the Kilter lane, also its per-board step; without this flag it was
+     * shown as Kilter's whenever ANY board loaded — a MoonBoard-only download, or a share of
+     * MoonBoard alone, put a Kilter row in the overview and "Kilter · …" in the banner.
+     */
+    val kilterSyncing: Boolean = false,
     /** Set when the MoonBoard catalogue sync failed — surfaced as a
      *  non-fatal note; the Kilter sync is never failed by a MoonBoard
      *  hiccup. */
@@ -2393,7 +2400,7 @@ data class BoardSyncState(
      *  the UI is map-driven rather than two hardcoded streams. */
     val boardSteps: Map<BoardBrand, ImportStep>
         get() = buildMap {
-            importStep?.let { put(BoardBrand.KILTER, it) }
+            if (kilterSyncing) importStep?.let { put(BoardBrand.KILTER, it) }
             moonBoardStep?.let { put(BoardBrand.MOONBOARD, it) }
             putAll(auroraSteps)
             // Local share is a multi-brand full-DB path. Put it last so its
