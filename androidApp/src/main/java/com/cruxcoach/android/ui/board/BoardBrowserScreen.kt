@@ -366,7 +366,8 @@ fun BoardBrowserScreen(
     // actions could not happen yet and it read as broken. It waits, with its step kept, until
     // there are climbs on screen and nothing is loading.
     val syncState by com.cruxcoach.android.ui.common.LocalBoardSyncManager.current.state.collectAsStateWithLifecycle()
-    val browserFilled = catalogueReady && state.climbs.isNotEmpty() && !syncState.isSyncing && !state.isLoading
+    val browserFilled = catalogueReady && !state.activeBrandCatalogueIncomplete &&
+        state.climbs.isNotEmpty() && !syncState.isSyncing && !state.isLoading
     val tourTarget = when (tourStep) {
         TourStep.BOARD -> TourTarget.BOARD
         TourStep.LOGBOOK -> TourTarget.MENU
@@ -484,6 +485,36 @@ fun BoardBrowserScreen(
                 onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
 
+            // A few climbs of this board are here, its catalogue is not (the receiver of a
+            // share cut to another board, with the app's default board still set). Say so
+            // above the list and offer the download; the list itself stays usable.
+            if (state.activeBrandCatalogueIncomplete && !state.activeBrandImporting) {
+                Surface(
+                    color = OrangeAccent.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth().testTag("board_catalogue_incomplete"),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.board_browser_catalogue_incomplete,
+                                BoardBrand.fromWire(state.filter.boardBrand).displayName,
+                            ),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(
+                            onClick = { viewModel.loadActiveBoardCatalogue() },
+                            modifier = Modifier.testTag("board_catalogue_incomplete_load"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                    }
+                }
+            }
             queueState.boardMismatch?.let {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,

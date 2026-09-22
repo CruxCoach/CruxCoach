@@ -1710,11 +1710,16 @@ class BoardSyncManager(
             }
             // Verified first, cut second: the hash vouches for what the sender sent, and the
             // cut is ours. The import then only ever sees the chosen families.
-            val cutToSelection = brands.size < offeredBrands.size
-            if (cutToSelection) {
+            // Always, not only when a family was unticked: a snapshot carries whatever the
+            // sender has, including a handful of rows of families it never declared — five
+            // Kilter climbs next to a MoonBoard catalogue landed on a receiver that chose
+            // MoonBoard alone and gave its default Kilter board a five-climb "catalogue".
+            var cutToSelection = false
+            if (brands.isNotEmpty()) {
                 val removed = withBackgroundThreadPriority {
                     LocalShareSnapshotPruner.prune(raw, brands.toSet())
                 }
+                cutToSelection = removed > 0L
                 Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
             }
             withBackgroundThreadPriority {
