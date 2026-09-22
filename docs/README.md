@@ -20,6 +20,9 @@ Start with the German [permission-system overview and architecture decisions](ar
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
 current behavior, migration rules, threat model, measured relay compatibility and
 remaining CI/device qualification.
+The German [tester guide](releases/marmot-permissions-test-guide.md) lists what a
+tester can exercise on one or two devices after the 0.2.3 QA merge, and what
+remains unqualified.
 The release-line inventory below describes the imported release source, before
 this feature overlay. It is not evidence of publication or production activation.
 
