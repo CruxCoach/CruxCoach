@@ -361,6 +361,12 @@ fun BoardBrowserScreen(
     // overflow; the tour text follows that instead of mentioning a menu that may not apply.
     var logbookInOverflow by remember { mutableStateOf(false) }
     val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
+    // The tour walks through a filled browser. Shown earlier — over the sync card, over an
+    // empty list, while a share is still importing — its spotlights pointed at controls whose
+    // actions could not happen yet and it read as broken. It waits, with its step kept, until
+    // there are climbs on screen and nothing is loading.
+    val syncState by com.cruxcoach.android.ui.common.LocalBoardSyncManager.current.state.collectAsStateWithLifecycle()
+    val browserFilled = catalogueReady && state.climbs.isNotEmpty() && !syncState.isSyncing && !state.isLoading
     val tourTarget = when (tourStep) {
         TourStep.BOARD -> TourTarget.BOARD
         TourStep.LOGBOOK -> TourTarget.MENU
@@ -386,7 +392,7 @@ fun BoardBrowserScreen(
         else -> R.string.tour_spotlight_catalogue
     }
     TourHost(tourTargets, tourTarget, tourMessage, { tour.move(TourStep.DONE) },
-        visible = !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch && !state.activeBrandImporting) {
+        visible = browserFilled && !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         BoardBrowserHeader(
