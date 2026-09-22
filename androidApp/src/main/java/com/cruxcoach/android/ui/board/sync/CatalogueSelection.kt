@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -71,6 +72,13 @@ internal fun CatalogueSelectionDialog(
     onToggleSelectAll: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    /**
+     * While a nearby device is sending: what it offers, and whether those boards can still
+     * be changed. The dialog then splits into its boards and the ones that need the internet,
+     * the same way the share offer did — a flat list here made both look downloadable alike.
+     */
+    offered: List<OfferedCatalogue> = emptyList(),
+    offeredEditable: Boolean = true,
 ) {
     val allSelected = selectedBrands.containsAll(BoardBrand.entries.filter { it.isInteractive })
     AlertDialog(
@@ -79,12 +87,44 @@ internal fun CatalogueSelectionDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onToggleSelectAll, modifier = Modifier.weight(1f, fill = false).testTag("catalogue_toggle_all")) {
-                        Text(stringResource(if (allSelected) R.string.setup_deselect_all else R.string.cd_select_all))
+                    if (offered.isEmpty()) {
+                        TextButton(onClick = onToggleSelectAll, modifier = Modifier.weight(1f, fill = false).testTag("catalogue_toggle_all")) {
+                            Text(stringResource(if (allSelected) R.string.setup_deselect_all else R.string.cd_select_all))
+                        }
                     }
                     InfoButton(stringResource(R.string.setup_catalogues_title), stringResource(R.string.catalogue_selection_help))
                 }
-                CatalogueSelectionRows(selectedBrands, onToggleBrand = onToggleBrand)
+                if (offered.isEmpty()) {
+                    CatalogueSelectionRows(selectedBrands, onToggleBrand = onToggleBrand)
+                } else {
+                    val offeredBrands = offered.map { it.brand }
+                    Text(stringResource(R.string.board_sync_discovered_share_from), style = MaterialTheme.typography.titleSmall)
+                    CatalogueSelectionRows(
+                        selectedBrands = selectedBrands,
+                        brands = offeredBrands,
+                        detail = { brand ->
+                            offered.firstOrNull { it.brand == brand }?.climbCount?.let { count ->
+                                pluralStringResource(
+                                    R.plurals.board_sync_share_climbs,
+                                    count.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                                    java.text.NumberFormat.getIntegerInstance().format(count),
+                                )
+                            }
+                        },
+                        onToggleBrand = { if (offeredEditable) onToggleBrand(it) },
+                    )
+                    if (!offeredEditable) {
+                        Text(stringResource(R.string.catalogue_share_boards_fixed),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(stringResource(R.string.board_sync_discovered_share_others), style = MaterialTheme.typography.titleSmall)
+                    CatalogueSelectionRows(
+                        selectedBrands = selectedBrands,
+                        brands = BoardBrand.entries.filter { it.isInteractive && it !in offeredBrands },
+                        onToggleBrand = onToggleBrand,
+                    )
+                }
                 Text(stringResource(if (isSyncing) R.string.catalogue_queue_hint else R.string.catalogue_confirm_hint),
                     style = MaterialTheme.typography.bodyMedium)
             }

@@ -3088,6 +3088,7 @@
     <string name="catalogue_confirm">Übernehmen</string>
     <string name="catalogue_queue_hint">Neue Boards werden nach dem laufenden Download geladen.</string>
     <string name="catalogue_confirm_hint">Neue Boards werden nach deiner Bestätigung geladen.</string>
+    <string name="catalogue_share_boards_fixed">Diese Boards werden gerade übertragen; ändern kannst du sie nach dem Share wieder.</string>
     <string name="catalogue_selection_help">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Änderungen gelten erst nach deiner Bestätigung.\n\nAbwählen bricht einen laufenden Download nicht ab und löscht weder geladene Climbs noch dein Logbuch. Vor dem Start eines vorgemerkten Downloads abgewählte Boards werden nicht mitgeladen.\n\nEine direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank.</string>
     <string name="import_restore_backup_enabled">Aktiviert auch dein Daten-Backup.</string>
     <string name="import_catalogue_pending_short">Namen und Grade erscheinen nach dem Katalogdownload.</string>

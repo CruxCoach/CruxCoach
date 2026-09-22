@@ -47,7 +47,10 @@ internal data class OfferedCatalogue(val brand: BoardBrand, val climbCount: Long
  * no real catalogue is anywhere near this small.
  */
 internal fun offeredCatalogues(manifest: com.cruxcoach.android.util.LocalShareProtocol.Manifest): List<OfferedCatalogue> =
-    manifest.declaredCatalogues.mapNotNull { catalogue ->
+    offeredCatalogues(manifest.declaredCatalogues)
+
+internal fun offeredCatalogues(declared: List<com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue>): List<OfferedCatalogue> =
+    declared.mapNotNull { catalogue ->
         BoardBrand.fromWireOrNull(catalogue.boardBrand)
             ?.takeIf { it.isInteractive && catalogue.climbCount >= com.cruxcoach.android.util.LocalShareProtocol.MIN_CATALOGUE_CLIMBS }
             ?.let { OfferedCatalogue(it, catalogue.climbCount) }

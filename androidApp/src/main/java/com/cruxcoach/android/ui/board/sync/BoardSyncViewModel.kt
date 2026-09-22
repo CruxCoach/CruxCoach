@@ -145,6 +145,7 @@ class BoardSyncViewModel @Inject constructor(
         syncManager.confirmOfflineShare(invitation)
     fun dismissOfflineShare() = syncManager.dismissOfflineShare()
     fun probeOnboardingShare() = syncManager.probeOnboardingShare()
+    fun updateShareSelection(selected: Set<BoardBrand>) = syncManager.updateShareSelection(selected)
     fun presentDiscoveredShareAsDialog() = syncManager.presentDiscoveredShareAsDialog()
     fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
     fun confirmDiscoveredShare(shareBrands: Set<BoardBrand>, onlineBrands: Set<BoardBrand>) =

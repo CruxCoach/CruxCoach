@@ -113,6 +113,8 @@ fun BoardSyncInlineCard(
         }
     }
     selectionDraft?.let { draft ->
+        // Mid-share, the dialog is split like the offer was: the sender's boards and the rest.
+        val offered = if (state.localShareInProgress) offeredCatalogues(state.localShareOffered) else emptyList()
         CatalogueSelectionDialog(
             selectedBrands = draft,
             isSyncing = state.isSyncing,
@@ -124,10 +126,13 @@ fun BoardSyncInlineCard(
                 selectionDraft = if (draft.containsAll(all)) emptySet() else all
             },
             onConfirm = {
+                if (offered.isNotEmpty()) viewModel.updateShareSelection(draft)
                 viewModel.saveDownloadSelection(draft, startInitial = startAfterSelection)
                 selectionDraft = null
             },
             onDismiss = { selectionDraft = null },
+            offered = offered,
+            offeredEditable = state.localShareSelectionEditable,
         )
     }
 

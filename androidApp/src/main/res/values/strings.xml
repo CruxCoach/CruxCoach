@@ -3089,6 +3089,7 @@
     <string name="catalogue_confirm">Apply</string>
     <string name="catalogue_queue_hint">New boards will download after the current download.</string>
     <string name="catalogue_confirm_hint">New boards will download when you confirm.</string>
+    <string name="catalogue_share_boards_fixed">These boards are already being transferred; they can be changed again after the share.</string>
     <string name="catalogue_selection_help">Only selected boards are downloaded online and updated automatically. Changes take effect when you confirm.\n\nDeselecting does not cancel an active download or delete downloaded climbs or your logbook. Boards deselected before a queued download starts will not be included.\n\nA direct transfer from another device includes its entire shared board database.</string>
     <string name="import_restore_backup_enabled">Also enables your data backup.</string>
     <string name="import_catalogue_pending_short">Names and grades appear after the catalogue download.</string>

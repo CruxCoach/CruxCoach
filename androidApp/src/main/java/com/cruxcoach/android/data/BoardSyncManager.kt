@@ -662,6 +662,7 @@ class BoardSyncManager(
                     errorMessage = null,
                     importStep = ImportStep.FetchingManifest,
                     localShareInProgress = true,
+                    localShareOffered = found.manifest.declaredCatalogues,
                     localShareBoardSteps = sharedBoardBrands(found.manifest)
                         .filter { shareBrands == null || it in shareBrands }
                         .associateWith { ImportStep.FetchingManifest },
@@ -710,6 +711,21 @@ class BoardSyncManager(
             }
         }
         if (fallBackOnline) startInitialOnlineFallback()
+    }
+
+    /**
+     * A selection changed while the share is still on its way: the boards taken from the
+     * sender follow the new choice as long as the snapshot has not been read yet.
+     */
+    fun updateShareSelection(selected: Set<BoardBrand>) {
+        val state = _state.value
+        if (!state.localShareSelectionEditable) return
+        val offered = catalogueBrands(state.localShareOffered, LocalShareProtocol.VERSION_V2)
+        val share = offered.filter { it in selected }.toSet()
+        chosenShareBrands = share
+        _state.update { s ->
+            s.copy(localShareBoardSteps = share.associateWith { s.importStep ?: ImportStep.FetchingManifest })
+        }
     }
 
     /** What the receiver ticked in the share dialog; null on the lanes that show no choice. */
@@ -1829,6 +1845,7 @@ class BoardSyncManager(
                     },
                 )
             } else firstManifest
+            _state.update { it.copy(localShareOffered = receivedManifest.declaredCatalogues) }
 
             val offeredBoard = receivedManifest.board
             val brands = resolveShareBrands(sharedBoardBrands(receivedManifest))
@@ -1948,6 +1965,7 @@ class BoardSyncManager(
                 errorMessage = null,
                 importStep = null,
                 localShareInProgress = false,
+                localShareOffered = emptyList(),
                 localShareBoardSteps = terminalBoardSteps,
                 localShareUpdate = readyUpdate,
                 networkAvailable = networkAvailable,
@@ -1966,6 +1984,7 @@ class BoardSyncManager(
                 isSyncing = false,
                 importStep = null,
                 localShareInProgress = false,
+                localShareOffered = emptyList(),
                 localShareBoardSteps = emptyMap(),
                 errorMessage = appContext.getString(R.string.board_sync_error_import),
             )
@@ -2357,6 +2376,11 @@ data class BoardSyncState(
     val localShareUpdate: LocalShareUpdate? = null,
     /** True from local sender discovery through the final local DB refresh. */
     val localShareInProgress: Boolean = false,
+    /**
+     * What the nearby device offers, for the run in progress — so a selection dialog opened
+     * meanwhile can tell its boards from those that need the internet. Empty outside a share.
+     */
+    val localShareOffered: List<LocalShareProtocol.BoardCatalogue> = emptyList(),
     /** Per-catalogue projection of the shared full-DB import. A local snapshot
      *  contains all brands in shared tables; mapping the common ingest phase
      *  onto every advertised brand prevents the old Kilter-only spinner. */
@@ -2398,6 +2422,18 @@ data class BoardSyncState(
      *  streams plus every Aurora board, keyed by brand and ordered
      *  Kilter → MoonBoard → Aurora. Drives the per-board sync-card sections so
      *  the UI is map-driven rather than two hardcoded streams. */
+    /**
+     * The share's own boards can still be changed until its snapshot is being read: what is
+     * cut from it is decided then. Afterwards only the internet boards remain a choice.
+     */
+    val localShareSelectionEditable: Boolean
+        get() = localShareInProgress && when (importStep) {
+            null, is ImportStep.FetchingManifest, is ImportStep.PreparingSnapshot,
+            is ImportStep.DownloadApk, is ImportStep.VerifyingApk,
+            is ImportStep.CheckingUpdate, is ImportStep.Download -> true
+            else -> false
+        }
+
     val boardSteps: Map<BoardBrand, ImportStep>
         get() = buildMap {
             if (kilterSyncing) importStep?.let { put(BoardBrand.KILTER, it) }
