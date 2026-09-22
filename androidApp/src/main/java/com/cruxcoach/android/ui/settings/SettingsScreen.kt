@@ -264,6 +264,9 @@ fun SettingsScreen(
                         onNavigateToNostrProfile = onNavigateToNostrProfile,
                     )
                 }
+                // FEAT-062: sharing lives next to the account keys because
+                // the npub is what a sharing relationship is bound to.
+                SharingSettingsSection(onNavigateToSharing = onNavigateToSharing)
             }
             SettingsPage.IMPORTS -> {
                 LaunchedEffect(state.kilterAccount.isConnected) {
@@ -392,9 +395,6 @@ fun SettingsScreen(
                         onPlayEasterAnimation = { viewModel.playEasterAnimation() },
                         onStopAnimation = { viewModel.stopAnimation() }
                     )
-                    // FEAT-062: sharing lives next to the account keys because
-                    // the npub is what a sharing relationship is bound to.
-                    SharingSettingsSection(onNavigateToSharing = onNavigateToSharing)
                 }
                 SettingsDestinationRow(
                     title = stringResource(R.string.settings_share_title),
