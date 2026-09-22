@@ -649,7 +649,7 @@ fun BoardBrowserScreen(
                         // app's default Kilter; a 94 MB download is not the only way out.
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
-                            onClick = { viewModel.showModelDialog() },
+                            onClick = { showBoardPicker = true },
                             modifier = Modifier.testTag("board_empty_change_board"),
                         ) {
                             Text(stringResource(R.string.board_browser_empty_change_board))
