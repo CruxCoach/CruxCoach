@@ -927,6 +927,7 @@
     <string name="board_lists_empty_message">Create a list to organize climbs.</string>
     <string name="board_lists_new_list">New list</string>
     <string name="board_lists_list_name">List name</string>
+    <string name="board_lists_name_taken">A list with this name already exists.</string>
     <string name="board_lists_create">Create</string>
 
     <!-- Board: Add to List -->

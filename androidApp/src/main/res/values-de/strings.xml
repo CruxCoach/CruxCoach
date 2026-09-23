@@ -971,6 +971,7 @@
     <string name="board_lists_empty_message">Erstelle eine Liste, um Climbs zu organisieren.</string>
     <string name="board_lists_new_list">Neue Liste</string>
     <string name="board_lists_list_name">Listenname</string>
+    <string name="board_lists_name_taken">Eine Liste mit diesem Namen gibt es schon.</string>
     <string name="board_lists_create">Erstellen</string>
 
     <!-- Board: Add to List -->

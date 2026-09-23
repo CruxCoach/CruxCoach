@@ -72,6 +72,9 @@ fun BoardListsScreen(
     if (state.showCreateDialog) {
         CreateListDialog(
             name = state.newListName,
+            // The same rule createList() applies. It used to refuse a taken name
+            // without a word: the button stayed active and simply did nothing.
+            nameTaken = state.lists.any { it.name.equals(state.newListName.trim(), ignoreCase = true) },
             onNameChanged = { viewModel.updateNewListName(it) },
             onCreate = viewModel::createList,
             onDismiss = { viewModel.dismissCreateDialog() }
@@ -465,6 +468,7 @@ private fun HistoryCard(onClick: () -> Unit) {
 @Composable
 private fun CreateListDialog(
     name: String,
+    nameTaken: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
     onDismiss: () -> Unit
@@ -478,6 +482,10 @@ private fun CreateListDialog(
                 onValueChange = onNameChanged,
                 placeholder = { Text(stringResource(R.string.board_lists_list_name)) },
                 singleLine = true,
+                isError = nameTaken,
+                supportingText = if (nameTaken) {
+                    { Text(stringResource(R.string.board_lists_name_taken)) }
+                } else null,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -487,7 +495,7 @@ private fun CreateListDialog(
         confirmButton = {
             Button(
                 onClick = onCreate,
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() && !nameTaken,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp)
             ) { Text(stringResource(R.string.board_lists_create), fontWeight = FontWeight.Bold) }
