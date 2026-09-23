@@ -9,6 +9,14 @@ CREATE TABLE share_preset (
     training_days INTEGER NOT NULL CHECK (training_days >= -1)
 );
 
+-- Starting point for a newly created table only (owner decision 2026-09-23):
+-- friends see profile & goals and 30 days of training history, acquaintances
+-- profile & goals. Nothing reaches anyone before a person is added and accepts.
+-- A later choice is an upsert of the same row and is never reset.
+INSERT INTO share_preset(circle, categories, training_days) VALUES
+    ('FRIENDS', 'PROFILE_AND_GOALS,TRAINING_HISTORY', 30),
+    ('ACQUAINTANCES', 'PROFILE_AND_GOALS', 30);
+
 CREATE TABLE share_person (
     peer TEXT NOT NULL PRIMARY KEY CHECK (length(peer) = 64),
     circle TEXT NOT NULL CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),

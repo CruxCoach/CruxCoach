@@ -1,6 +1,7 @@
 -- Personal-data sharing v2. v1 friendships, signed ledgers, device authority,
 -- snapshots and policy transport are not carried over: nothing below becomes
--- a v2 permission, and every v2 table starts empty (no permissive defaults).
+-- a v2 permission. The v2 tables start empty except for the two default
+-- presets below; no person, rule or received record is created.
 -- Children first; they cascade to sharing_relationship anyway.
 DROP TABLE IF EXISTS sharing_ledger_entry;
 DROP TABLE IF EXISTS sharing_device;
@@ -30,6 +31,14 @@ CREATE TABLE share_preset (
     categories TEXT NOT NULL,
     training_days INTEGER NOT NULL CHECK (training_days >= -1)
 );
+
+-- Starting point for a newly created table only (owner decision 2026-09-23):
+-- friends see profile & goals and 30 days of training history, acquaintances
+-- profile & goals. Nothing reaches anyone before a person is added and accepts.
+-- A later choice is an upsert of the same row and is never reset.
+INSERT INTO share_preset(circle, categories, training_days) VALUES
+    ('FRIENDS', 'PROFILE_AND_GOALS,TRAINING_HISTORY', 30),
+    ('ACQUAINTANCES', 'PROFILE_AND_GOALS', 30);
 
 CREATE TABLE share_person (
     peer TEXT NOT NULL PRIMARY KEY CHECK (length(peer) = 64),

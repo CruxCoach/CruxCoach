@@ -50,14 +50,22 @@ def run():
         c, friend_c, sc = participant()
         today = datetime.date.today()
 
-        def wait(predicate, phase, seconds=120):
+        def wait(predicate, phase, seconds=120, describe=None):
             deadline = time.monotonic() + seconds
             while time.monotonic() < deadline:
                 if predicate():
                     print(json.dumps(dict(path='THREE-USERS', phase=phase, passed=True)), flush=True)
                     return
                 time.sleep(0.5)
+            if describe is not None:
+                # Diagnostics only: states, counts and ids, never record contents.
+                print(json.dumps(dict(path='THREE-USERS', phase=phase, state=describe())), flush=True)
             raise AssertionError('continuous phase timeout: ' + phase)
+
+        def summary(p, peer):
+            f = friend(p, peer)
+            return None if f is None else dict(state=f['state'], confirmed=f['confirmed'],
+                                               ids=sorted(r['id'] + '@' + r['hash'][:8] for r in f['records']))
 
         def friend(p, peer):
             return next((f for f in p.call('friends')['friends'] if f['peer'] == peer), None)
@@ -75,7 +83,10 @@ def run():
         a.call('source_training', id='excluded-history', attempts='8', date='2000-01-01')
         b.call('source_note', id='b-own', text='Synthetic B private original marker')
         c.call('source_profile', name='Synthetic C private original marker')
-        # Presets start empty: nothing is shared until chosen.
+        # Fresh installs start with the owner-chosen defaults; a choice replaces them.
+        defaults = {'FRIENDS': {'categories': [PROFILE, TRAINING], 'days': 30},
+                    'ACQUAINTANCES': {'categories': [PROFILE], 'days': 30}}
+        assert all(p.call('presets') == defaults for p in (a, b, c)), 'default presets on a fresh install'
         a.call('preset', circle='FRIENDS', categories=[PROFILE, TRAINING], days=30)
         a.call('preset', circle='ACQUAINTANCES', categories=[NOTES], days=30)
         b.call('preset', circle='ACQUAINTANCES', categories=[NOTES])
@@ -164,8 +175,12 @@ def run():
         a.call('source_profile', name='Synthetic after rotation')
         # B accepted with its own switch off: A is active, B sees itself stopped.
         wait(lambda: matches(b, a, owner, friend_b) and friend(a, friend_b)['state'] == 'ACTIVE'
-             and friend(b, owner)['state'] == 'STOPPED', 'data after epoch change')
-        print(json.dumps(dict(path='THREE-USERS', independent_processes=3, native_crypto=True, presets_start_empty=True,
+             and friend(b, owner)['state'] == 'STOPPED', 'data after epoch change',
+             describe=lambda: dict(b_sees_a=summary(b, owner), a_sees_b=summary(a, friend_b),
+                                   a_sends=sorted(r['id'] + '@' + r['hash'][:8] for r in a.call('source_hashes', peer=friend_b)),
+                                   epochs=[a.call('epoch', peer=friend_b), b.call('epoch', peer=owner)],
+                                   a_status=a.call('status'), b_status=b.call('status')))
+        print(json.dumps(dict(path='THREE-USERS', independent_processes=3, native_crypto=True, default_presets=True,
             actual_profile_training_note_repositories=True, invitation_then_acceptance=True, manifest_full_delta=True,
             receiver_acks=True, training_cutoff=True, offline_receiver_restart=True, owner_restart=True,
             narrowing=True, per_person_switch=True, outage_withdrawal_by_end=True, both_directions_deleted=True,

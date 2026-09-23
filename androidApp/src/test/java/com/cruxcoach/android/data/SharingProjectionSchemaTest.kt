@@ -56,6 +56,24 @@ class SharingProjectionSchemaTest {
             QueryResult.Value(names)
         }, 0).value.filter { entry -> prefixes.any { entry.substringAfter(':').startsWith(it) } }.toSet()
 
+    /** The owner-chosen starting point, seeded only where share_preset is created. */
+    private val defaultPresets = mapOf(
+        "FRIENDS" to ("PROFILE_AND_GOALS,TRAINING_HISTORY" to 30L),
+        "ACQUAINTANCES" to ("PROFILE_AND_GOALS" to 30L),
+    )
+
+    private fun presetRows(): Map<String, Pair<String, Long>> =
+        driver.executeQuery(null, "SELECT circle, categories, training_days FROM share_preset", { c ->
+            val rows = mutableMapOf<String, Pair<String, Long>>()
+            while (c.next().value) rows[c.getString(0)!!] = c.getString(1)!! to c.getLong(2)!!
+            QueryResult.Value(rows)
+        }, 0).value
+
+    private fun assertOnlyDefaults() {
+        assertEquals(defaultPresets, presetRows())
+        v2Tables.filter { it != "share_preset" }.forEach { assertEquals(0L, count(it), "$it starts empty") }
+    }
+
     private fun tables(): Set<String> = objects(listOf("")).filter { it.startsWith("table:") }.map { it.removePrefix("table:") }.toSet()
 
     private fun releaseDatabase() {
@@ -99,7 +117,7 @@ class SharingProjectionSchemaTest {
         assertEquals(1L, count("climb_notes", "note = 'synthetic private note'"))
         assertEquals(1L, count("nostr_profiles", "about = 'synthetic bio' AND local_primary = 1"))
         assertTrue(v1Tables.none { it in tables() })
-        v2Tables.forEach { assertEquals(0L, count(it), it) }
+        assertOnlyDefaults()
         assertFalse(driver.executeQuery(null, "PRAGMA foreign_key_check", { c -> QueryResult.Value(c.next().value) }, 0).value)
     }
 
@@ -125,7 +143,8 @@ class SharingProjectionSchemaTest {
         driver = openDriver()
 
         assertTrue(v1Tables.none { it in tables() }, "v1 tables must be gone")
-        v2Tables.forEach { assertEquals(0L, count(it), "$it starts empty; no permissive default") }
+        // The v1 FRIENDS baseline (notes) does not become a v2 preset; only the defaults exist.
+        assertOnlyDefaults()
         assertEquals(1L, count("climb_notes", "note = 'synthetic existing beta'"))
         assertEquals(before, objects().filter { it.startsWith("trigger:") }.toSet(), "source revision triggers survive")
         val source = com.cruxcoach.android.sharing.SharingSource(SecureDatabase(driver))
@@ -139,6 +158,7 @@ class SharingProjectionSchemaTest {
     fun `fresh creation and migration produce the same sharing objects`() {
         SecureDatabase.Schema.create(driver)
         val created = objects()
+        assertOnlyDefaults()
         driver.close()
         dbFile.delete()
         driver = openDriver()
@@ -146,6 +166,21 @@ class SharingProjectionSchemaTest {
         SecureDatabase.Schema.migrate(driver, 14, SecureDatabase.Schema.version)
         assertEquals(created, objects())
         assertTrue(v2Tables.all { "table:$it" in created })
+        assertOnlyDefaults()
+    }
+
+    @Test
+    fun `a chosen preset is kept and never reset to the defaults`() {
+        SecureDatabase.Schema.create(driver)
+        val store = com.cruxcoach.android.sharing.SharingStore(SecureDatabase(driver))
+        store.putPreset(com.cruxcoach.android.sharing.SharingPreset(com.cruxcoach.domain.sharing.SharingCircle.FRIENDS, emptySet(), 90))
+        driver.close()
+        driver = openDriver()
+        val presets = com.cruxcoach.android.sharing.SharingStore(SecureDatabase(driver)).presets()
+        assertEquals(emptySet(), presets.getValue(com.cruxcoach.domain.sharing.SharingCircle.FRIENDS).categories)
+        assertEquals(90, presets.getValue(com.cruxcoach.domain.sharing.SharingCircle.FRIENDS).trainingDays)
+        assertEquals(setOf(com.cruxcoach.domain.sharing.SharingCategory.PROFILE_AND_GOALS),
+            presets.getValue(com.cruxcoach.domain.sharing.SharingCircle.ACQUAINTANCES).categories)
     }
 
     @Test

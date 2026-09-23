@@ -2679,7 +2679,7 @@
     <string name="sharing_category_notes">Notizen</string>
     <string name="sharing_category_notes_info">Deine persönlichen Notizen zu Bouldern.</string>
     <string name="sharing_presets_title">Voreinstellungen</string>
-    <string name="sharing_presets_info">Jede Person gehört zu einem Kreis: Freunde oder Bekannte. Die Voreinstellung des Kreises bestimmt, welche Kategorien sie erhält. Freunde erhalten zusätzlich alles, was Bekannte erhalten.\n\nStandardmäßig nichts\nBeide Voreinstellungen sind anfangs leer. Geteilt wird erst, wenn du hier oder auf der Seite einer Person Kategorien wählst.</string>
+    <string name="sharing_presets_info">Jede Person gehört zu einem Kreis: Freunde oder Bekannte. Die Voreinstellung des Kreises bestimmt, welche Kategorien sie erhält. Freunde erhalten zusätzlich alles, was Bekannte erhalten.\n\nAusgangspunkt\nFreunde starten mit Profil &amp; Zielen und 30 Tagen Trainingshistorie, Bekannte mit Profil &amp; Zielen. Beides kannst du jederzeit ändern. Bei niemandem kommt etwas an, bevor du eine Person hinzufügst und sie annimmt.</string>
     <string name="sharing_preset_friends_body">Personen im Kreis Freunde erhalten diese Kategorien und zusätzlich alles, was Bekannte erhalten.</string>
     <string name="sharing_preset_acquaintances_body">Personen im Kreis Bekannte erhalten diese Kategorien. Freunde erhalten sie ebenfalls.</string>
     <string name="sharing_preset_inherited">Enthalten, weil Bekannte es erhalten.</string>

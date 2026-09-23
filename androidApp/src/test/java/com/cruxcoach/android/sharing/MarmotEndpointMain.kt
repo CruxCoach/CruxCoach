@@ -172,6 +172,14 @@ class SharingEndpointCommands(endpoint: SyntheticMarmotEndpoint) : EndpointComma
                         request["days"]?.jsonPrimitive?.content?.toInt() ?: TrainingPeriod.DEFAULT))
                     JsonPrimitive(true)
                 }
+                "presets" -> buildJsonObject {
+                    endpoint.store.presets().forEach { (circle, preset) ->
+                        put(circle.name, buildJsonObject {
+                            put("categories", buildJsonArray { preset.categories.sorted().forEach { add(JsonPrimitive(it.name)) } })
+                            put("days", preset.trainingDays)
+                        })
+                    }
+                }
                 "request" -> { service.request(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), null); JsonPrimitive(true) }
                 "accept" -> {
                     service.accept(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), field("outgoing").toBooleanStrict())
