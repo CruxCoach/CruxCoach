@@ -644,6 +644,11 @@ impl Engine {
             return Err(Error("payload_limit"));
         }
         let hash = sha256_hex(content.as_bytes());
+        let row = self.store.peer(peer)?.ok_or(Error("no_session"))?;
+        // Tokens are scoped to the group: a later friendship with the same
+        // person starts a fresh namespace.
+        let token = format!("{}/{token}", row.group);
+        let token = token.as_str();
         if let Some((event, stored)) = self.store.token(peer, token)? {
             return if stored == hash {
                 Ok((event, true))
@@ -651,7 +656,6 @@ impl Engine {
                 Err(Error("token_conflict"))
             };
         }
-        let row = self.store.peer(peer)?.ok_or(Error("no_session"))?;
         if row.state != "active" {
             return Err(Error("session_not_active"));
         }
@@ -699,7 +703,11 @@ impl Engine {
     pub fn cancel(&mut self, peer: &str) -> Result<usize> {
         self.store.transaction(|| {
             let cancelled = self.store.cancel_unreplicated(peer)?;
-            if let Some(mut row) = self.store.peer(peer)? {
+            // The app compares this time with its generation start: only an
+            // actual withdrawal can leave the friend behind the app's record.
+            if cancelled > 0
+                && let Some(mut row) = self.store.peer(peer)?
+            {
                 row.cancelled_at = now_ms();
                 self.store.put_peer(&row)?;
             }

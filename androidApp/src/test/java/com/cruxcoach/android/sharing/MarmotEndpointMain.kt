@@ -54,8 +54,8 @@ object MarmotEndpointMain {
             storage?.key?.fill(0)
             fun reply(value: JsonElement) { println(value.toString()); System.out.flush() }
             reply(buildJsonObject { put("account", endpoint.account); put("role", role); put("synthetic", true) })
-            val commands = EndpointCommands(endpoint)
-            generateSequence(::readlnOrNull).forEach { line ->
+            val commands = SharingEndpointCommands(endpoint)
+            try { generateSequence(::readlnOrNull).forEach { line ->
                 if (line.length > 65_536) {
                     reply(buildJsonObject { put("ok", false); put("error", "command_limit") })
                     return@forEach
@@ -66,7 +66,7 @@ object MarmotEndpointMain {
                     // Only fixed native codes; never exception messages or payloads.
                     { buildJsonObject { put("ok", false); put("error", (it as? MarmotFailure)?.code ?: "operation_refused") } },
                 ))
-            }
+            } } finally { commands.stop() }
         }
     }
 }
@@ -105,10 +105,116 @@ open class EndpointCommands(protected val endpoint: SyntheticMarmotEndpoint) {
                     put("relays", buildJsonObject { status.relays.forEach { r -> put(r.url, r.lastResult) } })
                 }
             }
-            "storage_matches" -> endpoint.harness("private_storage_matches") { put("marker", field("marker")) }
+            "native_storage_matches" -> endpoint.harness("private_storage_matches") { put("marker", field("marker")) }
             "rotate" -> endpoint.harness("rotate") { put("peer", field("peer")) }
             "epoch" -> endpoint.harness("epoch") { put("peer", field("peer")) }
             else -> error("unsupported_command")
+        }
+    }
+}
+
+/** The sync-level commands of the continuous process test. */
+class SharingEndpointCommands(endpoint: SyntheticMarmotEndpoint) : EndpointCommands(endpoint) {
+    private val serial = Any()
+    private val automatic = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val runner = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "synthetic-sharing").apply { isDaemon = true } }
+        .also { it.scheduleWithFixedDelay({ if (automatic.get()) synchronized(serial) { endpoint.pass() } }, 1, 1, java.util.concurrent.TimeUnit.SECONDS) }
+
+    fun stop() {
+        automatic.set(false)
+        runner.shutdownNow()
+        runner.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    private fun hash(record: SharingRecord) = SharingRecords.digest(listOf(record))
+
+    private fun hashes(records: List<SharingRecord>) = buildJsonArray {
+        records.sortedBy { it.id }.forEach { r -> add(buildJsonObject { put("id", r.id); put("category", r.category.name); put("hash", hash(r)) }) }
+    }
+
+    private fun categories(request: kotlinx.serialization.json.JsonObject) =
+        request["categories"]!!.jsonArray.map { com.cruxcoach.domain.sharing.SharingCategory.valueOf(it.jsonPrimitive.content) }.toSet()
+
+    override fun run(request: kotlinx.serialization.json.JsonObject): JsonElement {
+        endpoint.note("command wait ${request["op"]}")
+        return synchronized(serial) { endpoint.note("command run ${request["op"]}"); runSerial(request) }
+    }
+
+    private fun runSerial(request: kotlinx.serialization.json.JsonObject): JsonElement {
+        fun field(name: String) = request[name]!!.jsonPrimitive.content
+        val service = endpoint.service
+        val board = com.cruxcoach.data.repository.PersonalBoardRepositoryImpl(endpoint.database)
+        return kotlinx.coroutines.runBlocking {
+            when (field("op")) {
+                "automatic" -> { automatic.set(field("enabled").toBooleanStrict()); JsonPrimitive(true) }
+                "pass" -> JsonPrimitive(endpoint.pass())
+                "source_profile" -> {
+                    val users = com.cruxcoach.data.repository.UserRepositoryImpl(endpoint.database)
+                    val old = users.getActiveProfile()
+                    val profile = (old ?: com.cruxcoach.domain.model.UserProfile(name = "Synthetic", age = 30, weightKg = 70.0,
+                        heightCm = 180.0, maxBoulderGrade = "6C")).copy(name = field("name"))
+                    if (old == null) users.insertProfile(profile) else users.updateProfile(profile)
+                    JsonPrimitive(true)
+                }
+                "source_note" -> { board.saveClimbNote(field("id"), field("text")); JsonPrimitive(true) }
+                "source_training" -> {
+                    val id = field("id")
+                    board.deleteBid(id)
+                    if (request["delete"]?.jsonPrimitive?.content != "true") {
+                        board.insertBid(id, "synthetic-climb-$id", 40, false, field("attempts").toLong(), "excluded private comment",
+                            field("date"), false, "excluded gym", "excluded wall", "excluded product", "Synthetic route", 5.0,
+                            "kilter", null, "excluded marker:$id")
+                    }
+                    JsonPrimitive(true)
+                }
+                "preset" -> {
+                    service.setPreset(SharingPreset(com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), categories(request),
+                        request["days"]?.jsonPrimitive?.content?.toInt() ?: TrainingPeriod.DEFAULT))
+                    JsonPrimitive(true)
+                }
+                "request" -> { service.request(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), null); JsonPrimitive(true) }
+                "accept" -> {
+                    service.accept(field("peer"), com.cruxcoach.domain.sharing.SharingCircle.valueOf(field("circle")), field("outgoing").toBooleanStrict())
+                    JsonPrimitive(true)
+                }
+                "decline" -> { service.decline(field("peer")); JsonPrimitive(true) }
+                "outgoing" -> { service.setOutgoing(field("peer"), field("enabled").toBooleanStrict()); JsonPrimitive(true) }
+                "person_rule" -> {
+                    val effect = request["effect"]?.jsonPrimitive?.content?.let { com.cruxcoach.domain.sharing.AccessEffect.valueOf(it) }
+                    service.setPersonRule(field("peer"), com.cruxcoach.domain.sharing.SharingCategory.valueOf(field("category")), effect)
+                    JsonPrimitive(true)
+                }
+                "end_friendship" -> { service.end(field("peer")); JsonPrimitive(true) }
+                "remove" -> { service.remove(field("peer")); JsonPrimitive(true) }
+                "friends" -> {
+                    val overview = service.overview()
+                    buildJsonObject {
+                        put("friends", buildJsonArray {
+                            overview.friends.forEach { f ->
+                                add(buildJsonObject {
+                                    put("peer", f.peer); put("state", f.visible.name); put("confirmed", f.confirmedAt > 0)
+                                    put("records", hashes(service.received(f.peer)))
+                                })
+                            }
+                        })
+                        put("invitations", buildJsonArray { overview.invitations.forEach { add(JsonPrimitive(it.peer)) } })
+                    }
+                }
+                "source_hashes" -> hashes(service.preview(field("peer")))
+                "storage_matches" -> {
+                    val marker = field("marker")
+                    require(marker.length in 8..256)
+                    buildJsonObject {
+                        put("app", endpoint.store.received().count { marker in it.record.fields.values.joinToString("\u0000") })
+                        put("native", endpoint.harness("private_storage_matches") { put("marker", marker) }.jsonPrimitive.content.toInt())
+                    }
+                }
+                "canonical_counts" -> buildJsonObject {
+                    put("notes", board.getClimbNotesForBackup().size)
+                    put("profiles", if (com.cruxcoach.data.repository.UserRepositoryImpl(endpoint.database).getActiveProfile() == null) 0 else 1)
+                }
+                else -> super.run(request)
+            }
         }
     }
 }

@@ -1,0 +1,103 @@
+-- Personal-data sharing v2. v1 friendships, signed ledgers, device authority,
+-- snapshots and policy transport are not carried over: nothing below becomes
+-- a v2 permission, and every v2 table starts empty (no permissive defaults).
+-- Children first; they cascade to sharing_relationship anyway.
+DROP TABLE IF EXISTS sharing_ledger_entry;
+DROP TABLE IF EXISTS sharing_device;
+DROP TABLE IF EXISTS sharing_peer_rule;
+DROP TABLE IF EXISTS sharing_object_rule;
+DROP TABLE IF EXISTS sharing_tombstone;
+DROP TABLE IF EXISTS sharing_sealed_item;
+DROP TABLE IF EXISTS sharing_wrapped_key;
+DROP TABLE IF EXISTS sharing_device_manifest_entry;
+DROP TABLE IF EXISTS sharing_authority_attestation;
+DROP TABLE IF EXISTS sharing_recovery_attempt;
+DROP TABLE IF EXISTS sharing_recovery_state;
+DROP TABLE IF EXISTS sharing_device_identity;
+DROP TABLE IF EXISTS sharing_owner_policy_entry;
+DROP TABLE IF EXISTS sharing_circle_baseline;
+DROP TABLE IF EXISTS sharing_relationship;
+DROP TABLE IF EXISTS sharing_snapshot;
+DROP TABLE IF EXISTS sharing_snapshot_peer;
+DROP TABLE IF EXISTS sharing_snapshot_clock;
+DROP TABLE IF EXISTS sharing_policy_inbox;
+DROP TABLE IF EXISTS sharing_policy_outbox;
+DROP TABLE IF EXISTS sharing_continuous_grant;
+DROP TABLE IF EXISTS sharing_continuous_request;
+
+CREATE TABLE share_preset (
+    circle TEXT NOT NULL PRIMARY KEY CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+    categories TEXT NOT NULL,
+    training_days INTEGER NOT NULL CHECK (training_days >= -1)
+);
+
+CREATE TABLE share_person (
+    peer TEXT NOT NULL PRIMARY KEY CHECK (length(peer) = 64),
+    circle TEXT NOT NULL CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+    outgoing INTEGER NOT NULL CHECK (outgoing IN (0, 1)),
+    training_days INTEGER CHECK (training_days IS NULL OR training_days >= -1),
+    label TEXT,
+    state TEXT NOT NULL CHECK (state IN ('REQUESTED', 'CONNECTED', 'ENDING', 'ENDED')),
+    cancel_pending INTEGER NOT NULL DEFAULT 0 CHECK (cancel_pending IN (0, 1)),
+    created_at INTEGER NOT NULL,
+    ended_at INTEGER
+);
+
+CREATE TABLE share_person_rule (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    PRIMARY KEY (peer, category)
+);
+
+CREATE TABLE share_object_rule (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    PRIMARY KEY (peer, record_id)
+);
+
+CREATE TABLE share_outgoing (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    generation INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    generation_started_at INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    sent TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    record_count INTEGER NOT NULL,
+    manifest_at INTEGER NOT NULL,
+    full_required INTEGER NOT NULL DEFAULT 0,
+    acked_generation INTEGER NOT NULL DEFAULT 0,
+    acked_sequence INTEGER NOT NULL DEFAULT -1,
+    acked_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE share_incoming (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    generation INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    expected_digest TEXT NOT NULL,
+    expected_count INTEGER NOT NULL,
+    staging TEXT NOT NULL,
+    pending TEXT NOT NULL,
+    resync_generation INTEGER NOT NULL DEFAULT 0,
+    resync_at INTEGER NOT NULL DEFAULT 0,
+    ack_due INTEGER NOT NULL DEFAULT 0,
+    received_at INTEGER NOT NULL
+);
+
+CREATE TABLE share_record (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    revision INTEGER NOT NULL,
+    climb_uuid TEXT,
+    occurred_on TEXT,
+    fields TEXT NOT NULL,
+    PRIMARY KEY (peer, record_id)
+);
+
+CREATE INDEX share_record_climb ON share_record(climb_uuid);

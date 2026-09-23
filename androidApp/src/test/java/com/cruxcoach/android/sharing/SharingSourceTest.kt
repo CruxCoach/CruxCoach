@@ -79,9 +79,8 @@ class SharingSourceTest {
         personal.saveClimbNote("climb", " ")
         assertTrue(source.read(scope).isEmpty())
     }
-    @Test fun unknown_health_and_video_adapters_fail_closed() {
-        assertFails { source.read(scope.copy(categories = setOf(HEALTH_INFORMATION))) }
-        assertFails { source.read(scope.copy(categories = setOf(VIDEOS))) }
+    @Test fun an_invalid_cutoff_fails_closed_and_an_empty_scope_shares_nothing() {
+        assertFails { source.read(scope.copy(trainingSince = "2026-13-01")) }
         assertTrue(source.read(scope.copy(categories = emptySet())).isEmpty(), "friendship may share no own data")
     }
     @Test fun source_limit_refuses_whole_projection_instead_of_truncating_initial_state() {

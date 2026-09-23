@@ -1,24 +1,22 @@
 package com.cruxcoach.domain.sharing
 
 /**
- * FEAT-062 core vocabulary for personal-information sharing.
+ * Vocabulary for personal-data sharing (v2).
  *
- * The types here are pure Kotlin with no platform, storage or transport
- * dependency, so every invariant in the product contract can be tested
- * without a device, a database or a relay.
+ * Pure Kotlin with no platform, storage or transport dependency, so every rule
+ * of the policy can be tested without a device, a database or a relay. The
+ * policy is local and unsigned: it decides what this installation sends; the
+ * transport (MLS/Marmot) decides who can read it.
  */
 
 /**
- * The three visibility circles, widest first.
- *
- * Circles are *exclusive*: a peer sits in exactly one. They are ordered
- * `ALL_OTHER_USERS <= ACQUAINTANCES <= FRIENDS`, and baselines inherit
- * monotonically along that order — see [CircleBaselines.effectiveFor].
+ * The two presets, widest first. A person is filed under exactly one. Friends
+ * see at least what acquaintances see: a category granted to the wider preset
+ * is inherited by the narrower one ([CircleBaselines.effectiveFor]).
  */
 enum class SharingCircle(val rank: Int) {
-    ALL_OTHER_USERS(0),
-    ACQUAINTANCES(1),
-    FRIENDS(2),
+    ACQUAINTANCES(0),
+    FRIENDS(1),
     ;
 
     companion object {
@@ -27,12 +25,10 @@ enum class SharingCircle(val rank: Int) {
     }
 }
 
-/** The five shareable data categories. This set is closed in v1. */
+/** The three shareable categories. Health data and videos are out of v1. */
 enum class SharingCategory {
     PROFILE_AND_GOALS,
     TRAINING_HISTORY,
-    VIDEOS,
-    HEALTH_INFORMATION,
     PRIVATE_NOTES,
 }
 
@@ -40,122 +36,49 @@ enum class SharingCategory {
 enum class AccessEffect { ALLOW, DENY }
 
 /**
- * A recipient, identified by their Nostr public key as **lower-case hex**.
- *
- * Hex, not bech32: this is the value every signature check compares against, so
- * it is the only form that can be an identity here. The UI still accepts a
- * typed `npub1…` — `SharingPeerIdParser` converts it — but nothing downstream
- * ever sees the bech32 form, and an npub and its own hex are therefore one
- * relationship rather than two.
- *
- * Never carries an nsec.
+ * A person, identified by their Nostr public key as **lower-case hex** — the
+ * value every signature check compares against. The UI accepts a typed
+ * `npub1…` and converts it with `SharingPeerIdParser`. Never carries an nsec.
  */
 data class PeerId(val value: String) {
     init { require(value.isNotBlank()) { "PeerId must not be blank" } }
     override fun toString(): String = "PeerId($value)"
 }
 
-/** A single shareable item (one video, one note) inside a category. */
+/** A single record (`ascent:<uuid>`, `bid:<uuid>`, `note:<climb>`). */
 data class ObjectId(val value: String) {
     init { require(value.isNotBlank()) { "ObjectId must not be blank" } }
 }
 
-/**
- * Why the resolver decided the way it did. The UI renders this verbatim so a
- * user can always see *which* rule produced the outcome they are looking at.
- */
+/** Why the resolver decided the way it did; the UI renders it. */
 enum class DecisionSource {
-    /** An explicit deny on this one object. Beats everything below. */
     OBJECT_DENY,
-
-    /** An explicit allow on this one object. */
     OBJECT_ALLOW,
-
-    /** An explicit per-person deny for the whole category. */
     PERSON_DENY,
-
-    /** An explicit per-person allow for the whole category. */
     PERSON_ALLOW,
-
-    /** The baseline of the circle the peer is actually in. */
+    /** The preset the person is filed under grants the category. */
     CIRCLE_BASELINE,
-
-    /** A baseline of a *wider* circle, inherited monotonically. */
+    /** A wider preset grants it and the person's preset inherits it. */
     INHERITED_CIRCLE_BASELINE,
-
-    /** Nothing granted this category at all. */
     NO_BASELINE_DEFAULT_DENY,
-
-    /** The peer is not in the policy — fail closed rather than guess. */
+    /** The person is not in the policy — fail closed rather than guess. */
     PEER_UNKNOWN_FAIL_CLOSED,
-
-    // --- relationship gates, applied on top of an allowing policy -----------
-
-    /** The projection knows no such relationship. */
-    RELATIONSHIP_UNKNOWN_FAIL_CLOSED,
-
-    /** The ledger could not be reduced safely. */
-    LEDGER_FAIL_CLOSED,
-
-    /** Offered, but the recipient has not accepted yet. */
-    RELATIONSHIP_PENDING_CONSENT,
-
-    /** The recipient refused. */
-    RELATIONSHIP_DECLINED,
-
-    /** The owner withdrew the relationship. */
-    RELATIONSHIP_REVOKED,
-
-    /** Local cleanup is running or done. */
-    RELATIONSHIP_PURGE_PENDING,
-
-    /** A grant was widened but its key delivery is not confirmed. */
-    DELIVERY_UNCLEAR,
-
-    /** This device was never authorised, or was revoked. */
-    DEVICE_NOT_AUTHORISED,
-
-    /** Local data belongs to an older resource epoch than the grant. */
-    RESOURCE_EPOCH_STALE,
-
-    /** Category is offered but not yet covered by a fresh consent. */
-    CONSENT_EXPANSION_PENDING,
-
-    /** Restored install: closed until revocations have been re-synced. */
-    AWAITING_REVOKE_SYNC,
-
-    RELATIONSHIP_IDENTITY_MISMATCH,
-    RELATIONSHIP_EXPIRED,
-    CLOCK_UNAVAILABLE,
 }
 
-/**
- * Per-circle baseline grants.
- *
- * A category granted to a wider circle is implicitly granted to every narrower
- * one. Storing only the explicit per-circle sets and deriving the rest in
- * [effectiveFor] keeps the monotonicity an invariant rather than a convention
- * somebody has to remember to maintain.
- */
+/** Per-preset category grants; inheritance is derived, never stored. */
 data class CircleBaselines(
     val byCircle: Map<SharingCircle, Set<SharingCategory>> = emptyMap(),
 ) {
-    /** Everything [circle] sees: its own grants plus every wider circle's. */
     fun effectiveFor(circle: SharingCircle): Set<SharingCategory> =
         SharingCircle.entries
             .filter { it.rank <= circle.rank }
             .flatMapTo(mutableSetOf()) { byCircle[it].orEmpty() }
 
-    /**
-     * The widest circle whose explicit baseline grants [category] to [circle],
-     * or `null` if no baseline does. The widest one is the honest answer: it is
-     * the rule a user would have to change to take the grant away.
-     */
+    /** The widest preset whose grant reaches [circle], or `null`. */
     fun grantingCircle(circle: SharingCircle, category: SharingCategory): SharingCircle? =
         SharingCircle.ordered
             .firstOrNull { it.rank <= circle.rank && category in byCircle[it].orEmpty() }
 
-    /** Baseline set for exactly this circle, ignoring inheritance. */
     fun explicitFor(circle: SharingCircle): Set<SharingCategory> = byCircle[circle].orEmpty()
 
     fun withCategory(circle: SharingCircle, category: SharingCategory, granted: Boolean): CircleBaselines {
@@ -165,23 +88,22 @@ data class CircleBaselines(
     }
 }
 
-/** Category and object ID together identify a permission exception. */
+/** Category and record together identify an object exception. */
 data class ObjectRuleKey(val objectId: ObjectId, val category: SharingCategory)
 
-/** What the owner decided about one specific peer. */
+/** What the owner decided about one person. */
 data class PeerPolicy(
     val circle: SharingCircle,
     val categoryRules: Map<SharingCategory, AccessEffect> = emptyMap(),
     val objectRules: Map<ObjectRuleKey, AccessEffect> = emptyMap(),
 )
 
-/** The complete owner-side sharing policy. */
+/** The owner's complete local policy. */
 data class SharingPolicy(
     val baselines: CircleBaselines = CircleBaselines(),
     val peers: Map<PeerId, PeerPolicy> = emptyMap(),
 )
 
-/** A resolved access answer together with the rule that produced it. */
 data class AccessDecision(
     val effect: AccessEffect,
     val source: DecisionSource,

@@ -1,21 +1,18 @@
 package com.cruxcoach.domain.sharing
 
 /**
- * Resolves the owner's *policy* for one (peer, category, object) triple.
+ * Resolves the owner's local policy for one (person, category, record) triple.
  *
  * Precedence, highest first:
  *
  *  1. an object exception — deny before allow;
  *  2. an explicit per-person rule — deny before allow;
- *  3. the circle baseline, inherited monotonically from wider circles;
+ *  3. the preset baseline, inherited monotonically from the wider preset;
  *  4. otherwise deny.
  *
- * This layer answers "what did the owner decide". It deliberately does **not**
- * answer "may this peer read the data right now" — recipient consent, device
- * authorisation, resource epoch and revocation live in
- * [EffectiveAccessResolver], which composes this decision with the relationship
- * state. Keeping them apart is what lets the UI say *both* "you shared this"
- * and "it is not released yet, because consent is missing".
+ * It answers "what did the owner decide". Whether a friendship is active is the
+ * transport's answer; whether a record is inside the chosen training period is
+ * the projection's.
  */
 object SharingPolicyResolver {
 

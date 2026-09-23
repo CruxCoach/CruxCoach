@@ -646,10 +646,15 @@ impl Store {
         Ok(())
     }
 
+    /// Own events no relay has accepted yet. One accepting relay makes an
+    /// event reachable; the replicator keeps copying it to the others, but an
+    /// unreachable relay must not make every pass wait for it.
     pub fn outbound_pending(&self) -> Result<i64> {
         self.sql(|c| {
             c.query_row(
-                "SELECT count(DISTINCT event_id) FROM cc2_delivery WHERE status!='accepted'",
+                "SELECT count(*) FROM cc2_event e WHERE e.own=1
+                 AND EXISTS (SELECT 1 FROM cc2_delivery d WHERE d.event_id=e.id)
+                 AND NOT EXISTS (SELECT 1 FROM cc2_delivery d WHERE d.event_id=e.id AND d.status='accepted')",
                 [],
                 |r| r.get(0),
             )

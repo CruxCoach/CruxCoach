@@ -4,20 +4,18 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * FEAT-062 §1–2: exclusive circles, monotone baseline inheritance and the
- * precedence chain object > person > circle baseline (deny before allow).
+ * Two presets with monotone inheritance and the FEAT-062 precedence chain
+ * object > person > preset baseline (deny before allow).
  */
 class SharingPolicyResolverTest {
 
     private val alice = PeerId("npub1alice")
 
     private fun baselines(
-        allOthers: Set<SharingCategory> = emptySet(),
         acquaintances: Set<SharingCategory> = emptySet(),
         friends: Set<SharingCategory> = emptySet(),
     ) = CircleBaselines(
         mapOf(
-            SharingCircle.ALL_OTHER_USERS to allOthers,
             SharingCircle.ACQUAINTANCES to acquaintances,
             SharingCircle.FRIENDS to friends,
         )
@@ -26,39 +24,29 @@ class SharingPolicyResolverTest {
     @Test
     fun circles_are_ordered_from_widest_to_narrowest() {
         assertEquals(
-            listOf(
-                SharingCircle.ALL_OTHER_USERS,
-                SharingCircle.ACQUAINTANCES,
-                SharingCircle.FRIENDS,
-            ),
+            listOf(SharingCircle.ACQUAINTANCES, SharingCircle.FRIENDS),
             SharingCircle.entries.sortedBy { it.rank },
         )
     }
 
     @Test
-    fun there_are_exactly_five_categories() {
-        assertEquals(5, SharingCategory.entries.size)
+    fun there_are_exactly_three_categories() {
+        assertEquals(
+            listOf(SharingCategory.PROFILE_AND_GOALS, SharingCategory.TRAINING_HISTORY, SharingCategory.PRIVATE_NOTES),
+            SharingCategory.entries,
+        )
     }
 
     @Test
     fun a_narrower_circle_inherits_every_wider_baseline_category() {
         val b = baselines(
-            allOthers = setOf(SharingCategory.PROFILE_AND_GOALS),
-            acquaintances = setOf(SharingCategory.TRAINING_HISTORY),
-            friends = setOf(SharingCategory.VIDEOS),
+            acquaintances = setOf(SharingCategory.PROFILE_AND_GOALS),
+            friends = setOf(SharingCategory.TRAINING_HISTORY),
         )
 
-        assertEquals(setOf(SharingCategory.PROFILE_AND_GOALS), b.effectiveFor(SharingCircle.ALL_OTHER_USERS))
+        assertEquals(setOf(SharingCategory.PROFILE_AND_GOALS), b.effectiveFor(SharingCircle.ACQUAINTANCES))
         assertEquals(
             setOf(SharingCategory.PROFILE_AND_GOALS, SharingCategory.TRAINING_HISTORY),
-            b.effectiveFor(SharingCircle.ACQUAINTANCES),
-        )
-        assertEquals(
-            setOf(
-                SharingCategory.PROFILE_AND_GOALS,
-                SharingCategory.TRAINING_HISTORY,
-                SharingCategory.VIDEOS,
-            ),
             b.effectiveFor(SharingCircle.FRIENDS),
         )
     }
@@ -66,7 +54,7 @@ class SharingPolicyResolverTest {
     @Test
     fun an_inherited_baseline_reports_the_circle_it_was_inherited_from() {
         val policy = SharingPolicy(
-            baselines = baselines(allOthers = setOf(SharingCategory.PROFILE_AND_GOALS)),
+            baselines = baselines(acquaintances = setOf(SharingCategory.PROFILE_AND_GOALS)),
             peers = mapOf(alice to PeerPolicy(circle = SharingCircle.FRIENDS)),
         )
 
@@ -78,7 +66,7 @@ class SharingPolicyResolverTest {
 
         assertEquals(AccessEffect.ALLOW, decision.effect)
         assertEquals(DecisionSource.INHERITED_CIRCLE_BASELINE, decision.source)
-        assertEquals(SharingCircle.ALL_OTHER_USERS, decision.inheritedFrom)
+        assertEquals(SharingCircle.ACQUAINTANCES, decision.inheritedFrom)
     }
 
     @Test
@@ -88,7 +76,7 @@ class SharingPolicyResolverTest {
             peers = mapOf(alice to PeerPolicy(circle = SharingCircle.FRIENDS)),
         )
 
-        val decision = SharingPolicyResolver.resolve(policy, alice, SharingCategory.HEALTH_INFORMATION)
+        val decision = SharingPolicyResolver.resolve(policy, alice, SharingCategory.PRIVATE_NOTES)
 
         assertEquals(AccessEffect.DENY, decision.effect)
         assertEquals(DecisionSource.NO_BASELINE_DEFAULT_DENY, decision.source)
@@ -97,16 +85,16 @@ class SharingPolicyResolverTest {
     @Test
     fun a_person_deny_beats_the_circle_baseline() {
         val policy = SharingPolicy(
-            baselines = baselines(friends = setOf(SharingCategory.VIDEOS)),
+            baselines = baselines(friends = setOf(SharingCategory.TRAINING_HISTORY)),
             peers = mapOf(
                 alice to PeerPolicy(
                     circle = SharingCircle.FRIENDS,
-                    categoryRules = mapOf(SharingCategory.VIDEOS to AccessEffect.DENY),
+                    categoryRules = mapOf(SharingCategory.TRAINING_HISTORY to AccessEffect.DENY),
                 )
             ),
         )
 
-        val decision = SharingPolicyResolver.resolve(policy, alice, SharingCategory.VIDEOS)
+        val decision = SharingPolicyResolver.resolve(policy, alice, SharingCategory.TRAINING_HISTORY)
 
         assertEquals(AccessEffect.DENY, decision.effect)
         assertEquals(DecisionSource.PERSON_DENY, decision.source)
@@ -132,20 +120,20 @@ class SharingPolicyResolverTest {
 
     @Test
     fun an_object_deny_beats_a_person_allow() {
-        val video = ObjectId("video-1")
+        val ascent = ObjectId("ascent:1")
         val policy = SharingPolicy(
-            baselines = baselines(friends = setOf(SharingCategory.VIDEOS)),
+            baselines = baselines(friends = setOf(SharingCategory.TRAINING_HISTORY)),
             peers = mapOf(
                 alice to PeerPolicy(
                     circle = SharingCircle.FRIENDS,
-                    categoryRules = mapOf(SharingCategory.VIDEOS to AccessEffect.ALLOW),
-                    objectRules = mapOf(ObjectRuleKey(video, SharingCategory.VIDEOS) to AccessEffect.DENY),
+                    categoryRules = mapOf(SharingCategory.TRAINING_HISTORY to AccessEffect.ALLOW),
+                    objectRules = mapOf(ObjectRuleKey(ascent, SharingCategory.TRAINING_HISTORY) to AccessEffect.DENY),
                 )
             ),
         )
 
         val decision = SharingPolicyResolver.resolve(
-            policy, alice, SharingCategory.VIDEOS, objectId = video,
+            policy, alice, SharingCategory.TRAINING_HISTORY, objectId = ascent,
         )
 
         assertEquals(AccessEffect.DENY, decision.effect)
@@ -201,11 +189,11 @@ class SharingPolicyResolverTest {
     @Test
     fun an_unknown_peer_is_denied_fail_closed() {
         val policy = SharingPolicy(
-            baselines = baselines(allOthers = SharingCategory.entries.toSet()),
+            baselines = baselines(acquaintances = SharingCategory.entries.toSet()),
             peers = emptyMap(),
         )
 
-        val decision = SharingPolicyResolver.resolve(policy, PeerId("npub1stranger"), SharingCategory.VIDEOS)
+        val decision = SharingPolicyResolver.resolve(policy, PeerId("npub1stranger"), SharingCategory.PROFILE_AND_GOALS)
 
         assertEquals(AccessEffect.DENY, decision.effect)
         assertEquals(DecisionSource.PEER_UNKNOWN_FAIL_CLOSED, decision.source)

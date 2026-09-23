@@ -65,7 +65,20 @@ open class SyntheticMarmotEndpoint(
     ).jsonObject
     private val identityHandle = identity["handle"]!!.jsonPrimitive.long
     val account: String = identity["account"]!!.jsonPrimitive.content
-    val host = MarmotHost(open = {
+    /** Optional op timings for diagnosing slow process tests (test-only, no payloads). */
+    private val traceFile = System.getenv("CC_TRACE_DIR")?.let { java.io.File(it, "trace-${account.take(8)}.log") }
+    private val timing = object : MarmotTrace {
+        override fun <T> section(name: String, block: () -> T): T {
+            val start = System.currentTimeMillis()
+            try { return block() } finally { note("$name ${System.currentTimeMillis() - start}ms") }
+        }
+    }
+
+    fun note(line: String) {
+        traceFile?.appendText("${System.currentTimeMillis()} ${Thread.currentThread().name} $line\n")
+    }
+
+    val host = MarmotHost(trace = timing, open = {
         val config = buildJsonObject {
             put("account", account)
             put("local_test", loopbackHarness)
@@ -78,6 +91,21 @@ open class SyntheticMarmotEndpoint(
         if (driver.executeQuery(null, "SELECT count(*) FROM sqlite_master", { c -> c.next(); app.cash.sqldelight.db.QueryResult.Value(c.getLong(0)) }, 0).value == 0L) {
             SecureDatabase.Schema.create(driver)
         }
+    }
+
+    val store = SharingStore(database)
+    val source = SharingSource(database)
+    val sync = SharingSync(store, source)
+    val access = object : SharingHost {
+        override val host get() = this@SyntheticMarmotEndpoint.host
+        override suspend fun <T> interactive(block: suspend () -> T): T = block()
+    }
+    val service = SharingService(access, store, sync, source)
+
+    /** One production pass: withdrawals, online, native sync, app step. */
+    fun pass(): Boolean = runBlocking {
+        note("pass start")
+        SharingPass(host, sync).run(stayOnline = true).also { note("pass end $it") }
     }
 
     fun <T> blocking(block: suspend MarmotHost.() -> T): T = runBlocking { host.block() }

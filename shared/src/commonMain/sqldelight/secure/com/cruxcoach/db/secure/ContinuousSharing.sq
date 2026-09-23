@@ -1,4 +1,5 @@
--- Continuous subscriptions are new consent; existing snapshot rows are untouched.
+-- Source revisions of the owner's shareable rows, maintained by triggers in the
+-- same transaction as every insert, update and delete.
 CREATE TABLE sharing_continuous_source (
     singleton INTEGER NOT NULL PRIMARY KEY CHECK (singleton = 1),
     generation TEXT NOT NULL,
@@ -6,21 +7,6 @@ CREATE TABLE sharing_continuous_source (
 );
 INSERT INTO sharing_continuous_source VALUES (1, lower(hex(randomblob(16))), 0);
 
-CREATE TABLE sharing_continuous_grant (
-    account TEXT NOT NULL,
-    grant_id TEXT NOT NULL,
-    peer TEXT NOT NULL,
-    owner TEXT NOT NULL,
-    expires_at INTEGER NOT NULL,
-    body TEXT NOT NULL,
-    PRIMARY KEY(account, grant_id)
-);
-
-
-CREATE TABLE sharing_continuous_request (
-    account TEXT NOT NULL, peer TEXT NOT NULL, body TEXT NOT NULL,
-    PRIMARY KEY(account, peer)
-);
 
 CREATE TABLE sharing_continuous_resource (
     resource_id TEXT NOT NULL PRIMARY KEY,
@@ -138,23 +124,6 @@ END;
 sourceVersion:
 SELECT * FROM sharing_continuous_source WHERE singleton = 1;
 
-grants:
-SELECT * FROM sharing_continuous_grant WHERE account = ? ORDER BY grant_id;
-
-grantById:
-SELECT * FROM sharing_continuous_grant WHERE account = ? AND grant_id = ?;
-
-putGrant:
-INSERT OR REPLACE INTO sharing_continuous_grant(account, grant_id, peer, owner, expires_at, body)
-VALUES (?, ?, ?, ?, ?, ?);
-
--- Preserve IDs as payload-free closed-generation evidence on recovery.
-withdrawForRecovery:
-UPDATE sharing_continuous_grant SET body = '', expires_at = 9223372036854775807 WHERE account = ?;
-
-deleteExpired:
-DELETE FROM sharing_continuous_grant WHERE account = ? AND expires_at <= ?;
-
 sourceAscents:
 SELECT a.uuid, a.climb_uuid, a.climb_name, a.board_brand, a.angle, a.bid_count, a.difficulty, a.climbed_at, COALESCE(r.revision, 0) AS source_revision
 FROM ascents AS a LEFT JOIN sharing_continuous_resource AS r ON r.resource_id = 'ascent:' || a.uuid
@@ -185,15 +154,3 @@ DELETE FROM sharing_continuous_resource WHERE resource_id IN (
       AND NOT EXISTS (SELECT 1 FROM climb_notes WHERE r.resource_id LIKE 'note:%' AND climb_uuid = substr(r.resource_id, 6))
     LIMIT 256
 );
-
-requests:
-SELECT * FROM sharing_continuous_request WHERE account = ?;
-
-putRequest:
-INSERT OR REPLACE INTO sharing_continuous_request VALUES (?, ?, ?);
-
-deleteRequest:
-DELETE FROM sharing_continuous_request WHERE account = ? AND peer = ?;
-
-clearRequests:
-DELETE FROM sharing_continuous_request WHERE account = ?;

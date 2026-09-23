@@ -17,6 +17,7 @@ use nostr_relay_pool::policy::{AdmitPolicy, AdmitStatus, PolicyError};
 use nostr_sdk::{Client, ClientOptions, RelayStatus, SyncDirection, SyncOptions};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
@@ -335,28 +336,45 @@ async fn catch_up(
             now_s().saturating_sub(CATCH_UP_WINDOW_S + GIFT_WRAP_SKEW_S),
         ));
     }
-    for filter in filters {
-        let urls: Vec<RelayUrl> = relays
-            .iter()
-            .filter_map(|r| RelayUrl::parse(r).ok())
-            .collect();
-        let options = SyncOptions::new()
-            .direction(SyncDirection::Down)
-            .initial_timeout(Duration::from_secs(8));
-        let failed: Vec<RelayUrl> = match tokio::time::timeout(
-            Duration::from_secs(40),
-            client.sync_with(urls.clone(), filter.clone(), &options),
-        )
+    // Only connected relays can answer; a relay that is down would hold every
+    // pass for its full timeout. Relays known to refuse NIP-77 go straight to
+    // the REQ window instead of being probed again.
+    let refusing: BTreeSet<String> = store
+        .relay_rows()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|row| !row.2)
+        .map(|row| row.0)
+        .collect();
+    let connected: Vec<RelayUrl> = connected_relays(client, &relays)
         .await
-        {
-            Ok(Ok(output)) => {
-                for url in &output.success {
-                    let _ = store.set_relay_nip77(url.as_str_without_trailing_slash(), true);
+        .iter()
+        .filter_map(|r| RelayUrl::parse(r).ok())
+        .collect();
+    let (known, probe): (Vec<RelayUrl>, Vec<RelayUrl>) = connected
+        .into_iter()
+        .partition(|url| refusing.contains(url.as_str_without_trailing_slash()));
+    for filter in filters {
+        let mut failed = known.clone();
+        if !probe.is_empty() {
+            let options = SyncOptions::new()
+                .direction(SyncDirection::Down)
+                .initial_timeout(Duration::from_secs(8));
+            match tokio::time::timeout(
+                Duration::from_secs(40),
+                client.sync_with(probe.clone(), filter.clone(), &options),
+            )
+            .await
+            {
+                Ok(Ok(output)) => {
+                    for url in &output.success {
+                        let _ = store.set_relay_nip77(url.as_str_without_trailing_slash(), true);
+                    }
+                    failed.extend(output.failed.keys().cloned());
                 }
-                output.failed.keys().cloned().collect()
+                _ => failed.extend(probe.iter().cloned()),
             }
-            _ => urls,
-        };
+        }
         // Relays without NIP-77 get a bounded REQ window instead.
         for url in failed {
             let _ = store.set_relay_nip77(url.as_str_without_trailing_slash(), false);

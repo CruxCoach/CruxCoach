@@ -39,6 +39,9 @@ import javax.inject.Singleton
  * semantics; the transport itself belongs to the native host. */
 fun interface SharingStep {
     suspend fun run(host: MarmotHost)
+
+    /** Local obligations that must precede any network activity (withdrawals). */
+    suspend fun beforeOnline(host: MarmotHost) = Unit
 }
 
 /** One bounded pass, shared by the foreground loop and the Worker: go online,
@@ -51,6 +54,7 @@ internal class SharingPass(
 ) {
     suspend fun run(stayOnline: Boolean): Boolean {
         return try {
+            step.beforeOnline(host)
             host.setOnline(true)
             host.sync()
             step.run(host)

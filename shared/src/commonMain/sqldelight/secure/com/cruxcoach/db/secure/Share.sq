@@ -1,0 +1,189 @@
+-- Personal-data sharing v2: the owner's local, unsigned policy, the state of
+-- each direction of the sync protocol, and records received from friends.
+-- Protocol data (groups, relays, events, delivery) lives in the native host.
+-- Received records never enter canonical tables; they cascade with the person.
+
+CREATE TABLE share_preset (
+    circle TEXT NOT NULL PRIMARY KEY CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+    categories TEXT NOT NULL,
+    training_days INTEGER NOT NULL CHECK (training_days >= -1)
+);
+
+CREATE TABLE share_person (
+    peer TEXT NOT NULL PRIMARY KEY CHECK (length(peer) = 64),
+    circle TEXT NOT NULL CHECK (circle IN ('ACQUAINTANCES', 'FRIENDS')),
+    outgoing INTEGER NOT NULL CHECK (outgoing IN (0, 1)),
+    training_days INTEGER CHECK (training_days IS NULL OR training_days >= -1),
+    label TEXT,
+    state TEXT NOT NULL CHECK (state IN ('REQUESTED', 'CONNECTED', 'ENDING', 'ENDED')),
+    cancel_pending INTEGER NOT NULL DEFAULT 0 CHECK (cancel_pending IN (0, 1)),
+    created_at INTEGER NOT NULL,
+    ended_at INTEGER
+);
+
+CREATE TABLE share_person_rule (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    PRIMARY KEY (peer, category)
+);
+
+CREATE TABLE share_object_rule (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    effect TEXT NOT NULL CHECK (effect IN ('ALLOW', 'DENY')),
+    PRIMARY KEY (peer, record_id)
+);
+
+CREATE TABLE share_outgoing (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    generation INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    generation_started_at INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    sent TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    record_count INTEGER NOT NULL,
+    manifest_at INTEGER NOT NULL,
+    full_required INTEGER NOT NULL DEFAULT 0,
+    acked_generation INTEGER NOT NULL DEFAULT 0,
+    acked_sequence INTEGER NOT NULL DEFAULT -1,
+    acked_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE share_incoming (
+    peer TEXT NOT NULL PRIMARY KEY REFERENCES share_person(peer) ON DELETE CASCADE,
+    generation INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    scope TEXT NOT NULL,
+    expected_digest TEXT NOT NULL,
+    expected_count INTEGER NOT NULL,
+    staging TEXT NOT NULL,
+    pending TEXT NOT NULL,
+    resync_generation INTEGER NOT NULL DEFAULT 0,
+    resync_at INTEGER NOT NULL DEFAULT 0,
+    ack_due INTEGER NOT NULL DEFAULT 0,
+    received_at INTEGER NOT NULL
+);
+
+CREATE TABLE share_record (
+    peer TEXT NOT NULL REFERENCES share_person(peer) ON DELETE CASCADE,
+    record_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('PROFILE_AND_GOALS', 'TRAINING_HISTORY', 'PRIVATE_NOTES')),
+    revision INTEGER NOT NULL,
+    climb_uuid TEXT,
+    occurred_on TEXT,
+    fields TEXT NOT NULL,
+    PRIMARY KEY (peer, record_id)
+);
+
+CREATE INDEX share_record_climb ON share_record(climb_uuid);
+
+selectPresets:
+SELECT * FROM share_preset;
+
+upsertPreset:
+INSERT OR REPLACE INTO share_preset(circle, categories, training_days) VALUES (?, ?, ?);
+
+selectPersons:
+SELECT * FROM share_person ORDER BY created_at, peer;
+
+selectPerson:
+SELECT * FROM share_person WHERE peer = ?;
+
+insertPerson:
+INSERT INTO share_person(peer, circle, outgoing, training_days, label, state, cancel_pending, created_at, ended_at)
+VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL);
+
+updatePersonCircle:
+UPDATE share_person SET circle = ? WHERE peer = ?;
+
+updatePersonOutgoing:
+UPDATE share_person SET outgoing = ? WHERE peer = ?;
+
+updatePersonTrainingDays:
+UPDATE share_person SET training_days = ? WHERE peer = ?;
+
+updatePersonLabel:
+UPDATE share_person SET label = ? WHERE peer = ?;
+
+updatePersonState:
+UPDATE share_person SET state = ?, ended_at = ? WHERE peer = ?;
+
+setCancelPending:
+UPDATE share_person SET cancel_pending = ? WHERE peer = ?;
+
+deletePerson:
+DELETE FROM share_person WHERE peer = ?;
+
+selectAllPersonRules:
+SELECT * FROM share_person_rule;
+
+upsertPersonRule:
+INSERT OR REPLACE INTO share_person_rule(peer, category, effect) VALUES (?, ?, ?);
+
+deletePersonRule:
+DELETE FROM share_person_rule WHERE peer = ? AND category = ?;
+
+selectAllObjectRules:
+SELECT * FROM share_object_rule;
+
+upsertObjectRule:
+INSERT OR REPLACE INTO share_object_rule(peer, record_id, category, effect) VALUES (?, ?, ?, ?);
+
+deleteObjectRule:
+DELETE FROM share_object_rule WHERE peer = ? AND record_id = ?;
+
+selectOutgoing:
+SELECT * FROM share_outgoing WHERE peer = ?;
+
+upsertOutgoing:
+INSERT OR REPLACE INTO share_outgoing(peer, generation, sequence, generation_started_at, scope, sent, digest,
+    record_count, manifest_at, full_required, acked_generation, acked_sequence, acked_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+requireFull:
+UPDATE share_outgoing SET full_required = 1 WHERE peer = ?;
+
+recordAck:
+UPDATE share_outgoing SET acked_generation = ?, acked_sequence = ?, acked_at = ? WHERE peer = ?;
+
+deleteOutgoing:
+DELETE FROM share_outgoing WHERE peer = ?;
+
+selectIncoming:
+SELECT * FROM share_incoming WHERE peer = ?;
+
+selectAllIncoming:
+SELECT * FROM share_incoming;
+
+upsertIncoming:
+INSERT OR REPLACE INTO share_incoming(peer, generation, sequence, scope, expected_digest, expected_count,
+    staging, pending, resync_generation, resync_at, ack_due, received_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteIncoming:
+DELETE FROM share_incoming WHERE peer = ?;
+
+selectRecords:
+SELECT * FROM share_record WHERE peer = ? ORDER BY record_id;
+
+selectAllRecords:
+SELECT * FROM share_record ORDER BY peer, record_id;
+
+selectRecordsForClimb:
+SELECT * FROM share_record WHERE climb_uuid = ? ORDER BY peer, occurred_on DESC, record_id;
+
+countRecords:
+SELECT count(*) FROM share_record WHERE peer = ?;
+
+upsertRecord:
+INSERT OR REPLACE INTO share_record(peer, record_id, category, revision, climb_uuid, occurred_on, fields)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteRecord:
+DELETE FROM share_record WHERE peer = ? AND record_id = ?;
+
+deleteRecords:
+DELETE FROM share_record WHERE peer = ?;

@@ -130,12 +130,34 @@ object AppModule {
     ): com.cruxcoach.android.sharing.AndroidMarmotHost =
         com.cruxcoach.android.sharing.AndroidMarmotHost(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, eventSigner)
 
-    /** Transport only until the sync semantics land: received messages stay
-     * natively queued and nothing is sent. */
     @Provides
     @Singleton
-    fun provideSharingStep(): com.cruxcoach.android.sharing.SharingStep =
-        com.cruxcoach.android.sharing.SharingStep { }
+    fun provideSharingStore(database: SecureDatabase) = com.cruxcoach.android.sharing.SharingStore(database)
+
+    @Provides
+    @Singleton
+    fun provideSharingSource(database: SecureDatabase) = com.cruxcoach.android.sharing.SharingSource(database)
+
+    @Provides
+    @Singleton
+    fun provideSharingSync(
+        store: com.cruxcoach.android.sharing.SharingStore,
+        source: com.cruxcoach.android.sharing.SharingSource,
+    ) = com.cruxcoach.android.sharing.SharingSync(store, source)
+
+    @Provides
+    @Singleton
+    fun provideSharingStep(sync: com.cruxcoach.android.sharing.SharingSync): com.cruxcoach.android.sharing.SharingStep = sync
+
+    @Provides
+    @Singleton
+    fun provideSharingService(
+        host: com.cruxcoach.android.sharing.AndroidMarmotHost,
+        store: com.cruxcoach.android.sharing.SharingStore,
+        sync: com.cruxcoach.android.sharing.SharingSync,
+        source: com.cruxcoach.android.sharing.SharingSource,
+        automation: dagger.Lazy<com.cruxcoach.android.sharing.SharingAutomation>,
+    ) = com.cruxcoach.android.sharing.SharingService(host, store, sync, source, onChanged = { automation.get().nudge() })
 
     @Provides
     @Singleton

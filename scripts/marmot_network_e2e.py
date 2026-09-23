@@ -152,7 +152,7 @@ def roundtrip(label):
         # Ending purges pending plaintext and admits nothing further.
         b.call("end", peer=owner)
         assert b.call("received") == []
-        assert b.call("storage_matches", marker="synthetic after rotation") == 0
+        assert b.call("native_storage_matches", marker="synthetic after rotation") == 0
         a.call("send", peer=friend, text="synthetic after end", token="d4")
         for _ in range(3):
             a.call("sync"); b.call("sync")

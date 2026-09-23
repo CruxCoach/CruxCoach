@@ -27,7 +27,7 @@ class AndroidMarmotHost(
     private val databaseKey: (String) -> ByteArray,
     private val nostrSigner: NostrSigner,
     private val foregroundSigner: Nip01EventSigner,
-) {
+) : SharingHost {
     val account: String = nostrSigner.getPublicKeyHex()
     private val directory = File(context.noBackupFilesDir, "marmot-v2")
     private val database = File(directory, "$account.db")
@@ -38,7 +38,7 @@ class AndroidMarmotHost(
     fun exists(): Boolean = database.isFile
 
     /** Run a person-initiated action: an external signer may show its dialog. */
-    suspend fun <T> interactive(block: suspend () -> T): T {
+    override suspend fun <T> interactive(block: suspend () -> T): T {
         interactive.incrementAndGet()
         try {
             return block()
@@ -132,7 +132,7 @@ class AndroidMarmotHost(
         context.getSharedPreferences(LEGACY_RELAY_PREFERENCES, Context.MODE_PRIVATE).edit().remove("relays:$account").apply()
     }
 
-    val host = MarmotHost(open = ::open, trace = AndroidTrace)
+    override val host = MarmotHost(open = ::open, trace = AndroidTrace)
 
     private object AndroidTrace : MarmotTrace {
         override fun <T> section(name: String, block: () -> T): T {
