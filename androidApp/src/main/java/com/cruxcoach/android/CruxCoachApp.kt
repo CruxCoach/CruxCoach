@@ -72,7 +72,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
     lateinit var boardBleConnection: dagger.Lazy<BoardBleConnection>
 
     @Inject
-    lateinit var continuousSharing: dagger.Lazy<com.cruxcoach.android.sharing.ContinuousSharingAutomation>
+    lateinit var sharingAutomation: dagger.Lazy<com.cruxcoach.android.sharing.SharingAutomation>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -151,7 +151,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
 
         appScope.launch {
-            val sharing = continuousSharing.get()
+            val sharing = sharingAutomation.get()
             withContext(Dispatchers.Main) { sharing.start() }
         }
 

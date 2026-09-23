@@ -1,7 +1,6 @@
 package com.cruxcoach.android.sharing
 
 import com.cruxcoach.android.nostr.NostrSigner
-import com.cruxcoach.domain.sharing.Nip01SignedEvent
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.Nip01
 import javax.inject.Inject
@@ -14,8 +13,8 @@ import javax.inject.Singleton
  * to a newer bytecode level than the unit-test JVM runs, and BIP-340 is a native
  * secp256k1 library on top of that, so anything written here is untestable by
  * construction — which is exactly why there is as little of it as possible.
- * Every decision about *what* to sign and *what to believe* lives in
- * [Nip55LedgerCrypto], which is ordinary tested code.
+ * Every decision about *what* to sign and *what to believe* lives in the
+ * native host and [PrivateApplicationSigner], which are ordinary tested code.
  *
  * **NOT TESTED** on the JVM: these two bodies. They are exercised by hand on a
  * device, and the Android instrumentation that would cover them has no target
@@ -37,14 +36,14 @@ class QuartzNip01EventSigner @Inject constructor(
         kind: Int,
         tags: List<List<String>>,
         content: String,
-    ): Nip01SignedEvent? {
+    ): SignedNostrEvent? {
         val event: Event = nostrSigner.signer.sign(
             createdAt,
             kind,
             tags.map { it.toTypedArray() }.toTypedArray(),
             content,
         )
-        return Nip01SignedEvent(
+        return SignedNostrEvent(
             id = event.id,
             pubKey = event.pubKey,
             createdAt = event.createdAt,

@@ -1,311 +1,176 @@
 package com.cruxcoach.android.ui.sharing
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
-import com.cruxcoach.android.sharing.PeerSummary
-import com.cruxcoach.android.sharing.SharingDemoData
-import com.cruxcoach.domain.sharing.NativeSharingGateState
-import com.cruxcoach.android.sharing.PeerIdParseError
-import kotlinx.coroutines.launch
-import com.cruxcoach.domain.sharing.PeerId
-import com.cruxcoach.domain.sharing.SharingCategory
-import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.android.sharing.MarmotRelay
+import com.cruxcoach.android.sharing.MarmotStatus
+import com.cruxcoach.android.ui.common.InfoHeading
+import com.cruxcoach.android.ui.settings.SettingsSectionCard
+import com.cruxcoach.android.ui.settings.SettingsToggleRow
 
-/**
- * FEAT-062 entry screen: what each circle sees by default, who is involved, and
- * an honest statement about what withdrawing cannot undo.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SharingScreen(
     onNavigateBack: () -> Unit,
-    onOpenPeer: (PeerId) -> Unit,
     viewModel: SharingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val inviteError by viewModel.inviteError.collectAsStateWithLifecycle()
-    val writeError by viewModel.writeError.collectAsStateWithLifecycle()
-    val signing by viewModel.signing.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.sharing_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
+                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("sharing_back")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                     }
                 },
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            if (!state.nativeAvailable) SharingGateBanner(state.gate)
-            SharingSigningBanner(signing)
-            ContinuousSharingCard(viewModel)
-            writeError?.let { SharingWriteErrorMessage(it) }
-            SectionHeading(stringResource(R.string.sharing_people_title))
-            state.peers.forEach { peer ->
-                OutlinedButton(onClick = { onOpenPeer(peer.peer) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(SharingDemoData.displayName(peer.peer))
-                }
-            }
-            var settings by rememberSaveable { mutableStateOf(false) }
-            OutlinedButton(onClick = { settings = !settings }) { Text(stringResource(R.string.friendship_settings)) }
-            if (settings) {
-            Text(stringResource(R.string.friendship_legacy_explanation), style = MaterialTheme.typography.bodySmall)
-            MarmotTransportCard(viewModel, onOpenPeer = onOpenPeer)
-
-            SectionHeading(stringResource(R.string.sharing_circles_title))
-            Text(
-                stringResource(R.string.sharing_circles_hint),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            SharingCircle.ordered.forEach { circle ->
-                CircleBaselineCard(
-                    circleLabel = stringResource(SharingLabels.circle(circle)),
-                    explicit = state.baselines.explicitFor(circle),
-                    effective = state.baselines.effectiveFor(circle),
-                    // One permission change at a time: a second toggle while a
-                    // signer prompt is open would be dropped anyway, so it must
-                    // not look available.
-                    enabled = !signing,
-                    onToggle = { category, granted -> viewModel.setBaseline(circle, category, granted) },
-                )
-            }
-
-            SectionHeading(stringResource(R.string.sharing_people_title))
-            writeError?.let { SharingWriteErrorMessage(it) }
-            InviteRow(
-                error = inviteError,
-                enabled = !signing,
-                onInvite = { typed, circle ->
-                    // Offers whatever the chosen circle already grants. Offering
-                    // nothing would produce a relationship that can be accepted
-                    // and still release nothing; the person still has to accept
-                    // either way.
-                    viewModel.invite(typed, circle)
-                },
-                scope = scope,
-                onEdit = viewModel::clearInviteError,
-            )
-            if (state.peers.isEmpty()) {
-                Text(stringResource(R.string.sharing_people_empty))
-            } else {
-                state.peers.forEach { peer -> PeerRow(peer) { onOpenPeer(peer.peer) } }
-            }
-
-            if (viewModel.demoAvailable) {
-                SectionHeading(stringResource(R.string.sharing_demo_title))
-                Text(
-                    stringResource(R.string.sharing_demo_body),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedButton(onClick = { viewModel.seedDemoData() }, enabled = !signing) {
-                    Text(stringResource(R.string.sharing_demo_seed))
-                }
-            }
-
-            SharingRecoverySection(viewModel)
-            }
-
-            SharingDeviceSection(viewModel)
-            SharingExternalCopiesCard()
-            Spacer(Modifier.height(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun InviteRow(
-    error: PeerIdParseError?,
-    enabled: Boolean,
-    onInvite: suspend (String, SharingCircle) -> Boolean,
-    onEdit: () -> Unit,
-    scope: kotlinx.coroutines.CoroutineScope,
-) {
-    var typed by rememberSaveable { mutableStateOf("") }
-    // The widest circle is the safe default; the picker exists because circles
-    // are exclusive and a person has to be filed somewhere deliberately.
-    var circle by rememberSaveable { mutableStateOf(SharingCircle.ALL_OTHER_USERS) }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        OutlinedTextField(
-            value = typed,
-            onValueChange = { typed = it; onEdit() },
-            label = { Text(stringResource(R.string.sharing_invite_label)) },
-            supportingText = { Text(stringResource(R.string.sharing_invite_hint)) },
-            isError = error != null,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+        SharingContent(
+            state = state,
+            onReachable = viewModel::setReachable,
+            onSync = viewModel::syncNow,
+            modifier = Modifier.padding(padding),
         )
-        error?.let { SharingInviteError(it) }
-        Text(
-            stringResource(R.string.sharing_invite_circle_label),
-            style = MaterialTheme.typography.labelLarge,
-        )
-        SharingCirclePicker(selected = circle, onSelect = { circle = it })
-        OutlinedButton(
-            // Cleared only once the entry is really in the ledger, so neither a
-            // rejected identity nor a refused write looks like success.
-            onClick = { scope.launch { if (onInvite(typed, circle)) typed = "" } },
-            enabled = enabled && typed.isNotBlank(),
-        ) {
-            Text(stringResource(R.string.sharing_action_invite))
-        }
     }
 }
 
 @Composable
-private fun SectionHeading(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.semantics { heading() },
-    )
-}
-
-@Composable
-private fun CircleBaselineCard(
-    circleLabel: String,
-    explicit: Set<SharingCategory>,
-    effective: Set<SharingCategory>,
-    enabled: Boolean = true,
-    onToggle: (SharingCategory, Boolean) -> Unit,
+internal fun SharingContent(
+    state: SharingUiState,
+    onReachable: (Boolean) -> Unit,
+    onSync: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                circleLabel,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { heading() },
-            )
-            Spacer(Modifier.height(8.dp))
-            SharingCategory.entries.forEach { category ->
-                val categoryLabel = stringResource(SharingLabels.category(category))
-                val inherited = category in effective && category !in explicit
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(categoryLabel, style = MaterialTheme.typography.bodyMedium)
-                        if (inherited) {
-                            Text(
-                                stringResource(R.string.sharing_source_inherited, circleLabel),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = category in explicit || inherited,
-                        // An inherited grant cannot be switched off here: it
-                        // belongs to the wider circle, and pretending otherwise
-                        // would silently break the monotonicity the model
-                        // guarantees.
-                        enabled = enabled && !inherited,
-                        onCheckedChange = { granted -> onToggle(category, granted) },
-                        modifier = Modifier.semantics {
-                            contentDescription = "$circleLabel: $categoryLabel"
-                        },
-                    )
-                }
-            }
+    if (!state.available) {
+        Box(modifier.fillMaxSize().padding(16.dp)) {
+            Text(stringResource(R.string.sharing_unavailable), modifier = Modifier.testTag("sharing_unavailable"))
         }
+        return
     }
-}
-
-@Composable
-private fun PeerRow(peer: PeerSummary, onClick: () -> Unit) {
-    val name = SharingDemoData.displayName(peer.peer)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = name },
+    val status = state.status
+    if (state.loading && status == null) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    Column(
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).testTag("sharing_content"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(
-                stringResource(SharingLabels.status(peer.status)),
-                style = MaterialTheme.typography.bodySmall,
+        state.error?.let {
+            Text(stringResource(R.string.sharing_failed, it), color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("sharing_error"))
+        }
+        SettingsSectionCard {
+            SettingsToggleRow(
+                title = stringResource(R.string.sharing_reachable_title),
+                description = stringResource(R.string.sharing_reachable_info),
+                checked = status?.discovery?.enabled == true,
+                enabled = !state.busy && status != null,
+                onCheckedChange = onReachable,
+                modifier = Modifier.testTag("sharing_reachable"),
             )
-            Text(
-                stringResource(
-                    R.string.sharing_person_summary,
-                    peer.releasedCount,
-                    SharingCategory.entries.size,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (peer.pendingConsentCount > 0) {
-                Text(
-                    stringResource(R.string.sharing_person_pending_consent, peer.pendingConsentCount),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onClick) {
-                Text(stringResource(R.string.sharing_cd_open_person, name))
+        }
+        if (status != null) {
+            PeopleSection(status)
+            ConnectionSection(status, busy = state.busy, onSync = onSync)
+        }
+    }
+}
+
+@Composable
+private fun PeopleSection(status: MarmotStatus) {
+    SettingsSectionCard {
+        Text(stringResource(R.string.sharing_people_title), style = MaterialTheme.typography.titleMedium)
+        if (status.peers.isEmpty()) {
+            Text(stringResource(R.string.sharing_no_people), style = MaterialTheme.typography.bodyMedium)
+        }
+        status.peers.forEach { peer ->
+            Row(Modifier.fillMaxWidth().testTag("sharing_peer_${peer.account.take(12)}"),
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(peer.account.take(12) + "…", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(peerStateLabel(peer.state)), style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+}
+
+internal fun peerStateLabel(state: String): Int = when (state) {
+    "active" -> R.string.sharing_state_active
+    "invited" -> R.string.sharing_state_invited
+    "ended" -> R.string.sharing_state_ended
+    else -> R.string.sharing_state_pending
+}
+
+@Composable
+private fun ConnectionSection(status: MarmotStatus, busy: Boolean, onSync: () -> Unit) {
+    SettingsSectionCard {
+        InfoHeading(stringResource(R.string.sharing_connection_title), stringResource(R.string.sharing_connection_info))
+        RelayLine(stringResource(R.string.sharing_local_relay),
+            stringResource(if (status.localRelay) R.string.sharing_relay_connected else R.string.sharing_relay_offline))
+        status.relays.forEach { relay -> RelayLine(relay.url.removePrefix("wss://"), relayLabel(relay)) }
+        if (status.local.outboundPending > 0) {
+            Text(stringResource(R.string.sharing_pending_messages, status.local.outboundPending.toInt()),
+                style = MaterialTheme.typography.bodyMedium)
+        }
+        OutlinedButton(onClick = onSync, enabled = !busy, modifier = Modifier.testTag("sharing_sync_now")) {
+            Text(stringResource(R.string.sharing_sync_now))
+        }
+    }
+}
+
+@Composable
+private fun relayLabel(relay: MarmotRelay): String {
+    val connection = stringResource(when (relay.connection) {
+        "connected" -> R.string.sharing_relay_connected
+        "connecting" -> R.string.sharing_relay_connecting
+        "banned" -> R.string.sharing_relay_banned
+        "sleeping" -> R.string.sharing_relay_sleeping
+        else -> R.string.sharing_relay_offline
+    })
+    val result = when (relay.lastResult) {
+        "accepted" -> R.string.sharing_relay_accepted
+        "rejected" -> R.string.sharing_relay_rejected
+        "auth_required" -> R.string.sharing_relay_auth_required
+        "unavailable" -> R.string.sharing_relay_unavailable
+        else -> null
+    }?.let { stringResource(it) }
+    return listOfNotNull(connection, result).joinToString(" · ")
+}
+
+@Composable
+private fun RelayLine(name: String, state: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

@@ -1,6 +1,5 @@
 package com.cruxcoach.android.di
 
-import com.cruxcoach.domain.sharing.asAsync
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -115,252 +114,28 @@ object AppModule {
         }
     }
 
-    // ── FEAT-062 personal information sharing ─────────────────────────
+    // ── Personal data sharing (Marmot v2) ─────────────────────────────
     //
-    // The vault's wrapping keys are rooted in the Android Keystore, and both
-    // ledgers are signed with the account's Nostr identity — local or an
-    // external NIP-55 signer, through the same call either way. All of it is
-    // passed in rather than looked up so the controller stays testable.
-    //
-    // One crypto per purpose: the signing domain is bound at construction, so a
-    // signer instance can only ever produce signatures for the one ledger it
-    // was built for.
+    // One native host per account behind a single Kotlin chokepoint. The
+    // database key is domain-separated from SecureDB's; account signing stays
+    // behind the existing signer (local key or Amber).
 
     @Provides
     @Singleton
-    fun provideSharingKeyVault(
-        keyStore: com.cruxcoach.android.sharing.KeystoreWrappingKeyStore,
-    ): com.cruxcoach.domain.sharing.SharingKeyVault =
-        com.cruxcoach.domain.sharing.AeadSharingKeyVault(keyStore.asWrappingKeyStore())
-
-    private fun ledgerCrypto(
-        domain: com.cruxcoach.domain.sharing.SigningDomain,
-        nostrSigner: NostrSigner,
-        eventSigner: com.cruxcoach.android.sharing.Nip01EventSigner,
-        bip340: com.cruxcoach.android.sharing.Bip340Verifier,
-    ) = com.cruxcoach.android.sharing.Nip55LedgerCrypto(
-        domain = domain,
-        // Read live, not captured: an identity that changed since startup must
-        // produce a signature that fails its own check rather than a valid
-        // signature by the wrong key.
-        pubKeyHex = { nostrSigner.getPublicKeyHex() },
-        eventSigner = eventSigner,
-        bip340 = bip340,
-    )
-
-    @Provides
-    @Singleton
-    fun provideSharingLedgerSigner(
-        nostrSigner: NostrSigner,
-        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
-        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-    ): com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner =
-        com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner(
-            ledgerCrypto(
-                com.cruxcoach.domain.sharing.SigningDomain.RELATIONSHIP_LEDGER,
-                nostrSigner, eventSigner, bip340,
-            )
-        )
-
-    @Provides
-    @Singleton
-    fun provideOwnerPolicySigner(
-        nostrSigner: NostrSigner,
-        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
-        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-    ): com.cruxcoach.domain.sharing.AsyncOwnerPolicySigner =
-        com.cruxcoach.domain.sharing.AsyncOwnerPolicySigner(
-            ledgerCrypto(
-                com.cruxcoach.domain.sharing.SigningDomain.OWNER_POLICY_LEDGER,
-                nostrSigner, eventSigner, bip340,
-            )
-        )
-
-    /**
-     * This install's own device identity, minted on first use.
-     *
-     * The whole administrative path is fail-closed on this: an install that
-     * cannot produce a device signs nothing, which is the correct answer rather
-     * than a fallback to unattributed writes.
-     */
-    @Provides
-    @Singleton
-    fun provideDeviceIdentity(
-        database: SecureDatabase,
-        vault: com.cruxcoach.domain.sharing.SharingKeyVault,
-    ): com.cruxcoach.android.sharing.SecureDbDeviceIdentity =
-        com.cruxcoach.android.sharing.SecureDbDeviceIdentity(database, vault)
-
-    @Provides
-    @Singleton
-    fun provideAttestationSigner(
-        identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
-    ): com.cruxcoach.domain.sharing.AsyncAuthorityAttestationSigner? =
-        // Mint before asking for the key. Hilt is free to build this provider
-        // before anything has called loadOrCreate, and a null here is sticky
-        // for the whole process: the install would sign nothing until the next
-        // launch, for no reason a person could see.
-        identity.loadOrCreate().let { identity.crypto() }?.let {
-            com.cruxcoach.domain.sharing.AsyncAuthorityAttestationSigner(it.asAsync())
-        }
-
-    @Provides
-    @Singleton
-    fun providePermissionClock(database: SecureDatabase, nostrSigner: NostrSigner) =
-        com.cruxcoach.android.sharing.SharingPermissionClock(database, nostrSigner.getPublicKeyHex(),
-            elapsed = android.os.SystemClock::elapsedRealtime)
-
-    @Provides
-    @Singleton
-    fun provideSharingRepository(
-        clock: com.cruxcoach.android.sharing.SharingPermissionClock,
-        database: SecureDatabase,
-        vault: com.cruxcoach.domain.sharing.SharingKeyVault,
-        signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
-        ownerPolicySigner: com.cruxcoach.domain.sharing.AsyncOwnerPolicySigner,
-        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
-        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-        attestationSigner: com.cruxcoach.domain.sharing.AsyncAuthorityAttestationSigner?,
-        nostrSigner: NostrSigner,
-        identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
-    ): com.cruxcoach.android.sharing.SecureDbSharingRepository =
-        com.cruxcoach.android.sharing.SecureDbSharingRepository(
-            database = database,
-            vault = vault,
-            verifier = signer.verifier(),
-            ownerPolicyVerifier = ownerPolicySigner.verifier(),
-            ownerNpub = nostrSigner.getPublicKeyHex(),
-            currentOwner = { nostrSigner.getPublicKeyHex() },
-            permissionClock = clock, nowEpochMillis = clock::now,
-            deviceManifestVerifier = com.cruxcoach.domain.sharing.AsyncDeviceManifestSigner(
-                ledgerCrypto(
-                    com.cruxcoach.domain.sharing.SigningDomain.DEVICE_MANIFEST,
-                    nostrSigner, eventSigner, bip340,
-                )
-            ).verifier(),
-            // Null means no device identity, and then nothing verifies — which
-            // is the fail-closed direction and exactly what should happen.
-            attestationVerifier = attestationSigner?.verifier()
-                ?: com.cruxcoach.domain.sharing.AuthorityAttestationVerifier { _, _ -> false },
-            // The owner's root key, bound here rather than taken per call: the
-            // repository is what writes a recovered estate, so it is what has
-            // to be sure, and no individual caller may choose the key it is
-            // sure against.
-            // The same domain the controller signs the challenge under, or the
-            // signature it produces would not verify here.
-            // Which device this install is, read from the identity store rather
-            // than taken per commit.
-            localDeviceIdentity = { identity.loadOrCreate() },
-            rootRecoveryVerifier = ledgerCrypto(
-                com.cruxcoach.domain.sharing.SigningDomain.BACKUP,
-                nostrSigner, eventSigner, bip340,
-            ),
-        )
-
-    @Provides
-    @Singleton
-    fun provideMarmotFactory(
+    fun provideMarmotHost(
         @ApplicationContext context: Context,
         keyManager: com.cruxcoach.android.data.SqlCipherKeyManager,
-        database: SecureDatabase,
         nostrSigner: NostrSigner,
-        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
-        identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
         eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
-        verifier: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-    ) = com.cruxcoach.android.sharing.AndroidMarmotFactory(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, repository, identity, eventSigner, verifier, database)
+    ): com.cruxcoach.android.sharing.AndroidMarmotHost =
+        com.cruxcoach.android.sharing.AndroidMarmotHost(context, keyManager::getDerivedMarmotKeyForPubkey, nostrSigner, eventSigner)
 
+    /** Transport only until the sync semantics land: received messages stay
+     * natively queued and nothing is sent. */
     @Provides
     @Singleton
-    fun provideSnapshotExchange(
-        database: SecureDatabase,
-        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
-        nostrSigner: NostrSigner,
-        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
-    ): com.cruxcoach.android.sharing.SharingSnapshotExchange =
-        com.cruxcoach.android.sharing.SharingSnapshotExchange(
-            database, repository, nostrSigner.getPublicKeyHex(),
-            com.cruxcoach.android.sharing.SnapshotEndpointRole.USER,
-            marmot.port, nowEpochMillis = repository.permissionClock!!::now,
-        )
-
-    @Provides
-    @Singleton
-    fun provideSharingPolicyTransport(
-        database: SecureDatabase,
-        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
-        nostrSigner: NostrSigner,
-        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
-        signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
-    ) = com.cruxcoach.android.sharing.SharingPolicyTransport(database, repository, nostrSigner.getPublicKeyHex(), marmot.port, signer, now = repository.permissionClock!!::now)
-
-    @Provides
-    @Singleton
-    fun provideContinuousSharing(
-        database: SecureDatabase,
-        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
-        nostrSigner: NostrSigner,
-        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
-        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-        snapshots: com.cruxcoach.android.sharing.SharingSnapshotExchange,
-    ) = com.cruxcoach.android.sharing.ContinuousSharingExchange(database, repository, nostrSigner.getPublicKeyHex(),
-        com.cruxcoach.android.sharing.SnapshotEndpointRole.USER, marmot.port,
-        com.cruxcoach.android.sharing.ContinuousSourceAdapter(database), snapshots::pinnedRole,
-        now = repository.permissionClock!!::now,
-        friendshipCrypto = ledgerCrypto(com.cruxcoach.domain.sharing.SigningDomain.FRIENDSHIP, nostrSigner, marmot.permissionEventSigner, bip340))
-
-    @Provides
-    @Singleton
-    fun provideSharingController(
-        @ApplicationContext context: Context,
-        continuous: com.cruxcoach.android.sharing.ContinuousSharingExchange,
-        snapshotExchange: com.cruxcoach.android.sharing.SharingSnapshotExchange,
-        repository: com.cruxcoach.android.sharing.SecureDbSharingRepository,
-        signer: com.cruxcoach.domain.sharing.AsyncSharingLedgerSigner,
-        ownerPolicySigner: com.cruxcoach.domain.sharing.AsyncOwnerPolicySigner,
-        eventSigner: com.cruxcoach.android.sharing.QuartzNip01EventSigner,
-        bip340: com.cruxcoach.android.sharing.QuartzBip340Verifier,
-        identity: com.cruxcoach.android.sharing.SecureDbDeviceIdentity,
-        attestationSigner: com.cruxcoach.domain.sharing.AsyncAuthorityAttestationSigner?,
-        nostrSigner: NostrSigner,
-        marmot: com.cruxcoach.android.sharing.AndroidMarmotFactory,
-        policyTransport: com.cruxcoach.android.sharing.SharingPolicyTransport,
-    ): com.cruxcoach.android.sharing.SharingController =
-        com.cruxcoach.android.sharing.SharingController(
-            marmot = marmot,
-            policyTransport = policyTransport,
-            continuous = continuous,
-            onContinuousChange = { com.cruxcoach.android.sharing.ContinuousSharingWork.schedule(context) },
-            snapshotExchange = snapshotExchange,
-            repository = repository,
-            signer = signer,
-            ownerPolicySigner = ownerPolicySigner,
-            ownerNpub = nostrSigner.getPublicKeyHex(),
-            authorityDevice = identity.loadOrCreate()?.device,
-            attestationSigner = attestationSigner,
-            // The manifest is signed by the owner's *root* identity, through
-            // the external signer, and never by the device key.
-            manifestSigner = com.cruxcoach.domain.sharing.AsyncDeviceManifestSigner(
-                ledgerCrypto(
-                    com.cruxcoach.domain.sharing.SigningDomain.DEVICE_MANIFEST,
-                    nostrSigner, eventSigner, bip340,
-                )
-            ),
-            authorityDevicePublicKey = identity.loadOrCreate()?.publicKey,
-            rootCrypto = ledgerCrypto(
-                com.cruxcoach.domain.sharing.SigningDomain.BACKUP,
-                nostrSigner, eventSigner, bip340,
-            ),
-            // Debug builds only: the demo peers are real keypairs this build
-            // generated, so their acceptances are real signatures. In release
-            // this is null and an acceptance can only be ingested after the
-            // peer signed it themselves.
-            peerSimulator = com.cruxcoach.android.sharing.SharingDemoData.peerSimulator(),
-            backupCrypto = ledgerCrypto(
-                com.cruxcoach.domain.sharing.SigningDomain.BACKUP,
-                nostrSigner, eventSigner, bip340,
-            ),
-        )
+    fun provideSharingStep(): com.cruxcoach.android.sharing.SharingStep =
+        com.cruxcoach.android.sharing.SharingStep { }
 
     @Provides
     @Singleton

@@ -8,13 +8,13 @@ import com.cruxcoach.domain.model.UserProfile
 import com.cruxcoach.domain.sharing.SharingCategory.*
 import kotlin.test.*
 
-class ContinuousSourceAdapterTest {
+class SharingSourceTest {
     private val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     private val database = SecureDatabase(driver).also { SecureDatabase.Schema.create(driver) }
-    private val source = ContinuousSourceAdapter(database)
+    private val source = SharingSource(database)
     private val users = UserRepositoryImpl(database)
     private val personal = PersonalBoardRepositoryImpl(database)
-    private val scope = ContinuousScope(setOf(PROFILE_AND_GOALS, TRAINING_HISTORY, PRIVATE_NOTES), "2026-09-01")
+    private val scope = SharingScope(setOf(PROFILE_AND_GOALS, TRAINING_HISTORY, PRIVATE_NOTES), "2026-09-01")
     @AfterTest fun close() = driver.close()
     private fun profile() = UserProfile(name = "Synthetic climber", age = 42, weightKg = 77.0, heightCm = 181.0,
         apeIndex = 3.0, maxBoulderGrade = "7A", goals = listOf("Endurance"), injuryHistory = listOf("synthetic excluded health"))

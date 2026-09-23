@@ -4,14 +4,15 @@ import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.sharing.SharingCategory
 import kotlinx.serialization.json.*
 
-/** The same bounded projection serves preview, first sync and every delta.
- * Never joins received rows or returns body/injury data, log comments or media. */
-class ContinuousSourceAdapter(private val database: SecureDatabase) {
+/** The owner's current, bounded projection: the same code serves preview, full
+ * snapshot and every delta. Never joins received rows or returns body or
+ * injury data, log comments or media. */
+class SharingSource(private val database: SecureDatabase) {
     fun version(): Pair<String, Long> = database.continuousSharingQueries.sourceVersion().executeAsOne().let { it.generation to it.revision }
-    fun read(scope: ContinuousScope): List<ContinuousRecord> = database.transactionWithResult {
-        require(ContinuousCodec.valid(scope))
-        val records = mutableListOf<ContinuousRecord>()
-        fun add(id: String, category: SharingCategory, fields: Map<String, String>, revision: Long? = null) { records += ContinuousRecord(id, category, revision ?: database.continuousSharingQueries.resourceVersion(id).executeAsOneOrNull() ?: 0, fields) }
+    fun read(scope: SharingScope): List<SharingRecord> = database.transactionWithResult {
+        require(SharingRecords.valid(scope))
+        val records = mutableListOf<SharingRecord>()
+        fun add(id: String, category: SharingCategory, fields: Map<String, String>, revision: Long? = null) { records += SharingRecord(id, category, revision ?: database.continuousSharingQueries.resourceVersion(id).executeAsOneOrNull() ?: 0, fields) }
         if (SharingCategory.PROFILE_AND_GOALS in scope.categories) {
             database.userProfilesQueries.getActive().executeAsOneOrNull()?.let { row ->
                 fun list(raw: String) = Json.parseToJsonElement(raw).jsonArray.joinToString("\n") { require(it.jsonPrimitive.isString); it.jsonPrimitive.content }
@@ -39,6 +40,16 @@ class ContinuousSourceAdapter(private val database: SecureDatabase) {
                 add("note:${row.climb_uuid}", SharingCategory.PRIVATE_NOTES, linkedMapOf("climbId" to row.climb_uuid, "note" to row.note), row.source_revision)
             }
         }
-        records.sortedBy { it.id }.also { ContinuousCodec.checkRecords(it, scope) }
+        records.sortedBy { it.id }.also { SharingRecords.check(it, scope) }
     }
+}
+
+/** SQLDelight notifies this listener after a source write commits, including
+ * the trigger-maintained revision. Revisions persist even if the process dies
+ * before the next exchange. */
+class SharingSourceChanges(database: SecureDatabase, onChange: () -> Unit) : AutoCloseable {
+    private val query = database.continuousSharingQueries.sourceVersion()
+    private val listener = app.cash.sqldelight.Query.Listener(onChange)
+    init { query.addListener(listener) }
+    override fun close() { query.removeListener(listener) }
 }
