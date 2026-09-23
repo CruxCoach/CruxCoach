@@ -202,6 +202,77 @@ fn invite_accept_redundant_relays_restart_and_epoch_change_keep_the_friendship()
 }
 
 #[test]
+fn a_message_that_overtakes_its_commit_is_delivered_once_the_commit_arrives() {
+    let relay = Relay::start();
+    let a = Participant::new(vec![relay.url.clone()]);
+    let b = Participant::new(a.relays.clone());
+    let alice = a.open();
+    let bob = b.open();
+    friendship(&a, &b, &alice, &bob);
+    for item in inbox(&bob) {
+        call(&bob, json!({"op":"ack","seqs":[item["seq"]]}));
+    }
+
+    // Bob is away while Alice updates her key material and writes at once.
+    call(&bob, json!({"op":"set_online","online":false}));
+    let known: std::collections::HashSet<String> = relay
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|e| e.id.to_hex())
+        .collect();
+    call(&alice, json!({"op":"rotate","peer":b.account()}));
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let sent = loop {
+        match send(&alice, &b.account(), "o1", "synthetic ahead of its commit") {
+            Ok(value) => break value["event"].as_str().unwrap().to_string(),
+            Err(code) => {
+                assert!(
+                    code == "session_busy" && Instant::now() < deadline,
+                    "{code}"
+                );
+                settle(&[&alice]);
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        }
+    };
+    assert!(wait_until(&[&alice], 20, || relay
+        .events
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e.id.to_hex() == sent)));
+
+    // The relay hands Bob the message first; its commit arrives later.
+    let held: Vec<_> = {
+        let mut events = relay.events.lock().unwrap();
+        let (held, rest): (Vec<_>, Vec<_>) = events.drain(..).partition(|e| {
+            e.kind.as_u16() == 445 && !known.contains(&e.id.to_hex()) && e.id.to_hex() != sent
+        });
+        *events = rest;
+        held
+    };
+    assert!(!held.is_empty(), "the commit reached the relay");
+    call(&bob, json!({"op":"set_online","online":true}));
+    let delivered = |bob: &Host| {
+        inbox(bob)
+            .iter()
+            .any(|i| i["content"] == "synthetic ahead of its commit")
+    };
+    assert!(
+        !wait_until(&[&bob], 3, || delivered(&bob)),
+        "not readable before its commit"
+    );
+    relay.events.lock().unwrap().extend(held);
+    assert!(
+        wait_until(&[&bob], 30, || delivered(&bob)),
+        "a deferred message is retried once its epoch is known"
+    );
+    assert_eq!(peer_state(&bob, &a.account()).as_deref(), Some("active"));
+}
+
+#[test]
 fn token_idempotency_outage_durability_and_cancel() {
     let relay = Relay::start();
     let a = Participant::new(vec![relay.url.clone()]);

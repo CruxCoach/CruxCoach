@@ -1088,17 +1088,33 @@ impl Engine {
                 self.session.prepare_convergence_cutoff_delay_ms(&gid),
                 "convergence",
             )? == Some(0);
-            if pending || due {
-                self.atomic(|engine| {
+            // A message that arrived before its commit is kept by MDK as a
+            // deferred peel. Only a convergence advance retries it, and MDK
+            // reports it ready once the epoch (or candidate context) changed.
+            // Without this a message that overtook its commit is stranded.
+            let deferred = checked(
+                self.session.deferred_peel_cutoff_delay_ms(&gid),
+                "convergence",
+            )? == Some(0);
+            if pending || due || deferred {
+                let step = self.atomic(|engine| {
                     let effects = checked(
                         engine
                             .runtime
                             .block_on(engine.session.advance_convergence_inputs(&gid)),
                         "convergence",
                     )?;
-                    changes.outbound |= !effects.publish.is_empty();
-                    engine.persist_effects(effects, Some(&gid), None)
+                    let mut step = Changes {
+                        outbound: !effects.publish.is_empty(),
+                        ..Changes::default()
+                    };
+                    engine.persist_effects(effects, Some(&gid), None)?;
+                    // Convergence can apply buffered messages and retried
+                    // deferred peels; surface them now, not at the next ingest.
+                    step.merge(engine.reconcile()?);
+                    Ok(step)
                 })?;
+                changes.merge(step);
             }
         }
         for (event_id, relay, position) in self.store.unconfirmed_core()? {
