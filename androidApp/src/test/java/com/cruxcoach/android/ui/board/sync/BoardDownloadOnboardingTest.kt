@@ -42,6 +42,42 @@ class BoardDownloadOnboardingTest {
         }
     }
 
+    @Test fun `leaving the first step before continuing suggests the board again`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val prefs = createTestUserPreferences(backgroundScope)
+        prefs.setBoardBrand(BoardBrand.MOONBOARD.wireValue)
+        val sync = mockk<BoardSyncManager>(relaxed = true)
+        every { sync.state } returns MutableStateFlow(BoardSyncState())
+        try {
+            // The first visit leaves its empty placeholder behind ...
+            val first = BoardSyncViewModel(sync, prefs, mockk(relaxed = true))
+            assertEquals(setOf(BoardBrand.MOONBOARD), first.initialDownloadSelection())
+            first.viewModelScope.coroutineContext.job.cancelAndJoin()
+            // ... which the next one, after Back and a relaunch, must not read as a choice.
+            val again = BoardSyncViewModel(sync, prefs, mockk(relaxed = true))
+            assertEquals(setOf(BoardBrand.MOONBOARD), again.initialDownloadSelection())
+            again.viewModelScope.coroutineContext.job.cancelAndJoin()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test fun `a confirmed empty choice holds when returning to the first step`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val prefs = createTestUserPreferences(backgroundScope)
+        val sync = mockk<BoardSyncManager>(relaxed = true)
+        every { sync.state } returns MutableStateFlow(BoardSyncState())
+        val vm = BoardSyncViewModel(sync, prefs, mockk(relaxed = true))
+        try {
+            vm.initialDownloadSelection()
+            vm.confirmOnboardingDownloads(emptySet())
+            assertEquals(emptySet<BoardBrand>(), vm.initialDownloadSelection())
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test fun `continuing with no boards saves opt out without starting a download`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val prefs = createTestUserPreferences(backgroundScope)

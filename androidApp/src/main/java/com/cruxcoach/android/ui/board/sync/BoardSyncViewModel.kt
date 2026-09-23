@@ -81,20 +81,32 @@ class BoardSyncViewModel @Inject constructor(
     val downloadBrands: StateFlow<Set<BoardBrand>?> = userPreferences.boardDownloadBrands
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
+    /** Whether the first step's "Continue" was pressed with this model alive. */
+    private var onboardingChoiceConfirmed = false
+
     suspend fun initialDownloadSelection(): Set<BoardBrand> {
         if (!userPreferences.isOnboardingCompleted() && !state.value.alreadyImported &&
-            !userPreferences.hasBoardDownloadSelection()) {
-            val suggested = setOf(BoardBrand.fromWire(userPreferences.boardBrand.first()))
-            // Skipping onboarding's download must not leave the legacy all-board
-            // default for a later periodic worker to download without a choice.
-            userPreferences.setBoardDownloadBrands(emptySet())
-            return suggested
+            !onboardingChoiceConfirmed) {
+            val saved = if (userPreferences.hasBoardDownloadSelection()) {
+                userPreferences.boardDownloadBrands.first()
+            } else null
+            // Nothing chosen yet — or only the empty placeholder below, left by
+            // an earlier visit that never reached "Continue". Read as a choice,
+            // leaving the app on this step came back with nothing ticked.
+            if (saved.isNullOrEmpty()) {
+                // Skipping onboarding's download must not leave the legacy all-board
+                // default for a later periodic worker to download without a choice.
+                if (saved == null) userPreferences.setBoardDownloadBrands(emptySet())
+                return setOf(BoardBrand.fromWire(userPreferences.boardBrand.first()))
+            }
+            return saved
         }
         return userPreferences.boardDownloadBrands.first()
     }
 
     /** Persist consent before enqueueing; the application owns the download lifetime. */
     suspend fun confirmOnboardingDownloads(brands: Set<BoardBrand>) {
+        onboardingChoiceConfirmed = true
         val added = brands - userPreferences.boardDownloadBrands.first()
         userPreferences.setBoardDownloadBrands(brands)
         if (brands.isEmpty()) return
