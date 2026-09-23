@@ -2,6 +2,14 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
+## Permission system v2 (local work in progress, 2026-09-23)
+
+The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
+([German summary](architecture/marmot-permissions-v2-target-overview.de.md))
+keeps Marmot/MLS as the confidentiality layer and simplifies transport (native
+nostr-sdk pool, in-process relay, replicator), sync (manifest, deltas, resync)
+and policy (local presets and exceptions). Sections below describe v1.
+
 ## Permission feature branch overlay (2026-09-11)
 
 `feat/marmot-permissions-v023` retains the integrated release source and native
