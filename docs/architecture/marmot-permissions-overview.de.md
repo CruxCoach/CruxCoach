@@ -1,5 +1,8 @@
 # Private Daten mit Freunden aktuell teilen
 
+> **Auf `wip/marmot-permissions-v2` abgelöst.** Dieses Dokument beschreibt v1. Siehe
+> [Zielbild v2](marmot-permissions-v2-target-overview.de.md), Abschnitt „Umsetzung“.
+
 Stand: lokaler Produktdurchgang auf `feat/marmot-permissions-v023`, ausgehend vom
 linearisierten Dateibaum `4fd3ed337a3cc665cc5d248d5d472ca8e652cee4` am 11. September
 2026. Feature-Code, keine veröffentlichte App. Vollständige CI und tatsächliche

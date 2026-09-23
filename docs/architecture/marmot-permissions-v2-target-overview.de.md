@@ -87,3 +87,19 @@ angezeigt („Anna: geschafft, 3 Versuche“).
 3. Oberfläche im 0.2.3-Muster, Detailseiten-Join, Testanleitung.
 
 Offene Owner-Entscheidungen und Annahmen: §12 der englischen Fassung.
+
+## Umsetzung (Stand 23. September 2026)
+
+Der Branch `wip/marmot-permissions-v2` setzt das Zielbild um. Beim Bauen
+festgelegt: Sende-Tokens gelten je MLS-Gruppe (eine neue Freundschaft beginnt
+frisch); jede Rücknahme, die Nachrichten zurückgezogen hat, startet eine neue
+Generation (Manifest + vollständiger Stand), damit der Empfänger nie auf ein
+zurückgezogenes Delta wartet; „wartende Nachrichten“ zählt nur, was noch kein
+Relay angenommen hat; Anfragen werden nach 15 s, dann mit wachsendem Abstand
+bis 10 min erneut versucht. Die Oberfläche hat eine Übersicht, eine Seite je
+Person (ein Schalter, Kreis, drei Kategorien, Zeitraum, genaue Vorschau mit
+Schalter je Eintrag, empfangene Daten, Beenden mit genau einer Bestätigung),
+je eine Seite für die Voreinstellungen Freunde und Bekannte sowie die
+Verbindungsseite. Im Info-Blatt eines Boulders erscheinen Notizen und Versuche
+von Freunden zu diesem Boulder, getrennt von den eigenen Daten. Die
+[Testanleitung](../releases/marmot-permissions-test-guide.md) beschreibt v2.

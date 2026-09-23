@@ -106,4 +106,17 @@ class Bech32Test {
         val nsec = "nsec1qqqq5ur7sx"
         assertEquals("nsec", Bech32.decode(nsec)?.hrp)
     }
+
+    @Test
+    fun the_known_key_encodes_to_its_known_npub_and_back() {
+        assertEquals(NPUB, Bech32.npub(HEX))
+        assertEquals("0".repeat(64), Bech32.decode(Bech32.npub("0".repeat(64))!!)?.data?.hex())
+    }
+
+    @Test
+    fun only_a_lower_case_hex_key_encodes() {
+        assertNull(Bech32.npub(HEX.uppercase()))
+        assertNull(Bech32.npub(HEX.dropLast(2)))
+        assertNull(Bech32.npub(NPUB))
+    }
 }

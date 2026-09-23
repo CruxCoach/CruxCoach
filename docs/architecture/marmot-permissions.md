@@ -2,6 +2,10 @@
 
 [Deutsch: Funktionen und Architekturentscheidungen](marmot-permissions-overview.de.md)
 
+> **Superseded on `wip/marmot-permissions-v2`.** This document describes v1. The v2
+> branch replaces its ledgers, devices, snapshots and Kotlin transport; see the
+> [v2 target architecture](marmot-permissions-v2-target.md), §13 for what is built.
+
 Status: native integration on `feat/marmot-permissions-v023`, reviewed 2026-09-11.
 This is feature work, not a release, deployment, security certification or
 activation of the OIDC/account-ID/npub publisher boundary.

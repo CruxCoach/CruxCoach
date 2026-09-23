@@ -1,8 +1,15 @@
 package com.cruxcoach.android.sharing
 
 import com.cruxcoach.domain.sharing.AccessEffect
+import com.cruxcoach.domain.sharing.Bech32
+import com.cruxcoach.domain.sharing.ObjectId
+import com.cruxcoach.domain.sharing.ObjectRuleKey
+import com.cruxcoach.domain.sharing.PeerId
 import com.cruxcoach.domain.sharing.SharingCategory
 import com.cruxcoach.domain.sharing.SharingCircle
+import com.cruxcoach.domain.sharing.SharingPolicyResolver
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /** The four states every screen shows for a person. */
 enum class VisibleState { PENDING, ACTIVE, STOPPED, ENDED }
@@ -19,11 +26,38 @@ data class SharingFriend(
     val confirmedAt: Long,
 ) {
     val peer get() = person.peer
-    val displayName: String get() = person.label?.takeIf { it.isNotBlank() } ?: profileName?.takeIf { it.isNotBlank() } ?: (person.peer.take(12) + "…")
+    val displayName: String get() = SharingNames.display(person.label, profileName, person.peer)
 }
+
+object SharingNames {
+    /** A person's own label, else the name they share, else a short npub. */
+    fun display(label: String?, profileName: String?, peer: String): String =
+        label?.takeIf { it.isNotBlank() } ?: profileName?.takeIf { it.isNotBlank() } ?: shortId(peer)
+
+    fun shortId(peer: String): String = Bech32.npub(peer)?.let { it.take(12) + "…" + it.takeLast(6) } ?: (peer.take(12) + "…")
+}
+
+/** A friend's record about one climb, with the friend's display name. */
+data class ReceivedOnClimb(val peer: String, val name: String, val record: SharingRecord)
 
 /** A friendship request from someone without a local person entry yet. */
 data class SharingInvitation(val peer: String, val receivedAt: Long)
+
+/** One category for one person: the outcome and whether it follows the preset. */
+data class CategoryChoice(val shared: Boolean, val byPreset: Boolean, val exception: AccessEffect?)
+
+/** One own record and whether it goes to the person while their switch is on. */
+data class PreviewItem(val record: SharingRecord, val included: Boolean, val exception: AccessEffect?)
+
+/** Everything the person page shows. [items] ignores the switch; [SharingFriend.visible] says whether it is on. */
+data class SharingPersonDetail(
+    val friend: SharingFriend,
+    val preset: SharingPreset,
+    val categories: Map<SharingCategory, CategoryChoice>,
+    val trainingDays: Int,
+    val items: List<PreviewItem>,
+    val received: List<SharingRecord>,
+)
 
 data class SharingOverview(
     val status: MarmotStatus,
@@ -84,6 +118,9 @@ class SharingService(
         access.interactive { sync.beforeOnline(host); host.setOnline(true); host.setDiscovery(enabled) }
         onChanged()
     }
+
+    /** One foreground pass now: withdrawals, online, native sync, app step. */
+    suspend fun syncNow(): Boolean = access.interactive { SharingPass(host, sync).run(stayOnline = true) }
 
     /** Ask [peer] for a friendship; the invitation is retried until it can be delivered. */
     suspend fun request(peer: String, circle: SharingCircle, label: String?) {
@@ -181,8 +218,44 @@ class SharingService(
         return store.scope(person.copy(state = PersonState.CONNECTED), store.policy())
     }
 
+    suspend fun detail(peer: String, overview: SharingOverview? = null): SharingPersonDetail? {
+        val friend = (overview ?: overview()).friends.firstOrNull { it.peer == peer } ?: return null
+        val person = friend.person
+        val policy = store.policy()
+        val id = PeerId(peer)
+        val rules = policy.peers[id]
+        val inPreset = policy.baselines.effectiveFor(person.circle)
+        val categories = SharingCategory.entries.associateWith { category ->
+            CategoryChoice(SharingPolicyResolver.resolve(policy, id, category).isAllowed, category in inPreset, rules?.categoryRules?.get(category))
+        }
+        val days = store.trainingDays(person)
+        val cutoff = if (days == TrainingPeriod.ALL) null else LocalDate.now(ZoneOffset.UTC).minusDays(days.toLong()).toString()
+        val candidates = runCatching { source.read(ShareScope(SharingCategory.entries, cutoff).asSourceScope()) }.getOrDefault(emptyList())
+        val items = candidates.map { record ->
+            PreviewItem(record, rules != null && SharingPolicyResolver.resolve(policy, id, record.category, ObjectId(record.id)).isAllowed,
+                rules?.objectRules?.get(ObjectRuleKey(ObjectId(record.id), record.category)))
+        }
+        return SharingPersonDetail(friend, store.presets().getValue(person.circle), categories, days, items, store.records(peer))
+    }
+
     fun received(peer: String): List<SharingRecord> = store.records(peer)
     fun receivedForClimb(climbUuid: String): List<ReceivedRecord> = store.receivedForClimb(climbUuid)
+
+    /** Records current friends shared about any of [climbUuids] (a climb and
+     * its equivalent identities). Reads only the app database. */
+    fun receivedOnClimb(climbUuids: Set<String>): List<ReceivedOnClimb> {
+        val persons = store.persons().filter { it.state == PersonState.CONNECTED }.associateBy { it.peer }
+        val names = mutableMapOf<String, String>()
+        fun name(person: SharingPerson) = names.getOrPut(person.peer) {
+            val profile = store.records(person.peer).firstOrNull { it.category == SharingCategory.PROFILE_AND_GOALS }?.fields?.get("name")
+            SharingNames.display(person.label, profile, person.peer)
+        }
+        return climbUuids.flatMap { store.receivedForClimb(it) }.mapNotNull { received ->
+            val person = persons[received.peer] ?: return@mapNotNull null
+            ReceivedOnClimb(received.peer, name(person), received.record)
+        }.distinctBy { it.peer to it.record.id }
+            .sortedWith(compareBy<ReceivedOnClimb> { it.name.lowercase() }.thenByDescending { it.record.fields["date"].orEmpty() })
+    }
 
     private suspend fun narrowing(peers: List<String>, change: () -> Unit) {
         sync.exclusive {

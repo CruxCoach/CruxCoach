@@ -467,3 +467,39 @@ sharing screen exchanges no data.
 9. `AGENTS.md` section on protocol-data ownership (text in §2.1; proposed in the
    report because `AGENTS.md` is a trust-boundary file).
 10. Remote cleanup confirmation removed from the UI (yes).
+
+## 13. As built on `wip/marmot-permissions-v2` (2026-09-23)
+
+The implementation follows this document. Details that were settled while
+building, or that differ from the text above:
+
+* **Send tokens are scoped to the group natively** (`<group>/<token>`). A new
+  friendship after an ending starts a fresh namespace, so tokens such as
+  `g1:m` never collide with the previous group.
+* **A withdrawal forces a new generation.** When `cancel` removed at least one
+  message, or when the native `cancelled_at` is not older than the current
+  generation (a crash between withdrawal and app commit), the next send is a
+  manifest plus full pages of a new generation. The receiver therefore never
+  waits for a delta that was withdrawn. Narrowing order: withdraw → commit →
+  next manifest; a failed withdrawal sets `cancel_pending`, which runs before
+  the host may go online again (also before the reachability switch).
+* **`outbound_pending` counts own events that no relay has accepted.** One
+  accepting relay makes an event reachable; the replicator keeps copying it to
+  the others. A permanently unreachable relay therefore no longer holds every
+  pass for its full wait.
+* **Catch-up asks only connected relays**, and relays recorded as refusing
+  NIP-77 go straight to the bounded REQ window instead of being probed again.
+  A relay that is down no longer costs every `sync` its full timeouts.
+* **Invitation retry** backs off from 15 s to 10 min while the friend's
+  KeyPackage is not yet available; an explicit request retries at once.
+* **Presets**: friends visibly inherit what acquaintances receive; an inherited
+  category cannot be switched off on the friends preset.
+* **UI**: one destination with internal pages (overview, person, preset,
+  connection), the `SettingsLayout` pattern. A person page has the one switch,
+  circle, three category switches with visible exception markers, the period,
+  the exact preview with a switch per record (object exceptions), what the
+  friend shares back, and ending with exactly one confirmation. Choosing the
+  preset's value again removes the exception instead of storing a redundant one.
+* **Climb detail join**: the climb info sheet lists friends' notes and
+  attempts/sends for the climb and its equivalent identities through a
+  separate small view model; nothing enters the own logbook or notes.

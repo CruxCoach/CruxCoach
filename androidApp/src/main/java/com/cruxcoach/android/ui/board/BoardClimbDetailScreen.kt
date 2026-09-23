@@ -2596,6 +2596,9 @@ private fun ClimbDetailInfoSheet(
                     }
                 }
             }
+            // What friends shared about this climb (read-model join; nothing
+            // enters the own logbook or notes).
+            com.cruxcoach.android.ui.sharing.ReceivedClimbSection(climb.uuid)
             // Nearby-sharing diagnostics. Only while a board is connected,
             // which is the only situation they describe, and down here rather
             // than on the climb page, which now belongs to the climb.

@@ -8,7 +8,9 @@ The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
 ([German summary](architecture/marmot-permissions-v2-target-overview.de.md))
 keeps Marmot/MLS as the confidentiality layer and simplifies transport (native
 nostr-sdk pool, in-process relay, replicator), sync (manifest, deltas, resync)
-and policy (local presets and exceptions). Sections below describe v1.
+and policy (local presets and exceptions). This branch implements it; the German
+[tester guide](releases/marmot-permissions-test-guide.md) now describes v2.
+Sections below describe v1.
 
 ## Permission feature branch overlay (2026-09-11)
 
@@ -28,9 +30,8 @@ Start with the German [permission-system overview and architecture decisions](ar
 See [Marmot permissions architecture](architecture/marmot-permissions.md) for
 current behavior, migration rules, threat model, measured relay compatibility and
 remaining CI/device qualification.
-The German [tester guide](releases/marmot-permissions-test-guide.md) lists what a
-tester can exercise on one or two devices after the 0.2.3 QA merge, and what
-remains unqualified.
+The v1 German tester guide is in the git history of
+[the tester guide](releases/marmot-permissions-test-guide.md), which now covers v2.
 The release-line inventory below describes the imported release source, before
 this feature overlay. It is not evidence of publication or production activation.
 

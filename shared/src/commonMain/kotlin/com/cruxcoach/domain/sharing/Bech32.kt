@@ -10,8 +10,8 @@ package com.cruxcoach.domain.sharing
  * identity into the ledger that no signature could ever verify against, so it
  * is worth the sixty lines to have one that tests can actually execute.
  *
- * Decode only — nothing here needs to produce bech32 — and bech32, not
- * bech32m: NIP-19 predates the bech32m variant and does not use it.
+ * Encoding exists only to show a person their own and their friends' `npub`.
+ * Bech32, not bech32m: NIP-19 predates the bech32m variant and does not use it.
  */
 object Bech32 {
 
@@ -57,6 +57,37 @@ object Bech32 {
 
         val payload = convertBits(values.dropLast(CHECKSUM_LENGTH), from = 5, to = 8) ?: return null
         return Decoded(hrp, payload)
+    }
+
+    /** The checksummed lower-case bech32 form of [data] under [hrp]. */
+    fun encode(hrp: String, data: ByteArray): String {
+        val values = regroup(data)
+        val polymod = polymod(hrpExpand(hrp) + values + List(CHECKSUM_LENGTH) { 0 }) xor 1
+        val checksum = (0 until CHECKSUM_LENGTH).map { (polymod shr (5 * (5 - it))) and 31 }
+        return hrp + "1" + (values + checksum).joinToString("") { CHARSET[it].toString() }
+    }
+
+    /** `npub1…` for a 64-character lower-case hex public key, or `null`. */
+    fun npub(hex: String): String? {
+        if (!Regex("^[0-9a-f]{64}$").matches(hex)) return null
+        return encode("npub", ByteArray(32) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() })
+    }
+
+    /** 8-bit bytes to 5-bit groups, zero-padded (the encoding direction). */
+    private fun regroup(data: ByteArray): List<Int> {
+        var acc = 0
+        var bits = 0
+        val out = mutableListOf<Int>()
+        for (byte in data) {
+            acc = (acc shl 8) or (byte.toInt() and 0xff)
+            bits += 8
+            while (bits >= 5) {
+                bits -= 5
+                out += (acc shr bits) and 31
+            }
+        }
+        if (bits > 0) out += (acc shl (5 - bits)) and 31
+        return out
     }
 
     private fun hrpExpand(hrp: String): List<Int> =
