@@ -143,7 +143,7 @@ internal fun AddToListDialog(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(list.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(list.displayName(), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
 

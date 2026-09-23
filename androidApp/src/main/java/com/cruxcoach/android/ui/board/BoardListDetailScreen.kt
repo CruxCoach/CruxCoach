@@ -118,7 +118,7 @@ fun BoardListDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(state.listName.ifEmpty { stringResource(R.string.board_list_default_name) }, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                    title = { Text(builtinListName(state.listName, state.isBuiltin, state.isIgnored).ifEmpty { stringResource(R.string.board_list_default_name) }, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))

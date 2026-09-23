@@ -1432,6 +1432,8 @@
     <string name="board_list_unavailable_count">%d not shown — board not downloaded</string>
     <string name="board_list_on_board_count">%1$d of %2$d on this board</string>
     <string name="board_list_default_name">List</string>
+    <string name="board_list_builtin_favorites">Favorites</string>
+    <string name="board_list_builtin_ignored">Ignored</string>
     <string name="board_list_empty_message">Add climbs from the browser</string>
     <string name="board_list_empty_title">List is empty</string>
     <string name="board_logbook_attempts">Total attempts</string>
