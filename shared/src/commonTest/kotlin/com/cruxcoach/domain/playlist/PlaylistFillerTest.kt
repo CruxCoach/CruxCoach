@@ -205,6 +205,35 @@ class PlaylistFillerTest {
     }
 
     @Test
+    fun `a range starting below the board still warms up on its easiest climbs`() {
+        // A 6a start on a MoonBoard whose easiest climb is 6b: capped at the
+        // bottom of the range, the ladder had nothing left to draw from.
+        val plan = PlaylistPlan(
+            slots = listOf(
+                PlanSlot.ClimbSlot(18.0, 19.0, PlanSection.WARM_UP),
+                PlanSlot.ClimbSlot(16.0, 16.0, PlanSection.MAIN),
+            ),
+            effectiveType = GeneratorType.PYRAMID,
+            hardCeiling = 20.0,
+            maxWidening = 1.0,
+            workFloor = 16.0,
+        )
+        val board = listOf(candidate("easiest", 18.0), candidate("next", 19.0))
+        val result = PlaylistFiller.fill(
+            plan = plan,
+            source = poolSource(board),
+            boardCandidates = board,
+            random = Random(1),
+        )
+
+        assertEquals(
+            listOf(18.0, 19.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty },
+        )
+        assertEquals(0, result.droppedClimbs)
+    }
+
+    @Test
     fun `a warm-up slot never widens up into the work`() {
         val plan = PlaylistPlan(
             slots = listOf(PlanSlot.ClimbSlot(13.0, 15.0, PlanSection.WARM_UP)),

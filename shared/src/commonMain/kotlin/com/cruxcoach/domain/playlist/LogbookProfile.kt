@@ -54,6 +54,13 @@ data class LogbookProfile(
     val secondMaxDifficulty: Double? = null,
     /** Second-hardest true flash; fallback for [flashAnchorDifficulty]. */
     val secondFlashDifficulty: Double? = null,
+    /**
+     * The easiest graded climb the selected board has at the selected angle,
+     * or null when unknown. Not the climber's — the wall's: a MoonBoard at 40°
+     * starts at 6b, and a plan drawn from the bottom of the scale asked it
+     * for a warm-up and pyramid tiers it simply does not have.
+     */
+    val boardMinDifficulty: Double? = null,
 ) {
     /**
      * Seat an unpersonalized profile inside the grades that really exist on

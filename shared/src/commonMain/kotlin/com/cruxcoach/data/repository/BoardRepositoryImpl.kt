@@ -315,6 +315,18 @@ class BoardRepositoryImpl(
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }
 
+    override fun lowestGradedDifficulty(
+        angle: Int,
+        layoutId: Int,
+        boardBrand: String,
+        minDifficulty: Double,
+    ): Double? = q.lowestGradedDifficulty(
+        layoutId = layoutId.toLong(),
+        angle = angle.toLong(),
+        minDifficulty = minDifficulty,
+        boardBrand = boardBrand,
+    ).executeAsOneOrNull()?.difficulty
+
     override fun hasMoonBoardHoldSetMask(): Boolean {
         return q.hasMoonBoardHoldSetMask().executeAsOne()
     }

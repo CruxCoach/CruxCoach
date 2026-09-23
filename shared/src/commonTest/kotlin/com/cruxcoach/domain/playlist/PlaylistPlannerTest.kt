@@ -719,6 +719,56 @@ class PlaylistPlannerTest {
         }
     }
 
+    // ── Board floor ─────────────────────────────────────────────
+
+    /** An empty logbook on a MoonBoard 2016 at 40°, where the easiest climb
+     *  is a 6b (18) — seated the way the generator seats it. */
+    private val moonBoardNewcomer =
+        LogbookProfile(maxDifficulty = null, flashDifficulty = null, sampleSize = 0)
+            .adaptedToBoardGrades(17.6, 31.0)
+            .copy(boardMinDifficulty = 17.6)
+
+    @Test
+    fun `nothing is planned below the easiest grade the board has`() {
+        GeneratorType.entries.filter { it != GeneratorType.MANUAL }.forEach { type ->
+            SessionPosition.entries.forEach { position ->
+                val plan = PlaylistPlanner.plan(params(type, position = position), moonBoardNewcomer)
+                assertTrue(plan.climbs().isNotEmpty(), "$type/$position plans climbs")
+                assertTrue(
+                    plan.climbs().all { it.minDifficulty >= 18.0 },
+                    "$type/$position asked for ${plan.climbs().minOf { it.minDifficulty }}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a cold start on a board that starts high warms up on its easiest grade`() {
+        // Planned from the bottom of the scale, the ladder asked a MoonBoard
+        // for 4a to 5b: five empty slots in every cold MoonBoard session.
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID, position = SessionPosition.START_COLD),
+            moonBoardNewcomer,
+        )
+        val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
+        assertEquals(TrainingRanges.WARMUP_PROBLEMS_PER_TIER, warmUp.size)
+        assertTrue(warmUp.all { it.minDifficulty == 18.0 })
+    }
+
+    @Test
+    fun `a pyramid on a board that starts high rises from its floor instead of flattening`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.PYRAMID).copy(structureSize = 3),
+            moonBoardNewcomer,
+        )
+        // 6b, 6b+, 6c — not 6a and 6a+ stacked onto the 6b tier. The top is
+        // the default climber's max, never past it.
+        assertEquals(
+            listOf(18.5, 19.5, 20.5),
+            plan.climbs().map { it.maxDifficulty }.distinct(),
+        )
+    }
+
     @Test
     fun `plans never start or end with a rest`() {
         GeneratorType.entries.forEach { type ->

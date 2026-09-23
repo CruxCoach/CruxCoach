@@ -1184,6 +1184,21 @@ hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
 
 
+-- The easiest graded climb one board has at one angle. The playlist planner
+-- seats its warm-up and working tiers on it: a MoonBoard at 40° starts at 6b,
+-- and a plan drawn from the bottom of the scale asked it for grades it lacks.
+-- Walks idx_climb_stats_browse up from the bottom of the (layout, angle)
+-- slice, so it stops after a handful of rows instead of sorting the catalogue.
+lowestGradedDifficulty:
+SELECT cs.difficulty_average AS difficulty
+FROM climb_stats cs INDEXED BY idx_climb_stats_browse
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = :layoutId AND cs.angle = :angle
+  AND cs.difficulty_average >= :minDifficulty
+  AND c.board_brand = :boardBrand AND c.is_listed = 1
+ORDER BY cs.difficulty_average ASC
+LIMIT 1;
+
 -- Catalogue provenance is 'kilter' (legacy) or 'quantum'. Own/peer routes must
 -- never suppress the initial catalogue download.
 hasAnyCatalogueClimbs:

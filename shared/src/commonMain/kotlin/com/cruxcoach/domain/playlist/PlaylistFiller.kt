@@ -221,10 +221,14 @@ object PlaylistFiller {
         // warm-up slot may go as low as the board does and as high as the
         // bottom of the range — on a board with nothing easier, the easiest
         // working grade IS the warm-up — but never into the work itself.
+        // A range that starts below the board leaves nothing under it, so
+        // there the ladder reaches the board's easiest grade instead.
         val warmUp = slot.section == PlanSection.WARM_UP
         val lowest = if (warmUp) TrainingRanges.MIN_DIFFICULTY
         else workFloor ?: TrainingRanges.MIN_DIFFICULTY
-        val cap = if (warmUp) minOf(workFloor ?: hardCeiling, hardCeiling) else hardCeiling
+        val boardFloor = boardCandidates.minOfOrNull { it.grade }
+        val warmUpCap = workFloor?.let { maxOf(it, boardFloor ?: it) } ?: hardCeiling
+        val cap = if (warmUp) minOf(warmUpCap, hardCeiling) else hardCeiling
         fun nearestBoardCandidate(): PlaylistCandidate? {
             val safe = boardCandidates.filter {
                 it.climbUuid !in used && it.grade in lowest..cap

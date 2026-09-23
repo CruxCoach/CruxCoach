@@ -495,13 +495,23 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 // means two sorted scans of the whole catalogue — half a minute on a mid-range
                 // phone, during which "Generate" is locked. A climber with a logbook never
                 // needs it, so they no longer wait for it.
-                if (fromLogbook.isPersonalized) fromLogbook
-                else {
+                // Where the board starts matters to every profile, though: the
+                // planner seats warm-ups and tiers on it. That one is an index
+                // walk, not a scan.
+                if (fromLogbook.isPersonalized) {
+                    fromLogbook.copy(
+                        boardMinDifficulty = boardRepository.lowestGradedDifficulty(
+                            selection.angle, selection.layoutId, selection.boardBrand,
+                            TrainingRanges.MIN_DIFFICULTY,
+                        ),
+                    )
+                } else {
                     val range = loadBoardGradeRange(
                         selection.angle, selection.boardBrand, selection.layoutId,
                         selection.productSizeId,
                     )
                     fromLogbook.adaptedToBoardGrades(range.first, range.second)
+                        .copy(boardMinDifficulty = range.first)
                 }
             }
         } catch (e: CancellationException) {
