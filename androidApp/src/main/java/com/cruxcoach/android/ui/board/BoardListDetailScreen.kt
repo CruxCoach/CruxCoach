@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -168,6 +170,8 @@ fun BoardListDetailScreen(
         },
         floatingActionButton = {
             if (!state.isIgnored && state.totalCount > 0) {
+                val playingThis by viewModel.playingThis.collectAsStateWithLifecycle()
+                val playLabel = stringResource(if (playingThis) R.string.list_playback_resume else R.string.list_playback_start)
                 ExtendedFloatingActionButton(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
@@ -176,12 +180,14 @@ fun BoardListDetailScreen(
                     },
                     text = {
                         Text(
-                            stringResource(R.string.list_playback_start),
+                            playLabel,
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    modifier = Modifier.testTag("list_play_fab"),
+                    // Material3 clears this variant's text row from semantics, so
+                    // TalkBack announced a bare "Button" without the label here.
+                    modifier = Modifier.testTag("list_play_fab").semantics { contentDescription = playLabel },
                 )
             }
         },

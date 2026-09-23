@@ -62,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -404,6 +405,8 @@ fun PlaylistDetailScreen(
         floatingActionButton = {
             val playable = state.entries.any { !it.isRest && it.climb != null }
             if (playable) {
+                val playingThis by viewModel.playingThis.collectAsStateWithLifecycle()
+                val playLabel = stringResource(if (playingThis) R.string.list_playback_resume else R.string.playlist_play)
                 ExtendedFloatingActionButton(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
@@ -412,12 +415,14 @@ fun PlaylistDetailScreen(
                     },
                     text = {
                         Text(
-                            stringResource(R.string.playlist_play),
+                            playLabel,
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    modifier = Modifier.testTag("playlist_play_fab"),
+                    // Material3 clears this variant's text row from semantics, so
+                    // TalkBack announced a bare "Button" without the label here.
+                    modifier = Modifier.testTag("playlist_play_fab").semantics { contentDescription = playLabel },
                 )
             }
         },

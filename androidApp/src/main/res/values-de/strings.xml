@@ -2494,6 +2494,7 @@
     <string name="playlist_selection_all">Alle</string>
     <string name="list_playback_title">Liste abspielen</string>
     <string name="list_playback_start">Starten</string>
+    <string name="list_playback_resume">Fortsetzen</string>
     <string name="list_playback_source">Abspielquelle</string>
     <string name="list_playback_source_list">Liste</string>
     <string name="list_playback_source_plan">Trainingsablauf</string>

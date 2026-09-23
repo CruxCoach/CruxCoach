@@ -17,6 +17,9 @@ import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -89,6 +92,10 @@ class PlaylistDetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PlaylistDetailState(listId = listId))
     val state = _state.asStateFlow()
+
+    /** Whether this list is the one playing right now: its start button resumes it. */
+    val playingThis: StateFlow<Boolean> = playback.isPlaying("list:$listId")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     init {
         refresh()
@@ -413,6 +420,7 @@ class PlaylistDetailViewModel @Inject constructor(
         playback.play(
             hostName,
             items,
+            source = "list:$listId",
         )
         _state.update { it.copy(playbackBoardError = false) }
         onStarted()

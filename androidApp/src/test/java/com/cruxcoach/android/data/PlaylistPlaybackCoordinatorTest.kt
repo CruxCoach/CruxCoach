@@ -203,6 +203,26 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
+    fun `starting the list that is already playing resumes it`() {
+        val items = listOf(QueueItem("a", 40), QueueItem("b", 40), QueueItem("c", 40))
+        coordinator.play("Training", items, source = "list:7")
+        awaitState { it.isActive }
+        coordinator.next()
+        assertEquals(1, queueManager.state.value.currentIndex)
+
+        // Start again on the same list only reopens the player. It used to reload
+        // the queue at its first problem while the session clock ran on.
+        awaitState { it.isActive }
+        coordinator.play("Training", items, source = "list:7")
+        assertEquals(1, queueManager.state.value.currentIndex)
+        verify(exactly = 1) { boardSessionManager.startSession() }
+
+        // Another list still starts from its beginning.
+        coordinator.play("Other", items, source = "list:8")
+        assertEquals(0, queueManager.state.value.currentIndex)
+    }
+
+    @Test
     fun `playlist play cannot publish even when global climb sharing is disabled`() {
         every { bleShareManager.uiState } returns MutableStateFlow(
             mockk(relaxed = true) { every { sharingEnabled } returns false }

@@ -18,6 +18,8 @@ import com.cruxcoach.data.repository.inferAutoPlaybackRestSeconds
 import com.cruxcoach.data.repository.playbackStepsWithAutoRests
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,6 +92,10 @@ class BoardListDetailViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(BoardListDetailState(listId = listId))
     val state: StateFlow<BoardListDetailState> = _state.asStateFlow()
+
+    /** Whether this list is the one playing right now: its start button resumes it. */
+    val playingThis: StateFlow<Boolean> = playback.isPlaying("list:$listId")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** All resolved entries, board-agnostic and unfiltered. The displayed
      *  [BoardListDetailState.entries] is this narrowed by the active filters;
@@ -365,6 +371,7 @@ class BoardListDetailViewModel @Inject constructor(
                 playback.play(
                     hostName,
                     prepared.items,
+                    source = "list:$listId",
                 )
                 _state.update { it.copy(showPlaybackOptions = false) }
                 onStarted()
