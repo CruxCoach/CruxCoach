@@ -1,12 +1,14 @@
 # Testanleitung: Persönliche Daten teilen (Marmot v2)
 
-Stand: 23. September 2026, lokaler Branch `wip/marmot-permissions-v2` (Zielarchitektur
+Stand: 23. September 2026, Branch `feat/marmot-permissions-v2` (Zielarchitektur
 [marmot-permissions-v2-target.md](../architecture/marmot-permissions-v2-target.md),
 [deutsche Übersicht](../architecture/marmot-permissions-v2-target-overview.de.md)).
 
-Der Branch ist **nicht gepusht** und hat noch **keinen APKTrack-Track**: Branchname und
-damit Track und Paket legt der Owner fest. Diese Anleitung beschreibt, was ein Tester mit
-dem daraus gebauten Feature-APK durchspielen kann. Sie ist kein Nachweis, dass die Abläufe
+Feature-Identität laut `scripts/feature_identity.py`: APKTrack-Track
+`feat-marmot-permissions-v2-0bfee131`, Paket `com.cruxcoach.android.dev.f_0bfee1310616`.
+Ein Feature-APK gilt erst als veröffentlicht, wenn APKTrack `status="published"` und
+`receipt_delivered=true` meldet. Diese Anleitung beschreibt, was ein Tester mit diesem
+Feature-APK durchspielen kann. Sie ist kein Nachweis, dass die Abläufe
 auf Android bestanden wurden. Belege bisher: native Rust-Tests, JVM-Tests (Sync-Semantik,
 Migration, UI-Semantik) und Prozess-Tests mit drei synthetischen Teilnehmern über zwei
 feindliche Loopback-Relays (`scripts/marmot_network_e2e.py`,
@@ -25,8 +27,10 @@ Relay in der App und werden auf öffentliche Relays kopiert. Nicht Teil von v2:
 Gesundheitsdaten, Videos, mehrere Geräte pro Konto, signierte Freigaben.
 
 Die Freigaben sind **lokal**: Voreinstellung je Kreis (Freunde, Bekannte), Ausnahmen je
-Person und je Eintrag. Freunde erhalten zusätzlich alles, was Bekannte erhalten. Beide
-Voreinstellungen sind anfangs leer – ohne Wahl wird nichts geteilt.
+Person und je Eintrag. Freunde erhalten zusätzlich alles, was Bekannte erhalten. Nach
+einer Neuinstallation gilt: Freunde = Profil & Ziele + Trainingshistorie (30 Tage),
+Bekannte = Profil & Ziele. Bei niemandem kommt etwas an, bevor eine Person hinzugefügt
+ist und angenommen hat.
 
 Unabhängig davon und unverändert: „Teilen in der Nähe“ / CruxRelay und das Nostr-Backup
 (empfangene Daten sind nicht im Backup).
@@ -65,15 +69,19 @@ Freundschaften aus v1 sind danach weg und müssen neu angefragt werden. Das ist 
 
 **A** fragt an, **B** wird angefragt. Erwartete Texte sind die deutschen UI-Strings.
 
-### P-01 Einstieg und leere Voreinstellungen (ein Gerät)
+### P-01 Einstieg und Standard-Voreinstellungen (ein Gerät)
 
 1. Einstellungen → CruxCoach-Konto → Zeile „Persönliche Daten teilen“ (Info-Symbol,
    Pfeil) antippen. Erwartet: Übersicht ohne Dialog.
-2. Unter „Voreinstellungen“ zeigen „Freunde“ und „Bekannte“ jeweils „nichts“.
+2. Unter „Voreinstellungen“ zeigt „Freunde“ „Profil & Ziele, Trainingshistorie“ und
+   „Bekannte“ „Profil & Ziele“. „Freunde“ öffnen. Erwartet: „Profil & Ziele“ an, ausgegraut,
+   mit „Enthalten, weil Bekannte es erhalten.“; „Trainingshistorie“ an; Zeitraum „30 Tage“.
 3. „Bekannte“ öffnen, „Notizen“ einschalten, zurück. „Freunde“ öffnen. Erwartet:
    „Notizen“ ist an, ausgegraut, mit „Enthalten, weil Bekannte es erhalten.“
 4. Zeitraum bei Freunden auf „90 Tage“ stellen. Zurück: Zusammenfassung bei Freunden
-   „Notizen“, bei Bekannten „Notizen“.
+   „Profil & Ziele, Trainingshistorie, Notizen“, bei Bekannten „Profil & Ziele, Notizen“.
+5. App beenden und neu öffnen. Erwartet: die Wahl aus 3 und 4 bleibt; nichts springt auf
+   die Standardwerte zurück.
 
 ### P-02 Erreichbarkeit und Kennung (zwei Geräte)
 
@@ -179,7 +187,8 @@ Freundschaften aus v1 sind danach weg und müssen neu angefragt werden. Das ist 
 2. Backup-Schalter bleibt, wie er war; empfangene Daten sind nicht im Backup.
 3. Kontowechsel: danach zeigt „Persönliche Daten teilen“ den Zustand des neuen Kontos.
 4. Upgrade von einem v1-Build (falls vorhanden): App startet, v1-Freundschaften sind weg,
-   keine Fehlermeldung, Voreinstellungen leer.
+   keine Fehlermeldung, Voreinstellungen mit den Standardwerten (die alte
+   v1-Kreis-Einstellung wird nicht übernommen).
 
 ## 4. Bekannt offen
 

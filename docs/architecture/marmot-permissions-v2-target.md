@@ -4,11 +4,10 @@
 [Current v1 architecture](marmot-permissions.md) ·
 [FEAT-062 policy model](../specs/0.2.3/FEAT-062-personal-information-sharing.md)
 
-Status: design for local branch `wip/marmot-permissions-v2` (forked from
-`5af649ac0`, the permission branch after the 0.2.3 QA merge), written
-2026-09-23. It is not a release, a deployment or a security certification.
-Nothing here is pushed; the branch name and therefore the APKTrack track are
-the owner's decision.
+Status: design written 2026-09-23 for the branch now named
+`feat/marmot-permissions-v2` (forked from `5af649ac0`, the permission branch after
+the 0.2.3 QA merge; APKTrack track `feat-marmot-permissions-v2-0bfee131`). It is
+not a release, a deployment or a security certification.
 
 ## 1. What changes and why
 
@@ -151,8 +150,11 @@ bounded number of out-of-order deltas. Idempotence comes from the
 * **Two presets**: `FRIENDS` and `ACQUAINTANCES`, ordered
   `ACQUAINTANCES ≤ FRIENDS` with monotonic inheritance as in FEAT-062. Each
   preset has a category set and a training period (30, 90, 365 days or all).
-  A new installation stores both presets **empty**: nothing is shared until the
-  owner ticks something.
+  A newly created `share_preset` table is seeded with the owner-chosen starting
+  point: Friends = profile & goals + training history (30 days), Acquaintances =
+  profile & goals. The seed runs only where the table is created (fresh install
+  or migration 33); a later choice is never reset. Nothing reaches anyone before
+  a person is added and accepts.
 * **Three categories**: `PROFILE_AND_GOALS`, `TRAINING_HISTORY` (with period),
   `PRIVATE_NOTES`. Health information and videos are out of v1.
 * **Person rules**: per person and category ALLOW/DENY; optional period
@@ -260,7 +262,7 @@ journal are removed; the session keeps `cruxcoach_storage()` and storage gains
 
 | Table | Content |
 |---|---|
-| `sharing_preset` | `FRIENDS`/`ACQUAINTANCES` → categories, training days (created empty) |
+| `sharing_preset` | `FRIENDS`/`ACQUAINTANCES` → categories, training days (created with the two defaults) |
 | `sharing_person` | peer → preset, outgoing switch, optional period override, local label, created/ended time |
 | `sharing_person_rule`, `sharing_object_rule` | person and object exceptions |
 | `sharing_outgoing` | per peer: generation, sequence, sent scope, sent map (record id → revision), digest, last ack, heartbeat, pending end |
@@ -271,7 +273,7 @@ journal are removed; the session keeps `cruxcoach_storage()` and storage gains
 Migration 33 drops every v1 sharing table (ledgers, relationships, devices,
 manifests, attestations, recovery, key vault rows, sealed items, snapshots,
 policy transport, continuous grants/requests) and creates the tables above
-empty. No v1 consent, grant, circle baseline or rule is reinterpreted as a v2
+empty except for the two default presets. No v1 consent, grant, circle baseline or rule is reinterpreted as a v2
 permission. Release migrations 1–13 and the unpublished feature migrations
 14–32 stay byte-identical for installed feature builds. `SecureSchemaLineage`
 keeps refusing ambiguous lineages before DDL.
@@ -454,21 +456,24 @@ sharing screen exchanges no data.
 
 ## 12. Open owner decisions (working assumptions in brackets)
 
-1. Branch name and APKTrack track for v2 (no push; stays local).
+1. Branch name and APKTrack track for v2: decided 2026-09-23 as
+   `feat/marmot-permissions-v2` (track `feat-marmot-permissions-v2-0bfee131`).
 2. MDK bump to 0.10.x (deferred, §9).
 3. Default pool: the six Blossom-Sync URLs including Damus (AUTH) and the
    CruxCoach endpoint that rejects the needed kinds (kept unchanged).
-4. Presets start empty (yes) instead of suggested contents.
+4. Presets start with defaults (owner decision 2026-09-23): Friends = profile &
+   goals + 30 days of training history, Acquaintances = profile & goals; seeded
+   only where the table is created. No `VACUUM` after migration 33.
 5. v1 friendships, native state and sharing tables are deleted on upgrade;
    testers re-invite (yes).
 6. USER/SERVER endpoint roles dropped; a server is an ordinary peer (yes).
 7. NIP-42 AUTH answered automatically with the account signer (yes).
 8. Pool online while in the foreground and during WorkManager runs only (yes).
-9. `AGENTS.md` section on protocol-data ownership (text in §2.1; proposed in the
-   report because `AGENTS.md` is a trust-boundary file).
+9. `AGENTS.md` section on protocol-data ownership: added with the owner's explicit
+   trust-boundary authorisation (2026-09-23).
 10. Remote cleanup confirmation removed from the UI (yes).
 
-## 13. As built on `wip/marmot-permissions-v2` (2026-09-23)
+## 13. As built on `feat/marmot-permissions-v2` (2026-09-23)
 
 The implementation follows this document. Details that were settled while
 building, or that differ from the text above:
@@ -490,8 +495,19 @@ building, or that differ from the text above:
 * **Catch-up asks only connected relays**, and relays recorded as refusing
   NIP-77 go straight to the bounded REQ window instead of being probed again.
   A relay that is down no longer costs every `sync` its full timeouts.
+* **A message that overtakes its commit is delivered.** MDK keeps such a
+  message as a deferred peel and retries it only inside a convergence advance.
+  The host now also advances when `deferred_peel_cutoff_delay_ms` reports it
+  ready, and turns MDK's pending application events into inbox rows after
+  every advance, not only after the next ingest. Found by the continuous
+  process test after an MLS self-update; `native_transport` withholds the
+  commit at the relay to reproduce it deterministically.
 * **Invitation retry** backs off from 15 s to 10 min while the friend's
   KeyPackage is not yet available; an explicit request retries at once.
+* **Default presets** are seeded in `Share.sq` (fresh install) and `33.sqm`
+  (migration) right after `share_preset` is created; `SharingProjectionSchemaTest`
+  checks both paths and that a stored choice survives. The v1 friends baseline
+  does not carry over.
 * **Presets**: friends visibly inherit what acquaintances receive; an inherited
   category cannot be switched off on the friends preset.
 * **UI**: one destination with internal pages (overview, person, preset,

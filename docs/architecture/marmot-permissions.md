@@ -2,7 +2,7 @@
 
 [Deutsch: Funktionen und Architekturentscheidungen](marmot-permissions-overview.de.md)
 
-> **Superseded on `wip/marmot-permissions-v2`.** This document describes v1. The v2
+> **Superseded on `feat/marmot-permissions-v2`.** This document describes v1. The v2
 > branch replaces its ledgers, devices, snapshots and Kotlin transport; see the
 > [v2 target architecture](marmot-permissions-v2-target.md), §13 for what is built.
 

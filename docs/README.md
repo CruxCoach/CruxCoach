@@ -2,7 +2,7 @@
 
 Start with [the app overview](../README.md), then choose a guide below.
 
-## Permission system v2 (local work in progress, 2026-09-23)
+## Permission system v2 (`feat/marmot-permissions-v2`, 2026-09-23)
 
 The [v2 target architecture](architecture/marmot-permissions-v2-target.md)
 ([German summary](architecture/marmot-permissions-v2-target-overview.de.md))

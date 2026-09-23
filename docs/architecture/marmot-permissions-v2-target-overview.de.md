@@ -2,8 +2,8 @@
 
 [English: vollständige Zielarchitektur](marmot-permissions-v2-target.md)
 
-Stand 23. September 2026, lokaler Branch `wip/marmot-permissions-v2`. Kein
-Release, kein Push; Branch-Name und APKTrack-Track legt der Owner fest.
+Stand 23. September 2026, Branch `feat/marmot-permissions-v2` (APKTrack-Track
+`feat-marmot-permissions-v2-0bfee131`). Kein Release.
 
 ## Kurz gesagt
 
@@ -35,7 +35,9 @@ Lokal und unsigniert. Zwei Voreinstellungen (Freunde, Bekannte; Freunde sehen
 mindestens, was Bekannte sehen), drei Kategorien (Profil & Ziele,
 Trainingsverlauf mit Zeitraum 30/90/365 Tage oder alles, Notizen), Personen-
 und Objektausnahmen, Resolver aus FEAT-062 mit gleicher Rangfolge. Beide
-Voreinstellungen starten leer. Gesundheitsdaten, Videos, signierte Ledger,
+Voreinstellungen starten mit Standardwerten: Freunde = Profil & Ziele +
+Trainingshistorie 30 Tage, Bekannte = Profil & Ziele (nur beim Anlegen der
+Tabelle, eine eigene Wahl wird nie zurückgesetzt). Gesundheitsdaten, Videos, signierte Ledger,
 Mehrgeräte-Autorität, Wiederherstellungs-Code, Uhrsperre und die
 Einmal-Momentaufnahmen entfallen. Ein Gerät pro Identität.
 
@@ -72,7 +74,7 @@ Storage-Migrationen. Der Bump folgt getrennt.
 ## Daten und Migration
 
 SecureDB 33 → 34: Alle v1-Sharing-Tabellen werden entfernt, neue Tabellen
-starten leer; keine v1-Zustimmung wird als v2-Freigabe gedeutet. Ältere Builds
+starten leer bis auf die zwei Standard-Voreinstellungen; kein `VACUUM`; keine v1-Zustimmung wird als v2-Freigabe gedeutet. Ältere Builds
 verweigern Schema 34 (kein Reset). Der alte native Zustand `marmot-v1/` wird
 nach dem ersten erfolgreichen v2-Start gelöscht. Empfangene Datensätze bleiben
 außerhalb der kanonischen Tabellen, werden aber auf der Klettertour-Detailseite
@@ -90,7 +92,7 @@ Offene Owner-Entscheidungen und Annahmen: §12 der englischen Fassung.
 
 ## Umsetzung (Stand 23. September 2026)
 
-Der Branch `wip/marmot-permissions-v2` setzt das Zielbild um. Beim Bauen
+Der Branch `feat/marmot-permissions-v2` setzt das Zielbild um. Beim Bauen
 festgelegt: Sende-Tokens gelten je MLS-Gruppe (eine neue Freundschaft beginnt
 frisch); jede Rücknahme, die Nachrichten zurückgezogen hat, startet eine neue
 Generation (Manifest + vollständiger Stand), damit der Empfänger nie auf ein
