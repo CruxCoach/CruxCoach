@@ -951,7 +951,17 @@ class ClimbEditorViewModel @Inject constructor(
         // right after we clear it.
         autosaveJob?.cancel()
         viewModelScope.launch { autosave.clear(autosaveBoardKey) }
-        applyEditor(ClimbEditorState())
+        // Clear the climb, not the board it is set on. A bare ClimbEditorState()
+        // is a Kilter one: on a MoonBoard the editor turned into a Kilter wall
+        // with foot holds, Kilter colours and no angle.
+        val current = _state.value.editor
+        applyEditor(
+            ClimbEditorState(
+                boardBrand = current.boardBrand,
+                activeBrush = defaultBrushFor(current.boardBrand),
+                angle = current.angle,
+            )
+        )
         _state.update { it.copy(loadedDraftUuid = null) }
     }
 
