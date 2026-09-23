@@ -502,7 +502,13 @@ internal fun CompactDatabasePreparation(
     canChangeSelection: Boolean = true,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    val supportedBoards = BoardBrand.entries.filter { it in selectedBrands }
+    // The selection, plus whatever is still loading or failed: a board ticked off
+    // mid-download keeps downloading (the change applies to the next run), and the
+    // card lost its count and details while it did.
+    val supportedBoards = BoardBrand.entries.filter { brand ->
+        brand in selectedBrands || brand in state.boardErrors ||
+            state.boardSteps[brand].let { it != null && it !is ImportStep.Done }
+    }
     val readyBoards = supportedBoards.count { brand ->
         val step = state.boardSteps[brand]
         (step == null || step is ImportStep.Done) && brand !in state.boardErrors &&
@@ -914,10 +920,9 @@ private fun BoardCatalogueStatusList(
         // most of them as "deselected —": eight rows to find the one that was downloading.
         // Adding another board is what the selection button above the list is for.
         boards.filter { brand ->
-            brand in selectedBrands || (!onlySelected && (
-                (boardCounts[brand.wireValue] ?: 0L) > 0L ||
-                    boardSteps.containsKey(brand) || boardErrors.containsKey(brand)
-                ))
+            val loading = boardSteps[brand].let { it != null && it !is ImportStep.Done }
+            brand in selectedBrands || loading || boardErrors.containsKey(brand) ||
+                (!onlySelected && ((boardCounts[brand.wireValue] ?: 0L) > 0L || boardSteps.containsKey(brand)))
         }.forEach { brand ->
             // A nearby share is ONE transfer and one import for all of its boards. The
             // summary above the list carries its step and progress; the boards it brings

@@ -78,6 +78,25 @@ class BoardCatalogueStatusTest {
         compose.onNodeWithTag("board_status_tension").assertDoesNotExist()
     }
 
+    @Test fun `a board ticked off mid-download stays in the card until it is done`() {
+        // The running download is not aborted by a deselection; the card must not act as
+        // if nothing were loading and drop the count and the details for it.
+        compose.setContent {
+            MaterialTheme {
+                CompactDatabasePreparation(
+                    state = BoardSyncState(isSyncing = true, moonBoardStep = ImportStep.Decompress(1L, 2L)),
+                    boardCounts = emptyMap(),
+                    activeBrand = BoardBrand.MOONBOARD,
+                    selectedBrands = emptySet(),
+                    onRetry = {}, onLoadBoard = {},
+                )
+            }
+        }
+        compose.onNodeWithText("0 of 1 boards ready").assertIsDisplayed()
+        compose.onNodeWithTag("board_sync_compact_details").performClick()
+        compose.onNodeWithTag("board_status_moonboard").assertExists()
+    }
+
     @Test fun `old counts cannot claim readiness while import is running`() {
         show(mapOf("kilter" to 100L, "moonboard" to 50L), BoardSyncState(isSyncing = true))
         compose.onNodeWithText("Offline catalogues are ready.").assertDoesNotExist()
