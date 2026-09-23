@@ -634,6 +634,7 @@ class BoardBrowserViewModel @Inject constructor(
         private const val MAX_STATUS_SCAN_PAGES = 10
         // Dice re-rolls to skip an ignored climb before giving up (see fetchRandomClimb).
         private const val RANDOM_PICK_MAX_ROLLS = 8
+        private const val RANDOM_PICK_SAMPLE = 50
 
         // Ungraded-only mode rides on the existing SQL grade predicate
         //   ((difficulty_average >= :minDiff AND <= :maxDiff)
@@ -1987,10 +1988,15 @@ class BoardBrowserViewModel @Inject constructor(
                     var fallback: String? = null
                     repeat(RANDOM_PICK_MAX_ROLLS) {
                         if (result == null) {
-                            val candidate = pickOneAtOffset(randomized, 0)
-                            if (candidate != null) {
-                                fallback = candidate
-                                if (candidate !in hiddenUuids) result = candidate
+                            // One climb out of a sampled run, not the run's first: the
+                            // sample starts at a random row of a table all boards share,
+                            // and whenever that start lies past this board's last match
+                            // it wraps to the first — which made "Zufall" open the same
+                            // climb nearly every time.
+                            val sample = pickSample(randomized, RANDOM_PICK_SAMPLE)
+                            if (sample.isNotEmpty()) {
+                                fallback = sample.random()
+                                result = sample.filterNot { it in hiddenUuids }.randomOrNull()
                             }
                         }
                     }
@@ -2008,24 +2014,24 @@ class BoardBrowserViewModel @Inject constructor(
         _state.value.climbs.randomOrNull()?.uuid?.let(onResult)
     }
 
-    /** Fetch the single climb at [offset] in the current filter's ordering
-     *  (one row, no client-side filtering). Caller handles ignore re-rolls. */
-    private fun pickOneAtOffset(f: BrowserFilterState, offset: Int): String? {
+    /** Up to [limit] climbs in the current filter's ordering (no client-side
+     *  filtering). Caller handles ignore re-rolls. */
+    private fun pickSample(f: BrowserFilterState, limit: Int): List<String> {
         val climb = if (f.searchQuery.isNotBlank()) {
             boardRepository.searchClimbsByName(
                 f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
-                limit = 1, offset = offset, climbType = f.climbTypeFilter,
+                limit = limit, offset = 0, climbType = f.climbTypeFilter,
                 selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
             )
         } else {
             val gb = gradeBounds(f)
             boardRepository.searchClimbsSorted(
                 f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
-                f.sortField, f.sortDirection, limit = 1, offset = offset,
+                f.sortField, f.sortDirection, limit = limit, offset = 0,
                 climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
             )
         }
-        return climb.firstOrNull()?.uuid
+        return climb.map { it.uuid }
     }
 
     // --- Hold search & heatmap ---
