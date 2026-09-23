@@ -85,6 +85,45 @@
     "version": "0.1.89"
   },
   {
+    "license": "MIT",
+    "name": "async-utility",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "2e7fd5df0555fe80e278fb318e3f89dd48207db1879804482fe3b36ea78a9187"
+      }
+    ],
+    "repository": "https://github.com/yukibtc/async-utility.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.3.2"
+  },
+  {
+    "license": "MIT",
+    "name": "async-wsocket",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "82e80b67fb231a16bfd3fdd7231a99f9ac27f76dad80ee2c63d6499ad9fd1a4b"
+      }
+    ],
+    "repository": "https://github.com/yukibtc/async-wsocket.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.13.2"
+  },
+  {
+    "license": "MIT",
+    "name": "atomic-destructor",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "679b68bab027c36acb5a0322eeac94f3ddbcce8c2194c2ebdbd5b2fa95b97d8f"
+      }
+    ],
+    "repository": "https://github.com/yukibtc/atomic-destructor.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.3.0"
+  },
+  {
     "license": "Apache-2.0 OR MIT",
     "name": "autocfg",
     "notices": [
@@ -2119,6 +2158,19 @@
   },
   {
     "license": "MIT",
+    "name": "lru",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "061dc50af2cd9340703daf61978af3200cf681b12ea67a323c33ba109a23a45e"
+      }
+    ],
+    "repository": "https://github.com/jeromefroe/lru-rs.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.16.4"
+  },
+  {
+    "license": "MIT",
     "name": "marmot-forensics",
     "notices": [
       {
@@ -2213,6 +2265,20 @@
   },
   {
     "license": "MIT",
+    "name": "negentropy",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822",
+        "source": "https://raw.githubusercontent.com/rust-nostr/negentropy/94742ad2221e8350336fa0a40cf0fdb4a5228520/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/negentropy.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.5.0"
+  },
+  {
+    "license": "MIT",
     "name": "nostr",
     "notices": [
       {
@@ -2224,6 +2290,76 @@
     "repository": "https://github.com/rust-nostr/nostr.git",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
     "version": "0.44.8"
+  },
+  {
+    "license": "MIT",
+    "name": "nostr-database",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2",
+        "source": "https://raw.githubusercontent.com/rust-nostr/nostr/c1a24383cd361a408fc53eeac7c1708a3b589194/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/nostr.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.44.0"
+  },
+  {
+    "license": "MIT",
+    "name": "nostr-gossip",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2",
+        "source": "https://raw.githubusercontent.com/rust-nostr/nostr/c1a24383cd361a408fc53eeac7c1708a3b589194/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/nostr.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.44.0"
+  },
+  {
+    "license": "MIT",
+    "name": "nostr-relay-builder",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2",
+        "source": "https://raw.githubusercontent.com/rust-nostr/nostr/c1a24383cd361a408fc53eeac7c1708a3b589194/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/nostr.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.44.0"
+  },
+  {
+    "license": "MIT",
+    "name": "nostr-relay-pool",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2",
+        "source": "https://raw.githubusercontent.com/rust-nostr/nostr/eac2a5af540374af2940ddb932c76d0e00b0bf99/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/nostr.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.44.3"
+  },
+  {
+    "license": "MIT",
+    "name": "nostr-sdk",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2",
+        "source": "https://raw.githubusercontent.com/rust-nostr/nostr/837df0fdcf34609abca444ad991dcc8345b3add6/LICENSE"
+      }
+    ],
+    "repository": "https://github.com/rust-nostr/nostr.git",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.44.1"
   },
   {
     "license": "MIT OR Apache-2.0",
@@ -3756,6 +3892,19 @@
     "repository": "https://github.com/rustls/tokio-rustls",
     "source": "registry+https://github.com/rust-lang/crates.io-index",
     "version": "0.26.4"
+  },
+  {
+    "license": "MIT",
+    "name": "tokio-socks",
+    "notices": [
+      {
+        "name": "LICENSE",
+        "sha256": "a0bb5ec9a11d4b34412e0b9867c01f0cc63f5935ab20a087798201b910be5aa1"
+      }
+    ],
+    "repository": "https://github.com/sticnarf/tokio-socks",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "version": "0.5.2"
   },
   {
     "license": "MIT",

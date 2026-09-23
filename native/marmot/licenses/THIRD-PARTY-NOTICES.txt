@@ -18,6 +18,12 @@ arrayvec 0.7.6 (MIT OR Apache-2.0)
 async-trait 0.1.89 (MIT OR Apache-2.0)
   notice SHA256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a
   notice SHA256 23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3
+async-utility 0.3.2 (MIT)
+  notice SHA256 2e7fd5df0555fe80e278fb318e3f89dd48207db1879804482fe3b36ea78a9187
+async-wsocket 0.13.2 (MIT)
+  notice SHA256 82e80b67fb231a16bfd3fdd7231a99f9ac27f76dad80ee2c63d6499ad9fd1a4b
+atomic-destructor 0.3.0 (MIT)
+  notice SHA256 679b68bab027c36acb5a0322eeac94f3ddbcce8c2194c2ebdbd5b2fa95b97d8f
 autocfg 1.5.0 (Apache-2.0 OR MIT)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
   notice SHA256 27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac
@@ -357,6 +363,8 @@ litemap 0.8.2 (Unicode-3.0)
 log 0.4.29 (MIT OR Apache-2.0)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
   notice SHA256 6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb
+lru 0.16.4 (MIT)
+  notice SHA256 061dc50af2cd9340703daf61978af3200cf681b12ea67a323c33ba109a23a45e
 marmot-forensics 0.9.21 (MIT)
   notice SHA256 ec82e39802b46dd9e0c80c198c46617680d49a79c38ffc7feb42f0b3b0fd1be2
 memchr 2.8.0 (Unlicense OR MIT)
@@ -373,7 +381,19 @@ ml-kem 0.3.2 (Apache-2.0 OR MIT)
 module-lattice 0.2.3 (Apache-2.0 OR MIT)
   notice SHA256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5
   notice SHA256 d0fb27c23e807f1fc6f506d161984b294a1f05c9888ae31f056d1712685948ad
+negentropy 0.5.0 (MIT)
+  notice SHA256 15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822
 nostr 0.44.8 (MIT)
+  notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
+nostr-database 0.44.0 (MIT)
+  notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
+nostr-gossip 0.44.0 (MIT)
+  notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
+nostr-relay-builder 0.44.0 (MIT)
+  notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
+nostr-relay-pool 0.44.3 (MIT)
+  notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
+nostr-sdk 0.44.1 (MIT)
   notice SHA256 a333d394b9f31b6ca64d08f3048a8a38125c181d68d3d376c4ddf988cffd12d2
 num-traits 0.2.19 (MIT OR Apache-2.0)
   notice SHA256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
@@ -643,6 +663,8 @@ tokio-macros 2.7.0 (MIT)
 tokio-rustls 0.26.4 (MIT OR Apache-2.0)
   notice SHA256 cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e
   notice SHA256 e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a
+tokio-socks 0.5.2 (MIT)
+  notice SHA256 a0bb5ec9a11d4b34412e0b9867c01f0cc63f5935ab20a087798201b910be5aa1
 tokio-tungstenite 0.26.2 (MIT)
   notice SHA256 fdd55e2b2da854b0fbdc1e607df7c2ba1e1ebf91ecb77c515511ebeef972bc8f
 tracing 0.1.44 (MIT)
@@ -1259,6 +1281,31 @@ limitations under the License.
 
 
 ========================================================================
+NOTICE SHA256 061dc50af2cd9340703daf61978af3200cf681b12ea67a323c33ba109a23a45e
+========================================================================
+MIT License
+
+Copyright (c) 2016 Jerome Froelich
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+========================================================================
 NOTICE SHA256 0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720
 ========================================================================
 Copyright (c) 2010 The Rust Project Developers
@@ -1716,6 +1763,32 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+========================================================================
+NOTICE SHA256 15af40d3405e83dc3274896a59a357cea8750f61ea3c41e62aac2216be7f5822
+========================================================================
+MIT License
+
+Copyright (c) 2023 Yuki Kishimoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ========================================================================
@@ -2265,6 +2338,32 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+========================================================================
+NOTICE SHA256 2e7fd5df0555fe80e278fb318e3f89dd48207db1879804482fe3b36ea78a9187
+========================================================================
+MIT License
+
+Copyright (c) 2022-2023 Yuki Kishimoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ========================================================================
@@ -6123,6 +6222,32 @@ DEALINGS IN THE SOFTWARE.
 
 
 ========================================================================
+NOTICE SHA256 679b68bab027c36acb5a0322eeac94f3ddbcce8c2194c2ebdbd5b2fa95b97d8f
+========================================================================
+MIT License
+
+Copyright (c) 2024 Yuki Kishimoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+========================================================================
 NOTICE SHA256 6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920
 ========================================================================
 Copyright (c) 2019-2020 RustCrypto Developers
@@ -6970,6 +7095,32 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+
+========================================================================
+NOTICE SHA256 82e80b67fb231a16bfd3fdd7231a99f9ac27f76dad80ee2c63d6499ad9fd1a4b
+========================================================================
+MIT License
+
+Copyright (c) 2022-2024 Yuki Kishimoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ========================================================================
@@ -8212,6 +8363,32 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+========================================================================
+NOTICE SHA256 a0bb5ec9a11d4b34412e0b9867c01f0cc63f5935ab20a087798201b910be5aa1
+========================================================================
+MIT License
+
+Copyright (c) 2018 Yilin Chen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 
 ========================================================================

@@ -1,15 +1,31 @@
-# CruxCoach Marmot JNI host
+# CruxCoach Marmot JNI host (v2)
 
-This is a narrow source-built MDK account-device host, not a Nostr SDK or a
-CruxCoach backend. See [the architecture](../../docs/architecture/marmot-permissions.md)
-for its threat model, permission flow, relay evidence and limitations.
+A narrow, source-built MDK account-device host: MLS state (MDK/OpenMLS), an
+in-process Nostr relay, a nostr-sdk relay pool and a replicator, behind four
+JNI exports. It is not a CruxCoach backend. See
+[the v2 target architecture](../../docs/architecture/marmot-permissions-v2-target.md)
+for the threat model, sync semantics and crash-window analysis.
+
+## Layout
+
+| File | Role |
+|---|---|
+| `src/engine.rs` | MLS engine: discovery (10002/10050/30443), pairwise groups, two-leaf qualification, idempotent sends, ingest, convergence, fanout confirmation |
+| `src/store.rs` | Local relay store (`NostrDatabase` over SQLCipher), deliveries, peers, inbox, send tokens — on the MDK connection and transaction rail |
+| `src/transport.rs` | `CruxTransport`: in-process relay over `tokio::io::duplex`, pinned public `wss://` dialling, URL policy, peer-endpoint hook |
+| `src/host.rs` | Runtime, `LocalRelay`, pool, replicator (outbound delivery, live subscriptions, NIP-77 catch-up), JSON commands |
+| `src/jni_bridge.rs` | `MarmotNative.{open,call,archive,close}` and the `local-harness` test exports |
+| `src/protocol.rs` | Inner kind 1230 / label `cc.share.v2`, limits, default pool |
+
+Protocol data (groups, relays, events, delivery state, undelivered messages)
+lives only here. Kotlin reaches it through `MarmotHost` and keeps no copy.
 
 ## Build and qualify
 
 Linux host: Python 3.12+, patch, a C/C++ compiler, pkg-config and the pinned Rust
 1.97.1 toolchain. Android library: additionally NDK 27.2.12479018 and the
-`aarch64-linux-android` Rust target. Cargo.lock pins transitive sources; do not
-replace it with an unlocked dependency resolution.
+`aarch64-linux-android` Rust target. `Cargo.lock` pins transitive sources; do
+not replace it with an unlocked resolution.
 
 ```sh
 python3 native/marmot/prepare.py
@@ -19,136 +35,67 @@ python3 native/marmot/build.py --output /tmp/cc-marmot-host
 python3 native/marmot/build.py --android-ndk /path/to/ndk/27.2.12479018 --output /tmp/cc-marmot-android
 ```
 
-`build.py` verifies the complete patched upstream tree on every actual build,
-uses fixed source time and remapped compiler paths, and emits a manifest with
-source/patch/lock/compiler/feature/library hashes. `--target-dir` allows an
-independent clean build for reproducibility comparison. The qualification found
-that vendored OpenSSL embeds its absolute install paths and compiler flags:
-changing the build directory changes the binary hash despite file-prefix remaps.
-Reproducing the same binary therefore also requires the same absolute source,
-Cargo, NDK and target paths. The manifest pins source/toolchain inputs; it does
-not claim path-independent binary reproducibility. A full same-path arm64 rebuild was byte-identical. The final adapter-only clean
-rebuild with those unchanged qualified dependencies also matched, SHA-256
-`67fcf53886c417c0322950c18398547f31370f9c7a8a9a60aaf1de698ee67545` for the earlier snapshot adapter.
-The friendship adapter's same-source/same-path clean adapter rebuild also matches,
-SHA-256 `ca6557f7f2b3ca9083319004a0dd35e9a0b4967a85ac307133c4a3be7f8fbe67`.
-Its four production JNI exports contain no synthetic-identity harness exports.
-These hashes identify source-built library artifacts, not APK/device execution.
-Android static dependency
-symbols are hidden; the shared object's load segments use 16 KiB alignment.
-Gradle packages only the arm64 library, consistent with the existing app ABI.
-No binary is checked in. Changing native pins, Gradle or CI requires owner review.
+`prepare.py` fetches the immutable MDK archive for `615d0c1c` (v0.9.21 plus the
+official terminal-budget fix #1784), checks its SHA-256, applies
+`mdk-extension.patch` without fuzz and verifies the whole patched tree against
+`mdk-tree.sha256`. The patch is small: `cruxcoach_storage()` on the session and
+`cruxcoach_sql()` on the storage, which runs host SQL on MDK's own connection
+so an outbound event, its delivery rows and the send token commit in the same
+SQLCipher transaction as the ratchet step. The v1 leaf-snapshot and opaque
+journal extensions are gone; two-leaf qualification uses MDK's `members()`.
 
-The local extension adds canonical leaf/session commitment access and a bounded
-opaque journal on the existing SQLCipher transaction rail. It does not change
-MDK's cryptography or production timing policy. The post-v0.9.21 terminal-budget
-fix is upstream code, not a local policy bypass.
+`build.py` verifies the patched tree, uses fixed source time and remapped paths,
+and writes a manifest with source/patch/lock/compiler/library hashes. As before,
+vendored OpenSSL embeds absolute build paths, so byte-identical reproduction
+requires the same absolute paths. The Android library keeps 16 KiB load
+alignment and hidden static symbols; only the four `MarmotNative` exports are
+public. The arm64 release library measured 35.65 MB on 2026-09-23 (v1: about
+31 MB); the increase is the relay pool, relay builder and negentropy.
 
-## Synthetic endpoint and independent process test
+After any `Cargo.lock` change run `python3 native/marmot/collect_licenses.py`
+(network only for crates without a bundled license file) and review the diff of
+`licenses/`; `build.py` refuses a lock whose inventory hash is stale.
+
+## Relays and transport
+
+* The pool always contains the in-process relay at `wss://local.cruxcoach.invalid`
+  (a reserved name that can never resolve; reached only through a duplex stream).
+* Public relays: 1–16 `wss://` URLs, stored natively. A never-configured account
+  gets the owner's six defaults. DNS answers containing any non-public address
+  are refused; TLS uses the webpki roots; frames are limited to 512 KiB.
+* Events are sent only to relays that are connected at that moment. A failed
+  relay is reset in the pool so no frame buffered for it can be delivered after
+  a later `cancel`.
+* NIP-42 challenges are answered with the account signer (background-only on
+  Amber). NIP-77 reconciliation runs on start, reconnect and every 15 minutes;
+  relays that refuse it get a bounded REQ window.
+* `peer_endpoints` (pinned LAN/BLE endpoints per friend) is validated but only
+  accepted in the loopback harness in v1.
+
+## Synthetic endpoint and independent process tests
 
 ```sh
 ./gradlew :androidApp:writeMarmotEndpointClasspath --console=plain
 cargo +1.97.1 build --locked --manifest-path native/marmot/Cargo.toml --example local_relay
 python3 scripts/marmot_network_e2e.py
 python3 scripts/marmot_continuous_e2e.py
-# Interactive optional endpoint; defaults to SERVER and the requested six relays:
+# Interactive optional endpoint; defaults to the six public relays:
 python3 scripts/marmot_endpoint.py --prepared --role SERVER
 ```
 
-The interactive endpoint requires explicit JSON-line commands to activate
-bootstrap or invite; simply starting it publishes nothing. It prints its public
-synthetic account. Commands include `bootstrap`, `pin` (peer, role), `invite`
-(peer), `accept_invitation` (peer), `offer_category` (peer), `accept_category`
-(peer), `offer_synthetic` (peer), `accept_snapshot` (id), `readable` (id), `revoke`
-(id), `sync` and `status`. It accepts no production identity or private-key option.
+The `local_relay` example is a deliberately unhelpful loopback fixture: it
+delivers every event twice, refuses NIP-77 and can go offline on request. The
+JVM endpoint drives the production `MarmotHost` chokepoint with synthetic
+identities; only the loopback restart harness stores its generated key, in a
+temporary SQLCipher file whose key arrives over stdin. `local-harness` exports
+are absent from the Android build and `build.py` refuses to combine them.
 
-The automated process test uses two loopback WebSocket relays and two separate
-JVM endpoints, then kills and restarts both processes. Only this loopback restart
-harness keeps generated identity/device/wrapping keys in a temporary SQLCipher
-store. Its random master key stays in the parent process and travels over stdin,
-never arguments or logs; cleanup removes the owned temporary directory. The
-ordinary interactive adapter is ephemeral. `local-harness` JNI symbols are absent
-from the Android build, and `build.py` rejects combining that feature with Android.
-This adapter is an executable protocol reference, not a production server install.
-
-The continuous process test uses three independent JVMs (owner plus two friends),
-with separate USER and SERVER owner runs. `source_profile`, `source_training` and
-`source_note` mutate the actual app repositories; `offer_continuous` names peers,
-roles, category scope and history. `accept_continuous` confirms friendship and
-selects only the acceptor’s own outgoing data;
-`deny_category`/`end_continuous` narrow/end it. `automatic` opts into a local
-headless polling runner using the same source/policy/exchange services. It does
-not run an Android Worker or install a background server. `continuous_status` and
-`source_hashes` report hashes/counts instead of private text. `rotate_transport`
-exercises the real MDK epoch transition. `--unreachable-cruxcoach` is accepted
-only with loopback fixtures and maps the canonical CruxCoach relay to a closed
-local port; production builds contain no such facility.
-
-Continuous kind 1223 adds source-preserving ACK compaction and an exact-fenced
-outbox retirement API for completed/superseded application transfers. It cannot
-delete core MDK fanouts or another kind's obligations. Source provenance survives
-eight days in bounded buckets, while current payloads live in the independent app
-replica. Read/ingest byte and row limits are unchanged. Native scans use a durable
-four-route round-robin budget and continuous publication uses oldest-due bounded
-batches. Ending either side deletes both received directions. Root-signed
-generation evidence and real peer cleanup acknowledgements survive independently
-of plaintext. See the architecture for friendship authority, metadata retention
-and recovery limits.
-
-Public probes are manual, bounded and **not CI steps**. `public_e2e` requires
-`--synthetic-public-probe`; the optional `--six-relay-compat` uses all requested
-relays. The default encrypted roundtrip omits the CruxCoach relay entirely. Use
-only with authorization for the resulting small synthetic protocol publication.
-`relay_read_probe` performs read-only fresh-account compatibility queries.
+Public probes are manual and never CI steps: `public_e2e --synthetic-public-probe`
+(optionally `--six-relay-compat`) and `relay_read_probe --read-only-probe`.
 
 ## License and trust
 
 CruxCoach adapter code follows the repository GPL-3.0 license. MDK is MIT; its
-notice is retained under `licenses/MDK-MIT.txt`. Dependency license attribution
-is recorded under `licenses/`; source pins and full dependency resolution are in
-`Cargo.lock`. No signing, publisher, OIDC, deployment or production credential
-configuration belongs in this directory.
-
-## Why this host remains alongside Quartz
-
-[The dependency comparison](../../docs/architecture/marmot-dependencies.md) records
-released artifacts, current source pins, API probes, transitive costs and the
-strongest case for replacing this host. Quartz supplies account signing, not this
-Marmot engine. Official UniFFI adds a full runtime; released Quartz has a different
-protocol profile. Neither is adopted without atomic fence/disposal and migration
-parity. The 108-line MDK patch remains unchanged and hash-checked; no new native
-dependency or cryptographic primitive is introduced. Kotlin account callbacks,
-leaf proofs and friendship signatures now share one checked Quartz signer route.
-
-The feature request workflow runs the same native boundary and separate-process
-acceptance as PR CI before the trusted-main publisher may reserve/build/publish.
-Only the trusted publisher holds upload credentials; the local CLI must not obtain
-them from production. Reservation uses the canonical branch/track/commit identity
-before a publishable build. Full APK/Gradle/lint work belongs in CI.
-
-Feature `assembleDebug` in GitHub Actions registers the bounded compiler/Gradle
-[problem matchers](../../.github/feature-build-problems.json), including when
-the trusted publisher runs its separate credential-free build job. This makes
-build causes visible as public check annotations when full logs require login.
-The original process exit status remains authoritative. Registration excludes
-local builds, test or combined task invocations, and production signing. The
-matcher and its Gradle registration require owner review; no publisher workflow,
-credentials or signing policy are changed.
-
-Development and test builds use limited debug information (`debug = 1`) and no
-incremental scratch. Debug assertions and overflow checks remain explicitly on;
-the Android release profile is unchanged. A clean host JNI comparison reduced
-the target directory from 2.48 GB to 1.41 GB (43%), with the same six signer tests
-and native storage boundaries passing. These are test-build measurements, not
-an APK-size or cross-SDK benchmark. Backtrace/module information remains; full
-local type/variable debugging can opt in with `CARGO_PROFILE_DEV_DEBUG=2` and
-`CARGO_INCREMENTAL=1`. Keep those overrides out of qualification builds.
-
-The generated JNI directory has two AGP consumers: `merge*JniLibFolders` and
-`merge*NativeLibs`. Both depend on `buildMarmotNative`; attaching only the later
-native merge leaves the source-set folder merge with an undeclared producer
-dependency, which Gradle correctly rejects. A focused check for this integration
-is `./gradlew :androidApp:mergeDebugJniLibFolders --no-daemon --max-workers=2
---console=plain`. It must select the native producer automatically and merge its
-folders successfully; it does not assemble, sign or install an APK. The complete
-APK build remains a CI check. This Gradle dependency change requires owner review.
+notice is retained under `licenses/MDK-MIT.txt`. Dependency attribution is in
+`licenses/`. No signing, publisher, OIDC, deployment or production credential
+belongs in this directory. Changing native pins, Gradle or CI requires owner review.

@@ -1,5 +1,7 @@
 //! JSON commands are bounded DTOs, not code. No native pointer crosses JNI.
-use crate::node::{Config, Error, Fence, Node};
+//! Four production exports: open, call, archive, close.
+use crate::error::Error;
+use crate::host::{Host, HostConfig};
 use cgka_engine::account_identity_proof::{
     AccountIdentityProofRequest, AccountIdentityProofSigner,
 };
@@ -12,8 +14,7 @@ use nostr::signer::SignerBackend;
 use nostr::{
     Event, JsonUtil, NostrSigner, PublicKey, SignerError, UnsignedEvent, util::BoxedFuture,
 };
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{
     collections::BTreeMap,
     path::Path,
@@ -24,10 +25,20 @@ use std::{
 };
 use storage_sqlite::SqlCipherKey;
 
-static NODES: OnceLock<Mutex<BTreeMap<i64, Arc<Mutex<Node>>>>> = OnceLock::new();
+static HOSTS: OnceLock<Mutex<BTreeMap<i64, Arc<Host>>>> = OnceLock::new();
 static NEXT: AtomicI64 = AtomicI64::new(1);
-fn nodes() -> &'static Mutex<BTreeMap<i64, Arc<Mutex<Node>>>> {
-    NODES.get_or_init(Default::default)
+fn hosts() -> &'static Mutex<BTreeMap<i64, Arc<Host>>> {
+    HOSTS.get_or_init(Default::default)
+}
+
+fn register(host: Host) -> Result<i64, Error> {
+    let mut registry = hosts().lock().map_err(|_| Error("registry"))?;
+    if registry.len() >= 4 {
+        return Err(Error("account_limit"));
+    }
+    let handle = NEXT.fetch_add(1, Ordering::SeqCst);
+    registry.insert(handle, Arc::new(host));
+    Ok(handle)
 }
 
 struct JavaSigner {
@@ -149,177 +160,10 @@ impl NostrSigner for JavaSigner {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
-enum Command {
-    Bootstrap {
-        refresh: Option<bool>,
-    },
-    Sync,
-    RelaySummary,
-    RelayStates,
-    DiscoveryEnabled,
-    Peers,
-    Inbox {
-        after: Option<String>,
-        kind: Option<u64>,
-    },
-    Outbox,
-    Pending {
-        after: Option<String>,
-        kind: Option<u64>,
-    },
-    ContinuousObligations {
-        after: Option<String>,
-    },
-    DiscardContinuous {
-        event_id: String,
-        fence: Fence,
-    },
-    DiscardContinuousInbox {
-        source: String,
-        fence: Fence,
-    },
-    #[cfg(feature = "local-harness")]
-    PrivateStorageMatches {
-        marker: String,
-    },
-    Binding {
-        binding: String,
-    },
-    RetiredBinding {
-        binding: String,
-    },
-    Publish {
-        event_id: String,
-        fence: Fence,
-    },
-    Invite {
-        peer: String,
-    },
-    Accept {
-        peer: String,
-        group: Option<String>,
-    },
-    Reset {
-        peer: String,
-    },
-    Fence {
-        peer: String,
-    },
-    Handoff {
-        fence: Fence,
-        kind: u64,
-        tags: Vec<Vec<String>>,
-        content: String,
-        expires_at: u64,
-    },
-    Ack {
-        source: String,
-        fence: Fence,
-    },
-    Rotate {
-        fence: Fence,
-    },
-}
-fn command(node: &mut Node, raw: &str) -> Result<Value, Error> {
-    if raw.len() > 524_288 {
-        return Err(Error("command_limit"));
-    }
-    let command: Command = serde_json::from_str(raw).map_err(|_| Error("command_format"))?;
-    Ok(match command {
-        Command::DiscoveryEnabled => json!(node.discovery_enabled()?),
-        Command::RelaySummary => json!(node.relay_summary()?),
-        Command::RelayStates => json!(node.relay_states()?),
-        Command::Pending { after, kind } => {
-            let mut rows = node.pending_applications()?;
-            rows.retain(|r| {
-                after.as_ref().is_none_or(|a| &r.event_id > a) && kind.is_none_or(|k| k == r.kind)
-            });
-            rows.sort_by(|a, b| a.event_id.cmp(&b.event_id));
-            rows.truncate(16);
-            json!(rows)
-        }
-        Command::ContinuousObligations { after } => {
-            let mut rows = node.continuous_obligations()?;
-            rows.retain(|r| after.as_ref().is_none_or(|a| &r.event_id > a));
-            rows.sort_by(|a, b| a.event_id.cmp(&b.event_id));
-            rows.truncate(16);
-            json!(rows)
-        }
-        Command::DiscardContinuous { event_id, fence } => {
-            node.discard_continuous_handoff(&event_id, &fence)?;
-            json!(true)
-        }
-        Command::DiscardContinuousInbox { source, fence } => {
-            node.discard_continuous_inbox(&source, &fence)?;
-            json!(true)
-        }
-        #[cfg(feature = "local-harness")]
-        Command::PrivateStorageMatches { marker } => json!(node.private_storage_matches(&marker)?),
-        Command::Publish { event_id, fence } => {
-            node.publish_handoff(&event_id, &fence)?;
-            json!(true)
-        }
-        Command::Binding { binding } => json!(node.own_binding(&binding)?),
-        Command::RetiredBinding { binding } => json!(node.binding_retired(&binding)?),
-        Command::Bootstrap { refresh } => {
-            if refresh.unwrap_or(false) {
-                node.refresh_discovery()?;
-            } else {
-                node.bootstrap()?;
-            }
-            json!(true)
-        }
-        Command::Sync => {
-            node.sync()?;
-            json!(true)
-        }
-        Command::Peers => json!(
-            node.peers()?
-                .into_iter()
-                .chain(node.invitations()?)
-                .collect::<Vec<_>>()
-        ),
-        Command::Inbox { after, kind } => {
-            let mut rows = node.inbox()?;
-            rows.retain(|r| {
-                after.as_ref().is_none_or(|a| &r.source > a) && kind.is_none_or(|k| k == r.kind)
-            });
-            rows.sort_by(|a, b| a.source.cmp(&b.source));
-            rows.truncate(16);
-            json!(rows)
-        }
-        Command::Outbox => json!(node.outbox()?),
-        Command::Invite { peer } => json!(node.invite(&peer)?),
-        Command::Accept { peer, group } => {
-            json!(node.accept_group_invitation(&peer, group.as_deref())?)
-        }
-        Command::Reset { peer } => {
-            node.reset_peer(&peer)?;
-            json!(true)
-        }
-        Command::Fence { peer } => json!(node.fence(&peer)?),
-        Command::Handoff {
-            fence,
-            kind,
-            tags,
-            content,
-            expires_at,
-        } => json!(node.handoff(&fence, kind, tags, content, expires_at)?),
-        Command::Ack { source, fence } => {
-            node.acknowledge(&source, &fence)?;
-            json!(true)
-        }
-        Command::Rotate { fence } => {
-            node.rotate(&fence)?;
-            json!(true)
-        }
-    })
-}
 fn fail(env: &mut JNIEnv, code: &str) {
     let _ = env.throw_new("java/lang/IllegalStateException", code);
 }
+
 fn input(env: &mut JNIEnv, value: &JString) -> Result<String, Error> {
     let value: String = env
         .get_string(value)
@@ -329,6 +173,39 @@ fn input(env: &mut JNIEnv, value: &JString) -> Result<String, Error> {
         return Err(Error("jni_limit"));
     }
     Ok(value)
+}
+
+fn database_key(env: &mut JNIEnv, key: JByteArray) -> Result<SqlCipherKey, Error> {
+    let mut bytes = zeroize::Zeroizing::new(
+        env.convert_byte_array(key)
+            .map_err(|_| Error("database_key"))?,
+    );
+    if bytes.len() != 32 {
+        return Err(Error("database_key"));
+    }
+    let key = SqlCipherKey::new(hex::encode(bytes.as_slice()))?;
+    bytes.fill(0);
+    Ok(key)
+}
+
+fn respond(env: &mut JNIEnv, result: Result<serde_json::Value, Error>) -> jstring {
+    let response = match result {
+        Ok(value) => json!({"ok":true,"value":value}),
+        Err(error) => json!({"ok":false,"error":error.0}),
+    };
+    let encoded = response.to_string();
+    let encoded = if encoded.len() > 8_388_608 {
+        "{\"ok\":false,\"error\":\"native_output_limit\"}".to_string()
+    } else {
+        encoded
+    };
+    match env.new_string(encoded) {
+        Ok(s) => s.into_raw(),
+        Err(_) => {
+            fail(env, "jni_output");
+            std::ptr::null_mut()
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -343,19 +220,11 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let path = input(&mut env, &path)?;
         let raw = input(&mut env, &config)?;
-        let config: Config = serde_json::from_str(&raw).map_err(|_| Error("config"))?;
+        let config: HostConfig = serde_json::from_str(&raw).map_err(|_| Error("config"))?;
         if config.local_test {
             return Err(Error("loopback_disabled_in_app"));
         }
-        let mut bytes = zeroize::Zeroizing::new(
-            env.convert_byte_array(key)
-                .map_err(|_| Error("database_key"))?,
-        );
-        if bytes.len() != 32 {
-            return Err(Error("database_key"));
-        }
-        let key = SqlCipherKey::new(hex::encode(bytes.as_slice()))?;
-        bytes.fill(0);
+        let key = database_key(&mut env, key)?;
         let signer = Arc::new(JavaSigner {
             vm: env.get_java_vm().map_err(|_| Error("jni_vm"))?,
             callback: env
@@ -363,14 +232,8 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
                 .map_err(|_| Error("jni_callback"))?,
             public: PublicKey::from_hex(&config.account).map_err(|_| Error("account"))?,
         });
-        let node = Node::open(Path::new(&path), key, config, signer.clone(), signer)?;
-        let handle = NEXT.fetch_add(1, Ordering::SeqCst);
-        let mut registry = nodes().lock().map_err(|_| Error("registry"))?;
-        if registry.len() >= 4 {
-            return Err(Error("account_limit"));
-        }
-        registry.insert(handle, Arc::new(Mutex::new(node)));
-        Ok(handle)
+        let host = Host::open(Path::new(&path), key, config, signer.clone(), signer)?;
+        register(host)
     }))
     .unwrap_or(Err(Error("native_panic")));
     match result {
@@ -391,33 +254,17 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_call(
 ) -> jstring {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let raw = input(&mut env, &raw)?;
-        let node = nodes()
+        let host = hosts()
             .lock()
             .map_err(|_| Error("registry"))?
             .get(&handle)
             .cloned()
             .ok_or(Error("closed"))?;
-        let mut node = node.lock().map_err(|_| Error("session_poisoned"))?;
-        command(&mut node, &raw)
+        // The registry lock is released: `next` may block without holding it.
+        host.call(&raw)
     }))
     .unwrap_or(Err(Error("native_panic")));
-    let response = match result {
-        Ok(value) => json!({"ok":true,"value":value}),
-        Err(error) => json!({"ok":false,"error":error.0}),
-    };
-    let encoded = response.to_string();
-    let encoded = if encoded.len() > 8_388_608 {
-        "{\"ok\":false,\"error\":\"native_output_limit\"}".to_string()
-    } else {
-        encoded
-    };
-    match env.new_string(encoded) {
-        Ok(s) => s.into_raw(),
-        Err(_) => {
-            fail(&mut env, "jni_output");
-            std::ptr::null_mut()
-        }
-    }
+    respond(&mut env, result)
 }
 
 #[unsafe(no_mangle)]
@@ -426,40 +273,81 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_close(
     _: JClass,
     handle: jlong,
 ) {
-    match nodes().lock() {
-        Ok(mut registry) => {
-            registry.remove(&handle);
+    let removed = match hosts().lock() {
+        Ok(mut registry) => registry.remove(&handle),
+        Err(_) => {
+            fail(&mut env, "registry");
+            return;
         }
-        Err(_) => fail(&mut env, "registry"),
+    };
+    if let Some(mut host) = removed {
+        // Blocked `next` calls hold clones; they observe `closed` and return.
+        host.signal_close();
+        for _ in 0..40 {
+            match Arc::try_unwrap(host) {
+                Ok(owned) => {
+                    owned.close();
+                    return;
+                }
+                Err(shared) => {
+                    host = shared;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        }
+        // Still in use: the last clone's Drop stops the runtime.
     }
 }
 
-/// Ephemeral identities exist only in an explicitly built local harness.
-/// This module/symbol set is absent from the Android production library.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_archive(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) -> jni::sys::jboolean {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let path = input(&mut env, &path)?;
+        crate::engine::archive_storage(Path::new(&path))
+    }))
+    .unwrap_or(Err(Error("native_panic")));
+    if result.is_ok() { 1 } else { 0 }
+}
+
+/// Synthetic identities exist only in an explicitly built local harness.
+/// This module and its symbols are absent from the Android library.
 #[cfg(feature = "local-harness")]
 mod harness {
     use super::*;
-    use jni::sys::{jboolean, jbyteArray};
+    use jni::sys::jboolean;
     use nostr::{
         Keys,
         secp256k1::{Message, SECP256K1, XOnlyPublicKey, schnorr::Signature},
     };
-    static IDENTITIES: OnceLock<Mutex<BTreeMap<i64, (Keys, Keys)>>> = OnceLock::new();
-    fn identities() -> &'static Mutex<BTreeMap<i64, (Keys, Keys)>> {
+    static IDENTITIES: OnceLock<Mutex<BTreeMap<i64, Keys>>> = OnceLock::new();
+    fn identities() -> &'static Mutex<BTreeMap<i64, Keys>> {
         IDENTITIES.get_or_init(Default::default)
     }
 
-    // Test-only restart store: generated account/device/wrapping keys are encrypted
-    // by the already pinned SQLCipher. The parent harness supplies a temporary
-    // database key over stdin, never argv/logs. No key export API exists.
-    struct RestartStore {
-        db: storage_sqlite::SqliteAccountStorage,
-        _lease: fs_private::PrivateExclusiveFileLease,
+    fn remember(keys: Keys) -> serde_json::Value {
+        let handle = NEXT.fetch_add(1, Ordering::SeqCst);
+        let response = json!({"handle":handle,"account":keys.public_key().to_hex()});
+        if let Ok(mut identities) = identities().lock() {
+            identities.insert(handle, keys);
+        }
+        response
     }
-    static RESTART_STORES: OnceLock<Mutex<BTreeMap<i64, RestartStore>>> = OnceLock::new();
-    fn restart_stores() -> &'static Mutex<BTreeMap<i64, RestartStore>> {
-        RESTART_STORES.get_or_init(Default::default)
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_createIdentity(
+        mut env: JNIEnv,
+        _: JClass,
+    ) -> jstring {
+        let value = remember(Keys::generate());
+        respond(&mut env, Ok(value))
     }
+
+    /// Test-only restart store: the generated account key is encrypted by the
+    /// pinned SQLCipher with a key the parent harness passes over stdin.
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_restartIdentity(
         mut env: JNIEnv,
@@ -472,136 +360,54 @@ mod harness {
             let path = Path::new(&path);
             fs_private::create_dir_all_private(path.parent().ok_or(Error("test_path"))?)
                 .map_err(|_| Error("test_path"))?;
-            let lease =
-                fs_private::try_acquire_private_exclusive_file_lease(&path.with_extension("lease"))
-                    .map_err(|_| Error("test_lease"))?;
             fs_private::ensure_private_db_files(path).map_err(|_| Error("test_path"))?;
-            let bytes = zeroize::Zeroizing::new(
-                env.convert_byte_array(key).map_err(|_| Error("test_key"))?,
-            );
-            if bytes.len() != 32 {
-                return Err(Error("test_key"));
-            }
-            let db = storage_sqlite::SqliteAccountStorage::open_encrypted(
-                path,
-                &SqlCipherKey::new(hex::encode(bytes.as_slice()))?,
-            )?;
-            db.cruxcoach_init()?;
-            let raw = if let Some(raw) = db.cruxcoach_get("synthetic-identity-v1")? {
-                zeroize::Zeroizing::new(raw)
-            } else {
-                let mut raw = zeroize::Zeroizing::new(Vec::with_capacity(64));
-                for _ in 0..2 {
-                    let key = Keys::generate();
-                    let secret = zeroize::Zeroizing::new(key.secret_key().to_secret_bytes());
-                    raw.extend_from_slice(secret.as_slice());
+            let key = database_key(&mut env, key)?;
+            let db = storage_sqlite::SqliteAccountStorage::open_encrypted(path, &key)?;
+            let stored: Option<Vec<u8>> = db.cruxcoach_sql(|c| {
+                c.execute_batch("CREATE TABLE IF NOT EXISTS synthetic_identity(k BLOB NOT NULL)")?;
+                use rusqlite::OptionalExtension;
+                c.query_row("SELECT k FROM synthetic_identity", [], |r| r.get(0))
+                    .optional()
+            })?;
+            let secret = match stored {
+                Some(bytes) => zeroize::Zeroizing::new(bytes),
+                None => {
+                    let generated = zeroize::Zeroizing::new(
+                        Keys::generate().secret_key().to_secret_bytes().to_vec(),
+                    );
+                    db.cruxcoach_sql(|c| {
+                        c.execute(
+                            "INSERT INTO synthetic_identity(k) VALUES(?1)",
+                            [generated.as_slice()],
+                        )
+                    })?;
+                    generated
                 }
-                db.cruxcoach_put("synthetic-identity-v1", raw.as_slice())?;
-                raw
             };
-            if raw.len() != 64 {
-                return Err(Error("test_identity_format"));
-            }
-            let account = Keys::new(
-                nostr::SecretKey::from_slice(&raw[..32]).map_err(|_| Error("test_identity"))?,
+            let keys = Keys::new(
+                nostr::SecretKey::from_slice(&secret).map_err(|_| Error("test_identity"))?,
             );
-            let device = Keys::new(
-                nostr::SecretKey::from_slice(&raw[32..]).map_err(|_| Error("test_identity"))?,
-            );
-            let handle = NEXT.fetch_add(1, Ordering::SeqCst);
-            let response = json!({"handle":handle,"account":account.public_key().to_hex(),"device":device.public_key().to_hex()});
-            identities()
-                .lock()
-                .map_err(|_| Error("test_identity"))?
-                .insert(handle, (account, device));
-            restart_stores()
-                .lock()
-                .map_err(|_| Error("test_store"))?
-                .insert(handle, RestartStore { db, _lease: lease });
-            Ok(response)
+            Ok(remember(keys))
         })();
-        match result {
-            Ok(value) => env.new_string(value.to_string()).unwrap().into_raw(),
-            Err(e) => {
-                fail(&mut env, e.0);
-                std::ptr::null_mut()
-            }
-        }
-    }
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_wrappingKey(
-        mut env: JNIEnv,
-        _: JClass,
-        handle: jlong,
-        alias: JString,
-        operation: jni::sys::jint,
-    ) -> jbyteArray {
-        let result: Result<Option<zeroize::Zeroizing<Vec<u8>>>, Error> = (|| {
-            let alias = input(&mut env, &alias)?;
-            // Hash identifiers only to fit the journal bound; not a key derivation.
-            use sha2::{Digest, Sha256};
-            let alias = format!("wrap/{}", hex::encode(Sha256::digest(alias.as_bytes())));
-            let stores = restart_stores().lock().map_err(|_| Error("test_store"))?;
-            let db = &stores.get(&handle).ok_or(Error("test_store"))?.db;
-            if operation == 2 {
-                db.cruxcoach_delete(&alias)?;
-                return Ok(None);
-            }
-            let key = match db.cruxcoach_get(&alias)? {
-                Some(key) => Some(key),
-                None if operation == 1 => {
-                    let key =
-                        zeroize::Zeroizing::new(nostr::SecretKey::generate().to_secret_bytes());
-                    db.cruxcoach_put(&alias, key.as_slice())?;
-                    Some(key.to_vec())
-                }
-                None => None,
-            };
-            Ok(key.map(zeroize::Zeroizing::new))
-        })();
-        match result {
-            Ok(Some(key)) => env
-                .byte_array_from_slice(key.as_slice())
-                .unwrap()
-                .into_raw(),
-            Ok(None) => std::ptr::null_mut(),
-            Err(e) => {
-                fail(&mut env, e.0);
-                std::ptr::null_mut()
-            }
-        }
+        respond(&mut env, result)
     }
 
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_createIdentity(
-        env: JNIEnv,
-        _: JClass,
-    ) -> jstring {
-        let account = Keys::generate();
-        let device = Keys::generate();
-        let handle = NEXT.fetch_add(1, Ordering::SeqCst);
-        let response = json!({"handle":handle,"account":account.public_key().to_hex(),"device":device.public_key().to_hex()});
-        identities()
-            .lock()
-            .unwrap()
-            .insert(handle, (account, device));
-        env.new_string(response.to_string()).unwrap().into_raw()
-    }
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_destroyIdentity(
         _env: JNIEnv,
         _: JClass,
         handle: jlong,
     ) {
-        identities().lock().unwrap().remove(&handle);
-        restart_stores().lock().unwrap().remove(&handle);
+        if let Ok(mut identities) = identities().lock() {
+            identities.remove(&handle);
+        }
     }
+
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_signEvent(
         mut env: JNIEnv,
         _: JClass,
         handle: jlong,
-        device: jboolean,
         raw: JString,
     ) -> jstring {
         let result = (|| {
@@ -609,47 +415,17 @@ mod harness {
             let event = UnsignedEvent::from_json(raw).map_err(|_| Error("test_event"))?;
             let identities = identities().lock().map_err(|_| Error("test_identity"))?;
             let keys = identities.get(&handle).ok_or(Error("test_identity"))?;
-            let key = if device != 0 { &keys.1 } else { &keys.0 };
-            if event.pubkey != key.public_key() {
+            if event.pubkey != keys.public_key() {
                 return Err(Error("test_account_mismatch"));
             }
-            event.sign_with_keys(key).map_err(|_| Error("test_signer"))
+            let signed = event
+                .sign_with_keys(keys)
+                .map_err(|_| Error("test_signer"))?;
+            serde_json::from_str(&signed.as_json()).map_err(|_| Error("test_event"))
         })();
-        match result {
-            Ok(event) => env.new_string(event.as_json()).unwrap().into_raw(),
-            Err(e) => {
-                fail(&mut env, e.0);
-                std::ptr::null_mut()
-            }
-        }
+        respond(&mut env, result)
     }
-    #[unsafe(no_mangle)]
-    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_signDigest(
-        mut env: JNIEnv,
-        _: JClass,
-        handle: jlong,
-        device: jboolean,
-        bytes: JByteArray,
-    ) -> jbyteArray {
-        let result: Result<[u8; 64], Error> = (|| {
-            let hash = env
-                .convert_byte_array(bytes)
-                .map_err(|_| Error("test_hash"))?;
-            let message = Message::from_digest_slice(&hash).map_err(|_| Error("test_hash"))?;
-            let identities = identities().lock().map_err(|_| Error("test_identity"))?;
-            let keys = identities.get(&handle).ok_or(Error("test_identity"))?;
-            Ok(if device != 0 { &keys.1 } else { &keys.0 }
-                .sign_schnorr(&message)
-                .serialize())
-        })();
-        match result {
-            Ok(bytes) => env.byte_array_from_slice(&bytes).unwrap().into_raw(),
-            Err(e) => {
-                fail(&mut env, e.0);
-                std::ptr::null_mut()
-            }
-        }
-    }
+
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_verify(
         env: JNIEnv,
@@ -667,6 +443,7 @@ mod harness {
         .is_some();
         u8::from(valid)
     }
+
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_open(
         mut env: JNIEnv,
@@ -678,35 +455,23 @@ mod harness {
     ) -> jlong {
         let result = (|| {
             let path = input(&mut env, &path)?;
-            let config: Config = serde_json::from_str(&input(&mut env, &config)?)
+            let config: HostConfig = serde_json::from_str(&input(&mut env, &config)?)
                 .map_err(|_| Error("test_config"))?;
-            let bytes = zeroize::Zeroizing::new(
-                env.convert_byte_array(key)
-                    .map_err(|_| Error("test_database_key"))?,
-            );
-            if bytes.len() != 32 {
-                return Err(Error("test_database_key"));
-            }
+            let key = database_key(&mut env, key)?;
             let keys = identities()
                 .lock()
                 .map_err(|_| Error("test_identity"))?
                 .get(&identity)
                 .ok_or(Error("test_identity"))?
-                .0
                 .clone();
-            let node = Node::open(
+            let host = Host::open(
                 Path::new(&path),
-                SqlCipherKey::new(hex::encode(bytes.as_slice()))?,
+                key,
                 config,
                 Arc::new(keys.clone()),
-                Arc::new(crate::node::LocalProofSigner(keys)),
+                Arc::new(crate::engine::LocalProofSigner(keys)),
             )?;
-            let handle = NEXT.fetch_add(1, Ordering::SeqCst);
-            nodes()
-                .lock()
-                .map_err(|_| Error("registry"))?
-                .insert(handle, Arc::new(Mutex::new(node)));
-            Ok(handle)
+            register(host)
         })();
         match result {
             Ok(h) => h,
@@ -716,30 +481,70 @@ mod harness {
             }
         }
     }
-}
 
-#[cfg(feature = "local-harness")]
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_failCruxcoach(
-    _env: JNIEnv,
-    _class: JClass,
-    port: jni::sys::jint,
-) {
-    if (0..=65535).contains(&port) {
-        crate::relay::CRUXCOACH_FAULT_PORT.store(port as u16, Ordering::SeqCst);
+    struct TestRelay {
+        runtime: tokio::runtime::Runtime,
+        relay: nostr_relay_builder::LocalRelay,
     }
-}
+    static RELAYS: OnceLock<Mutex<BTreeMap<i64, TestRelay>>> = OnceLock::new();
+    fn relays() -> &'static Mutex<BTreeMap<i64, TestRelay>> {
+        RELAYS.get_or_init(Default::default)
+    }
 
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_archive(
-    mut env: JNIEnv,
-    _class: JClass,
-    path: JString,
-) -> jni::sys::jboolean {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let path = input(&mut env, &path)?;
-        crate::node::archive_storage(Path::new(&path))
-    }))
-    .unwrap_or(Err(Error("native_panic")));
-    if result.is_ok() { 1 } else { 0 }
+    /// A loopback-only nostr-relay-builder relay (live subscriptions, NIP-77)
+    /// for JVM integration tests. Returns {"handle","url"}.
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_startRelay(
+        mut env: JNIEnv,
+        _: JClass,
+    ) -> jstring {
+        let result = (|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .map_err(|_| Error("test_relay"))?;
+            let relay = runtime.block_on(async {
+                let relay = nostr_relay_builder::LocalRelay::new(
+                    nostr_relay_builder::RelayBuilder::default()
+                        .addr(std::net::IpAddr::from([127, 0, 0, 1])),
+                );
+                relay.run().await.map(|_| relay)
+            });
+            let relay = relay.map_err(|_| Error("test_relay"))?;
+            let url = runtime.block_on(relay.url()).to_string();
+            let handle = NEXT.fetch_add(1, Ordering::SeqCst);
+            relays()
+                .lock()
+                .map_err(|_| Error("test_relay"))?
+                .insert(handle, TestRelay { runtime, relay });
+            Ok(json!({"handle":handle,"url":url}))
+        })();
+        respond(&mut env, result)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_stopRelay(
+        _env: JNIEnv,
+        _: JClass,
+        handle: jlong,
+    ) {
+        if let Some(relay) = relays().lock().ok().and_then(|mut r| r.remove(&handle)) {
+            relay.relay.shutdown();
+            relay
+                .runtime
+                .shutdown_timeout(std::time::Duration::from_secs(2));
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotTestNative_failCruxcoach(
+        _env: JNIEnv,
+        _class: JClass,
+        port: jni::sys::jint,
+    ) {
+        if (0..=65535).contains(&port) {
+            crate::transport::CRUXCOACH_FAULT_PORT.store(port as u16, Ordering::SeqCst);
+        }
+    }
 }

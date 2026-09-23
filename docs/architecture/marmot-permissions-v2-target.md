@@ -360,7 +360,7 @@ Weaker or dropped (owner-accepted):
 | Future LAN/BLE peers | Pinned peer endpoints in our transport | Blocked by the same safety chokepoint |
 | Atomic MLS state + outbound event + inbox | Same SQLCipher transaction via one-function patch | No host tables; would need an Android-side store |
 | Amber | Existing callback | `ExternalAccountSignerFfi` (equal) |
-| Artifact (arm64) | ~31 MB today, estimated +2–4 MB for pool/relay | ~49.5–54 MB stripped, plus JNA |
+| Artifact (arm64) | 35.65 MB measured for the v2 host (v1: ~31 MB) | ~49.5–54 MB stripped, plus JNA |
 | Binding | 4 reviewed JNI exports, JSON ops | UniFFI/JNA, 258 methods, reflection |
 | Upstream churn | Our 18 session calls have identical signatures at 615d0c1c and 0.10.4 | Breaking binding changes in every 0.10.x |
 | Reproducibility | `prepare.py` archive hash + tree hash + `build.py` manifest | Prebuilt artifact or a much larger source build |

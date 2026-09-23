@@ -22,7 +22,7 @@ transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter" }
 nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip59"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
-tokio = { version = "=1.52.1", features = ["rt", "time", "net", "macros"] }
+tokio = { version = "=1.52.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"] }
 sha2 = "=0.10.9"
 hex = "=0.4.3"
 jni = "=0.21.1"
@@ -31,6 +31,12 @@ futures-util = "=0.3.32"
 rustls = { version = "=0.23.40", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "=0.26.11"
 tokio-tungstenite = { version = "=0.26.2", features = ["rustls-tls-webpki-roots"] }
+nostr-sdk = { version = "=0.44.1", default-features = false }
+nostr-relay-builder = { version = "=0.44.0", default-features = false }
+nostr-database = { version = "=0.44.0", default-features = false }
+nostr-relay-pool = { version = "=0.44.3", default-features = false }
+async-wsocket = { version = "=0.13.2", default-features = false }
+rusqlite = { version = "=0.40.1", default-features = false }
 
 [dev-dependencies]
 tempfile = "=3.27.0"

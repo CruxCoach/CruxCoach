@@ -1,136 +1,118 @@
-use cruxcoach_marmot::relay::{MAX_EVENT_BYTES, RelayStatus, exchange, validate_url};
+use cruxcoach_marmot::transport::{
+    CruxTransport, MAX_FRAME_BYTES, normalize_relays, permitted, validate_url,
+};
 use futures_util::{SinkExt, StreamExt};
-use nostr::{EventBuilder, JsonUtil, Keys, Kind, Timestamp};
-use serde_json::{Value, json};
-
-// A deliberately dishonest local relay. No mocked client calls or public I/O.
-async fn scripted(frames: Vec<String>, request: Value) -> cruxcoach_marmot::relay::Exchange {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("ws://{}", listener.local_addr().unwrap());
-    let task = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
-        let _ = socket.next().await;
-        for frame in frames {
-            if socket
-                .send(tokio_tungstenite::tungstenite::Message::Text(frame.into()))
-                .await
-                .is_err()
-            {
-                break;
-            }
-        }
-        // Any authentication response would disclose an identity; only CLOSE
-        // is permitted from this adapter after EOSE.
-        if let Ok(Some(Ok(message))) =
-            tokio::time::timeout(std::time::Duration::from_millis(100), socket.next()).await
-            && let Ok(text) = message.to_text()
-        {
-            assert!(!text.starts_with("[\"AUTH\""));
-        }
-    });
-    let result = exchange(&url, true, request).await;
-    task.await.unwrap();
-    result
-}
-
-#[tokio::test]
-async fn authenticated_events_still_need_subscription_and_filter_and_are_deduplicated() {
-    let keys = Keys::generate();
-    let event = EventBuilder::new(Kind::Custom(445), "synthetic ciphertext placeholder")
-        .custom_created_at(Timestamp::from(100))
-        .sign_with_keys(&keys)
-        .unwrap();
-    let raw: Value = serde_json::from_str(&event.as_json()).unwrap();
-    let mut altered = raw.clone();
-    altered["content"] = json!("tampered");
-    let result = scripted(vec![
-        json!(["EVENT","wrong-sub", raw]).to_string(),
-        json!(["EVENT","s", altered]).to_string(),
-        json!(["EVENT","s", raw]).to_string(),
-        json!(["EVENT","s", raw]).to_string(),
-        json!(["EOSE","s"]).to_string(),
-    ], json!(["REQ","s",{"kinds":[445],"authors":[keys.public_key().to_hex()],"since":99,"until":101}])).await;
-    assert_eq!(result.status, RelayStatus::ReadComplete);
-    assert_eq!(result.events.len(), 1);
-    let wrong_filter = scripted(
-        vec![
-            json!(["EVENT", "s", raw]).to_string(),
-            json!(["EOSE", "s"]).to_string(),
-        ],
-        json!(["REQ","s",{"kinds":[30443]}]),
-    )
-    .await;
-    assert!(wrong_filter.events.is_empty());
-}
-
-#[tokio::test]
-async fn auth_and_rejection_are_visible_without_authentication_or_false_ack() {
-    for frame in [
-        json!(["AUTH", "synthetic-challenge"]),
-        json!(["CLOSED", "s", "auth-required: policy"]),
-    ] {
-        assert_eq!(
-            scripted(vec![frame.to_string()], json!(["REQ","s",{"kinds":[445]}]))
-                .await
-                .status,
-            RelayStatus::AuthRequired
-        );
-    }
-    assert_eq!(
-        scripted(
-            vec![json!(["OK", "event", false, "blocked: kind"]).to_string()],
-            json!(["EVENT",{"id":"event"}])
-        )
-        .await
-        .status,
-        RelayStatus::Rejected
-    );
-    assert_eq!(
-        scripted(
-            vec![
-                json!(["OK", "another-event", true, ""]).to_string(),
-                json!(["OK", "event", false, ""]).to_string()
-            ],
-            json!(["EVENT",{"id":"event"}])
-        )
-        .await
-        .status,
-        RelayStatus::Rejected
-    );
-}
-
-#[tokio::test]
-async fn oversized_frames_and_floods_are_limited() {
-    let request = json!(["REQ","s",{"kinds":[445]}]);
-    assert_eq!(
-        scripted(vec!["x".repeat(MAX_EVENT_BYTES + 1)], request.clone())
-            .await
-            .status,
-        RelayStatus::Limited
-    );
-    assert_eq!(
-        scripted(
-            vec![json!(["NOTICE", "synthetic flood"]).to_string(); 301],
-            request
-        )
-        .await
-        .status,
-        RelayStatus::Limited
-    );
-}
+use nostr::Url;
+use nostr_relay_builder::{LocalRelay, RelayBuilder};
+use nostr_relay_pool::ConnectionMode;
+use nostr_relay_pool::transport::websocket::WebSocketTransport;
+use std::time::Duration;
 
 #[test]
-fn relay_policy_keeps_private_targets_and_credentials_out_of_production() {
+fn relay_policy_keeps_private_targets_credentials_and_reserved_names_out() {
     for url in [
         "ws://127.0.0.1:80",
         "https://relay.example",
         "wss://user:pass@relay.example",
         "wss://relay.example/?secret=1",
         "wss://relay.example/#fragment",
+        "wss://local.cruxcoach.invalid",
     ] {
-        assert!(validate_url(url, false).is_err());
+        assert!(validate_url(url, false).is_err(), "{url}");
     }
     assert!(validate_url("ws://192.168.1.1:80", true).is_err());
+    assert!(validate_url("ws://10.0.0.2:80", true).is_err());
     assert!(validate_url("ws://127.0.0.1:80", true).is_ok());
+    assert!(validate_url("wss://relay.example", false).is_ok());
+    assert!(normalize_relays(&[], false).is_err());
+    assert!(normalize_relays(&vec!["wss://relay.example".to_string(); 17], false).is_err());
+    assert_eq!(
+        normalize_relays(
+            &["wss://relay.example".into(), "wss://RELAY.example/".into()],
+            false
+        )
+        .unwrap_err()
+        .0,
+        "relay_duplicate"
+    );
+}
+
+#[test]
+fn advertised_hints_select_only_configured_endpoints() {
+    let configured = vec![
+        "wss://a.example".to_string(),
+        "wss://b.example/nostr".to_string(),
+    ];
+    let advertised = vec![
+        "wss://A.example/".to_string(),
+        "wss://evil.example".to_string(),
+        "ws://127.0.0.1:1".to_string(),
+    ];
+    assert_eq!(
+        permitted(&configured, &advertised, false),
+        vec!["wss://a.example".to_string()]
+    );
+    assert!(permitted(&configured, &[], false).is_empty());
+}
+
+#[tokio::test]
+async fn private_address_resolution_is_refused_before_connecting() {
+    let relay = LocalRelay::new(RelayBuilder::default());
+    let transport = CruxTransport::new(relay, false);
+    // `localhost` resolves to loopback, which production never dials.
+    let url = Url::parse("wss://localhost:9").unwrap();
+    let result = transport
+        .connect(&url, &ConnectionMode::Direct, Duration::from_secs(2))
+        .await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn oversized_frames_close_the_connection_without_panicking() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        let _ = socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                "x".repeat(MAX_FRAME_BYTES + 1).into(),
+            ))
+            .await;
+    });
+    let transport = CruxTransport::new(LocalRelay::new(RelayBuilder::default()), true);
+    let (_sink, mut stream) = transport
+        .connect(
+            &Url::parse(&url).unwrap(),
+            &ConnectionMode::Direct,
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    let next = tokio::time::timeout(Duration::from_secs(3), stream.next())
+        .await
+        .unwrap();
+    assert!(matches!(next, Some(Err(_)) | None));
+}
+
+#[tokio::test]
+async fn the_local_relay_is_reached_without_any_socket() {
+    let relay = LocalRelay::new(RelayBuilder::default());
+    let transport = CruxTransport::new(relay, false);
+    let url = Url::parse(cruxcoach_marmot::protocol::LOCAL_RELAY_URL).unwrap();
+    let (mut sink, mut stream) = transport
+        .connect(&url, &ConnectionMode::Direct, Duration::from_secs(2))
+        .await
+        .unwrap();
+    sink.send(async_wsocket::Message::Text(
+        r#"["REQ","s",{"kinds":[1]}]"#.into(),
+    ))
+    .await
+    .unwrap();
+    let reply = tokio::time::timeout(Duration::from_secs(3), stream.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(reply.as_text(), Some(r#"["EOSE","s"]"#));
 }
