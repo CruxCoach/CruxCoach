@@ -242,9 +242,23 @@ fun BleConnectionSheet(
     // ACTION_STATE_CHANGED → bluetoothEnabled flips → the
     // BluetoothDisabled branch unmounts and the sheet drops into the
     // scan flow. No further action needed on the result callback.
+    // Both the permission result below and the effect keyed on that permission
+    // reach for the enable dialog after a grant; unguarded, Android stacked two
+    // and the climber had to allow Bluetooth twice.
+    var enableDialogOpen by remember { mutableStateOf(false) }
     val bluetoothEnableLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { /* result is observed via the state flow above */ }
+    ) { enableDialogOpen = false /* the result itself is observed via the state flow above */ }
+    val launchEnableDialog: () -> Unit = {
+        if (!enableDialogOpen) {
+            enableDialogOpen = true
+            // runCatching as a backstop: OEM ROMs have been known to refuse
+            // this activity even with the permission held, and a refused
+            // system dialog must not take the whole app down.
+            runCatching { bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)) }
+                .onFailure { enableDialogOpen = false }
+        }
+    }
 
     // Fires the enable dialog, acquiring its prerequisite first if needed.
     // Kept separate from connectionPermissionLauncher, whose success path
@@ -252,20 +266,11 @@ fun BleConnectionSheet(
     val enableBluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.values.all { it }) {
-            runCatching {
-                bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
-            }
-        }
+        if (permissions.values.all { it }) launchEnableDialog()
     }
     val requestBluetoothEnable: () -> Unit = {
         if (BlePermissionHelper.canRequestBluetoothEnable(state.hasConnectionPermission)) {
-            // runCatching as a backstop: OEM ROMs have been known to refuse
-            // this activity even with the permission held, and a refused
-            // system dialog must not take the whole app down.
-            runCatching {
-                bluetoothEnableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
-            }
+            launchEnableDialog()
         } else {
             // The full set, not just the connect permission this dialog needs.
             // Asking narrowly here bought nothing: the scan that follows the
