@@ -249,22 +249,10 @@ class OnboardingViewModel @Inject constructor(
                 triggerBackupCheckIfNeeded()
             }
         }
-        // Seed the board-model fields from the persisted preferences so
-        // the user's prior choice survives onboarding restarts (e.g.
-        // backup-restore round trip).
-        viewModelScope.safeLaunch("OnboardingViewModel") {
-            val layoutId = userPreferences.boardLayoutId.first()
-            val sizeId = userPreferences.boardProductSizeId.first()
-            val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(
-                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId)
-            _state.update {
-                it.copy(
-                    boardLayoutId = layoutId,
-                    boardProductSizeId = sizeId,
-                    boardProductSizeName = name,
-                )
-            }
-        }
+        // The persisted board choice reaches the state through the mirror
+        // above, which starts from the stored values. A separate seed used to
+        // race it with a Kilter size label whatever the board, so a cold start
+        // could show "MoonBoard · 12x12, with Kickboard".
     }
 
     fun nextStep() {
