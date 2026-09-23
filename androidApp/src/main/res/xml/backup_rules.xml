@@ -25,6 +25,9 @@
     <!-- Installation-scoped Quantum layer user UUIDs and physical-board
          binding. Restoring these would claim another installation's users. -->
     <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+    <!-- Whether this install already asked for notifications at startup. The
+         permission itself is not restored, so neither may the answer be. -->
+    <exclude domain="sharedpref" path="startup_prompts.xml"/>
     <!-- Device-global Bluetooth name snapshot and dirty recovery flag.
          Restoring these onto another phone could rename that device to the
          previous phone's identity. -->

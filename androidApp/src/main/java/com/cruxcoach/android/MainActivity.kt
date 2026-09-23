@@ -315,6 +315,12 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
             ) {
+                // Once per install. A declined prompt came back on the next
+                // launch, seconds later, until Android stopped showing it; the
+                // screens that need notifications ask again in context.
+                val prompts = getSharedPreferences("startup_prompts", MODE_PRIVATE)
+                if (prompts.getBoolean("notifications_asked", false)) return
+                prompts.edit().putBoolean("notifications_asked", true).apply()
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }

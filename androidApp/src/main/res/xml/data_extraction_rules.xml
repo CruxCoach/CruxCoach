@@ -12,6 +12,9 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+        <!-- Whether this install already asked for notifications at startup. The
+             permission itself is not restored, so neither may the answer be. -->
+        <exclude domain="sharedpref" path="startup_prompts.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
@@ -26,6 +29,9 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="sharedpref" path="board_layer_identity.xml"/>
+        <!-- Whether this install already asked for notifications at startup. The
+             permission itself is not restored, so neither may the answer be. -->
+        <exclude domain="sharedpref" path="startup_prompts.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
