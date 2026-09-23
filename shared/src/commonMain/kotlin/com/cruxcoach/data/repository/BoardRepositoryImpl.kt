@@ -315,10 +315,6 @@ class BoardRepositoryImpl(
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }
 
-    override fun hasCatalogueForBrand(boardBrand: String): Boolean {
-        return q.hasCatalogueForBrand(boardBrand).executeAsOne()
-    }
-
     override fun hasMoonBoardHoldSetMask(): Boolean {
         return q.hasMoonBoardHoldSetMask().executeAsOne()
     }

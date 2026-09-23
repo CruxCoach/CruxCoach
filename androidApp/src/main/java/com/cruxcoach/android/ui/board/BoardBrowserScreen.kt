@@ -364,10 +364,11 @@ fun BoardBrowserScreen(
     // The tour walks through a filled browser. Shown earlier — over the sync card, over an
     // empty list, while a share is still importing — its spotlights pointed at controls whose
     // actions could not happen yet and it read as broken. It waits, with its step kept, until
-    // there are climbs on screen and nothing is loading.
+    // the active board's catalogue is there and listed. Other boards may still be loading:
+    // an ordinary background sync must not hold back a tour the climber just asked for. A
+    // nearby share does, because its single import transaction blocks the browser's reads.
     val syncState by com.cruxcoach.android.ui.common.LocalBoardSyncManager.current.state.collectAsStateWithLifecycle()
-    val browserFilled = catalogueReady && !state.activeBrandCatalogueIncomplete &&
-        state.climbs.isNotEmpty() && !syncState.isSyncing && !state.isLoading
+    val browserFilled = catalogueReady && state.climbs.isNotEmpty() && !syncState.localShareInProgress
     val tourTarget = when (tourStep) {
         TourStep.BOARD -> TourTarget.BOARD
         TourStep.LOGBOOK -> TourTarget.MENU
@@ -485,13 +486,13 @@ fun BoardBrowserScreen(
                 onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
 
-            // A few climbs of this board are here, its catalogue is not (the receiver of a
-            // share cut to another board, with the app's default board still set). Say so
-            // above the list and offer the download; the list itself stays usable.
-            if (state.activeBrandCatalogueIncomplete && !state.activeBrandImporting) {
+            // The list shows CruxCoach community climbs only (they come through Nostr for every
+            // board); the board's catalogue is not loaded. Say so and offer it, without taking
+            // the community climbs away. (Without climbs the empty state below offers it.)
+            if (!state.activeBrandHasCatalogue && state.climbs.isNotEmpty() && !state.activeBrandImporting) {
                 Surface(
                     color = OrangeAccent.copy(alpha = 0.12f),
-                    modifier = Modifier.fillMaxWidth().testTag("board_catalogue_incomplete"),
+                    modifier = Modifier.fillMaxWidth().testTag("board_community_only"),
                 ) {
                     Row(
                         modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
@@ -500,7 +501,7 @@ fun BoardBrowserScreen(
                     ) {
                         Text(
                             stringResource(
-                                R.string.board_browser_catalogue_incomplete,
+                                R.string.board_browser_community_only,
                                 BoardBrand.fromWire(state.filter.boardBrand).displayName,
                             ),
                             modifier = Modifier.weight(1f),
@@ -508,7 +509,7 @@ fun BoardBrowserScreen(
                         )
                         TextButton(
                             onClick = { viewModel.loadActiveBoardCatalogue() },
-                            modifier = Modifier.testTag("board_catalogue_incomplete_load"),
+                            modifier = Modifier.testTag("board_community_only_load"),
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
                         }

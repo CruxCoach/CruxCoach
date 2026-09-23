@@ -552,8 +552,10 @@ class BoardSyncManager(
      */
     fun probeOnboardingShare() {
         val current = _state.value
+        // Not again once the climber chose the internet over this offer (a rotation recreates
+        // the screen and would otherwise put the declined offer straight back).
         if (current.alreadyImported || current.isSyncing || current.pendingDiscoveredShare != null ||
-            onboardingShareProbe?.isActive == true
+            onboardingShareProbe?.isActive == true || initialShareDeclined
         ) return
         onboardingShareProbe = scope.launch {
             val found = runCatching { discoverInitialShare() }
@@ -749,8 +751,8 @@ class BoardSyncManager(
     /**
      * The board families a share carries, from what its manifest declares — the snapshot's
      * contents once it is ready, the sender's live catalogues while it is still preparing.
-     * A family the sender only has a few community climbs of is not one of them, and a
-     * v1 artifact carries no Quantum. Nothing is assumed for a sender that declares nothing:
+     * A current sender declares only families it holds catalogue climbs of; a v1 artifact
+     * carries no Quantum. Nothing is assumed for a sender that declares nothing:
      * the transfer summary shows its progress, and no board row claims a board it may not
      * contain. (Every family used to be listed then — eight rows "wird vorbereitet" for a
      * share of one board.)
@@ -763,7 +765,7 @@ class BoardSyncManager(
         protocolVersion: Int,
     ): List<BoardBrand> =
         catalogues
-            .filter { it.climbCount >= LocalShareProtocol.MIN_CATALOGUE_CLIMBS }
+            .filter { it.climbCount > 0 }
             .mapNotNull { BoardBrand.fromWireOrNull(it.boardBrand) }
             .filter { it.isInteractive && (protocolVersion == LocalShareProtocol.VERSION_V2 || it != BoardBrand.QUANTUM) }
             .distinct()
@@ -1714,14 +1716,12 @@ class BoardSyncManager(
             // sender has, including a handful of rows of families it never declared — five
             // Kilter climbs next to a MoonBoard catalogue landed on a receiver that chose
             // MoonBoard alone and gave its default Kilter board a five-climb "catalogue".
-            var cutToSelection = false
-            if (brands.isNotEmpty()) {
-                val removed = withBackgroundThreadPriority {
-                    LocalShareSnapshotPruner.prune(raw, brands.toSet())
-                }
-                cutToSelection = removed > 0L
-                Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
+            val removed = withBackgroundThreadPriority {
+                LocalShareSnapshotPruner.prune(raw, brands.toSet())
             }
+            Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
+            // Families left out are what the same sender must still be able to supply later.
+            val cutToSelection = brands.size < offeredBrands.size
             withBackgroundThreadPriority {
                 importer.importFromLocalDb(
                     raw,

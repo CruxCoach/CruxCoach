@@ -81,13 +81,20 @@ lacks are fetched the ordinary way after the share, and only if not already pres
 invitation is accepted before the manifest exists, so there an existing download selection
 decides, falling back to the whole share when it would leave nothing.
 
-Filtering is a receiver-only step and changes nothing on the wire: after the compressed and
-uncompressed hashes verify, `LocalShareSnapshotPruner` deletes, in the receiver's temporary
-copy, every row that names another board brand and everything keyed to a removed climb
-(stats, beta links, the Quantum route bridge and metadata). Rows without a brand and legacy
-single-family snapshots are left untouched. The import boundary below then runs unchanged.
-A snapshot that was cut is not recorded as "already imported", so the same sender can still
-supply the families left out.
+Filtering is a receiver-only step and changes nothing on the wire. After the compressed and
+uncompressed hashes verify, `LocalShareSnapshotPruner` edits the receiver's temporary copy:
+
+- CruxCoach-native climbs (`source` nostr or local) are always removed. They reach a receiver
+  through Nostr with their author's signature; a peer cannot vouch for that authorship, the
+  importer strips it, and a stripped community climb would otherwise become a catalogue row.
+- Rows naming a board brand the receiver did not choose are removed.
+
+Everything keyed to a removed climb goes with it (stats, beta links, the Quantum route bridge
+and metadata), matched canonically. Rows without a brand and legacy snapshots without the
+needed columns are left untouched. The import boundary below then runs unchanged. A snapshot
+from which families were left out is not recorded as "already imported", so the same sender
+can still supply them. A current sender declares — ready or preparing — only families it holds
+catalogue climbs of, with counts of those climbs.
 
 ## Database import boundary
 

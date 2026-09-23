@@ -41,10 +41,9 @@ import com.cruxcoach.domain.board.BoardBrand
 internal data class OfferedCatalogue(val brand: BoardBrand, val climbCount: Long)
 
 /**
- * The catalogues worth offering. A sender counts every listed climb per family, so a phone
- * that only ever loaded MoonBoard still reports "Kilter: 5" for the community climbs it has
- * seen. Current senders leave those out themselves; this is the backstop for the others —
- * no real catalogue is anywhere near this small.
+ * The catalogues a sender offers, as it declares them. A current sender names only families
+ * it holds catalogue climbs of — its CruxCoach community climbs never cross a share (they come
+ * through Nostr), so a family it only has community climbs of is not on the list.
  */
 internal fun offeredCatalogues(manifest: com.cruxcoach.android.util.LocalShareProtocol.Manifest): List<OfferedCatalogue> =
     offeredCatalogues(manifest.declaredCatalogues)
@@ -52,7 +51,7 @@ internal fun offeredCatalogues(manifest: com.cruxcoach.android.util.LocalSharePr
 internal fun offeredCatalogues(declared: List<com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue>): List<OfferedCatalogue> =
     declared.mapNotNull { catalogue ->
         BoardBrand.fromWireOrNull(catalogue.boardBrand)
-            ?.takeIf { it.isInteractive && catalogue.climbCount >= com.cruxcoach.android.util.LocalShareProtocol.MIN_CATALOGUE_CLIMBS }
+            ?.takeIf { it.isInteractive && catalogue.climbCount > 0 }
             ?.let { OfferedCatalogue(it, catalogue.climbCount) }
     }.distinctBy { it.brand }
 

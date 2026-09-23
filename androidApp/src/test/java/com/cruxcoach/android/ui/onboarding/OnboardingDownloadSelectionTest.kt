@@ -123,8 +123,9 @@ class OnboardingDownloadSelectionTest {
                 apk = com.cruxcoach.android.util.LocalShareProtocol.Artifact("/CruxCoach.apk", 1L, "a".repeat(64)),
                 board = null,
                 boardStatus = "preparing",
+                // A current sender declares catalogue families only; its community climbs
+                // never cross a share.
                 declaredCatalogues = listOf(
-                    com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue("kilter", 5L),
                     com.cruxcoach.android.util.LocalShareProtocol.BoardCatalogue("moonboard", 284_253L),
                 ),
             ),
@@ -160,8 +161,8 @@ class OnboardingDownloadSelectionTest {
         compose.onNodeWithTag("onboarding_share_offer").performScrollTo().assertIsDisplayed()
         // What the consent rests on is on the screen, not only behind the info button.
         compose.onNodeWithTag("discovered_share_unverified").performScrollTo().assertIsDisplayed()
-        // MoonBoard is offered, grouped like every other count; five community climbs are not
-        // a Kilter catalogue, and no family is offered as downloadable that needs the internet.
+        // MoonBoard is offered, grouped like every other count; no family the sender does not
+        // have is offered as if it could come from it.
         compose.onNodeWithTag("board_selection_moonboard").performScrollTo().assertIsOn()
         compose.onNodeWithText("284.253 Climbs").assertExists()
         compose.onNodeWithTag("board_selection_kilter").assertDoesNotExist()

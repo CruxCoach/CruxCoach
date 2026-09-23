@@ -60,6 +60,26 @@ class LocalShareSnapshotPrunerTest {
         }
     }
 
+    @Test fun `CruxCoach community climbs never cross a share, whatever was chosen`() {
+        seed { db ->
+            db.execSQL("CREATE TABLE climbs (uuid TEXT PRIMARY KEY, board_brand TEXT, source TEXT)")
+            db.execSQL("CREATE TABLE climb_stats (climb_uuid TEXT, angle INTEGER)")
+            db.execSQL(
+                "INSERT INTO climbs VALUES ('m1','moonboard','kilter'),('m2','moonboard','nostr')," +
+                    "('k1','kilter','nostr'),('k2','kilter','local')"
+            )
+            // Stats keyed with a differently cased uuid still belong to their climb.
+            db.execSQL("INSERT INTO climb_stats VALUES ('M1',40),('m2',40),('k1',40)")
+        }
+
+        // No family choice at all: only the community rows go.
+        assertEquals(3L, LocalShareSnapshotPruner.prune(file, emptySet()))
+        read { db ->
+            assertEquals(listOf("m1"), db.strings("SELECT uuid FROM climbs"))
+            assertEquals(listOf("M1"), db.strings("SELECT climb_uuid FROM climb_stats"))
+        }
+    }
+
     @Test fun `a legacy single-family snapshot is left alone`() {
         seed { db ->
             db.execSQL("CREATE TABLE climbs (uuid TEXT PRIMARY KEY)")

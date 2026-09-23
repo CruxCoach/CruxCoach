@@ -465,8 +465,6 @@ interface BoardClimbQueries {
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
-    /** True when a real catalogue (fifty climbs or more) is present for the brand, not just a few rows. */
-    fun hasCatalogueForBrand(boardBrand: String): Boolean = hasClimbsForBrand(boardBrand)
     /** Presence gate for the MoonBoard hold-set filter (FEAT-049): true once
      *  the CATALOGUE carries a real `hsm` for any MoonBoard row. The value is
      *  produced by the build pipeline, so before that ships every row is 0 and

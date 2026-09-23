@@ -431,13 +431,12 @@ data class BoardBrowserState(
      *  board switch it stays true on the Kilter catalogue while the new
      *  board has zero rows — this flag drives the "load catalogue" empty
      *  state for exactly that case. */
-    val activeBrandHasCatalogue: Boolean = true,
     /**
-     * The active board shows climbs, but not its catalogue — a few catalogue-provenance rows
-     * that came with a peer share cut to another board, or Kilter-published own climbs. The
-     * list stays; a banner says the catalogue is not loaded and offers to load it.
+     * The active board has catalogue climbs (not just CruxCoach community climbs from Nostr).
+     * False with climbs on screen means the list shows community climbs only — the browser
+     * says so and offers the catalogue.
      */
-    val activeBrandCatalogueIncomplete: Boolean = false,
+    val activeBrandHasCatalogue: Boolean = true,
     /** True while a board-data sync is running and the ACTIVE brand's
      *  catalogue import hasn't completed yet. Drives the third empty-state
      *  case ("catalogue loading") — without it the browser flashes the
@@ -984,19 +983,8 @@ class BoardBrowserViewModel @Inject constructor(
                     PerfLogger.traceQuery("hasClimbsForBrand") {
                         boardRepository.hasClimbsForBrand(prefBoardBrand)
                     }
-                val brandCatalogueIncomplete = hasData && brandHasCatalogue &&
-                    !PerfLogger.traceQuery("hasCatalogueForBrand") {
-                        boardRepository.hasCatalogueForBrand(prefBoardBrand)
-                    }
-                if (brandHasCatalogue != _state.value.activeBrandHasCatalogue ||
-                    brandCatalogueIncomplete != _state.value.activeBrandCatalogueIncomplete
-                ) {
-                    _state.update {
-                        it.copy(
-                            activeBrandHasCatalogue = brandHasCatalogue,
-                            activeBrandCatalogueIncomplete = brandCatalogueIncomplete,
-                        )
-                    }
+                if (brandHasCatalogue != _state.value.activeBrandHasCatalogue) {
+                    _state.update { it.copy(activeBrandHasCatalogue = brandHasCatalogue) }
                 }
                 // FEAT-027: a MoonBoard layout has no Aurora product_size /
                 // board_images rows — the Kilter-only lookups below would just

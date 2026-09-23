@@ -1183,11 +1183,6 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
 
--- A downloaded catalogue, as opposed to a handful of catalogue-provenance rows that
--- arrived some other way (a peer share cut to another board, a few Kilter-published
--- own climbs). No real catalogue has fewer than fifty climbs; an O(50) probe decides.
-hasCatalogueForBrand:
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1 OFFSET 49);
 
 -- Catalogue provenance is 'kilter' (legacy) or 'quantum'. Own/peer routes must
 -- never suppress the initial catalogue download.

@@ -332,13 +332,12 @@ class LocalApkServer(
                     live.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
                 ).use { db ->
                     db.rawQuery(
-                        // A family this sender merely has a few community climbs of is not a
-                        // catalogue it can share: "Kilter — 5 climbs" next to a quarter of a
-                        // million MoonBoard problems only looked like one.
+                        // Catalogue climbs only: CruxCoach community climbs never cross a share
+                        // (they travel through Nostr), so a family this sender only has
+                        // community climbs of is not offered, and the counts are what arrives.
                         "SELECT COALESCE(board_brand, 'kilter'), COUNT(*) FROM climbs " +
-                            "WHERE is_listed = 1 GROUP BY 1 " +
-                            "HAVING SUM(CASE WHEN source IN ('nostr','local') THEN 0 ELSE 1 END) > 0 " +
-                            "ORDER BY 1",
+                            "WHERE is_listed = 1 AND COALESCE(source, '') NOT IN ('nostr','local') " +
+                            "GROUP BY 1 ORDER BY 1",
                         null,
                     ).use { cursor ->
                         buildList {
@@ -1055,9 +1054,8 @@ class LocalApkServer(
                     """
                     SELECT COALESCE(board_brand, 'kilter'), COUNT(*)
                     FROM climbs
-                    WHERE is_listed = 1
+                    WHERE is_listed = 1 AND COALESCE(source, '') NOT IN ('nostr','local')
                     GROUP BY COALESCE(board_brand, 'kilter')
-                    HAVING SUM(CASE WHEN source IN ('nostr','local') THEN 0 ELSE 1 END) > 0
                     ORDER BY COALESCE(board_brand, 'kilter')
                     """.trimIndent(),
                     null,

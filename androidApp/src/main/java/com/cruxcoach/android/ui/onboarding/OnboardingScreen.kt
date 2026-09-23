@@ -96,7 +96,10 @@ fun OnboardingScreen(
     // sender before asking which catalogues to load, so the first screen can show what this
     // sender really has instead of every family as if it were downloadable here.
     val syncState by boardSyncViewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { boardSyncViewModel.probeOnboardingShare() }
+    // Only while the first step can present an offer; later steps have no place for it.
+    LaunchedEffect(state.currentStep) {
+        if (state.currentStep == OnboardingStep.BOARD_SETUP) boardSyncViewModel.probeOnboardingShare()
+    }
     val shareOffer = syncState.pendingDiscoveredShare?.takeIf { syncState.discoveredShareInline }
     val shareHost = shareOffer?.let { offer ->
         runCatching { android.net.Uri.parse(offer.baseUrl).host }.getOrNull() ?: offer.baseUrl
@@ -419,6 +422,7 @@ private fun BoardSetupStep(
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    val previousBrand = BoardBrand.fromWire(state.boardBrand)
     var returnFromBluetooth by rememberSaveable { mutableStateOf(false) }
     var bluetoothSearched by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(bleSearchOpen) {
@@ -447,7 +451,13 @@ private fun BoardSetupStep(
                 showBoardModelDialog = false
                 onConnect()
             },
-            onBoardChosen = { if (shareChoice != null) shareChoice.include(it) else onDownloadSelectionChange(setOf(it)) },
+            onBoardChosen = {
+                if (shareChoice != null) shareChoice.include(it)
+                // The previous board's family was ticked as the default; the new board takes
+                // its place. Families ticked on purpose stay — replacing the whole selection
+                // dropped them.
+                else onDownloadSelectionChange((downloadSelection.orEmpty() - previousBrand) + it)
+            },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
@@ -459,7 +469,13 @@ private fun BoardSetupStep(
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
             deferDownloads = true,
-            onBoardChosen = { if (shareChoice != null) shareChoice.include(it) else onDownloadSelectionChange(setOf(it)) },
+            onBoardChosen = {
+                if (shareChoice != null) shareChoice.include(it)
+                // The previous board's family was ticked as the default; the new board takes
+                // its place. Families ticked on purpose stay — replacing the whole selection
+                // dropped them.
+                else onDownloadSelectionChange((downloadSelection.orEmpty() - previousBrand) + it)
+            },
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
