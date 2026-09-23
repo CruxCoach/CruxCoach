@@ -1716,8 +1716,12 @@ class BoardSyncManager(
             // sender has, including a handful of rows of families it never declared — five
             // Kilter climbs next to a MoonBoard catalogue landed on a receiver that chose
             // MoonBoard alone and gave its default Kilter board a five-climb "catalogue".
+            // A cut, not a gate: the importer below is the trust boundary and judges the file
+            // itself. A snapshot the pruner cannot open is left for it to accept or refuse.
             val removed = withBackgroundThreadPriority {
-                LocalShareSnapshotPruner.prune(raw, brands.toSet())
+                runCatching { LocalShareSnapshotPruner.prune(raw, brands.toSet()) }
+                    .onFailure { Log.w(TAG, "Local share snapshot not pruned", it) }
+                    .getOrDefault(0L)
             }
             Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
             // Families left out are what the same sender must still be able to supply later.
