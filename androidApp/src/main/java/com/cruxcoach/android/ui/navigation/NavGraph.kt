@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.navigation
 
 import com.cruxcoach.android.ui.onboarding.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
@@ -548,6 +549,11 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                // The drawer sheet only takes Back when it is handed the drawer
+                // state; without this, Back with the menu open left the app.
+                BackHandler(enabled = drawerState.isOpen) {
+                    drawerScope.launch { drawerState.close() }
+                }
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
