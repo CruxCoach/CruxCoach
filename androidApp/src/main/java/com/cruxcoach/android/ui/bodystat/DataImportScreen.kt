@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -213,7 +214,7 @@ private fun ImportPreviewCard(
                         label = category.localizedLabel(),
                         checked = category in selectedCategories,
                         onCheckedChange = { onToggleCategory(category) },
-                        count = preview.summaryLine(category)
+                        count = preview.countLine(category)
                     )
                 }
             }
@@ -358,3 +359,27 @@ private fun PubkeyMismatchDialog(
         }
     )
 }
+
+/**
+ * The preview count for [category] in the app's language, with plural forms. The
+ * shared summaryLine() is fixed German without plurals, so English showed
+ * "3 Listen" and one own climb read "1 eigene Climbs".
+ */
+@Composable
+private fun com.cruxcoach.data.CruxCoachBackup.ImportPreview.countLine(category: Category): String =
+    when (category) {
+        Category.PROFILE -> stringResource(R.string.import_result_profile)
+        Category.ASSESSMENTS -> pluralStringResource(R.plurals.import_result_assessments, assessments, assessments)
+        Category.BODY_STATS -> pluralStringResource(R.plurals.import_result_body_stats, bodyStats, bodyStats)
+        Category.WORKOUT_LOGS -> pluralStringResource(R.plurals.import_result_workouts, workoutLogs, workoutLogs)
+        Category.CLIMB_LOGS -> pluralStringResource(R.plurals.import_result_climbs, climbLogs, climbLogs)
+        Category.TRAINING_PLANS -> pluralStringResource(R.plurals.import_result_plans, trainingPlans, trainingPlans)
+        Category.BOARD_LOGBOOK -> listOfNotNull(
+            boardAscents.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.import_result_board_sends, it, it) },
+            boardBids.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.import_result_board_bids, it, it) },
+        ).joinToString(", ")
+        Category.BOARD_SESSIONS -> pluralStringResource(R.plurals.import_result_board_sessions, boardSessions, boardSessions)
+        Category.CLIMB_LISTS -> pluralStringResource(R.plurals.import_result_lists, climbLists, climbLists)
+        Category.OWN_CLIMBS -> pluralStringResource(R.plurals.import_result_own_climbs, ownClimbs, ownClimbs)
+        Category.CLIMB_NOTES -> pluralStringResource(R.plurals.import_result_notes, climbNotes, climbNotes)
+    }
