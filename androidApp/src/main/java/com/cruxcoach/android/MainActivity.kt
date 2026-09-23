@@ -155,7 +155,10 @@ class MainActivity : AppCompatActivity() {
         }
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
-        requestNotificationPermissionIfNeeded()
+        // Once per launch, not per activity: onCreate also runs on every
+        // configuration change (dark mode, language, font size), and a
+        // declined prompt came straight back each time.
+        if (savedInstanceState == null) requestNotificationPermissionIfNeeded()
         PerfLogger.startFrameMonitor()
 
         PerfLogger.milestone("MainActivity.setContent START")
