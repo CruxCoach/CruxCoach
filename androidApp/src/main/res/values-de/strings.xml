@@ -944,7 +944,10 @@
     <string name="account_restore_topbar_title">Konto wiederherstellen</string>
     <string name="board_logbook_title">Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
-    <string name="board_logbook_delete_title">%d Logeinträge löschen?</string>
+    <plurals name="board_logbook_delete_title">
+        <item quantity="one">%d Logeintrag löschen?</item>
+        <item quantity="other">%d Logeinträge löschen?</item>
+    </plurals>
     <string name="board_logbook_delete_message">Alle ausgewählten Logeinträge, auch erfolglose Versuche, werden unwiderruflich gelöscht.</string>
     <string name="board_logbook_ascent_count">%d Begehungen</string>
 
