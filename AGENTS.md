@@ -33,6 +33,17 @@ For the current candidate, use [the 0.2.3 checklist](docs/releases/0.2.3-pre-rel
 - A queued APKTrack job is not success. Success requires `status="published"` and
   `receipt_delivered=true`.
 
+## Protocol-data ownership (Marmot)
+
+- The native host under `native/marmot/` owns all protocol data: groups, members, epochs,
+  KeyPackages, relay lists and relay state, Nostr events, delivery state and undelivered inbox
+  messages.
+- Kotlin may hold UI state, short-lived lifecycle state, the local sharing policy, per-direction
+  sync counters and the application records it has accepted from friends. It must not keep a
+  second copy of protocol data in SQLDelight, DataStore, SharedPreferences or singleton maps.
+- A missing projection is added to the native `status` operation, not cached in Kotlin. Kotlin
+  reaches the native host only through `MarmotHost`.
+
 ## Change hygiene
 
 - Preserve unrelated user/agent changes. Stage only task-owned hunks and inspect the cached diff.
