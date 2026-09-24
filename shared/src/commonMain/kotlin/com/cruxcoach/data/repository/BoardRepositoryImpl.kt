@@ -1686,8 +1686,8 @@ class BoardRepositoryImpl(
         )
     }
 
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow? {
-        val row = q.findClimbByFramesHash(framesHash, layoutId, boardBrand).executeAsOneOrNull() ?: return null
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String, ownPubkey: String?): CommunityClimbRow? {
+        val row = q.findClimbByFramesHash(framesHash, layoutId, boardBrand, ownPubkey).executeAsOneOrNull() ?: return null
         // Lightweight projection — we only need uuid + name + source + pubkey for dup-detection
         return CommunityClimbRow(
             uuid = row.uuid,

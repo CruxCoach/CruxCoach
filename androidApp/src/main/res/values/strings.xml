@@ -49,6 +49,10 @@
     <string name="climb_creator_dup_message" formatted="false">Same hold layout as “%s”. Same holds at a different angle/grade are allowed.</string>
     <string name="climb_creator_dup_continue">Keep editing</string>
     <string name="climb_creator_dup_publish_anyway">Publish anyway</string>
+    <string name="climb_creator_dup_own_title">You already published this climb</string>
+    <string name="climb_creator_dup_own_message" formatted="false">Same holds as your climb “%s”. Update it with your changes, or publish a separate climb.</string>
+    <string name="climb_creator_dup_update_existing">Update existing</string>
+    <string name="climb_creator_dup_publish_new">Publish as new</string>
     <string name="climb_creator_drafts_open">Open drafts</string>
     <string name="climb_creator_drafts_title">My drafts</string>
     <string name="climb_creator_drafts_count" formatted="false">%d</string>

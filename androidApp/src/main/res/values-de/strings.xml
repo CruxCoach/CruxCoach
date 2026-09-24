@@ -49,6 +49,10 @@
     <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s“. Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>
     <string name="climb_creator_dup_publish_anyway">Trotzdem veröffentlichen</string>
+    <string name="climb_creator_dup_own_title">Diesen Climb hast du schon veröffentlicht</string>
+    <string name="climb_creator_dup_own_message" formatted="false">Gleiche Griffe wie dein Climb „%s“. Aktualisiere ihn mit deinen Änderungen oder veröffentliche einen eigenen Climb.</string>
+    <string name="climb_creator_dup_update_existing">Bestehenden aktualisieren</string>
+    <string name="climb_creator_dup_publish_new">Als neuen veröffentlichen</string>
     <string name="climb_creator_drafts_open">Entwürfe öffnen</string>
     <string name="climb_creator_drafts_title">Meine Entwürfe</string>
     <string name="climb_creator_drafts_count" formatted="false">%d</string>

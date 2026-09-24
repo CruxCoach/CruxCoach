@@ -548,21 +548,46 @@ fun ClimbEditorScreen(
     // Duplicate-warning dialog (shown only when triggered as publish-gate).
     if (state.pendingPublishConfirm) {
         state.duplicateOf?.let { dup ->
-            AlertDialog(
-                onDismissRequest = viewModel::cancelPublishOnDuplicate,
-                title = { Text(stringResource(R.string.climb_creator_dup_title)) },
-                text = { Text(stringResource(R.string.climb_creator_dup_message, dup.name)) },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12", autoNoteTemplate) }) {
-                        Text(stringResource(R.string.climb_creator_dup_publish_anyway))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::cancelPublishOnDuplicate) {
-                        Text(stringResource(R.string.climb_creator_dup_continue))
-                    }
-                },
-            )
+            if (state.duplicateIsOwn) {
+                // The user's own climb: updating it (a new name, a fixed grade)
+                // is the likely intent, a second copy the exception.
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelPublishOnDuplicate,
+                    title = { Text(stringResource(R.string.climb_creator_dup_own_title)) },
+                    text = { Text(stringResource(R.string.climb_creator_dup_own_message, dup.name)) },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.updateExistingOnDuplicate("12x12", autoNoteTemplate) }) {
+                            Text(stringResource(R.string.climb_creator_dup_update_existing))
+                        }
+                    },
+                    dismissButton = {
+                        Row {
+                            TextButton(onClick = viewModel::cancelPublishOnDuplicate) {
+                                Text(stringResource(R.string.climb_creator_dup_continue))
+                            }
+                            TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12", autoNoteTemplate) }) {
+                                Text(stringResource(R.string.climb_creator_dup_publish_new))
+                            }
+                        }
+                    },
+                )
+            } else {
+                AlertDialog(
+                    onDismissRequest = viewModel::cancelPublishOnDuplicate,
+                    title = { Text(stringResource(R.string.climb_creator_dup_title)) },
+                    text = { Text(stringResource(R.string.climb_creator_dup_message, dup.name)) },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12", autoNoteTemplate) }) {
+                            Text(stringResource(R.string.climb_creator_dup_publish_anyway))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = viewModel::cancelPublishOnDuplicate) {
+                            Text(stringResource(R.string.climb_creator_dup_continue))
+                        }
+                    },
+                )
+            }
         }
     }
 

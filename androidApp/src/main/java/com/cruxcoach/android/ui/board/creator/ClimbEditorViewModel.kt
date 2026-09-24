@@ -64,6 +64,7 @@ data class ClimbEditorUiState(
     val canRedo: Boolean = false,
     val validationIssues: List<ClimbValidation.Issue> = emptyList(),
     val duplicateOf: CommunityClimbRow? = null,    // populated when frames_hash matches existing
+    val duplicateIsOwn: Boolean = false,           // duplicateOf is the user's own climb → offer to update it
     val pendingPublishConfirm: Boolean = false,    // dup-warn dialog gate
     val isPublishing: Boolean = false,
     val publishedUuid: String? = null,             // success terminal — UI navigates back
@@ -742,7 +743,9 @@ class ClimbEditorViewModel @Inject constructor(
                 val ownLoaded = _state.value.loadedDraftUuid
                 val isSelfReplace = dup != null && dup.uuid == ownLoaded
                 if (dup != null && !isSelfReplace) {
-                    _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
+                    val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                    val isOwn = ownPubkey != null && dup.createdByPubkey == ownPubkey && dup.source != "kilter"
+                    _state.update { it.copy(duplicateOf = dup, duplicateIsOwn = isOwn, pendingPublishConfirm = true) }
                     return@launch
                 }
                 // Profile-Hint: only on first publish without a Kind 0
@@ -834,7 +837,26 @@ class ClimbEditorViewModel @Inject constructor(
      *  draft uuid each created its own climb, a second apart. */
     fun confirmPublishWithDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
         val taken = _state.consumePending({ it.pendingPublishConfirm }) {
-            it.copy(duplicateOf = null, pendingPublishConfirm = false)
+            it.copy(duplicateOf = null, duplicateIsOwn = false, pendingPublishConfirm = false)
+        }
+        if (!taken) return
+        doPublish(sizeLabel, autoNoteTemplate)
+    }
+
+    /** The duplicate is the user's own climb: publish the editor as an edit of
+     *  it. Same uuid, so relays replace the original event; re-creating a
+     *  climb to fix its name used to publish a second one with the same holds.
+     *  The editor's name, grade and description replace the old ones. */
+    fun updateExistingOnDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
+        val own = _state.value.duplicateOf?.takeIf { _state.value.duplicateIsOwn } ?: return
+        val taken = _state.consumePending({ it.pendingPublishConfirm }) {
+            it.copy(
+                duplicateOf = null,
+                duplicateIsOwn = false,
+                pendingPublishConfirm = false,
+                loadedDraftUuid = own.uuid,
+                isEditingExisting = true,
+            )
         }
         if (!taken) return
         doPublish(sizeLabel, autoNoteTemplate)
@@ -844,7 +866,7 @@ class ClimbEditorViewModel @Inject constructor(
      *  Releases the isPublishing claim taken by publish(). */
     fun cancelPublishOnDuplicate() {
         _state.update {
-            it.copy(duplicateOf = null, pendingPublishConfirm = false, isPublishing = false)
+            it.copy(duplicateOf = null, duplicateIsOwn = false, pendingPublishConfirm = false, isPublishing = false)
         }
     }
 

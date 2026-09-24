@@ -2445,9 +2445,17 @@ ORDER BY created_at DESC;
 -- board_brand too: frames_hash folds in layout_id but NOT the brand, and
 -- layout_id=1 is shared across five brands, so without this a draft could be
 -- flagged a duplicate of a same-hash row on a DIFFERENT board.
+-- One climb with the same holds, for the editor's duplicate warning. Several
+-- can match (catalogue duplicates, a climb already published twice), and a
+-- one-row read threw on those, failing every publish of such holds. Deleted
+-- climbs do not count; the author's own climb comes first so the editor can
+-- offer to update it.
 findClimbByFramesHash:
 SELECT uuid, name, source, created_by_pubkey FROM climbs
-WHERE frames_hash = ? AND layout_id = ? AND board_brand = ?;
+WHERE frames_hash = :framesHash AND layout_id = :layoutId AND board_brand = :boardBrand
+  AND sync_status != 'deleted'
+ORDER BY (created_by_pubkey IS NOT NULL AND created_by_pubkey = :ownPubkey) DESC, rowid DESC
+LIMIT 1;
 
 -- ── Backup / restore for own-authored climbs (FEAT-008 Phase B) ───
 -- Drives the v3 backup envelope's `boardClimbs` + `boardClimbStats`

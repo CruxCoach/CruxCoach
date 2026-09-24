@@ -1527,7 +1527,8 @@ interface CommunityClimbQueries {
     /** Look up an existing climb by frames_hash for duplicate detection, scoped
      *  to [boardBrand] (frames_hash folds in layout_id but not the brand, and
      *  layout_id=1 is shared across boards). */
-    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow?
+    /** A climb with the same holds, the [ownPubkey]'s own first; deleted ones excluded. */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String, ownPubkey: String?): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
     fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
 
