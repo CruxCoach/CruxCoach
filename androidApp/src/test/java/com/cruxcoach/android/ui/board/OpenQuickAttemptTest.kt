@@ -1,11 +1,11 @@
-package com.cruxcoach.android.ui.playlist
+package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.data.repository.AscentWithClimb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class PlaylistPlayerQuickLogTest {
+class OpenQuickAttemptTest {
     private val sessionStart = "2026-09-24T10:00:00"
 
     private fun entry(
@@ -35,7 +35,7 @@ class PlaylistPlayerQuickLogTest {
     fun `an attempt from this session is continued by the next log`() {
         val attempt = entry("bid", "2026-09-24T10:05:00", isSend = false, bidCount = 2)
 
-        val open = openPlayerAttempt(listOf(attempt), angle = 40, sessionStartedAt = sessionStart)
+        val open = openQuickAttempt(listOf(attempt), angle = 40, isMirror = false, since = sessionStart)
 
         assertEquals("bid", open?.uuid)
         assertEquals(2L, open?.bidCount)
@@ -48,14 +48,14 @@ class PlaylistPlayerQuickLogTest {
             entry("send", "2026-09-24T10:07:00", isSend = true, bidCount = 2),
         )
 
-        assertNull(openPlayerAttempt(history, angle = 40, sessionStartedAt = sessionStart))
+        assertNull(openQuickAttempt(history, angle = 40, isMirror = false, since = sessionStart))
     }
 
     @Test
     fun `an attempt from an earlier session is not continued`() {
         val yesterday = entry("old", "2026-09-23T18:00:00", isSend = false)
 
-        assertNull(openPlayerAttempt(listOf(yesterday), angle = 40, sessionStartedAt = sessionStart))
+        assertNull(openQuickAttempt(listOf(yesterday), angle = 40, isMirror = false, since = sessionStart))
     }
 
     @Test
@@ -65,13 +65,31 @@ class PlaylistPlayerQuickLogTest {
             entry("mirrored", "2026-09-24T10:06:00", isSend = false, isMirror = true),
         )
 
-        assertNull(openPlayerAttempt(history, angle = 40, sessionStartedAt = sessionStart))
+        assertNull(openQuickAttempt(history, angle = 40, isMirror = false, since = sessionStart))
+    }
+
+    @Test
+    fun `an earlier attempt today is continued when the window is the day`() {
+        val morning = entry("bid", "2026-09-24T07:11:02.120", isSend = false)
+
+        val open = openQuickAttempt(listOf(morning), angle = 40, isMirror = false, since = "2026-09-24")
+
+        assertEquals("bid", open?.uuid)
+    }
+
+    @Test
+    fun `a mirrored attempt is continued only by a mirrored log`() {
+        val mirrored = entry("mirror", "2026-09-24T10:06:00", isSend = false, isMirror = true)
+
+        val open = openQuickAttempt(listOf(mirrored), angle = 40, isMirror = true, since = sessionStart)
+
+        assertEquals("mirror", open?.uuid)
     }
 
     @Test
     fun `nothing is continued without a running session`() {
         val attempt = entry("bid", "2026-09-24T10:05:00", isSend = false)
 
-        assertNull(openPlayerAttempt(listOf(attempt), angle = 40, sessionStartedAt = null))
+        assertNull(openQuickAttempt(listOf(attempt), angle = 40, isMirror = false, since = null))
     }
 }

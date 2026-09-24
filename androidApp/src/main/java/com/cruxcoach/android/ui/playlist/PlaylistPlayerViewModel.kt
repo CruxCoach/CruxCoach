@@ -12,9 +12,9 @@ import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.ClimbRenderLoader
 import com.cruxcoach.android.ui.board.EnhancedSessionSummary
 import com.cruxcoach.android.ui.board.SessionSummaryBuilder
+import com.cruxcoach.android.ui.board.openQuickAttempt
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.safeLaunch
-import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.QuickLogSendInput
@@ -70,26 +70,6 @@ internal suspend fun collectPlaylistRenders(
             val render = load(item)
             update(render, false)
         }
-}
-
-/**
- * The attempt row a quick log in the player continues: the newest entry on
- * this climb and angle is an unsent attempt from the running session. A send
- * after it closes that sequence, so a later attempt starts a fresh row.
- * Without this, "Attempt" then "Sent" left an open attempt entry beside a
- * one-try send that counted as a flash.
- */
-internal fun openPlayerAttempt(
-    history: List<AscentWithClimb>,
-    angle: Long,
-    sessionStartedAt: String?,
-): AscentWithClimb? {
-    val start = sessionStartedAt ?: return null
-    val newest = history
-        .filter { it.angle == angle && !it.isMirror }
-        .maxByOrNull { it.climbedAt }
-        ?: return null
-    return newest.takeIf { !it.isSend && it.climbedAt >= start }
 }
 
 /**
@@ -154,10 +134,11 @@ class PlaylistPlayerViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val uuid = java.util.UUID.randomUUID().toString()
                 val now = com.cruxcoach.util.DateTimeUtil.nowIso()
-                val open = openPlayerAttempt(
+                val open = openQuickAttempt(
                     history = personalBoardRepo.getUserHistoryForClimb(climb.uuid),
                     angle = angle.toLong(),
-                    sessionStartedAt = boardSessionManager.state.value.startedAt,
+                    isMirror = false,
+                    since = boardSessionManager.state.value.startedAt,
                 )
                 if (isSend) {
                     if (open != null) personalBoardRepo.promoteQuickBidToSend(

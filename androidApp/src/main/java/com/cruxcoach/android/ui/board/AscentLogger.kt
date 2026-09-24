@@ -197,6 +197,37 @@ internal class AscentLogger(
         onAscentSaved(pending.isSend)
     }
 
+    /**
+     * The open attempt row from an earlier visit of this climb. The sequence
+     * above lives only as long as this screen, so "Try", leaving and coming
+     * back, then "Top" wrote a one-try send — a flash — next to the attempt.
+     * Continue it within the running board session, or today without one.
+     */
+    private fun storedOpenQuickLog(
+        climb: com.cruxcoach.data.repository.ClimbWithStats,
+        angle: Long,
+        isMirror: Boolean,
+    ): ActiveQuickLog? {
+        val open = openQuickAttempt(
+            history = personalBoardRepo.getUserHistoryForClimb(climb.uuid),
+            angle = angle,
+            isMirror = isMirror,
+            since = sessionManager.state.value.startedAt ?: DateTimeUtil.todayIso(),
+        ) ?: return null
+        return ActiveQuickLog(
+            entryUuid = open.uuid,
+            climbUuid = climb.uuid,
+            angle = angle,
+            isMirror = isMirror,
+            attemptCount = open.bidCount.coerceAtLeast(1L),
+            climbedAt = open.climbedAt,
+            climbName = climb.name,
+            difficultyAverage = climb.difficultyAverage,
+            boardBrand = climb.boardBrand,
+            layoutId = climb.layoutId,
+        )
+    }
+
     private fun ActiveQuickLog.toInput() = QuickLogBidInput(
         uuid = entryUuid,
         climbUuid = climbUuid,
@@ -300,7 +331,7 @@ internal class AscentLogger(
                             it.climbUuid == climb.uuid &&
                             it.angle == s.angle.toLong() &&
                             it.isMirror == s.isMirrored
-                    }
+                    } ?: if (isQuickLog) storedOpenQuickLog(climb, s.angle.toLong(), s.isMirrored) else null
                     quickBefore = compatibleOpenLog
                     if (form.isSend) {
                         // A quick send closes the open sequence: previous
