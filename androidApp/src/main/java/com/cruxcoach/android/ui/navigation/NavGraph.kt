@@ -1010,7 +1010,10 @@ fun CruxCoachNavHost(
 
             composable(Routes.CRASH_REPORT_LIST) {
                 CrashReportListScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToThread = { eventId ->
+                        navController.navigate(Routes.messageThread(eventId))
+                    }
                 )
             }
 

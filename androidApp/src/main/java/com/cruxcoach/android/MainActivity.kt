@@ -517,33 +517,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun sendCrashReport(crashText: String) {
-        val eventId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val sender = nostrMessageSender.get()
 
-        withContext(Dispatchers.IO) {
-            messageRepository.get().insert(
-                id = eventId,
-                type = MessageType.CRASH.label,
-                direction = "sent",
-                content = crashText,
-                subject = null,
-                senderPubkey = try {
-                    nostrSigner.get().getPublicKeyHex()
-                } catch (e: Exception) {
-                    android.util.Log.w("MainActivity", "No signer key for crash report", e)
-                    "unknown"
-                },
-                createdAt = now,
-                relayAccepted = false,
-                read = true
-            )
-        }
-
+        // Build first, like DevContactViewModel.sendMessage: the self-wrap id
+        // is the row key, so the relay echo dedupes instead of listing the
+        // report twice, and the recipient-wrap id anchors the developer's
+        // replies to this report. A failed build stores nothing; the crash
+        // file stays for the next launch.
         val buildResult = sender.buildMessage(crashText, MessageType.CRASH)
         when (buildResult) {
             is SendResult.Queued -> {
+                val eventId = buildResult.selfWrapId ?: UUID.randomUUID().toString()
                 withContext(Dispatchers.IO) {
+                    messageRepository.get().insert(
+                        id = eventId,
+                        type = MessageType.CRASH.label,
+                        direction = "sent",
+                        content = crashText,
+                        subject = null,
+                        senderPubkey = try {
+                            nostrSigner.get().getPublicKeyHex()
+                        } catch (e: Exception) {
+                            android.util.Log.w("MainActivity", "No signer key for crash report", e)
+                            "unknown"
+                        },
+                        createdAt = now,
+                        relayAccepted = false,
+                        read = true,
+                        threadAnchorId = buildResult.recipientWrapId
+                    )
                     messageRepository.get().markQueued(eventId, now, buildResult.eventJsons)
                 }
                 queueManager.get().refreshCount()
