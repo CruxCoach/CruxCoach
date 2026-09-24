@@ -1351,6 +1351,7 @@
     <string name="updater_settings_status_title">Status</string>
     <string name="updater_settings_status_last_check">Zuletzt geprüft: %1$s</string>
     <string name="updater_settings_status_never">Zuletzt geprüft: noch nie</string>
+    <string name="updater_settings_status_failed">Die letzte Prüfung hat die Update-Quellen nicht erreicht. Prüfe die Verbindung und versuche es erneut.</string>
     <string name="updater_settings_check_now">Jetzt prüfen</string>
     <string name="updater_settings_auto_check">Automatisch prüfen</string>
     <string name="updater_settings_auto_check_desc">Sucht beim App-Start, nach dem Wiederverbinden mit dem Internet und regelmäßig im Hintergrund nach App-Updates. „Jetzt prüfen“ geht auch ohne Automatik.</string>

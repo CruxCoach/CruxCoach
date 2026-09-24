@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.updater.CheckResult
 import com.cruxcoach.android.updater.PipelineStage
 import com.cruxcoach.android.updater.UpdateAutomationMode
 import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
@@ -192,6 +193,15 @@ internal fun UpdaterSettingsSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // A failed check left only the older "Last checked" time, so
+                // "Check now" offline looked like it did nothing at all.
+                if (state.lastCheckResult == CheckResult.ERROR) {
+                    Text(
+                        text = stringResource(R.string.updater_settings_status_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
             OutlinedButton(onClick = { viewModel.checkNow() }, enabled = !checkingNow) {
                 Text(stringResource(R.string.updater_settings_check_now))

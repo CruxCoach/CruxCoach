@@ -1304,6 +1304,7 @@
     <string name="updater_settings_status_title">Status</string>
     <string name="updater_settings_status_last_check">Last checked: %1$s</string>
     <string name="updater_settings_status_never">Last checked: never</string>
+    <string name="updater_settings_status_failed">The last check could not reach the update sources. Check your connection and try again.</string>
     <string name="updater_settings_check_now">Check now</string>
     <string name="updater_settings_auto_check">Check automatically</string>
     <string name="updater_settings_auto_check_desc">Checks for updates on app startup, when the network returns and regularly in the background. “Check now” works even with automatic checks off.</string>
