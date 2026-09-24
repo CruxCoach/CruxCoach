@@ -1022,6 +1022,13 @@ class BoardSyncManager(
                 _state.value.lastSyncCompletedAtMillis == completedBefore &&
                 _state.value.errorMessage == null
             ) {
+                // Offline the worker is only waiting for a network, and the
+                // page already says "No network available". Blaming battery
+                // optimisation sent people into system settings for nothing.
+                if (!isNetworkAvailable(appContext)) {
+                    Log.i(TAG, "sync waits for a network — not a system deferral")
+                    return@launch
+                }
                 Log.w(TAG, "sync did not start within ${SYNC_START_GRACE_MS}ms — deferred by the system")
                 _state.update {
                     it.copy(errorMessage = appContext.getString(R.string.board_sync_deferred))
