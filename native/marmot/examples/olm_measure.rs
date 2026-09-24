@@ -246,14 +246,21 @@ fn main() {
         .unwrap();
     blob_stream.write_all(&sealed).unwrap();
     let received = receiver.join().unwrap();
-    let pointer = b
-        .engine
-        .inbox_after(0, 64)
-        .unwrap()
-        .into_iter()
-        .rev()
-        .find(|v| v["content"].as_str().unwrap().contains("snapshot"))
-        .unwrap();
+    // The pointer is the newest inbox item (hundreds of unacknowledged pages precede it).
+    let mut after = 0;
+    let mut pointer = None;
+    loop {
+        let page = b.engine.inbox_after(after, 64).unwrap();
+        let Some(last) = page.last() else { break };
+        after = last["seq"].as_i64().unwrap();
+        if let Some(found) = page
+            .iter()
+            .find(|v| v["content"].as_str().unwrap().contains("snapshot"))
+        {
+            pointer = Some(found.clone());
+        }
+    }
+    let pointer = pointer.expect("snapshot pointer delivered");
     let pointer: serde_json::Value =
         serde_json::from_str(pointer["content"].as_str().unwrap()).unwrap();
     let key: [u8; 32] = hex::decode(pointer["key"].as_str().unwrap())

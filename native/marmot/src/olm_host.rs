@@ -82,6 +82,9 @@ enum Command {
     Invitation {
         peer: String,
     },
+    InvitationHint {
+        peer: String,
+    },
     ImportInvitation {
         payload: String,
     },
@@ -102,8 +105,10 @@ enum Command {
     SignerOps,
 }
 
-/// The QR form of an invitation package.
+/// The QR form of an invitation package (single stage).
 pub const INVITATION_PREFIX: &str = "cruxcoach:i1:";
+/// The QR form of a two-stage invitation (fingerprint and tag only).
+pub const HINT_PREFIX: &str = "cruxcoach:i2:";
 
 pub struct OlmHost {
     pub account: String,
@@ -298,6 +303,19 @@ impl OlmHost {
             Command::Invitation { peer } => {
                 let package = self.engine()?.invitation(&peer)?;
                 json!({"payload": format!("{INVITATION_PREFIX}{}", URL_SAFE_NO_PAD.encode(package))})
+            }
+            Command::InvitationHint { peer } => {
+                let hint = self.engine()?.invitation_hint(&peer)?;
+                json!({"payload": format!("{HINT_PREFIX}{}", URL_SAFE_NO_PAD.encode(hint))})
+            }
+            Command::ImportInvitation { payload } if payload.starts_with(HINT_PREFIX) => {
+                let encoded = &payload[HINT_PREFIX.len()..];
+                if encoded.len() > 256 {
+                    return Err(Error("invitation_format"));
+                }
+                let hint = checked(URL_SAFE_NO_PAD.decode(encoded), "invitation_format")?;
+                self.engine()?.import_hint(&hint)?;
+                json!({"peer": null})
             }
             Command::ImportInvitation { payload } => {
                 let encoded = payload

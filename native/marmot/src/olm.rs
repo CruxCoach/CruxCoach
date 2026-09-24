@@ -24,7 +24,7 @@
 use crate::error::{Error, Result, checked};
 use crate::p2p::{
     self, BEACON_BYTES, ChannelBody, Container, FrameId, KIND_REQUEST, KIND_RESPONSE, MAX_FRAMES,
-    MAX_SKEW_S, SECTION_CHANNEL, SECTION_INVITE,
+    MAX_SKEW_S, SECTION_CHANNEL, SECTION_FETCH, SECTION_INVITE,
 };
 use crate::protocol::{MAX_APP_CONTENT, MAX_PEERS, is_hex64, now_ms, now_s};
 use nostr::{Event, EventId, Kind, NostrSigner, PublicKey, Tag, Timestamp, UnsignedEvent};
@@ -47,6 +47,10 @@ pub const BINDING_KIND: u16 = 27777;
 pub const BINDING_PURPOSE: &str = "cc-share-bind-v1";
 const PACKAGE_MAGIC: &[u8; 4] = b"cci1";
 pub const PACKAGE_BYTES: usize = 389;
+/// Two-stage QR: magic, SHA-256 prefix of the package, invitation tag.
+const HINT_MAGIC: &[u8; 4] = b"cci2";
+pub const HINT_BYTES: usize = 4 + 16 + 32;
+const HINT_TTL_MS: u64 = 86_400_000;
 const INVITATION_TTL_S: u64 = 7 * 86_400;
 const SEEN_RETENTION_MS: u64 = 30 * 86_400_000;
 const ENDED_RETENTION_MS: u64 = 14 * 86_400_000;
@@ -56,6 +60,8 @@ const SPARE_KEYS: usize = 2;
 const MAX_INBOX: i64 = 4_096;
 /// Default frame budget of one exchange step (LAN). BLE passes a smaller one.
 pub const MAX_OUTBOUND_BYTES: usize = 196_608;
+/// `identify` names a scanned-but-not-fetched invitation with this prefix.
+pub const HINT_PREFIX: &str = "hint:";
 const ENVELOPE_APP: u8 = 1;
 const ENVELOPE_CONTROL: u8 = 2;
 
@@ -107,6 +113,7 @@ CREATE TABLE IF NOT EXISTS olm_inbox(
 CREATE TABLE IF NOT EXISTS olm_seen(hash BLOB PRIMARY KEY NOT NULL, peer TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS olm_reply(peer TEXT NOT NULL, id BLOB NOT NULL, nack INTEGER NOT NULL, PRIMARY KEY(peer, id));
 CREATE TABLE IF NOT EXISTS olm_base(base_key TEXT PRIMARY KEY NOT NULL, at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS olm_hint(fingerprint BLOB PRIMARY KEY NOT NULL, tag BLOB NOT NULL, created_at INTEGER NOT NULL);
 ";
 
 #[cfg(feature = "local-harness")]
@@ -475,6 +482,8 @@ pub struct Served {
 struct Absorbed {
     changes: Changes,
     peers: Vec<(String, [u8; 32])>,
+    /// Two-stage QR: (invited account, package) the scanner asked for.
+    fetched: Vec<([u8; 32], Vec<u8>)>,
 }
 
 pub struct OlmEngine {
@@ -880,6 +889,43 @@ impl OlmEngine {
             return Err(Error("no_invitation"));
         }
         row.package.ok_or(Error("no_invitation"))
+    }
+
+    /// Two-stage QR (short): the package fingerprint and the invitation tag.
+    /// The scanner finds this device by the invitation beacon and fetches
+    /// the package directly; the fingerprint pins exactly this package.
+    pub fn invitation_hint(&self, peer: &str) -> Result<Vec<u8>> {
+        let package = self.invitation(peer)?;
+        let row = self.peer(peer)?.ok_or(Error("no_invitation"))?;
+        let tag = row.inviter_tag.ok_or(Error("no_invitation"))?;
+        Ok([HINT_MAGIC.as_slice(), &p2p::sha256(&package)[..16], &tag].concat())
+    }
+
+    pub fn import_hint(&mut self, bytes: &[u8]) -> Result<()> {
+        if bytes.len() != HINT_BYTES || &bytes[..4] != HINT_MAGIC {
+            return Err(Error("invitation_format"));
+        }
+        self.sql(|c| {
+            c.execute(
+                "DELETE FROM olm_hint WHERE created_at<?1",
+                [i64_of(now_ms().saturating_sub(HINT_TTL_MS))],
+            )?;
+            c.execute(
+                "INSERT OR REPLACE INTO olm_hint(fingerprint, tag, created_at) VALUES(?1,?2,?3)",
+                params![&bytes[4..20], &bytes[20..], i64_of(now_ms())],
+            )
+        })?;
+        Ok(())
+    }
+
+    fn hints(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        self.sql(|c| {
+            let mut q = c.prepare("SELECT fingerprint, tag FROM olm_hint WHERE created_at>=?1")?;
+            q.query_map([i64_of(now_ms().saturating_sub(HINT_TTL_MS))], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?
+            .collect()
+        })
     }
 
     /// Store a verified invitation addressed to this account. Returns the
@@ -1405,6 +1451,15 @@ impl OlmEngine {
                 }
             }
         }
+        // A scanned two-stage QR: the endpoint to fetch the package from.
+        for (fingerprint, tag) in self.hints()? {
+            for p in [period.saturating_sub(1), period, period + 1] {
+                let expected = p2p::beacon(&tag, p);
+                if wanted.iter().any(|w| p2p::same(w, &expected)) {
+                    return Ok(Some(format!("{HINT_PREFIX}{}", hex::encode(fingerprint))));
+                }
+            }
+        }
         Ok(None)
     }
 
@@ -1484,6 +1539,17 @@ impl OlmEngine {
     ) -> Result<Option<Vec<u8>>> {
         let mut container = Container::new(KIND_REQUEST, [0; 16], now_s())?;
         match peer {
+            Some(hint) if hint.starts_with(HINT_PREFIX) => {
+                let fingerprint = checked(hex::decode(&hint[HINT_PREFIX.len()..]), "peer")?;
+                let (_, tag) = self
+                    .hints()?
+                    .into_iter()
+                    .find(|(f, _)| *f == fingerprint)
+                    .ok_or(Error("no_invitation"))?;
+                let tag = arr32(&tag)?;
+                let addr = p2p::channel_addr(&tag, &container.nonce);
+                container.push(&tag, addr, SECTION_FETCH, fingerprint);
+            }
             Some(peer) => {
                 let row = self.peer(peer)?.ok_or(Error("no_session"))?;
                 let Some(key) = self.section_key(&row) else {
@@ -1543,6 +1609,10 @@ impl OlmEngine {
             let body = self.channel_body(&peer, budget)?;
             let addr = p2p::channel_addr(&key, &response.nonce);
             response.push(&key, addr, SECTION_CHANNEL, body.encode());
+        }
+        for (invited, package) in absorbed.fetched {
+            let addr = p2p::invite_addr(&invited, &response.nonce);
+            response.push(&invited, addr, SECTION_INVITE, package);
         }
         Ok((response.encode()?, served))
     }
@@ -1620,16 +1690,48 @@ impl OlmEngine {
         for section in &container.sections {
             match section.flags {
                 SECTION_INVITE => {
-                    if !self.discovery_enabled()?
+                    // Without "accept invitations" only a package this person
+                    // scanned (two-stage QR fingerprint) is taken.
+                    let scanned = self
+                        .hints()?
+                        .iter()
+                        .any(|(f, _)| *f == p2p::sha256(&section.body)[..16]);
+                    if !(self.discovery_enabled()? || scanned)
                         || !p2p::same(&p2p::invite_addr(&me, &container.nonce), &section.addr)
                         || !container.verify(section, &me)
                     {
                         continue;
                     }
+                    if scanned {
+                        let fingerprint = p2p::sha256(&section.body)[..16].to_vec();
+                        self.sql(|c| {
+                            c.execute("DELETE FROM olm_hint WHERE fingerprint=?1", [fingerprint])
+                        })?;
+                    }
                     // Each invitation is checked on its own; a bad one never
                     // blocks the rest of the container.
                     if let Ok(Some(_)) = self.import_invitation(&section.body) {
                         absorbed.changes.peers = true;
+                    }
+                }
+                SECTION_FETCH => {
+                    for row in self
+                        .peers()?
+                        .into_iter()
+                        .filter(|p| p.state == "pending" && p.inviter)
+                    {
+                        let (Some(tag), Some(package)) =
+                            (row.inviter_tag.as_deref(), row.package.as_ref())
+                        else {
+                            continue;
+                        };
+                        if p2p::same(&p2p::channel_addr(tag, &container.nonce), &section.addr)
+                            && container.verify(section, tag)
+                            && p2p::same(&section.body, &p2p::sha256(package)[..16])
+                        {
+                            let invited = arr32(&checked(hex::decode(&row.account), "peer")?)?;
+                            absorbed.fetched.push((invited, package.clone()));
+                        }
                     }
                 }
                 SECTION_CHANNEL => {

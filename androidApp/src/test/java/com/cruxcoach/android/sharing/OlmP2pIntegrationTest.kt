@@ -72,26 +72,33 @@ class OlmP2pIntegrationTest {
         assertEquals(1, bob.harness("signer_ops").jsonPrimitive.content.toInt())
     }
 
-    /** Measurement for the spike report: QR size of the invitation hand-over. */
-    @Test fun invitation_qr_size() {
+    /** QR hand-over, both forms, with the measured QR size for the spike report. */
+    @Test fun invitation_qr_single_and_two_stage() {
         val alice = endpoint()
         val bob = endpoint()
         alice.blocking { invite(bob.account) }
-        val payload = alice.harness("invitation") { put("peer", bob.account) }.jsonObject["payload"]!!.jsonPrimitive.content
+        fun payload(op: String) = alice.harness(op) { put("peer", bob.account) }.jsonObject["payload"]!!.jsonPrimitive.content
+        val single = payload("invitation")
+        val twoStage = payload("invitation_hint")
         fun version(content: String, level: ErrorCorrectionLevel) =
             Encoder.encode(content, level, mapOf(EncodeHintType.CHARACTER_SET to "ISO-8859-1")).version.versionNumber
-        val full = payload.length
-        // Two-stage variant: npub, identity fingerprint and a rendezvous secret (64 bytes).
-        val twoStage = "cruxcoach:i2:" + "A".repeat(86)
         val lines = listOf(
-            "single-stage chars=$full L=${version(payload, ErrorCorrectionLevel.L)} M=${version(payload, ErrorCorrectionLevel.M)} Q=${version(payload, ErrorCorrectionLevel.Q)}",
-            "two-stage chars=${twoStage.length} L=${version(twoStage, ErrorCorrectionLevel.L)} M=${version(twoStage, ErrorCorrectionLevel.M)}",
+            "single-stage chars=${single.length} L=${version(single, ErrorCorrectionLevel.L)} M=${version(single, ErrorCorrectionLevel.M)} Q=${version(single, ErrorCorrectionLevel.Q)}",
+            "two-stage chars=${twoStage.length} L=${version(twoStage, ErrorCorrectionLevel.L)} M=${version(twoStage, ErrorCorrectionLevel.M)} Q=${version(twoStage, ErrorCorrectionLevel.Q)}",
         )
-        System.getenv("CC_MEASURE_OUT")?.let { java.io.File(it).appendText(lines.joinToString("\n", postfix = "\n")) }
         println(lines.joinToString("\n"))
-        assertEquals("cruxcoach:i1:".length + 519, full, "389-byte package, base64url")
-        bob.blocking { setOnline(false) }
-        bob.harness("import_invitation") { put("payload", payload) }
-        assertEquals("invited", bob.blocking { status() }.peers.single().state)
+        assertEquals("cruxcoach:i1:".length + 519, single.length, "389-byte package, base64url")
+        assertEquals("cruxcoach:i2:".length + 70, twoStage.length, "52-byte hint, base64url")
+
+        // Two-stage: Bob scans the short code with "accept invitations" off;
+        // his device finds Alice's by its beacon and fetches the package.
+        for (e in listOf(alice, bob)) e.blocking { setOnline(true) }
+        bob.blocking { setDiscovery(false) }
+        alice.discovery.endpoints = listOf("http://127.0.0.1:${bob.lan.port}")
+        bob.discovery.endpoints = listOf("http://127.0.0.1:${alice.lan.port}")
+        bob.harness("import_invitation") { put("payload", twoStage) }
+        assertTrue(waitFor(alice, bob) { bob.blocking { status() }.peers.any { it.account == alice.account && it.state == "invited" } })
+        bob.blocking { accept(alice.account) }
+        assertTrue(waitFor(alice, bob) { alice.blocking { status() }.peers.single().state == "active" })
     }
 }

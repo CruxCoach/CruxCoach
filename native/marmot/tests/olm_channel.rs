@@ -874,3 +874,54 @@ fn stored_state_holds_ciphertext_only() {
     let raw = std::fs::read(b.path()).unwrap();
     assert!(!raw.windows(8).any(|w| w == b"synthetic"));
 }
+
+#[test]
+fn two_stage_qr_fetches_exactly_the_scanned_package() {
+    let (mut a, mut b, mut c, mut wire) = (Node::new(), Node::new(), Node::new(), Wire::default());
+    a.e().invite(&b.id()).unwrap();
+    a.e().invite(&c.id()).unwrap();
+    let hint = a.e().invitation_hint(&b.id()).unwrap();
+    assert_eq!(hint.len(), cruxcoach_marmot::olm::HINT_BYTES);
+    // B does not accept unsolicited invitations; the scan is the consent.
+    b.e().set_discovery(false).unwrap();
+    b.e().import_hint(&hint).unwrap();
+    let beacons: Vec<String> =
+        serde_json::from_value(a.e().hello().unwrap()["beacons"].clone()).unwrap();
+    let target = b.e().identify(&beacons).unwrap().unwrap();
+    assert!(target.starts_with(cruxcoach_marmot::olm::HINT_PREFIX));
+    let request = b
+        .e()
+        .exchange_begin(Some(&target), false, MAX)
+        .unwrap()
+        .unwrap();
+    wire.0.push(request.clone());
+    let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
+    b.e().exchange_end(&response, MAX).unwrap();
+    assert_eq!(b.state(&a.id()).as_deref(), Some("invited"));
+    // The hint is used up; the normal acceptance follows.
+    assert_ne!(
+        b.e().identify(&beacons).unwrap().as_deref(),
+        Some(target.as_str())
+    );
+    b.e().accept(&a.id()).unwrap();
+    exchange(&mut b, &mut a, &mut wire);
+    assert_eq!(a.state(&b.id()).as_deref(), Some("active"));
+    // A hint for C's package never makes B import it, nor C import B's.
+    let c_hint = a.e().invitation_hint(&c.id()).unwrap();
+    let mut forged = c_hint.clone();
+    forged[4] ^= 1;
+    c.e().set_discovery(false).unwrap();
+    c.e().import_hint(&forged).unwrap();
+    let target = c.e().identify(&beacons);
+    if let Ok(Some(target)) = target {
+        if let Ok(Some(request)) = c.e().exchange_begin(Some(&target), false, MAX) {
+            let (response, _) = a.e().exchange_serve(&request, MAX).unwrap();
+            c.e().exchange_end(&response, MAX).unwrap();
+        }
+    }
+    assert_eq!(
+        c.state(&a.id()),
+        None,
+        "a wrong fingerprint fetches nothing"
+    );
+}

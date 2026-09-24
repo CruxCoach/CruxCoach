@@ -74,12 +74,15 @@ def roundtrip():
         connect(a, pa, [pb])
         connect(b, pb, [pa])
 
-        # Hand-over by QR: the invitation package never touches a network.
+        # Hand-over by two-stage QR: the short code pins the package, which
+        # B's device then fetches directly from A's (B does not accept
+        # unsolicited invitations; the scan is the consent).
         a.call("invite", peer=friend)
-        payload = a.call("invitation", peer=friend)["payload"]
-        assert payload.startswith("cruxcoach:i1:")
+        payload = a.call("invitation_hint", peer=friend)["payload"]
+        assert payload.startswith("cruxcoach:i2:")
+        b.call("discovery", enabled="false")
         b.call("import_invitation", payload=payload)
-        assert peer_state(b, owner) == "invited"
+        wait([a, b], lambda: peer_state(b, owner) == "invited", "two-stage QR package fetched")
         assert b.call("received") == [], "an unaccepted invitation delivers nothing"
         b.call("accept_invitation", peer=owner)
         b.call("send", peer=owner, text="synthetic hello", token="hello")
@@ -144,7 +147,7 @@ def roundtrip():
         assert b.call("received") == [] and peer_state(b, owner) == "ended"
         faults = dict(pa.stats + pb.stats)
         print(json.dumps(dict(path="P2P-TWO", seed=SEED, independent_processes=True, native_crypto="olm/vodozemac",
-                              relay=False, blossom=False, qr_invitation=True, qr_payload_chars=len(payload),
+                              relay=False, blossom=False, two_stage_qr_invitation=True, qr_payload_chars=len(payload),
                               invitation_acceptance=True, encrypted_delivery=True, process_kill_restart=True,
                               encrypted_identity_recovery=True, out_of_reach_then_delivered=True,
                               unwedge_gap=True, unwedge_state_loss=True, signer_ops_per_installation=1,

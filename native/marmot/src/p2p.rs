@@ -29,6 +29,8 @@ pub const KIND_RESPONSE: u8 = 2;
 pub const SECTION_CHANNEL: u8 = 1;
 /// An invitation offered to a not-yet-identified endpoint.
 pub const SECTION_INVITE: u8 = 2;
+/// Two-stage QR: the scanner asks the inviter's device for the package.
+pub const SECTION_FETCH: u8 = 3;
 /// One exchange step in either direction (fits a 512 KiB JNI command as base64).
 pub const MAX_CONTAINER: usize = 262_144;
 pub const MAX_SECTIONS: usize = 40;

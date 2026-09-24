@@ -120,6 +120,8 @@ open class EndpointCommands(protected val endpoint: SyntheticMarmotEndpoint) {
             }
             "hello" -> endpoint.harness("hello")
             "invitation" -> endpoint.harness("invitation") { put("peer", field("peer")) }
+            "invitation_hint" -> endpoint.harness("invitation_hint") { put("peer", field("peer")) }
+            "discovery" -> endpoint.blocking { setDiscovery(field("enabled").toBooleanStrict()); JsonPrimitive(true) }
             "import_invitation" -> endpoint.harness("import_invitation") { put("payload", field("payload")) }
             "burn" -> endpoint.harness("burn") { put("peer", field("peer")); put("count", field("count").toInt()) }
             "forget_sessions" -> endpoint.harness("forget_sessions") { put("peer", field("peer")) }
