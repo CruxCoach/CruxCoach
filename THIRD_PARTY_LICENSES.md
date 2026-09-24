@@ -276,10 +276,14 @@ When vendoring a new third-party source tree:
    license election (if dual-licensed).
 4. Add an entry to this file linking to the texts and stating the election.
 5. Add an entry to [`NOTICE`](NOTICE) if attribution is required by the license.
+6. Add a library (and, for a non-standard text, a license) JSON under
+   [`androidApp/aboutlibraries/`](androidApp/aboutlibraries/): the in-app
+   license list (About → Open-source licenses) is generated from Gradle
+   dependencies and cannot see vendored code on its own.
 
 When bundling a third-party asset (image, font, model, dataset):
 
 1. Keep an attribution entry in this file with source, license, and any
    restrictions on redistribution.
 2. If the license requires it, surface the attribution in the app's about /
-   credits screen.
+   credits screen (a JSON under `androidApp/aboutlibraries/`, as above).

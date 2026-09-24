@@ -110,6 +110,15 @@ if (featureBranch != null) {
     }
 }
 
+aboutLibraries {
+    collect {
+        // Vendored code and data the dependency scan cannot see: zstd (its BSD
+        // licence asks for the notice in binaries), the BoardSesh hold-set map
+        // and the dontkillmyapp.com data (CC BY-SA).
+        configPath.set(layout.projectDirectory.dir("aboutlibraries"))
+    }
+}
+
 android {
     namespace = "com.cruxcoach.android"
     compileSdk = 36
