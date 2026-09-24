@@ -629,6 +629,15 @@ class BoardRepositoryImpl(
         return q.getProductSizesForLayout(layoutId.toLong(), boardBrand).executeAsList().map { it.toInt() }
     }
 
+    override fun getLayoutForProductSize(productSizeId: Int, boardBrand: String): Long? =
+        q.getLayoutForProductSize(productSizeId.toLong(), boardBrand).executeAsOneOrNull()
+
+    override fun getLayoutForPlacements(placementIds: Collection<Int>, boardBrand: String): Long? {
+        if (placementIds.isEmpty()) return null
+        return q.getLayoutForPlacements(boardBrand, placementIds.map { it.toLong() })
+            .executeAsOneOrNull()
+    }
+
     override fun getDefaultLayoutForBrand(boardBrand: String): Int? =
         q.getMostCommonLayoutForBrand(boardBrand).executeAsOneOrNull()?.toInt()
 

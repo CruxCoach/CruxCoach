@@ -1190,8 +1190,24 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 -- the strength of the Kilter catalogue while the new board has zero rows —
 -- the browser then renders an unexplained blank list instead of a
 -- "load catalogue" empty state.
+-- `kilter_author_uuid IS NULL` keeps the own-climb backfill out of the
+-- answer. KilterClimbBackfiller upserts the user's own logged/authored
+-- climbs through the plain importer path, so they inherit the catalogue
+-- provenance default source='kilter' although they are a handful of rows
+-- fetched one account at a time, not a catalogue. A user who connected a
+-- Kilter account before downloading the catalogue was then told the
+-- catalogue was there: the browser showed only those climbs (plus any
+-- community routes) and dropped the "Load catalogue" banner. The column
+-- separates them without a migration and without touching the
+-- load-bearing `source` semantics: the published catalogue carries no
+-- kilter_author_uuid column, so an imported row never arrives with one.
+-- The backfill does stamp the marker onto existing catalogue rows the user
+-- authored, which is harmless here — those are a handful among a quarter of
+-- a million, and EXISTS still finds the rest.
 hasClimbsForBrand:
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
+SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ?
+    AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
+    AND kilter_author_uuid IS NULL LIMIT 1);
 
 -- Whether one board has any hold geometry (catalogue-imported or seeded
 -- from the geometry bundled in the APK).
@@ -1489,6 +1505,30 @@ ORDER BY set_id;
 -- first candidate.
 getProductSizesForLayout:
 SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId AND board_brand = :brand;
+
+-- Inverse of the above: which layout a product size belongs to. Every
+-- Kilter size maps to exactly one layout (sizes 7/8/10/14/27/28 → Original,
+-- 17-26/29 → Homewall), so the first row is the answer. Used to read a
+-- Kilter log's `product_layout_uuid`, which names a product SIZE and not a
+-- layout, without writing that number into climbs.layout_id.
+getLayoutForProductSize:
+SELECT DISTINCT layout_id FROM board_images
+WHERE product_size_id = :productSizeId AND board_brand = :brand
+LIMIT 1;
+
+-- Which layout a climb's holds belong to, derived from the climb itself:
+-- its frames name placement ids, a placement belongs to a hold set, and a
+-- hold set is published for exactly one layout. Authoritative where the
+-- API metadata is not, and it works off the geometry bundled in the APK,
+-- so it answers before any catalogue download.
+getLayoutForPlacements:
+SELECT DISTINCT bi.layout_id FROM board_images bi
+WHERE bi.board_brand = :brand
+  AND bi.set_id IN (
+      SELECT p.set_id FROM placements p
+      WHERE p.board_brand = :brand AND p.placement_id IN :placementIds
+  )
+LIMIT 1;
 
 -- FEAT-031: derive a sensible default (layout, size) for an Aurora board
 -- right after its catalogue is synced, so the picker can configure the

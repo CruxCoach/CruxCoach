@@ -616,6 +616,18 @@ interface BoardLayoutQueries {
      *  board community climb on the right physical board even when the
      *  user's preferred layout differs from the climb's. */
     fun getProductSizesForLayout(layoutId: Int, boardBrand: String = "kilter"): List<Int>
+
+    /** Which layout a product size belongs to — every Kilter size maps to
+     *  exactly one. A Kilter log's `product_layout_uuid` names a SIZE, so
+     *  this is how it becomes a layout instead of being stored as one.
+     *  Default null so test fakes that model no board geometry compile. */
+    fun getLayoutForProductSize(productSizeId: Int, boardBrand: String = "kilter"): Long? = null
+
+    /** Which layout a climb's holds belong to, read from the climb's own
+     *  placement ids. Authoritative where API metadata is not, and served by
+     *  the geometry bundled in the APK, so it answers before any catalogue
+     *  download. Default null, as above. */
+    fun getLayoutForPlacements(placementIds: Collection<Int>, boardBrand: String = "kilter"): Long? = null
     /** FEAT-031: a sensible default active-board config for an Aurora board,
      *  derived from its just-synced catalogue — the most-climbed layout and
      *  the largest product_size. Lets the picker configure the active board

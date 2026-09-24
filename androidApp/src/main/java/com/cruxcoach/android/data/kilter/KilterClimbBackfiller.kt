@@ -2,6 +2,7 @@ package com.cruxcoach.android.data.kilter
 
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardClimbParser
 
 /**
@@ -188,6 +189,35 @@ internal class KilterClimbBackfiller(
     }
 
     /**
+     * The layout a backfilled climb belongs to.
+     *
+     * `product_layout_uuid` was read as a layout id. It is a product SIZE:
+     * the two values this account's logbook carries, "10" and "8", are
+     * Kilter sizes ("12 x 12 with kickboard" — [BoardConstants.KILTER_DEFAULT_SIZE]
+     * — and "8 x 12"), and both belong to layout 1, Original. Stored as a
+     * layout that left the row pointing at layout 10, which does not exist
+     * (the catalogue has 1 and 8, and hold geometry only for those), or at
+     * layout 8, which is Homewall — a different Kilter board. Every render
+     * lookup then missed and the detail screen fell back to the user's own
+     * board, drawing the climb's holds on the wrong wall at the wrong spots.
+     *
+     * The holds answer it themselves: a placement belongs to a hold set and
+     * a hold set is published for one layout, and that geometry ships in the
+     * APK, so it resolves before any catalogue download. The size mapping is
+     * the fallback, and only then the brand's usual layout — never a number
+     * taken from a field that does not mean what it was read as.
+     */
+    private fun resolveLayoutId(climb: KilterLoggedClimb, frames: String): Long {
+        val placementIds = BoardClimbParser.parseFrames(frames).map { it.placementId }
+        boardRepository.getLayoutForPlacements(placementIds)?.let { return it }
+        climb.productLayoutUuid.toIntOrNull()
+            ?.let { boardRepository.getLayoutForProductSize(it) }
+            ?.let { return it }
+        return boardRepository.getDefaultLayoutForBrand("kilter")?.toLong()
+            ?: BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
+    }
+
+    /**
      * Shared climb-row mapping for both backfills. Only ever called for
      * uuids [BoardRepository.findClimbCanonicalUuid] reported missing under
      * ANY spelling, inside the caller's transaction. Also records the climb author's Kilter userUuid
@@ -200,10 +230,7 @@ internal class KilterClimbBackfiller(
         val moveCount = if (frames.isNotBlank()) {
             BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
         } else 0L
-        // productLayoutUuid is a numeric string in Kilter's API
-        // ("10", "27", …) — the same value the board DB stores as
-        // layout_id. Unparseable → 0 (still resolvable by uuid).
-        val layoutId = climb.productLayoutUuid.toLongOrNull() ?: 0L
+        val layoutId = resolveLayoutId(climb, frames)
         boardRepository.upsertClimb(
             uuid = climb.climbUuid,
             layoutId = layoutId,
