@@ -1282,7 +1282,7 @@
     <string name="devcontact_feature_placeholder">Was wünschst du dir?</string>
     <string name="devcontact_wishes">Wünsche</string>
     <string name="devcontact_bug_reports">Fehlerberichte</string>
-    <string name="devcontact_crash_reports">Crash Reports</string>
+    <string name="devcontact_crash_reports">Crash-Berichte</string>
     <string name="devcontact_write_reply">Antwort schreiben…</string>
     <string name="devcontact_report_bug">Bug melden</string>
     <string name="devcontact_steps_optional">Schritte zum Reproduzieren (optional)</string>
@@ -1712,7 +1712,7 @@
     <string name="devcontact_category_release">Release</string>
     <string name="devcontact_category_tip">Tipp</string>
     <string name="devcontact_chat_empty">Noch keine Nachrichten.\nSchreib dem Entwickler!</string>
-    <string name="devcontact_crashes_empty">Keine Crash Reports gesendet</string>
+    <string name="devcontact_crashes_empty">Keine Crash-Berichte gesendet</string>
     <string name="devcontact_developer">Entwickler</string>
     <string name="devcontact_device">Gerät</string>
     <string name="devcontact_device_info">Geräteinformationen</string>
