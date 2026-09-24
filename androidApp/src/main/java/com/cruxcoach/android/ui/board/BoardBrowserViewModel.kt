@@ -635,6 +635,8 @@ class BoardBrowserViewModel @Inject constructor(
         // Dice re-rolls to skip an ignored climb before giving up (see fetchRandomClimb).
         private const val RANDOM_PICK_MAX_ROLLS = 8
         private const val RANDOM_PICK_SAMPLE = 50
+        /** Pause in typing before a name search runs. */
+        private const val SEARCH_TYPING_DEBOUNCE_MS = 350L
 
         // Ungraded-only mode rides on the existing SQL grade predicate
         //   ((difficulty_average >= :minDiff AND <= :maxDiff)
@@ -1157,7 +1159,11 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun updateSearchQuery(query: String) {
         _state.update { it.copy(filter = it.filter.copy(searchQuery = query)) }
-        searchClimbs()
+        // Typing calls this per character. Cancelling the job cannot stop a
+        // query SQLite is already running, so each keystroke queued a full
+        // name scan behind the last one (Kilter on the Nokia: ~4 s each, the
+        // final result after 20+ s). Wait for a short pause in typing first.
+        searchClimbs(debounceMs = SEARCH_TYPING_DEBOUNCE_MS)
     }
 
     fun updateSortField(field: ClimbSortField) {
@@ -1450,7 +1456,7 @@ class BoardBrowserViewModel @Inject constructor(
      *  the list is refilled to the depth the user had already scrolled to
      *  (instead of truncating back to one page), so the restored scroll
      *  position survives while the status-dependent rows still update. */
-    fun searchClimbs(preserveDepth: Boolean = false) {
+    fun searchClimbs(preserveDepth: Boolean = false, debounceMs: Long = 0L) {
         if (!_state.value.hasBoardData) return
 
         countJob?.cancel()
@@ -1458,6 +1464,7 @@ class BoardBrowserViewModel @Inject constructor(
         val targetSize = if (preserveDepth) _state.value.climbs.size else 0
         searchJob?.cancel()
         searchJob = viewModelScope.safeLaunch(TAG) {
+            if (debounceMs > 0) delay(debounceMs)
             val hasExisting = _state.value.climbs.isNotEmpty()
             _state.update { it.copy(
                 isLoading = !hasExisting,
