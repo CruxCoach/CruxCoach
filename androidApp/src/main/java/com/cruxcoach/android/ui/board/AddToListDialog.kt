@@ -88,17 +88,18 @@ internal fun AddToListDialog(
     addedToRunning: Boolean = false,
     onAddToRunning: (() -> Unit)? = null,
 ) {
-    // The keyboard stayed up after an inline create and covered "Done", so
-    // the next tap to close the dialog typed into the name field instead.
-    val focusManager = LocalFocusManager.current
-    val createAndCloseKeyboard = {
-        if (newListName.isNotBlank()) onCreateAndAdd()
-        focusManager.clearFocus()
-    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.board_addtolist_title), fontWeight = FontWeight.Bold) },
         text = {
+            // The keyboard stayed up after an inline create and covered
+            // "Done", so the next tap meant for it typed into the name field.
+            // Read here: the dialog is its own window with its own focus.
+            val focusManager = LocalFocusManager.current
+            val createAndCloseKeyboard = {
+                if (newListName.isNotBlank()) onCreateAndAdd()
+                focusManager.clearFocus()
+            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (showAddToRunning && onAddToRunning != null) {
                     Row(
