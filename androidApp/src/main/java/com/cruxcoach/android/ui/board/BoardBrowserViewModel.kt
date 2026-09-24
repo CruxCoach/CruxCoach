@@ -1062,6 +1062,16 @@ class BoardBrowserViewModel @Inject constructor(
                         // the browse list doesn't carry over Kilter geometry.
                         _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
                     }
+                    // A forced refresh follows a catalogue change. Deleting a board's
+                    // data removes the product_sizes row the cached size came from;
+                    // kept, its id made the fit filter reject every climb left —
+                    // community climbs included — and the browser claimed the board
+                    // had nothing at all. Without the row there is nothing to fit to.
+                    if (force && !needsBoardReload && !isMoonBoard && _state.value.boardSize != null &&
+                        boardRepository.getProductSize(prefSizeId, prefBoardBrand) == null
+                    ) {
+                        _state.update { it.copy(boardSize = null, hsmExcludedMask = 0L) }
+                    }
                     if (isMoonBoard) {
                         // FEAT-049: MoonBoard's second axis is the user's OWNED
                         // hold sets, not a product size — there is no
