@@ -499,6 +499,13 @@ interface BoardClimbQueries {
      *  climbs are preserved. */
     fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
+
+    /**
+     * CruxCoach community climbs among [uuids] that Kilter never accepted.
+     * Their logs must not go to a Kilter account: Kilter does not know the
+     * climb. Defaults to none so fakes keep the plain upload behaviour.
+     */
+    fun communityOnlyClimbUuids(uuids: Collection<String>): Set<String> = emptySet()
     /** Format-blind existence/identity resolution: returns the CANONICAL
      *  stored uuid of the climb matching [uuid] across the DB's mixed uuid
      *  spellings (legacy nodash-UPPERCASE curated rows vs new-world

@@ -431,6 +431,10 @@ class BoardRepositoryImpl(
                 .executeAsList().map { mapBrowse(it) }
         }
     }
+    override fun communityOnlyClimbUuids(uuids: Collection<String>): Set<String> =
+        if (uuids.isEmpty()) emptySet()
+        else q.communityOnlyClimbUuids(uuids).executeAsList().toSet()
+
     override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
         return resolveAliasesInRequestedOrder(uuids) { canonical ->
             q.getClimbsByUuidsAnyAngle(canonical)

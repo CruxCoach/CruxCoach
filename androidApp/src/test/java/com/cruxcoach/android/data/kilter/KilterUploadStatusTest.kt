@@ -37,6 +37,7 @@ class KilterUploadStatusTest {
         every { personal.markAscentSyncedIfUnchanged(any(), any()) } returns true
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0))
         every { personal.getUnsyncedBids() } returns emptyList()
+        every { board.communityOnlyClimbUuids(any()) } returns emptySet()
         coEvery { api.fetchLogs() } returns Result.success(emptyList())
         coEvery { api.fetchLoggedClimbs() } returns Result.success(KilterLoggedClimbsResponse())
         coEvery { api.fetchOwnAuthoredClimbs() } returns Result.success(emptyList())
@@ -82,6 +83,19 @@ class KilterUploadStatusTest {
         coVerify(exactly = 2) { api.uploadLogs(any()) }
         verify(exactly = 200) { personal.markAscentSyncedIfUnchanged(any(), any()) }
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-200", any()) }
+    }
+
+    @Test fun community_climb_logs_stay_local_and_do_not_block_the_rest() = runTest {
+        val community = ascent(1).copy(uuid = "community-log", climbUuid = "community-climb")
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), community)
+        every { board.communityOnlyClimbUuids(any()) } answers {
+            firstArg<Collection<String>>().filterTo(HashSet()) { it == "community-climb" }
+        }
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.uploaded)
+        assertEquals(0, result.pending)
+        coVerify(exactly = 1) { api.uploadLogs(match { logs -> logs.map { it.logUuid } == listOf("test-log-0") }) }
+        verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("community-log", any()) }
     }
 
     @Test fun missing_wall_is_reported_as_blocked() = runTest {

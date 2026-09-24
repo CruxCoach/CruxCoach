@@ -999,6 +999,16 @@ SELECT * FROM climb_browse
 WHERE uuid IN ?
 GROUP BY uuid;
 
+-- CruxCoach community climbs among the given uuids that Kilter never
+-- accepted. Kilter does not know their uuid, so logs of them must stay out of
+-- a Kilter account upload. Reads climbs directly: climb_browse would drop a
+-- climb without a stats row.
+communityOnlyClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?
+  AND origin = 'cruxcoach'
+  AND (kilter_status IS NULL OR kilter_status != 'synced');
+
 -- ═══ Board-scoped list / setter resolution (active-board scoping) ═══
 --
 -- The plain getClimbsByUuids*/getClimbsByPubkey queries above resolve a

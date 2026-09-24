@@ -508,6 +508,23 @@ class KilterSyncEngine @Inject constructor(
         return LogInsertCounts(newAscents, newBids, duplicates)
     }
 
+    /**
+     * Spelling-agnostic keys of the CruxCoach community climbs among
+     * [climbUuids] that Kilter never accepted. Looks up both uuid spellings in
+     * chunks, like [insertLogs].
+     */
+    private fun communityOnlyClimbKeys(climbUuids: List<String>): Set<String> {
+        if (climbUuids.isEmpty()) return emptySet()
+        val lookup = climbUuids.asSequence()
+            .distinct()
+            .flatMap { sequenceOf(it, it.replace("-", "").uppercase()) }
+            .distinct()
+            .toList()
+        return lookup.chunked(CLIMB_LOOKUP_CHUNK)
+            .flatMap { boardRepository.communityOnlyClimbUuids(it) }
+            .mapTo(HashSet()) { normUuidKey(it) }
+    }
+
     /** Serialized across manual and automatic triggers; only successful batches are stamped. */
     suspend fun uploadPendingLogs(
         trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL,
@@ -526,8 +543,18 @@ class KilterSyncEngine @Inject constructor(
                 return status
             }
             try {
-                val unsyncedAscents = personalBoardRepo.getUnsyncedAscents()
-                val unsyncedBids = personalBoardRepo.getUnsyncedBids()
+                // Logs of CruxCoach community climbs that Kilter never accepted
+                // stay local. Kilter does not know their uuid: a batch holding
+                // one could fail as a whole on every sync and hold back every
+                // log behind it, or leave a log of an unknown climb in the
+                // account. They are not pending, just not Kilter's.
+                val allAscents = personalBoardRepo.getUnsyncedAscents()
+                val allBids = personalBoardRepo.getUnsyncedBids()
+                val localOnly = communityOnlyClimbKeys(
+                    allAscents.map { it.climbUuid } + allBids.map { it.climbUuid },
+                )
+                val unsyncedAscents = allAscents.filter { normUuidKey(it.climbUuid) !in localOnly }
+                val unsyncedBids = allBids.filter { normUuidKey(it.climbUuid) !in localOnly }
                 pendingCount = unsyncedAscents.size + unsyncedBids.size
                 if (!userPreferences.kilterPushEnabled.first()) return@withLock finish(KilterUploadReason.DISABLED)
                 if (pendingCount == 0) return@withLock finish()
