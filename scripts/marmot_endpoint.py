@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--restart-harness", action="store_true", help="Loopback-only encrypted restart fixture; initial configuration on stdin")
     parser.add_argument("--role", choices=["USER", "SERVER"], default="SERVER")
     parser.add_argument("--relay", action="append", default=[])
+    parser.add_argument("--p2p", action="store_true", help="Spike M0: Olm engine over direct loopback HTTP, no relay")
     args = parser.parse_args()
     if not args.prepared:
         subprocess.run([str(ROOT / "gradlew"), ":androidApp:writeMarmotEndpointClasspath", "--console=plain"], cwd=ROOT, check=True)
@@ -26,7 +27,7 @@ def main():
     classpath = (generated / "endpoint-classpath.txt").read_text()
     java = str(Path(os.environ.get("JAVA_HOME", "/usr/lib/jvm/java-17-openjdk-amd64")) / "bin/java")
     os.execv(java, [java, f"-Djava.library.path={generated / 'testNative'}", "-cp", classpath,
-                   "com.cruxcoach.android.sharing.MarmotEndpointMain", "--synthetic", args.role, *(["--restart-harness"] if args.restart_harness else []), *(["--unreachable-cruxcoach"] if args.unreachable_cruxcoach else []), *args.relay])
+                   "com.cruxcoach.android.sharing.MarmotEndpointMain", "--synthetic", args.role, *(["--restart-harness"] if args.restart_harness else []), *(["--unreachable-cruxcoach"] if args.unreachable_cruxcoach else []), *(["--p2p"] if args.p2p else []), *args.relay])
 
 
 if __name__ == "__main__":

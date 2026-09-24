@@ -27,12 +27,14 @@ object MarmotEndpointMain {
     @JvmStatic fun main(args: Array<String>) {
         require(args.firstOrNull() == "--synthetic") { "explicit_synthetic_mode_required" }
         val role = args.getOrNull(1) ?: "SERVER"
-        val flags = setOf("--restart-harness", "--unreachable-cruxcoach")
+        val flags = setOf("--restart-harness", "--unreachable-cruxcoach", "--p2p")
         val restartHarness = "--restart-harness" in args
         val unreachableCruxcoach = "--unreachable-cruxcoach" in args
+        // Spike M0: the Olm engine over direct loopback HTTP; no relay at all.
+        val p2p = "--p2p" in args
         // The interactive endpoint defaults to the owner's six public relays;
         // automated process tests always pass loopback fixtures explicitly.
-        val endpoints = args.drop(2).filter { it !in flags }.ifEmpty { PUBLIC_DEFAULTS }
+        val endpoints = if (p2p) listOf("ws://127.0.0.1:1") else args.drop(2).filter { it !in flags }.ifEmpty { PUBLIC_DEFAULTS }
         val loopback = endpoints.all { java.net.URI(it).host in setOf("localhost", "127.0.0.1", "[::1]") }
         if (unreachableCruxcoach) {
             check(loopback)
@@ -50,7 +52,7 @@ object MarmotEndpointMain {
         } catch (_: Exception) {
             error("synthetic_restart_initialization_refused")
         }
-        SyntheticMarmotEndpoint(pool, loopback, storage).use { endpoint ->
+        SyntheticMarmotEndpoint(pool, loopback, storage, p2p).use { endpoint ->
             storage?.key?.fill(0)
             fun reply(value: JsonElement) { println(value.toString()); System.out.flush() }
             reply(buildJsonObject { put("account", endpoint.account); put("role", role); put("synthetic", true) })
@@ -102,12 +104,26 @@ open class EndpointCommands(protected val endpoint: SyntheticMarmotEndpoint) {
                 buildJsonObject {
                     put("peers", buildJsonArray { status.peers.forEach { p -> add(buildJsonObject { put("account", p.account); put("state", p.state) }) } })
                     put("outbound_pending", status.local.outboundPending)
+                    // Everything still queued natively, reachable or not.
+                    put("queued", status.peers.sumOf { it.outboundPending })
                     put("relays", buildJsonObject { status.relays.forEach { r -> put(r.url, r.lastResult) } })
                 }
             }
             "native_storage_matches" -> endpoint.harness("private_storage_matches") { put("marker", field("marker")) }
             "rotate" -> endpoint.harness("rotate") { put("peer", field("peer")) }
             "epoch" -> endpoint.harness("epoch") { put("peer", field("peer")) }
+            // Spike M0 (direct Olm channel): discovery, QR hand-over and fault injection.
+            "port" -> JsonPrimitive(endpoint.lan.port)
+            "discover" -> {
+                endpoint.discovery.endpoints = request["urls"]!!.jsonArray.map { it.jsonPrimitive.content }
+                JsonPrimitive(true)
+            }
+            "hello" -> endpoint.harness("hello")
+            "invitation" -> endpoint.harness("invitation") { put("peer", field("peer")) }
+            "import_invitation" -> endpoint.harness("import_invitation") { put("payload", field("payload")) }
+            "burn" -> endpoint.harness("burn") { put("peer", field("peer")); put("count", field("count").toInt()) }
+            "forget_sessions" -> endpoint.harness("forget_sessions") { put("peer", field("peer")) }
+            "signer_ops" -> endpoint.harness("signer_ops")
             else -> error("unsupported_command")
         }
     }

@@ -56,6 +56,8 @@ open class SyntheticMarmotEndpoint(
     val endpoints: List<String>,
     private val loopbackHarness: Boolean = true,
     private val storage: SyntheticEndpointStorage? = null,
+    /** Spike M0: the Olm engine with a direct loopback LAN transport, no relays. */
+    val p2p: Boolean = false,
 ) : AutoCloseable {
     val directory: java.io.File = storage?.directory ?: Files.createTempDirectory("cc-native-e2e-").toFile()
     private val key = storage?.key?.copyOf() ?: ByteArray(32).also(SecureRandom()::nextBytes)
@@ -78,13 +80,20 @@ open class SyntheticMarmotEndpoint(
         traceFile?.appendText("${System.currentTimeMillis()} ${Thread.currentThread().name} $line\n")
     }
 
-    val host = MarmotHost(trace = timing, open = {
+    /** Spike M0: what "NSD" found; the process harness sets it (proxied URLs). */
+    val discovery = com.cruxcoach.android.sharing.p2p.StaticLanDiscovery()
+    val lan = com.cruxcoach.android.sharing.p2p.LanShareTransport({ java.net.InetAddress.getLoopbackAddress() }, discovery)
+    private val binding: MarmotBinding =
+        if (p2p) com.cruxcoach.android.sharing.p2p.P2pMarmotBinding(NativeMarmotBinding, listOf(lan)) else NativeMarmotBinding
+
+    val host = MarmotHost(trace = timing, binding = binding, open = {
         val config = buildJsonObject {
             put("account", account)
             put("local_test", loopbackHarness)
             put("relays", buildJsonArray { endpoints.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
+            if (p2p) put("engine", "olm")
         }
-        MarmotTestNative.open(identityHandle, directory.resolve("mls.db").absolutePath, key, config.toString())
+        MarmotTestNative.open(identityHandle, directory.resolve(if (p2p) "olm.db" else "mls.db").absolutePath, key, config.toString())
     })
     private val driver = JdbcSqliteDriver("jdbc:sqlite:${directory.resolve("app.db").absolutePath}?foreign_keys=on")
     val database: SecureDatabase = SecureDatabase(driver).also {

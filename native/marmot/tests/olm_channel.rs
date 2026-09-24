@@ -3,7 +3,7 @@
 //! through `exchange_*` in memory; a "wire" records every container so tests
 //! can replay, reorder, drop or attack it.
 #![cfg(feature = "local-harness")]
-use cruxcoach_marmot::olm::{OlmEngine, Package, binding_event};
+use cruxcoach_marmot::olm::{MAX_OUTBOUND_BYTES as MAX, OlmEngine, Package, binding_event};
 use cruxcoach_marmot::p2p::{self, ChannelBody, Container, SECTION_CHANNEL};
 use nostr::Keys;
 use std::sync::Arc;
@@ -81,13 +81,13 @@ struct Wire(Vec<Vec<u8>>);
 fn exchange(a: &mut Node, b: &mut Node, wire: &mut Wire) {
     let peer = b.id();
     for _ in 0..16 {
-        let Some(request) = a.e().exchange_begin(Some(&peer), false).unwrap() else {
+        let Some(request) = a.e().exchange_begin(Some(&peer), false, MAX).unwrap() else {
             return;
         };
         wire.0.push(request.clone());
-        let (response, _) = b.e().exchange_serve(&request).unwrap();
+        let (response, _) = b.e().exchange_serve(&request, MAX).unwrap();
         wire.0.push(response.clone());
-        let (more, _) = a.e().exchange_end(&response).unwrap();
+        let (more, _) = a.e().exchange_end(&response, MAX).unwrap();
         if !more {
             return;
         }
@@ -390,8 +390,8 @@ fn acceptance_refuses_unknown_key_share_wrong_binding_and_replays() {
         ),
     ];
     for (name, request) in attempts {
-        let (_, changes) = a.e().exchange_serve(&request).unwrap();
-        assert!(!changes.peers, "{name}");
+        let (_, changes) = a.e().exchange_serve(&request, MAX).unwrap();
+        assert!(!changes.changes.peers, "{name}");
         assert_eq!(
             a.state(&b_keys.public_key().to_hex()).as_deref(),
             Some("pending"),
@@ -409,7 +409,7 @@ fn acceptance_refuses_unknown_key_share_wrong_binding_and_replays() {
     }
     // The positive control with the same builder succeeds.
     let accepted = b.request(&package, |_| {}, true);
-    a.e().exchange_serve(&accepted).unwrap();
+    a.e().exchange_serve(&accepted, MAX).unwrap();
     assert_eq!(
         a.state(&b_keys.public_key().to_hex()).as_deref(),
         Some("active")
@@ -442,8 +442,11 @@ fn acceptance_refuses_unknown_key_share_wrong_binding_and_replays() {
                 .forget_sessions(&b_keys.public_key().to_hex())
                 .unwrap();
         }
-        let (_, changes) = a.e().exchange_serve(&accepted).unwrap();
-        assert!(!changes.peers && !changes.inbox, "replay step {step}");
+        let (_, changes) = a.e().exchange_serve(&accepted, MAX).unwrap();
+        assert!(
+            !changes.changes.peers && !changes.changes.inbox,
+            "replay step {step}"
+        );
         let expected = if step == 2 { 0 } else { sessions };
         assert_eq!(
             a.e()
@@ -570,7 +573,11 @@ fn forward_secrecy_consumed_message_keys_leave_the_stored_pickle() {
     }
     // Deliver 0..3 in order, and 5, but hold 3 and 4 back.
     let peer = b.id();
-    let request = a.e().exchange_begin(Some(&peer), false).unwrap().unwrap();
+    let request = a
+        .e()
+        .exchange_begin(Some(&peer), false, MAX)
+        .unwrap()
+        .unwrap();
     let mut c = Container::decode(&request).unwrap();
     let key_bytes = {
         // Rebuild the section with frames 3 and 4 removed, re-MACed like A would.
@@ -584,8 +591,8 @@ fn forward_secrecy_consumed_message_keys_leave_the_stored_pickle() {
     let addr = c.sections[0].addr;
     c.sections.clear();
     c.push(&key_bytes, addr, SECTION_CHANNEL, body.encode());
-    let (response, _) = b.e().exchange_serve(&c.encode().unwrap()).unwrap();
-    a.e().exchange_end(&response).unwrap();
+    let (response, _) = b.e().exchange_serve(&c.encode().unwrap(), MAX).unwrap();
+    a.e().exchange_end(&response, MAX).unwrap();
     assert_eq!(b.drain().len(), 4);
     // Consumed keys are not stored; the two skipped ones are (Olm keeps at
     // most 40 per chain until the late messages arrive).
@@ -638,19 +645,23 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
     // R2: the receiving transaction fails; nothing is applied, the frame is
     // retransmitted and applied exactly once.
     let peer = b.id();
-    let request = a.e().exchange_begin(Some(&peer), false).unwrap().unwrap();
+    let request = a
+        .e()
+        .exchange_begin(Some(&peer), false, MAX)
+        .unwrap()
+        .unwrap();
     let b_before = b.e().session_pickles(&a.id()).unwrap();
     FAIL_COMMITS.set(1);
-    assert!(b.e().exchange_serve(&request).is_err());
+    assert!(b.e().exchange_serve(&request, MAX).is_err());
     assert_eq!(b.e().session_pickles(&a.id()).unwrap(), b_before);
     assert!(b.inbox().is_empty());
     // Duplicate and reordered delivery of the same request.
-    let (response, _) = b.e().exchange_serve(&request).unwrap();
-    let (again, _) = b.e().exchange_serve(&request).unwrap();
+    let (response, _) = b.e().exchange_serve(&request, MAX).unwrap();
+    let (again, _) = b.e().exchange_serve(&request, MAX).unwrap();
     assert_eq!(b.drain(), vec!["synthetic o2"]);
     // A lost response: A retransmits, B acknowledges without re-applying.
     drop(response);
-    a.e().exchange_end(&again).unwrap();
+    a.e().exchange_end(&again, MAX).unwrap();
     exchange(&mut a, &mut b, &mut wire);
     assert!(b.inbox().is_empty());
     assert_eq!(a.e().pending_for(&b.id()).unwrap(), 0);
@@ -668,7 +679,11 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
             .unwrap();
     }
     b.drain();
-    let request = a.e().exchange_begin(Some(&peer), false).unwrap().unwrap();
+    let request = a
+        .e()
+        .exchange_begin(Some(&peer), false, MAX)
+        .unwrap()
+        .unwrap();
     let mut c = Container::decode(&request).unwrap();
     let mut body = ChannelBody::decode(&c.sections[0].body).unwrap();
     body.frames.reverse();
@@ -680,8 +695,8 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
     let addr = c.sections[0].addr;
     c.sections.clear();
     c.push(&link, addr, SECTION_CHANNEL, body.encode());
-    let (response, _) = b.e().exchange_serve(&c.encode().unwrap()).unwrap();
-    a.e().exchange_end(&response).unwrap();
+    let (response, _) = b.e().exchange_serve(&c.encode().unwrap(), MAX).unwrap();
+    a.e().exchange_end(&response, MAX).unwrap();
     let mut got = b.drain();
     got.sort();
     assert_eq!(
@@ -692,12 +707,16 @@ fn crash_windows_roll_back_ratchet_and_rows_together() {
     );
     // A tampered section is ignored entirely.
     a.e().send(&b.id(), "x", "synthetic x").unwrap();
-    let request = a.e().exchange_begin(Some(&peer), false).unwrap().unwrap();
+    let request = a
+        .e()
+        .exchange_begin(Some(&peer), false, MAX)
+        .unwrap()
+        .unwrap();
     let mut tampered = request.clone();
     let last = tampered.len() - 1;
     tampered[last] ^= 1;
-    let (response, changes) = b.e().exchange_serve(&tampered).unwrap();
-    assert!(!changes.inbox && Container::decode(&response).unwrap().sections.is_empty());
+    let (response, changes) = b.e().exchange_serve(&tampered, MAX).unwrap();
+    assert!(!changes.changes.inbox && Container::decode(&response).unwrap().sections.is_empty());
 }
 
 #[test]
@@ -756,12 +775,12 @@ fn lan_invitation_ending_and_a_new_friendship() {
     let (mut a, mut b, mut wire) = (Node::new(), Node::new(), Wire::default());
     a.e().invite(&b.id()).unwrap();
     // B does not accept invitations: the offer is ignored.
-    let offer = a.e().exchange_begin(None, true).unwrap().unwrap();
-    b.e().exchange_serve(&offer).unwrap();
+    let offer = a.e().exchange_begin(None, true, MAX).unwrap().unwrap();
+    b.e().exchange_serve(&offer, MAX).unwrap();
     assert_eq!(b.state(&a.id()), None);
     b.e().set_discovery(true).unwrap();
-    let offer = a.e().exchange_begin(None, true).unwrap().unwrap();
-    b.e().exchange_serve(&offer).unwrap();
+    let offer = a.e().exchange_begin(None, true, MAX).unwrap().unwrap();
+    b.e().exchange_serve(&offer, MAX).unwrap();
     assert_eq!(b.state(&a.id()).as_deref(), Some("invited"));
     // B finds A by the invitation beacon A advertises.
     let hello = a.e().hello().unwrap();
