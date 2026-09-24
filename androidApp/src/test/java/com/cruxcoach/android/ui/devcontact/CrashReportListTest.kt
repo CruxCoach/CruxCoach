@@ -7,7 +7,8 @@ import org.junit.Test
 /** One crash report is one list row; the developer's replies go to its thread. */
 class CrashReportListTest {
 
-    private val report = "--- CruxCoach Crash Report ---\nTime: 2026-09-24T10:09:00Z"
+    // Stored as written, ending in the stack trace's newline.
+    private val report = "--- CruxCoach Crash Report ---\nTime: 2026-09-24T10:09:00Z\n"
 
     private fun message(
         id: String,
@@ -43,7 +44,8 @@ class CrashReportListTest {
         val messages = listOf(
             message("reply", "angekommen", isSent = false, replyToId = "recipientwrap"),
             message("5f0c-uuid", report, isSent = true),
-            message("selfwrap", "[CRASH] $report", isSent = true),
+            // The echo arrives with the wire prefix, trimmed on receipt.
+            message("selfwrap", "[CRASH] ${report.trim()}", isSent = true),
         )
 
         assertEquals(listOf("reply", "5f0c-uuid"), crashReportList(messages).map { it.id })

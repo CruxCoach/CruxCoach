@@ -56,7 +56,8 @@ internal fun crashReportList(messages: List<UiMessage>): List<UiMessage> {
     val wirePrefix = "${MessageType.CRASH.prefix} "
     val seenContent = HashSet<String>()
     val reportIds = crashes
-        .filter { it.isSent && it.replyToId == null && seenContent.add(it.content.removePrefix(wirePrefix)) }
+        // The relay echo is trimmed on receipt (NostrEventDecryptor); the stored report ends in a newline.
+        .filter { it.isSent && it.replyToId == null && seenContent.add(it.content.removePrefix(wirePrefix).trim()) }
         .mapTo(HashSet()) { it.id }
     return crashes.filter { it.id in reportIds || (!it.isSent && it.replyToId !in reportIds) }
 }
