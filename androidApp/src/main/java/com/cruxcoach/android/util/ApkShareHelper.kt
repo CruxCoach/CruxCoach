@@ -294,6 +294,14 @@ class LocalApkServer(
     private val sessionId = UUID.randomUUID().toString()
     private val apkSha256: String by lazy { LocalShareProtocol.sha256(apkFile) }
 
+    /**
+     * Direct personal-sharing channel (Olm spike M0): when set, this share
+     * session also answers `/share/v1/hello` and `/share/v1/exchange`, so two
+     * devices on the hotspot can exchange sharing frames. The channel
+     * authenticates itself; these routes ignore the share-session header.
+     */
+    @Volatile var shareExchange: com.cruxcoach.android.sharing.p2p.ShareExchangeServer? = null
+
     private fun snapshotView(protocolVersion: Int): SnapshotView = synchronized(snapshotLock) {
         if (protocolVersion == LocalShareProtocol.VERSION_V2) {
             SnapshotView(v2SnapState, v2CompressedSnapshotFile, v2SnapshotFile, v2SnapshotMetadata)
@@ -521,6 +529,15 @@ class LocalApkServer(
                 val path = rawPath.substringBefore('?')
                 val headOnly = method == "HEAD"
                 var receiverCompleted = false
+
+                val share = shareExchange
+                if (share != null && com.cruxcoach.android.sharing.p2p.ShareHttpRoutes.handles(path)) {
+                    val routes = com.cruxcoach.android.sharing.p2p.ShareHttpRoutes
+                    val body = if (method == "POST") routes.body(input, headers) else null
+                    routes.write(out, routes.reply(method, path, body, share,
+                        com.cruxcoach.android.sharing.p2p.LanShareTransport.MAX_FRAME_BUDGET))
+                    return@thread
+                }
 
                 val requestedSession =
                     headers[LocalShareProtocol.SESSION_HEADER.lowercase()]

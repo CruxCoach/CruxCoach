@@ -27,9 +27,13 @@ class AndroidMarmotHost(
     private val databaseKey: (String) -> ByteArray,
     private val nostrSigner: NostrSigner,
     private val foregroundSigner: Nip01EventSigner,
+    /** Spike M0: `"olm"` selects the direct Olm channel; null keeps v2 (MLS over relays). */
+    private val engine: String? = null,
+    /** Spike M0: wraps the JNI binding (the Olm engine adds its direct transports). */
+    wrapBinding: (MarmotBinding) -> MarmotBinding = { it },
 ) : SharingHost {
     val account: String = nostrSigner.getPublicKeyHex()
-    private val directory = File(context.noBackupFilesDir, "marmot-v2")
+    private val directory = File(context.noBackupFilesDir, if (engine == "olm") "olm-v1" else "marmot-v2")
     private val database = File(directory, "$account.db")
     private val interactive = AtomicInteger(0)
     private val json = Json { encodeDefaults = true }
@@ -116,6 +120,7 @@ class AndroidMarmotHost(
                 put("account", account)
                 put("local_test", false)
                 put("relays", buildJsonArray { legacyRelays().forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
+                engine?.let { put("engine", it) }
             }
             val handle = MarmotNative.open(database.absolutePath, key, config.toString(), callback)
             retireVersionOne()
@@ -132,7 +137,7 @@ class AndroidMarmotHost(
         context.getSharedPreferences(LEGACY_RELAY_PREFERENCES, Context.MODE_PRIVATE).edit().remove("relays:$account").apply()
     }
 
-    override val host = MarmotHost(open = ::open, trace = AndroidTrace)
+    override val host = MarmotHost(open = ::open, binding = wrapBinding(NativeMarmotBinding), trace = AndroidTrace)
 
     private object AndroidTrace : MarmotTrace {
         override fun <T> section(name: String, block: () -> T): T {

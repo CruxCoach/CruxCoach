@@ -3,7 +3,7 @@
 //! no pool, no socket: transports (LAN HTTP, BLE GATT) live on the app side and
 //! move opaque containers produced and parsed here.
 use crate::error::{Error, Result, checked};
-use crate::olm::{Changes, OlmEngine};
+use crate::olm::{Changes, MAX_OUTBOUND_BYTES, OlmEngine};
 use nostr::NostrSigner;
 use nostr::base64::Engine as _;
 use nostr::base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -66,12 +66,18 @@ enum Command {
     ExchangeBegin {
         peer: Option<String>,
         invites: bool,
+        #[serde(default)]
+        max_bytes: Option<usize>,
     },
     ExchangeEnd {
         container: String,
+        #[serde(default)]
+        max_bytes: Option<usize>,
     },
     ExchangeServe {
         container: String,
+        #[serde(default)]
+        max_bytes: Option<usize>,
     },
     Invitation {
         peer: String,
@@ -256,21 +262,38 @@ impl OlmHost {
             }
             Command::Hello => self.engine()?.hello()?,
             Command::Identify { beacons } => json!({"peer": self.engine()?.identify(&beacons)?}),
-            Command::ExchangeBegin { peer, invites } => {
-                let container = self.engine()?.exchange_begin(peer.as_deref(), invites)?;
+            Command::ExchangeBegin {
+                peer,
+                invites,
+                max_bytes,
+            } => {
+                let budget = max_bytes.unwrap_or(MAX_OUTBOUND_BYTES);
+                let container = self
+                    .engine()?
+                    .exchange_begin(peer.as_deref(), invites, budget)?;
                 json!({"container": container.map(|c| STANDARD.encode(c))})
             }
-            Command::ExchangeEnd { container } => {
-                let (more, changes) = self.engine()?.exchange_end(&Self::container(&container)?)?;
-                self.after(changes);
-                json!({"more": more})
-            }
-            Command::ExchangeServe { container } => {
-                let (response, changes) = self
+            Command::ExchangeEnd {
+                container,
+                max_bytes,
+            } => {
+                let budget = max_bytes.unwrap_or(MAX_OUTBOUND_BYTES);
+                let (more, served) = self
                     .engine()?
-                    .exchange_serve(&Self::container(&container)?)?;
-                self.after(changes);
-                json!({"container": STANDARD.encode(response)})
+                    .exchange_end(&Self::container(&container)?, budget)?;
+                self.after(served.changes);
+                json!({"more": more, "peers": served.peers})
+            }
+            Command::ExchangeServe {
+                container,
+                max_bytes,
+            } => {
+                let budget = max_bytes.unwrap_or(MAX_OUTBOUND_BYTES);
+                let (response, served) = self
+                    .engine()?
+                    .exchange_serve(&Self::container(&container)?, budget)?;
+                self.after(served.changes);
+                json!({"container": STANDARD.encode(response), "peers": served.peers})
             }
             Command::Invitation { peer } => {
                 let package = self.engine()?.invitation(&peer)?;

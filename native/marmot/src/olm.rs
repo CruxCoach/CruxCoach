@@ -54,7 +54,8 @@ const MAX_SESSIONS: usize = 3;
 const REKEY_PAUSE_MS: u64 = 30_000;
 const SPARE_KEYS: usize = 2;
 const MAX_INBOX: i64 = 4_096;
-const MAX_OUTBOUND_BYTES: usize = 196_608;
+/// Default frame budget of one exchange step (LAN). BLE passes a smaller one.
+pub const MAX_OUTBOUND_BYTES: usize = 196_608;
 const ENVELOPE_APP: u8 = 1;
 const ENVELOPE_CONTROL: u8 = 2;
 
@@ -459,6 +460,14 @@ enum KeyKind {
 pub struct Changes {
     pub inbox: bool,
     pub peers: bool,
+}
+
+/// What an exchange step did: app-visible changes and the relationships it
+/// reached (the transport uses them for "deliverable now").
+#[derive(Default, Debug, Clone)]
+pub struct Served {
+    pub changes: Changes,
+    pub peers: Vec<String>,
 }
 
 /// What processing one incoming container produced.
@@ -1412,23 +1421,27 @@ impl OlmEngine {
             .or_else(|| if row.inviter { tag() } else { None })
     }
 
-    fn channel_body(&self, peer: &str) -> Result<ChannelBody> {
+    /// Queued frames within `budget` bytes, oldest first. A frame larger than
+    /// the budget waits for a transport that carries it (BLE: small frames
+    /// such as deltas and acks; full pages wait for LAN).
+    fn channel_body(&self, peer: &str, budget: usize) -> Result<ChannelBody> {
         let frames: Vec<(Vec<u8>, Vec<u8>)> = self.sql(|c| {
             let mut q = c.prepare(
-                "SELECT id, frame FROM olm_out WHERE peer=?1 ORDER BY created_at, rowid LIMIT ?2",
+                "SELECT id, frame FROM olm_out WHERE peer=?1 ORDER BY created_at, rowid LIMIT 512",
             )?;
-            q.query_map(params![peer, MAX_FRAMES as i64], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?
-            .collect()
+            q.query_map(params![peer], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect()
         })?;
         let mut body = ChannelBody::default();
         let mut size = 0;
         for (id, frame) in frames {
-            size += frame.len() + 12;
-            if size > MAX_OUTBOUND_BYTES && !body.frames.is_empty() {
+            if body.frames.len() == MAX_FRAMES {
                 break;
             }
+            if size + frame.len() + 12 > budget.min(MAX_OUTBOUND_BYTES) {
+                continue;
+            }
+            size += frame.len() + 12;
             let id: FrameId = id.as_slice().try_into().map_err(|_| Error("storage"))?;
             self.sql(|c| {
                 c.execute(
@@ -1463,7 +1476,12 @@ impl OlmEngine {
 
     /// Build a request to one identified peer, or invitation offers for an
     /// unidentified endpoint that accepts invitations.
-    pub fn exchange_begin(&mut self, peer: Option<&str>, invites: bool) -> Result<Option<Vec<u8>>> {
+    pub fn exchange_begin(
+        &mut self,
+        peer: Option<&str>,
+        invites: bool,
+        budget: usize,
+    ) -> Result<Option<Vec<u8>>> {
         let mut container = Container::new(KIND_REQUEST, [0; 16], now_s())?;
         match peer {
             Some(peer) => {
@@ -1471,7 +1489,7 @@ impl OlmEngine {
                 let Some(key) = self.section_key(&row) else {
                     return Ok(None);
                 };
-                let body = self.channel_body(peer)?;
+                let body = self.channel_body(peer, budget)?;
                 let addr = p2p::channel_addr(&key, &container.nonce);
                 container.push(&key, addr, SECTION_CHANNEL, body.encode());
             }
@@ -1504,13 +1522,17 @@ impl OlmEngine {
 
     /// Serve one request: absorb its sections, answer each identified
     /// relationship with its queued frames and replies.
-    pub fn exchange_serve(&mut self, request: &[u8]) -> Result<(Vec<u8>, Changes)> {
+    pub fn exchange_serve(&mut self, request: &[u8], budget: usize) -> Result<(Vec<u8>, Served)> {
         let container = Container::decode(request)?;
         if container.kind != KIND_REQUEST || now_s().abs_diff(container.time) > MAX_SKEW_S {
             return Err(Error("wire_refused"));
         }
         let absorbed = self.absorb(&container)?;
         let mut response = Container::new(KIND_RESPONSE, container.nonce, now_s())?;
+        let served = Served {
+            changes: absorbed.changes,
+            peers: absorbed.peers.iter().map(|p| p.0.clone()).collect(),
+        };
         for (peer, _) in absorbed.peers {
             let Some(row) = self.peer(&peer)? else {
                 continue;
@@ -1518,16 +1540,16 @@ impl OlmEngine {
             let Some(key) = self.section_key(&row) else {
                 continue;
             };
-            let body = self.channel_body(&peer)?;
+            let body = self.channel_body(&peer, budget)?;
             let addr = p2p::channel_addr(&key, &response.nonce);
             response.push(&key, addr, SECTION_CHANNEL, body.encode());
         }
-        Ok((response.encode()?, absorbed.changes))
+        Ok((response.encode()?, served))
     }
 
     /// Absorb the response to one of this device's requests. Returns whether
     /// another round is useful (frames still queued or replies owed).
-    pub fn exchange_end(&mut self, response: &[u8]) -> Result<(bool, Changes)> {
+    pub fn exchange_end(&mut self, response: &[u8], budget: usize) -> Result<(bool, Served)> {
         let container = Container::decode(response)?;
         if container.kind != KIND_RESPONSE || self.requests.remove(&container.reply_to).is_none() {
             return Err(Error("wire_refused"));
@@ -1544,14 +1566,21 @@ impl OlmEngine {
             })?;
             let fresh: i64 = self.sql(|c| {
                 c.query_row(
-                    "SELECT count(*) FROM olm_out WHERE peer=?1 AND attempts=0",
-                    [peer],
+                    "SELECT count(*) FROM olm_out WHERE peer=?1 AND attempts=0 AND length(frame)+12<=?2",
+                    params![peer, budget.min(MAX_OUTBOUND_BYTES) as i64],
                     |r| r.get(0),
                 )
             })?;
             more |= owed > 0 || fresh > 0;
         }
-        Ok((more, absorbed.changes))
+        let peers = absorbed.peers.iter().map(|p| p.0.clone()).collect();
+        Ok((
+            more,
+            Served {
+                changes: absorbed.changes,
+                peers,
+            },
+        ))
     }
 
     /// Match a section to a relationship. Returns the peer, the key and its
