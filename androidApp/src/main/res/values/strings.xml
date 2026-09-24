@@ -51,6 +51,8 @@
     <string name="climb_creator_dup_publish_anyway">Publish anyway</string>
     <string name="climb_creator_dup_own_title">You already published this climb</string>
     <string name="climb_creator_dup_own_message" formatted="false">Same holds as your climb “%s”. Update it with your changes, or publish a separate climb.</string>
+    <string name="climb_creator_dup_own_draft_title">You already have a draft with these holds</string>
+    <string name="climb_creator_dup_own_draft_message" formatted="false">Same holds as your draft “%s”. Update it with your changes, or publish a separate climb.</string>
     <string name="climb_creator_dup_update_existing">Update existing</string>
     <string name="climb_creator_dup_publish_new">Publish as new</string>
     <string name="climb_creator_drafts_open">Open drafts</string>

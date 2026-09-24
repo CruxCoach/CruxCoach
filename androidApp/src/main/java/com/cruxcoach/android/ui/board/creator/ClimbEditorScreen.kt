@@ -550,11 +550,22 @@ fun ClimbEditorScreen(
         state.duplicateOf?.let { dup ->
             if (state.duplicateIsOwn) {
                 // The user's own climb: updating it (a new name, a fixed grade)
-                // is the likely intent, a second copy the exception.
+                // is the likely intent, a second copy the exception. A draft or
+                // a failed publish never went out, so it is not "published".
+                val isDraft = dup.syncStatus == "draft" || dup.syncStatus == "failed"
                 AlertDialog(
                     onDismissRequest = viewModel::cancelPublishOnDuplicate,
-                    title = { Text(stringResource(R.string.climb_creator_dup_own_title)) },
-                    text = { Text(stringResource(R.string.climb_creator_dup_own_message, dup.name)) },
+                    title = {
+                        Text(stringResource(if (isDraft) R.string.climb_creator_dup_own_draft_title else R.string.climb_creator_dup_own_title))
+                    },
+                    text = {
+                        Text(
+                            stringResource(
+                                if (isDraft) R.string.climb_creator_dup_own_draft_message else R.string.climb_creator_dup_own_message,
+                                dup.name,
+                            )
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = { viewModel.updateExistingOnDuplicate("12x12", autoNoteTemplate) }) {
                             Text(stringResource(R.string.climb_creator_dup_update_existing))
