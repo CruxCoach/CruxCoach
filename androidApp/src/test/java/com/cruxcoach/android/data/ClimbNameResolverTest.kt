@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -23,6 +24,18 @@ class ClimbNameResolverTest {
 
     private val repo: BoardRepository = mockk(relaxed = true)
     private val resolver = ClimbNameResolver(repo)
+
+    /**
+     * A relaxed mock answers an unstubbed reference-returning call with a
+     * child mock, not null. The resolver's normalized fallback would then
+     * "find" a climb in the very tests that assert nothing is found, so the
+     * empty-catalogue default is stated explicitly. Tests that want the
+     * normalized path to hit override this.
+     */
+    @Before
+    fun stubEmptyNormalizedScan() {
+        every { repo.getClimbByUuidNormalized(any(), any()) } returns null
+    }
 
     private fun climb(uuid: String, name: String = "Test Climb", diff: Double? = 18.5) =
         TestClimb.stats(uuid = uuid, name = name, difficulty = diff, ascensionists = 42L)
