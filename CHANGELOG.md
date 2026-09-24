@@ -76,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nodash-lowercase and dashed-lowercase — and a logbook carries whichever its
   source produced, so name, grade and frames stayed empty for entries whose
   spelling differed from the stored row.
+- Opening a climb from the logbook shows it on its own board. The screen
+  resolved the climb by any spelling but then asked which board to draw it on
+  with the spelling it had navigated with, and that question is answered by an
+  exact uuid match — so it missed and fell back to the user's configured board.
 - The climb detail screen, the session queue, the Bluetooth name banners and
   the hold renderer resolve a climb the same way. Each carried its own list of
   uuid variants covering a different subset, so the same climb could open on

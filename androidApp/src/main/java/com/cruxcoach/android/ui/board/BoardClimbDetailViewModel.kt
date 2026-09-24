@@ -1058,7 +1058,12 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
                         val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                            climbUuid = uuid,
+                            // The CANONICAL uuid: canRenderClimbOnSize and
+                            // getProductSizeForClimbRender match climbs.uuid
+                            // exactly, so the spelling the caller navigated
+                            // with would miss and drop the pick through to
+                            // the user's own board.
+                            climbUuid = climb.uuid,
                             climbLayoutId = climb.layoutId.toInt(),
                             preferredSizeId = prefSizeId,
                             preferredLayoutId = prefLayoutId,
@@ -1262,7 +1267,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val climb = boardRepository.getClimbByUuid(uuid, angle)
+                    val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
                         ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
@@ -1274,7 +1279,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
                     val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                        climbUuid = uuid,
+                        climbUuid = climb.uuid,
                         climbLayoutId = climb.layoutId.toInt(),
                         preferredSizeId = prefSizeId,
                         preferredLayoutId = prefLayoutId,
