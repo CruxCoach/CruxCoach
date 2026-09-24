@@ -954,8 +954,10 @@ class ClimbEditorViewModel @Inject constructor(
         // Clear the climb, not the board it is set on. A bare ClimbEditorState()
         // is a Kilter one: on a MoonBoard the editor turned into a Kilter wall
         // with foot holds, Kilter colours and no angle.
+        // Through the undo stack: the button asks nothing, so an accidental
+        // tap wiped every hold with no way back.
         val current = _state.value.editor
-        applyEditor(
+        push(
             ClimbEditorState(
                 boardBrand = current.boardBrand,
                 activeBrush = defaultBrushFor(current.boardBrand),
