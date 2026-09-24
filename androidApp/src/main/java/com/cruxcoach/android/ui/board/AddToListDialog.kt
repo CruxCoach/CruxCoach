@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Check
@@ -132,33 +134,42 @@ internal fun AddToListDialog(
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 }
-                lists.forEach { list ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = climbInListIds.contains(list.id),
-                            onCheckedChange = { onToggleList(list.id) },
-                            colors = CheckboxDefaults.colors(checkedColor = OrangeAccent)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            when {
-                                list.isBuiltin -> Icons.Default.Star
-                                list.hasPlaybackPlan -> Icons.AutoMirrored.Filled.PlaylistPlay
-                                else -> Icons.AutoMirrored.Filled.PlaylistAdd
-                            },
-                            contentDescription = null,
-                            tint = when {
-                                list.isBuiltin -> WarningYellow
-                                list.hasPlaybackPlan -> OrangeAccent
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(list.displayName(), style = MaterialTheme.typography.bodyMedium)
+                // Only the lists scroll. With a dozen lists the column ran past
+                // the dialog, clipping the last ones and pushing the "New
+                // list" field out of sight below "Done".
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    lists.forEach { list ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = climbInListIds.contains(list.id),
+                                onCheckedChange = { onToggleList(list.id) },
+                                colors = CheckboxDefaults.colors(checkedColor = OrangeAccent)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                when {
+                                    list.isBuiltin -> Icons.Default.Star
+                                    list.hasPlaybackPlan -> Icons.AutoMirrored.Filled.PlaylistPlay
+                                    else -> Icons.AutoMirrored.Filled.PlaylistAdd
+                                },
+                                contentDescription = null,
+                                tint = when {
+                                    list.isBuiltin -> WarningYellow
+                                    list.hasPlaybackPlan -> OrangeAccent
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(list.displayName(), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
 
