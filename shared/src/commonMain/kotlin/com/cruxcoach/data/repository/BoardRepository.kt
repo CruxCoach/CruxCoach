@@ -465,8 +465,6 @@ interface BoardClimbQueries {
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
-    /** Whether [boardBrand] has any hold geometry, seeded or imported. */
-    fun hasPlacementsForBrand(boardBrand: String): Boolean = getAllPlacements(boardBrand).isNotEmpty()
     /** Whether a catalogue meta import finished (its sync states are present). */
     fun hasCatalogueSyncState(): Boolean = false
     /** Difficulty of the easiest graded, listed climb this board has at [angle],
@@ -574,6 +572,8 @@ interface BoardClimbQueries {
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
     fun getAllPlacements(boardBrand: String = "kilter"): List<BoardPlacement>
+    /** Whether [boardBrand] has any hold geometry, seeded or imported. */
+    fun hasPlacementsForBrand(boardBrand: String): Boolean = getAllPlacements(boardBrand).isNotEmpty()
     /** Placements restricted to the set_ids that the active layout actually
      *  paints onto the board photo (one row per layered board_image). The
      *  unfiltered [getAllPlacements] mixes in placements from every set
