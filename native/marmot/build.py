@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--harness", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target-dir", type=Path, help="Separate build directory for clean reproduction")
+    parser.add_argument("--olm-only", action="store_true", help="Spike M0 measurement: build without the MLS host (never packaged)")
     args = parser.parse_args()
     prepare.main()
     before = adapter_digest()
@@ -40,6 +41,8 @@ def main():
     mappings = [(ROOT.parents[1], "/src/cruxcoach"), (Path.home() / ".cargo", "/cargo"), (target_dir, "/build")]
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
     rustflags = [f"--remap-path-prefix={source}={target}" for source, target in mappings]
+    if args.olm_only:
+        command += ["--no-default-features"]
     if args.harness:
         if args.android_ndk:
             raise SystemExit("Harness identities must never be packaged for Android")
@@ -75,7 +78,7 @@ def main():
         "mdk_revision": prepare.REVISION,
         "mdk_patched_tree_sha256": (ROOT / "mdk-tree.sha256").read_text().strip(),
         "rustc": subprocess.check_output(["rustc", "--version", "--verbose"], cwd=ROOT, text=True).strip(),
-        "features": ["local-harness"] if args.harness else [],
+        "features": (["local-harness"] if args.harness else []) + (["no-mls"] if args.olm_only else []),
         "ndk": "27.2.12479018" if args.android_ndk else None,
         "android_api": 28 if args.android_ndk else None,
         "source_date_epoch": env["SOURCE_DATE_EPOCH"],

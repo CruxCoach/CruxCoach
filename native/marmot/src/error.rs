@@ -13,6 +13,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+#[cfg(feature = "mls")]
 impl From<cgka_traits::storage::StorageError> for Error {
     fn from(_: cgka_traits::storage::StorageError) -> Self {
         Self("storage")

@@ -6,36 +6,46 @@ publish = false
 license = "GPL-3.0-only"
 
 [features]
+default = ["mls"]
+# The v2 MLS host over relays (MDK, nostr-sdk). Spike M0 builds the direct Olm
+# channel alone with `--no-default-features` (size measurement only).
+mls = [
+  "dep:cgka-engine", "dep:cgka-session", "dep:cgka-traits", "dep:storage-sqlite",
+  "dep:transport-nostr-peeler", "dep:transport-nostr-adapter", "dep:tokio", "dep:futures-util",
+  "dep:rustls", "dep:webpki-roots", "dep:tokio-tungstenite", "dep:nostr-sdk",
+  "dep:nostr-relay-builder", "dep:nostr-database", "dep:nostr-relay-pool", "dep:async-wsocket",
+  "dep:sha2", "nostr/nip59",
+]
 local-harness = []
 
 [lib]
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-cgka-engine = { path = ".mdk/crates/cgka-engine" }
-cgka-session = { path = ".mdk/crates/cgka-session" }
+cgka-engine = { path = ".mdk/crates/cgka-engine", optional = true }
+cgka-session = { path = ".mdk/crates/cgka-session", optional = true }
 fs-private = { path = ".mdk/crates/fs-private" }
-cgka-traits = { path = ".mdk/crates/traits" }
-storage-sqlite = { path = ".mdk/crates/storage-sqlite" }
-transport-nostr-peeler = { path = ".mdk/crates/transport-nostr-peeler" }
-transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter" }
-nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip59"] }
+cgka-traits = { path = ".mdk/crates/traits", optional = true }
+storage-sqlite = { path = ".mdk/crates/storage-sqlite", optional = true }
+transport-nostr-peeler = { path = ".mdk/crates/transport-nostr-peeler", optional = true }
+transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter", optional = true }
+nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip44"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-tokio = { version = "=1.52.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"] }
-sha2 = "=0.10.9"
+tokio = { version = "=1.52.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"], optional = true }
+sha2 = { version = "=0.10.9", optional = true }
 hex = "=0.4.3"
 jni = "=0.21.1"
 zeroize = "=1.9.0"
-futures-util = "=0.3.32"
-rustls = { version = "=0.23.40", default-features = false, features = ["ring", "std", "tls12"] }
-webpki-roots = "=0.26.11"
-tokio-tungstenite = { version = "=0.26.2", features = ["rustls-tls-webpki-roots"] }
-nostr-sdk = { version = "=0.44.1", default-features = false }
-nostr-relay-builder = { version = "=0.44.0", default-features = false }
-nostr-database = { version = "=0.44.0", default-features = false }
-nostr-relay-pool = { version = "=0.44.3", default-features = false }
-async-wsocket = { version = "=0.13.2", default-features = false }
+futures-util = { version = "=0.3.32", optional = true }
+rustls = { version = "=0.23.40", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "=0.26.11", optional = true }
+tokio-tungstenite = { version = "=0.26.2", features = ["rustls-tls-webpki-roots"], optional = true }
+nostr-sdk = { version = "=0.44.1", default-features = false, optional = true }
+nostr-relay-builder = { version = "=0.44.0", default-features = false, optional = true }
+nostr-database = { version = "=0.44.0", default-features = false, optional = true }
+nostr-relay-pool = { version = "=0.44.3", default-features = false, optional = true }
+async-wsocket = { version = "=0.13.2", default-features = false, optional = true }
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
 # Olm channel (spike M0): audited Olm implementation, pinned by version and
 # Cargo.lock checksum. The helpers below are the same RustCrypto generation

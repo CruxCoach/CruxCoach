@@ -1,8 +1,10 @@
 //! JSON commands are bounded DTOs, not code. No native pointer crosses JNI.
 //! Four production exports: open, call, archive, close.
 use crate::error::Error;
+#[cfg(feature = "mls")]
 use crate::host::{Host, HostConfig};
 use crate::olm_host::OlmHost;
+#[cfg(feature = "mls")]
 use cgka_engine::account_identity_proof::{
     AccountIdentityProofRequest, AccountIdentityProofSigner,
 };
@@ -24,11 +26,13 @@ use std::{
         atomic::{AtomicI64, Ordering},
     },
 };
+#[cfg(feature = "mls")]
 use storage_sqlite::SqlCipherKey;
 
 /// One open account: the v2 MLS host or the direct Olm channel (spike M0).
 #[allow(clippy::large_enum_variant)] // one per open account, behind an Arc
 enum AnyHost {
+    #[cfg(feature = "mls")]
     Mls(Host),
     Olm(OlmHost),
 }
@@ -36,18 +40,21 @@ enum AnyHost {
 impl AnyHost {
     fn call(&self, raw: &str) -> Result<serde_json::Value, Error> {
         match self {
+            #[cfg(feature = "mls")]
             Self::Mls(host) => host.call(raw),
             Self::Olm(host) => host.call(raw),
         }
     }
     fn signal_close(&self) {
         match self {
+            #[cfg(feature = "mls")]
             Self::Mls(host) => host.signal_close(),
             Self::Olm(host) => host.signal_close(),
         }
     }
     fn close(self) {
         match self {
+            #[cfg(feature = "mls")]
             Self::Mls(host) => host.close(),
             Self::Olm(host) => drop(host),
         }
@@ -73,20 +80,34 @@ fn raw_key(env: &mut JNIEnv, key: JByteArray) -> Result<zeroize::Zeroizing<[u8; 
     Ok(raw)
 }
 
-/// The host configuration plus the engine choice: `"engine": "olm"` selects
-/// the direct Olm channel (spike M0); absent means the v2 MLS host.
-fn config_of(raw: &str) -> Result<(HostConfig, bool), Error> {
+/// The open configuration: `"engine": "olm"` selects the direct Olm channel
+/// (spike M0), anything else the v2 MLS host (`HostConfig`).
+enum Config {
+    #[cfg(feature = "mls")]
+    Mls(HostConfig),
+    Olm {
+        account: String,
+        local_test: bool,
+    },
+}
+
+fn config_of(raw: &str) -> Result<Config, Error> {
     let mut value: serde_json::Value = serde_json::from_str(raw).map_err(|_| Error("config"))?;
     let engine = value.as_object_mut().and_then(|o| o.remove("engine"));
-    let olm = match engine {
-        None => false,
-        Some(serde_json::Value::String(e)) if e == "olm" => true,
-        Some(_) => return Err(Error("config")),
-    };
-    Ok((
-        serde_json::from_value(value).map_err(|_| Error("config"))?,
-        olm,
-    ))
+    match engine {
+        #[cfg(feature = "mls")]
+        None => Ok(Config::Mls(
+            serde_json::from_value(value).map_err(|_| Error("config"))?,
+        )),
+        Some(serde_json::Value::String(e)) if e == "olm" => Ok(Config::Olm {
+            account: value["account"]
+                .as_str()
+                .ok_or(Error("config"))?
+                .to_string(),
+            local_test: value["local_test"].as_bool().ok_or(Error("config"))?,
+        }),
+        _ => Err(Error("config")),
+    }
 }
 
 fn register(host: AnyHost) -> Result<i64, Error> {
@@ -139,6 +160,7 @@ impl JavaSigner {
         result.map_err(|_| SignerError::backend(Error("account_signer_refused")))
     }
 }
+#[cfg(feature = "mls")]
 impl AccountIdentityProofSigner for JavaSigner {
     fn sign_account_identity_proof(
         &self,
@@ -233,6 +255,7 @@ fn input(env: &mut JNIEnv, value: &JString) -> Result<String, Error> {
     Ok(value)
 }
 
+#[cfg(feature = "mls")]
 fn database_key(env: &mut JNIEnv, key: JByteArray) -> Result<SqlCipherKey, Error> {
     let mut bytes = zeroize::Zeroizing::new(
         env.convert_byte_array(key)
@@ -278,8 +301,16 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let path = input(&mut env, &path)?;
         let raw = input(&mut env, &config)?;
-        let (config, olm) = config_of(&raw)?;
-        if config.local_test {
+        let config = config_of(&raw)?;
+        let (account, local_test) = match &config {
+            #[cfg(feature = "mls")]
+            Config::Mls(c) => (c.account.clone(), c.local_test),
+            Config::Olm {
+                account,
+                local_test,
+            } => (account.clone(), *local_test),
+        };
+        if local_test {
             return Err(Error("loopback_disabled_in_app"));
         }
         let signer = Arc::new(JavaSigner {
@@ -287,20 +318,25 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
             callback: env
                 .new_global_ref(callback)
                 .map_err(|_| Error("jni_callback"))?,
-            public: PublicKey::from_hex(&config.account).map_err(|_| Error("account"))?,
+            public: PublicKey::from_hex(&account).map_err(|_| Error("account"))?,
         });
-        if olm {
-            let raw = raw_key(&mut env, key)?;
-            return register(AnyHost::Olm(OlmHost::open(
-                Path::new(&path),
-                &raw,
-                &config.account,
-                signer,
-            )?));
+        match config {
+            Config::Olm { .. } => {
+                let raw = raw_key(&mut env, key)?;
+                register(AnyHost::Olm(OlmHost::open(
+                    Path::new(&path),
+                    &raw,
+                    &account,
+                    signer,
+                )?))
+            }
+            #[cfg(feature = "mls")]
+            Config::Mls(config) => {
+                let key = database_key(&mut env, key)?;
+                let host = Host::open(Path::new(&path), key, config, signer.clone(), signer)?;
+                register(AnyHost::Mls(host))
+            }
         }
-        let key = database_key(&mut env, key)?;
-        let host = Host::open(Path::new(&path), key, config, signer.clone(), signer)?;
-        register(AnyHost::Mls(host))
     }))
     .unwrap_or(Err(Error("native_panic")));
     match result {
@@ -374,7 +410,14 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_archive(
 ) -> jni::sys::jboolean {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let path = input(&mut env, &path)?;
-        crate::engine::archive_storage(Path::new(&path))
+        #[cfg(feature = "mls")]
+        return crate::engine::archive_storage(Path::new(&path));
+        #[cfg(not(feature = "mls"))]
+        return Err::<(), Error>(Error(if path.is_empty() {
+            "path"
+        } else {
+            "archive_unavailable"
+        }));
     }))
     .unwrap_or(Err(Error("native_panic")));
     if result.is_ok() { 1 } else { 0 }
@@ -382,7 +425,7 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_archive(
 
 /// Synthetic identities exist only in an explicitly built local harness.
 /// This module and its symbols are absent from the Android library.
-#[cfg(feature = "local-harness")]
+#[cfg(all(feature = "local-harness", feature = "mls"))]
 mod harness {
     use super::*;
     use jni::sys::jboolean;
@@ -522,23 +565,25 @@ mod harness {
     ) -> jlong {
         let result = (|| {
             let path = input(&mut env, &path)?;
-            let (config, olm) =
-                config_of(&input(&mut env, &config)?).map_err(|_| Error("test_config"))?;
+            let config = config_of(&input(&mut env, &config)?).map_err(|_| Error("test_config"))?;
             let keys = identities()
                 .lock()
                 .map_err(|_| Error("test_identity"))?
                 .get(&identity)
                 .ok_or(Error("test_identity"))?
                 .clone();
-            if olm {
-                let raw = raw_key(&mut env, key)?;
-                return register(AnyHost::Olm(OlmHost::open(
-                    Path::new(&path),
-                    &raw,
-                    &config.account,
-                    Arc::new(keys),
-                )?));
-            }
+            let config = match config {
+                Config::Olm { account, .. } => {
+                    let raw = raw_key(&mut env, key)?;
+                    return register(AnyHost::Olm(OlmHost::open(
+                        Path::new(&path),
+                        &raw,
+                        &account,
+                        Arc::new(keys),
+                    )?));
+                }
+                Config::Mls(config) => config,
+            };
             let key = database_key(&mut env, key)?;
             let host = Host::open(
                 Path::new(&path),
