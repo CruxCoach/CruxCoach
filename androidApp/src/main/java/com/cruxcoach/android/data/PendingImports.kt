@@ -14,6 +14,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -103,13 +105,34 @@ class PendingImports @Inject constructor(
         secureDb.pendingImportsQueries.stagePendingImport(id, source, payload, options, System.currentTimeMillis())
     }
 
-    /** Applies staged work whenever a catalogue sync ends, and once now. */
+    /** Applies staged work whenever a catalogue sync ends, and once now; a new sync cancels a retry. */
     fun start() {
         scope.launch {
-            boardSyncManager.state.map { it.isSyncing }.distinctUntilChanged().collect { syncing ->
-                if (!syncing) runCatching { finalize() }.onFailure { Log.w(TAG, "finalize failed", it) }
+            boardSyncManager.state.map { it.isSyncing }.distinctUntilChanged().collectLatest { syncing ->
+                if (!syncing) finalizeUntilSettled()
             }
         }
+    }
+
+    /**
+     * The board DB can stay locked for a while after a sync ends (seen on the
+     * Nokia: SQLITE_BUSY seconds after the import finished), so retry with a
+     * growing pause while rows that could be applied now remain. What is still
+     * left waits for the next sync end or app start.
+     */
+    internal suspend fun finalizeUntilSettled(attempts: Int = 6, backoffMs: Long = 15_000) {
+        for (attempt in 1..attempts) {
+            runCatching { finalize() }.onFailure { Log.w(TAG, "finalize failed", it) }
+            if (!hasApplicableRows()) return
+            delay(backoffMs * attempt)
+        }
+    }
+
+    private suspend fun hasApplicableRows(): Boolean = withContext(Dispatchers.IO) {
+        if (boardDbBusy()) return@withContext false
+        val sources = secureDb.pendingImportsQueries.selectPendingImports().executeAsList().map { it.source }
+        if (sources.isEmpty()) return@withContext false
+        PendingImportSource.OWN_CLIMBS in sources || !waitingForKilterCatalogue()
     }
 
     /** Applies what can be applied now; returns how many staged imports completed. */

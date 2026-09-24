@@ -154,6 +154,24 @@ class PendingImportsTest {
     }
 
     @Test
+    fun `a board DB still locked after the sync is retried`() = runTest {
+        val uuid = "11111111-2222-3333-4444-555555555574"
+        val json = backupWithOwnDraft(uuid)
+        syncState.value = BoardSyncState(isSyncing = true)
+        val imports = pending()
+        imports.restoreOrStageOwnClimbs(json, adoptLocalDraftsForPubkey = null)
+        syncState.value = BoardSyncState(isSyncing = false)
+        // As on the Nokia: the first write after the sync hits SQLITE_BUSY.
+        every { boardRepo.restoreOwnClimb(any()) } throws
+            RuntimeException("database is locked (code 5 SQLITE_BUSY)") andThenAnswer { callOriginal() }
+
+        imports.finalizeUntilSettled(attempts = 3, backoffMs = 1)
+
+        assertEquals(1L, climbCount(uuid))
+        assertEquals(0L, imports.pendingCount())
+    }
+
+    @Test
     fun `own climbs are written at once when no catalogue import runs`() {
         val uuid = "11111111-2222-3333-4444-555555555572"
         val json = backupWithOwnDraft(uuid)
