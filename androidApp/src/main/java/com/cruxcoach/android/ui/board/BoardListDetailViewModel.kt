@@ -336,10 +336,12 @@ class BoardListDetailViewModel @Inject constructor(
     }
 
     /**
-     * Compile the visible list directly into a private local playlist.
-     * 0.2.2 has one start meaning: saved order, manual transport, no Nearby
-     * publication. The explicit training-plan editor remains available as an
-     * editor, but list playback never asks for a second "source" decision.
+     * Compile the list into a private local playlist: manual transport, no
+     * Nearby publication. A list with a training plan plays the plan, with its
+     * repeated tries and rests; without one the list plays once in its saved
+     * order. The plan used to be reachable only through its editor, so a
+     * generated "At your limit" list started from here had neither the tries
+     * nor the 4-5 minute rests it was generated with.
      */
     fun startPlayback(
         hostName: String,
@@ -350,7 +352,11 @@ class BoardListDetailViewModel @Inject constructor(
         _state.update { it.copy(isStartingPlayback = true, playbackStartError = null) }
         viewModelScope.safeLaunch(TAG) {
             try {
-                val prepared = prepareListPlayback(snapshot)
+                val prepared = if (snapshot.hasPlaybackPlan) {
+                    withContext(Dispatchers.IO) { preparePlanPlayback(snapshot.angle) }
+                } else {
+                    prepareListPlayback(snapshot)
+                }
                 val error = when {
                     prepared.items.isEmpty() -> PlaybackStartError.EMPTY
                     prepared.boardKeys.size > 1 -> PlaybackStartError.MULTIPLE_BOARDS
