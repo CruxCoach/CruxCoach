@@ -2405,7 +2405,15 @@
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
     <string name="aurora_migration_import_another">Weitere Datei importieren</string>
     <string name="aurora_migration_staged_title">Vorgemerkt</string>
-    <string name="aurora_migration_staged_body">%1$d Begehungen und %2$d Versuche werden automatisch importiert, sobald der Kilter-Katalog geladen ist.</string>
+    <string name="aurora_migration_staged_body">%1$s und %2$s werden automatisch importiert, sobald der Kilter-Katalog geladen ist.</string>
+    <plurals name="aurora_migration_staged_ascents">
+        <item quantity="one">%1$d Begehung</item>
+        <item quantity="other">%1$d Begehungen</item>
+    </plurals>
+    <plurals name="aurora_migration_staged_attempts">
+        <item quantity="one">%1$d Versuch</item>
+        <item quantity="other">%1$d Versuche</item>
+    </plurals>
     <string name="aurora_migration_file_too_large">Datei zu groß für den direkten Import (%1$d MB). Aurora-Exports sind üblicherweise wenige MB groß — bei deutlich größeren Dateien bitte den Support kontaktieren.</string>
 
     <!-- Board climb history / Verlauf (FEAT-032) -->

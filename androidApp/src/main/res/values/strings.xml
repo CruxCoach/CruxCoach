@@ -2406,7 +2406,15 @@
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
     <string name="aurora_migration_import_another">Import another file</string>
     <string name="aurora_migration_staged_title">Saved for later</string>
-    <string name="aurora_migration_staged_body">%1$d ascents and %2$d attempts are imported automatically once the Kilter catalogue has loaded.</string>
+    <string name="aurora_migration_staged_body">%1$s and %2$s are imported automatically once the Kilter catalogue has loaded.</string>
+    <plurals name="aurora_migration_staged_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="aurora_migration_staged_attempts">
+        <item quantity="one">%1$d attempt</item>
+        <item quantity="other">%1$d attempts</item>
+    </plurals>
     <string name="aurora_migration_file_too_large">File is too large for direct import (%1$d MB). Aurora exports are typically a few MB; if your export is much larger, contact support.</string>
 
     <!-- Board climb history / Verlauf (FEAT-032) -->

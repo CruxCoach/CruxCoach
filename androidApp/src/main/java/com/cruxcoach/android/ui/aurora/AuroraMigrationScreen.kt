@@ -53,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -266,7 +267,11 @@ private fun StagedCard(
                 )
             }
             Text(
-                text = stringResource(R.string.aurora_migration_staged_body, staged.ascents, staged.attempts),
+                text = stringResource(
+                    R.string.aurora_migration_staged_body,
+                    pluralStringResource(R.plurals.aurora_migration_staged_ascents, staged.ascents, staged.ascents),
+                    pluralStringResource(R.plurals.aurora_migration_staged_attempts, staged.attempts, staged.attempts),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
             )
             TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
