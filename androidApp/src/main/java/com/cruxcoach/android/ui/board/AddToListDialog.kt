@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -84,6 +88,13 @@ internal fun AddToListDialog(
     addedToRunning: Boolean = false,
     onAddToRunning: (() -> Unit)? = null,
 ) {
+    // The keyboard stayed up after an inline create and covered "Done", so
+    // the next tap to close the dialog typed into the name field instead.
+    val focusManager = LocalFocusManager.current
+    val createAndCloseKeyboard = {
+        if (newListName.isNotBlank()) onCreateAndAdd()
+        focusManager.clearFocus()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.board_addtolist_title), fontWeight = FontWeight.Bold) },
@@ -158,13 +169,15 @@ internal fun AddToListDialog(
                         onValueChange = onNewListNameChanged,
                         placeholder = { Text(stringResource(R.string.board_addtolist_new_list)) },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { createAndCloseKeyboard() }),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         textStyle = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
-                        onClick = onCreateAndAdd,
+                        onClick = createAndCloseKeyboard,
                         enabled = newListName.isNotBlank()
                     ) {
                         Icon(
