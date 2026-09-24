@@ -895,7 +895,6 @@
     <!-- Board: Hold Search -->
     <string name="board_holdsearch_title">Hold Search</string>
     <string name="board_holdsearch_heatmap">Heatmap</string>
-    <string name="board_holdsearch_hold_search">Hold Search</string>
     <string name="board_holdsearch_hint">Tap holds in the board image. The app finds climbs that use those holds.</string>
     <string name="board_holdsearch_zone_mode">Select area</string>
     <string name="board_holdsearch_zone_hint">Draw a box on the board image. The app shows only climbs whose holds all fit inside it.</string>

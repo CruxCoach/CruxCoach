@@ -939,7 +939,6 @@
     <!-- Board: Hold Search -->
     <string name="board_holdsearch_title">Hold-Suche</string>
     <string name="board_holdsearch_heatmap">Heatmap</string>
-    <string name="board_holdsearch_hold_search">Hold-Suche</string>
     <string name="board_holdsearch_hint">Tippe Griffe in der Board-Abbildung an. Die App sucht Boulder, die diese Griffe verwenden.</string>
     <string name="board_holdsearch_zone_mode">Bereich wählen</string>
     <string name="board_holdsearch_zone_hint">Ziehe in der Board-Abbildung einen Rahmen. Die App zeigt nur Boulder, deren Griffe vollständig darin liegen.</string>

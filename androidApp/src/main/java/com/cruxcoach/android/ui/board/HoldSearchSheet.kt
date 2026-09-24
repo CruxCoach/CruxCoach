@@ -79,12 +79,8 @@ internal fun HoldSearchSheet(
 
             // Hold selection section — moved ABOVE the board so the user sees
             // the match count and the filter button without scrolling past the
-            // full-height board diagram first.
-            Text(
-                stringResource(R.string.board_holdsearch_hold_search),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
+            // full-height board diagram first. No subheading: it repeated the
+            // sheet title word for word.
             Text(
                 stringResource(
                     if (zoneSelectMode) R.string.board_holdsearch_zone_hint
