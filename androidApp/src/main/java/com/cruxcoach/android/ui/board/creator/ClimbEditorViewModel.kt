@@ -811,10 +811,13 @@ class ClimbEditorViewModel @Inject constructor(
      *  guarantee as [acceptProfileHint]: a DataStore write failure
      *  doesn't strand the user on the dialog. */
     fun dismissProfileHintAndPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
+        // "Skip" and a tap outside the dialog both land here; only the first
+        // of them may publish (see [confirmPublishWithDuplicate]).
+        val taken = _state.consumePending({ it.pendingProfileHint }) { it.copy(pendingProfileHint = false) }
+        if (!taken) return
         viewModelScope.launch {
             runCatching { userPreferences.setProfileHintDismissed(true) }
                 .onFailure { Log.w(TAG, "setProfileHintDismissed failed", it) }
-            _state.update { it.copy(pendingProfileHint = false) }
             doPublish(sizeLabel, autoNoteTemplate)
         }
     }
@@ -825,9 +828,15 @@ class ClimbEditorViewModel @Inject constructor(
         _state.update { it.copy(profileSetupRequested = false) }
     }
 
-    /** User accepted the duplicate-warning dialog → continue publish. */
+    /** User accepted the duplicate-warning dialog → continue publish.
+     *  Only the tap that closes the dialog publishes: a second tap before
+     *  the dialog left the screen started a second publish, and without a
+     *  draft uuid each created its own climb, a second apart. */
     fun confirmPublishWithDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
-        _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
+        val taken = _state.consumePending({ it.pendingPublishConfirm }) {
+            it.copy(duplicateOf = null, pendingPublishConfirm = false)
+        }
+        if (!taken) return
         doPublish(sizeLabel, autoNoteTemplate)
     }
 
@@ -1312,4 +1321,23 @@ class ClimbEditorViewModel @Inject constructor(
         private const val AUTOSAVE_DEBOUNCE_MS = 500L
         private const val HEATMAP_DEBOUNCE_MS = 500L
     }
+}
+
+/**
+ * Clears a pending one-shot dialog flag and reports whether this caller was
+ * the one that cleared it, atomically. Two taps on the same dialog button can
+ * both arrive before recomposition removes the dialog.
+ */
+internal fun <T> MutableStateFlow<T>.consumePending(isPending: (T) -> Boolean, clear: (T) -> T): Boolean {
+    var taken = false
+    update { s ->
+        if (isPending(s)) {
+            taken = true
+            clear(s)
+        } else {
+            taken = false
+            s
+        }
+    }
+    return taken
 }
