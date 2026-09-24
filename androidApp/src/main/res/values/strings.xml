@@ -1226,7 +1226,7 @@
     <string name="devcontact_title_required">Title *</string>
     <string name="devcontact_description_required">Description *</string>
     <string name="devcontact_feature_placeholder">What would you like to see?</string>
-    <string name="devcontact_wishes">Feature requests</string>
+    <string name="devcontact_wishes">Feature Requests</string>
     <string name="devcontact_bug_reports">Bug Reports</string>
     <string name="devcontact_crash_reports">Crash Reports</string>
     <string name="devcontact_write_reply">Write a reply…</string>
