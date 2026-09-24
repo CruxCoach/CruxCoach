@@ -79,7 +79,14 @@ fun MessageThreadScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = rootMessage?.subject ?: stringResource(R.string.devcontact_message),
+                        // Crash reports carry no subject; name the thread after its kind.
+                        text = rootMessage?.subject ?: stringResource(
+                            if (rootMessage?.type == com.cruxcoach.android.nostr.model.MessageType.CRASH.label) {
+                                R.string.crash_viewer_title
+                            } else {
+                                R.string.devcontact_message
+                            },
+                        ),
                         maxLines = 1
                     )
                 },

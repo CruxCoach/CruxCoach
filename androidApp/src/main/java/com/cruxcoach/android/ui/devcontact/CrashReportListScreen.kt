@@ -62,6 +62,10 @@ fun CrashReportListScreen(
     LaunchedEffect(Unit) {
         viewModel.drainQueue()
     }
+    // A reply listed on its own has no thread to be read in; showing it reads it.
+    LaunchedEffect(state.crashReports) {
+        viewModel.markListedCrashRepliesRead()
+    }
 
     Scaffold(
         topBar = {

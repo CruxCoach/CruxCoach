@@ -425,6 +425,16 @@ class DevContactViewModel @Inject constructor(
         }
     }
 
+    /** Crash replies no report could take (see [crashReportList]) are read by being listed. */
+    fun markListedCrashRepliesRead() {
+        val unread = _state.value.crashReports.filter { !it.isSent && !it.isRead }
+        if (unread.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { unread.forEach { messageRepository.markRead(it.id) } }
+            loadMessages()
+        }
+    }
+
     fun markThreadRead(rootId: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
