@@ -201,7 +201,10 @@ fun BoardListDetailScreen(
                     CircularProgressIndicator(color = OrangeAccent)
                 }
             }
-            state.entries.isEmpty() -> {
+            // Truly empty only. A list whose climbs all sit on a board with no
+            // catalogue has entries it cannot show: it read "List is empty" while
+            // Start silently failed, and the lines below that say why never showed.
+            state.entries.isEmpty() && state.unavailableCount == 0 -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
