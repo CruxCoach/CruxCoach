@@ -19,6 +19,14 @@ Kilter and So iLL rows are identical to a real catalogue import.
 Not included: Quantum (authorised eWalls snapshot; bundling in the APK needs
 an owner decision) and MoonBoard (geometry bundled with its images).
 
+## Rights
+
+Functional hardware reference data (hold positions, sizes, LED addresses),
+the same rows the signed catalogue chunks already distribute. The boards'
+makers keep their rights; CruxCoach claims none and the files are not covered
+by its GPLv3 license. Basis and removal contacts: `LEGAL.md` ("Bundled board
+geometry") and `THIRD_PARTY_LICENSES.md`.
+
 ## Sources
 | Board | Manifest event | Manifest created_at | Chunk | Chunk SHA-256 |
 |---|---|---|---|---|
