@@ -16,6 +16,8 @@ sqlcipher = "4.14.0"
 androidx-sqlite = "2.6.2"
 sqldelight = "2.3.2"
 kotlinx-serialization = "1.10.0"
+# 13.2.x is the line for Compose 1.10 / AGP 8; 14+ needs AGP 9.
+aboutlibraries = "13.2.1"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
 zxing = "3.5.4"
@@ -75,6 +77,7 @@ androidx-sqlite = { group = "androidx.sqlite", name = "sqlite", version.ref = "a
 
 # kotlinx
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+aboutlibraries-compose-m3 = { module = "com.mikepenz:aboutlibraries-compose-m3", version.ref = "aboutlibraries" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinx-datetime" }
@@ -143,3 +146,4 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+aboutlibraries-android = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutlibraries" }

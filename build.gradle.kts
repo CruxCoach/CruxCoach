@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.ksp) apply false
+    alias(libs.plugins.aboutlibraries.android) apply false
 }
 
 // Owner review: expose test failures in public check annotations for the

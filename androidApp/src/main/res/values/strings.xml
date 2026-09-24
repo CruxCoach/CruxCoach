@@ -484,6 +484,12 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach and public board catalogues with others — never personal data.</string>
+    <string name="settings_licenses_title">Open-source licenses</string>
+    <string name="settings_licenses_desc">Libraries used in CruxCoach and their licenses.</string>
+    <string name="settings_privacy_title">Privacy notice</string>
+    <string name="settings_privacy_desc">What the app and the website do with data. Opens cruxcoach.org.</string>
+    <string name="settings_source_title">Source code</string>
+    <string name="settings_source_desc">CruxCoach is open source. Opens GitHub.</string>
     <string name="board_filter_title">Filters</string>
     <string name="board_filter_selected_board">Selected board</string>
     <string name="settings_share_via_apps">Share via apps</string>
@@ -2888,7 +2894,7 @@
     <string name="settings_page_support">Bugs &amp; feature requests</string>
     <string name="settings_summary_support">Report bugs, request features and contact the developer. Configure notifications and automatic crash reports.</string>
     <string name="settings_page_about">About CruxCoach</string>
-    <string name="settings_summary_about">View the version and project information, or share the app.</string>
+    <string name="settings_summary_about">Version, licenses, privacy notice and source code, or share the app.</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

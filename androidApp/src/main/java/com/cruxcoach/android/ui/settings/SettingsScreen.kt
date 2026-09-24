@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +44,7 @@ fun SettingsScreen(
     startInBackup: Boolean = false,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
+    onNavigateToLicenses: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -398,6 +403,25 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Share,
                     onClick = onNavigateToAppShare,
                 )
+                val uriHandler = LocalUriHandler.current
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_licenses_title),
+                    summary = stringResource(R.string.settings_licenses_desc),
+                    icon = Icons.Outlined.Gavel,
+                    onClick = onNavigateToLicenses,
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_privacy_title),
+                    summary = stringResource(R.string.settings_privacy_desc),
+                    icon = Icons.Outlined.Policy,
+                    onClick = { uriHandler.openUri(PRIVACY_NOTICE_URL) },
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_source_title),
+                    summary = stringResource(R.string.settings_source_desc),
+                    icon = Icons.Outlined.Code,
+                    onClick = { uriHandler.openUri(SOURCE_CODE_URL) },
+                )
             }
         }
     }
@@ -623,3 +647,9 @@ private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (no
     is DeleteRemoteNote.UnexpectedError ->
         stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }
+
+/** Public privacy notice for the site and the app (README "Privacy notice"). */
+private const val PRIVACY_NOTICE_URL = "https://cruxcoach.org/privacy.html"
+
+/** Primary repository (README: GitHub primary, Codeberg mirror). */
+private const val SOURCE_CODE_URL = "https://github.com/CruxCoach/CruxCoach"

@@ -69,6 +69,7 @@ import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
+import com.cruxcoach.android.ui.settings.LicensesScreen
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
 import com.cruxcoach.android.ui.settings.SettingsScreen
@@ -158,6 +159,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
+    const val LICENSES = "licenses"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}"
@@ -901,6 +903,7 @@ fun CruxCoachNavHost(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
+                        onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
@@ -935,6 +938,10 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToAssessment = { navController.navigate(Routes.ASSESSMENT) }
                 )
+            }
+
+            composable(Routes.LICENSES) {
+                LicensesScreen(onNavigateBack = { navController.popBackStack() })
             }
 
             composable(Routes.APP_SHARE) {

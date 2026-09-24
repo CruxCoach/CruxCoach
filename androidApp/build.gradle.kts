@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    // Writes res/raw/aboutlibraries.json (the open-source licence list) from
+    // the resolved dependencies on every build.
+    alias(libs.plugins.aboutlibraries.android)
 }
 
 import java.io.FileInputStream
@@ -457,6 +460,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
+    implementation(libs.aboutlibraries.compose.m3)
     debugImplementation(libs.compose.ui.tooling)
 
     // AppCompat (per-app language switching)
