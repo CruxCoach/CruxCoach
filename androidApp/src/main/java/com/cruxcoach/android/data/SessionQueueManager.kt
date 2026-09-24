@@ -745,6 +745,13 @@ class SessionQueueManager(
     /** Tracks last sent climb to prevent duplicate sends from multiple callers. */
     private var lastSentClimbKey: String? = null
 
+    /** Whether the board actually received the current climb. Without a
+     *  connected board the queue moves on the phone alone. */
+    fun isCurrentClimbOnBoard(): Boolean {
+        val current = _state.value.currentClimb ?: return false
+        return lastSentClimbKey == "${current.climbUuid}:${current.angle}"
+    }
+
     /** Serializes BLE sends: rapid next/next/next queues callers up, but
      *  each one reads the LATEST current climb when it runs and the dedup
      *  key skips the stale ones — effectively latest-wins without ever

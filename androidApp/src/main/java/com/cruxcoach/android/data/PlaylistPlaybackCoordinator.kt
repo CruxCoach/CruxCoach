@@ -397,7 +397,12 @@ class PlaylistPlaybackCoordinator(
      */
     fun stop(endForEveryone: Boolean = false): com.cruxcoach.data.repository.Board_sessions? {
         val queueState = queueManager.state.value
-        val lastClimb = queueState.currentClimb
+        // Only a climb the board received stays "on the board" after the
+        // stop. Without a board the banner claimed the last playlist climb
+        // was still visible on a wall that never showed it.
+        val lastClimb = queueState.currentClimb?.takeIf {
+            queueState.role != SessionRole.HOST || queueManager.isCurrentClimbOnBoard()
+        }
         if (queueState.role == SessionRole.HOST) {
             if (queueState.visibility == SessionVisibility.JOINABLE) {
                 gattBridge.stopSharing(allowBoardRelease = true, endForEveryone = endForEveryone)

@@ -235,6 +235,15 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
+    fun `stopping without a board does not claim the climb is still on it`() {
+        coordinator.play("Playlist", listOf(QueueItem("a", 40)))
+
+        coordinator.stop()
+
+        verify(exactly = 0) { bleShareManager.setLastClimbAfterSession(any(), any()) }
+    }
+
+    @Test
     fun `stopping a local-only host does not touch GATT sharing`() {
         queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40)))
 
