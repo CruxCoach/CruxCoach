@@ -20,8 +20,8 @@ storage-sqlite = { path = ".mdk/crates/storage-sqlite" }
 transport-nostr-peeler = { path = ".mdk/crates/transport-nostr-peeler" }
 transport-nostr-adapter = { path = ".mdk/crates/transport-nostr-adapter" }
 nostr = { version = "=0.44.8", default-features = false, features = ["std", "nip59"] }
-serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = "=1.0.149"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
 tokio = { version = "=1.52.1", features = ["rt", "rt-multi-thread", "time", "net", "macros", "sync", "io-util"] }
 sha2 = "=0.10.9"
 hex = "=0.4.3"
@@ -36,10 +36,21 @@ nostr-relay-builder = { version = "=0.44.0", default-features = false }
 nostr-database = { version = "=0.44.0", default-features = false }
 nostr-relay-pool = { version = "=0.44.3", default-features = false }
 async-wsocket = { version = "=0.13.2", default-features = false }
-rusqlite = { version = "=0.40.1", default-features = false }
+rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+# Olm channel (spike M0): audited Olm implementation, pinned by version and
+# Cargo.lock checksum. The helpers below are the same RustCrypto generation
+# vodozemac already pulls in, so the Olm path adds no second copy.
+vodozemac = { version = "=0.11.0", default-features = false }
+hmac = "=0.13.0"
+hkdf = "=0.13.0"
+sha2-v11 = { package = "sha2", version = "=0.11.0" }
+chacha20poly1305 = "=0.11.0"
+getrandom = "=0.4.3"
 
 [dev-dependencies]
 tempfile = "=3.27.0"
+# Tests read message keys to prove they are gone from stored pickles.
+vodozemac = { version = "=0.11.0", default-features = false, features = ["low-level-api"] }
 
 [patch.crates-io]
 hax-lib-macros = { git = "https://github.com/cryspen/hax.git", rev = "8f9cb576e58f6cc7e9ed249a7d4439b0f7ed0da7" }

@@ -2,6 +2,7 @@
 //! Four production exports: open, call, archive, close.
 use crate::error::Error;
 use crate::host::{Host, HostConfig};
+use crate::olm_host::OlmHost;
 use cgka_engine::account_identity_proof::{
     AccountIdentityProofRequest, AccountIdentityProofSigner,
 };
@@ -25,13 +26,70 @@ use std::{
 };
 use storage_sqlite::SqlCipherKey;
 
-static HOSTS: OnceLock<Mutex<BTreeMap<i64, Arc<Host>>>> = OnceLock::new();
+/// One open account: the v2 MLS host or the direct Olm channel (spike M0).
+#[allow(clippy::large_enum_variant)] // one per open account, behind an Arc
+enum AnyHost {
+    Mls(Host),
+    Olm(OlmHost),
+}
+
+impl AnyHost {
+    fn call(&self, raw: &str) -> Result<serde_json::Value, Error> {
+        match self {
+            Self::Mls(host) => host.call(raw),
+            Self::Olm(host) => host.call(raw),
+        }
+    }
+    fn signal_close(&self) {
+        match self {
+            Self::Mls(host) => host.signal_close(),
+            Self::Olm(host) => host.signal_close(),
+        }
+    }
+    fn close(self) {
+        match self {
+            Self::Mls(host) => host.close(),
+            Self::Olm(host) => drop(host),
+        }
+    }
+}
+
+static HOSTS: OnceLock<Mutex<BTreeMap<i64, Arc<AnyHost>>>> = OnceLock::new();
 static NEXT: AtomicI64 = AtomicI64::new(1);
-fn hosts() -> &'static Mutex<BTreeMap<i64, Arc<Host>>> {
+fn hosts() -> &'static Mutex<BTreeMap<i64, Arc<AnyHost>>> {
     HOSTS.get_or_init(Default::default)
 }
 
-fn register(host: Host) -> Result<i64, Error> {
+fn raw_key(env: &mut JNIEnv, key: JByteArray) -> Result<zeroize::Zeroizing<[u8; 32]>, Error> {
+    let bytes = zeroize::Zeroizing::new(
+        env.convert_byte_array(key)
+            .map_err(|_| Error("database_key"))?,
+    );
+    let mut raw = zeroize::Zeroizing::new([0u8; 32]);
+    if bytes.len() != 32 {
+        return Err(Error("database_key"));
+    }
+    raw.copy_from_slice(&bytes);
+    Ok(raw)
+}
+
+/// The host configuration plus the engine choice: `"engine": "olm"` selects
+/// the direct Olm channel (spike M0); absent means the v2 MLS host.
+fn config_of(raw: &str) -> Result<(HostConfig, bool), Error> {
+    let mut value: serde_json::Value = serde_json::from_str(raw).map_err(|_| Error("config"))?;
+    let engine = value.as_object_mut().and_then(|o| o.remove("engine"));
+    let olm = match engine {
+        None => false,
+        Some(serde_json::Value::String(e)) if e == "olm" => true,
+        Some(_) => return Err(Error("config")),
+    };
+    Ok((
+        serde_json::from_value(value).map_err(|_| Error("config"))?,
+        olm,
+    ))
+}
+
+fn register(host: AnyHost) -> Result<i64, Error> {
     let mut registry = hosts().lock().map_err(|_| Error("registry"))?;
     if registry.len() >= 4 {
         return Err(Error("account_limit"));
@@ -220,11 +278,10 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let path = input(&mut env, &path)?;
         let raw = input(&mut env, &config)?;
-        let config: HostConfig = serde_json::from_str(&raw).map_err(|_| Error("config"))?;
+        let (config, olm) = config_of(&raw)?;
         if config.local_test {
             return Err(Error("loopback_disabled_in_app"));
         }
-        let key = database_key(&mut env, key)?;
         let signer = Arc::new(JavaSigner {
             vm: env.get_java_vm().map_err(|_| Error("jni_vm"))?,
             callback: env
@@ -232,8 +289,18 @@ pub extern "system" fn Java_com_cruxcoach_android_sharing_MarmotNative_open(
                 .map_err(|_| Error("jni_callback"))?,
             public: PublicKey::from_hex(&config.account).map_err(|_| Error("account"))?,
         });
+        if olm {
+            let raw = raw_key(&mut env, key)?;
+            return register(AnyHost::Olm(OlmHost::open(
+                Path::new(&path),
+                &raw,
+                &config.account,
+                signer,
+            )?));
+        }
+        let key = database_key(&mut env, key)?;
         let host = Host::open(Path::new(&path), key, config, signer.clone(), signer)?;
-        register(host)
+        register(AnyHost::Mls(host))
     }))
     .unwrap_or(Err(Error("native_panic")));
     match result {
@@ -455,15 +522,24 @@ mod harness {
     ) -> jlong {
         let result = (|| {
             let path = input(&mut env, &path)?;
-            let config: HostConfig = serde_json::from_str(&input(&mut env, &config)?)
-                .map_err(|_| Error("test_config"))?;
-            let key = database_key(&mut env, key)?;
+            let (config, olm) =
+                config_of(&input(&mut env, &config)?).map_err(|_| Error("test_config"))?;
             let keys = identities()
                 .lock()
                 .map_err(|_| Error("test_identity"))?
                 .get(&identity)
                 .ok_or(Error("test_identity"))?
                 .clone();
+            if olm {
+                let raw = raw_key(&mut env, key)?;
+                return register(AnyHost::Olm(OlmHost::open(
+                    Path::new(&path),
+                    &raw,
+                    &config.account,
+                    Arc::new(keys),
+                )?));
+            }
+            let key = database_key(&mut env, key)?;
             let host = Host::open(
                 Path::new(&path),
                 key,
@@ -471,7 +547,7 @@ mod harness {
                 Arc::new(keys.clone()),
                 Arc::new(crate::engine::LocalProofSigner(keys)),
             )?;
-            register(host)
+            register(AnyHost::Mls(host))
         })();
         match result {
             Ok(h) => h,

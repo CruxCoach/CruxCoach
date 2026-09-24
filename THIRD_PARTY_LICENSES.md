@@ -304,3 +304,10 @@ rust-nostr crates that carry transport: `nostr-sdk` 0.44.1, `nostr-relay-pool`
 Yuki Kishimoto), plus their transitive dependencies such as `async-wsocket` 0.13.2
 and `negentropy` 0.5.0 (MIT, same author). `native/marmot/collect_licenses.py`
 regenerates the inventory for the Android target from `Cargo.lock`.
+
+The Olm channel spike (M0, 2026-09-24, branch `wip/olm-spike`, not released) adds
+`vodozemac` 0.11.0 (Apache-2.0, copyright Damir Jelić and Denis Kasak; audited by Least
+Authority in 2022) with `matrix-pickle` 0.2.3 (Apache-2.0), `prost` 0.14.4
+(Apache-2.0), `ed25519-dalek` 3.0.0 (BSD-3-Clause), `hpke` 0.14.1 and the RustCrypto
+0.11/0.13 generation (`chacha20poly1305`, `aes`, `cbc`, `hmac`, `hkdf`, `sha2`; MIT OR
+Apache-2.0). All are recorded with their notices in the same inventory.
