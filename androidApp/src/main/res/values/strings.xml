@@ -194,6 +194,7 @@
     <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d sends</string>
     <string name="setters_list_title">CruxCoach setters</string>
     <string name="setters_list_empty">No CruxCoach community climbs yet. Check back later or create your own.</string>
+    <string name="setters_list_empty_board">No CruxCoach community climbs for %1$s yet. Check back later or create your own.</string>
     <string name="setters_list_count">%1$d climbs</string>
     <string name="setters_list_browse_button">Browse setters</string>
     <string name="board_lists_community_banner_title">CruxCoach community</string>
