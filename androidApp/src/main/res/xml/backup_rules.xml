@@ -28,6 +28,9 @@
     <!-- Whether this install already asked for notifications at startup. The
          permission itself is not restored, so neither may the answer be. -->
     <exclude domain="sharedpref" path="startup_prompts.xml"/>
+    <!-- Whether the map has loaded on this install. Restored elsewhere it
+         could hide the offline hint on a phone whose map never loaded. -->
+    <exclude domain="sharedpref" path="map_state.xml"/>
     <!-- Device-global Bluetooth name snapshot and dirty recovery flag.
          Restoring these onto another phone could rename that device to the
          previous phone's identity. -->

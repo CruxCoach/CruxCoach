@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.map
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -89,8 +90,12 @@ fun MapScreen(
 
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
 
+    // Once a style has loaded, the areas viewed stay in MapLibre's cache.
+    // The dialog says the map needs internet the first time, so it only
+    // belongs before that; afterwards it blocked a map that worked offline.
+    val mapState = remember { context.getSharedPreferences(MAP_STATE_PREFS, Context.MODE_PRIVATE) }
     var showOfflineDialog by remember {
-        mutableStateOf(!isNetworkAvailable(context))
+        mutableStateOf(!isNetworkAvailable(context) && !mapState.getBoolean(KEY_STYLE_LOADED, false))
     }
     if (showOfflineDialog) {
         OfflineMapDialog(onDismiss = { showOfflineDialog = false })
@@ -316,6 +321,7 @@ fun MapScreen(
                 onMapReady = { map, style ->
                     MapMarkerLayer.install(style)
                     mapHandle = map to style
+                    mapState.edit().putBoolean(KEY_STYLE_LOADED, true).apply()
                 },
                 onMapTap = { map, x, y ->
                     // Cluster first: tapping a count bubble eases the camera to
@@ -465,3 +471,7 @@ private fun StatsSheet(state: MapState, onDismiss: () -> Unit) {
         StatsScreen(state = state, modifier = Modifier.fillMaxSize())
     }
 }
+
+/** Kept out of backups: a restored flag could hide the dialog on a phone whose map never loaded. */
+private const val MAP_STATE_PREFS = "map_state"
+private const val KEY_STYLE_LOADED = "style_loaded_once"

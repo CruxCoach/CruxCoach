@@ -15,6 +15,7 @@
         <!-- Whether this install already asked for notifications at startup. The
              permission itself is not restored, so neither may the answer be. -->
         <exclude domain="sharedpref" path="startup_prompts.xml"/>
+        <exclude domain="sharedpref" path="map_state.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
@@ -32,6 +33,7 @@
         <!-- Whether this install already asked for notifications at startup. The
              permission itself is not restored, so neither may the answer be. -->
         <exclude domain="sharedpref" path="startup_prompts.xml"/>
+        <exclude domain="sharedpref" path="map_state.xml"/>
         <exclude domain="sharedpref" path="cruxrelay.xml"/>
         <exclude domain="file" path="datastore"/>
         <exclude domain="file" path="crash_log.txt"/>
