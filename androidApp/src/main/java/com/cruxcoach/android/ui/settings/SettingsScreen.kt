@@ -39,9 +39,9 @@ import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    startInBackup: Boolean = false,
+    startPage: SettingsPage? = null,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     onNavigateToLicenses: () -> Unit = {},
@@ -117,7 +117,7 @@ fun SettingsScreen(
 
 
     SettingsLayout(
-        startInBackup = startInBackup,
+        startPage = startPage,
         isLoading = state.isLoading,
         openUpdates = updaterDialogRequested,
         onNavigateBack = onNavigateBack,

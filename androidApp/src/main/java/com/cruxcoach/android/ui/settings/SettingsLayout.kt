@@ -57,15 +57,16 @@ internal enum class SettingsPage(
 internal fun SettingsLayout(
     isLoading: Boolean,
     openUpdates: Boolean,
-    startInBackup: Boolean = false,
+    /** Opens straight on this page; back then returns to the caller. */
+    startPage: SettingsPage? = null,
     onNavigateBack: () -> Unit,
     onNavigateToAppShare: () -> Unit,
     banners: @Composable () -> Unit = {},
     content: @Composable ColumnScope.(SettingsPage) -> Unit,
 ) {
-    var page by rememberSaveable { mutableStateOf<SettingsPage?>(if (startInBackup) SettingsPage.BACKUP else null) }
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(startPage) }
     val savedPages = rememberSaveableStateHolder()
-    val back = { if (page == null || startInBackup) onNavigateBack() else page = null }
+    val back = { if (page == null || startPage != null) onNavigateBack() else page = null }
     BackHandler(enabled = page != null) { back() }
     // Compose the existing confirmation flow even when the request arrives
     // while another settings page is open or the preferences are loading.

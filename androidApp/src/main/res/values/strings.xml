@@ -1502,6 +1502,11 @@
     <string name="notification_announcement_issue">Known issue</string>
     <string name="notification_announcement_tip">Tip from the developer</string>
     <string name="notification_sender_developer">Developer</string>
+    <string name="notification_reply_chat">Developer · Chat</string>
+    <string name="notification_reply_bug">Developer · Bug report</string>
+    <string name="notification_reply_feature">Developer · Feature request</string>
+    <string name="notification_reply_crash">Developer · Crash report</string>
+    <string name="notification_replies_summary">New replies from the developer</string>
     <string name="notification_reliability_title">Reliable notifications</string>
     <string name="notification_reliability_battery_desc">Android may delay or suppress notifications when the app is battery-optimized. Disable the optimization for CruxCoach to receive messages promptly.</string>
     <string name="notification_reliability_battery_button">Disable battery optimization</string>

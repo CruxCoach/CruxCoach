@@ -70,6 +70,7 @@ import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
 import com.cruxcoach.android.ui.settings.LicensesScreen
+import com.cruxcoach.android.ui.settings.SettingsPage
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
 import com.cruxcoach.android.ui.settings.SettingsScreen
@@ -171,6 +172,8 @@ object Routes {
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
     const val BACKUP_SETTINGS = "backup_settings"
+    /** Settings opened on "Bugs & feature requests" (reply notifications). */
+    const val SUPPORT_SETTINGS = "support_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -283,6 +286,7 @@ fun CruxCoachNavHost(
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
             route == Routes.BACKUP_SETTINGS ||
+            route == Routes.SUPPORT_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||
@@ -891,7 +895,7 @@ fun CruxCoachNavHost(
                 }
             }
 
-            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS).forEach { settingsRoute ->
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
                     val paymentViewModel: PaymentViewModel = hiltViewModel()
@@ -899,7 +903,11 @@ fun CruxCoachNavHost(
                     val context = LocalContext.current
 
                     SettingsScreen(
-                        startInBackup = settingsRoute == Routes.BACKUP_SETTINGS,
+                        startPage = when (settingsRoute) {
+                            Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
+                            Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            else -> null
+                        },
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },

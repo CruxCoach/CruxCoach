@@ -1545,6 +1545,11 @@
     <string name="notification_announcement_issue">Bekanntes Problem</string>
     <string name="notification_announcement_tip">Tipp vom Entwickler</string>
     <string name="notification_sender_developer">Entwickler</string>
+    <string name="notification_reply_chat">Entwickler · Chat</string>
+    <string name="notification_reply_bug">Entwickler · Fehlerbericht</string>
+    <string name="notification_reply_feature">Entwickler · Wunsch</string>
+    <string name="notification_reply_crash">Entwickler · Crash-Bericht</string>
+    <string name="notification_replies_summary">Neue Antworten vom Entwickler</string>
     <string name="notification_reliability_title">Zuverlässige Benachrichtigungen</string>
     <string name="notification_reliability_battery_desc">Der Android-Energiesparmodus kann Benachrichtigungen verzögern. Nimm CruxCoach von der Akkuoptimierung aus, damit Nachrichten rechtzeitig ankommen.</string>
     <string name="notification_reliability_battery_button">Akku-Optimierung deaktivieren</string>

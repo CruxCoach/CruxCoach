@@ -11,7 +11,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
@@ -207,7 +206,7 @@ class NotificationPollWorker @AssistedInject constructor(
                 if (!isSelfWrap) {
                     notificationHelper.showMessageNotification(
                         eventId = msg.id,
-                        senderName = applicationContext.getString(R.string.notification_sender_developer),
+                        type = msg.type,
                         preview = msg.content.take(100),
                         threadRoute = threadRoute
                     )
