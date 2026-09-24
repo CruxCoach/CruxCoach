@@ -1224,8 +1224,8 @@
     <string name="devcontact_feature_suggest">Suggest Feature</string>
     <string name="devcontact_title_required">Title *</string>
     <string name="devcontact_description_required">Description *</string>
-    <string name="devcontact_feature_placeholder">What do you wish for?</string>
-    <string name="devcontact_wishes">Wishes</string>
+    <string name="devcontact_feature_placeholder">What would you like to see?</string>
+    <string name="devcontact_wishes">Feature requests</string>
     <string name="devcontact_bug_reports">Bug Reports</string>
     <string name="devcontact_crash_reports">Crash Reports</string>
     <string name="devcontact_write_reply">Write a reply…</string>
@@ -1649,7 +1649,7 @@
     <string name="day_we">Wed</string>
     <string name="devcontact_app_version">App Version</string>
     <string name="devcontact_badge_bug">[BUG]</string>
-    <string name="devcontact_badge_wish">[WISH]</string>
+    <string name="devcontact_badge_wish">[FEATURE]</string>
     <string name="devcontact_bug_sent">Bug report sent</string>
     <string name="devcontact_bugs_empty">No bug reports sent</string>
     <string name="devcontact_category_general">General</string>
