@@ -315,6 +315,12 @@ class BoardRepositoryImpl(
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }
 
+    override fun hasPlacementsForBrand(boardBrand: String): Boolean =
+        q.hasPlacementsForBrand(boardBrand).executeAsOne()
+
+    override fun hasCatalogueSyncState(): Boolean =
+        q.hasCatalogueSyncState().executeAsOne()
+
     override fun lowestGradedDifficulty(
         angle: Int,
         layoutId: Int,

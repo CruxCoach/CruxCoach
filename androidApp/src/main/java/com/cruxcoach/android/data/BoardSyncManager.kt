@@ -252,10 +252,14 @@ class BoardSyncManager(
             // EXISTS-based fast path: getClimbCount() blocks tens of
             // seconds during an active import, and this hook fires at
             // app-start where the user is already waiting on UI render.
-            if (!boardRepository.hasAnyClimbs()) return@safeLaunch
-            if (boardRepository.getAllPlacements().isNotEmpty()) return@safeLaunch
+            // Geometry is no longer evidence of a finished import — every board
+            // gets the bundled geometry seeded. The meta chunk, imported last,
+            // is the only source of the catalogue's sync states. Community
+            // climbs alone are not an interrupted Kilter import either.
+            if (!boardRepository.hasClimbsForBrand(BoardBrand.KILTER.wireValue)) return@safeLaunch
+            if (boardRepository.hasCatalogueSyncState()) return@safeLaunch
 
-            Log.w(TAG, "Partial board DB detected (climbs>0, placements=0) — interrupted import; triggering recovery sync")
+            Log.w(TAG, "Partial board DB detected (catalogue climbs, no meta sync state) — interrupted import; triggering recovery sync")
 
             if (!isNetworkAvailable(appContext)) {
                 Log.w(TAG, "Recovery needed but no network — will retry on next app start")
@@ -263,6 +267,41 @@ class BoardSyncManager(
             }
 
             startBackgroundSync()
+        }
+    }
+
+    /**
+     * Seeds the geometry bundled in the APK for every board that has none, so
+     * community climbs of boards without a catalogue can be drawn, fitted and
+     * lit ([BundledBoardGeometry]). After the first run it costs one EXISTS
+     * probe per board.
+     */
+    fun seedBundledGeometry() {
+        scope.safeLaunch(TAG) { seedBundledGeometryNow() }
+    }
+
+    private suspend fun seedBundledGeometryNow() = withContext(Dispatchers.IO) {
+        val bundled = appContext.assets.list(BundledBoardGeometry.ASSET_DIR)?.toSet().orEmpty()
+        for (brand in BoardBrand.entries) {
+            val name = BundledBoardGeometry.assetFileName(brand.wireValue)
+            if (name !in bundled) continue
+            if (boardRepository.hasPlacementsForBrand(brand.wireValue)) continue
+            val file = File(appContext.cacheDir, "bundled_geometry_$name")
+            try {
+                appContext.assets.open("${BundledBoardGeometry.ASSET_DIR}/$name").use { input ->
+                    file.outputStream().use { input.copyTo(it) }
+                }
+                val seeded = importer.seedBundledGeometry(file, brand.wireValue)
+                if (seeded > 0) Log.i(TAG, "Seeded bundled geometry for ${brand.wireValue}: $seeded placements")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A busy catalogue import can hold the database; the next app
+                // start seeds again.
+                Log.w(TAG, "Bundled geometry for ${brand.wireValue} not seeded yet", e)
+            } finally {
+                file.delete()
+            }
         }
     }
 
@@ -2186,6 +2225,9 @@ class BoardSyncManager(
                 // Deleting a catalogue also opts it out of future downloads;
                 // otherwise the next worker would silently undo the deletion.
                 userPreferences.excludeBoardDownloads(brands)
+                // The geometry went with the catalogue; community climbs of
+                // these boards keep their holds from the bundled copy.
+                seedBundledGeometryNow()
                 // Catalogue contents changed in the other direction: a gate
                 // that was true is now false, and anything holding a mask
                 // derived from it has to re-ask (FEAT-049 §3.7).

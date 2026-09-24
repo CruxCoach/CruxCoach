@@ -63,9 +63,11 @@ class ClimbRenderLoader @Inject constructor(
         }
 
         val brand = climb.brand.wireValue
-        val placements = placementCache.getOrPut(brand) {
-            boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-        }
+        // An empty result is not cached: the bundled geometry may be seeded
+        // after the first render asked, and the cache lives as long as the app.
+        val placements = placementCache[brand]
+            ?: boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
+                .also { if (it.isNotEmpty()) placementCache[brand] = it }
         val prefSizeId = userPreferences.boardProductSizeId.first()
         val prefLayoutId = userPreferences.boardLayoutId.first()
         val (sizeId, layoutId) = pickEffectiveBoard(

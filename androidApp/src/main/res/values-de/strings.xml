@@ -466,9 +466,9 @@
     <string name="settings_data_import">Daten importieren</string>
     <string name="settings_data_import_desc">Wähle einen CruxCoach-Export als JSON oder CSV-ZIP und prüfe vor dem Import, welche Daten du übernehmen möchtest. Für Kilter und MoonBoard nutze den Logbuch-Import.</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
-    <string name="settings_data_delete_board_desc">Löscht heruntergeladene Boulder, Katalogstatistiken und Griffanordnungen aus der App. Für alle oder ausgewählte Boards; erneutes Herunterladen bleibt möglich. Eigene und Community-Boulder bleiben erhalten.</string>
+    <string name="settings_data_delete_board_desc">Löscht heruntergeladene Boulder und Katalogstatistiken aus der App. Für alle oder ausgewählte Boards; erneutes Herunterladen bleibt möglich. Eigene und Community-Boulder bleiben samt Griffen erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
-    <string name="settings_data_delete_board_dialog_message">Boulder-Kataloge, Statistiken und Griffanordnungen der ausgewählten Boards werden aus der App gelöscht. Du kannst sie erneut herunterladen. Eigene und Community-Boulder bleiben erhalten. Gelöschte Boards werden auch von künftigen Downloads abgewählt.</string>
+    <string name="settings_data_delete_board_dialog_message">Boulder-Kataloge und Statistiken der ausgewählten Boards werden aus der App gelöscht. Du kannst sie erneut herunterladen. Eigene und Community-Boulder bleiben samt Griffen erhalten. Gelöschte Boards werden auch von künftigen Downloads abgewählt.</string>
     <string name="settings_data_delete_board_progress">Board-Daten werden gelöscht…</string>
     <string name="settings_data_delete_select_all">Alle Boards</string>
     <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>

@@ -465,9 +465,9 @@
     <string name="settings_data_import">Import data</string>
     <string name="settings_data_import_desc">Choose a CruxCoach JSON or CSV-ZIP export, review it and select what to import. Use Logbook import for Kilter and MoonBoard files.</string>
     <string name="settings_data_delete_board">Delete board data</string>
-    <string name="settings_data_delete_board_desc">Deletes downloaded climbs, catalogue statistics and hold layouts from the app, for all or selected boards. You can download them again. Own and community climbs remain.</string>
+    <string name="settings_data_delete_board_desc">Deletes downloaded climbs and catalogue statistics from the app, for all or selected boards. You can download them again. Own and community climbs remain, holds included.</string>
     <string name="settings_data_delete_board_dialog_title">Delete board data?</string>
-    <string name="settings_data_delete_board_dialog_message">Downloaded climb catalogues, statistics and hold layouts for the selected boards will be deleted from the app. You can download them again. Own and community climbs remain. Deleted boards are also excluded from future downloads.</string>
+    <string name="settings_data_delete_board_dialog_message">Downloaded climb catalogues and statistics for the selected boards will be deleted from the app. You can download them again. Own and community climbs remain, holds included. Deleted boards are also excluded from future downloads.</string>
     <string name="settings_data_delete_board_progress">Deleting board data…</string>
     <string name="settings_data_delete_select_all">All boards</string>
     <string name="settings_data_delete_user">Delete personal logbook data</string>

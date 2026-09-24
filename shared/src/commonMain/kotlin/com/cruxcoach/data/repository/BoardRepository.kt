@@ -465,6 +465,10 @@ interface BoardClimbQueries {
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
+    /** Whether [boardBrand] has any hold geometry, seeded or imported. */
+    fun hasPlacementsForBrand(boardBrand: String): Boolean = getAllPlacements(boardBrand).isNotEmpty()
+    /** Whether a catalogue meta import finished (its sync states are present). */
+    fun hasCatalogueSyncState(): Boolean = false
     /** Difficulty of the easiest graded, listed climb this board has at [angle],
      *  or null without one. An index walk, cheap enough for every profile load. */
     fun lowestGradedDifficulty(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double): Double? = null

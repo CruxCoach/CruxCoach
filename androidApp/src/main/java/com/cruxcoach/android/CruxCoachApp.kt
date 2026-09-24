@@ -234,6 +234,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().recoverPartialImportIfNeeded()
             }.onFailure { PerfLogger.warn("[appScope] recoverPartialImport failed", it) }
             runCatching {
+                // Community climbs of boards without a catalogue need hold
+                // geometry to be drawn, fitted and lit: seed the bundled copy
+                // for every board that has none.
+                syncManager.get().seedBundledGeometry()
+            }.onFailure { PerfLogger.warn("[appScope] seedBundledGeometry failed", it) }
+            runCatching {
                 // One-shot consumer of the 7.sqm post-migration marker:
                 // wipes chunk hashes + lastSyncTimestamp and triggers a
                 // background sync so the user doesn't land on an empty

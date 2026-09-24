@@ -1193,6 +1193,18 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 hasClimbsForBrand:
 SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
 
+-- Whether one board has any hold geometry (catalogue-imported or seeded
+-- from the geometry bundled in the APK).
+hasPlacementsForBrand:
+SELECT EXISTS(SELECT 1 FROM placements WHERE board_brand = ? LIMIT 1);
+
+-- Whether a catalogue's meta import finished: its sync states arrive with
+-- the Kilter meta chunk, imported last. apk_version_code is a legacy app
+-- marker kept across deletions, not catalogue evidence. Geometry is no longer
+-- that evidence: every board gets bundled geometry seeded.
+hasCatalogueSyncState:
+SELECT EXISTS(SELECT 1 FROM sync_states WHERE table_name != 'apk_version_code' LIMIT 1);
+
 
 -- The easiest graded climb one board has at one angle. The playlist planner
 -- seats its warm-up and working tiers on it: a MoonBoard at 40° starts at 6b,

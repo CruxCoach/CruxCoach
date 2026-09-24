@@ -395,7 +395,16 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val personalNoteSaveStatuses = ConcurrentHashMap<String, PersonalNoteSaveStatus>()
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
-    private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
+    /** Per brand: the pager can move between boards' climbs (cross-board
+     *  lists), and one shared map drew a Tension climb on Kilter positions.
+     *  Empty results are not kept, so seeded geometry shows up on the next
+     *  climb. */
+    private val cachedPlacementMaps = java.util.concurrent.ConcurrentHashMap<String, Map<Int, BoardPlacement>>()
+
+    private fun placementMapFor(brand: String): Map<Int, BoardPlacement> =
+        cachedPlacementMaps[brand]
+            ?: boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
+                .also { if (it.isNotEmpty()) cachedPlacementMaps[brand] = it }
     private val supportedAnglesCache = ConcurrentHashMap<Pair<Int, String>, Set<Int>>()
 
     // --- Delegated controllers ---
@@ -1052,13 +1061,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         // wrong board for Tension/Grasshopper/etc.).
                         val brand = climb.brand.wireValue
                         val placementMap = if (isMoonBoard) emptyMap() else
-                            PerfLogger.trace("loadClimb.placements") {
-                                cachedPlacementMap ?: run {
-                                    val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                                    cachedPlacementMap = map
-                                    map
-                                }
-                            }
+                            PerfLogger.trace("loadClimb.placements") { placementMapFor(brand) }
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
                         val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
@@ -1274,11 +1277,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()
                     val brand = climb.brand.wireValue
-                    val placementMap = if (isMoonBoard) emptyMap() else cachedPlacementMap ?: run {
-                        val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                        cachedPlacementMap = map
-                        map
-                    }
+                    val placementMap = if (isMoonBoard) emptyMap() else placementMapFor(brand)
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
                     val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(

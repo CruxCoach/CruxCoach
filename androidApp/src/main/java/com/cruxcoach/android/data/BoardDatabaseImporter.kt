@@ -2539,6 +2539,16 @@ class BoardDatabaseImporter(
     }
 
     /** Open the target board database directly for ATTACH operations. */
+    /** Seeds one board's bundled hold geometry when it has none; see [BundledBoardGeometry]. */
+    fun seedBundledGeometry(source: File, brand: String): Int {
+        val db = openTargetDb()
+        try {
+            return BundledBoardGeometry.seed(db, source, brand)
+        } finally {
+            db.close()
+        }
+    }
+
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
         val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
