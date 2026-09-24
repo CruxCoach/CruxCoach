@@ -802,11 +802,14 @@ class SettingsViewModel @Inject constructor(
         get() = BoardBrand.entries.filter { it.isInteractive }
 
     fun showDeleteBoardDataDialog() {
-        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Start with nothing selected, like the logbook dialog below. With every
+        // board pre-ticked, tapping the one board to delete UNticked it — and the
+        // confirm then deleted all the others instead, and excluded them from
+        // future downloads.
+        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun showDeleteUserDataDialog() {
         // Irreversible: start with nothing selected so the user names what to delete.
-        // Catalogue data above can be downloaded again and keeps its select-all default.
         _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
