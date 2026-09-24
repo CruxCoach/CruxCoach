@@ -11,6 +11,9 @@ import com.cruxcoach.data.repository.AscentWithClimb
  * Without this, "Attempt" then "Sent" in the playlist player, or across two
  * visits of a climb, left an open attempt entry beside a one-try send that
  * counted as a flash.
+ *
+ * An attempt with a comment came through the full log form. It stays its
+ * own entry: promoting it to a send would drop the comment.
  */
 internal fun openQuickAttempt(
     history: List<AscentWithClimb>,
@@ -23,5 +26,5 @@ internal fun openQuickAttempt(
         .filter { it.angle == angle && it.isMirror == isMirror }
         .maxByOrNull { it.climbedAt }
         ?: return null
-    return newest.takeIf { !it.isSend && it.climbedAt >= start }
+    return newest.takeIf { !it.isSend && it.climbedAt >= start && it.comment.isNullOrBlank() }
 }

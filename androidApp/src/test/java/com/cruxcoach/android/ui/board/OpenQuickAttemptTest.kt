@@ -15,6 +15,7 @@ class OpenQuickAttemptTest {
         angle: Long = 40,
         bidCount: Long = 1,
         isMirror: Boolean = false,
+        comment: String? = null,
     ) = AscentWithClimb(
         uuid = uuid,
         climbUuid = "climb",
@@ -23,7 +24,7 @@ class OpenQuickAttemptTest {
         bidCount = bidCount,
         quality = null,
         difficulty = null,
-        comment = null,
+        comment = comment,
         climbedAt = climbedAt,
         climbName = "slowly",
         climbFrames = "",
@@ -84,6 +85,13 @@ class OpenQuickAttemptTest {
         val open = openQuickAttempt(listOf(mirrored), angle = 40, isMirror = true, since = sessionStart)
 
         assertEquals("mirror", open?.uuid)
+    }
+
+    @Test
+    fun `an attempt with a comment stays its own entry`() {
+        val noted = entry("noted", "2026-09-24T10:05:00", isSend = false, comment = "left heel hook")
+
+        assertNull(openQuickAttempt(listOf(noted), angle = 40, isMirror = false, since = sessionStart))
     }
 
     @Test
