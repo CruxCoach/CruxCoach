@@ -63,6 +63,7 @@ import com.cruxcoach.android.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -1032,17 +1033,9 @@ class BoardClimbDetailViewModel @Inject constructor(
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
                 withContext(Dispatchers.IO) {
-                    // Try exact match first, then case variants (DB may store
-                    // upper/lowercase). Keep the fast primary-key path first;
-                    // only on a miss fall back to the normalized (strip-hyphens
-                    // + lowercase) scan, which resolves uuids whose hyphenation
-                    // differs from the stored row (logbook dashed-lowercase vs
-                    // legacy nodash-UPPERCASE board rows).
+                    // Indexed spellings first, normalized scan only on a miss.
                     val climb = PerfLogger.trace("loadClimb.getClimbByUuid") {
-                        boardRepository.getClimbByUuid(uuid, angle)
-                            ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-                            ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
-                            ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
+                        boardRepository.getClimbByUuidAnySpelling(uuid, angle)
                     }?.takeIf {
                         matchesLinkAuthor(uuid, it.createdByPubkey)
                     }

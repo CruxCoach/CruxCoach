@@ -9,6 +9,7 @@ import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,9 +53,10 @@ class SessionQueueViewModel @Inject constructor(
                     val resolved = withContext(Dispatchers.IO) {
                         missing.associateWith { uuid ->
                             val angle = s.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: 40
-                            val climb = boardRepository.getClimbByUuid(uuid, angle)
-                                ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-                                ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
+                            // Spelling-blind: the three case variants tried here
+                            // could not reach a stored dashed row at all, so a
+                            // queued climb showed as its first 8 characters.
+                            val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
                             QueueRowInfo(
                                 name = climb?.name ?: uuid.take(8),
                                 gradeLabel = climb?.difficultyAverage?.let {

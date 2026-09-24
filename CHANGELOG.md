@@ -76,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nodash-lowercase and dashed-lowercase — and a logbook carries whichever its
   source produced, so name, grade and frames stayed empty for entries whose
   spelling differed from the stored row.
+- The climb detail screen, the session queue, the Bluetooth name banners and
+  the hold renderer resolve a climb the same way. Each carried its own list of
+  uuid variants covering a different subset, so the same climb could open on
+  the detail screen and show as eight characters in the queue.
 - Board catalogue imports preserve the indexes used by existing boards, repair
   missing indexes, and roll back interrupted index preparation. Temporary SQLite
   locks retry the local import with the already verified downloads.

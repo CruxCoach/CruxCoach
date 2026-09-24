@@ -8,7 +8,6 @@ import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
-import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
@@ -27,6 +26,7 @@ import com.cruxcoach.android.util.ShareCompression
 import com.cruxcoach.android.util.withBackgroundThreadPriority
 import com.cruxcoach.android.updater.IntegrityVerifier
 import com.cruxcoach.util.DateTimeUtil
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -2332,9 +2332,8 @@ class BoardSyncManager(
                         // in one of three forms. Try the indexed spellings,
                         // then fall back to the normalized scan so a row is
                         // never missed for its hyphens or its case alone.
-                        val climb = ClimbUuid.spellings(climbUuid)
-                            .firstNotNullOfOrNull { boardRepository.getClimbByUuid(it, angle.toInt()) }
-                            ?: boardRepository.getClimbByUuidNormalized(climbUuid, angle.toInt())
+                        val climb = boardRepository
+                            .getClimbByUuidAnySpelling(climbUuid, angle.toInt())
                             ?: continue
                         // Also back-fills board_brand + layout_id, self-healing
                         // legacy / restored rows that defaulted to kilter/NULL.

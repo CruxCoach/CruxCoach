@@ -11,6 +11,7 @@ import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -43,10 +44,7 @@ class ClimbRenderLoader @Inject constructor(
     /** Null when the climb isn't in the local catalogue. Call on IO. */
     suspend fun load(uuid: String, angle: Int): ClimbRenderData? {
         // Tolerate the GATT protocol's uppercase-no-hyphen uuid shape.
-        val climb = boardRepository.getClimbByUuid(uuid, angle)
-            ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-            ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
-            ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
+        val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
             ?: return null
 
         val holds = BoardClimbParser.parseMultiFrames(climb.frames).firstOrNull() ?: emptyList()

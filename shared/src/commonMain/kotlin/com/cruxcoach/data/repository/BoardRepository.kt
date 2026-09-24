@@ -1,6 +1,7 @@
 package com.cruxcoach.data.repository
 
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.BoardClimbParser
 
 /**
@@ -1576,3 +1577,18 @@ interface BoardRepository :
     BoardLayoutQueries,
     BoardWriteOperations,
     CommunityClimbQueries
+
+/**
+ * Spelling-blind climb lookup: every spelling the catalogue is known to store
+ * ([ClimbUuid.spellings]) on the uuid index, then the normalized scan for
+ * anything else. Call sites used to hand-roll a ladder of case and hyphenation
+ * variants, each covering a different subset, so the same climb could open on
+ * the detail screen and be missing from the session queue.
+ *
+ * Deliberately an extension, not a member with a default body: mockk mocks
+ * interface defaults too, so a member would return null in every test that
+ * fakes [BoardRepository] instead of running this lookup.
+ */
+fun BoardRepository.getClimbByUuidAnySpelling(uuid: String, angle: Int): ClimbWithStats? =
+    ClimbUuid.spellings(uuid).firstNotNullOfOrNull { getClimbByUuid(it, angle) }
+        ?: getClimbByUuidNormalized(uuid, angle)

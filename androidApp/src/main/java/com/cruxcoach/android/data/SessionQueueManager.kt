@@ -34,6 +34,7 @@ import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.QuantumBoardModel
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1183,17 +1184,7 @@ class SessionQueueManager(
      * (lowercase-with-hyphens, e.g. `305ecf35-4ab5-4c9c-afd5-91af0848004b`).
      */
     private fun resolveClimb(uuid: String, angle: Int): com.cruxcoach.data.repository.ClimbWithStats? {
-        boardRepository.getClimbByUuid(uuid, angle)?.let { return it }
-        boardRepository.getClimbByUuid(uuid.lowercase(), angle)?.let { return it }
-        // Protocol decodes as uppercase-no-hyphens; DB may store lowercase-with-hyphens
-        val bare = uuid.replace("-", "")
-        if (bare.length == 32) {
-            val hyphenated = "${bare.substring(0,8)}-${bare.substring(8,12)}-" +
-                "${bare.substring(12,16)}-${bare.substring(16,20)}-${bare.substring(20)}"
-            boardRepository.getClimbByUuid(hyphenated.lowercase(), angle)?.let { return it }
-            boardRepository.getClimbByUuid(hyphenated.uppercase(), angle)?.let { return it }
-        }
-        return null
+        return boardRepository.getClimbByUuidAnySpelling(uuid, angle)
     }
 
     // ===== Protocol helpers for SessionGattBridge =====

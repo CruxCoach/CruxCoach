@@ -196,12 +196,29 @@ class ClimbUuidNormalizedLookupTest {
         assertTrue(repo.getClimbsByUuidsAnyAngle(legacyCandidates(nodashUpper)).isEmpty())
     }
 
+    /**
+     * The bulk lookup answers per REQUESTED spelling, not per stored row: it
+     * returns one entry for every candidate that resolves and rewrites `uuid`
+     * to the requested spelling (see
+     * BoardRepositoryImpl.resolveAliasesInRequestedOrder, which keeps the
+     * caller's key at the API boundary). Asking with four spellings therefore
+     * yields the same climb more than once. insertLogs is immune because it
+     * re-keys every row by normUuidKey, so the duplicates collapse — assert
+     * the climb was resolved, not how many times.
+     */
+    private fun assertResolvesTheClimb(rows: List<com.cruxcoach.data.repository.ClimbWithStats>, hint: String) {
+        assertTrue(rows.isNotEmpty(), "Bulk-Lookup findet nichts für $hint")
+        assertEquals(setOf("Tallakrennesvingen"), rows.mapTo(HashSet()) { it.name },
+            "Bulk-Lookup liefert einen fremden Climb für $hint")
+        assertEquals(setOf(ClimbUuid.normKey(dashedLower)), rows.mapTo(HashSet()) { ClimbUuid.normKey(it.uuid) },
+            "Bulk-Lookup mischt Identitäten für $hint")
+    }
+
     @Test
     fun bulkLookup_spellingCandidates_findNodashLowercaseRow() {
         insertClimb(nodashLower)
         for (query in listOf(dashedLower, nodashUpper, nodashLower)) {
-            val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query))
-            assertEquals(nodashLower, rows.singleOrNull()?.uuid, "Bulk-Lookup verfehlt $query")
+            assertResolvesTheClimb(repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query)), query)
         }
     }
 
@@ -217,8 +234,8 @@ class ClimbUuidNormalizedLookupTest {
     @Test
     fun bulkLookup_spellingCandidates_findDashedLowercaseRow_fromNodashQuery() {
         insertClimb(dashedLower)
-        val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(nodashLower))
-        assertEquals(dashedLower, rows.singleOrNull()?.uuid)
+        assertResolvesTheClimb(
+            repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(nodashLower)), nodashLower)
     }
 
     @Test
@@ -227,8 +244,7 @@ class ClimbUuidNormalizedLookupTest {
         // nicht verlieren.
         insertClimb(nodashUpper)
         for (query in listOf(dashedLower, nodashUpper, nodashLower)) {
-            val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query))
-            assertEquals(nodashUpper, rows.singleOrNull()?.uuid, "Regression fuer $query")
+            assertResolvesTheClimb(repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query)), query)
         }
     }
 }
