@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.BoardSessionState
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -224,15 +225,20 @@ class AscentLoggerQuickLogTest {
         session: BoardSessionManager,
         onQuickSaved: (Boolean) -> Unit = {},
         onSaved: (Boolean) -> Unit,
-    ) = AscentLogger(
-        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
-        state = state,
-        personalBoardRepo = repo,
-        sessionManager = session,
-        zoneManager = mockk<IntensityZoneManager>(relaxed = true),
-        climbNavState = mockk<ClimbNavigationState>(relaxed = true),
-        currentClimbUuid = { climb.uuid },
-        onAscentSaved = onSaved,
-        onQuickLogSaved = onQuickSaved,
-    )
+    ): AscentLogger {
+        // A quick log reads the running session's start to continue an attempt
+        // from an earlier visit; a relaxed mock's state is no session state.
+        every { session.state } returns MutableStateFlow(BoardSessionState())
+        return AscentLogger(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+            state = state,
+            personalBoardRepo = repo,
+            sessionManager = session,
+            zoneManager = mockk<IntensityZoneManager>(relaxed = true),
+            climbNavState = mockk<ClimbNavigationState>(relaxed = true),
+            currentClimbUuid = { climb.uuid },
+            onAscentSaved = onSaved,
+            onQuickLogSaved = onQuickSaved,
+        )
+    }
 }
