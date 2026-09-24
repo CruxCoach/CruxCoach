@@ -181,7 +181,7 @@ object PlaylistFiller {
         }
 
         return GenerationResult(
-            entries = entries.normalize(),
+            entries = entries.warmUpAscending().normalize(),
             droppedClimbs = dropped,
             widenedSlots = widened,
         )
@@ -330,6 +330,21 @@ object PlaylistFiller {
     }
 
     /** Strip rests orphaned by dropped climbs (leading/trailing/double). */
+    /**
+     * A warm-up only ever climbs. Its tiers sit two grades apart but each takes
+     * a grade either side, so two picks from neighbouring tiers could come out
+     * 6a then 5b — a ladder that steps down. Its climbs are put in order of
+     * difficulty; the rests between them keep their places.
+     */
+    private fun List<GeneratedEntry>.warmUpAscending(): List<GeneratedEntry> {
+        val slots = indices.filter { (this[it] as? GeneratedEntry.Climb)?.section == PlanSection.WARM_UP }
+        if (slots.size < 2) return this
+        val ordered = slots.map { this[it] as GeneratedEntry.Climb }.sortedBy { it.difficulty }
+        val out = toMutableList()
+        slots.forEachIndexed { k, index -> out[index] = ordered[k] }
+        return out
+    }
+
     private fun List<GeneratedEntry>.normalize(): List<GeneratedEntry> {
         val trimmed = dropWhile { it is GeneratedEntry.Rest }
             .dropLastWhile { it is GeneratedEntry.Rest }

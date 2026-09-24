@@ -234,6 +234,34 @@ class PlaylistFillerTest {
     }
 
     @Test
+    fun `the warm-up never steps down, even where its tiers overlap`() {
+        // Neighbouring tiers overlap by a grade: the lower one can draw a 6a and the
+        // upper one a 5b. Seen on the Nokia as a limit warm-up 4c, 4c, 6a, 5b, 6b.
+        val plan = PlaylistPlan(
+            slots = listOf(
+                PlanSlot.ClimbSlot(15.0, 17.0, PlanSection.WARM_UP),
+                PlanSlot.RestSlot(60, PlanSection.WARM_UP),
+                PlanSlot.ClimbSlot(13.0, 15.0, PlanSection.WARM_UP),
+                PlanSlot.RestSlot(240, PlanSection.WARM_UP),
+                PlanSlot.ClimbSlot(20.0, 21.0, PlanSection.PEAK),
+            ),
+            effectiveType = GeneratorType.LIMIT,
+        )
+        val pool = listOf(candidate("sixA", 16.0), candidate("fiveB", 14.0), candidate("work", 20.0))
+        val result = PlaylistFiller.fill(plan = plan, source = poolSource(pool), random = Random(1))
+
+        assertEquals(
+            listOf(14.0, 16.0, 20.0),
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().map { it.difficulty },
+        )
+        // The rests keep their places: short one inside the ladder, long one after it.
+        assertEquals(
+            listOf(60, 240),
+            result.entries.filterIsInstance<GeneratedEntry.Rest>().map { it.seconds },
+        )
+    }
+
+    @Test
     fun `a warm-up slot never widens up into the work`() {
         val plan = PlaylistPlan(
             slots = listOf(PlanSlot.ClimbSlot(13.0, 15.0, PlanSection.WARM_UP)),
