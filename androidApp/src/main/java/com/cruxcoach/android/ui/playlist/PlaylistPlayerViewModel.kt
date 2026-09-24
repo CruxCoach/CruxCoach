@@ -14,8 +14,10 @@ import com.cruxcoach.android.ui.board.EnhancedSessionSummary
 import com.cruxcoach.android.ui.board.SessionSummaryBuilder
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.QuickLogSendInput
 import com.cruxcoach.domain.board.IntensityZones
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -71,6 +73,26 @@ internal suspend fun collectPlaylistRenders(
 }
 
 /**
+ * The attempt row a quick log in the player continues: the newest entry on
+ * this climb and angle is an unsent attempt from the running session. A send
+ * after it closes that sequence, so a later attempt starts a fresh row.
+ * Without this, "Attempt" then "Sent" left an open attempt entry beside a
+ * one-try send that counted as a flash.
+ */
+internal fun openPlayerAttempt(
+    history: List<AscentWithClimb>,
+    angle: Long,
+    sessionStartedAt: String?,
+): AscentWithClimb? {
+    val start = sessionStartedAt ?: return null
+    val newest = history
+        .filter { it.angle == angle && !it.isMirror }
+        .maxByOrNull { it.climbedAt }
+        ?: return null
+    return newest.takeIf { !it.isSend && it.climbedAt >= start }
+}
+
+/**
  * Player over [PlaylistPlaybackCoordinator]: exposes its state verbatim,
  * loads the render payload whenever the current climb changes, and builds
  * the end-of-playlist summary on stop.
@@ -121,7 +143,9 @@ class PlaylistPlayerViewModel @Inject constructor(
      * Quick-log for the current climb: send (isSend) or attempt. Same
      * write path as the detail screen's AscentLogger — ascent/bid row,
      * Verlauf entry for sends, session counters, zone recompute — but
-     * one tap instead of dialog + form. Defaults: 1 attempt, no comment.
+     * one tap instead of dialog + form. Like the detail screen's quick log,
+     * repeated attempts add to one open attempt row and a send promotes that
+     * row, so the send carries its real number of tries.
      */
     fun quickLog(isSend: Boolean) {
         val climb = _state.value.render?.climb ?: return
@@ -130,8 +154,29 @@ class PlaylistPlayerViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val uuid = java.util.UUID.randomUUID().toString()
                 val now = com.cruxcoach.util.DateTimeUtil.nowIso()
+                val open = openPlayerAttempt(
+                    history = personalBoardRepo.getUserHistoryForClimb(climb.uuid),
+                    angle = angle.toLong(),
+                    sessionStartedAt = boardSessionManager.state.value.startedAt,
+                )
                 if (isSend) {
-                    personalBoardRepo.insertAscent(
+                    if (open != null) personalBoardRepo.promoteQuickBidToSend(
+                        QuickLogSendInput(
+                            uuid = open.uuid,
+                            climbUuid = climb.uuid,
+                            angle = angle.toLong(),
+                            isMirror = false,
+                            bidCount = open.bidCount + 1,
+                            difficulty = climb.difficultyAverage?.toLong(),
+                            climbedAt = now,
+                            climbName = climb.name,
+                            difficultyAverage = climb.difficultyAverage,
+                            climbFrames = climb.frames,
+                            framesCount = climb.framesCount,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
+                        )
+                    ) else personalBoardRepo.insertAscent(
                         uuid = uuid,
                         climbUuid = climb.uuid,
                         angle = angle.toLong(),
@@ -160,6 +205,12 @@ class PlaylistPlayerViewModel @Inject constructor(
                         layoutId = climb.layoutId,
                         climbedAt = now,
                         recordedAt = now,
+                    )
+                } else if (open != null) {
+                    personalBoardRepo.updateBid(
+                        uuid = open.uuid,
+                        bidCount = open.bidCount + 1,
+                        comment = open.comment,
                     )
                 } else {
                     personalBoardRepo.insertBid(
