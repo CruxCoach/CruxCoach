@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -96,8 +97,10 @@ internal fun AddToListDialog(
             // "Done", so the next tap meant for it typed into the name field.
             // Read here: the dialog is its own window with its own focus.
             val focusManager = LocalFocusManager.current
+            val keyboard = LocalSoftwareKeyboardController.current
             val createAndCloseKeyboard = {
                 if (newListName.isNotBlank()) onCreateAndAdd()
+                keyboard?.hide()
                 focusManager.clearFocus()
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
