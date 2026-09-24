@@ -108,18 +108,39 @@ class KilterBackfillLayoutTest {
         assertEquals(homewallLayout, repo.getLayoutForProductSize(21, brand))
     }
 
-    // ── The holds answer it themselves ───────────────────────────────────
+    // ── A climbConcat names HOLES, not placements ────────────────────────
+    //
+    // Verified against the published catalogue: for every sampled climb the
+    // API's numbers are exactly the hole_ids of the catalogue frames'
+    // placements, never the placement ids. The two spaces overlap (80 of 85
+    // sampled hole ids also exist as placement ids), so reading one as the
+    // other draws a different hold instead of failing.
 
     @Test
-    fun placementsOfAClimb_resolveTheLayoutTheirHoldSetBelongsTo() {
-        assertEquals(originalLayout, repo.getLayoutForPlacements(listOf(1125, 1140), brand))
-        assertEquals(homewallLayout, repo.getLayoutForPlacements(listOf(4001), brand))
+    fun holesOfAClimb_resolveTheLayoutTheirHoldSetBelongsTo() {
+        assertEquals(originalLayout, repo.getLayoutForHoles(listOf(1, 2), brand))
+        assertEquals(homewallLayout, repo.getLayoutForHoles(listOf(3), brand))
     }
 
     @Test
-    fun unknownOrEmptyPlacements_resolveToNothing() {
-        assertNull(repo.getLayoutForPlacements(emptyList(), brand))
-        assertNull(repo.getLayoutForPlacements(listOf(987654), brand))
+    fun unknownOrEmptyHoles_resolveToNothing() {
+        assertNull(repo.getLayoutForHoles(emptyList(), brand))
+        assertNull(repo.getLayoutForHoles(listOf(987654), brand))
+    }
+
+    @Test
+    fun aHoleResolvesToItsPlacementWithinTheLayout() {
+        assertEquals(1125L, repo.getPlacementForHoleInLayout(1, originalLayout, brand))
+        assertEquals(1140L, repo.getPlacementForHoleInLayout(2, originalLayout, brand))
+        assertEquals(4001L, repo.getPlacementForHoleInLayout(3, homewallLayout, brand))
+    }
+
+    @Test
+    fun aHoleOutsideTheLayout_resolvesToNothing() {
+        // Hole 1 exists, but its hold set is not published for Homewall — so
+        // the rewrite must decline rather than reach for a foreign placement.
+        assertNull(repo.getPlacementForHoleInLayout(1, homewallLayout, brand))
+        assertNull(repo.getPlacementForHoleInLayout(987654, originalLayout, brand))
     }
 
     // ── Provenance: a backfilled own climb is not a catalogue ────────────

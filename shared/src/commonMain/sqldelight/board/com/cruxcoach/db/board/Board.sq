@@ -1516,18 +1516,31 @@ SELECT DISTINCT layout_id FROM board_images
 WHERE product_size_id = :productSizeId AND board_brand = :brand
 LIMIT 1;
 
--- Which layout a climb's holds belong to, derived from the climb itself:
--- its frames name placement ids, a placement belongs to a hold set, and a
--- hold set is published for exactly one layout. Authoritative where the
--- API metadata is not, and it works off the geometry bundled in the APK,
--- so it answers before any catalogue download.
-getLayoutForPlacements:
+-- Which layout a climb's holds belong to, derived from the climb itself.
+-- A Kilter `climbConcat` names HOLES ("h1174p12"), not placements — verified
+-- against the published catalogue: for every checked climb the API's numbers
+-- are exactly the hole_ids of the catalogue frames' placements, and never the
+-- placement ids themselves. A hole carries a placement per hold set and a set
+-- is published for one layout, so the holes still answer the question. Served
+-- by the geometry bundled in the APK, so it answers before any download.
+getLayoutForHoles:
 SELECT DISTINCT bi.layout_id FROM board_images bi
 WHERE bi.board_brand = :brand
   AND bi.set_id IN (
       SELECT p.set_id FROM placements p
-      WHERE p.board_brand = :brand AND p.placement_id IN :placementIds
+      WHERE p.board_brand = :brand AND p.hole_id IN :holeIds
   )
+LIMIT 1;
+
+-- The placement a hole carries within one layout, so a `climbConcat` can be
+-- rewritten into the placement-id frames every renderer and every other
+-- climbs row uses. Unambiguous: checked across the sampled climbs, a hole has
+-- exactly one placement inside a layout, and the rewritten frames matched the
+-- catalogue's own frames hold for hold, role for role.
+getPlacementForHoleInLayout:
+SELECT DISTINCT p.placement_id FROM placements p
+JOIN board_images bi ON bi.set_id = p.set_id AND bi.board_brand = p.board_brand
+WHERE p.board_brand = :brand AND p.hole_id = :holeId AND bi.layout_id = :layoutId
 LIMIT 1;
 
 -- FEAT-031: derive a sensible default (layout, size) for an Aurora board

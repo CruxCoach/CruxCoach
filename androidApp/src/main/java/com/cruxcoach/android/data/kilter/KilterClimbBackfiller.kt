@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardHold
 
 /**
  * Backfills the local board DB with the user's OWN Kilter climbs that the
@@ -62,34 +63,47 @@ internal class KilterClimbBackfiller(
         }
         if (missing.isEmpty()) return 0
 
-        // Stats keyed by (uuid, angle) so each climb-stat row pairs with its
-        // climb. The detail screen resolves a climb via the (uuid, angle)
-        // LEFT JOIN, and insertLogs' denormalization needs the climb_stats
-        // row to exist for the logged angle — so we upsert a stat at each
-        // climb's own angle, falling back to the API stats list.
-        val statsByKey = response.climbStats.associateBy { it.climbUuid to it.angle }
+        // Every stat the endpoint sends for a climb, by uuid. It used to be
+        // keyed by (uuid, climb.angle) and read at the climb's own angle —
+        // but `climb.angle` is the SETTER's angle while the stats, like the
+        // logbook, come at the angle the climb was CLIMBED at. Measured on a
+        // real account: every stat arrived at 40° while the climb records
+        // said 40°, 55° and 60°, so a third of them found nothing, wrote a
+        // bare ungraded row at an angle nobody logged, and left the logged
+        // angle without a stat — the entry resolved but showed no grade.
+        val statsByClimb = response.climbStats.groupBy { it.climbUuid }
 
         var upserted = 0
         try {
             boardRepository.runInTransaction {
                 for (climb in missing) {
                     upsertBackfilledClimb(climb)
-                    // Stat row at the climb's own angle so the (uuid, angle)
-                    // lookup resolves. Use the API stat if present; otherwise
-                    // write a bare row carrying only the angle key.
-                    val stat = statsByKey[climb.climbUuid to climb.angle]
-                    boardRepository.upsertClimbStat(
-                        climbUuid = climb.climbUuid,
-                        angle = climb.angle.toLong(),
-                        displayDifficulty = stat?.difficultyAverage,
-                        difficultyAverage = stat?.difficultyAverage,
-                        qualityAverage = stat?.qualityAverage,
-                        ascensionistCount = stat?.ascentCount?.toLong(),
-                        benchmarkDifficulty = null,
-                        faUsername = stat?.faUsername,
-                        faAt = stat?.faAt,
-                        officialKilterDifficulty = stat?.currentDifficultyId?.toLong(),
-                    )
+                    val stats = statsByClimb[climb.climbUuid].orEmpty()
+                    for (stat in stats) {
+                        boardRepository.upsertClimbStat(
+                            climbUuid = climb.climbUuid,
+                            angle = stat.angle.toLong(),
+                            displayDifficulty = stat.difficultyAverage,
+                            difficultyAverage = stat.difficultyAverage,
+                            qualityAverage = stat.qualityAverage,
+                            ascensionistCount = stat.ascentCount?.toLong(),
+                            benchmarkDifficulty = null,
+                            faUsername = stat.faUsername,
+                            faAt = stat.faAt,
+                            officialKilterDifficulty = stat.currentDifficultyId?.toLong(),
+                        )
+                    }
+                    // A climb the endpoint sent no stats for still needs a row
+                    // at its own angle, or the (uuid, angle) lookup has
+                    // nothing to resolve. NULL difficulty = "ungraded".
+                    if (stats.none { it.angle == climb.angle }) {
+                        boardRepository.upsertClimbStat(
+                            climbUuid = climb.climbUuid, angle = climb.angle.toLong(),
+                            displayDifficulty = null, difficultyAverage = null,
+                            qualityAverage = null, ascensionistCount = null,
+                            benchmarkDifficulty = null,
+                        )
+                    }
                     upserted++
                 }
             }
@@ -191,30 +205,58 @@ internal class KilterClimbBackfiller(
     /**
      * The layout a backfilled climb belongs to.
      *
-     * `product_layout_uuid` was read as a layout id. It is a product SIZE:
-     * the two values this account's logbook carries, "10" and "8", are
-     * Kilter sizes ("12 x 12 with kickboard" — [BoardConstants.KILTER_DEFAULT_SIZE]
-     * — and "8 x 12"), and both belong to layout 1, Original. Stored as a
-     * layout that left the row pointing at layout 10, which does not exist
-     * (the catalogue has 1 and 8, and hold geometry only for those), or at
-     * layout 8, which is Homewall — a different Kilter board. Every render
-     * lookup then missed and the detail screen fell back to the user's own
-     * board, drawing the climb's holds on the wrong wall at the wrong spots.
+     * `product_layout_uuid` was read as a layout id. It is a product SIZE.
+     * Checked against the published catalogue on a real account: the values
+     * that arrive are 7, 8, 10 and 14 — Kilter sizes — and every one of them
+     * belongs to layout 1, Original, which is also what `productName` says.
+     * Written as layouts they became 7, 10 and 14, which have no row in
+     * `layouts` and no hold geometry at all, and 8, which is Homewall: a
+     * different Kilter board. Every render lookup then missed and the detail
+     * screen fell back to the user's own configured board.
      *
-     * The holds answer it themselves: a placement belongs to a hold set and
-     * a hold set is published for one layout, and that geometry ships in the
-     * APK, so it resolves before any catalogue download. The size mapping is
-     * the fallback, and only then the brand's usual layout — never a number
-     * taken from a field that does not mean what it was read as.
+     * The size is the authority, because it is what the field actually
+     * carries. The holes are the fallback — a hole carries a placement per
+     * hold set and a set is published for one layout — and both are served by
+     * the geometry bundled in the APK, so either answers before a download.
      */
     private fun resolveLayoutId(climb: KilterLoggedClimb, frames: String): Long {
-        val placementIds = BoardClimbParser.parseFrames(frames).map { it.placementId }
-        boardRepository.getLayoutForPlacements(placementIds)?.let { return it }
         climb.productLayoutUuid.toIntOrNull()
             ?.let { boardRepository.getLayoutForProductSize(it) }
             ?.let { return it }
+        val holeIds = BoardClimbParser.parseFrames(frames).map { it.placementId }
+        boardRepository.getLayoutForHoles(holeIds)?.let { return it }
         return boardRepository.getDefaultLayoutForBrand("kilter")?.toLong()
             ?: BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
+    }
+
+    /**
+     * A Kilter `climbConcat` in the placement-id form every other climbs row
+     * and every renderer uses.
+     *
+     * `climbConcat` names HOLES ("h1174p12"); the catalogue names PLACEMENTS
+     * ("p1174r12"). The two id spaces overlap numerically — 80 of 85 sampled
+     * hole ids also exist as placement ids — so storing the string verbatim
+     * did not fail loudly, it silently drew a different hold. Verified on the
+     * published catalogue: for every sampled climb the API's hole ids are
+     * exactly the hole_ids of the catalogue frames' placements, and the
+     * rewrite below reproduces those frames hold for hold and role for role.
+     *
+     * [BoardClimbParser.parseFrames] reports the leading number as
+     * `placementId` for both formats, so for a climbConcat that field is the
+     * hole id. An incomplete mapping returns the input untouched rather than
+     * a half-rewritten frame that would render part of the climb in the wrong
+     * place.
+     */
+    private fun toPlacementFrames(frames: String, layoutId: Long): String {
+        if (frames.isBlank() || !BoardClimbParser.isClimbConcat(frames)) return frames
+        val holds = BoardClimbParser.parseFrames(frames)
+        if (holds.isEmpty()) return frames
+        val converted = holds.map { hold ->
+            val placementId = boardRepository
+                .getPlacementForHoleInLayout(hold.placementId, layoutId) ?: return frames
+            BoardHold(placementId.toInt(), hold.roleId)
+        }
+        return BoardClimbParser.encodeFrames(converted)
     }
 
     /**
@@ -236,7 +278,7 @@ internal class KilterClimbBackfiller(
             layoutId = layoutId,
             setter = climb.username.ifBlank { null },
             name = climb.name,
-            frames = frames,
+            frames = toPlacementFrames(frames, layoutId),
             framesCount = climb.frameCount.toLong().coerceAtLeast(1L),
             isListed = if (climb.isListed) 1L else 0L,
             edgeLeft = climb.edgeLeft?.toLong(),

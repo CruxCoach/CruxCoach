@@ -53,6 +53,12 @@ class KilterSyncEngineBackfillTest {
     /** Uuids the board DB "already has" (seeded + just-upserted). */
     private val knownUuids = mutableSetOf<String>()
 
+    /** hole id → placement id inside layout 1, as the board geometry has it. */
+    private val holePlacements = mapOf(
+        1 to 501L, 2 to 502L, 3 to 503L,
+        7 to 507L, 8 to 508L, 9 to 509L,
+    )
+
     @Before
     fun setUp() {
         apiClient = mockk(relaxed = true)
@@ -116,6 +122,22 @@ class KilterSyncEngineBackfillTest {
 
         every { boardRepo.setClimbKilterAuthorUuid(any(), any()) } answers {
             authorMarks[arg<String>(0)] = arg<String>(1)
+        }
+
+        // A real Kilter board, because the backfill now asks one. Size 10
+        // ("12 x 12 with kickboard") belongs to layout 1, Original — the
+        // mapping the published catalogue carries for every size this
+        // account's logbook sends. The holes the fixtures use carry these
+        // placements inside that layout, and they are deliberately DIFFERENT
+        // numbers: a climbConcat names holes, the catalogue names placements,
+        // and the two id spaces overlap enough that equal numbers would hide
+        // a missing conversion.
+        every { boardRepo.getLayoutForProductSize(any(), any()) } answers {
+            if (firstArg<Int>() == 10) 1L else null
+        }
+        every { boardRepo.getLayoutForHoles(any(), any()) } returns null
+        every { boardRepo.getPlacementForHoleInLayout(any(), any(), any()) } answers {
+            if (secondArg<Long>() == 1L) holePlacements[firstArg<Int>()] else null
         }
 
         // insertLogs denormalizes via the angle-agnostic, chunked lookup.
@@ -211,8 +233,10 @@ class KilterSyncEngineBackfillTest {
         val upserted = upsertedClimbs.firstOrNull { it.uuid == newWorldUuid }
         assertNotNull(upserted, "expected the missing climb to be upserted")
         assertEquals("Tallakrennesvingen", upserted.name)
-        assertEquals("h1p12h2p13h3p14", upserted.frames)
-        assertEquals(10L, upserted.layoutId)
+        // "10" is the product SIZE the log carries; the climb is on layout 1.
+        assertEquals(1L, upserted.layoutId)
+        // climbConcat holes 1/2/3 rewritten to their placements in that layout.
+        assertEquals("p501r12p502r13p503r14", upserted.frames)
         assertTrue(upsertedStats.any { it.first == newWorldUuid && it.second == 25L })
         // The logged backfill records the climb AUTHOR's Kilter userUuid so
         // the publish gate can later check authorship by identity.
@@ -221,7 +245,7 @@ class KilterSyncEngineBackfillTest {
         val ascent = ascents.single()
         assertEquals(newWorldUuid, ascent.climbUuid)
         assertEquals("Tallakrennesvingen", ascent.climbName)
-        assertEquals("h1p12h2p13h3p14", ascent.climbFrames)
+        assertEquals("p501r12p502r13p503r14", ascent.climbFrames)
     }
 
     @Test
@@ -306,8 +330,8 @@ class KilterSyncEngineBackfillTest {
         val upserted = upsertedClimbs.firstOrNull { it.uuid == authoredUuid }
         assertNotNull(upserted, "expected the missing authored climb to be upserted")
         assertEquals("My Own Setter Line", upserted.name)
-        assertEquals("h7p12h8p13h9p14", upserted.frames)
-        assertEquals(10L, upserted.layoutId)
+        assertEquals(1L, upserted.layoutId)
+        assertEquals("p507r12p508r13p509r14", upserted.frames)
         // No stats on this endpoint → a bare stat row at the setter angle so
         // the (uuid, angle) detail lookup resolves.
         assertTrue(upsertedStats.any { it.first == authoredUuid && it.second == 40L })

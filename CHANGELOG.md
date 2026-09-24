@@ -80,13 +80,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the hold renderer resolve a climb the same way. Each carried its own list of
   uuid variants covering a different subset, so the same climb could open on
   the detail screen and show as eight characters in the queue.
-- Climbs fetched back from a connected Kilter account show their own board.
-  A logbook entry's board field names a product size, not a layout, and it was
-  stored as one: size "12 x 12 with kickboard" became a layout that does not
-  exist and size "8 x 12" became Homewall, so the climb was drawn on whichever
-  board the user had configured, with the holds in the wrong places. The layout
-  now comes from the climb's own holds, which works before any catalogue
-  download.
+- Climbs fetched back from a connected Kilter account show their own board,
+  their real holds and their grade. Three things were wrong at once: the
+  logbook entry's board field names a product size and was stored as a layout
+  (size "12 x 12 with kickboard" became a layout that does not exist, size
+  "8 x 12" became Homewall), the hold list names holes and was stored as the
+  placement ids everything else uses — which drew a different hold rather than
+  failing — and the grade was looked up at the angle the climb was set at
+  instead of the angle it was climbed at, leaving a third of the entries
+  ungraded.
 - Connecting a Kilter account no longer hides the "Load catalogue" banner.
   Those climbs are the user's own, not a catalogue, but they were counted as
   one — leaving the browser showing a handful of climbs and no way to start the
