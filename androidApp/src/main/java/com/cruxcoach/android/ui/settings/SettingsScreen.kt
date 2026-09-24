@@ -360,11 +360,14 @@ fun SettingsScreen(
                 }
             }
             SettingsPage.SUPPORT -> {
+                // Also runs on return from a thread, which may have cleared a badge.
+                LaunchedEffect(Unit) { viewModel.refreshUnreadMessages() }
                 SettingsSectionCard {
                     DevContactSection(
-                        unreadChat = 0,
-                        unreadBugs = 0,
-                        unreadFeatures = 0,
+                        unreadChat = state.unreadChat,
+                        unreadBugs = state.unreadBugs,
+                        unreadFeatures = state.unreadFeatures,
+                        unreadCrashes = state.unreadCrashes,
                         unreadAnnouncements = state.unreadAnnouncements,
                         crashReportOptIn = state.crashReportOptIn,
                         announcementsEnabled = state.announcementsEnabled,
