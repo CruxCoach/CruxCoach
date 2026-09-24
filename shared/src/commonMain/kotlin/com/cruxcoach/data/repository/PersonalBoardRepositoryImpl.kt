@@ -1154,6 +1154,9 @@ class PersonalBoardRepositoryImpl(
             // cache. Keeping them after a full wipe silently recreated rows
             // at the next import and reported them as already present.
             database.moonImportStagingQueries.deleteAllMoonImportStaging()
+            // Same for an Aurora import waiting for the Kilter catalogue.
+            // Staged own climbs stay: they are climbs, not logbook entries.
+            database.pendingImportsQueries.deletePendingImportsBySource(com.cruxcoach.data.PendingImportSource.AURORA)
             database.boardSessionsQueries.deleteAllBoardSessions()
             database.climbListsQueries.deleteAllPlaybackSteps()
             database.climbListsQueries.deleteAllClimbListEntries()
@@ -1180,6 +1183,9 @@ class PersonalBoardRepositoryImpl(
                 // The staging table contains Moon data exclusively and has no
                 // separate brand column. A Moon-scoped wipe clears it whole.
                 database.moonImportStagingQueries.deleteAllMoonImportStaging()
+            }
+            if ("kilter" in brands) {
+                database.pendingImportsQueries.deletePendingImportsBySource(com.cruxcoach.data.PendingImportSource.AURORA)
             }
             // Sessions stay: brand-less aggregates, see BoardSessions.sq.
             // Each uuid binds one SQLite host parameter — chunk well below

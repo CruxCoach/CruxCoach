@@ -2304,6 +2304,9 @@ class BoardSyncManager(
         _state.update { it.copy(errorMessage = null) }
     }
 
+    /** Re-links logbook entries to the board DB after staged imports were applied ([PendingImports]). */
+    suspend fun refreshLogbookLinks() = withContext(Dispatchers.IO) { refreshDenormalizedData() }
+
     /**
      * After a board sync updates climb names/difficulties in BoardDB,
      * refresh the denormalized fields (climb_name, difficulty_average, etc.)
@@ -2322,7 +2325,13 @@ class BoardSyncManager(
             keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
                 personalBoardRepo.runInTransaction {
                     for ((climbUuid, angle) in batch) {
-                        val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
+                        val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt())
+                            // A Kilter log imported before its catalogue keeps the API
+                            // spelling; the curated row may be nodash-UPPERCASE (same
+                            // two spellings KilterSyncEngine.insertLogs resolves).
+                            ?: climbUuid.replace("-", "").uppercase().takeIf { it != climbUuid }
+                                ?.let { boardRepository.getClimbByUuid(it, angle.toInt()) }
+                            ?: continue
                         // Also back-fills board_brand + layout_id, self-healing
                         // legacy / restored rows that defaulted to kilter/NULL.
                         personalBoardRepo.updateAscentDenormalized(

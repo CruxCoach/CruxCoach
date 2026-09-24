@@ -156,7 +156,7 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onTriggerRestore,
-                enabled = !state.isCheckingForBackup && !state.isRestoring && !state.boardImportInProgress,
+                enabled = !state.isCheckingForBackup && !state.isRestoring,
             ) {
                 if (state.isCheckingForBackup || state.isRestoring) {
                     CircularProgressIndicator(
@@ -178,13 +178,12 @@ internal fun BackupSettingsSection(
                     Text(stringResource(R.string.settings_backup_restore))
                 }
             }
-            // Restoring while the board catalogue is still importing raced the
-            // bulk-import for the SQLite writer lock and silently rolled the
-            // restore back. Block it until the import settles, with a reason.
-            if (state.boardImportInProgress) {
+            // The restore never waits for a catalogue download; say what
+            // follows once it is in.
+            if (state.catalogueLoading) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.settings_backup_restore_wait_import),
+                    text = stringResource(R.string.settings_backup_restore_catalogue_loading),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -247,7 +246,7 @@ internal fun DeleteRemoteBackupsDialog(
 @Composable
 internal fun BackupRestoreDialog(
     info: BackupInfo,
-    boardImportInProgress: Boolean,
+    catalogueLoading: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -262,17 +261,17 @@ internal fun BackupRestoreDialog(
                         formatSize(info.pointer.size),
                     ),
                 )
-                if (boardImportInProgress) {
+                if (catalogueLoading) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = stringResource(R.string.settings_backup_restore_wait_import),
+                        text = stringResource(R.string.settings_backup_restore_catalogue_loading),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm, enabled = !boardImportInProgress) {
+            Button(onClick = onConfirm) {
                 Text(stringResource(R.string.settings_backup_restore_confirm))
             }
         },

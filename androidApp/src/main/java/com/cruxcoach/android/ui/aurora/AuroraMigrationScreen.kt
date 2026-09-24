@@ -237,6 +237,43 @@ fun MigrationFlowContent(
         Spacer(Modifier.height(8.dp))
         ImportResultCard(result, onReset = onReset)
     }
+    state.staged?.let { staged ->
+        Spacer(Modifier.height(8.dp))
+        StagedCard(staged, onReset = onReset)
+    }
+}
+
+/** The export waits for the Kilter catalogue and is imported automatically. */
+@Composable
+private fun StagedCard(
+    staged: com.cruxcoach.android.aurora.AuroraFileSummary,
+    onReset: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = stringResource(R.string.aurora_migration_staged_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                text = stringResource(R.string.aurora_migration_staged_body, staged.ascents, staged.attempts),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.aurora_migration_import_another))
+            }
+        }
+    }
 }
 
 @Composable

@@ -95,15 +95,9 @@ data class OnboardingState(
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val restoreInProgress: Boolean = false,
-    /** True iff [restoreInProgress] AND board-sync is still finishing
-     *  the climbs-table import. The restore pipeline blocks on
-     *  board-sync to avoid a SQLITE_BUSY race against the bulk
-     *  importer; on a fresh install this typically takes 1–3
-     *  minutes (Blossom CDN download + decompression + bulk SQL
-     *  insert of ~190K climbs), during which the previous UI showed
-     *  no indication beyond a frozen confirm dialog. Drives a phase-
-     *  aware progress message in the dialog. */
-    val restoreAwaitingBoardSync: Boolean = false,
+    /** The restore finished while a catalogue was still loading: names,
+     *  grades and own climbs are linked once it is in ([com.cruxcoach.android.data.PendingImports]). */
+    val restoreLinksPending: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
     /** Counts from the completed restore — surfaced in the onboarding success
@@ -529,26 +523,11 @@ class OnboardingViewModel @Inject constructor(
 
     fun confirmOnboardingRestore() {
         val info = _state.value.pendingRestore ?: return
-        _state.update { it.copy(
-            restoreInProgress = true,
-            restoreAwaitingBoardSync = boardSyncManager.state.value.isSyncing,
-            restoreFailed = false,
-        ) }
-        // Surface the board-sync wait phase to the UI. The restore
-        // pipeline itself blocks on `boardSyncManager.state.first
-        // { !it.isSyncing }`; without this collector the user sees
-        // a frozen "Wiederherstellen…" dialog for the ~30 s of board
-        // sync on a fresh install. Cancellation is automatic when the
-        // restore launch above completes (collector lives inside the
-        // same viewModelScope job).
-        val boardSyncWatcher = viewModelScope.launch {
-            boardSyncManager.state.collect { sync ->
-                _state.update { it.copy(restoreAwaitingBoardSync = sync.isSyncing) }
-            }
-        }
+        _state.update { it.copy(restoreInProgress = true, restoreFailed = false) }
         viewModelScope.launch {
+            // Never waits for the catalogue download: the logbook is written
+            // now, own climbs follow once the board DB is free.
             val result = runCatching { backupRepository.restore(info) }
-            boardSyncWatcher.cancel()
             val restored = result.getOrNull()
             if (restored != null) {
                 backupPreferences.setBackupEnabled(true)
@@ -556,9 +535,10 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
-                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
+                        restoreLinksPending = restored.imported.pendingOwnClimbs > 0 ||
+                            boardSyncManager.state.value.isSyncing,
                         restoredAscents = restored.logbookEntriesInBackup,
                         restoredLists = restored.listsInBackup,
                         backupOptIn = true,
@@ -570,7 +550,6 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
-                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreFailed = true,
                     )

@@ -223,6 +223,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         json: String,
         expectedPubkey: String? = ownPubkey,
         adoptLocalDraftsFor: String? = null,
+        restoreOwnClimbsNow: Boolean = true,
     ): CruxCoachBackup.ImportResult =
         CruxCoachBackup.import(
             jsonString = json,
@@ -249,7 +250,47 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             transactionRunner = passThroughTxn,
             expectedNostrPubkey = expectedPubkey,
             adoptLocalDraftsForPubkey = adoptLocalDraftsFor,
+            restoreOwnClimbsNow = restoreOwnClimbsNow,
         )
+
+    // ── Deferred while a catalogue import holds the board DB (PendingImports) ──
+
+    @Test
+    fun `own climbs wait while the board DB is busy and restore unchanged from their payload`() {
+        val uuid = "11111111-2222-3333-4444-555555555561"
+        seedPublishedOwnClimb(uuid)
+        val before = rowFor(uuid)
+        val json = mockedExport(boardRepo)
+        driver.execute(null, "DELETE FROM climbs WHERE uuid = '$uuid'", 0)
+        driver.execute(null, "DELETE FROM climb_stats WHERE climb_uuid = '$uuid'", 0)
+
+        val result = mockedImport(boardRepo, json, restoreOwnClimbsNow = false)
+
+        assertEquals(0, result.ownClimbs, "nothing written to the board DB yet")
+        assertEquals(1, result.pendingOwnClimbs)
+        assertEquals(0L, climbCount(uuid))
+
+        val payload = CruxCoachBackup.ownClimbsPayload(json)!!
+        val restored = CruxCoachBackup.restoreOwnClimbs(payload, boardRepo)
+
+        assertEquals(1, restored.ownClimbs)
+        assertEquals(1, restored.ownClimbStats)
+        val after = rowFor(uuid)
+        assertEquals(before.name, after.name)
+        assertEquals(before.frames, after.frames)
+        assertEquals(before.nostr_event_id, after.nostr_event_id)
+        assertEquals(before.created_by_pubkey, after.created_by_pubkey)
+        // Applying the same staged payload again is a no-op.
+        assertEquals(0, CruxCoachBackup.restoreOwnClimbs(payload, boardRepo).ownClimbs)
+        assertEquals(1L, climbCount(uuid))
+    }
+
+    @Test
+    fun `a backup without own climbs stages nothing`() {
+        val json = mockedExport(boardRepo)
+
+        assertNull(CruxCoachBackup.ownClimbsPayload(json))
+    }
 
     // ── Round-trip: draft + published climb survive export → wipe → import ──
 

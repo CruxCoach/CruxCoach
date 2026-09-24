@@ -55,3 +55,6 @@ sealed class AuroraImportProgress {
     data class ImportingCircuits(val current: Int, val total: Int) : AuroraImportProgress()
     data object Done : AuroraImportProgress()
 }
+
+/** Ascents and attempts in an Aurora export that waits for the Kilter catalogue. */
+data class AuroraFileSummary(val ascents: Int, val attempts: Int)

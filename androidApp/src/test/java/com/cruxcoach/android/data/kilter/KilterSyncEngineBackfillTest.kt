@@ -152,7 +152,11 @@ class KilterSyncEngineBackfillTest {
             ascents.add(RecordedAscent(arg<String>(1), arg<String>(15), arg<String>(17)))
         }
 
-        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs, mockk(relaxed = true))
+        engine = KilterSyncEngine(
+            apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs, mockk(relaxed = true),
+            // Catalogue in place: the backfill runs as before (PendingImportsTest covers deferral).
+            dagger.Lazy { mockk<com.cruxcoach.android.data.PendingImports>(relaxed = true) },
+        )
     }
 
     private fun loggedClimb(uuid: String) = KilterLoggedClimb(

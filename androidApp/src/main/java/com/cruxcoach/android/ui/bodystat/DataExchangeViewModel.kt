@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,11 +73,9 @@ data class DataExchangeState(
     val importCategories: Set<Category> = emptySet(),
     val pendingImportJson: String? = null,
     val isImporting: Boolean = false,
-    /** Board catalogue writes and backup imports share the board DB writer.
-     *  Keep the reason for a disabled/waiting import visible instead of
-     *  presenting an unexplained spinner while the initial sync completes. */
-    val boardImportInProgress: Boolean = false,
-    val waitingForBoardSync: Boolean = false,
+    /** A catalogue is still loading: the import runs anyway, the screen
+     *  says what gets linked once the catalogue is in. */
+    val catalogueLoading: Boolean = false,
     /** Set when the preview detected that the backup's `nostrPubkey`
      *  envelope field doesn't match the active signer. Drives a one-shot
      *  warning dialog in the UI; the user picks "import anyway" or
@@ -125,12 +122,10 @@ class DataExchangeViewModel @Inject constructor(
      *  and importing their own backup raised a bogus pubkey-mismatch (it
      *  also side-effect-created a fresh local key). */
     private val nostrSigner: NostrSigner,
-    /** Same gate as in [com.cruxcoach.android.nostr.backup.BackupRepository.restore]:
-     *  suspends a manual JSON-import until any in-flight board-sync has
-     *  released the SQLite writer-lock on the unencrypted board DB,
-     *  preventing SQLITE_BUSY when a user imports own-climbs from a
-     *  file mid-onboarding. */
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
+    /** Own climbs need the board DB, which a catalogue import holds: they are
+     *  written now or staged, the logbook itself never waits. */
+    private val pendingImports: com.cruxcoach.android.data.PendingImports,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -140,9 +135,7 @@ class DataExchangeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             boardSyncManager.state.collect { sync ->
-                _state.update {
-                    it.copy(boardImportInProgress = sync.isSyncing || !sync.alreadyImported)
-                }
+                _state.update { it.copy(catalogueLoading = sync.isSyncing) }
             }
         }
     }
@@ -352,10 +345,6 @@ class DataExchangeViewModel @Inject constructor(
         val s = _state.value
         val jsonString = s.pendingImportJson ?: return
         val categories = s.importCategories.withBundledClimbNotes()
-        // UI disables the action while catalogue setup is active. Keep the
-        // same invariant in the ViewModel so accessibility/rapid taps cannot
-        // start a known-blocked operation behind the disabled surface.
-        if (s.boardImportInProgress) return
         if (categories.isEmpty()) {
             _state.update { it.copy(error = context.getString(R.string.error_select_category)) }
             return
@@ -382,15 +371,6 @@ class DataExchangeViewModel @Inject constructor(
                 } else {
                     currentPubkey
                 }
-                // Wait out any in-flight board-sync before writing — see
-                // BackupRepository.restore for the same pattern + rationale.
-                if (boardSyncManager.state.value.isSyncing) {
-                    _state.update { it.copy(waitingForBoardSync = true) }
-                    Log.i(TAG, "import: awaiting board-sync to finish before write")
-                    boardSyncManager.state.first { !it.isSyncing }
-                    Log.i(TAG, "import: board-sync done, proceeding")
-                    _state.update { it.copy(waitingForBoardSync = false) }
-                }
                 val result = withContext(Dispatchers.IO) {
                     CruxCoachBackup.import(
                         jsonString = jsonString,
@@ -405,8 +385,18 @@ class DataExchangeViewModel @Inject constructor(
                         transactionRunner = transactionRunner,
                         expectedNostrPubkey = expectedPubkey,
                         adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
+                        restoreOwnClimbsNow = false,
                     )
                 }
+                // The logbook is in; own climbs follow now or after the catalogue import.
+                val own = if (Category.OWN_CLIMBS in categories) {
+                    withContext(Dispatchers.IO) {
+                        pendingImports.restoreOrStageOwnClimbs(
+                            jsonString,
+                            adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
+                        )
+                    }
+                } else com.cruxcoach.android.data.PendingImports.OwnClimbsOutcome()
 
                 val parts = mutableListOf<String>()
                 if (result.profileImported) parts.add(context.getString(R.string.import_result_profile))
@@ -419,29 +409,30 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.boardBids > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_board_bids, result.boardBids.toInt(), result.boardBids))
                 if (result.boardSessions > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_board_sessions, result.boardSessions.toInt(), result.boardSessions))
                 if (result.climbLists > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_lists, result.climbLists.toInt(), result.climbLists))
-                if (result.ownClimbs > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_own_climbs, result.ownClimbs.toInt(), result.ownClimbs))
+                if (own.restored > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_own_climbs, own.restored, own.restored))
                 if (result.climbNotes > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_notes, result.climbNotes.toInt(), result.climbNotes))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
-                val dupNote = if (result.skippedDuplicates > 0)
-                    " " + context.resources.getQuantityString(R.plurals.import_result_duplicates_skipped, result.skippedDuplicates, result.skippedDuplicates) else ""
+                val skipped = result.skippedDuplicates + own.skipped
+                val dupNote = if (skipped > 0)
+                    " " + context.resources.getQuantityString(R.plurals.import_result_duplicates_skipped, skipped, skipped) else ""
+                val pendingNote = if (own.staged > 0)
+                    ". " + context.resources.getQuantityString(R.plurals.import_result_own_climbs_pending, own.staged, own.staged) else ""
 
                 _state.update { it.copy(
                     isImporting = false,
-                    waitingForBoardSync = false,
                     importPreview = null,
                     pendingImportJson = null,
                     importCategories = emptySet(),
                     importMismatchAccepted = false,
                     importSourcePubkey = null,
-                    message = context.getString(R.string.import_result_summary, "$summary$dupNote")
+                    message = context.getString(R.string.import_result_summary, "$summary$dupNote$pendingNote")
                 ) }
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
                         isImporting = false,
-                        waitingForBoardSync = false,
-                        error = context.getString(R.string.error_import_failed, safeImportErrorReason(context, e)),
+                            error = context.getString(R.string.error_import_failed, safeImportErrorReason(context, e)),
                     )
                 }
             }

@@ -86,6 +86,8 @@ class KilterSyncEngine @Inject constructor(
     private val secureDb: SecureDatabase,
     private val userPreferences: UserPreferences,
     private val uploadDiagnostics: KilterUploadDiagnostics,
+    /** Defers the own-climb backfill while the Kilter catalogue loads. */
+    private val pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>,
 ) {
     private companion object {
         const val TAG = "KilterSyncEngine"
@@ -138,6 +140,30 @@ class KilterSyncEngine @Inject constructor(
     /** Backfills the user's own logged + authored Kilter climbs into the
      *  board DB (see [KilterClimbBackfiller] for the full contract). */
     private val climbBackfiller = KilterClimbBackfiller(apiClient, boardRepository)
+
+    /**
+     * Backfills the user's own logged and authored climbs, or — while the
+     * Kilter catalogue is still downloading — leaves that to [PendingImports]:
+     * before the catalogue every logged climb looks missing and was inserted
+     * as a placeholder, which also made the app think a catalogue existed.
+     * The logs themselves are stored now and linked once it is in.
+     */
+    private suspend fun backfillOwnClimbs(): Pair<Int, Int> {
+        val pending = pendingImports.get()
+        if (pending.waitingForKilterCatalogue()) {
+            pending.deferKilterBackfill()
+            Log.i(TAG, "Own-climb backfill deferred until the Kilter catalogue is in")
+            return 0 to 0
+        }
+        return climbBackfiller.backfillLoggedClimbs() to climbBackfiller.backfillAuthoredClimbs()
+    }
+
+    /** The backfill [backfillOwnClimbs] deferred, run by [PendingImports] once the catalogue is in. */
+    suspend fun runDeferredBackfill() {
+        if (!tokenStore.hasCredentials()) return
+        climbBackfiller.backfillLoggedClimbs()
+        climbBackfiller.backfillAuthoredClimbs()
+    }
 
     /** Imports the user's own Kilter circuits into local `climb_lists`
      *  (see [KilterCircuitImporter]). */
@@ -257,8 +283,7 @@ class KilterSyncEngine @Inject constructor(
                 val logs = logsResult.getOrNull() ?: return@launch
                 // Backfill board-DB rows for PowerSync-only climbs BEFORE
                 // denormalizing names/frames in insertLogs (best-effort).
-                climbBackfiller.backfillLoggedClimbs()
-                climbBackfiller.backfillAuthoredClimbs()
+                backfillOwnClimbs()
                 circuitImporter.importCircuits()
                 val imported = insertLogs(logs).totalNew
 
@@ -324,8 +349,7 @@ class KilterSyncEngine @Inject constructor(
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             // Their counts feed the import summary (previously silent).
-            val backfilledClimbs = climbBackfiller.backfillLoggedClimbs()
-            val ownClimbs = climbBackfiller.backfillAuthoredClimbs()
+            val (backfilledClimbs, ownClimbs) = backfillOwnClimbs()
             val circuits = circuitImporter.importCircuits()
             val counts = insertLogs(logs)
             val timestamp = DateTimeUtil.nowIso()
@@ -381,8 +405,7 @@ class KilterSyncEngine @Inject constructor(
 
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
-            climbBackfiller.backfillLoggedClimbs()
-            climbBackfiller.backfillAuthoredClimbs()
+            backfillOwnClimbs()
             circuitImporter.importCircuits()
             val downloaded = insertLogs(logs).totalNew
 

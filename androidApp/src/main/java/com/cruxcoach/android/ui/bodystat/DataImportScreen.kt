@@ -170,8 +170,7 @@ fun DataImportScreen(
                     onConfirm = { viewModel.confirmImport() },
                     onCancel = { viewModel.cancelImport() },
                     isImporting = state.isImporting,
-                    boardImportInProgress = state.boardImportInProgress,
-                    waitingForBoardSync = state.waitingForBoardSync,
+                    catalogueLoading = state.catalogueLoading,
                 )
             }
 
@@ -188,8 +187,7 @@ private fun ImportPreviewCard(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
     isImporting: Boolean,
-    boardImportInProgress: Boolean,
-    waitingForBoardSync: Boolean,
+    catalogueLoading: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -228,15 +226,9 @@ private fun ImportPreviewCard(
             }
 
 
-            if (boardImportInProgress || waitingForBoardSync) {
+            if (catalogueLoading) {
                 Text(
-                    text = stringResource(
-                        if (waitingForBoardSync) {
-                            R.string.import_waiting_for_board_data
-                        } else {
-                            R.string.import_board_data_not_ready
-                        },
-                    ),
+                    text = stringResource(R.string.import_catalogue_loading_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -256,7 +248,7 @@ private fun ImportPreviewCard(
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
-                    enabled = !isImporting && !boardImportInProgress && selectedCategories.isNotEmpty(),
+                    enabled = !isImporting && selectedCategories.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -266,15 +258,7 @@ private fun ImportPreviewCard(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            stringResource(
-                                if (waitingForBoardSync) {
-                                    R.string.import_waiting_for_board_data_short
-                                } else {
-                                    R.string.import_in_progress_short
-                                },
-                            ),
-                        )
+                        Text(stringResource(R.string.import_in_progress_short))
                     } else {
                         Text(stringResource(R.string.bodystat_import), fontWeight = FontWeight.Bold)
                     }

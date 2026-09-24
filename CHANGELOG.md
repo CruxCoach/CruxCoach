@@ -59,6 +59,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nearby sharing lets the receiver choose which of the sender's boards to take.
   A first-time receiver is asked once, on the first setup screen, with the
   sender's boards; the statistics import finishes in minutes instead of hours.
+- Logbook imports and restores never wait for a board catalogue download. The
+  logbook is in at once; own climbs, an Aurora export and the Kilter backfill of
+  your own climbs wait in the background and are linked automatically once the
+  catalogue is in, as MoonBoard imports already were.
 - Name search waits for a pause in typing instead of running on every letter.
 - About lists the open-source licenses, including vendored code and data, and
   links the privacy notice and the source code.
@@ -163,6 +167,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   translated, a list of unavailable climbs no longer claims to be empty, and
   "Add to list" keeps the new-list field reachable and closes the keyboard.
 - Each crash report is listed once, with the developer's replies in its thread.
+- An Aurora export imported before the Kilter catalogue no longer loses the entries
+  it could not match yet, and the file import no longer stays disabled forever
+  when no board catalogue is chosen.
 - Back closes the open main menu instead of leaving the app. Notifications are
   requested once per install and Bluetooth once after granting nearby devices.
 - Leaving the first setup step keeps the suggested board, and the board label is

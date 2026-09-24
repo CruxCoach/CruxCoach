@@ -434,7 +434,7 @@ internal fun SettingsScreen(
     backupState.pendingRestore?.let { info ->
         BackupRestoreDialog(
             info = info,
-            boardImportInProgress = backupState.boardImportInProgress,
+            catalogueLoading = backupState.catalogueLoading,
             onConfirm = { backupViewModel.confirmRestore() },
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
@@ -462,7 +462,7 @@ internal fun SettingsScreen(
                     R.string.settings_backup_restored,
                     snackbar.logbookEntries,
                     snackbar.lists,
-                )
+                ) + if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else ""
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->

@@ -931,7 +931,11 @@ object CruxCoachBackup {
          *  the climb uuid, so re-running an import is a no-op rather than a
          *  duplicate. */
         val climbNotes: Int = 0,
-        val skippedDuplicates: Int = 0
+        val skippedDuplicates: Int = 0,
+        /** Own climbs NOT written yet because the board DB was busy with a
+         *  catalogue import: the caller stages them ([ownClimbsPayload]) and
+         *  applies them later with [restoreOwnClimbs]. */
+        val pendingOwnClimbs: Int = 0,
     )
 
     fun import(
@@ -969,6 +973,10 @@ object CruxCoachBackup {
          *  promises to move the data into it. Published (`source='nostr'`) climbs keep their
          *  signed author and are never re-assigned. */
         adoptLocalDraftsForPubkey: String? = null,
+        /** False while a catalogue import holds the board DB: the logbook
+         *  (secure DB) is written now, own climbs are only counted in
+         *  [ImportResult.pendingOwnClimbs] for the caller to stage. */
+        restoreOwnClimbsNow: Boolean = true,
     ): ImportResult {
         require(adoptLocalDraftsForPubkey == null || HEX64_REGEX.matches(adoptLocalDraftsForPubkey)) {
             "invalid import: adoptLocalDraftsForPubkey"
@@ -1335,98 +1343,143 @@ object CruxCoachBackup {
             result.copy(skippedDuplicates = skipped)
         }
 
-        // 11. Own climbs + per-angle stats (FEAT-008 §4 Phase B).
-        //
-        // Runs OUTSIDE the secure-DB transaction because the writes target
-        // the unencrypted board DB — `transactionRunner` only spans secure-
-        // DB queries, and trying to wrap board writes inside it would
-        // either silently bypass transaction semantics (current behaviour
-        // would be cross-DB inconsistent) or require introducing a
-        // composite transaction abstraction (not in 0.1.4 scope).
-        //
-        // Failure semantics: each restoreOwnClimb is its own atomic SQL
-        // statement (INSERT OR IGNORE) and idempotent re-run is safe.
-        // A partial failure here therefore leaves the board DB in a
-        // mid-restore state, but a re-import completes the missing rows
-        // without duplicating the present ones. The secure-DB result is
-        // already committed and not at risk.
-        //
-        // Order: stats AFTER climbs so a stat row never references a
-        // not-yet-restored climb uuid (no FK enforces this, but it
-        // matches the editor's natural insert order and keeps any
-        // future browse-during-restore consistent).
+        // 11. Own climbs + per-angle stats — see [restoreOwnClimbRows].
+        if (Category.OWN_CLIMBS !in selectedCategories) return secureResult
+        if (!restoreOwnClimbsNow) {
+            return secureResult.copy(pendingOwnClimbs = backup.boardClimbs.size)
+        }
+        val own = restoreOwnClimbRows(backup, boardRepository, adoptLocalDraftsForPubkey)
+        return secureResult.copy(
+            ownClimbs = own.climbs,
+            ownClimbStats = own.stats,
+            skippedDuplicates = secureResult.skippedDuplicates + own.skipped,
+        )
+    }
+
+    /**
+     * The own-climb part of a backup alone, for staging while the board DB
+     * is busy ([ImportResult.pendingOwnClimbs]). Null when there is none.
+     */
+    fun ownClimbsPayload(jsonString: String): String? {
+        val backup = json.decodeFromString<Backup>(jsonString).validate()
+        if (backup.boardClimbs.isEmpty() && backup.boardClimbStats.isEmpty()) return null
+        return json.encodeToString(
+            Backup.serializer(),
+            Backup(
+                exportedAt = backup.exportedAt,
+                nostrPubkey = backup.nostrPubkey,
+                boardClimbs = backup.boardClimbs,
+                boardClimbStats = backup.boardClimbStats,
+            ),
+        )
+    }
+
+    /** Writes staged own climbs ([ownClimbsPayload]) once the board DB is free. */
+    fun restoreOwnClimbs(
+        payload: String,
+        boardRepository: BoardRepository,
+        adoptLocalDraftsForPubkey: String? = null,
+    ): ImportResult {
+        require(adoptLocalDraftsForPubkey == null || HEX64_REGEX.matches(adoptLocalDraftsForPubkey)) {
+            "invalid import: adoptLocalDraftsForPubkey"
+        }
+        val backup = json.decodeFromString<Backup>(payload).validate()
+        val own = restoreOwnClimbRows(backup, boardRepository, adoptLocalDraftsForPubkey)
+        return ImportResult(ownClimbs = own.climbs, ownClimbStats = own.stats, skippedDuplicates = own.skipped)
+    }
+
+    private data class OwnClimbRestore(val climbs: Int, val stats: Int, val skipped: Int)
+
+    // Own climbs + per-angle stats (FEAT-008 §4 Phase B).
+    //
+    // Runs OUTSIDE the secure-DB transaction because the writes target
+    // the unencrypted board DB — `transactionRunner` only spans secure-
+    // DB queries, and trying to wrap board writes inside it would
+    // either silently bypass transaction semantics (current behaviour
+    // would be cross-DB inconsistent) or require introducing a
+    // composite transaction abstraction (not in 0.1.4 scope).
+    //
+    // Failure semantics: each restoreOwnClimb is its own atomic SQL
+    // statement (INSERT OR IGNORE) and idempotent re-run is safe.
+    // A partial failure here therefore leaves the board DB in a
+    // mid-restore state, but a re-import completes the missing rows
+    // without duplicating the present ones. The secure-DB result is
+    // already committed and not at risk.
+    //
+    // Order: stats AFTER climbs so a stat row never references a
+    // not-yet-restored climb uuid (no FK enforces this, but it
+    // matches the editor's natural insert order and keeps any
+    // future browse-during-restore consistent).
+    private fun restoreOwnClimbRows(
+        backup: Backup,
+        boardRepository: BoardRepository,
+        adoptLocalDraftsForPubkey: String?,
+    ): OwnClimbRestore {
         var ownClimbsImported = 0
         var ownClimbStatsImported = 0
         var ownClimbsSkipped = 0
-        if (Category.OWN_CLIMBS in selectedCategories) {
-            // Existing rows are eligible for idempotent stat restore only when
-            // the repository already recognizes them as belonging to this
-            // backup identity (or as a legacy NULL-pubkey local draft). A UUID
-            // collision with an arbitrary catalogue/community row must neither
-            // fill its lifecycle metadata nor replace its statistics.
-            val restorableUuids = boardRepository
-                .getOwnClimbsForBackup(backup.nostrPubkey.orEmpty())
-                .mapTo(mutableSetOf()) { it.uuid.lowercase() }
-            for (climb in backup.boardClimbs) {
-                // uuid lowercase — same legacy-mixed-case defense as the
-                // ascents / bids / list-entries above. v3 backups from
-                // 0.1.4 should already be canonical, but a hand-edited
-                // backup or future cross-version case shouldn't bypass
-                // the canonical-lowercase invariant on climbs.uuid.
-                val row = OwnClimbBackupRow(
-                    uuid = climb.uuid.lowercase(), layoutId = climb.layoutId,
-                    setterUsername = climb.setterUsername, name = climb.name,
-                    frames = climb.frames,
-                    edgeLeft = climb.edgeLeft, edgeRight = climb.edgeRight,
-                    edgeBottom = climb.edgeBottom, edgeTop = climb.edgeTop,
-                    createdAt = climb.createdAt, description = climb.description,
-                    moveCount = climb.moveCount,
-                    isListed = climb.isListed,
-                    source = climb.source, syncStatus = climb.syncStatus,
-                    createdByPubkey = if (adoptLocalDraftsForPubkey != null && climb.source == "local") {
-                        adoptLocalDraftsForPubkey
-                    } else climb.createdByPubkey,
-                    framesHash = climb.framesHash,
-                    nostrEventId = climb.nostrEventId,
-                    nostrDTag = climb.nostrDTag,
-                    nostrPublishVia = climb.nostrPublishVia,
-                    kilterStatus = climb.kilterStatus,
-                    kilterSyncedAt = climb.kilterSyncedAt,
-                    kilterPublishVia = climb.kilterPublishVia,
-                    kilterError = climb.kilterError,
-                    boardBrand = climb.boardBrand,
-                    kilterAuthorUuid = climb.kilterAuthorUuid,
-                )
-                if (boardRepository.restoreOwnClimb(row)) {
-                    ownClimbsImported++
-                    restorableUuids += row.uuid
-                } else {
-                    ownClimbsSkipped++
-                }
-            }
-            for (stat in backup.boardClimbStats) {
-                if (stat.climbUuid.lowercase() !in restorableUuids) {
-                    ownClimbsSkipped++
-                    continue
-                }
-                boardRepository.restoreOwnClimbStat(
-                    OwnClimbStatBackupRow(
-                        climbUuid = stat.climbUuid.lowercase(), angle = stat.angle,
-                        displayDifficulty = stat.displayDifficulty,
-                        difficultyAverage = stat.difficultyAverage,
-                        qualityAverage = stat.qualityAverage,
-                        ascensionistCount = stat.ascensionistCount,
-                        benchmarkDifficulty = stat.benchmarkDifficulty,
-                    )
-                )
-                ownClimbStatsImported++
+        // Existing rows are eligible for idempotent stat restore only when
+        // the repository already recognizes them as belonging to this
+        // backup identity (or as a legacy NULL-pubkey local draft). A UUID
+        // collision with an arbitrary catalogue/community row must neither
+        // fill its lifecycle metadata nor replace its statistics.
+        val restorableUuids = boardRepository
+            .getOwnClimbsForBackup(backup.nostrPubkey.orEmpty())
+            .mapTo(mutableSetOf()) { it.uuid.lowercase() }
+        for (climb in backup.boardClimbs) {
+            // uuid lowercase — same legacy-mixed-case defense as the
+            // ascents / bids / list-entries above. v3 backups from
+            // 0.1.4 should already be canonical, but a hand-edited
+            // backup or future cross-version case shouldn't bypass
+            // the canonical-lowercase invariant on climbs.uuid.
+            val row = OwnClimbBackupRow(
+                uuid = climb.uuid.lowercase(), layoutId = climb.layoutId,
+                setterUsername = climb.setterUsername, name = climb.name,
+                frames = climb.frames,
+                edgeLeft = climb.edgeLeft, edgeRight = climb.edgeRight,
+                edgeBottom = climb.edgeBottom, edgeTop = climb.edgeTop,
+                createdAt = climb.createdAt, description = climb.description,
+                moveCount = climb.moveCount,
+                isListed = climb.isListed,
+                source = climb.source, syncStatus = climb.syncStatus,
+                createdByPubkey = if (adoptLocalDraftsForPubkey != null && climb.source == "local") {
+                    adoptLocalDraftsForPubkey
+                } else climb.createdByPubkey,
+                framesHash = climb.framesHash,
+                nostrEventId = climb.nostrEventId,
+                nostrDTag = climb.nostrDTag,
+                nostrPublishVia = climb.nostrPublishVia,
+                kilterStatus = climb.kilterStatus,
+                kilterSyncedAt = climb.kilterSyncedAt,
+                kilterPublishVia = climb.kilterPublishVia,
+                kilterError = climb.kilterError,
+                boardBrand = climb.boardBrand,
+                kilterAuthorUuid = climb.kilterAuthorUuid,
+            )
+            if (boardRepository.restoreOwnClimb(row)) {
+                ownClimbsImported++
+                restorableUuids += row.uuid
+            } else {
+                ownClimbsSkipped++
             }
         }
-
-        return secureResult.copy(
-            ownClimbs = ownClimbsImported,
-            ownClimbStats = ownClimbStatsImported,
-            skippedDuplicates = secureResult.skippedDuplicates + ownClimbsSkipped,
-        )
+        for (stat in backup.boardClimbStats) {
+            if (stat.climbUuid.lowercase() !in restorableUuids) {
+                ownClimbsSkipped++
+                continue
+            }
+            boardRepository.restoreOwnClimbStat(
+                OwnClimbStatBackupRow(
+                    climbUuid = stat.climbUuid.lowercase(), angle = stat.angle,
+                    displayDifficulty = stat.displayDifficulty,
+                    difficultyAverage = stat.difficultyAverage,
+                    qualityAverage = stat.qualityAverage,
+                    ascensionistCount = stat.ascensionistCount,
+                    benchmarkDifficulty = stat.benchmarkDifficulty,
+                )
+            )
+            ownClimbStatsImported++
+        }
+        return OwnClimbRestore(ownClimbsImported, ownClimbStatsImported, ownClimbsSkipped)
     }
 }

@@ -43,7 +43,10 @@ class KilterUploadStatusTest {
         coEvery { api.fetchOwnAuthoredClimbs() } returns Result.success(emptyList())
         coEvery { api.fetchCircuits() } returns Result.success(emptyList())
         coEvery { api.uploadLogs(any()) } returns Result.success(Unit)
-        engine = KilterSyncEngine(api, tokens, board, personal, db, prefs, mockk(relaxed = true))
+        engine = KilterSyncEngine(
+            api, tokens, board, personal, db, prefs, mockk(relaxed = true),
+            dagger.Lazy { mockk<com.cruxcoach.android.data.PendingImports>(relaxed = true) },
+        )
     }
 
     private fun ascent(i: Int) = RawAscent(

@@ -343,15 +343,7 @@ fun OnboardingScreen(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
                         )
-                        Text(
-                            stringResource(
-                                if (state.restoreAwaitingBoardSync) {
-                                    R.string.onboarding_restore_progress_awaiting_board_sync
-                                } else {
-                                    R.string.onboarding_restore_progress_active
-                                },
-                            ),
-                        )
+                        Text(stringResource(R.string.onboarding_restore_progress_active))
                     }
                 } else {
                     Text(
@@ -779,23 +771,32 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            state.restoreSucceeded -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
-                Text(
-                    // Same wording as the Settings restore snackbar so the user
-                    // can sanity-check the restored magnitudes here too.
-                    stringResource(
-                        R.string.settings_backup_restored,
-                        state.restoredAscents,
-                        state.restoredLists,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = SuccessGreen,
-                )
+            state.restoreSucceeded -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                    Text(
+                        // Same wording as the Settings restore snackbar so the user
+                        // can sanity-check the restored magnitudes here too.
+                        stringResource(
+                            R.string.settings_backup_restored,
+                            state.restoredAscents,
+                            state.restoredLists,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SuccessGreen,
+                    )
+                }
+                if (state.restoreLinksPending) {
+                    Text(
+                        stringResource(R.string.restore_links_pending),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             // Default path: always offer the key-import action, because
             // "Backup wiederherstellen" means "bring a key from another

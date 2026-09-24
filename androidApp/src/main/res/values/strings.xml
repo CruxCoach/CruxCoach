@@ -1800,6 +1800,11 @@
         <item quantity="other">%1$d own climbs</item>
     </plurals>
     <string name="import_result_no_data">No data</string>
+    <string name="import_catalogue_loading_hint">Board data is still loading. Your logbook is imported now; names, grades and your own climbs are linked once the catalogue is in.</string>
+    <plurals name="import_result_own_climbs_pending">
+        <item quantity="one">%1$d own climb follows once the board data has loaded.</item>
+        <item quantity="other">%1$d own climbs follow once the board data has loaded.</item>
+    </plurals>
     <string name="import_result_summary">Imported: %1$s</string>
     <plurals name="import_result_duplicates_skipped">
         <item quantity="one">(%1$d duplicate skipped)</item>
@@ -2138,10 +2143,7 @@
     <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
     <string name="settings_backup_restored">Backup processed: %1$d logbook entries, %2$d lists. Existing data was not duplicated.</string>
-    <string name="settings_backup_restore_wait_import">Boards are still loading — restore becomes available once that finishes.</string>
-    <string name="import_board_data_not_ready">Board data is still loading. Import becomes available once catalogue setup finishes.</string>
-    <string name="import_waiting_for_board_data">Import is waiting for the running catalogue setup. Your file stays selected and will be imported afterwards.</string>
-    <string name="import_waiting_for_board_data_short">Waiting for board data…</string>
+    <string name="settings_backup_restore_catalogue_loading">Boards are still loading. The restore runs anyway; names, grades and your own climbs are linked once they are in.</string>
     <string name="import_in_progress_short">Importing data…</string>
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
@@ -2213,7 +2215,7 @@
     <string name="onboarding_nostr_backup_title">Backup your data</string>
     <string name="onboarding_nostr_backup_body">Encrypted on your device, then stored online across several public servers. Only you can decrypt it. Default: off — you can enable it any time in Settings.</string>
     <string name="onboarding_restore_dialog_body">Backup found (%1$s). Data will be merged; existing entries are kept and not imported twice.</string>
-    <string name="onboarding_restore_progress_awaiting_board_sync">Waiting for the catalogue download… this may take a few minutes.</string>
+    <string name="restore_links_pending">Names, grades and your own climbs are linked once the board catalogue has loaded.</string>
     <string name="onboarding_restore_progress_active">Restoring your backup…</string>
 
     <!-- FEAT-002: onboarding backup choice (3-step onboarding) -->
@@ -2403,6 +2405,8 @@
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
     <string name="aurora_migration_import_another">Import another file</string>
+    <string name="aurora_migration_staged_title">Saved for later</string>
+    <string name="aurora_migration_staged_body">%1$d ascents and %2$d attempts are imported automatically once the Kilter catalogue has loaded.</string>
     <string name="aurora_migration_file_too_large">File is too large for direct import (%1$d MB). Aurora exports are typically a few MB; if your export is much larger, contact support.</string>
 
     <!-- Board climb history / Verlauf (FEAT-032) -->
