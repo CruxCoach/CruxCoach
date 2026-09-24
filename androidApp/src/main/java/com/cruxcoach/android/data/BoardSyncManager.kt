@@ -8,6 +8,7 @@ import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
@@ -2325,12 +2326,15 @@ class BoardSyncManager(
             keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
                 personalBoardRepo.runInTransaction {
                     for ((climbUuid, angle) in batch) {
-                        val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt())
-                            // A Kilter log imported before its catalogue keeps the API
-                            // spelling; the curated row may be nodash-UPPERCASE (same
-                            // two spellings KilterSyncEngine.insertLogs resolves).
-                            ?: climbUuid.replace("-", "").uppercase().takeIf { it != climbUuid }
-                                ?.let { boardRepository.getClimbByUuid(it, angle.toInt()) }
+                        // A log keeps the spelling of whatever wrote it — the
+                        // Kilter API, an Aurora export, or a restore that
+                        // lowercased it — while the catalogue stores the climb
+                        // in one of three forms. Try the indexed spellings,
+                        // then fall back to the normalized scan so a row is
+                        // never missed for its hyphens or its case alone.
+                        val climb = ClimbUuid.spellings(climbUuid)
+                            .firstNotNullOfOrNull { boardRepository.getClimbByUuid(it, angle.toInt()) }
+                            ?: boardRepository.getClimbByUuidNormalized(climbUuid, angle.toInt())
                             ?: continue
                         // Also back-fills board_brand + layout_id, self-healing
                         // legacy / restored rows that defaulted to kilter/NULL.

@@ -2,6 +2,7 @@ package com.cruxcoach.data.repository
 
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.SupportedBoard
 
@@ -377,13 +378,12 @@ class BoardRepositoryImpl(
     }
 
     override fun findClimbCanonicalUuid(uuid: String): String? {
-        // Indexed fast paths first: the uuid as given, then the legacy
-        // curated spelling (nodash-UPPERCASE) a dashed-lowercase API uuid
-        // maps to. Both are PK point-lookups.
-        q.getClimbUuidExact(uuid).executeAsOneOrNull()?.let { return it }
-        val legacySpelling = uuid.replace("-", "").uppercase()
-        if (legacySpelling != uuid) {
-            q.getClimbUuidExact(legacySpelling).executeAsOneOrNull()?.let { return it }
+        // Indexed fast paths first — every spelling the catalogue is known
+        // to store ([ClimbUuid.spellings]), each a PK point-lookup. The
+        // legacy pair (uuid as given + nodash-UPPERCASE) left the
+        // nodash-lowercase and dashed-lowercase rows to the scan below.
+        for (spelling in ClimbUuid.spellings(uuid)) {
+            q.getClimbUuidExact(spelling).executeAsOneOrNull()?.let { return it }
         }
         // Last resort: format-blind normalized scan (covers any residual
         // case/hyphenation mix).

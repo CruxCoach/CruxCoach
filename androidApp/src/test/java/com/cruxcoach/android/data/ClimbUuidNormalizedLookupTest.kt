@@ -6,6 +6,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.data.repository.BoardRepositoryImpl
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -13,6 +14,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Integration test for getClimbByUuidNormalized (Point 1 of the
@@ -46,9 +48,12 @@ class ClimbUuidNormalizedLookupTest {
 
     private val brand = "kilter"
 
-    // Same climb, two storage formats.
+    // Same climb, the three formats the published catalogue actually holds
+    // (2026-09-20: 131 058 nodash-UPPERCASE, 68 950 nodash-lowercase,
+    // 40 828 dashed-lowercase).
     private val dashedLower = "a30d8042-aeea-42ce-8015-239016c87769"
     private val nodashUpper = "A30D8042AEEA42CE8015239016C87769"
+    private val nodashLower = "a30d8042aeea42ce8015239016c87769"
 
     @BeforeTest
     fun setUp() {
@@ -145,5 +150,85 @@ class ClimbUuidNormalizedLookupTest {
     fun canonicalUuid_unknownUuid_returnsNull() {
         insertClimb(dashedLower)
         assertNull(repo.findClimbCanonicalUuid("ffffffff-0000-0000-0000-000000000000"))
+    }
+
+    // ── Die dritte Schreibweise: nodash-lowercase ────────────────────────
+    //
+    // Sie fehlte im alten Kandidatenpaar {uuid, nodash-UPPERCASE} vollstaendig.
+    // Gemessen am veroeffentlichten Katalog sind das 68 950 Climbs.
+
+    @Test
+    fun canonicalUuid_dashedLowercaseQuery_resolvesNodashLowercaseRow() {
+        insertClimb(nodashLower)
+        assertEquals(nodashLower, repo.findClimbCanonicalUuid(dashedLower))
+    }
+
+    @Test
+    fun canonicalUuid_nodashUppercaseQuery_resolvesNodashLowercaseRow() {
+        insertClimb(nodashLower)
+        assertEquals(nodashLower, repo.findClimbCanonicalUuid(nodashUpper))
+    }
+
+    @Test
+    fun normalizedLookup_resolvesNodashLowercaseRow_fromEverySpelling() {
+        insertClimb(nodashLower)
+        for (query in listOf(dashedLower, nodashUpper, dashedLower.uppercase())) {
+            assertEquals(nodashLower, repo.getClimbByUuidNormalized(query, 25)?.uuid,
+                "normalisierter Lookup verfehlt $query")
+        }
+    }
+
+    // ── Bulk-Pfad (KilterSyncEngine.insertLogs / communityOnlyClimbKeys) ──
+    //
+    // Der Bulk-Lookup hat KEINEN normalisierten Fallback: er sieht nur, was
+    // die Kandidatenliste hergibt. Deshalb ist hier die Regression, nicht in
+    // findClimbCanonicalUuid.
+
+    /** Die alte Kandidatenliste: uuid wie geliefert + nodash-UPPERCASE. */
+    private fun legacyCandidates(uuid: String): List<String> =
+        listOf(uuid, uuid.replace("-", "").uppercase()).distinct()
+
+    @Test
+    fun bulkLookup_legacyCandidates_missNodashLowercaseRow() {
+        insertClimb(nodashLower)
+        // Genau der Zustand vor dem Fix: der Ascent behielt einen leeren Namen.
+        assertTrue(repo.getClimbsByUuidsAnyAngle(legacyCandidates(dashedLower)).isEmpty())
+        assertTrue(repo.getClimbsByUuidsAnyAngle(legacyCandidates(nodashUpper)).isEmpty())
+    }
+
+    @Test
+    fun bulkLookup_spellingCandidates_findNodashLowercaseRow() {
+        insertClimb(nodashLower)
+        for (query in listOf(dashedLower, nodashUpper, nodashLower)) {
+            val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query))
+            assertEquals(nodashLower, rows.singleOrNull()?.uuid, "Bulk-Lookup verfehlt $query")
+        }
+    }
+
+    @Test
+    fun bulkLookup_legacyCandidates_missDashedLowercaseRow_fromNodashQuery() {
+        insertClimb(dashedLower)
+        // Der Fall nach einem Backup-Restore: der Import kleinschreibt die
+        // climbUuid, aus nodash-UPPERCASE wird nodash-lowercase, und die
+        // dashed-lowercase Katalogzeile ist damit unerreichbar.
+        assertTrue(repo.getClimbsByUuidsAnyAngle(legacyCandidates(nodashLower)).isEmpty())
+    }
+
+    @Test
+    fun bulkLookup_spellingCandidates_findDashedLowercaseRow_fromNodashQuery() {
+        insertClimb(dashedLower)
+        val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(nodashLower))
+        assertEquals(dashedLower, rows.singleOrNull()?.uuid)
+    }
+
+    @Test
+    fun bulkLookup_spellingCandidates_stillFindNodashUppercaseRow() {
+        // Die 131 058 Climbs, die vorher schon funktioniert haben, duerfen
+        // nicht verlieren.
+        insertClimb(nodashUpper)
+        for (query in listOf(dashedLower, nodashUpper, nodashLower)) {
+            val rows = repo.getClimbsByUuidsAnyAngle(ClimbUuid.spellings(query))
+            assertEquals(nodashUpper, rows.singleOrNull()?.uuid, "Regression fuer $query")
+        }
     }
 }

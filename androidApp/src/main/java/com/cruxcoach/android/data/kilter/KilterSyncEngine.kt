@@ -5,6 +5,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -107,12 +108,10 @@ class KilterSyncEngine @Inject constructor(
         const val UPLOAD_CHUNK = 200
 
         /**
-         * Normalize a climb uuid to a spelling-agnostic key. The board DB
-         * mixes forms — curated rows are nodash-UPPERCASE, API rows are
-         * dashed-lowercase — so denormalization must compare on this key,
-         * not the raw uuid (mirrors [BoardRepository.findClimbCanonicalUuid]).
+         * Normalize a climb uuid to a spelling-agnostic key — see [ClimbUuid],
+         * which owns the three spellings the catalogue actually stores.
          */
-        fun normUuidKey(uuid: String): String = uuid.replace("-", "").lowercase()
+        fun normUuidKey(uuid: String): String = ClimbUuid.normKey(uuid)
 
         /**
          * Ensure a timestamp ends with "Z" (UTC) for the Kilter API.
@@ -457,9 +456,12 @@ class KilterSyncEngine @Inject constructor(
         if (newLogs.isEmpty()) return LogInsertCounts(0, 0, duplicates)
 
         // Pre-fetch denormalized climb data from BoardDB, keyed by a
-        // spelling-agnostic key. Query BOTH the API spelling and the legacy
-        // curated spelling (nodash-UPPERCASE) so a curated climb resolves,
-        // and chunk the IN() list so a large logbook can't blow SQLite's
+        // spelling-agnostic key. Query EVERY spelling the catalogue stores
+        // ([ClimbUuid.spellings]) — querying only the uuid as given plus the
+        // legacy nodash-UPPERCASE form left the 68 950 nodash-lowercase and
+        // 40 828 dashed-lowercase catalogue rows unreachable from a log that
+        // spelled them differently, and those ascents kept an empty name.
+        // Chunk the IN() list so a large logbook can't blow SQLite's
         // bound-variable limit. One angle-agnostic query per chunk (the
         // denormalized name/grade is angle-independent for display).
         val climbCache = mutableMapOf<String, Pair<String, Double?>>() // normKey -> (name, diffAvg)
@@ -467,7 +469,7 @@ class KilterSyncEngine @Inject constructor(
         val lookupUuids = newLogs.asSequence()
             .map { it.climbUuid }
             .distinct()
-            .flatMap { sequenceOf(it, it.replace("-", "").uppercase()) }
+            .flatMap { ClimbUuid.spellings(it).asSequence() }
             .distinct()
             .toList()
         for (chunk in lookupUuids.chunked(CLIMB_LOOKUP_CHUNK)) {
@@ -533,14 +535,15 @@ class KilterSyncEngine @Inject constructor(
 
     /**
      * Spelling-agnostic keys of the CruxCoach community climbs among
-     * [climbUuids] that Kilter never accepted. Looks up both uuid spellings in
-     * chunks, like [insertLogs].
+     * [climbUuids] that Kilter never accepted. Looks up every stored spelling
+     * in chunks, like [insertLogs]: a community climb missed here is uploaded
+     * to Kilter, which rejects the whole batch.
      */
     private fun communityOnlyClimbKeys(climbUuids: List<String>): Set<String> {
         if (climbUuids.isEmpty()) return emptySet()
         val lookup = climbUuids.asSequence()
             .distinct()
-            .flatMap { sequenceOf(it, it.replace("-", "").uppercase()) }
+            .flatMap { ClimbUuid.spellings(it).asSequence() }
             .distinct()
             .toList()
         return lookup.chunked(CLIMB_LOOKUP_CHUNK)

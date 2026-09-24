@@ -71,6 +71,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   group under one that opens Bugs & feature requests.
 
 ### Fixed
+- Logbook entries find their climb whatever spelling the catalogue stores it
+  under. The published Kilter catalogue holds three at once — nodash-UPPERCASE,
+  nodash-lowercase and dashed-lowercase — and a logbook carries whichever its
+  source produced, so name, grade and frames stayed empty for entries whose
+  spelling differed from the stored row.
 - Board catalogue imports preserve the indexes used by existing boards, repair
   missing indexes, and roll back interrupted index preparation. Temporary SQLite
   locks retry the local import with the already verified downloads.
