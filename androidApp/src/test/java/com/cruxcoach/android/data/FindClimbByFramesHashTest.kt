@@ -87,6 +87,14 @@ class FindClimbByFramesHashTest {
     }
 
     @Test
+    fun `an own draft is reported as a draft`() {
+        climb("mine", me)
+
+        // The editor calls a draft match a draft, not a published climb (M-096).
+        assertEquals("draft", repo.findClimbByFramesHash("same-holds", 1L, "kilter", ownPubkey = me)?.syncStatus)
+    }
+
+    @Test
     fun `a deleted climb is no duplicate`() {
         climb("gone", me)
         driver.execute(null, "UPDATE climbs SET sync_status = 'deleted' WHERE uuid = 'gone'", 0)

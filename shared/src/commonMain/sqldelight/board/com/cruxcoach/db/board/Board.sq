@@ -2451,7 +2451,7 @@ ORDER BY created_at DESC;
 -- climbs do not count; the author's own climb comes first so the editor can
 -- offer to update it.
 findClimbByFramesHash:
-SELECT uuid, name, source, created_by_pubkey FROM climbs
+SELECT uuid, name, source, sync_status, created_by_pubkey FROM climbs
 WHERE frames_hash = :framesHash AND layout_id = :layoutId AND board_brand = :boardBrand
   AND sync_status != 'deleted'
 ORDER BY (created_by_pubkey IS NOT NULL AND created_by_pubkey = :ownPubkey) DESC, rowid DESC
