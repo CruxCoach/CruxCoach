@@ -44,6 +44,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Supported boards synchronize optional beta media separately from their catalogues.
 - Blossom previews are checked against their SHA-256 hash before display and
   local caching, with mirror fallback and a stable placeholder when unavailable.
+- Community climbs work on every board, with or without its catalogue: the app
+  ships the hold geometry of Kilter, Tension, Grasshopper, Decoy, So iLL and
+  Touchstone, so their community climbs are drawn, fitted to your board size and
+  lit. The browser says when it shows only community climbs.
+- Republishing the holds of one of your own climbs offers to update that climb
+  instead of creating a second one.
+- The training-list generator plans from one grade range with a rising warm-up,
+  names goal and variant apart, lets hard bouldering reach your max and projects
+  start there, and never plans below the easiest grade a board has. Lists are
+  generated in about two seconds on low-end phones.
+- "Start" on a list with a training plan plays the plan with its tries and rests,
+  and resumes a list that is already running.
+- Nearby sharing lets the receiver choose which of the sender's boards to take.
+  A first-time receiver is asked once, on the first setup screen, with the
+  sender's boards; the statistics import finishes in minutes instead of hours.
+- Name search waits for a pause in typing instead of running on every letter.
+- About lists the open-source licenses, including vendored code and data, and
+  links the privacy notice and the source code.
+- Replies from the developer are easier to find: the support page shows unread
+  badges, reply notifications name their thread ("Developer · Bug report") and
+  group under one that opens Bugs & feature requests.
 
 ### Fixed
 - Board catalogue imports preserve the indexes used by existing boards, repair
@@ -127,6 +148,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   versions, and MoonBoard CSV errors are localised. The catalogue page formats
   the last sync time, and the training list generator no longer claims an empty
   logbook when a board merely has too few sends.
+- CruxRelay guests notice a vanished board or relay operator within seconds and
+  disconnect instead of staying attached to a dead link.
+- Logs of CruxCoach community climbs stay out of the Kilter upload, where Kilter
+  cannot match them and they could block the logs behind them.
+- A publish confirmation starts one publish, however often it is tapped, and the
+  duplicate check no longer fails when several climbs share the same holds.
+- Topping a climb continues an open attempt from earlier in the session or day
+  instead of logging a second entry; commented attempts stay their own entries,
+  and the player counts attempts toward the following send.
+- "Random" picks varied climbs instead of nearly always the same one.
+- Lists: a taken name says why it cannot be created, "new list" with an existing
+  name adds the climb instead of removing it, Favorites and Ignored are
+  translated, a list of unavailable climbs no longer claims to be empty, and
+  "Add to list" keeps the new-list field reachable and closes the keyboard.
+- Each crash report is listed once, with the developer's replies in its thread.
+- Back closes the open main menu instead of leaving the app. Notifications are
+  requested once per install and Bluetooth once after granting nearby devices.
+- Leaving the first setup step keeps the suggested board, and the board label is
+  right after a cold start.
+- A session left over from a closed app is ended instead of revived.
+- Clearing the editor keeps the board and angle and can be undone.
+- Deleting board data starts with nothing selected, and a deleted board size
+  disappears from the picker.
+- Offline, a catalogue download no longer blames battery optimisation, a failed
+  update check says so, and the map shows its offline hint only before it ever
+  loaded.
+- The "still on the board" banner covers only climbs the board received and does
+  not survive restarts.
+- Donation and Lightning dialogs, feature requests and crash reports are named
+  consistently in English and German, and import previews use plural forms.
+- The notification-settings shortcut opens the app page while the whole app is
+  blocked.
+- The hold search shows its heading once, the setter list names its board, and
+  statistics labels no longer break mid-word.
 
 ## [0.2.2] - 2026-08-29
 

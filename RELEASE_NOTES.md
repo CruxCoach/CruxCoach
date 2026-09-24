@@ -33,6 +33,13 @@ This release brings beta videos, quicker board navigation, a searchable board ma
   open a venue to see every board installed there.
 - **Download only what you climb.** Choose which board catalogues to keep on your
   phone during setup or later in Settings → Board catalogs.
+- **Community climbs on every board.** CruxCoach community climbs show their holds,
+  fit your board size and light the wall even for boards whose catalogue you did
+  not download.
+- **Training lists play their plan.** Generated lists start with their tries and
+  rests; the generator plans from one grade range with a rising warm-up.
+- **Share boards nearby, your choice.** The receiver picks which of the sender's
+  boards to take, right on the first setup screen if needed.
 
 ## Other improvements
 - Board-aware quick logging and playlist generation, with candidate pools for each
@@ -41,6 +48,9 @@ This release brings beta videos, quicker board navigation, a searchable board ma
 - Extra space below playlists keeps the add button clear of the last card's actions.
 - Stronger validation and resource limits for local sharing, relay messages and
   downloaded app updates.
+- About lists the open-source licenses and links the privacy notice and source code.
+- Developer replies show unread badges and name their thread in notifications.
+- Logs of CruxCoach community climbs stay out of the Kilter upload.
 
 ## Android compatibility
 CruxCoach 0.2.3 requires **Android 9 or newer**. As announced in the previous release,
