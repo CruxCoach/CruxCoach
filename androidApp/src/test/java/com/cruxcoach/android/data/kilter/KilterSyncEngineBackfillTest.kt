@@ -315,6 +315,32 @@ class KilterSyncEngineBackfillTest {
         assertEquals("", ascents.single().climbName)
     }
 
+    @Test
+    fun backfilled_climb_is_stored_under_the_canonical_lowercase_uuid() = runTest {
+        // The API spells this one nodash-UPPERCASE, as it does for most of a
+        // real logbook. 7.sqm made LOWER(uuid) the canonical persisted form
+        // and the catalogue importer lowercases at its boundary, so writing
+        // the API spelling through left the only mixed-case rows in the board
+        // DB: the importer's exists-gate missed them and added a second row
+        // for the same climb, and the logbook lookup kept landing on the
+        // backfill one.
+        val upperUuid = "A30D8042AEEA42CE8015239016C87769"
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(upperUuid)))
+        coEvery { apiClient.fetchLoggedClimbs() } returns Result.success(
+            KilterLoggedClimbsResponse(
+                climbs = listOf(loggedClimb(upperUuid)),
+                climbStats = listOf(loggedStat(upperUuid)),
+            )
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        val stored = upsertedClimbs.single().uuid
+        assertEquals(upperUuid.lowercase(), stored)
+        assertTrue(upsertedStats.all { it.first == upperUuid.lowercase() })
+        assertEquals("author-uuid-alice", authorMarks[upperUuid.lowercase()])
+    }
+
     // ── Authored-climb backfill (/climbs/climbdetails/user) ──────────────
 
     @Test

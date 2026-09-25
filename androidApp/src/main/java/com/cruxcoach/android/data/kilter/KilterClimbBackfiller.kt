@@ -81,7 +81,7 @@ internal class KilterClimbBackfiller(
                     val stats = statsByClimb[climb.climbUuid].orEmpty()
                     for (stat in stats) {
                         boardRepository.upsertClimbStat(
-                            climbUuid = climb.climbUuid,
+                            climbUuid = climb.climbUuid.lowercase(),
                             angle = stat.angle.toLong(),
                             displayDifficulty = stat.difficultyAverage,
                             difficultyAverage = stat.difficultyAverage,
@@ -98,7 +98,7 @@ internal class KilterClimbBackfiller(
                     // nothing to resolve. NULL difficulty = "ungraded".
                     if (stats.none { it.angle == climb.angle }) {
                         boardRepository.upsertClimbStat(
-                            climbUuid = climb.climbUuid, angle = climb.angle.toLong(),
+                            climbUuid = climb.climbUuid.lowercase(), angle = climb.angle.toLong(),
                             displayDifficulty = null, difficultyAverage = null,
                             qualityAverage = null, ascensionistCount = null,
                             benchmarkDifficulty = null,
@@ -161,7 +161,7 @@ internal class KilterClimbBackfiller(
                         // climb's own (setter) angle so it resolves + renders
                         // there. NULL difficulty/quality = "ungraded".
                         boardRepository.upsertClimbStat(
-                            climbUuid = climb.climbUuid,
+                            climbUuid = climb.climbUuid.lowercase(),
                             angle = climb.angle.toLong(),
                             displayDifficulty = null,
                             difficultyAverage = null,
@@ -274,7 +274,14 @@ internal class KilterClimbBackfiller(
         } else 0L
         val layoutId = resolveLayoutId(climb, frames)
         boardRepository.upsertClimb(
-            uuid = climb.climbUuid,
+            // 7.sqm settled LOWER(uuid) as the canonical persisted form, and
+            // the catalogue importer lowercases at its boundary for exactly
+            // that reason. Writing the API spelling through made these the
+            // only mixed-case rows in the board DB: the importer's exists-gate
+            // missed them and inserted a SECOND row for the same climb, while
+            // a logbook lookup tries the API spelling first and kept landing
+            // on this one. Downloading the catalogue then repaired nothing.
+            uuid = climb.climbUuid.lowercase(),
             layoutId = layoutId,
             setter = climb.username.ifBlank { null },
             name = climb.name,
@@ -292,7 +299,7 @@ internal class KilterClimbBackfiller(
         )
         if (climb.userUuid.isNotBlank()) {
             boardRepository.setClimbKilterAuthorUuid(
-                uuid = climb.climbUuid,
+                uuid = climb.climbUuid.lowercase(),
                 authorUuid = climb.userUuid,
             )
         }

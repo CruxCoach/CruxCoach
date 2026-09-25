@@ -93,6 +93,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   failing — and the grade was looked up at the angle the climb was set at
   instead of the angle it was climbed at, leaving a third of the entries
   ungraded.
+- Climbs the app fetches back from a Kilter account are stored under the same
+  canonical uuid form as everything else. They were kept in the spelling the
+  API sent, which made them the only mixed-case rows in the board data: the
+  catalogue import did not recognise them and added a second row for the same
+  climb, and the logbook kept reading the first one — so downloading the
+  catalogue never repaired an affected entry. Existing rows of that shape are
+  removed on upgrade and come back correct with the next sync.
 - Connecting a Kilter account no longer hides the "Load catalogue" banner.
   Those climbs are the user's own, not a catalogue, but they were counted as
   one — leaving the browser showing a handful of climbs and no way to start the
