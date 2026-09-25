@@ -5,6 +5,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,6 +78,90 @@ class LocalShareSnapshotPrunerTest {
         read { db ->
             assertEquals(listOf("m1"), db.strings("SELECT uuid FROM climbs"))
             assertEquals(listOf("M1"), db.strings("SELECT climb_uuid FROM climb_stats"))
+        }
+    }
+
+    private fun SQLiteDatabase.long(sql: String): Long =
+        rawQuery(sql, null).use { c -> c.moveToFirst(); c.getLong(0) }
+
+    private fun SQLiteDatabase.indexes(table: String): List<String> =
+        strings("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='$table' ORDER BY name")
+
+    /** The shape a real sender ships: its live DB is auto_vacuum=FULL and carries browse indexes. */
+    private fun seedSenderShapedSnapshot() = seed { db ->
+        db.execSQL("PRAGMA auto_vacuum=FULL")
+        db.execSQL("VACUUM")
+        db.execSQL("CREATE TABLE climbs (uuid TEXT PRIMARY KEY, board_brand TEXT, source TEXT)")
+        db.execSQL("CREATE INDEX idx_climbs_board_brand ON climbs(board_brand)")
+        db.execSQL("CREATE INDEX idx_climbs_source ON climbs(source)")
+        db.execSQL("CREATE TABLE climb_stats (climb_uuid TEXT, angle INTEGER, PRIMARY KEY(climb_uuid, angle))")
+        db.execSQL("CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)")
+        db.execSQL("CREATE TABLE placements (id INTEGER, board_brand TEXT)")
+        db.execSQL("CREATE INDEX idx_placements_brand ON placements(board_brand)")
+        db.beginTransaction()
+        try {
+            repeat(300) { i ->
+                val brand = listOf("kilter", "moonboard", "tension")[i % 3]
+                val source = if (i % 10 == 0) "nostr" else "kilter"
+                db.execSQL("INSERT INTO climbs VALUES ('c$i','$brand','$source')")
+                db.execSQL("INSERT INTO climb_stats VALUES ('C$i',40),('c$i',45)")
+            }
+            db.execSQL("INSERT INTO placements VALUES (1,'kilter'),(2,'tension')")
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        assertEquals(1L, db.long("PRAGMA auto_vacuum"))
+    }
+
+    @Test fun `a sender-shaped snapshot is cut in place and stays a sound database`() {
+        seedSenderShapedSnapshot()
+
+        val removed = LocalShareSnapshotPruner.prune(file, setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD))
+
+        // 100 tension climbs, plus the nostr ones among the other 200 (every tenth climb).
+        assertEquals(100L + 20L, removed)
+        read { db ->
+            assertEquals(listOf("ok"), db.strings("PRAGMA integrity_check"))
+            assertEquals(180L, db.long("SELECT COUNT(*) FROM climbs"))
+            assertEquals(0L, db.long("SELECT COUNT(*) FROM climbs WHERE board_brand='tension' OR source='nostr'"))
+            assertEquals(360L, db.long("SELECT COUNT(*) FROM climb_stats"))
+            assertEquals(
+                0L,
+                db.long("SELECT COUNT(*) FROM climb_stats WHERE LOWER(climb_uuid) NOT IN (SELECT uuid FROM climbs)"),
+            )
+            // No COMMIT-time page relocation for a file that is deleted after the import.
+            assertEquals(2L, db.long("PRAGMA auto_vacuum"))
+            // The cut tables lose their browse indexes, never their keys; untouched ones keep all.
+            assertEquals(listOf("sqlite_autoindex_climbs_1"), db.indexes("climbs"))
+            assertEquals(listOf("sqlite_autoindex_climb_stats_1"), db.indexes("climb_stats"))
+            assertEquals(listOf("idx_placements_brand"), db.indexes("placements"))
+        }
+    }
+
+    @Test fun `a cut that fails leaves the snapshot whole, indexes included`() {
+        seedSenderShapedSnapshot()
+        seed { db ->
+            db.execSQL(
+                "CREATE TRIGGER refuse BEFORE DELETE ON climb_stats BEGIN SELECT RAISE(ABORT, 'refused'); END"
+            )
+        }
+
+        val failure = runCatching { LocalShareSnapshotPruner.prune(file, setOf(BoardBrand.KILTER)) }
+
+        assertTrue(failure.isFailure)
+        read { db ->
+            assertEquals(listOf("ok"), db.strings("PRAGMA integrity_check"))
+            assertEquals(300L, db.long("SELECT COUNT(*) FROM climbs"))
+            assertEquals(600L, db.long("SELECT COUNT(*) FROM climb_stats"))
+            assertEquals(
+                listOf("idx_climbs_board_brand", "idx_climbs_source", "sqlite_autoindex_climbs_1"),
+                db.indexes("climbs"),
+            )
+            assertEquals(
+                listOf("idx_climb_stats_angle", "sqlite_autoindex_climb_stats_1"),
+                db.indexes("climb_stats"),
+            )
         }
     }
 

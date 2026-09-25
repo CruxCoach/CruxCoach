@@ -1736,6 +1736,12 @@ class BoardSyncManager(
             appContext.cacheDir,
             "local_board_${board.uncompressedSha256.take(16)}.sqlite3",
         )
+        // Phase durations, so a slow share says where its time went (a peer snapshot is
+        // ~600 MB; one quadratic statement once ran for most of an hour, like a hang).
+        var phaseStarted = System.nanoTime()
+        fun phaseMillis(): Long = ((System.nanoTime() - phaseStarted) / 1_000_000).also {
+            phaseStarted = System.nanoTime()
+        }
         try {
             updateLocalShareProgress(ImportStep.VerifyingSnapshot, brands)
             raw.delete()
@@ -1765,11 +1771,13 @@ class BoardSyncManager(
             // MoonBoard alone and gave its default Kilter board a five-climb "catalogue".
             // A cut, not a gate: the importer below is the trust boundary and judges the file
             // itself. A snapshot the pruner cannot open is left for it to accept or refuse.
+            val verifiedMs = phaseMillis()
             val removed = withBackgroundThreadPriority {
                 runCatching { LocalShareSnapshotPruner.prune(raw, brands.toSet()) }
                     .onFailure { Log.w(TAG, "Local share snapshot not pruned", it) }
                     .getOrDefault(0L)
             }
+            val prunedMs = phaseMillis()
             Log.i(TAG, "Local share cut to ${brands.map { it.wireValue }}: $removed climbs left out")
             // Families left out are what the same sender must still be able to supply later.
             val cutToSelection = brands.size < offeredBrands.size
@@ -1787,6 +1795,7 @@ class BoardSyncManager(
                     )
                 }
             }
+            val importedMs = phaseMillis()
             updateLocalShareProgress(ImportStep.Finalizing, brands)
             bumpCatalogueRevision()
             // "Already have this snapshot" is only true of a snapshot taken whole. After a cut
@@ -1802,6 +1811,11 @@ class BoardSyncManager(
                 )
             }
             compressed.delete()
+            Log.i(
+                TAG,
+                "Local share timings: verify+extract=${verifiedMs}ms prune=${prunedMs}ms " +
+                    "import=${importedMs}ms finalize=${phaseMillis()}ms",
+            )
         } finally {
             raw.delete()
         }

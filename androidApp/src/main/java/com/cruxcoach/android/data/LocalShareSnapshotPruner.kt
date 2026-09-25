@@ -38,8 +38,30 @@ internal object LocalShareSnapshotPruner {
             val cutFamilies = keep.isNotEmpty() && "board_brand" in climbColumns
             if (!cutNative && !cutFamilies) return 0
             val before = count(db, "climbs")
+            // A sender's snapshot holds the whole ~600 MB catalogue with all of its browse
+            // indexes, and the cut removes a quarter of it. With SQLite's defaults that took
+            // three minutes on a Nokia 6.1 and seven inside the app — longer than the whole
+            // import. What was expensive, measured on the real 635 MB snapshot:
+            //  - a 2 MiB page cache thrashing through 14 climb/stat indexes (the importer's
+            //    own connection uses 64 MiB for the same reason);
+            //  - auto_vacuum=FULL, inherited from the sender's live DB, relocating every freed
+            //    page at COMMIT to shrink a file that is deleted after the import;
+            //  - durability: this is our own throwaway copy, re-extracted on a resume.
+            // The transaction still rolls back as before, so a failed cut leaves the file whole.
+            db.rawQuery("PRAGMA synchronous=OFF", null).use { it.moveToFirst() }
+            db.rawQuery("PRAGMA cache_size=-65536", null).use { it.moveToFirst() }
+            // Switching FULL to INCREMENTAL needs no VACUUM; on a NONE file it is a no-op.
+            db.rawQuery("PRAGMA auto_vacuum=INCREMENTAL", null).use { it.moveToFirst() }
+            val dependents = tables.filter { it != "climbs" && "climb_uuid" in columns(db, it) }
             db.beginTransaction()
             try {
+                // Secondary indexes serve the sender's browse screens, never the importer,
+                // which reads this copy by full scan, rowid range or primary key. Maintaining
+                // them per deleted row was most of the cut's cost; the UNIQUE and PRIMARY
+                // KEY autoindexes (sql IS NULL) stay.
+                (listOf("climbs") + dependents).forEach { table ->
+                    secondaryIndexes(db, table).forEach { index -> db.execSQL("DROP INDEX \"$index\"") }
+                }
                 if (cutNative) {
                     db.execSQL("DELETE FROM climbs WHERE LOWER(TRIM(COALESCE(source,''))) IN ('nostr','local')")
                 }
@@ -57,7 +79,7 @@ internal object LocalShareSnapshotPruner {
                 // consistency checks would find mappings for climbs that are not there.
                 // Compared canonically, as the importer does: a differently cased uuid is
                 // the same climb.
-                tables.filter { it != "climbs" && "climb_uuid" in columns(db, it) }.forEach { table ->
+                dependents.forEach { table ->
                     db.execSQL(
                         "DELETE FROM \"$table\" WHERE LOWER(TRIM(climb_uuid)) NOT IN " +
                             "(SELECT LOWER(TRIM(uuid)) FROM climbs)"
@@ -82,6 +104,12 @@ internal object LocalShareSnapshotPruner {
         db.rawQuery("PRAGMA table_info(\"$table\")", null).use { c ->
             buildSet { while (c.moveToNext()) add(c.getString(1)) }
         }
+
+    private fun secondaryIndexes(db: SQLiteDatabase, table: String): List<String> =
+        db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL",
+            arrayOf(table),
+        ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
 
     private fun count(db: SQLiteDatabase, table: String): Long =
         db.rawQuery("SELECT COUNT(*) FROM \"$table\"", null).use { c -> c.moveToFirst(); c.getLong(0) }

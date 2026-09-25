@@ -1554,7 +1554,10 @@ class BoardDatabaseImporter(
             // transaction AFTER climbs/stats had already committed — a
             // partial import. Probing every source SELECT first turns that
             // into a clean, zero-write abort.
+            val started = System.nanoTime()
+            fun elapsedMs() = (System.nanoTime() - started) / 1_000_000
             if (isModernSource) preflightModernSource(dbFile, includeQuantum)
+            val preflightMs = elapsedMs()
             var modernLayoutCount: Int? = null
             val (climbCount, statCount) = withDeferredIndexes {
                 if (isModernSource) {
@@ -1588,8 +1591,10 @@ class BoardDatabaseImporter(
                     climbs to stats
                 }
             }
+            val catalogueMs = elapsedMs()
 
             backfillMoveCounts()
+            val backfillMs = elapsedMs()
 
             if (boardRepository.getSyncState("metadata_v7") == null) {
                 boardRepository.upsertSyncState("metadata_v7", "done")
@@ -1634,6 +1639,11 @@ class BoardDatabaseImporter(
             // accounting after geometry. Emit an explicit terminal phase so
             // the UI never appears frozen at "Layout 100%".
             onProgress?.invoke(ImportStep.Finalizing)
+            Log.i(
+                TAG,
+                "importFromDbFile(modern=$isModernSource) cumulative ms: preflight=$preflightMs " +
+                    "catalogue+indexes=$catalogueMs backfill=$backfillMs geometry+sync=${elapsedMs()}",
+            )
             val nomatchCount = boardRepository.countNomatchClimbs()
             onProgress?.invoke(ImportStep.Done(
                 climbCount, statCount, layoutCount,
@@ -3149,16 +3159,29 @@ class BoardDatabaseImporter(
                             append(" AND COALESCE(sc.is_deleted,0)=0")
                         }
                     }
+                    // Both sides of these lookups are normalized, so neither can
+                    // use an index. As correlated joins they were O(bridge ×
+                    // Quantum catalogue): 9,147 official routes compared ~78M
+                    // ICU LOWER() pairs; on a Nokia 6.1 the refs copy alone ran
+                    // 46 minutes without finishing, inside the import's exclusive
+                    // transaction. A non-correlated IN (SELECT …) is built once
+                    // into an ephemeral index and probed per row. It selects the
+                    // same rows: validation has already rejected duplicate
+                    // normalized accepted UUIDs, so the join could never multiply
+                    // a row, and app_uuid is NOT NULL on both tables, so NOT IN
+                    // cannot swallow a row.
                     add(
                         """INSERT INTO quantum_route_refs(app_uuid,route_uuid,model)
                            SELECT LOWER(TRIM(r.app_uuid)),LOWER(TRIM(r.route_uuid)),LOWER(TRIM(r.model))
                            FROM src.quantum_route_refs r
-                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(r.app_uuid))
                            JOIN main.climbs c ON c.uuid=LOWER(TRIM(r.app_uuid))
-                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
-                             AND NOT EXISTS (
-                               SELECT 1 FROM main.quantum_route_refs existing
-                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(r.app_uuid))
+                           WHERE LOWER(TRIM(r.app_uuid)) IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE $sourceGuard
+                             )
+                             AND LOWER(c.board_brand)='quantum'
+                             AND LOWER(TRIM(r.app_uuid)) NOT IN (
+                               SELECT LOWER(existing.app_uuid) FROM main.quantum_route_refs existing
                              )""".trimIndent(),
                     )
                     add(
@@ -3169,12 +3192,14 @@ class BoardDatabaseImporter(
                                   COALESCE(m.kickplate,0),COALESCE(m.matching,0),
                                   COALESCE(m.standard,0),COALESCE(m.tags,'')
                            FROM src.quantum_route_metadata m
-                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(m.app_uuid))
                            JOIN main.climbs c ON c.uuid=LOWER(TRIM(m.app_uuid))
-                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
-                             AND NOT EXISTS (
-                               SELECT 1 FROM main.quantum_route_metadata existing
-                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(m.app_uuid))
+                           WHERE LOWER(TRIM(m.app_uuid)) IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE $sourceGuard
+                             )
+                             AND LOWER(c.board_brand)='quantum'
+                             AND LOWER(TRIM(m.app_uuid)) NOT IN (
+                               SELECT LOWER(existing.app_uuid) FROM main.quantum_route_metadata existing
                              )""".trimIndent(),
                     )
                     // importClimbs intentionally distrusts and does not copy a
