@@ -2635,7 +2635,12 @@ class BoardDatabaseImporter(
      * filtered counts once the catalogue is large. The MoonBoard catalogue
      * alone adds ~245k climbs, which turned `countFilteredClimbs` into a ~3s
      * query and janked the UI. Safe to call on a background dispatcher.
+     *
+     * Serialized with the imports: detached, it can overlap a board load queued
+     * behind the sync, and that import would otherwise fail on the 5 s busy
+     * timeout while ANALYZE reads every index for tens of seconds.
      */
+    @Synchronized
     fun analyzeDatabase() {
         val db = openTargetDb()
         try {

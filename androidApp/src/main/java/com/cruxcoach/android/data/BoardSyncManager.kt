@@ -1816,6 +1816,13 @@ class BoardSyncManager(
                 "Local share timings: verify+extract=${verifiedMs}ms prune=${prunedMs}ms " +
                     "import=${importedMs}ms finalize=${phaseMillis()}ms",
             )
+            // The same detached planner refresh a Blossom sync gets once it has released
+            // the sync slot. Without it a board filled by a share had no sqlite_stat1 and
+            // browsed on guessed index costs until some later download ran ANALYZE.
+            scope.safeLaunch(TAG) {
+                runCatching { withBackgroundThreadPriority { importer.analyzeDatabase() } }
+                    .onFailure { Log.w(TAG, "Post-share ANALYZE failed", it) }
+            }
         } finally {
             raw.delete()
         }

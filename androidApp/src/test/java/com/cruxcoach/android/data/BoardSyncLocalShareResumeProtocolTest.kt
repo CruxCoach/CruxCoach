@@ -11,6 +11,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -145,5 +146,30 @@ class BoardSyncLocalShareResumeProtocolTest {
         runCurrent()
 
         assertEquals(listOf(true, false), includeQuantumCalls)
+    }
+
+    @Test
+    fun `a share refreshes planner statistics once imported, as a download does`() = runTest {
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (compressed, board) = compressedArtifact(
+            name = "analyze",
+            artifactPath = LocalShareProtocol.V2_BOARD_PATH,
+        )
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.3",
+                boardPath = compressed.absolutePath,
+                board = board,
+            ),
+        )
+
+        manager(importer)
+        runCurrent()
+
+        verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
+        verify(exactly = 1) { importer.analyzeDatabase() }
     }
 }
