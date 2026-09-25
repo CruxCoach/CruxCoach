@@ -224,7 +224,12 @@ class PendingImportsTest {
     fun `migration 14 adds the staging table to an existing secure database`() {
         secureDriver.execute(null, "DROP TABLE pending_import", 0)
 
-        SecureDatabase.Schema.migrate(secureDriver, 14, SecureDatabase.Schema.version)
+        // Genau EINEN Schritt migrieren, nicht bis zur aktuellen Version: die
+        // Datenbank wurde auf dem neuesten Stand angelegt, also existiert
+        // alles, was spätere Migrationen anlegen, bereits — ein Replay über
+        // sie hinweg scheitert an "table already exists". Der Test prüft
+        // Migration 14, also läuft auch nur sie.
+        SecureDatabase.Schema.migrate(secureDriver, 14, 15)
 
         pending().stageAurora("{}")
         assertEquals(1L, pending().pendingCount())
