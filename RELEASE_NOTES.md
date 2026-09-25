@@ -59,5 +59,14 @@ This release brings beta videos, quicker board navigation, a searchable board ma
 
 ## Android compatibility
 CruxCoach 0.2.3 requires **Android 9 or newer**. As announced in the previous release,
-0.2.2 is the last version for Android 8.0 and 8.1. Existing installations on those
-versions can continue using 0.2.2.
+0.2.2 is the last version for Android 8.0 and 8.1.
+
+On Android 8, CruxCoach 0.2.2 already knows this. Its updater stops before it even
+checks and tells you once that this device keeps the version it has. Nothing is
+downloaded and nothing changes: the app stays fully usable and your data is untouched.
+
+If you are on Android 8 and still running 0.2.1 or older, update to **0.2.2** rather
+than to this release — 0.2.3 cannot install there. An older updater may offer it
+anyway; Android then refuses the package before installing it, which leaves your
+existing app and its data exactly as they were. Moving to a newer device: install
+CruxCoach there and restore your backup.
