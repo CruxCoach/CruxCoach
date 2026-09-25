@@ -71,6 +71,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   group under one that opens Bugs & feature requests.
 
 ### Fixed
+- An entry imported from a Kilter account shows the grade of the angle it was
+  climbed at. It took whichever angle the catalogue happened to return first —
+  in practice the flattest — so a problem sent at 40° could appear several
+  grades too easy, which also skewed the logbook statistics. Where an angle has
+  no rating the grade now stays empty instead of borrowing another angle's.
+  Existing entries are corrected on the next Kilter or catalogue sync.
 - Deleting a logbook entry now sticks. With Kilter sync on it came back at the
   next sync — the duplicate check only knows the entries that are present, so a
   deleted one looked new — and nothing was ever removed on Kilter's side. The

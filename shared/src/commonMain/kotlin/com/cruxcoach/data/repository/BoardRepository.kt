@@ -538,6 +538,16 @@ interface BoardClimbQueries {
      *  per climb. Fallback for list display so MoonBoard problems set only at
      *  a non-default angle (e.g. Masters 25°) aren't dropped. */
     fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats>
+
+    /** Schwierigkeit je Climb für GENAU [angle], als normalisierter Schlüssel
+     *  auf den Wert. [getClimbsByUuidsAnyAngle] kollabiert die Winkel und
+     *  liefert einen beliebigen — für Name und Frames richtig, für den Grad
+     *  nicht: derselbe Boulder steht bei 0° und 40° mehrere Grade
+     *  auseinander. Fehlt die Zeile für den Winkel, fehlt der Eintrag hier,
+     *  statt mit einem fremden Winkel beantwortet zu werden.
+     *  Default leer, damit Test-Fakes unverändert übersetzen. */
+    fun getClimbDifficultiesForAngle(uuids: Collection<String>, angle: Int): Map<String, Double> =
+        emptyMap()
     /** Active-board-scoped uuid resolution at [angle] (user lists). Returns only
      *  climbs on the active board ([boardBrand] + [layoutId]); when
      *  [boardBrand] == "kilter" ALSO includes Kilter climbs from other layouts

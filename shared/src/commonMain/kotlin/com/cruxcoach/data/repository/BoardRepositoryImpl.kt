@@ -441,6 +441,17 @@ class BoardRepositoryImpl(
         if (uuids.isEmpty()) emptySet()
         else q.communityOnlyClimbUuids(uuids).executeAsList().toSet()
 
+    override fun getClimbDifficultiesForAngle(
+        uuids: Collection<String>,
+        angle: Int,
+    ): Map<String, Double> {
+        if (uuids.isEmpty()) return emptyMap()
+        return q.getClimbDifficultiesForAngle(uuids, angle.toLong())
+            .executeAsList()
+            .mapNotNull { row -> row.difficulty_average?.let { row.climb_uuid to it } }
+            .toMap()
+    }
+
     override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
         return resolveAliasesInRequestedOrder(uuids) { canonical ->
             q.getClimbsByUuidsAnyAngle(canonical)

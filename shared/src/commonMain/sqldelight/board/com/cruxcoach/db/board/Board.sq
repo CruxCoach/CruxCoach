@@ -999,6 +999,22 @@ SELECT * FROM climb_browse
 WHERE uuid IN ?
 GROUP BY uuid;
 
+-- Schwierigkeit für GENAU einen Winkel.
+--
+-- getClimbsByUuidsAnyAngle kollabiert die Winkel per GROUP BY zu einer
+-- beliebigen Zeile — in SQLite praktisch der kleinste Winkel. Für Name und
+-- Frames ist das richtig, die sind winkelunabhängig. Die Schwierigkeit ist
+-- es nicht, und zwar deutlich: "Floats Your Boat" steht bei 0° auf 10,01
+-- (4a) und bei 40° auf 15,96 (6a) — sechs Grade Unterschied. Ein Logbuch-
+-- eintrag, der bei 40° geklettert wurde, bekam so die 0°-Bewertung.
+--
+-- Liest climb_stats direkt statt climb_browse: fehlt einem Climb die Zeile
+-- für diesen Winkel, soll er hier schlicht fehlen (der Eintrag bleibt dann
+-- ohne Grad) und nicht mit einem fremden Winkel beantwortet werden.
+getClimbDifficultiesForAngle:
+SELECT climb_uuid, difficulty_average FROM climb_stats
+WHERE climb_uuid IN :uuids AND angle = :angle;
+
 -- CruxCoach community climbs among the given uuids that Kilter never
 -- accepted. Kilter does not know their uuid, so logs of them must stay out of
 -- a Kilter account upload. Reads climbs directly: climb_browse would drop a

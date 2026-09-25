@@ -174,4 +174,63 @@ class KilterBackfillLayoutTest {
 
         assertTrue(repo.hasClimbsForBrand(brand), "der echte Katalog muss die Backfill-Zeilen überstimmen")
     }
+
+    // ── Die Schwierigkeit gehört zum Winkel ──────────────────────────────
+    //
+    // Echte Zahlen aus dem veröffentlichten Katalog: "Floats Your Boat"
+    // (bd6a…) steht bei 0° auf 10,01 und bei 40° auf 15,96 — 4a gegen 6a.
+    // getClimbsByUuidsAnyAngle faltet die Winkel per GROUP BY zusammen und
+    // liefert in SQLite praktisch die Zeile mit dem kleinsten Winkel. Für
+    // Name und Frames ist das richtig, für den Grad nicht, und der landete
+    // denormalisiert im Logbuch.
+
+    private val floats = "bd6a1e0e3f1c4d0fa7f9c2b4d5e60718"
+
+    private fun seedFloatsYourBoat() {
+        insertCatalogueClimb(floats)
+        repo.upsertClimbStat(floats, 0L, 10.01, 10.01, 2.9, 300L, null, null, null, null)
+        repo.upsertClimbStat(floats, 40L, 15.96, 15.96, 3.1, 900L, null, null, null, null)
+    }
+
+    @Test
+    fun anyAngleLookup_collapsesToOneAngle_whichIsWhyTheGradeNeedsItsOwnQuery() {
+        seedFloatsYourBoat()
+        // Kein Soll-Wert, sondern der Nachweis des Problems: die Sammelabfrage
+        // gibt EINE Zeile für beide Winkel zurück.
+        val rows = repo.getClimbsByUuidsAnyAngle(listOf(floats))
+        assertEquals(1, rows.size, "GROUP BY liefert eine Zeile je Climb, nicht je Winkel")
+        assertTrue(
+            rows.single().difficultyAverage in setOf(10.01, 15.96),
+            "der Wert stammt aus irgendeinem Winkel — welchem, ist nicht zugesichert",
+        )
+    }
+
+    @Test
+    fun difficultyIsReadPerAngle() {
+        seedFloatsYourBoat()
+        assertEquals(mapOf(floats to 10.01), repo.getClimbDifficultiesForAngle(listOf(floats), 0))
+        assertEquals(mapOf(floats to 15.96), repo.getClimbDifficultiesForAngle(listOf(floats), 40))
+    }
+
+    @Test
+    fun unratedAngle_yieldsNoEntryRatherThanAForeignAngle() {
+        seedFloatsYourBoat()
+        assertTrue(
+            repo.getClimbDifficultiesForAngle(listOf(floats), 25).isEmpty(),
+            "für 25° gibt es keine Bewertung — dann lieber keine als die eines anderen Winkels",
+        )
+    }
+
+    @Test
+    fun statsRowWithoutADifficulty_isSkipped() {
+        insertCatalogueClimb("55555555555555555555555555555555")
+        // Kommt vor: eine Zeile für den Winkel, aber ohne Bewertung.
+        repo.upsertClimbStat("55555555555555555555555555555555", 40L, null, null, 3.0, 1L, null, null, null, null)
+        assertTrue(repo.getClimbDifficultiesForAngle(listOf("55555555555555555555555555555555"), 40).isEmpty())
+    }
+
+    @Test
+    fun emptyUuidList_doesNotQuery() {
+        assertTrue(repo.getClimbDifficultiesForAngle(emptyList(), 40).isEmpty())
+    }
 }

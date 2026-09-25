@@ -16,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -55,6 +56,9 @@ class KilterSyncEngineBackfillTest {
     private val resolvableClimbs = mutableListOf<ClimbWithStats>()
     /** Uuids the board DB "already has" (seeded + just-upserted). */
     private val knownUuids = mutableSetOf<String>()
+    /** climb_stats, wie es wirklich liegt: eine Bewertung JE WINKEL.
+     *  (normalisierte uuid, Winkel) → difficulty_average. */
+    private val difficultyByAngle = mutableMapOf<Pair<String, Int>, Double>()
 
     /** hole id → placement id inside layout 1, as the board geometry has it. */
     private val holePlacements = mapOf(
@@ -121,6 +125,11 @@ class KilterSyncEngineBackfillTest {
             )
         } answers {
             upsertedStats.add(arg<String>(0) to arg<Long>(1))
+            // Der echte Upsert schreibt nach climb_stats — und genau von dort
+            // liest die Grad-Aufloesung gleich wieder.
+            arg<Double?>(3)?.let {
+                difficultyByAngle[normKey(arg<String>(0)) to arg<Long>(1).toInt()] = it
+            }
         }
 
         every { boardRepo.setClimbKilterAuthorUuid(any(), any()) } answers {
@@ -149,6 +158,17 @@ class KilterSyncEngineBackfillTest {
             resolvableClimbs.filter { it.uuid in uuids }
         }
 
+        // Den Grad holt insertLogs getrennt, fuer GENAU den geloggten Winkel.
+        // Der Stub muss sein, obwohl die Schnittstelle eine Vorgabe hat:
+        // mockk ersetzt auch Default-Methoden, sonst kaeme immer leer zurueck.
+        every { boardRepo.getClimbDifficultiesForAngle(any(), any()) } answers {
+            val uuids = arg<Collection<String>>(0)
+            val angle = arg<Int>(1)
+            uuids.mapNotNull { u ->
+                difficultyByAngle[normKey(u) to angle]?.let { u to it }
+            }.toMap()
+        }
+
         // Default stubs so each test only overrides the endpoint under test
         // (a relaxed mock would otherwise return a broken Result for the
         // value-class return type).
@@ -173,8 +193,14 @@ class KilterSyncEngineBackfillTest {
                 boardBrand = any(), layoutId = any(),
             )
         } answers {
-            // insertAscent positions: 1=climbUuid, 15=climbName, 17=climbFrames.
-            ascents.add(RecordedAscent(arg<String>(1), arg<String>(15), arg<String>(17)))
+            // insertAscent positions: 1=climbUuid, 2=angle, 15=climbName,
+            // 16=difficultyAverage, 17=climbFrames.
+            ascents.add(
+                RecordedAscent(
+                    arg<String>(1), arg<String>(15), arg<String>(17),
+                    arg<Long>(2), arg<Double?>(16),
+                )
+            )
         }
 
         engine = KilterSyncEngine(
@@ -215,10 +241,12 @@ class KilterSyncEngineBackfillTest {
         climbUuid = uuid, angle = 25, difficultyAverage = 17.5, qualityAverage = 3.0, ascentCount = 12,
     )
 
-    private fun ascentLog(climbUuid: String) = KilterLog(
-        logUuid = "log-1", climbUuid = climbUuid, angle = 25,
+    private fun ascentLog(climbUuid: String, angle: Int = 25, logUuid: String = "log-1") = KilterLog(
+        logUuid = logUuid, climbUuid = climbUuid, angle = angle,
         topped = true, attempts = 1, createdAt = "2024-01-01T00:00:00Z",
     )
+
+    private fun normKey(uuid: String) = uuid.replace("-", "").lowercase()
 
     @Test
     fun backfills_missing_logged_climb_and_ascent_gets_name_and_frames() = runTest {
@@ -542,6 +570,113 @@ class KilterSyncEngineBackfillTest {
         assertTrue(chunkSizes.isNotEmpty(), "lookup must run")
         assertTrue(chunkSizes.all { it <= 400 }, "no chunk may exceed the variable-safe limit, got $chunkSizes")
     }
+
+    // ── Grad gehoert zum geloggten Winkel ────────────────────────────────
+
+    /** Seedet einen Katalog-Climb mit je einer Bewertung fuer 0 und 40 Grad.
+     *  Die angle-agnostische Zeile traegt bewusst den 0-Grad-Wert: genau den
+     *  liefert GROUP BY in SQLite, und genau der stand faelschlich im Logbuch. */
+    private fun seedTwoAngleClimb(uuid: String, at0: Double = 10.01, at40: Double = 15.96) {
+        knownUuids.add(uuid)
+        resolvableClimbs.add(
+            ClimbWithStats(
+                uuid = uuid, layoutId = 1L, setterUsername = "setter",
+                name = "Floats Your Boat", frames = "p501r12", framesCount = 1L,
+                difficultyAverage = at0, qualityAverage = 3.0, ascensionistCount = 500L,
+            )
+        )
+        difficultyByAngle[normKey(uuid) to 0] = at0
+        difficultyByAngle[normKey(uuid) to 40] = at40
+    }
+
+    @Test
+    fun ascent_takes_the_difficulty_of_the_angle_it_was_climbed_at() = runTest {
+        // "Floats Your Boat" steht bei 0 Grad auf 10,01 (4a) und bei 40 Grad
+        // auf 15,96 (6a). Bei 40 Grad geklettert erschien der Eintrag als 4a,
+        // weil der Sammel-Lookup die Winkel per GROUP BY zusammenfaltet und
+        // praktisch immer den kleinsten liefert.
+        seedTwoAngleClimb(newWorldUuid)
+        coEvery { apiClient.fetchLogs() } returns
+            Result.success(listOf(ascentLog(newWorldUuid, angle = 40)))
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        val ascent = ascents.single()
+        assertEquals(40L, ascent.angle)
+        assertEquals(15.96, ascent.difficultyAverage)
+    }
+
+    @Test
+    fun two_logs_of_one_climb_at_different_angles_each_get_their_own_grade() = runTest {
+        // Ein Lookup je vorkommendem Winkel, nicht je Log — und die Zuordnung
+        // darf dabei nicht verrutschen.
+        seedTwoAngleClimb(newWorldUuid)
+        coEvery { apiClient.fetchLogs() } returns Result.success(
+            listOf(
+                ascentLog(newWorldUuid, angle = 0, logUuid = "log-flat"),
+                ascentLog(newWorldUuid, angle = 40, logUuid = "log-steep"),
+            )
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(2, ascents.size)
+        assertEquals(10.01, ascents.single { it.angle == 0L }.difficultyAverage)
+        assertEquals(15.96, ascents.single { it.angle == 40L }.difficultyAverage)
+    }
+
+    @Test
+    fun unrated_angle_leaves_the_grade_empty_instead_of_borrowing_another() = runTest {
+        // Fuer 25 Grad gibt es keine Zeile. Lieber kein Grad — den traegt
+        // refreshDenormalizedData spaeter nach — als der falsche.
+        seedTwoAngleClimb(newWorldUuid)
+        coEvery { apiClient.fetchLogs() } returns
+            Result.success(listOf(ascentLog(newWorldUuid, angle = 25)))
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        val ascent = ascents.single()
+        assertEquals("Floats Your Boat", ascent.climbName, "Name kommt weiter winkelunabhaengig")
+        assertNull(ascent.difficultyAverage)
+    }
+
+    @Test
+    fun grade_lookup_survives_a_foreign_uuid_spelling() = runTest {
+        // Der Katalog fuehrt den Boulder nodash-UPPERCASE, das Log nennt ihn
+        // dashed-lowercase. Der Grad muss trotzdem ankommen.
+        val legacyUuid = newWorldUuid.replace("-", "").uppercase()
+        seedTwoAngleClimb(legacyUuid)
+        coEvery { apiClient.fetchLogs() } returns
+            Result.success(listOf(ascentLog(newWorldUuid, angle = 40)))
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(15.96, ascents.single().difficultyAverage)
+    }
+
+    @Test
+    fun grade_lookup_is_chunked_per_angle() = runTest {
+        // Je Winkel eine Abfrage, und jede Abfrage variablensicher gestueckelt.
+        val logs = (0 until 900).map { i ->
+            KilterLog(
+                logUuid = "log-$i",
+                climbUuid = "00000000-0000-0000-0000-%012d".format(i),
+                angle = if (i % 2 == 0) 0 else 40,
+                topped = true, attempts = 1, createdAt = "2024-01-01T00:00:00Z",
+            )
+        }
+        coEvery { apiClient.fetchLogs() } returns Result.success(logs)
+        val chunks = mutableListOf<Pair<Int, Int>>() // Winkel → Groesse
+        every { boardRepo.getClimbDifficultiesForAngle(any(), any()) } answers {
+            chunks.add(arg<Int>(1) to arg<Collection<String>>(0).size)
+            emptyMap()
+        }
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(setOf(0, 40), chunks.map { it.first }.toSet())
+        assertTrue(chunks.all { it.second <= 400 }, "ungestueckelte Abfrage: $chunks")
+    }
 }
 
 // ── Capture holders ──────────────────────────────────────────────────────
@@ -557,4 +692,6 @@ private data class RecordedAscent(
     val climbUuid: String,
     val climbName: String,
     val climbFrames: String,
+    val angle: Long,
+    val difficultyAverage: Double?,
 )

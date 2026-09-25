@@ -416,6 +416,13 @@ class KilterSyncEngine @Inject constructor(
             circuitImporter.importCircuits()
             val downloaded = insertLogs(logs).totalNew
 
+            // Bestandseinträge aus älteren Versionen tragen einen Grad vom
+            // falschen Winkel (GROUP BY lieferte dort einen beliebigen).
+            // refreshDenormalizedData rechnet winkelgenau und heilt sie —
+            // best effort, ein Fehlschlag darf den Sync nicht kippen.
+            runCatching { pendingImports.get().refreshLogbookLinks() }
+                .onFailure { Log.w(TAG, "logbook relink after sync failed", it) }
+
             // Preserve partial progress and blocked/failed outcomes for the UI.
             val upload = if (pushEnabled) uploadPendingLogs(prefetchedLogs = logs) else null
             val uploaded = upload?.uploaded ?: 0
@@ -478,8 +485,10 @@ class KilterSyncEngine @Inject constructor(
         // 40 828 dashed-lowercase catalogue rows unreachable from a log that
         // spelled them differently, and those ascents kept an empty name.
         // Chunk the IN() list so a large logbook can't blow SQLite's
-        // bound-variable limit. One angle-agnostic query per chunk (the
-        // denormalized name/grade is angle-independent for display).
+        // bound-variable limit. Der angle-agnostische Treffer liefert Name,
+        // Frames, Brand und Layout — die sind winkelunabhaengig. Die
+        // SCHWIERIGKEIT ist es NICHT: sie kommt weiter unten pro geloggtem
+        // Winkel dazu.
         val climbCache = mutableMapOf<String, Pair<String, Double?>>() // normKey -> (name, diffAvg)
         val framesCache = mutableMapOf<String, Pair<String, Long>>()   // normKey -> (frames, framesCount)
         // Board-Familie und Layout der Zeile. Ohne sie legte der Kilter-Sync
@@ -503,13 +512,33 @@ class KilterSyncEngine @Inject constructor(
             }
         }
 
+        // Die Schwierigkeit gehoert zum geloggten Winkel. getClimbsByUuidsAnyAngle
+        // kollabiert die Winkel per GROUP BY zu einer beliebigen Zeile — in der
+        // Praxis dem kleinsten Winkel —, und genau die stand bisher im Logbuch:
+        // "Floats Your Boat", bei 40 Grad geklettert, erschien als 4a statt 6a,
+        // weil 0 Grad mit 10,01 statt 15,96 bewertet ist. Das verfaelschte jeden
+        // Eintrag und damit auch "Bester Grad".
+        // Eine Abfrage je vorkommendem Winkel, nicht je Log.
+        val difficultyByAngle = mutableMapOf<Pair<String, Int>, Double>()
+        for (angle in newLogs.map { it.angle }.distinct()) {
+            for (chunk in lookupUuids.chunked(CLIMB_LOOKUP_CHUNK)) {
+                boardRepository.getClimbDifficultiesForAngle(chunk, angle).forEach { (uuid, diff) ->
+                    difficultyByAngle[normUuidKey(uuid) to angle] = diff
+                }
+            }
+        }
+
         var newAscents = 0
         var newBids = 0
         personalBoardRepo.runInTransaction {
             for (log in newLogs) {
                 val key = normUuidKey(log.climbUuid)
-                val (climbName, diffAvg) = climbCache[key] ?: ("" to null)
+                val (climbName, _) = climbCache[key] ?: ("" to null)
                 val (brand, layoutId) = boardCache[key] ?: ("kilter" to null)
+                // Kein Grad statt eines fremden: hat der Boulder fuer diesen
+                // Winkel keine Bewertung, bleibt das Feld leer und wird beim
+                // naechsten refreshDenormalizedData nachgetragen.
+                val diffAvg = difficultyByAngle[key to log.angle]
                 if (log.topped) {
                     val (frames, framesCount) = framesCache[key] ?: ("" to 1L)
                     personalBoardRepo.insertAscent(

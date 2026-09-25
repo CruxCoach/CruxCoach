@@ -98,6 +98,12 @@ class PendingImports @Inject constructor(
         )
     }
 
+    /** Verknüpft die Logbuch-Einträge neu gegen die Board-DB. Der Kilter-Sync
+     *  ruft das nach einem Import: Einträge aus älteren Versionen tragen einen
+     *  Grad vom falschen Winkel, und refreshDenormalizedData rechnet
+     *  winkelgenau — sonst warteten sie auf den nächsten Katalog-Sync. */
+    suspend fun refreshLogbookLinks() = boardSyncManager.refreshLogbookLinks()
+
     fun pendingCount(): Long = secureDb.pendingImportsQueries.countPendingImports().executeAsOne()
 
     private fun stage(source: String, payload: String, options: String?) {
