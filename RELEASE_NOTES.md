@@ -1,4 +1,4 @@
-# CruxCoach 0.2.3 — 2026-09-25
+# CruxCoach 0.2.3 — 2026-09-26
 
 This release brings beta videos, quicker board navigation, a searchable board map, clearer statistics and more reliable browsing.
 
