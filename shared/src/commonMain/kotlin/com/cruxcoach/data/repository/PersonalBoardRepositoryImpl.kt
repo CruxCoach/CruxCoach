@@ -79,7 +79,7 @@ class PersonalBoardRepositoryImpl(
     private fun queueLogDeletion(logUuid: String) {
         database.pendingLogDeletionsQueries.queueLogDeletion(
             log_uuid = logUuid,
-            deleted_at = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+            deleted_at = kotlin.time.Clock.System.now().toEpochMilliseconds(),
         )
     }
 
