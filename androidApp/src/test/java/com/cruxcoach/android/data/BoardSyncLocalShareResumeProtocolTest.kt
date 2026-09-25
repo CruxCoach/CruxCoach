@@ -75,6 +75,7 @@ class BoardSyncLocalShareResumeProtocolTest {
 
     private fun TestScope.manager(
         importer: BoardDatabaseImporter,
+        keepAlive: (Context) -> Unit = {},
     ): BoardSyncManager {
         every { importer.isImported() } returns false
         val preferences = mockk<UserPreferences>(relaxed = true)
@@ -94,6 +95,7 @@ class BoardSyncLocalShareResumeProtocolTest {
             quantumCatalogueSync = mockk<QuantumCatalogueSync>(relaxed = true),
             integrityVerifier = mockk<IntegrityVerifier>(relaxed = true),
             scope = backgroundScope,
+            startLocalTransferKeepAlive = keepAlive,
         )
     }
 
@@ -171,5 +173,31 @@ class BoardSyncLocalShareResumeProtocolTest {
 
         verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
         verify(exactly = 1) { importer.analyzeDatabase() }
+    }
+
+    @Test
+    fun `a share import is held in the foreground, as a download is`() = runTest {
+        var keepAliveRequests = 0
+        val importer = mockk<BoardDatabaseImporter>(relaxed = true)
+        val (compressed, board) = compressedArtifact(
+            name = "keep-alive",
+            artifactPath = LocalShareProtocol.V2_BOARD_PATH,
+        )
+        LocalShareResumeStore(context).save(
+            LocalShareResumeStore.Pending(
+                requiredVersionCode = 0,
+                protocolVersion = LocalShareProtocol.VERSION_V2,
+                apkPath = null,
+                apkVersionName = "0.2.3",
+                boardPath = compressed.absolutePath,
+                board = board,
+            ),
+        )
+
+        manager(importer, keepAlive = { keepAliveRequests++ })
+        runCurrent()
+
+        verify(exactly = 1) { importer.importFromLocalDb(any(), true, any()) }
+        assertEquals(1, keepAliveRequests)
     }
 }

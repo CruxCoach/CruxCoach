@@ -11,6 +11,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
+import com.cruxcoach.android.notification.LocalShareKeepAliveWorker
 import com.cruxcoach.android.moonboard.MoonBoardCsvImporter
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isNetworkPermissionGranted
@@ -86,6 +87,8 @@ class BoardSyncManager(
     private val initialOnlineFallback: ((BoardSyncManager) -> Unit)? = null,
     /** Narrow deterministic test seam; production runs the real bound peer. */
     private val initialShareRunner: (suspend (LocalShareDiscovery.Found) -> Unit)? = null,
+    /** Narrow deterministic test seam; production enqueues [LocalShareKeepAliveWorker]. */
+    private val startLocalTransferKeepAlive: (Context) -> Unit = { LocalShareKeepAliveWorker.start(it) },
 ) : CatalogueRevisionSource {
     private companion object {
         const val TAG = "BoardSyncManager"
@@ -573,6 +576,16 @@ class BoardSyncManager(
     }
 
     /**
+     * A download runs inside [BoardSyncWorker]; a local transfer runs right here, where its
+     * Wi-Fi request and trust checks live. Hold it in the foreground for as long as it keeps
+     * the sync slot, or a switched-off screen suspends the phone mid-import.
+     */
+    private fun holdLocalTransferInForeground() {
+        runCatching { startLocalTransferKeepAlive(appContext) }
+            .onFailure { Log.w(TAG, "Local transfer keep-alive not started", it) }
+    }
+
+    /**
      * First-onboarding entry point. A newly installed receiver is already on
      * the sender's Wi-Fi after downloading the APK in its browser, so probe
      * that network first. Only when no valid CruxCoach manifest is present do
@@ -717,6 +730,7 @@ class BoardSyncManager(
             }
         }
         val found = claimed ?: return
+        holdLocalTransferInForeground()
         scope.launch {
             if (shareBrands != null) {
                 // The dialog showed every family — the sender's and the rest — so what was
@@ -1682,6 +1696,7 @@ class BoardSyncManager(
             return
         }
         if (!claimSyncSlot(ImportStep.Extract, localShare = true)) return
+        holdLocalTransferInForeground()
         try {
             importDownloadedBoard(
                 compressed, board, pending.protocolVersion,
@@ -1738,6 +1753,10 @@ class BoardSyncManager(
         )
         // Phase durations, so a slow share says where its time went (a peer snapshot is
         // ~600 MB; one quadratic statement once ran for most of an hour, like a hang).
+        // Both clocks, because the phases (nanoTime) stop while the phone sleeps: their
+        // difference is time the import stood still in suspend.
+        val wallStarted = android.os.SystemClock.elapsedRealtime()
+        val awakeStarted = android.os.SystemClock.uptimeMillis()
         var phaseStarted = System.nanoTime()
         fun phaseMillis(): Long = ((System.nanoTime() - phaseStarted) / 1_000_000).also {
             phaseStarted = System.nanoTime()
@@ -1811,10 +1830,13 @@ class BoardSyncManager(
                 )
             }
             compressed.delete()
+            val finalizedMs = phaseMillis()
+            val asleepMs = (android.os.SystemClock.elapsedRealtime() - wallStarted) -
+                (android.os.SystemClock.uptimeMillis() - awakeStarted)
             Log.i(
                 TAG,
                 "Local share timings: verify+extract=${verifiedMs}ms prune=${prunedMs}ms " +
-                    "import=${importedMs}ms finalize=${phaseMillis()}ms",
+                    "import=${importedMs}ms finalize=${finalizedMs}ms asleep=${asleepMs}ms",
             )
             // The same detached planner refresh a Blossom sync gets once it has released
             // the sync slot. Without it a board filled by a share had no sqlite_stat1 and
@@ -1839,6 +1861,7 @@ class BoardSyncManager(
      */
     private fun performOfflineShare(invitation: LocalShareProtocol.Invitation) {
         if (!claimSyncSlot(ImportStep.FetchingManifest, localShare = true)) return
+        holdLocalTransferInForeground()
 
         scope.launch {
             try {
@@ -2086,6 +2109,7 @@ class BoardSyncManager(
      */
     private fun performLocalImport(url: String) {
         if (!claimSyncSlot(ImportStep.Download(0, 0))) return
+        holdLocalTransferInForeground()
 
         scope.launch {
             val tempFile = File(appContext.cacheDir, "local_board.sqlite3")
