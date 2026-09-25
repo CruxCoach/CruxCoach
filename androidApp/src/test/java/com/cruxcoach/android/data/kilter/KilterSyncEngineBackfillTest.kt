@@ -6,8 +6,11 @@ import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.db.secure.SecureDatabase
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -339,6 +342,54 @@ class KilterSyncEngineBackfillTest {
         assertEquals(upperUuid.lowercase(), stored)
         assertTrue(upsertedStats.all { it.first == upperUuid.lowercase() })
         assertEquals("author-uuid-alice", authorMarks[upperUuid.lowercase()])
+    }
+
+    // ── Gelöschte Logbuch-Einträge ───────────────────────────────────────
+    //
+    // Löschen war bei Dauersync wirkungslos: die Dedup-Prüfung kennt nur die
+    // VORHANDENEN Zeilen, also galt ein gelöschter Eintrag als neu und kam
+    // beim nächsten Sync zurück — und nach Kilter ging nichts raus.
+
+    @Test
+    fun a_deleted_log_is_not_imported_again() = runTest {
+        every { personalRepo.pendingLogDeletions() } returns listOf("log-1")
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(newWorldUuid)))
+        coEvery { apiClient.deleteLog(any()) } returns KilterPublishResult.Success("log-1")
+
+        val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(0, imported.totalNew, "der gelöschte Eintrag darf nicht zurückkommen")
+        assertTrue(ascents.isEmpty(), "es darf keine Ascent-Zeile geschrieben werden")
+    }
+
+    @Test
+    fun a_pending_deletion_is_pushed_to_kilter_and_then_forgotten() = runTest {
+        every { personalRepo.pendingLogDeletions() } returns listOf("log-1")
+        every { prefs.kilterPushEnabled } returns flowOf(true)
+        coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
+        coEvery { apiClient.deleteLog("log-1") } returns KilterPublishResult.Success("log-1")
+
+        engine.syncBidirectional().getOrThrow()
+
+        coVerify { apiClient.deleteLog("log-1") }
+        // Bestätigt gelöscht -> die Vormerkung hat ihren Zweck erfüllt. Sie
+        // ist eine Warteschlange, keine Grabsteinsammlung.
+        verify { personalRepo.clearLogDeletion("log-1") }
+    }
+
+    @Test
+    fun a_deletion_kilter_refuses_permanently_stays_queued() = runTest {
+        every { personalRepo.pendingLogDeletions() } returns listOf("log-1")
+        every { prefs.kilterPushEnabled } returns flowOf(true)
+        coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
+        coEvery { apiClient.deleteLog("log-1") } returns
+            KilterPublishResult.PermanentError("nope", 403)
+
+        engine.syncBidirectional().getOrThrow()
+
+        // Die Vormerkung BLEIBT: sie ist dann das einzige, was den Eintrag
+        // lokal fernhält.
+        verify(exactly = 0) { personalRepo.clearLogDeletion(any()) }
     }
 
     // ── Authored-climb backfill (/climbs/climbdetails/user) ──────────────

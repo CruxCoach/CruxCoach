@@ -59,6 +59,10 @@ internal class KilterClimbBackfiller(
         // legacy nodash-UPPERCASE spelling counts as present.
         val missing = response.climbs.filter { climb ->
             climb.climbUuid.isNotBlank() &&
+                // Kilter kennt Soft-Delete und liefert geloeschte Routen
+                // weiter mit; ohne diese Pruefung landeten sie als lebende
+                // Zeilen in der Board-DB und im Browser.
+                !climb.isDeleted &&
                 boardRepository.findClimbCanonicalUuid(climb.climbUuid) == null
         }
         if (missing.isEmpty()) return 0
@@ -247,16 +251,44 @@ internal class KilterClimbBackfiller(
      * a half-rewritten frame that would render part of the climb in the wrong
      * place.
      */
-    private fun toPlacementFrames(frames: String, layoutId: Long): String {
+    private fun toPlacementFrames(frames: String, layoutId: Long, frameCount: Int): String {
         if (frames.isBlank() || !BoardClimbParser.isClimbConcat(frames)) return frames
-        val holds = BoardClimbParser.parseFrames(frames)
+        val holds = BoardClimbParser.parseClimbConcat(frames)
         if (holds.isEmpty()) return frames
-        val converted = holds.map { hold ->
+
+        // hole -> placement innerhalb des aufgeloesten Layouts. Unvollstaendig
+        // heisst: Eingabe unveraendert behalten, statt eine halb umgeschriebene
+        // Route zu rendern.
+        val resolved = holds.map { hold ->
             val placementId = boardRepository
-                .getPlacementForHoleInLayout(hold.placementId, layoutId) ?: return frames
-            BoardHold(placementId.toInt(), hold.roleId)
+                .getPlacementForHoleInLayout(hold.holeId, layoutId) ?: return frames
+            placementId.toInt() to hold
         }
-        return BoardClimbParser.encodeFrames(converted)
+
+        val lastFrame = maxOf(
+            frameCount.coerceAtLeast(1),
+            holds.maxOf { maxOf(it.startFrame, it.endFrame ?: 1) },
+        )
+        if (lastFrame <= 1) {
+            return BoardClimbParser.encodeFrames(
+                resolved.map { (pid, hold) -> BoardHold(pid, hold.roleId) }
+            )
+        }
+
+        // Mehr-Frame-Route: Aurora erwartet Delta-Frames, komma-getrennt —
+        // je Frame erst die Griffe, die ihn verlassen (`x{pid}`), dann die
+        // neu hinzukommenden. Ohne das fielen alle Griffe in einen Frame
+        // zusammen und die Route verlor ihre Abfolge.
+        return (1..lastFrame).joinToString(",") { frame ->
+            buildString {
+                if (frame > 1) {
+                    resolved.filter { (_, h) -> (h.endFrame ?: lastFrame) == frame - 1 }
+                        .forEach { (pid, _) -> append("x").append(pid) }
+                }
+                resolved.filter { (_, h) -> h.startFrame == frame }
+                    .forEach { (pid, h) -> append("p").append(pid).append("r").append(h.roleId) }
+            }
+        }
     }
 
     /**
@@ -285,7 +317,7 @@ internal class KilterClimbBackfiller(
             layoutId = layoutId,
             setter = climb.username.ifBlank { null },
             name = climb.name,
-            frames = toPlacementFrames(frames, layoutId),
+            frames = toPlacementFrames(frames, layoutId, climb.frameCount),
             framesCount = climb.frameCount.toLong().coerceAtLeast(1L),
             isListed = if (climb.isListed) 1L else 0L,
             edgeLeft = climb.edgeLeft?.toLong(),

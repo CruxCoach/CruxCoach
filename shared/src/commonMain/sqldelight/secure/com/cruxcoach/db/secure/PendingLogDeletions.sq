@@ -1,0 +1,32 @@
+-- Offene Löschungen von Logbuch-Einträgen — siehe 15.sqm für das Warum.
+--
+-- Bewusst eine Warteschlange, keine Grabsteinsammlung: eine Zeile lebt nur so
+-- lange, bis Kilter das Löschen bestätigt hat. Danach liefert `/logs` den
+-- Eintrag nicht mehr und es gibt nichts mehr abzuwehren.
+CREATE TABLE pending_log_deletion (
+    log_uuid TEXT NOT NULL PRIMARY KEY,
+    deleted_at INTEGER NOT NULL
+);
+
+-- Beim Löschen gesetzt. INSERT OR REPLACE, weil derselbe Eintrag nach einem
+-- fehlgeschlagenen Fern-Löschen und einem Wiederimport erneut gelöscht
+-- werden kann.
+queueLogDeletion:
+INSERT OR REPLACE INTO pending_log_deletion(log_uuid, deleted_at) VALUES (?, ?);
+
+-- Filter des Downloads: was hier steht, wird nicht importiert.
+pendingLogDeletionUuids:
+SELECT log_uuid FROM pending_log_deletion ORDER BY deleted_at;
+
+-- Kilter hat bestätigt (oder kennt die uuid nicht) — die Vormerkung hat
+-- ihren Zweck erfüllt und verschwindet.
+clearLogDeletion:
+DELETE FROM pending_log_deletion WHERE log_uuid = ?;
+
+countPendingLogDeletions:
+SELECT COUNT(*) FROM pending_log_deletion;
+
+-- Nur für "Logbuchdaten löschen" in den Einstellungen: sonst blockierten
+-- offene Vormerkungen einen später gewollten Neuimport desselben Kontos.
+clearAllLogDeletions:
+DELETE FROM pending_log_deletion;

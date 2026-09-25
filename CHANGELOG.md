@@ -71,6 +71,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   group under one that opens Bugs & feature requests.
 
 ### Fixed
+- Deleting a logbook entry now sticks. With Kilter sync on it came back at the
+  next sync — the duplicate check only knows the entries that are present, so a
+  deleted one looked new — and nothing was ever removed on Kilter's side. The
+  entry is now deleted there too, and a deletion made offline or while uploads
+  are switched off is remembered until it can be carried out.
+- Climbs deleted in the Kilter app are no longer fetched back into the board
+  data.
+- A route logged in Kilter keeps its sequence. Its holds carry the frame they
+  belong to, which was read as a single frame, so a multi-frame route collapsed
+  into one.
+- Entries imported from a Kilter account record their board family and layout
+  right away instead of waiting for the next catalogue refresh.
 - Logbook entries find their climb whatever spelling the catalogue stores it
   under. The published Kilter catalogue holds three at once — nodash-UPPERCASE,
   nodash-lowercase and dashed-lowercase — and a logbook carries whichever its

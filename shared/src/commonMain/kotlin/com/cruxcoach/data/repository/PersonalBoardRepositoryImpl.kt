@@ -66,7 +66,32 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteAscent(uuid: String) {
-        database.ascentsQueries.deleteAscent(uuid)
+        database.transaction {
+            database.ascentsQueries.deleteAscent(uuid)
+            queueLogDeletion(uuid)
+        }
+    }
+
+    /** Merkt die Löschung vor, bis Kilter sie bestätigt hat. Auch für rein
+     *  lokale Einträge: ein DELETE für eine uuid, die Kilter nicht kennt,
+     *  antwortet 404 und gilt als erledigt — das spart die Extra-Abfrage, ob
+     *  die Zeile je hochgeladen war, und die Vormerkung ist gleich wieder weg. */
+    private fun queueLogDeletion(logUuid: String) {
+        database.pendingLogDeletionsQueries.queueLogDeletion(
+            log_uuid = logUuid,
+            deleted_at = kotlinx.datetime.Clock.System.now().toEpochMilliseconds(),
+        )
+    }
+
+    override fun pendingLogDeletions(): List<String> =
+        database.pendingLogDeletionsQueries.pendingLogDeletionUuids().executeAsList()
+
+    override fun clearLogDeletion(logUuid: String) {
+        database.pendingLogDeletionsQueries.clearLogDeletion(logUuid)
+    }
+
+    override fun clearAllLogDeletions() {
+        database.pendingLogDeletionsQueries.clearAllLogDeletions()
     }
 
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {
@@ -343,7 +368,10 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteBid(uuid: String) {
-        database.bidsQueries.deleteBid(uuid)
+        database.transaction {
+            database.bidsQueries.deleteBid(uuid)
+            queueLogDeletion(uuid)
+        }
     }
 
     override fun promoteQuickBidToSend(send: QuickLogSendInput) {

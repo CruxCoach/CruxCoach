@@ -311,10 +311,13 @@ class KilterSyncEngine @Inject constructor(
             // `getAllClimbUuids()` check matched nothing and reported every log
             // as new even on a pure re-import.
             val existingLogUuids = personalBoardRepo.getExistingLogUuids()
+            // Was der Nutzer geloescht hat, ist nicht "neu" — sonst kuendigt
+            // die Vorschau einen Import an, den insertLogs gleich ueberspringt.
+            val deletedLogUuids = personalBoardRepo.pendingLogDeletions().toHashSet()
             var newAscents = 0
             var newBids = 0
             for (log in logs) {
-                if (log.logUuid in existingLogUuids) continue
+                if (log.logUuid in existingLogUuids || log.logUuid in deletedLogUuids) continue
                 if (log.topped) newAscents++ else newBids++
             }
             KilterImportPreview(
@@ -399,6 +402,11 @@ class KilterSyncEngine @Inject constructor(
             // Download once, up front, and reuse the logs for wall-context
             // resolution instead of letting resolveAndStoreWallContext fetch
             // the whole logbook a second time.
+            // Zuerst die Loeschungen nachholen: sonst liefert /logs den
+            // Eintrag noch mit, und er wuerde zwar vom Grabstein abgefangen,
+            // aber bei jedem Sync erneut uebertragen.
+            if (pushEnabled) pushPendingLogDeletions()
+
             val logsResult = apiClient.fetchLogs()
             val logs = logsResult.getOrThrow()
 
@@ -451,7 +459,15 @@ class KilterSyncEngine @Inject constructor(
         // whole logbook every time. A row left blank because BoardDB wasn't
         // synced yet is healed on display by repairMissingDenormalized, so
         // skipping duplicates here loses nothing.
-        val newLogs = logs.filter { it.logUuid !in existingLogUuids }
+        // Ein geloeschter Eintrag ist nicht mehr vorhanden, seine uuid fehlt
+        // also in existingLogUuids — ohne diese Vormerkung haette der Download
+        // ihn fuer neu gehalten und wieder angelegt, bei jedem Sync aufs Neue.
+        // Genau daran war Loeschen bisher wirkungslos. Die Liste ist im
+        // Normalfall leer: sie haelt nur, was Kilter noch nicht bestaetigt hat.
+        val deletedLogUuids = personalBoardRepo.pendingLogDeletions().toHashSet()
+        val newLogs = logs.filter {
+            it.logUuid !in existingLogUuids && it.logUuid !in deletedLogUuids
+        }
         val duplicates = logs.size - newLogs.size
         if (newLogs.isEmpty()) return LogInsertCounts(0, 0, duplicates)
 
@@ -466,6 +482,12 @@ class KilterSyncEngine @Inject constructor(
         // denormalized name/grade is angle-independent for display).
         val climbCache = mutableMapOf<String, Pair<String, Double?>>() // normKey -> (name, diffAvg)
         val framesCache = mutableMapOf<String, Pair<String, Long>>()   // normKey -> (frames, framesCount)
+        // Board-Familie und Layout der Zeile. Ohne sie legte der Kilter-Sync
+        // seine Ascents mit layout_id = NULL an und verliess sich darauf, dass
+        // refreshDenormalizedData sie spaeter nachtraegt — bis dahin konnte das
+        // Logbuch die Board-Variante nicht bestimmen (Original vs Homewall).
+        // Der Katalog kennt beides hier schon, also wird es gleich gesetzt.
+        val boardCache = mutableMapOf<String, Pair<String, Long?>>()   // normKey -> (brand, layoutId)
         val lookupUuids = newLogs.asSequence()
             .map { it.climbUuid }
             .distinct()
@@ -477,6 +499,7 @@ class KilterSyncEngine @Inject constructor(
                 val key = normUuidKey(climb.uuid)
                 climbCache[key] = climb.name to climb.difficultyAverage
                 framesCache[key] = climb.frames to climb.framesCount
+                boardCache[key] = climb.boardBrand to climb.layoutId
             }
         }
 
@@ -486,6 +509,7 @@ class KilterSyncEngine @Inject constructor(
             for (log in newLogs) {
                 val key = normUuidKey(log.climbUuid)
                 val (climbName, diffAvg) = climbCache[key] ?: ("" to null)
+                val (brand, layoutId) = boardCache[key] ?: ("kilter" to null)
                 if (log.topped) {
                     val (frames, framesCount) = framesCache[key] ?: ("" to 1L)
                     personalBoardRepo.insertAscent(
@@ -507,7 +531,9 @@ class KilterSyncEngine @Inject constructor(
                         climbName = climbName,
                         difficultyAverage = diffAvg,
                         climbFrames = frames,
-                        framesCount = framesCount
+                        framesCount = framesCount,
+                        boardBrand = brand,
+                        layoutId = layoutId,
                     )
                     newAscents++
                 } else {
@@ -549,6 +575,45 @@ class KilterSyncEngine @Inject constructor(
         return lookup.chunked(CLIMB_LOOKUP_CHUNK)
             .flatMap { boardRepository.communityOnlyClimbUuids(it) }
             .mapTo(HashSet()) { normUuidKey(it) }
+    }
+
+    /**
+     * Holt beim Nutzer geloeschte Eintraege auch bei Kilter nach.
+     *
+     * Ohne das war Loeschen bei Dauersync wirkungslos in beide Richtungen:
+     * lokal kam der Eintrag zurueck (dagegen die Grabsteine), und in Kilter
+     * blieb er stehen, weil ueberhaupt kein Lösch-Aufruf existierte. Der
+     * Grabstein haelt `pending_remote`, bis Kilter bestaetigt hat — so
+     * ueberlebt das Loeschen auch einen Offline-Moment.
+     *
+     * Best effort: ein Fehlschlag laesst den Grabstein stehen und wird beim
+     * naechsten Sync erneut versucht. Der lokale Eintrag bleibt in jedem Fall
+     * geloescht.
+     */
+    private suspend fun pushPendingLogDeletions(): Int {
+        val pending = personalBoardRepo.pendingLogDeletions()
+        if (pending.isEmpty()) return 0
+        var done = 0
+        for (logUuid in pending) {
+            when (apiClient.deleteLog(logUuid)) {
+                // Auch 404 gilt als Erfolg: dann kennt Kilter den Eintrag
+                // nicht (mehr), was das gewuenschte Ergebnis ist. Die
+                // Vormerkung wird geloescht — sie hat ihren Zweck erfuellt,
+                // /logs liefert den Eintrag ab jetzt ohnehin nicht mehr.
+                is KilterPublishResult.Success -> {
+                    personalBoardRepo.clearLogDeletion(logUuid)
+                    done++
+                }
+                // Dauerhafte Ablehnung: erneutes Versuchen braechte nichts.
+                // Die Vormerkung BLEIBT aber stehen — sie ist dann das
+                // einzige, was den Eintrag noch lokal fernhaelt.
+                is KilterPublishResult.PermanentError -> Unit
+                // Voruebergehend (offline, 5xx): beim naechsten Sync erneut.
+                else -> Unit
+            }
+        }
+        if (done > 0) Log.i(TAG, "Pushed $done log deletion(s) to Kilter")
+        return done
     }
 
     /** Serialized across manual and automatic triggers; only successful batches are stamped. */
