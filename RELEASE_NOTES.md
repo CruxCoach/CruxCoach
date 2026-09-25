@@ -1,4 +1,4 @@
-# CruxCoach 0.2.3 — Unreleased
+# CruxCoach 0.2.3 — 2026-09-25
 
 This release brings beta videos, quicker board navigation, a searchable board map, clearer statistics and more reliable browsing.
 
@@ -28,6 +28,11 @@ This release brings beta videos, quicker board navigation, a searchable board ma
 - **Beta videos close at hand.** Open videos from the climb detail card. Optional
   beta media synchronizes separately from the board catalogue; previews are verified
   before caching and fall back gracefully when a mirror is unavailable.
+- **A Kilter logbook that matches Kilter.** Imported entries now find their problem
+  whatever spelling the catalogue stores it under, show the grade of the angle they
+  were climbed at, render on their own board and keep their sequence. Deleting an
+  entry removes it on Kilter too, and a deletion made offline is carried out later.
+  Existing entries are corrected on the next sync.
 
 - **Find boards on the map.** Search the board map for gyms, cities and boards and
   open a venue to see every board installed there.
@@ -56,5 +61,3 @@ This release brings beta videos, quicker board navigation, a searchable board ma
 CruxCoach 0.2.3 requires **Android 9 or newer**. As announced in the previous release,
 0.2.2 is the last version for Android 8.0 and 8.1. Existing installations on those
 versions can continue using 0.2.2.
-
-These notes describe the release candidate branch. Stable publication is pending.
