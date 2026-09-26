@@ -210,7 +210,7 @@ The runner expects these environment variables in its execution environment (e.g
 | `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/worktrees/cruxcoach-pages-refresh`, the `main` checkout that mirror.cruxcoach.org serves |
 | `CRUXCOACH_APKTRACK_STABLE_PUBLISH` | Optional. The host's APKTrack stable wrapper; defaults to `~/.local/bin/apktrack-publish-stable` |
 | `CRUXCOACH_RELEASE_CHECK` | Optional. The channel checker; defaults to `~/cruxcoach-dlstats/check_release.py` |
-| `GRADLE_USER_HOME` | Set by `cruxcoach-release` on the release host, whose default Gradle home is unusable |
+| `GRADLE_USER_HOME` | Set by `cruxcoach-release` on the release host to the Gradle home that holds its warm cache |
 
 Files the runner reads off its own filesystem, none of which is a forge secret:
 
@@ -406,7 +406,12 @@ release configuration or evidence of deployment:
 
 Move the compiled-in default (`UPDATER_API_BASE` in `androidApp/build.gradle.kts`)
 to `https://api.github.com`, so fresh installs do not depend on the runtime list
-at all. Keep Codeberg in `update-sources.json` for as long as it answers — the
+at all.
+
+*Addressed differently after 0.2.3:* `UPDATER_API_BASE` stays on Codeberg and
+the new `UPDATER_SECONDARY_API_BASE` (default `https://api.github.com`) adds
+GitHub as a second compiled-in forge, under the `github` id the runtime list
+uses, so the embedded fallback carries both forges. Keep Codeberg in `update-sources.json` for as long as it answers — the
 sweep asks every source and takes the highest version, so a second forge costs
 one request and buys a fallback.
 

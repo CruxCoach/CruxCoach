@@ -206,6 +206,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Finish cleaning to restore the previous display and optionally reset the
   collection; an active-mode button keeps the controls accessible.
 
+### Changed
+- The in-app updater's built-in fallback list now includes GitHub next to
+  Codeberg, matching the published source list. A device that cannot reach
+  cruxcoach.org or its mirror still checks both forges every release is
+  published on.
+
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out
   (M-097, since 0.2.2); the time after the rest is counted as training again.

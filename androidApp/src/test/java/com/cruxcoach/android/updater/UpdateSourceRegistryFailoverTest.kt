@@ -10,6 +10,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -137,6 +138,28 @@ class UpdateSourceRegistryFailoverTest {
         // The attempt is still stamped, so a host that is down is retried
         // once a day rather than on every single update check.
         assertEquals(nowMs, storedFetchedAt)
+    }
+
+    @Test
+    fun `the embedded list carries both forges every release is published on`() {
+        // Releases go to GitHub and, byte-identical, to Codeberg. A device
+        // that cannot reach either manifest host falls back to this list, and
+        // it must not have lost a forge the runtime list would have given it.
+        val forges = UpdateSourceRegistry.EMBEDDED.filter { it.kind == UpdateSource.Kind.FORGE }
+        assertEquals(listOf("forge", "github"), forges.map { it.id })
+        assertEquals("forges must be distinct hosts", forges.size, forges.map { it.webHost() }.distinct().size)
+    }
+
+    @Test
+    fun `a second forge that is missing, insecure or the first one again is dropped`() {
+        val primary = "https://codeberg.org/api/v1"
+        assertNull(UpdateSourceRegistry.secondaryForge("", primary))
+        assertNull(UpdateSourceRegistry.secondaryForge("http://api.github.com", primary))
+        assertNull(UpdateSourceRegistry.secondaryForge("https://codeberg.org/api/v1/", primary))
+        // The id is the updater counter's source label, so GitHub keeps the
+        // name the runtime list uses and anything else gets a neutral one.
+        assertEquals("github", UpdateSourceRegistry.secondaryForge("https://api.github.com/", primary)?.id)
+        assertEquals("forge-2", UpdateSourceRegistry.secondaryForge("https://git.example/api/v1", primary)?.id)
     }
 
     @Test
