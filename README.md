@@ -1,9 +1,12 @@
 # CruxCoach
 
-> **Release status (2026-09-10):** this source tree prepares **0.2.3**;
-> the published app is still **0.2.2**. Features described here must be read
-> with that distinction. Competitions, separate key-custody/personal-sharing
-> work and BoardCell/FIPS mesh are not integrated. Start with the
+> **Release status:** the published app is always the newest
+> [release](https://github.com/CruxCoach/CruxCoach/releases/latest); that link
+> follows every release, so this page names no version of its own. Features
+> marked with a version below shipped in that version; `main` may carry work
+> that no release contains yet ([changelog](CHANGELOG.md)). Competitions,
+> separate key-custody/personal-sharing work and BoardCell/FIPS mesh are not
+> integrated. Start with the
 > [documentation index](docs/README.md) and core concepts
 > ([English](docs/en/CORE_CONCEPTS.md) · [Deutsch](docs/de/CORE_CONCEPTS.md)).
 
@@ -114,7 +117,7 @@ Each GitHub release and its Codeberg mirror ships an `*.apk.sha256` sidecar next
 sha256sum -c CruxCoach-v*.apk.sha256
 ```
 
-Expected output: `CruxCoach-v0.2.2.apk: OK`. The signing certificate is the same across releases — Android refuses installs from a different cert, which is your second integrity check on top of the SHA-256.
+Expected output: `CruxCoach-vX.Y.Z.apk: OK`, with the version you downloaded. The signing certificate is the same across releases — Android refuses installs from a different cert, which is your second integrity check on top of the SHA-256.
 
 ### Updating
 

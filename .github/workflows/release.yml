@@ -411,6 +411,7 @@ jobs:
           scripts/mirror-codeberg-release.sh "$TAG" "${ARGS[@]}"
 
       - name: Ensure verified Zapstore APK fallback
+        id: zapstore
         if: steps.version.outputs.branch == 'main'
         run: |
           set -euo pipefail
@@ -515,10 +516,15 @@ jobs:
       # is on the same host as the download server and already holds the exact
       # release bytes, so both halves belong here, at the moment they are true.
       #
-      # Neither half is allowed to fail the release. The release itself is
-      # already published and immutable at this point; the nightly refresh runs
-      # the same script and repairs whatever did not work. A warning is the
-      # right volume — loud enough to notice, not loud enough to undo a release.
+      # Neither half stops the steps after it: the release is already public
+      # and immutable here, and the nightly refresh runs the same script. It
+      # is still not optional — the verification step at the end fails the
+      # run if the website or the local copy does not carry this release.
+      #
+      # PAGES_DIR defaults to the checkout mirror.cruxcoach.org serves, which
+      # the nightly refresh also runs in and which stays on main. The 0.2.3
+      # run used ~/cruxcoach-pages, found it on a feature branch, skipped the
+      # website and still went green.
       - name: Publish the release to the download server and the website
         if: steps.version.outputs.branch == 'main'
         run: |
@@ -526,7 +532,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           APK_DIR="${CRUXCOACH_APK_LOCAL_DIR:-$HOME/cruxcoach-dlstats/apk}"
-          PAGES_DIR="${CRUXCOACH_PAGES_DIR:-$HOME/cruxcoach-pages}"
+          PAGES_DIR="${CRUXCOACH_PAGES_DIR:-$HOME/worktrees/cruxcoach-pages-refresh}"
 
           # These bytes were signature-verified and published a few steps ago,
           # so the selector's copy is a file copy — no download, no digest race
@@ -554,3 +560,65 @@ jobs:
           else
             echo "::warning::$PAGES_DIR/tools/publish-release.sh is missing — website not updated"
           fi
+
+      # APKTrack stable is part of every release (owner decision, 2026-09-26).
+      # Stable is a manual-only production track: publishing it needs the
+      # maintainer's explicit authorization of this exact release. Dispatching
+      # this workflow on main is that authorization — the same act that
+      # already authorizes the tag, both forges and Zapstore — and the step
+      # publishes only the APK this run verified, under the tag's commit.
+      #
+      # This is also what puts the APK on the Blossom servers the in-app
+      # updater falls back to: before it ran as part of the release, they
+      # never held a stable APK.
+      #
+      # The wrapper lives on this private operator host, next to the APKTrack
+      # registry and the receipt signer it drives; the workflow never sees a
+      # credential. It succeeds only for status="published" with
+      # receipt_delivered=true, and accepts a job that already published this
+      # commit, so the repair path can re-run it.
+      - name: Publish the release to APKTrack stable
+        if: steps.version.outputs.branch == 'main'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          PUBLISH="${CRUXCOACH_APKTRACK_STABLE_PUBLISH:-$HOME/.local/bin/apktrack-publish-stable}"
+          [ -x "$PUBLISH" ] || {
+            echo "::error::$PUBLISH is missing — APKTrack stable and the Blossom fallbacks keep the previous release"
+            exit 1
+          }
+          COMMIT="$(git rev-parse "${TAG}^{commit}")"
+          "$PUBLISH" "$APK" --commit "$COMMIT"
+
+      # The one question every step above answers only for itself: does every
+      # place a person or an installed app gets CruxCoach from now carry THIS
+      # release? GitHub and Codeberg releases/latest, Zapstore, the website on
+      # the apex and every mirror, the download selector, its local copy,
+      # APKTrack stable and the Blossom servers — each against this APK's
+      # SHA-256 and size. It waits up to 15 minutes, because GitHub Pages
+      # deploys and the selector re-reads its manifest on their own schedule,
+      # then names every channel that still lags and fails the run.
+      #
+      # Runs even when an earlier publish step failed, as long as the release
+      # itself went out, so a red run lists everything that needs repair — a
+      # re-dispatch of the same version takes the repair path above.
+      #
+      # The checker is cruxcoach-dlstats/check_release.py, the same code the
+      # 6-hourly origin check runs, so drift after a green release surfaces
+      # there too.
+      - name: Verify every channel carries the release
+        if: ${{ !cancelled() && steps.zapstore.outcome == 'success' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          CHECK="${CRUXCOACH_RELEASE_CHECK:-$HOME/cruxcoach-dlstats/check_release.py}"
+          [ -f "$CHECK" ] || { echo "::error::$CHECK is missing — cannot verify the release channels"; exit 1; }
+          python3 "$CHECK" \
+            --version "$VERSION" \
+            --sha256 "$(sha256sum "$APK" | awk '{ print $1 }')" \
+            --size "$(stat -c '%s' "$APK")" \
+            --wait 900 --interval 30

@@ -1,9 +1,11 @@
 # Release status and GitHub workflow
 
-> **Operational status — 2026-09-10:** published app **0.2.2**; this tree
-> prepares **0.2.3**. This page preserves a repository workflow and historical
-> operator procedure; its presence does not establish a running release service.
-> No stable publication is authorized by this document.
+> **Operational status — 2026-09-26:** 0.2.3 was released through
+> `release.yml` on an ephemeral self-hosted runner. The published version is
+> whatever [releases/latest](https://github.com/CruxCoach/CruxCoach/releases/latest)
+> names; this page deliberately does not repeat it. No stable publication is
+> authorized by this document — the maintainer's dispatch of the workflow is
+> (see [One run, every channel](#one-run-every-channel)).
 
 ## Current authority and evidence
 
@@ -28,8 +30,10 @@ having a reserved package does not mean this release contains FIPS code.
 Feature build code never receives upload tokens or Android signing keys.
 APKTrack success requires both `status="published"` and
 `receipt_delivered=true`; a queued job is insufficient. The owner's review
-and required checks own merge authority. Stable requires separate, explicit
-operator authorization for that release.
+and required checks own merge authority. Stable requires explicit operator
+authorization for that exact release; since 2026-09-26 the maintainer's
+dispatch of `release.yml` on `main` is that authorization, and the run
+publishes APKTrack stable itself with the APK it built.
 
 Before migration activation, the owner must finish private broker/signer
 installation, policy and negative-access checks, end-to-end feature
@@ -54,7 +58,48 @@ instructions for a remote documentation or feature agent to execute.
 GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
 `main` runs it on a **self-hosted** runner: unit tests, one signed APK, the tag,
 the GitHub release, a byte-identical Codeberg release, both SHA-256 sidecars,
-the Zapstore publish, and the website and download-server update.
+the Zapstore publish, the website and download-server update, APKTrack stable
+(which also replicates the APK to the Blossom servers), and a final check that
+every one of those channels carries the release.
+
+## One run, every channel
+
+A release is done when every place a person or an installed app gets CruxCoach
+from offers it — not when the workflow's publish steps each succeeded for
+themselves. The 0.2.3 run went green while the website still offered 0.2.2
+(its checkout was on a feature branch and the step skipped) and while the
+Blossom fallbacks of the in-app updater held no stable APK at all (APKTrack
+stable was a separate manual step). Both are now part of the run, and the run
+ends by checking all channels against the APK's SHA-256 and size:
+
+| Channel | Published by | Verified as |
+|---|---|---|
+| GitHub release | `scripts/publish-github-release.sh` | `releases/latest` is the tag; APK size and digest |
+| Codeberg release | `scripts/mirror-codeberg-release.sh` | `releases/latest` is the tag; APK size and sidecar |
+| Zapstore | `zsp publish` (Amber) | release + asset event on the relay; CDN blob |
+| Download server | local copy in `~/cruxcoach-dlstats/apk` | exact bytes; the selector's HEAD answer names the version |
+| cruxcoach.org + mirror | `tools/publish-release.sh` in the pages checkout the mirror serves | `apk-target.json`, both homepages (links + JSON-LD), `llms.txt` |
+| APKTrack stable | `apktrack-publish-stable` on the release host | stable receipt for this SHA-256 |
+| Blossom (×3) | APKTrack replication | blob on the servers `update-sources.json` lists; one is required |
+
+The check is `cruxcoach-dlstats/check_release.py`. It waits up to 15 minutes
+for GitHub Pages and the selector, then fails the run and names every channel
+that lags. The same code runs every 6 hours from `check_origins.py`, against
+the newest version any forge or the website reports, so drift after a green
+release surfaces as well. `README.md` and other documentation link to
+`releases/latest` and name no current version, so nothing there needs a
+release-time edit.
+
+Dispatching the same version again takes the repair path: it re-uses the
+tagged APK and re-publishes it wherever it is missing. APKTrack accepts the
+already-published job under the same idempotency key.
+
+On the release host, `cruxcoach-release` does the whole sequence in one
+command: preflight (website checkout on `main`, a writable Gradle home, the
+APKTrack wrapper and the checker present), a single-use runner registration
+whose token never leaves memory, the dispatch, following the run, and the
+final channel table. Running it is the authorization; it asks once unless
+given `--yes`.
 
 It is a manual trigger, and it refuses to run off `main`. The Zapstore signer
 prompts a phone twice per release (see below), so an unattended run would stall
@@ -162,7 +207,10 @@ The runner expects these environment variables in its execution environment (e.g
 | `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
 | `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
 | `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
-| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/cruxcoach-pages` |
+| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/worktrees/cruxcoach-pages-refresh`, the `main` checkout that mirror.cruxcoach.org serves |
+| `CRUXCOACH_APKTRACK_STABLE_PUBLISH` | Optional. The host's APKTrack stable wrapper; defaults to `~/.local/bin/apktrack-publish-stable` |
+| `CRUXCOACH_RELEASE_CHECK` | Optional. The channel checker; defaults to `~/cruxcoach-dlstats/check_release.py` |
+| `GRADLE_USER_HOME` | Set by `cruxcoach-release` on the release host, whose default Gradle home is unusable |
 
 Files the runner reads off its own filesystem, none of which is a forge secret:
 
