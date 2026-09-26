@@ -23,6 +23,7 @@ object LocalShareProtocol {
      *  exact bounded sender session. */
     const val SESSION_HEADER = "X-CruxCoach-Share-Session"
 
+
     data class Invitation(
         val baseUrl: String,
         val ssid: String,
@@ -68,6 +69,13 @@ object LocalShareProtocol {
         /** null while the sender is still preparing the snapshot. */
         val board: BoardArtifact?,
         val boardStatus: String,
+        /**
+         * The catalogues the sender says it has. From a ready snapshot these are its exact
+         * contents; while the snapshot is still being prepared a current sender already names
+         * them from its live database, so a receiver can choose before anything is built.
+         * Empty for an older sender that is still preparing.
+         */
+        val declaredCatalogues: List<BoardCatalogue> = board?.catalogues.orEmpty(),
     )
 
     fun invitationUri(invitation: Invitation): String = Uri.Builder()
@@ -143,6 +151,8 @@ object LocalShareProtocol {
             }
             null
         }
+        val declared = board?.catalogues
+            ?: parseCatalogues(boardJson.optJSONArray("catalogues") ?: JSONArray())
         return Manifest(
             protocolVersion = protocolVersion,
             sessionId = root.getString("sessionId").also {
@@ -157,9 +167,10 @@ object LocalShareProtocol {
             ),
             board = board,
             boardStatus = boardStatus,
+            declaredCatalogues = declared,
         ).also { manifest ->
             require(manifest.apkVersionCode > 0L)
-            require(manifest.apk.sizeBytes > 0L)
+            LocalTransferLimits.requireSize(manifest.apk.sizeBytes, LocalTransferLimits.MAX_APK_BYTES)
             manifest.board?.let {
                 val expectedBoardPath = when (manifest.protocolVersion) {
                     VERSION -> BOARD_PATH
@@ -169,8 +180,8 @@ object LocalShareProtocol {
                 require(it.artifact.path == expectedBoardPath) {
                     "Board artifact does not match share protocol"
                 }
-                require(it.artifact.sizeBytes > 0L)
-                require(it.uncompressedSizeBytes > 0L)
+                LocalTransferLimits.requireSize(it.artifact.sizeBytes, LocalTransferLimits.MAX_COMPRESSED_DB_BYTES)
+                LocalTransferLimits.requireSize(it.uncompressedSizeBytes, LocalTransferLimits.MAX_DB_BYTES)
                 require(it.schemaVersion >= 0)
             }
         }

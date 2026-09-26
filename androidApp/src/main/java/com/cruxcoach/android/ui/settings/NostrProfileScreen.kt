@@ -4,16 +4,18 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -26,9 +28,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,13 +40,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,9 +60,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.collectAsState
 import coil.compose.AsyncImage
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.nostr.profile.LnurlVerifier
 import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import com.halilibo.richtext.markdown.Markdown
@@ -73,7 +79,6 @@ fun NostrProfileScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val showPublishWarning = remember { androidx.compose.runtime.mutableStateOf(false) }
 
     val savedToast = stringResource(R.string.nostr_profile_saved_toast)
     LaunchedEffect(state.justSaved) {
@@ -105,28 +110,6 @@ fun NostrProfileScreen(
         onResult = { uri: Uri? -> uri?.let { viewModel.selectPicture(it) } },
     )
 
-    if (showPublishWarning.value) {
-        AlertDialog(
-            onDismissRequest = { showPublishWarning.value = false },
-            title = { Text(stringResource(R.string.nostr_profile_publish_warning_title)) },
-            text = { Text(stringResource(R.string.nostr_profile_publish_warning_body)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showPublishWarning.value = false
-                        viewModel.publishToNostr()
-                    },
-                ) {
-                    Text(stringResource(R.string.nostr_profile_publish_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPublishWarning.value = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-            },
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -135,7 +118,7 @@ fun NostrProfileScreen(
                     title = { Text(stringResource(R.string.nostr_profile_title)) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
                     },
                 )
@@ -150,6 +133,9 @@ fun NostrProfileScreen(
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        bottomBar = {
+            if (!state.isLoading) ProfileSaveBar(state, viewModel::save, viewModel::publishToNostr)
+        },
     ) { paddingValues ->
         if (state.isLoading) {
             Column(
@@ -164,46 +150,64 @@ fun NostrProfileScreen(
             return@Scaffold
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            BannerImageArea(
-                url = state.bannerUrl,
-                uploadInFlight = state.bannerUploadInFlight,
-                onEditClick = {
-                    bannerPicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-                onRemoveClick = viewModel::removeBanner,
-            )
+        NostrProfileContent(
+            state = state,
+            actions = ProfileEditorActions(
+                onDisplayName = viewModel::setDisplayName,
+                onAbout = viewModel::setAbout,
+                onLightning = viewModel::setLightningAddress,
+                onNip05 = viewModel::setNip05,
+                onWebsite = viewModel::setWebsite,
+                onImportKilter = viewModel::importFromKilter,
+                onEditPicture = { picturePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onRemovePicture = viewModel::removePicture,
+                onEditBanner = { bannerPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onRemoveBanner = viewModel::removeBanner,
+                onAutoNote = viewModel::setAutoNoteEnabled,
+            ),
+            modifier = Modifier.padding(paddingValues),
+        )
+    }
+}
 
+internal data class ProfileEditorActions(
+    val onDisplayName: (String) -> Unit,
+    val onAbout: (String) -> Unit,
+    val onLightning: (String) -> Unit,
+    val onNip05: (String) -> Unit,
+    val onWebsite: (String) -> Unit,
+    val onImportKilter: () -> Unit,
+    val onEditPicture: () -> Unit,
+    val onRemovePicture: () -> Unit,
+    val onEditBanner: () -> Unit,
+    val onRemoveBanner: () -> Unit,
+    val onAutoNote: (Boolean) -> Unit,
+)
+
+@Composable
+internal fun NostrProfileContent(
+    state: NostrProfileEditState,
+    actions: ProfileEditorActions,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)
+            .testTag("profile_content"),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().padding(bottom = 48.dp).testTag("profile_image_header")) {
+            BannerImageArea(state.bannerUrl, state.bannerUploadInFlight, actions.onEditBanner, actions.onRemoveBanner)
             ProfilePictureArea(
-                url = state.pictureUrl,
-                uploadInFlight = state.pictureUploadInFlight,
-                onEditClick = {
-                    picturePicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-                onRemoveClick = viewModel::removePicture,
+                state.pictureUrl, state.pictureUploadInFlight, actions.onEditPicture, actions.onRemovePicture,
+                Modifier.align(Alignment.BottomStart).padding(start = 16.dp).offset(y = 40.dp),
             )
-
-            Text(
-                stringResource(R.string.nostr_profile_explainer),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
+        }
+        SettingsSectionCard {
             OutlinedTextField(
                 value = state.displayName,
-                onValueChange = viewModel::setDisplayName,
+                onValueChange = actions.onDisplayName,
                 label = { Text(stringResource(R.string.nostr_profile_display_name)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_display_name_hint)) },
+                trailingIcon = { InfoButton(stringResource(R.string.nostr_profile_display_name), stringResource(R.string.nostr_profile_display_name_hint)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 modifier = Modifier.fillMaxWidth(),
@@ -211,7 +215,7 @@ fun NostrProfileScreen(
 
             if (state.canImportFromKilter) {
                 OutlinedButton(
-                    onClick = viewModel::importFromKilter,
+                    onClick = actions.onImportKilter,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.nostr_profile_import_from_kilter))
@@ -238,7 +242,7 @@ fun NostrProfileScreen(
 
             OutlinedTextField(
                 value = state.about,
-                onValueChange = viewModel::setAbout,
+                onValueChange = actions.onAbout,
                 label = { Text(stringResource(R.string.nostr_profile_about)) },
                 supportingText = {
                     val limit = ABOUT_CHAR_LIMIT
@@ -263,15 +267,30 @@ fun NostrProfileScreen(
             if (state.about.isNotBlank()) {
                 AboutMarkdownPreview(content = state.about)
             }
-
+        }
+        SettingsExpandableSection(
+            title = stringResource(R.string.ux_profile_links),
+            summary = stringResource(
+                if (state.nip05Verification is Nip05Verifier.State.Mismatch ||
+                    state.nip05Verification is Nip05Verifier.State.Unreachable ||
+                    state.lnurlVerification is LnurlVerifier.State.Unreachable)
+                    R.string.profile_links_check_failed else R.string.profile_links_summary,
+            ),
+            initiallyExpanded = state.website.isNotBlank() || state.nip05.isNotBlank() || state.lightningAddress.isNotBlank(),
+        ) {
             OutlinedTextField(
                 value = state.lightningAddress,
-                onValueChange = viewModel::setLightningAddress,
+                onValueChange = actions.onLightning,
                 label = { Text(stringResource(R.string.nostr_profile_lightning)) },
-                supportingText = {
-                    Text(lnurlSupportingText(state.lnurlVerification))
+                supportingText = if (state.lnurlVerification != LnurlVerifier.State.Idle) {
+                    { Text(lnurlSupportingText(state.lnurlVerification)) }
+                } else null,
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LnurlVerificationIcon(state.lnurlVerification)
+                        InfoButton(stringResource(R.string.nostr_profile_lightning), stringResource(R.string.profile_lightning_help))
+                    }
                 },
-                trailingIcon = { LnurlVerificationIcon(state.lnurlVerification) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -281,88 +300,105 @@ fun NostrProfileScreen(
 
             OutlinedTextField(
                 value = state.nip05,
-                onValueChange = viewModel::setNip05,
+                onValueChange = actions.onNip05,
                 label = { Text(stringResource(R.string.nostr_profile_nip05_label)) },
-                supportingText = {
-                    Text(nip05SupportingText(state.nip05Verification))
+                supportingText = if (state.nip05Verification != Nip05Verifier.State.Idle) {
+                    { Text(nip05SupportingText(state.nip05Verification)) }
+                } else null,
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Nip05VerificationIcon(state.nip05Verification)
+                        InfoButton(stringResource(R.string.nostr_profile_nip05_label), stringResource(R.string.profile_nostr_address_help))
+                    }
                 },
-                trailingIcon = { Nip05VerificationIcon(state.nip05Verification) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             OutlinedTextField(
                 value = state.website,
-                onValueChange = viewModel::setWebsite,
+                onValueChange = actions.onWebsite,
                 label = { Text(stringResource(R.string.nostr_profile_website_label)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_website_hint)) },
+                trailingIcon = { InfoButton(stringResource(R.string.nostr_profile_website_label), stringResource(R.string.nostr_profile_website_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = viewModel::save,
-                enabled = !state.isSaving && !state.isPublishing,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    if (state.isSaving) stringResource(R.string.nostr_profile_saving)
-                    else stringResource(R.string.nostr_profile_save),
-                )
-            }
-
-            Text(
-                stringResource(R.string.profile_local_storage_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        }
+        SettingsExpandableSection(
+            title = stringResource(R.string.profile_community_title),
+            summary = stringResource(
+                if ((state.subscriberHealth?.failureStreak ?: 0) > 0)
+                    R.string.profile_community_error else R.string.profile_community_summary,
+            ),
+        ) {
+            SettingsToggleRow(
+                title = stringResource(R.string.auto_note_setting_title),
+                description = stringResource(R.string.auto_note_setting_body),
+                checked = state.autoNoteEnabled,
+                onCheckedChange = actions.onAutoNote,
             )
-
-            OutlinedButton(
-                onClick = { showPublishWarning.value = true },
-                enabled = !state.isSaving && !state.isPublishing,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    if (state.isPublishing) stringResource(R.string.nostr_profile_publishing)
-                    else stringResource(R.string.nostr_profile_publish_action),
-                )
-            }
-
-            // Auto-Note global default. The editor picks this up at open
-            // time as the per-publish checkbox vorbelegung; flipping
-            // here doesn't retro-affect open editor sessions.
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
-            Text(
-                stringResource(R.string.auto_note_setting_title),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                androidx.compose.material3.Switch(
-                    checked = state.autoNoteEnabled,
-                    onCheckedChange = viewModel::setAutoNoteEnabled,
-                )
-                Spacer(Modifier.size(12.dp))
-                Text(
-                    stringResource(R.string.auto_note_setting_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // Subscriber liveness — minimal diagnostic so users can
-            // tell whether the relay-collect loop is alive. running=false
-            // means no events will arrive; failureStreak>0 means the loop
-            // is in exponential-backoff. Numbers come from the
-            // CommunityClimbSubscriber.health StateFlow.
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SubscriberHealthLine(state.subscriberHealth)
         }
     }
+}
+
+@Composable
+internal fun ProfileSaveBar(state: NostrProfileEditState, onSave: () -> Unit, onPublish: () -> Unit) {
+    val busy = state.isSaving || state.isPublishing || state.pictureUploadInFlight || state.bannerUploadInFlight
+    Surface(tonalElevation = 3.dp) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Button(
+                    onClick = onSave,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f).testTag("profile_save_local"),
+                ) {
+                    Text(stringResource(if (state.isSaving) R.string.nostr_profile_saving else R.string.nostr_profile_save))
+                }
+                InfoButton(stringResource(R.string.nostr_profile_save), stringResource(R.string.profile_local_storage_hint))
+            }
+            ProfilePublishAction(busy, state.isPublishing, onPublish)
+        }
+    }
+}
+
+@Composable
+internal fun ProfilePublishAction(busy: Boolean, publishing: Boolean, onPublish: () -> Unit) {
+    val showPublishWarning = rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    TextButton(
+        onClick = { showPublishWarning.value = true },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth().testTag("profile_publish"),
+    ) {
+        Text(stringResource(if (publishing) R.string.nostr_profile_publishing else R.string.nostr_profile_publish_action))
+    }
+    if (showPublishWarning.value) {
+        AlertDialog(
+            onDismissRequest = { showPublishWarning.value = false },
+            title = { Text(stringResource(R.string.nostr_profile_publish_warning_title)) },
+            text = { Text(stringResource(R.string.nostr_profile_publish_warning_body), modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPublishWarning.value = false
+                        onPublish()
+                    },
+                    enabled = !busy,
+                ) {
+                    Text(stringResource(R.string.nostr_profile_publish_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishWarning.value = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+
 }
 
 private const val ABOUT_CHAR_LIMIT = 500
@@ -405,14 +441,14 @@ private fun BannerImageArea(
                     .size(40.dp),
             )
         }
-        // Remove button (top-left) — only visible when a banner is set.
+        // Keep both cover controls clear of the overlapping avatar.
         if (url.isNotBlank() && !uploadInFlight) {
             FilledIconButton(
                 onClick = onRemoveClick,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .size(36.dp),
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 64.dp)
+                    .size(48.dp),
             ) {
                 Icon(
                     Icons.Filled.Close,
@@ -427,7 +463,7 @@ private fun BannerImageArea(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(8.dp)
-                .size(36.dp),
+                .size(48.dp),
         ) {
             Icon(
                 Icons.Filled.Edit,
@@ -445,48 +481,42 @@ private fun ProfilePictureArea(
     uploadInFlight: Boolean,
     onEditClick: () -> Unit,
     onRemoveClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-        ) {
-            if (url.isNotBlank()) {
-                AsyncImage(
-                    model = url,
-                    contentDescription = stringResource(R.string.nostr_profile_picture_change),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                )
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(112.dp)) {
+            Box(
+                Modifier.size(96.dp)
+                    .border(4.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    .padding(4.dp).clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            ) {
+                if (url.isNotBlank()) {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = stringResource(R.string.profile_picture_title),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                } else {
+                    Icon(Icons.Default.Person, null, modifier = Modifier.align(Alignment.Center).size(40.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                if (uploadInFlight) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center).size(28.dp))
+                }
             }
-            if (uploadInFlight) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(28.dp),
-                )
+            FilledIconButton(
+                onClick = onEditClick,
+                enabled = !uploadInFlight,
+                modifier = Modifier.align(Alignment.BottomEnd).size(48.dp),
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.nostr_profile_picture_change))
             }
-        }
-        FilledIconButton(
-            onClick = onEditClick,
-            enabled = !uploadInFlight,
-        ) {
-            Icon(
-                Icons.Filled.Edit,
-                contentDescription = stringResource(R.string.nostr_profile_picture_change),
-            )
         }
         if (url.isNotBlank() && !uploadInFlight) {
-            FilledIconButton(onClick = onRemoveClick) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.nostr_profile_picture_remove),
-                )
+            FilledIconButton(onClick = onRemoveClick, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.nostr_profile_picture_remove))
             }
         }
     }
@@ -596,19 +626,19 @@ private fun SubscriberHealthLine(
     when {
         !snapshot.running -> Text(
             stringResource(R.string.nostr_profile_subscriber_status_stopped),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         snapshot.lastEventAtMs == null -> Text(
             stringResource(R.string.nostr_profile_subscriber_status_running_never),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         else -> Text(
             stringResource(R.string.nostr_profile_subscriber_status_running_active_prefix) +
                 " " +
                 com.cruxcoach.android.ui.board.creator.relativeTimeLabel(snapshot.lastEventAtMs),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

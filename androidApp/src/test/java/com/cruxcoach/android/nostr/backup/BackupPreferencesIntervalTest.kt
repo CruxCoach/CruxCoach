@@ -47,6 +47,18 @@ class BackupPreferencesIntervalTest {
     }
 
     @Test
+    fun `identity reset requires fresh consent and returns to manual backups`() = runTest {
+        val prefs = newPrefs(backgroundScope)
+        prefs.setBackupEnabled(true)
+        prefs.setBackupInterval(SyncInterval.DAILY)
+        prefs.setWrappedDataKey("test-ciphertext")
+        prefs.clearAllIdentityState()
+        assertEquals(false, prefs.backupEnabled.first())
+        assertEquals(SyncInterval.MANUAL, prefs.backupInterval.first())
+        assertEquals(null, prefs.getWrappedDataKey())
+    }
+
+    @Test
     fun `backupInterval defaults to MANUAL when key is unset`() = runTest {
         val prefs = newPrefs(backgroundScope)
         // MANUAL default: a fresh install never silently overwrites a

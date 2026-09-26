@@ -21,7 +21,7 @@ import com.cruxcoach.domain.board.BoardBrand
  */
 data class MapFilters(
     val showOriginal: Boolean = true,
-    val showHomewalls: Boolean = false,
+    val showHomewalls: Boolean = true,
     val matchesMyBoard: Boolean = false,
     val countries: Set<String> = emptySet(),
     val accessTypes: Set<AccessType> = emptySet(),
@@ -31,13 +31,18 @@ data class MapFilters(
     val brands: Set<BoardBrand> = emptySet(),
     /** When true, keep only venues/boards that accept egym Wellpass. */
     val wellpassOnly: Boolean = false,
+    /** MoonBoard variants (layout ids); empty is the wildcard including
+     *  unknown variants, mirroring the Pages map's all-on default. */
+    val moonLayoutIds: Set<Int> = emptySet(),
+    /** MoonBoard LED hardware states; empty is the wildcard. */
+    val moonLedStates: Set<MoonLedState> = emptySet(),
 ) {
-    /** True when no user-applied filter is active beyond the homewall default. */
+    /** True when no user-applied filter is active. */
     val isAtDefault: Boolean
-        get() = showOriginal && !showHomewalls && !matchesMyBoard &&
+        get() = showOriginal && showHomewalls && !matchesMyBoard &&
             countries.isEmpty() && accessTypes.isEmpty() &&
             adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty() &&
-            !wellpassOnly
+            !wellpassOnly && moonLayoutIds.isEmpty() && moonLedStates.isEmpty()
 
     fun apply(
         locations: List<BoardLocation>,
@@ -65,6 +70,26 @@ data class MapFilters(
                     else -> showOriginal || showHomewalls
                 }
                 if (!layoutAllowed) return@filter false
+
+                // These are Kilter wall dimensions. Applying them globally
+                // used to make every MoonBoard/other-brand row disappear
+                // because those rows legitimately have no Kilter size id.
+                if (adjustabilities.isNotEmpty() && loc.adjustability !in adjustabilities) return@filter false
+                if (sizeIds.isNotEmpty()) {
+                    val sizeId = loc.productSizeId ?: return@filter false
+                    if (sizeId !in sizeIds) return@filter false
+                }
+            }
+
+            if (loc.boardBrand == BoardBrand.MOONBOARD) {
+                if (accessTypes.isNotEmpty() && loc.accessType !in accessTypes) return@filter false
+                if (moonLayoutIds.isNotEmpty()) {
+                    val layoutId = loc.layoutId ?: return@filter false
+                    if (layoutId !in moonLayoutIds) return@filter false
+                }
+                if (moonLedStates.isNotEmpty() && MoonLedState.from(loc.hasLed) !in moonLedStates) {
+                    return@filter false
+                }
             }
 
             if (matchesMyBoard && userBoardLayoutId != null) {
@@ -81,13 +106,19 @@ data class MapFilters(
             }
 
             if (countries.isNotEmpty() && loc.countryCode !in countries) return@filter false
-            if (accessTypes.isNotEmpty() && loc.accessType !in accessTypes) return@filter false
-            if (adjustabilities.isNotEmpty() && loc.adjustability !in adjustabilities) return@filter false
-            if (sizeIds.isNotEmpty()) {
-                val sizeId = loc.productSizeId ?: return@filter false
-                if (sizeId !in sizeIds) return@filter false
-            }
             true
+        }
+    }
+}
+
+enum class MoonLedState {
+    LED, NO_LED, UNKNOWN;
+
+    companion object {
+        fun from(value: Boolean?): MoonLedState = when (value) {
+            true -> LED
+            false -> NO_LED
+            null -> UNKNOWN
         }
     }
 }

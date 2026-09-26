@@ -1,6 +1,7 @@
 package com.cruxcoach.domain.playlist
 
 import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
@@ -67,13 +68,23 @@ data class PlaylistPlan(
      * mileage.
      */
     val maxWidening: Double = TrainingRanges.WIDEN_MAX_DEFAULT,
+    /**
+     * The bottom of the training range the climber chose, or null when there
+     * is none. Working slots may not widen below it; the warm-up ladder lives
+     * underneath it by design and is exempt — a grade range is a statement
+     * about the work, and applying it to the ladder served "warm-up" climbs at
+     * working grade.
+     */
+    val workFloor: Double? = null,
 )
 
 /**
  * Pure planner: (params, profile) → ordered slot plan with explicit rest
  * blocks. No I/O, no randomness — fully deterministic and unit-testable.
- * Grade math happens in Aurora difficulty points (+2 ≈ 1 V-grade); all
- * bands are clamped to [V0, max + 1 V].
+ * Grade math happens in Aurora difficulty points (one point = one Font
+ * grade); recommended bands are clamped to [4a, peak + 2 points]. A slot's
+ * bounds are GRADES: the filler matches a climb by the grade it is displayed
+ * as, so "6a…6b" means every climb the app calls 6a, 6a+ or 6b.
  */
 object PlaylistPlanner {
 
@@ -91,16 +102,26 @@ object PlaylistPlanner {
             (params.type == GeneratorType.LIMIT || params.type == GeneratorType.PROJECTING)
         val effectiveType = if (downgraded) GeneratorType.VOLUME else params.type
         val shift = if (fatigued) TrainingRanges.END_OF_SESSION_SHIFT else 0.0
+        // Where the board starts. Nothing is planned beneath it: the filler
+        // keeps a warm-up below the working range, so a range that began
+        // under the board left the warm-up with nothing to draw from at all.
+        val floor = profile.boardMinDifficulty?.let(::gradeOf)
+            ?.coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY)
+            ?: TrainingRanges.MIN_DIFFICULTY
 
         // Two anchors: the PEAK (hardest-ever send — hard ceiling only)
         // and the outlier-robust work ANCHOR (repeatable/second-best max).
         // One lucky 7b against a 7a/7a+ background must plan a session
         // that CONSOLIDATES the 7b, not one that assumes 7b+ is in reach.
-        val peak = profile.effectiveMax - shift
-        val anchor = min(profile.effectiveRepeatableMax, profile.effectiveMax) - shift
+        // Whole grades throughout. The logbook's hardest send is a raw
+        // community average — 21.6 for a climb everyone calls 7a — and planned
+        // from as it was, "max … max + 1" came out as 21.6…22.6: a projecting
+        // range that read "7a – 7a" and could never offer a 7a+.
+        val peak = gradeOf(profile.effectiveMax) - shift
+        val anchor = min(gradeOf(profile.effectiveRepeatableMax), gradeOf(profile.effectiveMax)) - shift
         // Volume anchor: outlier-robust flash, never above the work anchor
         // (a flash "above" what you can repeatedly send is itself a fluke).
-        val flashDiff = min(profile.effectiveRepeatableFlash - shift, anchor)
+        val flashDiff = min(gradeOf(profile.effectiveRepeatableFlash) - shift, anchor)
 
         // Warm-up ladder only when starting cold; its ACTUAL minutes come
         // off the main-set budget (a 2-problem easy-session warm-up must
@@ -112,13 +133,27 @@ object PlaylistPlanner {
         // The size the climber chose, clamped to what the type can carry.
         // Null means a playlist saved before the slider selected structure
         // directly, so the old division from the duration still applies.
-        val size = params.structureSize?.coerceIn(effectiveType.structureRange())
+        // A size chosen for hard bouldering counts something else: three limit
+        // problems do not become a three-problem volume block when the session
+        // is downgraded, they become an ordinary one.
+        val size = params.structureSize?.let {
+            if (downgraded) effectiveType.defaultStructureSize()
+            else it.coerceIn(effectiveType.structureRange())
+        }
 
         fun ladderFor(mainMinutes: Int) =
             if (params.position == SessionPosition.START_COLD) {
                 buildWarmUpLadder(
-                    anchor,
-                    firstWorkGrade(effectiveType, anchor, flashDiff, mainMinutes, size),
+                    // Never warm up past the work anchor: a projecting range
+                    // starts above it, and a ladder hung off that would put
+                    // limit-grade problems into the warm-up.
+                    min(
+                        params.targetMinDifficulty ?: firstWorkGrade(
+                            effectiveType, anchor, flashDiff, peak, floor, mainMinutes, size, params,
+                        ),
+                        anchor,
+                    ),
+                    floor,
                 )
             } else emptyList()
 
@@ -131,64 +166,93 @@ object PlaylistPlanner {
         }
         val mainMinutes = max(duration - warmUpMinutes(warmUp), 10)
 
-        val main = when (effectiveType) {
+        val unconstrainedMain = when (effectiveType) {
             GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, peak, size)
-            GeneratorType.LIMIT -> planLimit(mainMinutes, anchor, peak, size)
-            GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak, size)
+            GeneratorType.LIMIT -> planLimit(
+                mainMinutes, anchor, peak, size,
+                params.targetMinDifficulty, params.targetMaxDifficulty,
+                params.attemptsPerProblem?.coerceIn(TrainingRanges.ATTEMPTS_RANGE),
+            )
+            GeneratorType.PROJECTING -> planProjecting(
+                mainMinutes, anchor, peak, size,
+                params.attemptsPerProblem?.coerceIn(TrainingRanges.ATTEMPTS_RANGE),
+            )
             GeneratorType.POWER_ENDURANCE -> planPowerEndurance(
                 mainMinutes, flashDiff, size,
                 params.problemsPerSet?.coerceIn(TrainingRanges.PE_PROBLEMS_PER_SET_RANGE)
                     ?: TrainingRanges.PE_PROBLEMS_PER_SET,
             )
-            GeneratorType.PYRAMID -> planPyramid(mainMinutes, anchor, params.pyramidShape, size)
+            GeneratorType.PYRAMID -> planPyramid(
+                minutes = mainMinutes,
+                anchor = anchor,
+                peak = peak,
+                floor = floor,
+                shape = params.pyramidShape,
+                size = size,
+                targetMin = params.targetMinDifficulty,
+                targetMax = params.targetMaxDifficulty,
+                climbsPerTier = params.pyramidClimbsPerTier,
+            )
             GeneratorType.MANUAL -> planManual(params, anchor, size)
         }
+        val main = constrainToTargetRange(
+            // Manual plans what was asked for, board or not.
+            if (effectiveType == GeneratorType.MANUAL) unconstrainedMain
+            else unconstrainedMain.seatedOn(floor),
+            params.targetMinDifficulty,
+            params.targetMaxDifficulty,
+        )
 
         return PlaylistPlan(
             slots = (warmUp + main).normalizeRests(),
             effectiveType = effectiveType,
             downgradedFromType = if (downgraded) params.type else null,
             usedDefaultProfile = !profile.isPersonalized,
-            hardCeiling = min(
-                TrainingRanges.MAX_DIFFICULTY,
-                profile.effectiveMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS,
-            ),
+            // A range the climber set is theirs to set, exactly as in manual
+            // mode: capping it at the profile ceiling as well left every slot
+            // of a deliberately harder range without a single candidate. The
+            // recommended range never exceeds that ceiling in the first place.
+            hardCeiling = params.targetMaxDifficulty
+                ?: (gradeOf(profile.effectiveMax) + TrainingRanges.CEILING_ABOVE_MAX_STEPS),
             maxWidening = TrainingRanges.maxWideningFor(effectiveType),
+            workFloor = params.targetMinDifficulty,
         )
     }
 
     // ── Sections ────────────────────────────────────────────────
 
     /**
-     * Progressive ladder up to ONE V-grade below the first working grade
-     * (Hörst: "boulder up" to near working intensity — the old ladder
-     * stopped 3 V short of a limit set, an intensity jump). Start is
-     * 5 V below max, pulled DOWN to firstWork − 3 V for easy sessions
-     * (a volume block should not warm up at volume grade). Easy tiers
-     * carry 2 problems; tiers within taper distance of the working grade
-     * carry 1 (activation, not fatigue). Short rests between problems,
-     * then the long transition rest.
+     * Progressive ladder from six to two points below the first working
+     * grade, in two-point tiers (Hörst: "boulder up" to near working
+     * intensity). Easy tiers carry 2 problems; tiers within taper distance of
+     * the working grade carry 1 (activation, not fatigue). Short rests
+     * between problems, then the long transition rest.
      */
-    private fun buildWarmUpLadder(maxDiff: Double, firstWorkDiff: Double): List<PlanSlot> {
-        val climbs = mutableListOf<PlanSlot.ClimbSlot>()
+    private fun buildWarmUpLadder(firstWorkDiff: Double, floor: Double): List<PlanSlot> {
+        // Tier centre to problem count, easiest first.
+        val tiers = mutableListOf<Pair<Double, Int>>()
         var tier = clampLow(firstWorkDiff - TrainingRanges.WARMUP_START_BELOW_FIRST_WORK)
         val ceiling = firstWorkDiff - TrainingRanges.WARMUP_END_BELOW_FIRST_WORK
-        while (tier <= ceiling && climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
+        while (tier <= ceiling) {
             val nearWork = firstWorkDiff - tier < TrainingRanges.WARMUP_TAPER_DISTANCE
             val perTier = if (nearWork) 1 else TrainingRanges.WARMUP_PROBLEMS_PER_TIER
-            repeat(perTier) {
-                if (climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
-                    climbs.add(climbSlot(tier, PlanSection.WARM_UP))
-                }
+            // Tiers below the board's easiest grade merge into one on it:
+            // the warm-up still happens, on the easiest problems there are,
+            // instead of asking for grades the wall does not have.
+            val seated = max(tier, floor)
+            val last = tiers.lastOrNull()
+            if (last != null && last.first == seated) {
+                tiers[tiers.lastIndex] = seated to max(last.second, perTier)
+            } else {
+                tiers.add(seated to perTier)
             }
             tier += TrainingRanges.WARMUP_STEP
         }
-        if (climbs.isEmpty()) {
-            // Even a V0 climber warms up on something: one tier at the floor.
-            repeat(TrainingRanges.WARMUP_PROBLEMS_PER_TIER) {
-                climbs.add(climbSlot(TrainingRanges.MIN_DIFFICULTY, PlanSection.WARM_UP))
-            }
-        }
+        // Even a V0 climber warms up on something: one tier at the floor.
+        if (tiers.isEmpty()) tiers.add(floor to TrainingRanges.WARMUP_PROBLEMS_PER_TIER)
+        val climbs = tiers
+            .flatMap { (centre, count) -> List(count) { climbSlot(centre, PlanSection.WARM_UP, floor = floor) } }
+            .take(TrainingRanges.WARMUP_MAX_PROBLEMS)
         val slots = mutableListOf<PlanSlot>()
         climbs.forEachIndexed { i, climb ->
             if (i > 0) {
@@ -268,6 +332,9 @@ object PlaylistPlanner {
         anchor: Double,
         peak: Double,
         size: Int?,
+        targetMin: Double? = null,
+        targetMax: Double? = null,
+        chosenAttempts: Int? = null,
     ): List<PlanSlot> {
         // A 21-minute block per problem with a floor of two problems meant the
         // shortest session the slider offers produced three times the time
@@ -277,28 +344,42 @@ object PlaylistPlanner {
         val budget = minutes.coerceAtLeast(TrainingRanges.LIMIT_SLOT_MINUTES / 2)
         val count = size
             ?: (budget / TrainingRanges.LIMIT_SLOT_MINUTES).coerceIn(TrainingRanges.LIMIT_COUNT)
-        var attempts = TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM
-        while (count == TrainingRanges.LIMIT_COUNT.first &&
+        var attempts = chosenAttempts ?: TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM
+        // Only the protocol's own number gives way to a short budget; one the
+        // climber chose is planned as chosen.
+        while (chosenAttempts == null && count == TrainingRanges.LIMIT_COUNT.first &&
             attempts > TrainingRanges.MIN_ATTEMPTS_PER_LIMIT_PROBLEM &&
             limitBlockMinutes(count, attempts) > budget
         ) {
             attempts--
         }
-        // anchor…anchor+1, additionally capped one step past the PEAK:
-        // a consolidated climber (anchor == peak) trains max…max+1; an
-        // outlier peak keeps the band at the repeatable level so the
-        // session consolidates the peak instead of assuming it's the norm.
-        val low = anchor
-        val high = clamp(
-            min(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak + TrainingRanges.LIMIT_BAND_ABOVE_MAX),
-            peak,
-        )
+        // From the repeatable level up to the hardest send — and always at
+        // least one grade past the anchor. Stopping at anchor + 1 told a
+        // climber with a 7a in the book that hard bouldering ends at 6c: the
+        // range has to reach their max to be believed, and to be hard.
+        // A range the climber chose is ramped over in the same way, rather
+        // than planned off the profile and then clipped flat against it.
+        val low = targetMin ?: anchor
+        val high = (targetMax ?: clamp(max(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak), peak))
+            .coerceAtLeast(low)
+        // A wide range is a ramp, not a lottery: the first problem sits at the
+        // repeatable level, the last at the top, each in a two-grade window.
+        val span = high - low
         return workBlocks(
             problems = count,
             attemptsPerProblem = attempts,
             attemptRest = TrainingRanges.REST_LIMIT_BETWEEN_ATTEMPTS,
             problemRest = TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS,
             low = low, high = high,
+            bandFor = { p ->
+                if (span <= TrainingRanges.LIMIT_BAND_ABOVE_MAX || count == 1) low to high
+                else {
+                    val start = low + floor(
+                        (span - TrainingRanges.LIMIT_BAND_ABOVE_MAX) * p / (count - 1) + 0.5,
+                    )
+                    start to start + TrainingRanges.LIMIT_BAND_ABOVE_MAX
+                }
+            },
         )
     }
 
@@ -310,6 +391,7 @@ object PlaylistPlanner {
         anchor: Double,
         peak: Double,
         size: Int?,
+        chosenBurns: Int? = null,
     ): List<PlanSlot> {
         val count = size
             ?: (minutes / TrainingRanges.PROJECT_SLOT_MINUTES)
@@ -317,11 +399,17 @@ object PlaylistPlanner {
         // One step above the limit band, off the same robust anchor — for
         // the outlier climber (one 7b, background 7a+) the project IS the
         // 7b…7b+ range, not 7c. The peak-based clamp() ceiling still holds.
-        val low = clamp(anchor + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, peak)
-        val high = clamp(anchor + TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX, peak)
+        // Starts where hard bouldering ends: at the hardest send, or a grade
+        // past the anchor if that is higher. A project below one's own max is
+        // not a project.
+        val low = clamp(max(anchor + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, peak), peak)
+        val high = clamp(
+            low + (TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX - TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX),
+            peak,
+        )
         return workBlocks(
             problems = count,
-            attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
+            attemptsPerProblem = chosenBurns ?: TrainingRanges.BURNS_PER_PROJECT,
             attemptRest = TrainingRanges.REST_PROJECT_BETWEEN_BURNS,
             problemRest = TrainingRanges.REST_PROJECT_BETWEEN_PROJECTS,
             low = low, high = high,
@@ -390,13 +478,15 @@ object PlaylistPlanner {
         problemRest: Int,
         low: Double,
         high: Double,
+        bandFor: (Int) -> Pair<Double, Double> = { low to high },
     ): List<PlanSlot> {
         val slots = mutableListOf<PlanSlot>()
         for (p in 0 until problems) {
             if (p > 0) slots.add(PlanSlot.RestSlot(problemRest, PlanSection.PEAK))
+            val (problemLow, problemHigh) = bandFor(p)
             for (attempt in 0 until attemptsPerProblem) {
                 if (attempt > 0) slots.add(PlanSlot.RestSlot(attemptRest, PlanSection.PEAK))
-                slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.PEAK, repeatKey = p))
+                slots.add(PlanSlot.ClimbSlot(problemLow, problemHigh, PlanSection.PEAK, repeatKey = p))
             }
         }
         return slots
@@ -429,21 +519,34 @@ object PlaylistPlanner {
         return slots
     }
 
-    /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex), 1-V steps; long
-     *  sessions add the mirrored descent. */
+    /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex) in one-grade steps;
+     *  the shape decides whether the mirrored descent follows. */
     private fun planPyramid(
         minutes: Int,
         anchor: Double,
+        peak: Double,
+        floor: Double,
         shape: PyramidShape,
         size: Int? = null,
+        targetMin: Double? = null,
+        targetMax: Double? = null,
+        climbsPerTier: Int? = null,
     ): List<PlanSlot> {
-        // Apex 1 V below the REPEATABLE max: every tier should top.
+        // Apex one grade below the work anchor: every tier should top, but
+        // the top one should take a few goes — see PYRAMID_APEX_BELOW_MAX.
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         // However many were asked for, but never more than there is room for:
         // below the bottom of the scale the tiers clamp onto each other and
         // the pyramid comes out with two identical steps.
-        val tiers = (size ?: pyramidTiers(minutes)).coerceAtMost(maxPyramidTiers(apex))
-        val base = pyramidBaseFor(tiers, anchor)
+        val requestedTiers = size ?: pyramidTiers(minutes)
+        val tiers = if (targetMin != null && targetMax != null) {
+            requestedTiers
+        } else {
+            requestedTiers.coerceAtMost(maxPyramidTiers(apex))
+        }
+        val (plannedBase, plannedTop) = pyramidSpan(tiers, anchor, peak, floor)
+        val base = targetMin ?: plannedBase
+        val top = targetMax ?: plannedTop
         // The climber's choice, not a side effect of the duration. Anything
         // under 90 minutes used to be a half pyramid called a whole one.
         val withDescent = shape == PyramidShape.UP_AND_DOWN
@@ -452,8 +555,12 @@ object PlaylistPlanner {
 
         val ascent = (0 until tiers).map { i ->
             Tier(
-                diff = min(base + i * TrainingRanges.PYRAMID_STEP, apex),
-                count = tiers - i,
+                // Whole grades: a tier "between 6a+ and 6b" is a grade no climb
+                // is displayed as, and would only ever be filled by widening.
+                diff = if (tiers == 1) top
+                else floor(base + (top - base) * i / (tiers - 1) + 0.5),
+                count = climbsPerTier?.coerceIn(TrainingRanges.PYRAMID_CLIMBS_PER_TIER)
+                    ?: (tiers - i),
                 section = if (i == tiers - 1) PlanSection.PEAK else PlanSection.MAIN,
             )
         }
@@ -468,7 +575,7 @@ object PlaylistPlanner {
         (ascent + descent).forEach { tier ->
             // Rests scale with proximity to the apex: the base flows, the
             // mid tier breathes, the top Font step gets near-full recovery.
-            val stepsBelowApex = (apex - tier.diff) / TrainingRanges.PYRAMID_STEP
+            val stepsBelowApex = (top - tier.diff) / TrainingRanges.PYRAMID_STEP
             val rest = when {
                 stepsBelowApex <= 1.0 -> TrainingRanges.REST_PYRAMID_HIGH_TIER
                 stepsBelowApex <= 2.0 -> TrainingRanges.REST_PYRAMID_MID_TIER
@@ -476,10 +583,44 @@ object PlaylistPlanner {
             }
             repeat(tier.count) {
                 if (slots.isNotEmpty()) slots.add(PlanSlot.RestSlot(rest, tier.section))
-                slots.add(pyramidSlot(tier.diff, tier.section))
+                slots.add(
+                    if (targetMin != null && targetMax != null) {
+                        // The selected endpoints are tier centres, not the
+                        // outer edges of fuzzy bands. Keeping them exact makes
+                        // the visible steps genuinely equidistant; the filler
+                        // may still widen within the same hard range when a
+                        // board has no climb at the exact grade.
+                        PlanSlot.ClimbSlot(tier.diff, tier.diff, tier.section)
+                    } else {
+                        pyramidSlot(tier.diff, tier.section)
+                    }
+                )
             }
         }
         return slots
+    }
+
+    /** Apply the user's grade range as a hard plan constraint. Candidate
+     * loading applies the same bounds, so the filler cannot widen around it. */
+    private fun constrainToTargetRange(
+        slots: List<PlanSlot>,
+        requestedLow: Double?,
+        requestedHigh: Double?,
+    ): List<PlanSlot> {
+        if (requestedLow == null || requestedHigh == null) return slots
+        val low = requestedLow.coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY)
+        val high = requestedHigh.coerceIn(low, TrainingRanges.MAX_DIFFICULTY)
+        return slots.map { slot ->
+            if (slot !is PlanSlot.ClimbSlot) return@map slot
+            val center = ((slot.minDifficulty + slot.maxDifficulty) / 2.0).coerceIn(low, high)
+            val minDifficulty = max(slot.minDifficulty, low)
+            val maxDifficulty = min(slot.maxDifficulty, high)
+            if (minDifficulty <= maxDifficulty) {
+                slot.copy(minDifficulty = minDifficulty, maxDifficulty = maxDifficulty)
+            } else {
+                slot.copy(minDifficulty = center, maxDifficulty = center)
+            }
+        }
     }
 
     // ── Helpers ─────────────────────────────────────────────────
@@ -493,10 +634,22 @@ object PlaylistPlanner {
         (((apex - TrainingRanges.MIN_DIFFICULTY) / TrainingRanges.PYRAMID_STEP).toInt() + 1)
             .coerceIn(TrainingRanges.PYRAMID_TIERS)
 
-    /** The lowest tier of the pyramid — where the first working problem sits. */
-    private fun pyramidBaseFor(tiers: Int, anchor: Double): Double {
+    /**
+     * The pyramid's lowest and highest tier — the base is where the first
+     * working problem sits.
+     *
+     * The base hangs [tiers] steps under the apex, but never under the board:
+     * a MoonBoard starts at 6b, and a base of 6a stacked the lower tiers onto
+     * its easiest grade — a flat block, not a pyramid. Where the board leaves
+     * no room below, the top gives way upwards instead, as far as the
+     * climber's hardest send and no further.
+     */
+    private fun pyramidSpan(tiers: Int, anchor: Double, peak: Double, floor: Double): Pair<Double, Double> {
         val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
-        return clampLow(apex - (tiers - 1) * TrainingRanges.PYRAMID_STEP)
+        val height = (tiers - 1) * TrainingRanges.PYRAMID_STEP
+        val base = clampLow(apex - height)
+        if (base >= floor) return base to apex
+        return floor to max(max(apex, min(floor + height, peak)), floor)
     }
 
     /**
@@ -513,19 +666,26 @@ object PlaylistPlanner {
         type: GeneratorType,
         anchor: Double,
         flashDiff: Double,
+        peak: Double,
+        floor: Double,
         mainMinutes: Int,
         size: Int?,
+        params: PlaylistGeneratorParams,
     ): Double =
         when (type) {
-            GeneratorType.VOLUME -> clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
+            // Seated on the board like the bands they start (see seatedOn).
+            GeneratorType.VOLUME ->
+                max(clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH), floor)
             GeneratorType.POWER_ENDURANCE ->
-                clampLow(flashDiff - TrainingRanges.PE_BAND_LOW_BELOW_FLASH)
-            GeneratorType.PYRAMID -> pyramidBaseFor(
-                size ?: pyramidTiers(mainMinutes), anchor,
-            )
+                max(clampLow(flashDiff - TrainingRanges.PE_BAND_LOW_BELOW_FLASH), floor)
+            GeneratorType.PYRAMID -> pyramidSpan(
+                size ?: pyramidTiers(mainMinutes), anchor, peak, floor,
+            ).first
             GeneratorType.LIMIT, GeneratorType.PROJECTING -> anchor
-            // The bottom of what the climber asked for.
-            GeneratorType.MANUAL -> anchor
+            // The bottom of what the climber asked for — capped at the anchor
+            // by the caller, like everything else.
+            GeneratorType.MANUAL -> params.manualMinDifficulty.takeIf { it > 0.0 }
+                ?: clampLow(anchor - TrainingRanges.MANUAL_SEED_HALF_BAND)
         }
 
     private fun climbSlot(
@@ -533,8 +693,9 @@ object PlaylistPlanner {
         section: PlanSection,
         repeatKey: Int? = null,
         tolerance: Double = TrainingRanges.SLOT_TOLERANCE,
+        floor: Double = TrainingRanges.MIN_DIFFICULTY,
     ) = PlanSlot.ClimbSlot(
-        minDifficulty = clampLow(center - tolerance),
+        minDifficulty = max(clampLow(center - tolerance), floor),
         maxDifficulty = center + tolerance,
         section = section,
         repeatKey = repeatKey,
@@ -549,15 +710,29 @@ object PlaylistPlanner {
     private fun pyramidSlot(center: Double, section: PlanSection) =
         climbSlot(center, section, tolerance = TrainingRanges.PYRAMID_SLOT_TOLERANCE)
 
+    /** The grade a difficulty is displayed as: rounded half up. */
+    private fun gradeOf(diff: Double): Double = floor(diff + 0.5)
+
     private fun clampLow(diff: Double): Double = max(diff, TrainingRanges.MIN_DIFFICULTY)
 
-    /** Clamp into [V0, min(scale max, user max + 1 V)] — the hard safety
-     *  ceiling that no mode may plan past. */
+    /** Clamp into [4a, min(scale max, peak + 2 points)] — the safety ceiling
+     *  no recommended band is planned past. */
     private fun clamp(diff: Double, userMax: Double): Double =
         min(
             min(diff, userMax + TrainingRanges.CEILING_ABOVE_MAX_STEPS),
             TrainingRanges.MAX_DIFFICULTY,
         ).let(::clampLow)
+
+    /**
+     * No band below the board's easiest grade. A band reaching into the board
+     * keeps its upper part; one entirely beneath it moves onto the floor
+     * grade, where the easiest climbs the board has are. The recommended range
+     * is read off these bands, so it starts where the board does.
+     */
+    private fun List<PlanSlot>.seatedOn(floor: Double): List<PlanSlot> = map { slot ->
+        if (slot !is PlanSlot.ClimbSlot || slot.minDifficulty >= floor) slot
+        else slot.copy(minDifficulty = floor, maxDifficulty = max(slot.maxDifficulty, floor))
+    }
 
     /** Strip leading/trailing rests and collapse accidental doubles. */
     private fun List<PlanSlot>.normalizeRests(): List<PlanSlot> {

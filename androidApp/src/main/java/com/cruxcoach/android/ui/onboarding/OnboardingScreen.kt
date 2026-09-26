@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +16,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -26,6 +31,11 @@ import androidx.compose.material3.*
 import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
 import com.cruxcoach.android.ui.aurora.MigrationFlowContent
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import com.cruxcoach.android.ui.board.sync.BoardSyncViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
@@ -57,6 +68,7 @@ import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
@@ -65,8 +77,50 @@ fun OnboardingScreen(
     onNavigateToMoonBoardImport: () -> Unit = {},
     onNavigateToDataImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
+    boardSyncViewModel: BoardSyncViewModel = hiltViewModel(),
+    bleViewModel: com.cruxcoach.android.ui.board.BleConnectionViewModel = hiltViewModel(),
 ) {
+    val bleModel = bleViewModel
+    val ble by bleModel.state.collectAsStateWithLifecycle()
+    var showBle by rememberSaveable { mutableStateOf(false) }
+    if (showBle) com.cruxcoach.android.ui.board.BleConnectionSheet(
+        onDismiss = { showBle = false }, neutralDiscovery = true, viewModel = bleModel,
+    )
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var downloadSelection by rememberSaveable { mutableStateOf<Set<BoardBrand>?>(null) }
+    var downloadsConfirmed by rememberSaveable { mutableStateOf(false) }
+    var confirmingDownloads by androidx.compose.runtime.remember { mutableStateOf(false) }
+    var downloadSelectionFailed by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // Somebody who got the APK from a friend's hotspot is still on that network. Look for the
+    // sender before asking which catalogues to load, so the first screen can show what this
+    // sender really has instead of every family as if it were downloadable here.
+    val syncState by boardSyncViewModel.state.collectAsStateWithLifecycle()
+    // Only while the first step can present an offer; later steps have no place for it.
+    LaunchedEffect(state.currentStep) {
+        if (state.currentStep == OnboardingStep.BOARD_SETUP) boardSyncViewModel.probeOnboardingShare()
+    }
+    val shareOffer = syncState.pendingDiscoveredShare?.takeIf { syncState.discoveredShareInline }
+    val shareHost = shareOffer?.let { offer ->
+        runCatching { android.net.Uri.parse(offer.baseUrl).host }.getOrNull() ?: offer.baseUrl
+    }
+    val shareChoice = shareOffer?.let { offer ->
+        val offered = com.cruxcoach.android.ui.board.sync.offeredCatalogues(offer.manifest)
+        // Nothing declared (an older sender still preparing its snapshot): no inline choice.
+        if (offered.isEmpty()) null
+        // A first run has made no choice yet: everything the sender offers starts ticked.
+        else com.cruxcoach.android.ui.board.sync.rememberShareChoice(offer.baseUrl, offered, savedSelection = null)
+    }
+    LaunchedEffect(shareOffer, shareChoice) {
+        // An offer this screen cannot present must not stay claimed by it: hand it back to
+        // the ordinary dialog, or nothing would ever ask the receiver and nothing would load.
+        if (shareOffer != null && shareChoice == null) boardSyncViewModel.presentDiscoveredShareAsDialog()
+    }
+    LaunchedEffect(state.currentStep) {
+        if (downloadSelection == null || (downloadsConfirmed && state.currentStep == OnboardingStep.BOARD_SETUP)) {
+            downloadSelection = boardSyncViewModel.initialDownloadSelection()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OnboardingProgressHeader(state.currentStep)
@@ -77,23 +131,36 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(
+                    state = state,
+                    downloadSelection = downloadSelection,
+                    onDownloadSelectionChange = { downloadSelection = it },
+                    shareHost = shareHost,
+                    shareChoice = shareChoice,
+                    onUseInternetInstead = { boardSyncViewModel.dismissDiscoveredShare() },
+                    onConnect = { showBle = true },
+                    bleSearchOpen = showBle,
+                    suggestedBrand = onboardingBoardSuggestion(ble.connectedBoard),
+                )
                 // Compatibility-only state from an interrupted older
                 // onboarding: continue into the new second screen.
-                OnboardingStep.PRIVACY -> KilterStep(
-                    state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport,
+                OnboardingStep.PRIVACY -> DataSetupStep(
+                    state, viewModel, onNavigateToMoonBoardImport, onNavigateToDataImport, boardSyncViewModel,
                 )
-                OnboardingStep.KILTER -> KilterStep(
+                OnboardingStep.KILTER -> DataSetupStep(
                     state = state,
                     viewModel = viewModel,
                     onNavigateToMoonBoardImport = onNavigateToMoonBoardImport,
                     onNavigateToDataImport = onNavigateToDataImport,
+                    boardSyncViewModel = boardSyncViewModel,
                 )
             }
         }
 
-        // Bottom buttons
-        Row(
+        // Wrap actions onto full-width rows for large accessibility text.
+        FlowRow(
+            maxItemsInEachRow = if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 1 else 2,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
@@ -111,12 +178,52 @@ fun OnboardingScreen(
 
             when (state.currentStep) {
                 OnboardingStep.BOARD_SETUP -> {
+                    val fromShare = shareChoice?.shareBrands.orEmpty()
                     Button(
-                        onClick = { viewModel.nextStep() },
+                        onClick = {
+                            if (shareChoice != null && fromShare.isNotEmpty()) {
+                                // This tap IS the consent the offer needs: it names the sender,
+                                // lists what is taken, and nothing was transferred before it.
+                                boardSyncViewModel.confirmDiscoveredShare(fromShare, shareChoice.onlineBrands)
+                                downloadsConfirmed = true
+                                viewModel.nextStep()
+                                return@Button
+                            }
+                            val selected = if (shareChoice != null) {
+                                // Nothing wanted from the sender: an ordinary download of the rest.
+                                boardSyncViewModel.dismissDiscoveredShare()
+                                shareChoice.onlineBrands
+                            } else downloadSelection ?: return@Button
+                            confirmingDownloads = true
+                            downloadSelectionFailed = false
+                            scope.launch {
+                                try {
+                                    boardSyncViewModel.confirmOnboardingDownloads(selected)
+                                    downloadsConfirmed = true
+                                    viewModel.nextStep()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    downloadSelectionFailed = true
+                                } finally {
+                                    confirmingDownloads = false
+                                }
+                            }
+                        },
+                        enabled = downloadSelection != null && !confirmingDownloads,
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
-                        Text(stringResource(R.string.onboarding_continue))
+                        if (confirmingDownloads) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(stringResource(when {
+                            fromShare.isNotEmpty() -> R.string.setup_confirm_share
+                            shareChoice != null && shareChoice.onlineBrands.isEmpty() -> R.string.action_next
+                            shareChoice == null && downloadSelection.isNullOrEmpty() -> R.string.action_next
+                            else -> R.string.setup_confirm_downloads
+                        }))
                     }
                 }
                 OnboardingStep.PRIVACY -> {
@@ -171,6 +278,13 @@ fun OnboardingScreen(
             }
         }
 
+        if (downloadSelectionFailed) {
+            Text(
+                stringResource(R.string.onboarding_download_selection_failed),
+                color = ErrorRed,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
         if (state.error != null) {
             Text(
                 text = state.error ?: "",
@@ -185,7 +299,7 @@ fun OnboardingScreen(
     if (state.showRestartConfirm) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissRestartConfirm() },
-            title = { Text(stringResource(R.string.onboarding_restart_confirm_title)) },
+            title = { Text(stringResource(R.string.account_restore_title)) },
             text = { Text(stringResource(R.string.onboarding_restart_confirm_body)) },
             confirmButton = {
                 Button(
@@ -229,15 +343,7 @@ fun OnboardingScreen(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
                         )
-                        Text(
-                            stringResource(
-                                if (state.restoreAwaitingBoardSync) {
-                                    R.string.onboarding_restore_progress_awaiting_board_sync
-                                } else {
-                                    R.string.onboarding_restore_progress_active
-                                },
-                            ),
-                        )
+                        Text(stringResource(R.string.onboarding_restore_progress_active))
                     }
                 } else {
                     Text(
@@ -281,44 +387,14 @@ fun OnboardingScreen(
 
 @Composable
 private fun OnboardingProgressHeader(step: OnboardingStep) {
-    val steps = listOf(OnboardingStep.BOARD_SETUP, OnboardingStep.KILTER)
     val current = if (step == OnboardingStep.BOARD_SETUP) 1 else 2
-    val title = stringResource(
-        when (step) {
-            OnboardingStep.BOARD_SETUP -> R.string.onboarding_progress_board
-            OnboardingStep.PRIVACY -> R.string.onboarding_progress_import
-            OnboardingStep.KILTER -> R.string.onboarding_progress_import
-        },
-    )
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.onboarding_progress_step, current, steps.size),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = OrangeAccent,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            LinearProgressIndicator(
-                progress = { current.toFloat() / steps.size },
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = OrangeAccent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
+    Column(Modifier.fillMaxWidth()) {
+        Text(stringResource(R.string.onboarding_progress_step, current, 2),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LinearProgressIndicator(progress = { current / 2f }, modifier = Modifier.fillMaxWidth().height(3.dp),
+            color = OrangeAccent, trackColor = MaterialTheme.colorScheme.surfaceVariant)
     }
 }
 
@@ -327,14 +403,53 @@ private fun OnboardingProgressHeader(step: OnboardingStep) {
 @Composable
 private fun BoardSetupStep(
     state: OnboardingState,
+    downloadSelection: Set<BoardBrand>?,
+    onDownloadSelectionChange: (Set<BoardBrand>) -> Unit,
+    shareHost: String?,
+    shareChoice: com.cruxcoach.android.ui.board.sync.ShareChoice?,
+    onUseInternetInstead: () -> Unit,
+    onConnect: () -> Unit,
+    bleSearchOpen: Boolean,
+    suggestedBrand: BoardBrand?,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    val previousBrand = BoardBrand.fromWire(state.boardBrand)
+    var returnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    var bluetoothSearched by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(bleSearchOpen) {
+        if (returnFromBluetooth && !bleSearchOpen) {
+            returnFromBluetooth = false
+            bluetoothSearched = true
+            showBoardModelDialog = true
+        }
+    }
     if (showBoardModelDialog) {
         // FEAT-031: the one shared board picker (same as Settings / Filter /
         // sync card) — identical state + the full board list incl. the Aurora
         // family. The selection persists via the shared VM.
         com.cruxcoach.android.ui.settings.BoardPickerDialog(
+            deferDownloads = true,
+            // Bluetooth knows best; failing that, a single family being loaded is the obvious
+            // candidate for the board that is about to be changed.
+            suggestedBrand = suggestedBrand
+                ?: (shareChoice?.let { it.shareBrands + it.onlineBrands } ?: downloadSelection.orEmpty())
+                    .singleOrNull(),
+            bluetoothResult = if (!bluetoothSearched) null else suggestedBrand
+                ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
+                ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
+            onFindViaBluetooth = {
+                returnFromBluetooth = true
+                showBoardModelDialog = false
+                onConnect()
+            },
+            onBoardChosen = {
+                if (shareChoice != null) shareChoice.include(it)
+                // The previous board's family was ticked as the default; the new board takes
+                // its place. Families ticked on purpose stay — replacing the whole selection
+                // dropped them.
+                else onDownloadSelectionChange((downloadSelection.orEmpty() - previousBrand) + it)
+            },
             onDismiss = { showBoardModelDialog = false },
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
@@ -345,6 +460,14 @@ private fun BoardSetupStep(
     }
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            deferDownloads = true,
+            onBoardChosen = {
+                if (shareChoice != null) shareChoice.include(it)
+                // The previous board's family was ticked as the default; the new board takes
+                // its place. Families ticked on purpose stay — replacing the whole selection
+                // dropped them.
+                else onDownloadSelectionChange((downloadSelection.orEmpty() - previousBrand) + it)
+            },
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
@@ -362,60 +485,74 @@ private fun BoardSetupStep(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Surface(
-            color = OrangeAccent.copy(alpha = 0.10f),
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth(),
+        InfoHeading(stringResource(R.string.setup_board_title), stringResource(R.string.setup_confirm_model))
+        // The board decides what the browser opens with. Whoever loads only MoonBoard while this
+        // still says Kilter lands on "the catalogue for this board has not been downloaded" —
+        // seen in the two-phone share test. The card it concerns says so itself, in one line,
+        // and is already the way to change it: no separate notice, no second button. Silent
+        // while nothing is ticked, because then there is nothing to contradict.
+        val chosenFamilies = shareChoice?.let { it.shareBrands + it.onlineBrands } ?: downloadSelection.orEmpty()
+        val boardNotLoaded = chosenFamilies.isNotEmpty() && BoardBrand.fromWire(state.boardBrand) !in chosenFamilies
+        OutlinedCard(
+            onClick = { showBoardModelDialog = true },
+            border = if (boardNotLoaded) androidx.compose.foundation.BorderStroke(1.dp, OrangeAccent)
+                else CardDefaults.outlinedCardBorder(),
+            modifier = Modifier.fillMaxWidth().testTag("settings_change_active_board"),
         ) {
-            Row(
-                modifier = Modifier.padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(com.cruxcoach.android.ui.settings.boardSelectionLabel(
+                        brand = BoardBrand.fromWire(state.boardBrand), layoutId = state.boardLayoutId,
+                        detail = state.boardProductSizeName,
+                    ), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    if (boardNotLoaded) {
+                        Text(
+                            stringResource(R.string.setup_board_not_among_downloads),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OrangeAccent,
+                            modifier = Modifier.testTag("onboarding_board_not_loaded"),
+                        )
+                    }
+                }
+                Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.settings_board_model_change))
+            }
+        }
+        if (shareChoice != null && shareHost != null) {
+            // A sender is in reach: one heading says so, the rows show exactly what it has, and
+            // the rest is what it is — boards that need the internet. No second question after
+            // this screen. (A highlight card above the same heading said the same thing twice.)
+            com.cruxcoach.android.ui.board.sync.ShareCatalogueChoice(
+                host = shareHost, choice = shareChoice,
+                title = stringResource(R.string.setup_share_found_title),
+                modifier = Modifier.testTag("onboarding_share_offer"),
+            )
+            TextButton(
+                onClick = onUseInternetInstead,
+                modifier = Modifier.fillMaxWidth().testTag("onboarding_share_use_internet"),
+            ) { Text(stringResource(R.string.setup_share_use_internet)) }
+            return@Column
+        }
+        val all = BoardBrand.entries.filter { it.isInteractive }.toSet()
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.setup_catalogues_title), modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            TextButton(
+                enabled = downloadSelection != null,
+                onClick = { onDownloadSelectionChange(if (downloadSelection?.containsAll(all) == true) emptySet() else all) },
+                modifier = Modifier.widthIn(max = 140.dp).testTag("setup_toggle_all_catalogues"),
             ) {
-                Surface(
-                    color = OrangeAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape,
-                ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.padding(11.dp).size(26.dp),
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        stringResource(R.string.onboarding_choose_board_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        stringResource(R.string.onboarding_board_first_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(stringResource(if (downloadSelection?.containsAll(all) == true) R.string.setup_deselect_all else R.string.cd_select_all))
+            }
+            com.cruxcoach.android.ui.common.InfoButton(
+                stringResource(R.string.setup_catalogues_title), stringResource(R.string.setup_catalogues_info))
+        }
+        downloadSelection?.let { selected ->
+            com.cruxcoach.android.ui.board.sync.CatalogueSelectionRows(selected) { brand ->
+                onDownloadSelectionChange(if (brand in selected) selected - brand else selected + brand)
             }
         }
 
-        // Board picker — hardware knowledge, no sync round-trip needed.
-        // Original/Homewall is now an in-dialog segment, not a chip.
-        com.cruxcoach.android.ui.settings.BoardModelSection(
-            boardModelName = com.cruxcoach.android.ui.settings.boardSelectionLabel(
-                brand = BoardBrand.fromWire(state.boardBrand),
-                layoutId = state.boardLayoutId,
-                detail = state.boardProductSizeName,
-            ),
-            onChangeModel = { showBoardModelDialog = true },
-        )
-
-        // The catalogues prepare in the background. Keep this status compact:
-        // the board choice is the decision on this screen, not the download.
-        BoardSyncInlineCard(
-            modifier = Modifier.fillMaxWidth(),
-            autoStartIfNeeded = true,
-            compact = true,
-        )
     }
 }
 
@@ -634,23 +771,32 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            state.restoreSucceeded -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
-                Text(
-                    // Same wording as the Settings restore snackbar so the user
-                    // can sanity-check the restored magnitudes here too.
-                    stringResource(
-                        R.string.settings_backup_restored,
-                        state.restoredAscents,
-                        state.restoredLists,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = SuccessGreen,
-                )
+            state.restoreSucceeded -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                    Text(
+                        // Same wording as the Settings restore snackbar so the user
+                        // can sanity-check the restored magnitudes here too.
+                        stringResource(
+                            R.string.settings_backup_restored,
+                            state.restoredAscents,
+                            state.restoredLists,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SuccessGreen,
+                    )
+                }
+                if (state.restoreLinksPending) {
+                    Text(
+                        stringResource(R.string.restore_links_pending),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             // Default path: always offer the key-import action, because
             // "Backup wiederherstellen" means "bring a key from another
@@ -683,16 +829,17 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
     }
 }
 
-// ─── Step 3: existing logbook (optional) ──────────────────────────────────
+// ─── Step 2: public catalogues and optional private logbook ───────────────
 
 private enum class LogbookImportSource { CRUXCOACH, KILTER, MOONBOARD }
 
 @Composable
-private fun KilterStep(
+private fun DataSetupStep(
     state: OnboardingState,
     viewModel: OnboardingViewModel,
     onNavigateToMoonBoardImport: () -> Unit,
     onNavigateToDataImport: () -> Unit,
+    boardSyncViewModel: BoardSyncViewModel,
 ) {
     // Keep the first view deliberately quiet. Import credentials, scraping
     // instructions and migration details only appear after the user chooses
@@ -714,143 +861,119 @@ private fun KilterStep(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            stringResource(R.string.onboarding_existing_data_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("onboarding_import"),
-        )
-        Text(
-            stringResource(R.string.onboarding_existing_data_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.Default.Lock, null) },
-                label = stringResource(R.string.onboarding_source_cruxcoach),
-                selected = selectedSource == LogbookImportSource.CRUXCOACH,
-                testTag = "onboarding_import_source_cruxcoach",
-                onClick = { selectedSource = LogbookImportSource.CRUXCOACH },
-            )
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.AutoMirrored.Filled.Login, null) },
-                label = BoardBrand.KILTER.displayName,
-                selected = selectedSource == LogbookImportSource.KILTER,
-                testTag = "onboarding_import_source_kilter",
-                onClick = { selectedSource = LogbookImportSource.KILTER },
-            )
-            ImportSourceChoiceCard(
-                modifier = Modifier.fillMaxWidth(),
-                icon = { Icon(Icons.Default.History, null) },
-                label = BoardBrand.MOONBOARD.displayName,
-                selected = selectedSource == LogbookImportSource.MOONBOARD,
-                testTag = "onboarding_import_source_moonboard",
-                onClick = { selectedSource = LogbookImportSource.MOONBOARD },
-            )
-        }
-
-        AnimatedContent(
-            targetState = selectedSource,
-            label = "logbook_import_source",
-        ) { source ->
-            when (source) {
-                LogbookImportSource.CRUXCOACH -> Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ImportSourceCard(
-                        icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
-                        title = stringResource(R.string.onboarding_cruxcoach_restore_title),
-                        description = stringResource(R.string.onboarding_cruxcoach_restore_desc),
-                        action = stringResource(R.string.onboarding_cruxcoach_restore_action),
-                        onClick = {
-                            viewModel.setBackupOptIn(true)
-                            viewModel.setBackupChoice(BackupChoice.RESTORE)
-                            viewModel.requestKeyImport()
-                        },
-                        highlighted = true,
-                        testTag = "onboarding_cruxcoach_restore",
-                    )
-                    ImportSourceCard(
-                        icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
-                        title = stringResource(R.string.onboarding_cruxcoach_file_title),
-                        description = stringResource(R.string.onboarding_cruxcoach_file_desc),
-                        action = stringResource(R.string.onboarding_cruxcoach_file_action),
-                        onClick = onNavigateToDataImport,
-                        highlighted = false,
-                        testTag = "onboarding_cruxcoach_file_import",
-                    )
-                }
-                LogbookImportSource.KILTER -> Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = OrangeAccent.copy(alpha = 0.08f),
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(
-                                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    stringResource(R.string.onboarding_kilter_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                com.cruxcoach.android.ui.common.KilterDataInfoButton()
-                            }
-                            Text(
-                                stringResource(R.string.onboarding_kilter_desc),
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        InfoHeading(stringResource(R.string.setup_database_section), stringResource(R.string.setup_database_info))
+        BoardSyncInlineCard(viewModel = boardSyncViewModel, compact = true)
+        HorizontalDivider()
+        InfoHeading(stringResource(R.string.setup_private_section), stringResource(R.string.setup_private_info),
+            modifier = Modifier.testTag("onboarding_import"))
+        Text(stringResource(R.string.setup_private_optional), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LogbookImportSource.entries.forEach { source ->
+                ImportSourceChoiceCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    icon = { Icon(when (source) {
+                        LogbookImportSource.CRUXCOACH -> Icons.Default.Lock
+                        LogbookImportSource.KILTER -> Icons.AutoMirrored.Filled.Login
+                        LogbookImportSource.MOONBOARD -> Icons.Default.History
+                    }, null) },
+                    label = when (source) {
+                        LogbookImportSource.CRUXCOACH -> stringResource(R.string.onboarding_source_cruxcoach)
+                        LogbookImportSource.KILTER -> BoardBrand.KILTER.displayName
+                        LogbookImportSource.MOONBOARD -> BoardBrand.MOONBOARD.displayName
+                    },
+                    selected = selectedSource == source,
+                    testTag = "onboarding_import_source_${source.name.lowercase(java.util.Locale.ROOT)}",
+                    onClick = { selectedSource = if (selectedSource == source) null else source },
+                )
+                AnimatedVisibility(visible = selectedSource == source) {
+                    when (source) {
+                        LogbookImportSource.CRUXCOACH -> Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            ImportSourceCard(
+                                icon = { Icon(Icons.Default.Lock, null, tint = OrangeAccent) },
+                                title = stringResource(R.string.onboarding_cruxcoach_restore_title),
+                                description = stringResource(R.string.onboarding_cruxcoach_restore_desc) + "\n\n" + stringResource(R.string.ux_restore_consequence),
+                                action = stringResource(R.string.onboarding_cruxcoach_restore_action),
+                                onClick = {
+                                    // Starting a restore is not a backup consent. The opt-in is set by
+                                    // confirmOnboardingRestore() only after a restore actually succeeded.
+                                    viewModel.setBackupChoice(BackupChoice.RESTORE)
+                                    viewModel.requestKeyImport()
+                                },
+                                highlighted = true,
+                                testTag = "onboarding_cruxcoach_restore",
                             )
-                            // While the board catalogue is still importing, a Kilter
-                            // import works but its ascents show up nameless/gradeless
-                            // until the catalogue lands — tell the user rather than let
-                            // them hit that state unwarned. Hidden once a result is shown.
-                            val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
-                            if (boardSyncing && state.kilterImportResult == null) {
-                                Text(
-                                    stringResource(R.string.kilter_import_board_sync_pending),
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = OrangeAccent,
-                                )
-                            }
-
-                            Column(
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            ImportSourceCard(
+                                icon = { Icon(Icons.Default.History, null, tint = OrangeAccent) },
+                                title = stringResource(R.string.onboarding_cruxcoach_file_title),
+                                description = stringResource(R.string.onboarding_cruxcoach_file_desc),
+                                action = stringResource(R.string.onboarding_cruxcoach_file_action),
+                                onClick = onNavigateToDataImport,
+                                highlighted = false,
+                                testTag = "onboarding_cruxcoach_file_import",
+                            )
+                        }
+                        LogbookImportSource.KILTER -> Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = OrangeAccent.copy(alpha = 0.08f),
+                                ),
+                                shape = RoundedCornerShape(16.dp),
                             ) {
-                                if (state.kilterImportResult != null) {
-                                    KilterImportDoneContent(state, viewModel)
-                                } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                                    KilterPreviewContent(state, viewModel)
-                                } else {
-                                    KilterLoginContent(state, viewModel)
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.onboarding_kilter_title),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        com.cruxcoach.android.ui.common.KilterDataInfoButton()
+                                    }
+
+                                    // While the board catalogue is still importing, a Kilter
+                                    // import works but its ascents show up nameless/gradeless
+                                    // until the catalogue lands — tell the user rather than let
+                                    // them hit that state unwarned. Hidden once a result is shown.
+                                    val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                                    if (boardSyncing && state.kilterImportResult == null) {
+                                        Text(
+                                            stringResource(R.string.import_catalogue_pending_short),
+                                            modifier = Modifier.padding(horizontal = 16.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = OrangeAccent,
+                                        )
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                                    ) {
+                                        if (state.kilterImportResult != null) {
+                                            KilterImportDoneContent(state, viewModel)
+                                        } else if (state.kilterConnected && state.kilterImportPreview != null) {
+                                            KilterPreviewContent(state, viewModel)
+                                        } else {
+                                            KilterLoginContent(state, viewModel)
+                                        }
+                                    }
                                 }
                             }
+                            AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
                         }
+                        LogbookImportSource.MOONBOARD ->
+                            MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
                     }
-                    AuroraOnboardingCard(onClick = { viewModel.setAuroraSheetOpen(true) })
                 }
-                LogbookImportSource.MOONBOARD ->
-                    MoonBoardImportCard(onNavigateToMoonBoardImport, highlighted = true)
-                null -> Spacer(Modifier.height(1.dp))
             }
         }
-
     }
 
     if (state.auroraSheetOpen) {
@@ -873,7 +996,7 @@ private fun ImportSourceChoiceCard(
         modifier = modifier
             .heightIn(min = 56.dp)
             .semantics {
-                role = Role.RadioButton
+                role = Role.Button
                 this.selected = selected
             }
             .testTag(testTag),
@@ -900,14 +1023,8 @@ private fun ImportSourceChoiceCard(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
-            if (selected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = stringResource(R.string.settings_led_selected),
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+            Icon(if (selected) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -926,7 +1043,7 @@ private fun MoonBoardImportCard(onClick: () -> Unit, highlighted: Boolean) {
 }
 
 @Composable
-private fun ImportSourceCard(
+internal fun ImportSourceCard(
     icon: @Composable () -> Unit,
     title: String,
     description: String,
@@ -951,14 +1068,9 @@ private fun ImportSourceCard(
         ) {
             icon()
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                InfoHeading(title, description)
+                Text(action, style = MaterialTheme.typography.labelLarge, color = OrangeAccent)
             }
-            Text(action, style = MaterialTheme.typography.labelMedium, color = OrangeAccent)
         }
     }
 }
@@ -991,11 +1103,7 @@ private fun AuroraOnboardingCard(onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    stringResource(R.string.onboarding_aurora_card_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+
             }
         }
     }
@@ -1068,7 +1176,7 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
     if (state.kilterLoginError != null) {
         Text(
             state.kilterLoginError,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = ErrorRed,
         )
     }
@@ -1091,11 +1199,6 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
         }
     }
 
-    Text(
-        stringResource(R.string.onboarding_kilter_credentials_hint),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
@@ -1123,17 +1226,17 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             preview.newBids,
             preview.duplicateCount,
         ),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
     )
 
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(
             onClick = { viewModel.kilterImportOneTime() },
             enabled = !state.isKilterImporting,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
         ) {
             if (state.isKilterImporting) {
@@ -1145,14 +1248,14 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             } else {
                 Text(
                     stringResource(R.string.onboarding_kilter_import_once),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                 )
             }
         }
         Button(
             onClick = { viewModel.kilterImportPersistent() },
             enabled = !state.isKilterImporting,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
             shape = RoundedCornerShape(12.dp),
         ) {
@@ -1165,7 +1268,7 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             } else {
                 Text(
                     stringResource(R.string.onboarding_kilter_import_sync),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelLarge,
                 )
             }
         }

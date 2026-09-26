@@ -7,6 +7,9 @@ import com.cruxcoach.android.ble.QueueItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -308,6 +311,14 @@ class PlaylistPlaybackCoordinator(
         queueManager.setRestAfter(s.currentIndex, queue[next - 1].restAfterSeconds)
     }
 
+    /** The list the running playback was started from, as its caller names it. */
+    private val playingSource = MutableStateFlow<String?>(null)
+
+    /** Whether the list named [source] is the one playing right now. */
+    fun isPlaying(source: String): Flow<Boolean> =
+        combine(state, playingSource) { s, playing -> s.isActive && !s.isParticipant && playing == source }
+            .distinctUntilChanged()
+
     /**
      * Start a private local playlist: session timer + queue bulk-load + rest
      * hook. Playlists deliberately have no visibility choice and never start
@@ -316,8 +327,13 @@ class PlaylistPlaybackCoordinator(
     fun play(
         hostName: String,
         items: List<QueueItem>,
+        source: String? = null,
     ) {
         if (items.isEmpty()) return
+        // Starting what is already playing resumes it. Reloading put the player
+        // back on its first problem while the session clock ran on.
+        if (source != null && playingSource.value == source && state.value.let { it.isActive && !it.isParticipant }) return
+        playingSource.value = source
         boardSessionManager.startSession()
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
@@ -381,7 +397,12 @@ class PlaylistPlaybackCoordinator(
      */
     fun stop(endForEveryone: Boolean = false): com.cruxcoach.data.repository.Board_sessions? {
         val queueState = queueManager.state.value
-        val lastClimb = queueState.currentClimb
+        // Only a climb the board received stays "on the board" after the
+        // stop. Without a board the banner claimed the last playlist climb
+        // was still visible on a wall that never showed it.
+        val lastClimb = queueState.currentClimb?.takeIf {
+            queueState.role != SessionRole.HOST || queueManager.isCurrentClimbOnBoard()
+        }
         if (queueState.role == SessionRole.HOST) {
             if (queueState.visibility == SessionVisibility.JOINABLE) {
                 gattBridge.stopSharing(allowBoardRelease = true, endForEveryone = endForEveryone)

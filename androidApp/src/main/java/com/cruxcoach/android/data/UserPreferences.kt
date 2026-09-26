@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.cruxcoach.android.notification.AnnouncementTagParser
@@ -123,10 +124,10 @@ enum class BoardSendMode {
         /**
          * Unknown or absent reads as [EXPLICIT].
          *
-         * Sending is manual by default on every board, single- or
-         * multi-connection: the wall changing is a thing somebody asked for,
-         * not a side effect of looking at a climb. AUTOMATIC is an opt-in and
-         * only reacts to explicit shared board/playlist events.
+         * This fallback is for invalid wire values. Fresh preference defaults
+         * are chosen below: AUTOMATIC for single connections, EXPLICIT for
+         * multiple connections. BoardDeliveryPolicy and QueueDeliveryPolicy
+         * apply that choice to browsing and playlist progression respectively.
          */
         fun fromWire(value: String?): BoardSendMode =
             entries.firstOrNull { it.name == value } ?: EXPLICIT
@@ -298,6 +299,7 @@ object PreferenceKeys {
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val BOARD_DOWNLOAD_BRANDS = stringSetPreferencesKey("board_download_brands")
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
@@ -453,6 +455,8 @@ object PreferenceKeys {
     val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
     // Board family filter (BoardBrand.wireValue CSV). Empty = all brands.
     val MAP_FILTER_BRANDS = stringPreferencesKey("map_filter_brands")
+    val MAP_FILTER_MOON_LAYOUT_IDS = stringPreferencesKey("map_filter_moon_layout_ids")
+    val MAP_FILTER_MOON_LED_STATES = stringPreferencesKey("map_filter_moon_led_states")
     // egym-Wellpass-only filter (FEAT-015 Phase 2). Off = no Wellpass gate.
     val MAP_FILTER_WELLPASS_ONLY = booleanPreferencesKey("map_filter_wellpass_only")
 }
@@ -533,6 +537,38 @@ class UserPreferences(
      * "kilter": pre-0.2.0 installs have no MoonBoard concept and must keep
      * behaving exactly as before.
      */
+    /** Device-wide catalogue choice. Missing key preserves pre-selection behavior. */
+    val boardDownloadBrands: Flow<Set<BoardBrand>> = dataStore.data.map { prefs ->
+        decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS])
+    }
+
+    suspend fun hasBoardDownloadSelection(): Boolean =
+        dataStore.data.first().contains(PreferenceKeys.BOARD_DOWNLOAD_BRANDS)
+
+    suspend fun setBoardDownloadBrands(brands: Set<BoardBrand>) {
+        require(brands.all { it.isInteractive })
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] = brands.map { it.wireValue }.toSet()
+        }
+    }
+
+    suspend fun includeBoardDownload(brand: BoardBrand) {
+        require(brand.isInteractive)
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
+                (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) + brand)
+                    .map { it.wireValue }.toSet()
+        }
+    }
+
+    suspend fun excludeBoardDownloads(brands: Set<BoardBrand>) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS] =
+                (decodeBoardDownloadBrands(prefs[PreferenceKeys.BOARD_DOWNLOAD_BRANDS]) - brands)
+                    .map { it.wireValue }.toSet()
+        }
+    }
+
     val boardBrand: Flow<String> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter"
     }
@@ -584,8 +620,14 @@ class UserPreferences(
      * angle to 40° — valid for every v0.2.0 MoonBoard variant — so the
      * browser shows climbs immediately.
      */
-    suspend fun setMoonBoardSelection(layoutId: Int) {
+    suspend fun setMoonBoardSelection(layoutId: Int, holdSetIds: Collection<Long>? = null) {
+        val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+        val selected = holdSetIds?.let { ids -> variant?.let { MoonBoardHoldSets.setIdsFor(it).filter { id -> id in ids } } }
+        require(holdSetIds == null || !selected.isNullOrEmpty()) { "Choose at least one valid MoonBoard hold set" }
         dataStore.edit { prefs ->
+            if (selected != null && variant != null) {
+                prefs[PreferenceKeys.moonBoardHoldSets(variant.layoutId)] = selected.joinToString(",")
+            }
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
@@ -715,7 +757,7 @@ class UserPreferences(
     }
 
     val mapFilterShowHomewalls: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: false
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: true
     }
 
     val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
@@ -762,6 +804,16 @@ class UserPreferences(
         parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
     }
 
+    val mapFilterMoonLayoutIds: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS])
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+    }
+
+    val mapFilterMoonLedStates: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_MOON_LED_STATES])
+    }
+
     /** egym-Wellpass-only filter. Off (false) = no Wellpass gate. */
     val mapFilterWellpassOnly: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] ?: false
@@ -786,6 +838,12 @@ class UserPreferences(
     suspend fun setMapFilterBrands(values: Set<String>) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_BRANDS] = values.joinToString(",") }
     }
+
+    suspend fun toggleMapFilterMoonLayoutId(layoutId: Int) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS, layoutId.toString())
+
+    suspend fun toggleMapFilterMoonLedState(state: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_MOON_LED_STATES, state)
 
     suspend fun setMapFilterWellpassOnly(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] = enabled }
@@ -847,6 +905,8 @@ class UserPreferences(
             prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
             prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
             prefs.remove(PreferenceKeys.MAP_FILTER_BRANDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MOON_LAYOUT_IDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MOON_LED_STATES)
             prefs.remove(PreferenceKeys.MAP_FILTER_WELLPASS_ONLY)
         }
     }

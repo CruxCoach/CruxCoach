@@ -1,0 +1,12 @@
+-- Imports finished for the logbook while a board catalogue was still
+-- downloading. What needs the catalogue (own climbs written to the board DB,
+-- Aurora climb names resolved against the Kilter catalogue) waits here and is
+-- applied once the download is done, like moon_import_staging for MoonBoard.
+-- Additive, so every earlier secure database upgrades untouched.
+CREATE TABLE pending_import (
+    id TEXT NOT NULL PRIMARY KEY,
+    source TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    options TEXT,
+    created_at INTEGER NOT NULL
+);

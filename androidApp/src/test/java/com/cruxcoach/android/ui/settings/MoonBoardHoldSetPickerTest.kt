@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
 import app.cash.turbine.test
+import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.CatalogueRevisionSource
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.fakes.FakeBoardRepository
@@ -12,6 +13,9 @@ import com.cruxcoach.domain.board.MoonBoardHoldSets
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -38,9 +42,20 @@ class MoonBoardHoldSetPickerTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
     private val repo = FakeBoardRepository()
+    private val viewModels = mutableListOf<MoonBoardHoldSetViewModel>()
 
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
-    @After fun tearDown() { Dispatchers.resetMain() }
+    @After fun tearDown() {
+        try {
+            // Repository reads use real IO threads. Await cancellation before
+            // removing Main, including returns from an in-flight refresh.
+            runBlocking {
+                viewModels.forEach { it.viewModelScope.coroutineContext.job.cancelAndJoin() }
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
 
     private val masters2019 = MoonBoardVariant.MASTERS_2019
     private val universe = MoonBoardHoldSets.setIdsFor(masters2019)
@@ -58,7 +73,7 @@ class MoonBoardHoldSetPickerTest {
     }
 
     private fun vm(prefs: UserPreferences) =
-        MoonBoardHoldSetViewModel(prefs, repo, revisionSource)
+        MoonBoardHoldSetViewModel(prefs, repo, revisionSource).also(viewModels::add)
 
     @Test
     fun `level 1 is the default and the per-set list starts collapsed`() = runTest {

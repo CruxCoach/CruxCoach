@@ -95,4 +95,14 @@ class MapVenueTest {
         ).single()
         assertEquals(VenueBrandKey.MOONBOARD, v.brandKey)
     }
+
+    @Test
+    fun `canonical snapshot suppresses dynamic duplicates but keeps new venues`() {
+        val canonical = loc("canonical", 48.1370, 11.5750)
+        val duplicate = loc("dynamic-duplicate", 48.13701, 11.57501).copy(phone = "+49 89 123")
+        val newVenue = loc("dynamic-new", 52.5200, 13.4050)
+        val merged = mergeCanonicalMapLocations(listOf(canonical), listOf(duplicate, newVenue))
+        assertEquals(listOf("canonical", "dynamic-new"), merged.map { it.id })
+        assertEquals("+49 89 123", merged.first().phone)
+    }
 }

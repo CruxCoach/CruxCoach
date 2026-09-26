@@ -7,20 +7,35 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 
 /**
  * Unit tests for [ClimbNameResolver].
  *
- * The resolver collapses 5 UUID shapes (raw / lower / upper / hyphenated-lower
- * / hyphenated-upper) onto a single DB row. The DB lookup is case-sensitive,
- * so the test uses a mock with exact-string `every` matchers — an
- * equalsIgnoreCase fake would hide bugs in the case-folding ladder.
+ * The resolver collapses every uuid spelling the catalogue stores
+ * ([com.cruxcoach.domain.board.ClimbUuid.spellings]: the uuid as given plus
+ * nodash-UPPERCASE, nodash-lowercase, dashed-lowercase and dashed-UPPERCASE,
+ * deduplicated) onto a single DB row, then falls back to the normalized scan.
+ * The DB lookup is case-sensitive, so the test uses a mock with exact-string
+ * `every` matchers — an equalsIgnoreCase fake would hide bugs in the ladder.
  */
 class ClimbNameResolverTest {
 
     private val repo: BoardRepository = mockk(relaxed = true)
     private val resolver = ClimbNameResolver(repo)
+
+    /**
+     * A relaxed mock answers an unstubbed reference-returning call with a
+     * child mock, not null. The resolver's normalized fallback would then
+     * "find" a climb in the very tests that assert nothing is found, so the
+     * empty-catalogue default is stated explicitly. Tests that want the
+     * normalized path to hit override this.
+     */
+    @Before
+    fun stubEmptyNormalizedScan() {
+        every { repo.getClimbByUuidNormalized(any(), any()) } returns null
+    }
 
     private fun climb(uuid: String, name: String = "Test Climb", diff: Double? = 18.5) =
         TestClimb.stats(uuid = uuid, name = name, difficulty = diff, ascensionists = 42L)
@@ -79,8 +94,10 @@ class ClimbNameResolverTest {
         every { repo.getClimbByUuid(any(), any()) } returns null
 
         assertNull(resolver.resolveName("abc", 40))
-        // 3 lookups (raw / lower / upper) — hyphenation branch is skipped because length != 32.
-        verify(exactly = 3) { repo.getClimbByUuid(any(), 40) }
+        // 2 lookups ("abc" / "ABC") — the dashed forms are skipped because
+        // the key is not 32 hex chars, and the lowercase form is the input,
+        // so the candidate list deduplicates it away.
+        verify(exactly = 2) { repo.getClimbByUuid(any(), 40) }
     }
 
     @Test
@@ -106,17 +123,15 @@ class ClimbNameResolverTest {
 
         resolver.resolveName(uuid, angle = 70)
 
-        // Resolution lookups (raw, lowercase, uppercase, hyphen-lower,
-        // hyphen-upper) MUST all carry the requested angle so a
-        // wrong-angle climb_stats row never wins. The "uuid-not-in-
-        // climbs vs stats-missing-for-angle" diagnostic at the end of
-        // resolveClimb does one extra angle=0 lookup intentionally
-        // (it asks "does this uuid exist for ANY angle?") — that
-        // single call is exempt and asserted-on-purpose so a future
-        // refactor doesn't silently spam getClimbByUuid with random
-        // angles in the resolution path.
-        verify(exactly = 5) { repo.getClimbByUuid(any(), 70) }
-        verify(exactly = 1) { repo.getClimbByUuid(uuid.lowercase(), 0) }
+        // The four candidate spellings MUST all carry the requested angle so
+        // a wrong-angle climb_stats row never wins. The "uuid-not-in-climbs
+        // vs stats-missing-for-angle" diagnostic at the end of resolveClimb
+        // probes angle=0 on purpose (it asks "does this uuid exist for ANY
+        // angle?"); it is spelling-blind too, so it costs the same four
+        // lookups. Both counts are asserted so a future refactor cannot
+        // silently spam getClimbByUuid with random angles or variants.
+        verify(exactly = 4) { repo.getClimbByUuid(any(), 70) }
+        verify(exactly = 4) { repo.getClimbByUuid(any(), 0) }
         verify(exactly = 0) {
             repo.getClimbByUuid(any(), match { it != 70 && it != 0 })
         }

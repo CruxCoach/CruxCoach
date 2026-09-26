@@ -40,6 +40,8 @@ enum class StatsTimeInterval(@param:androidx.annotation.StringRes val labelResId
     YEAR_1(com.cruxcoach.android.R.string.stats_interval_1_year, 365)
 }
 
+enum class LogbookOutcomeFilter { ALL, SENDS, ATTEMPTS }
+
 data class BoardGradePyramidEntry(
     val grade: String,
     val count: Int,
@@ -94,14 +96,23 @@ data class BoardLogbookState(
     // Edit dialog
     val showEditDialog: Boolean = false,
     val editingAscentUuid: String? = null,
+    val editingIsSend: Boolean = true,
     val editBidCount: Int = 1,
     val editQuality: Int = 0,
     val editComment: String = "",
     // Delete confirm
     val showDeleteConfirm: String? = null,
+    /** The delete confirmation was opened from the edit dialog; cancelling returns there. */
+    val reopenEditAfterDeleteCancel: Boolean = false,
     // Multi-select
     val selectedUuids: Set<String> = emptySet(),
     val showBatchDeleteConfirm: Boolean = false,
+    // Filters for the visible logbook list. The date interval is shared with
+    // statistics so list and headline numbers describe the same period.
+    val logbookOutcomeFilter: LogbookOutcomeFilter = LogbookOutcomeFilter.ALL,
+    val logbookBoardFilter: String? = null,
+    val logbookAngleFilter: Int? = null,
+    val availableLogbookAngles: List<Int> = emptyList(),
     // Stats
     val statsInterval: StatsTimeInterval = StatsTimeInterval.ALL,
     val stats: BoardLogbookStats = BoardLogbookStats(),
@@ -324,12 +335,29 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
-    private fun loadAscents() {
+    /** Reload after the screen becomes visible again. The ViewModel survives on the back
+     *  stack, so entries logged, edited or deleted in the climb detail were missing (and the
+     *  totals stale) until the logbook was left and reopened. */
+    private var resumedOnce = false
+
+    /** init already loads once; every later resume (return from a detail, app switch) reloads. */
+    fun onScreenResumed() {
+        if (resumedOnce) refreshAfterReturn() else resumedOnce = true
+    }
+
+    fun refreshAfterReturn() {
+        // Silent and at least as many rows as shown: a spinner would drop the scroll position.
+        loadAscents(silent = true)
+        refreshOwnPublishable()
+    }
+
+    private fun loadAscents(silent: Boolean = false) {
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoading = true, error = null) }
+            val limit = if (silent) maxOf(PAGE_SIZE, _state.value.ascents.size) else PAGE_SIZE
+            if (!silent) _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
-                    val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0).toMutableList()
+                    val list = personalBoardRepo.getUserLogbookPage(limit, 0).toMutableList()
                     val total = personalBoardRepo.countUserLogbook()
                     repairMissingDenormalized(list)
                     list to total
@@ -338,7 +366,7 @@ class BoardLogbookViewModel @Inject constructor(
                     isLoading = false,
                     ascents = ascents,
                     totalCount = count,
-                    canLoadMore = ascents.size >= PAGE_SIZE,
+                    canLoadMore = ascents.size >= limit,
                     hasData = ascents.isNotEmpty()
                 ) }
                 // Preload stats data in background so sheet opens instantly
@@ -415,11 +443,14 @@ class BoardLogbookViewModel @Inject constructor(
                         ?: defaultSelection
                     it.copy(
                         availableBoardBrands = brands,
+                        availableLogbookAngles = all.map { ascent -> ascent.angle.toInt() }.distinct().sorted(),
+                        logbookBoardFilter = it.logbookBoardFilter?.takeIf { bf -> bf in brands },
                         boardFilter = clampedFilter,
                         heatmapBoardOptions = options,
                         heatmapBoardSelection = heatmapSel,
                     )
                 }
+                applyLogbookFilters()
                 // Load the heatmap canvas for the seeded/selected board (init no
                 // longer does this — the selection didn't exist yet). No-op for
                 // the "Alle" case (null selection blanks the canvas).
@@ -517,12 +548,56 @@ class BoardLogbookViewModel @Inject constructor(
 
     fun setStatsInterval(interval: StatsTimeInterval) {
         _state.update { it.copy(statsInterval = interval, customDateFrom = null, customDateTo = null) }
+        applyLogbookFilters()
         recomputeStats()
     }
 
     fun setCustomDateRange(from: LocalDate, to: LocalDate) {
         _state.update { it.copy(customDateFrom = from, customDateTo = to) }
+        applyLogbookFilters()
         recomputeStats()
+    }
+
+    fun setLogbookOutcomeFilter(filter: LogbookOutcomeFilter) {
+        _state.update { it.copy(logbookOutcomeFilter = filter) }
+        applyLogbookFilters()
+    }
+
+    fun setLogbookBoardFilter(brand: String?) {
+        _state.update { it.copy(logbookBoardFilter = brand) }
+        applyLogbookFilters()
+    }
+
+    fun setLogbookAngleFilter(angle: Int?) {
+        _state.update { it.copy(logbookAngleFilter = angle) }
+        applyLogbookFilters()
+    }
+
+    private fun applyLogbookFilters() {
+        if (allAscents.isEmpty()) return
+        val s = _state.value
+        val visible = BoardStatsComputer.filterByInterval(
+            allAscents, s.statsInterval, s.customDateFrom, s.customDateTo,
+        ).filter { ascent ->
+            when (s.logbookOutcomeFilter) {
+                LogbookOutcomeFilter.ALL -> true
+                LogbookOutcomeFilter.SENDS -> ascent.isSend
+                LogbookOutcomeFilter.ATTEMPTS -> !ascent.isSend
+            }
+        }.filter { ascent ->
+            s.logbookBoardFilter == null || ascent.brand == BoardBrand.fromWire(s.logbookBoardFilter)
+        }.filter { ascent ->
+            s.logbookAngleFilter == null || ascent.angle.toInt() == s.logbookAngleFilter
+        }
+        val visibleUuids = visible.mapTo(mutableSetOf()) { it.uuid }
+        _state.update {
+            it.copy(
+                ascents = visible,
+                totalCount = visible.size.toLong(),
+                canLoadMore = false,
+                selectedUuids = it.selectedUuids.intersect(visibleUuids),
+            )
+        }
     }
 
     fun setGradeChartView(view: GradeChartView) {
@@ -692,6 +767,7 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(
             showEditDialog = true,
             editingAscentUuid = ascent.uuid,
+            editingIsSend = ascent.isSend,
             editBidCount = ascent.bidCount.toInt().coerceAtLeast(1),
             editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 5),
             editComment = ascent.comment ?: ""
@@ -721,7 +797,8 @@ class BoardLogbookViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             try {
                 withContext(Dispatchers.IO) {
-                    personalBoardRepo.updateAscent(
+                    if (!s.editingIsSend) personalBoardRepo.updateBid(uuid, s.editBidCount.toLong(), s.editComment.ifBlank { null })
+                    else personalBoardRepo.updateAscent(
                         uuid = uuid,
                         bidCount = s.editBidCount.toLong(),
                         quality = if (s.editQuality > 0) s.editQuality.toLong() else null,
@@ -745,8 +822,22 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(showDeleteConfirm = uuid) }
     }
 
+    /** Delete tapped inside the edit dialog: hide it, but bring it back if the user cancels. */
+    fun requestDeleteFromEdit() {
+        val uuid = _state.value.editingAscentUuid ?: return
+        _state.update {
+            it.copy(showEditDialog = false, showDeleteConfirm = uuid, reopenEditAfterDeleteCancel = true)
+        }
+    }
+
     fun dismissDeleteConfirm() {
-        _state.update { it.copy(showDeleteConfirm = null) }
+        _state.update {
+            it.copy(
+                showDeleteConfirm = null,
+                showEditDialog = it.reopenEditAfterDeleteCancel,
+                reopenEditAfterDeleteCancel = false,
+            )
+        }
     }
 
     fun confirmDeleteAscent() {
@@ -758,14 +849,21 @@ class BoardLogbookViewModel @Inject constructor(
                     if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                     else personalBoardRepo.deleteAscent(uuid)
                 }
-                _state.update { it.copy(showDeleteConfirm = null, selectedUuids = it.selectedUuids - uuid) }
+                _state.update {
+                    it.copy(
+                        showDeleteConfirm = null,
+                        reopenEditAfterDeleteCancel = false,
+                        editingAscentUuid = null,
+                        selectedUuids = it.selectedUuids - uuid,
+                    )
+                }
                 reloadAscents()
                 zoneManager.recompute()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "confirmDeleteAscent failed uuid=$uuid", e)
-                _state.update { it.copy(showDeleteConfirm = null) }
+                _state.update { it.copy(showDeleteConfirm = null, reopenEditAfterDeleteCancel = false) }
             }
         }
     }

@@ -10,6 +10,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,16 +47,9 @@ internal fun LedColorSection(
     onResetColors: () -> Unit,
     onKilterColors: () -> Unit
 ) {
-    Text(
-        stringResource(R.string.settings_led_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-
-    Text(
-        stringResource(R.string.settings_led_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    SettingsInfoHeading(
+        title = stringResource(R.string.settings_led_title),
+        description = stringResource(R.string.settings_led_desc),
     )
 
     // Track which role's picker sheet is open
@@ -177,6 +175,7 @@ private fun ColorPickerBottomSheet(
                 ) {
                     colors.forEach { color ->
                         val isSelected = color.byte == currentByte
+                        val colorName = rgb332ColorName(LocalContext.current, color.byte)
                         val checkTint = if (color.displayColor.luminance() > 0.5f) {
                             Color.Black
                         } else {
@@ -203,13 +202,23 @@ private fun ColorPickerBottomSheet(
                                         )
                                     }
                                 )
-                                .clickable { onColorSelected(color.byte) },
+                                .clickable { onColorSelected(color.byte) }
+                                // A bare colour circle announces nothing. Merge, so the name and
+                                // the selected state land on the clickable node itself instead of
+                                // a sibling the reader never focuses.
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = colorName
+                                    this.selected = isSelected
+                                    role = Role.Button
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isSelected) {
                                 Icon(
                                     Icons.Default.Check,
-                                    contentDescription = stringResource(R.string.settings_led_selected),
+                                    // The merged parent already announces the colour and that it
+                                    // is selected; a second description would split the node.
+                                    contentDescription = null,
                                     modifier = Modifier.size(20.dp),
                                     tint = checkTint
                                 )

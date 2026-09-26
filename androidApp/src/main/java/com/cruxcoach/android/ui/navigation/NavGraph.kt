@@ -1,5 +1,14 @@
 package com.cruxcoach.android.ui.navigation
 
+import com.cruxcoach.android.ui.onboarding.*
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -9,14 +18,15 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.DeveloperBoard
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -59,6 +69,8 @@ import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
+import com.cruxcoach.android.ui.settings.LicensesScreen
+import com.cruxcoach.android.ui.settings.SettingsPage
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
 import com.cruxcoach.android.ui.settings.SettingsScreen
@@ -69,6 +81,7 @@ import com.cruxcoach.android.ui.bodystat.DataImportScreen
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
@@ -84,6 +97,7 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalOpenClimbDetail
 import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
@@ -119,7 +133,7 @@ object Routes {
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
-    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
+    const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}?author={author}"
     const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
     fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
         val qs = buildList {
@@ -146,6 +160,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
+    const val LICENSES = "licenses"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}"
@@ -156,6 +171,9 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val BACKUP_SETTINGS = "backup_settings"
+    /** Settings opened on "Bugs & feature requests" (reply notifications). */
+    const val SUPPORT_SETTINGS = "support_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -246,9 +264,12 @@ fun CruxCoachNavHost(
 
     val dest = startDestination ?: return
 
-    // Handle notification deep-links after NavHost is ready
-    LaunchedEffect(deepLinkRoute) {
+    // Scaffold subcomposes NavHost: this effect can run before its graph is set,
+    // especially on cold deep-link launches. Keep the route pending until the
+    // controller has an entry, then navigate and acknowledge it below.
+    LaunchedEffect(navController, deepLinkRoute) {
         val route = deepLinkRoute ?: return@LaunchedEffect
+        navController.currentBackStackEntryFlow.first()
         when {
             route.startsWith("board_climb_detail/") ->
                 // Replace an already-open climb detail. The detail VM reads its
@@ -264,6 +285,8 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
+            route == Routes.BACKUP_SETTINGS ||
+            route == Routes.SUPPORT_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||
@@ -318,6 +341,9 @@ fun CruxCoachNavHost(
         LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
         LocalOpenPlaylistPlayer provides {
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
+        },
+        LocalOpenClimbDetail provides { uuid, angle ->
+            navController.navigate(Routes.boardClimbDetail(uuid, angle)) { launchSingleTop = true }
         },
     ) {
     CruxRelayDisclosureEffect(startViewModel.cruxRelayManager)
@@ -526,21 +552,43 @@ fun CruxCoachNavHost(
                 // one frame instead; the forward navigation may still animate.
                 popEnterTransition = { EnterTransition.None },
             ) {
-                BoardBrowserScreen(
-                    onNavigateToClimb = { climbUuid, angle ->
-                        navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                val (_, browserTourStep) = rememberBrowserTour()
+                val drawerState = rememberDrawerState(DrawerValue.Closed)
+                val drawerScope = rememberCoroutineScope()
+                // The drawer sheet only takes Back when it is handed the drawer
+                // state; without this, Back with the menu open left the app.
+                BackHandler(enabled = drawerState.isOpen) {
+                    drawerScope.launch { drawerState.close() }
+                }
+                ModalNavigationDrawer(
+                    drawerState = drawerState,
+                    gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
+                    drawerContent = {
+                        BrowserMainDrawer() { route ->
+                            drawerScope.launch { drawerState.close() }
+                            if (route != Routes.BOARD_BROWSER) {
+                                navController.navigate(route) { launchSingleTop = true }
+                            }
+                        }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
-                    onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
-                    onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
-                    onNavigateToSetter = { pubkey ->
-                        navController.navigate(Routes.setterDetail(pubkey))
-                    },
-                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
-                )
+                ) {
+                    BoardBrowserScreen(
+                        isMenuOpen = drawerState.isOpen,
+                        onOpenMenu = { drawerScope.launch { drawerState.open() } },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
+                        onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
+                        onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
+                        onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                        onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
+                        onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
+                        onNavigateToSetter = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
             }
 
             composable(Routes.BOARD_MAP) {
@@ -623,6 +671,11 @@ fun CruxCoachNavHost(
 
             composable(
                 Routes.BOARD_CLIMB_DETAIL,
+                arguments = listOf(navArgument("author") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }),
                 // Pair with BOARD_BROWSER's no-animation pop enter.  Disposing
                 // the photo-backed board renderer immediately prevents it from
                 // competing with the restored LazyColumn on constrained OEMs.
@@ -842,40 +895,50 @@ fun CruxCoachNavHost(
                 }
             }
 
-            composable(Routes.SETTINGS) {
-                var showPaymentSheet by remember { mutableStateOf(false) }
-                val paymentViewModel: PaymentViewModel = hiltViewModel()
-                val paymentState by paymentViewModel.state.collectAsStateWithLifecycle()
-                val context = LocalContext.current
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS).forEach { settingsRoute ->
+                composable(settingsRoute) {
+                    var showPaymentSheet by remember { mutableStateOf(false) }
+                    val paymentViewModel: PaymentViewModel = hiltViewModel()
+                    val paymentState by paymentViewModel.state.collectAsStateWithLifecycle()
+                    val context = LocalContext.current
 
-                SettingsScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
-                    onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
-                    onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
-                    onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
-                    onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
-                    onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
-                    onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
-                    onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
-                    onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
-                    onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
-                    onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
-                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
-                    onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
-                    onDonateClick = {
-                        paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
-                        showPaymentSheet = true
-                    },
-                )
+                    SettingsScreen(
+                        startPage = when (settingsRoute) {
+                            Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
+                            Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            else -> null
+                        },
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
+                        onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
+                        onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
+                        onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
+                        onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
+                        onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+                        onNavigateToMoonBoardCsvImport = { navController.navigate(Routes.MOONBOARD_CSV_IMPORT) },
+                        onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
+                        onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
+                        onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
+                        onReportKilterUpload = { navController.navigate(Routes.bugReport(context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title), "")) },
+                        onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
+                        onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
+                        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                        onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
+                        onDonateClick = {
+                            paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
+                            showPaymentSheet = true
+                        },
+                    )
 
-                SettingsPaymentDialogs(
-                    showPaymentSheet = showPaymentSheet,
-                    onDismissSheet = { showPaymentSheet = false },
-                    paymentViewModel = paymentViewModel,
-                    paymentState = paymentState,
-                    context = context
-                )
+                    SettingsPaymentDialogs(
+                        showPaymentSheet = showPaymentSheet,
+                        onDismissSheet = { showPaymentSheet = false },
+                        paymentViewModel = paymentViewModel,
+                        paymentState = paymentState,
+                        context = context
+                    )
+                }
+
             }
 
             composable(Routes.PROFILE_ASSESSMENT) {
@@ -883,6 +946,10 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToAssessment = { navController.navigate(Routes.ASSESSMENT) }
                 )
+            }
+
+            composable(Routes.LICENSES) {
+                LicensesScreen(onNavigateBack = { navController.popBackStack() })
             }
 
             composable(Routes.APP_SHARE) {
@@ -951,7 +1018,10 @@ fun CruxCoachNavHost(
 
             composable(Routes.CRASH_REPORT_LIST) {
                 CrashReportListScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToThread = { eventId ->
+                        navController.navigate(Routes.messageThread(eventId))
+                    }
                 )
             }
 
@@ -966,7 +1036,8 @@ fun CruxCoachNavHost(
             composable(Routes.KEY_MANAGEMENT) {
                 KeyManagementScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) }
+                    onNavigateToImport = { navController.navigate(Routes.KEY_IMPORT) },
+                    onNavigateToBackup = { navController.navigate(Routes.BACKUP_SETTINGS) }
                 )
             }
 
@@ -1051,6 +1122,36 @@ fun CruxCoachNavHost(
     } // CompositionLocalProvider
 }
 
+@Composable
+internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
+    val (tour, _) = rememberBrowserTour()
+    ModalDrawerSheet {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(16.dp))
+            Text(stringResource(com.cruxcoach.android.R.string.main_menu_title),
+                Modifier.padding(horizontal = 28.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            val entries = listOf(
+                Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
+                Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
+            )
+            entries.forEach { (route, label, tag) ->
+                NavigationDrawerItem(
+                    icon = { Icon(if (route == Routes.BOARD_MAP) Icons.Default.Map else Icons.Default.DeveloperBoard, null) },
+                    label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
+                    onClick = { onSelect(route) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),
+                )
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            NavigationDrawerItem(icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                label = { Text(stringResource(com.cruxcoach.android.R.string.tour_replay)) },
+                selected = false, onClick = { tour.start(replay = true); onSelect(Routes.BOARD_BROWSER) },
+                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag("board_tour_replay"))
+        }
+    }
+}
+
 /**
  * Auto-starting CruxRelay is the first flow that may need ADVERTISE after the
  * user already granted SCAN/CONNECT. Surface the platform dialog at that exact
@@ -1084,8 +1185,8 @@ private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager)
     }
 }
 
-/** App-global one-time disclosure. Automatic sharing may be requested while
- * the connection sheet is closed, so this trust gate overlays every route. */
+/** Fallback only: the connection sheet shows the disclosure inline and takes the consent
+ * there. This dialog remains for a manual start from a surface without that card. */
 @Composable
 private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
     val relayState by relayManager.state.collectAsStateWithLifecycle()

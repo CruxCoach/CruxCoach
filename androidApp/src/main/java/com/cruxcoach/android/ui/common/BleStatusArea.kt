@@ -31,6 +31,10 @@ val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
  *  Provided at NavGraph level; default no-op keeps previews harmless. */
 val LocalOpenPlaylistPlayer = staticCompositionLocalOf<() -> Unit> { {} }
 
+/** Opens a climb's detail screen from anywhere. The nearby banner is rendered on every
+ *  screen, so its climb row must navigate even where the screen itself passes no handler. */
+val LocalOpenClimbDetail = staticCompositionLocalOf<(uuid: String, angle: Int) -> Unit> { { _, _ -> } }
+
 val LocalPlaylistPlayback = staticCompositionLocalOf<PlaylistPlaybackCoordinator> {
     error("PlaylistPlaybackCoordinator not provided")
 }
@@ -57,6 +61,9 @@ fun BleStatusArea(
     onRandomToQueue: (() -> Unit)? = null,
 ) {
     val bleShareManager = LocalBleShareManager.current
+    // A screen may override where a tap goes; otherwise navigate to the detail screen.
+    val openClimbDetail = LocalOpenClimbDetail.current
+    val climbTapped: (String, Int) -> Unit = onClimbTapped ?: openClimbDetail
     val state by bleShareManager.uiState.collectAsStateWithLifecycle()
 
     // Bug 3: Session join handled internally via CompositionLocals — works on every screen
@@ -134,9 +141,7 @@ fun BleStatusArea(
     if (showQueueSheet && queueState.role != SessionRole.NONE) {
         SessionQueueSheet(
             onDismiss = { showQueueSheet = false },
-            onNavigateToClimb = { uuid, angle ->
-                onClimbTapped?.invoke(uuid, angle)
-            },
+            onNavigateToClimb = climbTapped,
             canEdit = true
         )
     }
@@ -146,7 +151,7 @@ fun BleStatusArea(
             state = displayState,
             effectiveOnBoard = effectiveOnBoard,
             onCollapse = { Log.d(TAG, "COLLAPSE"); expanded = false },
-            onClimbTapped = onClimbTapped,
+            onClimbTapped = climbTapped,
             onRequestDisconnect = { bleShareManager.requestDisconnect() },
             onAddToQueue = onAddToQueue,
             onOpenQueueSheet = { showQueueSheet = true },

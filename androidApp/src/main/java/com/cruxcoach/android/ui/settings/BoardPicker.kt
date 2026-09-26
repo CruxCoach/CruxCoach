@@ -3,9 +3,10 @@ package com.cruxcoach.android.ui.settings
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.data.BoardSyncManager
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -26,6 +27,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -45,6 +48,8 @@ data class BoardPickerState(
      *  its (unkeyed) remembered selection from the placeholder default, or it
      *  would always open on Kilter regardless of the actual active board. */
     val loaded: Boolean = false,
+    val moonBoardHoldSets: Map<MoonBoardVariant, List<Long>> = emptyMap(),
+    val moonBoardHasHoldSetData: Boolean? = null,
     val initialBrand: String = BoardBrand.KILTER.wireValue,
     val productSizes: List<BoardSize> = BoardConstants.KILTER_KNOWN_SIZES,
     val selectedKilterSizeId: Int = 0,
@@ -76,11 +81,17 @@ class BoardPickerViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val quantumCatalogueSync: QuantumCatalogueSync,
+    private val syncManager: BoardSyncManager,
 ) : ViewModel() {
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
     private val loadedBrands = MutableStateFlow<Set<String>>(emptySet())
     private val auroraBrandSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
+
+    private val moonHoldSetData = MutableStateFlow<Boolean?>(null)
+    private val moonHoldSets = combine(MoonBoardVariant.entries.map { variant ->
+        userPreferences.moonBoardHoldSets(variant).map { variant to it }
+    }) { it.toMap() }
 
     val state: StateFlow<BoardPickerState> = combine(
         userPreferences.boardBrand,
@@ -105,6 +116,10 @@ class BoardPickerViewModel @Inject constructor(
             selectedAuroraProductSizeId = sizeId,
             auroraBrandSizes = auroraSizes,
         )
+    }.let { boardState ->
+        combine(boardState, moonHoldSets, moonHoldSetData) { board, holds, hasData ->
+            board.copy(moonBoardHoldSets = holds, moonBoardHasHoldSetData = hasData)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
     init {
@@ -120,8 +135,16 @@ class BoardPickerViewModel @Inject constructor(
             }
             if (sizes.isNotEmpty()) productSizes.value = sizes
             // Which boards are actually loaded — hides the download hint for them.
+            // A grouped COUNT over the full catalogue used to monopolize the
+            // database connection for several seconds on slower devices.  We
+            // only need presence here, and board_brand has an index, so one
+            // early-exit EXISTS probe per known brand is both exact and cheap.
             val loaded = withContext(Dispatchers.IO) {
-                boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
+                BoardBrand.entries
+                    .asSequence()
+                    .filter { boardRepository.hasClimbsForBrand(it.wireValue) }
+                    .map { it.wireValue }
+                    .toSet()
             }
             loadedBrands.value = loaded
             // Picker-ready (deduped) product sizes for every interactive Aurora
@@ -154,6 +177,23 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
+    fun refreshMoonBoardHoldSetData() {
+        viewModelScope.launch {
+            moonHoldSetData.value = withContext(Dispatchers.IO) { boardRepository.hasMoonBoardHoldSetMask() }
+        }
+    }
+
+    suspend fun needsDownloadConsent(brand: BoardBrand): Boolean =
+        brand !in userPreferences.boardDownloadBrands.first() && withContext(Dispatchers.IO) {
+            !boardRepository.hasClimbsForBrand(brand.wireValue)
+        }
+
+    suspend fun enableDownloads(brand: BoardBrand) {
+        userPreferences.includeBoardDownload(brand)
+    }
+
+    fun downloadSelectedBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
+
     fun selectKilter(sizeId: Int, fixedAngle: Int? = null) {
         viewModelScope.launch {
             val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
@@ -173,11 +213,11 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
-    fun selectMoonBoard(variant: MoonBoardVariant) {
-        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
+    fun selectMoonBoard(variant: MoonBoardVariant, holdSetIds: List<Long>? = null) {
+        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSetIds) }
     }
 
-    fun selectQuantum(model: QuantumBoardModel) {
+    fun selectQuantum(model: QuantumBoardModel, deferDownload: Boolean = false) {
         viewModelScope.launch {
             userPreferences.setBoardSelection(
                 BoardBrand.QUANTUM.wireValue,
@@ -187,6 +227,9 @@ class BoardPickerViewModel @Inject constructor(
             )
             // Selection remains usable offline when already cached; a failed
             // refresh is non-destructive and can be retried from board sync.
+            if (deferDownload || BoardBrand.QUANTUM !in userPreferences.boardDownloadBrands.first()) return@launch
+            syncManager.state.first { !it.isSyncing }
+            if (BoardBrand.QUANTUM !in userPreferences.boardDownloadBrands.first()) return@launch
             val result = quantumCatalogueSync.sync()
             if (result is QuantumCatalogueSync.Result.Failed) {
                 Toast.makeText(context, R.string.quantum_sync_failed_generic, Toast.LENGTH_LONG).show()
@@ -194,10 +237,11 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
-    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null) {
+    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null, deferDownload: Boolean = false) {
         viewModelScope.launch {
             val status = try {
-                auroraBoardSelector.select(board, variant, productSizeId).status
+                if (!deferDownload) syncManager.state.first { !it.isSyncing }
+                auroraBoardSelector.select(board, variant, productSizeId, allowDownload = !deferDownload).status
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -207,10 +251,11 @@ class BoardPickerViewModel @Inject constructor(
             // Surface a failed catalogue sync. The picker dialog / gym sheet is
             // already closed when the sync resolves, so a toast is the one
             // feedback channel that reaches every call site: without it a
-            // single-layout pick (Grasshopper / So iLL / auto-applied
-            // Touchstone) is a completely silent no-op offline — the selector
-            // persists nothing for variant-less boards until the sync succeeds
-            // — and a variant pick lands on an unexplained empty board.
+            // hardware selection could otherwise land on an unexplained
+            // empty board when its catalogue download fails.
+            if (!deferDownload && status == AuroraBoardSelector.Status.DOWNLOAD_DISABLED) {
+                Toast.makeText(context, R.string.board_download_disabled, Toast.LENGTH_LONG).show()
+            }
             if (status == AuroraBoardSelector.Status.FAILED) {
                 Toast.makeText(context, R.string.aurora_sync_failed_generic, Toast.LENGTH_LONG).show()
             }
@@ -233,30 +278,121 @@ internal fun BoardPickerDialog(
     onFindViaGym: (() -> Unit)? = null,
     prefill: BoardPickerPrefill? = null,
     mismatch: BoardConfigurationMismatch? = null,
+    deferDownloads: Boolean = false,
+    onBoardChosen: (BoardBrand) -> Unit = {},
+    suggestedBrand: BoardBrand? = null,
+    onFindViaBluetooth: (() -> Unit)? = null,
+    bluetoothResult: BluetoothFamilyResult? = null,
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.refreshMoonBoardHoldSetData() }
     // Wait for the real prefs before composing the dialog — it seeds its
     // selection once (unkeyed remember), so it must not see the placeholder.
     if (!state.loaded) return
-    BoardSelectionDialog(
-        initialBrand = prefill?.brand?.wireValue ?: state.initialBrand,
-        productSizes = state.productSizes,
-        selectedKilterSizeId = state.selectedKilterSizeId,
-        selectedMoonBoardVariant = state.selectedMoonBoardVariant,
-        selectedAuroraLayoutId = state.selectedAuroraLayoutId,
-        selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
-        loadedAuroraBrands = state.loadedAuroraBrands,
-        auroraBrandSizes = state.auroraBrandSizes,
-        frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
-        showAuroraBoards = true,
-        prefill = prefill,
-        mismatch = mismatch,
-        onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
-        onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
-        onConfirmQuantum = { viewModel.selectQuantum(it); onSelected() },
-        onConfirmAurora = { brand, variant, sizeId -> viewModel.selectAurora(brand, variant, sizeId); onSelected() },
-        onFindViaGym = onFindViaGym,
-        onDismiss = onDismiss,
-    )
+    BoardDownloadRequestHost(viewModel, deferDownloads, onSelected = { brand ->
+        onBoardChosen(brand)
+        onSelected()
+    }) { request ->
+        BoardSelectionDialog(
+            initialBrand = prefill?.brand?.wireValue ?: suggestedBrand?.wireValue ?: state.initialBrand,
+            productSizes = state.productSizes,
+            selectedKilterSizeId = state.selectedKilterSizeId,
+            selectedMoonBoardVariant = state.selectedMoonBoardVariant,
+            initialMoonBoardHoldSets = state.moonBoardHoldSets,
+            moonBoardHasHoldSetData = state.moonBoardHasHoldSetData,
+            selectedAuroraLayoutId = state.selectedAuroraLayoutId,
+            selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
+            loadedAuroraBrands = state.loadedAuroraBrands,
+            auroraBrandSizes = state.auroraBrandSizes,
+            frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
+            showAuroraBoards = true,
+            prefill = prefill,
+            mismatch = mismatch,
+            onConfirmKilter = { size -> request(BoardBrand.KILTER) { viewModel.selectKilter(size) } },
+            onConfirmMoonBoard = { variant, holds -> request(BoardBrand.MOONBOARD) { viewModel.selectMoonBoard(variant, holds) } },
+            onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
+            onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
+            onFindViaGym = onFindViaGym,
+            onFindViaBluetooth = onFindViaBluetooth,
+            bluetoothResult = bluetoothResult,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** Shared by direct and gym pickers. The selection is applied only after consent. */
+@Composable
+internal fun BoardDownloadRequestHost(
+    viewModel: BoardPickerViewModel,
+    deferDownloads: Boolean,
+    onSelected: (BoardBrand) -> Unit,
+    content: @Composable ((BoardBrand, () -> Unit) -> Unit) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<Pair<BoardBrand, () -> Unit>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val complete: (BoardBrand, () -> Unit, Boolean) -> Unit = { brand, apply, enabled ->
+        apply()
+        // Aurora/Quantum selection already loads its catalogue. Kilter and
+        // MoonBoard selection only persists hardware preferences.
+        if (enabled && (brand == BoardBrand.KILTER || brand == BoardBrand.MOONBOARD)) {
+            viewModel.downloadSelectedBoard(brand)
+        }
+        onSelected(brand)
+    }
+    content { brand, apply ->
+        if (!busy && pending == null) {
+            busy = true
+            scope.launch {
+                try {
+                    if (!deferDownloads && viewModel.needsDownloadConsent(brand)) {
+                        failed = false
+                        pending = brand to apply
+                    } else complete(brand, apply, false)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    failed = true
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
+    if (failed && pending == null) {
+        Text(stringResource(R.string.onboarding_download_selection_failed), color = MaterialTheme.colorScheme.error)
+    }
+    pending?.let { (brand, apply) ->
+        AlertDialog(
+            onDismissRequest = { if (!busy) pending = null },
+            title = { Text(stringResource(R.string.board_picker_download_title, brand.displayName)) },
+            text = { Text(stringResource(if (failed) R.string.onboarding_download_selection_failed else R.string.board_picker_download_description)) },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try {
+                            viewModel.enableDownloads(brand)
+                            complete(brand, apply, true)
+                            pending = null
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            failed = true
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }) { Text(stringResource(R.string.board_picker_download_confirm)) }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { pending = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
 }

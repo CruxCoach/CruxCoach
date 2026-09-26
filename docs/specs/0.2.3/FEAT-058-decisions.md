@@ -1,5 +1,10 @@
 # FEAT-058 — Decision register
 
+> **Release scope (2026-09-10):** retained proposal / separate-branch design.
+> Competitions and BoardCell/FIPS are not integrated into this 0.2.3 line
+> and do not ship in published 0.2.2. Original decisions below are preserved.
+> [Current documentation scope](../../README.md).
+
 What was decided while building competitions, what the default is now, and what
 is still an open question for a person rather than for a test.
 

@@ -2,10 +2,17 @@
 
 These rules apply to every human-assisted coding agent in this repository.
 
+Start at [the documentation index](docs/README.md) and
+[core concepts and source map](docs/en/CORE_CONCEPTS.md). Code establishes
+implementation, release artifacts establish publication, and specs record intent.
+For the current candidate, use [the 0.2.3 checklist](docs/releases/0.2.3-pre-release.md).
+
 ## Contributions and branches
 
 - Work on a focused `feat/*`, `fix/*`, `docs/*`, or `chore/*` branch. Never push directly to
-  `main`. A human review and the required GitHub checks own merge authority.
+  `main`. Only the project owner personally merges to `main`; agents may prepare
+  PRs but must never perform that merge. Required GitHub checks and owner review
+  precede publication.
 - Anyone may propose a pull request. Only logins in `.github/authorized-feature-maintainers.txt`
   may cause merged `feat/*` commits to be published. Never weaken that check from feature code.
 - Files below `.github/`, `.apktrack/`, Gradle/release configuration, signing scripts, `AGENTS.md`,

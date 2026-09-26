@@ -1,24 +1,23 @@
 package com.cruxcoach.android.ui.common
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 
 /**
@@ -30,7 +29,7 @@ import com.cruxcoach.android.R
  */
 @Composable
 fun KilterDataInfoButton(modifier: Modifier = Modifier) {
-    var show by remember { mutableStateOf(false) }
+    var show by rememberSaveable { mutableStateOf(false) }
     IconButton(
         onClick = { show = true },
         modifier = modifier.testTag("kilter_data_info_button"),
@@ -41,26 +40,22 @@ fun KilterDataInfoButton(modifier: Modifier = Modifier) {
         )
     }
     if (show) {
+        val scrollState = rememberScrollState()
         AlertDialog(
             onDismissRequest = { show = false },
             title = { Text(stringResource(R.string.kilter_data_info_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        stringResource(R.string.kilter_data_info_login),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.kilter_data_info_offline),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.kilter_data_info_local),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.kilter_data_info_publish),
-                        style = MaterialTheme.typography.bodyMedium,
+                Column(
+                    modifier = Modifier.verticalScroll(scrollState),
+                ) {
+                    InfoText(
+                        listOf(
+                            stringResource(R.string.kilter_data_info_login),
+                            stringResource(R.string.kilter_login_privacy),
+                            stringResource(R.string.kilter_data_info_offline),
+                            stringResource(R.string.kilter_data_info_local),
+                            stringResource(R.string.kilter_data_info_publish),
+                        ).joinToString("\n\n"),
                     )
                 }
             },

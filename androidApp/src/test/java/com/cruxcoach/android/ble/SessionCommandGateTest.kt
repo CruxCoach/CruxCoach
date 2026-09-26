@@ -28,4 +28,20 @@ class SessionCommandGateTest {
         assertFalse(gate.hasJoined("friend"))
         assertFalse(gate.isContextCapable("friend"))
     }
+    @Test
+    fun `legacy peers retain bursts but cannot flood indefinitely`() {
+        var now = 0L
+        val gate = SessionCommandGate { now }
+        assertFalse(gate.allowMutation("legacy"))
+        gate.join("legacy")
+        repeat(120) { assertTrue(gate.allowMutation("legacy")) }
+        assertFalse(gate.allowMutation("legacy"))
+        gate.join("legacy")
+        assertFalse(gate.allowMutation("legacy"))
+        now += 1_000_000_000
+        repeat(30) { assertTrue(gate.allowMutation("legacy")) }
+        assertFalse(gate.allowMutation("legacy"))
+        gate.join("other")
+        assertTrue(gate.allowMutation("other"))
+    }
 }

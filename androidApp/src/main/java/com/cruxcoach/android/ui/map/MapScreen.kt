@@ -1,15 +1,26 @@
 package com.cruxcoach.android.ui.map
 
+import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -17,14 +28,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
@@ -44,6 +60,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,11 +84,18 @@ fun MapScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showStatsSheet by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var requestedPlace by remember { mutableStateOf<MapPlace?>(null) }
 
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
 
+    // Once a style has loaded, the areas viewed stay in MapLibre's cache.
+    // The dialog says the map needs internet the first time, so it only
+    // belongs before that; afterwards it blocked a map that worked offline.
+    val mapState = remember { context.getSharedPreferences(MAP_STATE_PREFS, Context.MODE_PRIVATE) }
     var showOfflineDialog by remember {
-        mutableStateOf(!isNetworkAvailable(context))
+        mutableStateOf(!isNetworkAvailable(context) && !mapState.getBoolean(KEY_STYLE_LOADED, false))
     }
     if (showOfflineDialog) {
         OfflineMapDialog(onDismiss = { showOfflineDialog = false })
@@ -126,15 +150,57 @@ fun MapScreen(
         }
     }
 
-    LaunchedEffect(mapHandle, state.filteredVenues) {
+    LaunchedEffect(mapHandle, state.filteredVenues, state.selectedVenueId) {
         val (_, style) = mapHandle ?: return@LaunchedEffect
-        MapMarkerLayer.setData(style, state.filteredVenues)
+        val selected = state.unfilteredVenues.firstOrNull { it.id == state.selectedVenueId }
+        val displayed = if (selected != null && state.filteredVenues.none { it.id == selected.id }) {
+            state.filteredVenues + selected
+        } else state.filteredVenues
+        MapMarkerLayer.setData(style, displayed)
     }
 
-    val selectedVenue = remember(state.selectedVenueId, state.filteredVenues) {
+    val selectedVenue = remember(state.selectedVenueId, state.unfilteredVenues) {
         val id = state.selectedVenueId ?: return@remember null
-        state.filteredVenues.firstOrNull { it.id == id }
+        state.unfilteredVenues.firstOrNull { it.id == id }
     }
+
+    LaunchedEffect(mapHandle, requestedPlace) {
+        val (map, _) = mapHandle ?: return@LaunchedEffect
+        val place = requestedPlace ?: return@LaunchedEffect
+        map.easeCamera(
+            CameraUpdateFactory.newLatLngZoom(LatLng(place.lat, place.lng), 11.0),
+            500,
+        )
+        requestedPlace = null
+    }
+
+    // Search never runs on the main thread: the corpus (venues plus the bundled city index)
+    // is normalised once in the background, and typing only triggers a debounced lookup.
+    var searchIndex by remember { mutableStateOf<BoardMapSearchIndex?>(null) }
+    LaunchedEffect(state.unfilteredVenues, state.places) {
+        searchIndex = null
+        searchIndex = withContext(Dispatchers.Default) {
+            BoardMapSearchIndex(state.unfilteredVenues, state.places)
+        }
+    }
+    var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
+    // The query the current results belong to. "No results" may only be claimed for a
+    // finished lookup of exactly the typed text, never while the index or a lookup is pending.
+    var searchedQuery by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(searchQuery, searchIndex) {
+        val index = searchIndex
+        if (searchQuery.trim().length < 2) {
+            searchResults = emptyList()
+            searchedQuery = searchQuery
+            return@LaunchedEffect
+        }
+        if (index == null) return@LaunchedEffect
+        delay(200)
+        val query = searchQuery
+        searchResults = withContext(Dispatchers.Default) { index.search(query) }
+        searchedQuery = query
+    }
+    val searchPending = searchQuery.trim().length >= 2 && searchedQuery != searchQuery
 
     LaunchedEffect(mapHandle, selectedVenue) {
         val (map, style) = mapHandle ?: return@LaunchedEffect
@@ -168,8 +234,9 @@ fun MapScreen(
             onDismiss = { showFilterSheet = false },
             onSelectAllBrands = viewModel::selectAllBrands,
             onToggleBrand = viewModel::toggleBrand,
-            onToggleOtherBrands = viewModel::toggleOtherBrands,
             onToggleWellpassOnly = viewModel::toggleWellpassOnly,
+            onToggleMoonLayoutId = viewModel::toggleMoonLayoutId,
+            onToggleMoonLedState = viewModel::toggleMoonLedState,
             onSelectAllLayouts = viewModel::selectAllLayouts,
             onToggleShowOriginal = viewModel::toggleShowOriginal,
             onToggleShowHomewalls = viewModel::toggleShowHomewalls,
@@ -189,7 +256,20 @@ fun MapScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.map_screen_title)) },
+                title = {
+                    if (searchOpen) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text(stringResource(R.string.map_search_hint)) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        Text(stringResource(R.string.map_screen_title))
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -199,6 +279,17 @@ fun MapScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        searchOpen = !searchOpen
+                        if (!searchOpen) searchQuery = ""
+                    }) {
+                        Icon(
+                            if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = stringResource(
+                                if (searchOpen) R.string.map_search_close else R.string.map_search_open
+                            ),
+                        )
+                    }
                     IconButton(onClick = { showStatsSheet = true }) {
                         Icon(
                             Icons.Filled.BarChart,
@@ -230,6 +321,7 @@ fun MapScreen(
                 onMapReady = { map, style ->
                     MapMarkerLayer.install(style)
                     mapHandle = map to style
+                    mapState.edit().putBoolean(KEY_STYLE_LOADED, true).apply()
                 },
                 onMapTap = { map, x, y ->
                     // Cluster first: tapping a count bubble eases the camera to
@@ -253,6 +345,54 @@ fun MapScreen(
                     false
                 },
             )
+            if (searchOpen && searchQuery.trim().length >= 2) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = MaterialTheme.shapes.large,
+                    tonalElevation = 6.dp,
+                    shadowElevation = 8.dp,
+                ) {
+                    if (searchPending && searchResults.isEmpty()) {
+                        Row(
+                            modifier = Modifier.padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                stringResource(R.string.map_search_searching),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (searchResults.isEmpty()) {
+                        Text(
+                            stringResource(R.string.map_search_no_results),
+                            modifier = Modifier.padding(20.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                            searchResults.forEach { result ->
+                                MapSearchResultRow(
+                                    result = result,
+                                    onClick = {
+                                        when (result) {
+                                            is MapSearchResult.Venue -> viewModel.selectVenue(result.venue.id)
+                                            is MapSearchResult.Place -> requestedPlace = result.place
+                                        }
+                                        searchQuery = ""
+                                        searchOpen = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             if (state.isLoading || state.locationsLoading) {
                 Box(
                     modifier = Modifier
@@ -270,6 +410,57 @@ fun MapScreen(
     }
 }
 
+@Composable
+private fun MapSearchResultRow(result: MapSearchResult, onClick: () -> Unit) {
+    val locale = Locale.getDefault()
+    val title: String
+    val subtitle: String
+    val icon = when (result) {
+        is MapSearchResult.Venue -> {
+            title = result.venue.name
+            subtitle = listOfNotNull(
+                result.venue.city,
+                Locale("", result.venue.countryCode).getDisplayCountry(locale)
+                    .takeIf(String::isNotBlank),
+                result.venue.brands.joinToString { it.displayName },
+            ).joinToString(" · ")
+            Icons.Filled.Place
+        }
+        is MapSearchResult.Place -> {
+            title = if (locale.language == "de") result.place.germanName ?: result.place.name
+                else result.place.name
+            subtitle = listOfNotNull(
+                result.place.region,
+                Locale("", result.place.countryCode).getDisplayCountry(locale)
+                    .takeIf(String::isNotBlank),
+            ).joinToString(" · ")
+            Icons.Filled.LocationCity
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatsSheet(state: MapState, onDismiss: () -> Unit) {
@@ -280,3 +471,7 @@ private fun StatsSheet(state: MapState, onDismiss: () -> Unit) {
         StatsScreen(state = state, modifier = Modifier.fillMaxSize())
     }
 }
+
+/** Kept out of backups: a restored flag could hide the dialog on a phone whose map never loaded. */
+private const val MAP_STATE_PREFS = "map_state"
+private const val KEY_STYLE_LOADED = "style_loaded_once"

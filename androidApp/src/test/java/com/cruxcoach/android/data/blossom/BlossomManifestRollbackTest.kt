@@ -23,6 +23,20 @@ class BlossomManifestRollbackTest {
     private lateinit var context: Context
     private val prefsNames = listOf("rollback_kilter_test", "rollback_quantum_test")
 
+    @Test
+    fun `chunk storage estimate covers compressed output and import headroom`() {
+        val compressed = 53_820_337L
+
+        assertEquals(
+            compressed * 5L + 128L * 1024 * 1024,
+            BlossomSyncManager.requiredFreeBytesForChunk(compressed),
+        )
+        assertEquals(
+            128L * 1024 * 1024,
+            BlossomSyncManager.requiredFreeBytesForChunk(0L),
+        )
+    }
+
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()

@@ -50,6 +50,17 @@ class IntegrityVerifierArchiveTrustTest {
         apk.delete()
     }
 
+    @Test
+    fun `same signer is insufficient for a different package or announced version`() {
+        val archive = android.content.pm.PackageInfo().apply {
+            packageName = "com.cruxcoach.android"
+            versionName = "0.2.3"
+        }
+        assertTrue(archiveMatchesUpdate(archive, "com.cruxcoach.android", "0.2.3"))
+        org.junit.Assert.assertFalse(archiveMatchesUpdate(archive, "com.cruxcoach.android.dev.other", "0.2.3"))
+        org.junit.Assert.assertFalse(archiveMatchesUpdate(archive, "com.cruxcoach.android", "0.2.4"))
+    }
+
     private companion object {
         /** Public GlobalSign root certificate, used only as structurally valid
          * X.509 bytes that the removed ZIP fallback would have accepted. */

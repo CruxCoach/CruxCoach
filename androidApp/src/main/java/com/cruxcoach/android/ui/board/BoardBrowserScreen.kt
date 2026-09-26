@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -57,6 +56,7 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -71,13 +71,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.ui.onboarding.*
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.PerfLogger
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardBrowserScreen(
+    isMenuOpen: Boolean = false,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
+    onOpenMenu: () -> Unit = {},
     onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
@@ -85,16 +88,20 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
-    onNavigateToMap: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
     val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
-    var searchVisible by remember { mutableStateOf(false) }
+    // Returning from a climb recreates this state while the view model keeps the query: show the field then.
+    var searchVisible by remember { mutableStateOf(state.filter.searchQuery.isNotEmpty()) }
     var showMismatchPicker by remember { mutableStateOf(false) }
+    var showBoardPicker by remember { mutableStateOf(false) }
+    var showGymSearch by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
@@ -205,13 +212,54 @@ fun BoardBrowserScreen(
 
     if (showBleSheet) {
         BleConnectionSheet(
-            onDismiss = { showBleSheet = false },
+            onDismiss = { showBleSheet = false; if (tour.step() == TourStep.CONNECT) tour.move(TourStep.ANGLE) },
             onNavigateToClimb = { uuid, angle ->
                 viewModel.climbNavState.climbUuids = listOf(uuid)
                 viewModel.climbNavState.angle = angle
                 viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.BROWSER
                 onNavigateToClimb(uuid, angle)
             },
+        )
+    }
+    // Same optional Bluetooth family search as in setup: close the picker, run the regular
+    // connection sheet, then reopen the picker seeded with the recognised family.
+    var pickerReturnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    var pickerBluetoothSearched by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(showBleSheet) {
+        if (pickerReturnFromBluetooth && !showBleSheet) {
+            pickerReturnFromBluetooth = false
+            pickerBluetoothSearched = true
+            showBoardPicker = true
+        }
+    }
+    if (showBoardPicker) {
+        val bluetoothSuggestion = com.cruxcoach.android.ui.onboarding.onboardingBoardSuggestion(bleConnState.connectedBoard)
+        BoardPickerDialog(
+            onDismiss = { showBoardPicker = false; pickerBluetoothSearched = false },
+            onSelected = { showBoardPicker = false; pickerBluetoothSearched = false },
+            suggestedBrand = if (pickerBluetoothSearched) bluetoothSuggestion else null,
+            bluetoothResult = if (!pickerBluetoothSearched) null else bluetoothSuggestion
+                ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
+                ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
+            onFindViaBluetooth = {
+                pickerReturnFromBluetooth = true
+                showBoardPicker = false
+                showBleSheet = true
+            },
+            onFindViaGym = {
+                showBoardPicker = false
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardPicker = true
+            },
+            onDismiss = { showGymSearch = false },
         )
     }
     if (showMismatchPicker) {
@@ -298,86 +346,82 @@ fun BoardBrowserScreen(
         )
     }
 
+    // A board connected during setup used to skip this step silently, leaving the user without
+    // the one place where connecting happens later. The step stays; its text says it is done.
+    var showAngleSheet by remember { mutableStateOf(false) }
+    if (showAngleSheet) {
+        BoardBrowserAngleSheet(
+            filter = state.filter,
+            onAngle = { viewModel.setAngleExact(it); viewModel.commitFilterChange() },
+            onDismiss = { showAngleSheet = false; if (tour.step() == TourStep.ANGLE) tour.move(TourStep.FILTER) },
+        )
+    }
+
+    // The header decides at layout time whether the logbook is a direct icon or sits in the
+    // overflow; the tour text follows that instead of mentioning a menu that may not apply.
+    var logbookInOverflow by remember { mutableStateOf(false) }
+    val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
+    // The tour walks through a filled browser. Shown earlier — over the sync card, over an
+    // empty list, while a share is still importing — its spotlights pointed at controls whose
+    // actions could not happen yet and it read as broken. It waits, with its step kept, until
+    // the active board's catalogue is there and listed. Other boards may still be loading:
+    // an ordinary background sync must not hold back a tour the climber just asked for. A
+    // nearby share does, because its single import transaction blocks the browser's reads.
+    val syncState by com.cruxcoach.android.ui.common.LocalBoardSyncManager.current.state.collectAsStateWithLifecycle()
+    val browserFilled = catalogueReady && state.climbs.isNotEmpty() && !syncState.localShareInProgress
+    val tourTarget = when (tourStep) {
+        TourStep.BOARD -> TourTarget.BOARD
+        TourStep.LOGBOOK -> TourTarget.MENU
+        TourStep.CONNECT -> TourTarget.BLUETOOTH
+        TourStep.ANGLE -> if (catalogueReady) TourTarget.ANGLE else TourTarget.BOARD
+        TourStep.FILTER -> if (catalogueReady) TourTarget.FILTER else TourTarget.BOARD
+        TourStep.OPEN -> if (state.climbs.isNotEmpty()) TourTarget.CLIMB else if (catalogueReady) TourTarget.FILTER else TourTarget.BOARD
+        else -> null
+    }
+    val tourMessage = when (tourTarget) {
+        TourTarget.BOARD ->
+            if (tourStep == TourStep.BOARD) R.string.tour_spotlight_board_picker
+            else R.string.tour_spotlight_catalogue
+        TourTarget.BLUETOOTH ->
+            if (isBleConnected) R.string.tour_spotlight_connect_done
+            else R.string.tour_spotlight_connect
+        TourTarget.MENU ->
+            if (logbookInOverflow) R.string.tour_spotlight_logbook_overflow
+            else R.string.tour_spotlight_logbook_direct
+        TourTarget.ANGLE -> R.string.tour_spotlight_angle
+        TourTarget.FILTER -> R.string.tour_spotlight_filter
+        TourTarget.CLIMB -> R.string.tour_spotlight_open
+        else -> R.string.tour_spotlight_catalogue
+    }
+    TourHost(tourTargets, tourTarget, tourMessage, { tour.move(TourStep.DONE) },
+        visible = browserFilled && !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            // The title wrapped to two lines on a narrow screen and pushed the
-            // whole row of actions down with it. The logo says the same thing
-            // in a quarter of the width, and it is the natural place to hang a
-            // drawer off later.
-            title = {},
-            navigationIcon = {
-                // The same two layers the splash screen uses (see ic_splash.xml):
-                // a black disc, then the launcher foreground on top. The logo's
-                // centre is transparent, so without the disc the X would sit on
-                // whatever is behind and the ring would read as a broken shape.
-                //
-                // Not R.mipmap.ic_launcher_round — that is an <adaptive-icon>,
-                // which Compose cannot load at all and which took the whole
-                // browser down on open. Not the monochrome vector either: that
-                // is the flat themed-icon variant and loses the gradient.
-                //
-                // Placed in a plain Box rather than an IconButton so it can sit
-                // close to the edge and fill the bar; a drawer click target can
-                // be added here later without moving it.
-                Box(
-                    modifier = Modifier
-                        .padding(start = 10.dp)
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black)
-                        .testTag("board_browser_home"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        contentDescription = stringResource(R.string.board_browser_title),
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+        BoardBrowserHeader(
+            context = boardBrowserHeaderContext(
+                boardBrand = state.filter.boardBrand,
+                layoutId = state.filter.layoutId,
+                boardSize = state.boardSize,
+            ),
+            isBleConnected = isBleConnected,
+            angle = state.filter.angle,
+            onAngle = { showAngleSheet = true },
+            onOpenMenu = onOpenMenu,
+            onLogbook = { if (tour.step() == TourStep.LOGBOOK) tour.move(TourStep.ENTRY); onNavigateToLogbook() },
+            onLists = onNavigateToLists,
+            onSettings = onNavigateToSettings,
+            logbookTour = tourStep == TourStep.LOGBOOK,
+            onLogbookPlacement = { logbookInOverflow = it },
+            onBoardPicker = {
+                if (tour.step() == TourStep.BOARD) tour.move(tour.afterBoardStep())
+                showBoardPicker = true
             },
-            actions = {
-                IconButton(
-                    onClick = { showBleSheet = true },
-                    modifier = Modifier.testTag("board_ble_button")
-                ) {
-                    Icon(
-                        if (isBleConnected) Icons.Default.BluetoothConnected
-                        else Icons.Default.Bluetooth,
-                        contentDescription = stringResource(R.string.cd_bluetooth),
-                        tint = if (isBleConnected) SuccessGreen
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(
-                    onClick = onNavigateToFilter,
-                    modifier = Modifier.testTag("board_filter_toggle")
-                ) {
-                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.cd_filter))
-                }
-                IconButton(
-                    onClick = onNavigateToLogbook,
-                    modifier = Modifier.testTag("board_logbook_icon")
-                ) {
-                    Icon(Icons.Default.Book, contentDescription = stringResource(R.string.board_logbook_title))
-                }
-                IconButton(
-                    onClick = onNavigateToLists,
-                    modifier = Modifier.testTag("board_lists_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
-                }
-                IconButton(
-                    onClick = onNavigateToSettings,
-                    modifier = Modifier.testTag("board_settings_button")
-                ) {
-                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.cd_settings))
-                }
-            },
-            windowInsets = WindowInsets(0.dp)
+            onBluetooth = { showBleSheet = true },
+            onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
         )
         RestTimerBannerSlot()
-        SyncStatusBannerSlot()
+        // While the sync card itself is on this screen the banner would only repeat it.
+        if (state.hasBoardData) SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
             // First DB access lazily runs any pending schema migration +
             // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
@@ -442,6 +486,36 @@ fun BoardBrowserScreen(
                 onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
 
+            // The list shows CruxCoach community climbs only (they come through Nostr for every
+            // board); the board's catalogue is not loaded. Say so and offer it, without taking
+            // the community climbs away. (Without climbs the empty state below offers it.)
+            if (!state.activeBrandHasCatalogue && state.climbs.isNotEmpty() && !state.activeBrandImporting) {
+                Surface(
+                    color = OrangeAccent.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth().testTag("board_community_only"),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.board_browser_community_only,
+                                BoardBrand.fromWire(state.filter.boardBrand).displayName,
+                            ),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(
+                            onClick = { viewModel.loadActiveBoardCatalogue() },
+                            modifier = Modifier.testTag("board_community_only_load"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                    }
+                }
+            }
             queueState.boardMismatch?.let {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -559,19 +633,6 @@ fun BoardBrowserScreen(
                             )
                         }
                     }
-                    IconButton(
-                        onClick = onNavigateToMap,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("board_map_button")
-                    ) {
-                        Icon(
-                            Icons.Outlined.Map,
-                            contentDescription = stringResource(R.string.cd_map),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
                 }
             }
 
@@ -622,6 +683,15 @@ fun BoardBrowserScreen(
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
                         }
+                        // Somebody who loaded only MoonBoard from a friend lands here with the
+                        // app's default Kilter; a 94 MB download is not the only way out.
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showBoardPicker = true },
+                            modifier = Modifier.testTag("board_empty_change_board"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_change_board))
+                        }
                     } else {
                         Text(
                             text = stringResource(R.string.board_browser_empty_no_results),
@@ -663,6 +733,9 @@ fun BoardBrowserScreen(
                     lastTopUuid = topUuid
                 }
 
+                LaunchedEffect(tourStep) {
+                    if (tourStep == TourStep.OPEN && state.climbs.isNotEmpty()) listState.scrollToItem(0)
+                }
                 // Trigger loadMore when near bottom
                 val shouldLoadMore by remember {
                     derivedStateOf {
@@ -722,6 +795,7 @@ fun BoardBrowserScreen(
                         key = { it.uuid },
                         contentType = { "climb" }
                     ) { climb ->
+                        Box(if (climb.uuid == state.climbs.firstOrNull()?.uuid) Modifier.tourTarget(TourTarget.CLIMB) else Modifier) {
                         ClimbCard(
                             climb = climb,
                             gradeScale = gradeScale,
@@ -735,6 +809,7 @@ fun BoardBrowserScreen(
                             boardPlaylistCount =
                                 runningPlaylistCounts[climb.uuid.lowercase()] ?: 0,
                         )
+                        }
                     }
 
                     if (state.isLoadingMore) {
@@ -779,10 +854,14 @@ fun BoardBrowserScreen(
                     contentColor = DarkBackground,
                     modifier = Modifier.testTag("board_create_fab")
                 ) {
-                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
                 }
                 FloatingActionButton(
-                    onClick = { searchVisible = !searchVisible },
+                    onClick = {
+                        // Closing is labelled "clear search": a hidden field must not keep filtering.
+                        if (searchVisible && state.filter.searchQuery.isNotEmpty()) viewModel.updateSearchQuery("")
+                        searchVisible = !searchVisible
+                    },
                     containerColor = OrangeAccent,
                     contentColor = DarkBackground,
                     modifier = Modifier.testTag("board_search_fab")
@@ -797,4 +876,5 @@ fun BoardBrowserScreen(
             }
         }
     }
+    } // TourHost
 }

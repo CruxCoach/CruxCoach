@@ -151,6 +151,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCount(): Long = storedClimbs.size.toLong()
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
+    override fun hasAnyCatalogueClimbs(): Boolean = hasAnyClimbs()
     override fun hasClimbsForBrand(boardBrand: String): Boolean = storedClimbs.isNotEmpty()
     override fun hasMoonBoardHoldSetMask(): Boolean = false
     override fun getStatCount(): Long = 0L
@@ -192,6 +193,9 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> = emptyList()
     override fun getClimbsByUuidsForBoard(uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats> = emptyList()
     override fun getClimbsByUuidsForBoardAnyAngle(uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats> = emptyList()
+    override fun getAllSearchMatchingUuids(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): List<String> =
+        searchClimbsByName(query, angle, layoutId, boardBrand, ClimbSortField.NAME, SortDirection.ASC, Int.MAX_VALUE, 0, climbType, selProductSizeId, hsmExcludedMask).map { it.uuid }
+
     override fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean): List<String> = emptyList()
     override fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String> = emptyList()
     override fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String> = emptySet()
@@ -312,7 +316,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getCommunityClimbs(): List<CommunityClimbRow> = emptyList()
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
     override fun getClimbPublishContext(uuid: String): ClimbPublishContext? = null
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow? = null
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String, ownPubkey: String?): CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
     override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
     override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.CruxRelayState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /**
@@ -22,13 +24,13 @@ class RelayShareViewModel @Inject constructor(
 
     val relayState: StateFlow<CruxRelayState> = relayManager.state
 
-    /** Deliberate user action; the manager owns disclosure + permission gates. */
-    fun requestSharing() = relayManager.requestEnable()
+    /** The card shows the full disclosure until sharing was accepted once. */
+    val disclosureSeen: Flow<Boolean> = relayManager.disclosureSeen
 
-    /** One-tap stop. A CruxCoach queue and the direct board link keep running. */
-    fun disableSharing() {
-        relayManager.disable()
-    }
+    /** The single switch: sharing follows the board connection while it is on. */
+    val sharingOn: Flow<Boolean> = relayManager.manualStart.map { !it }
+
+    fun setSharing(enabled: Boolean) = relayManager.setSharingEnabled(enabled)
 
     fun clearError() {
         relayManager.clearError()

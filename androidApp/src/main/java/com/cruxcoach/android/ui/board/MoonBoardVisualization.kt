@@ -267,9 +267,13 @@ private fun roleColor(roleCode: Int): Color? = when (roleCode) {
     else -> null
 }
 
-/** Filled-alpha disc + solid ring at [centre], in the role colour. */
-private fun DrawScope.drawHoldMarker(centre: Offset, color: Color, radius: Float) {
+/** A translucent fill and role-coloured ring with light/dark outlines.
+ * Both edges remain visible on blue holds, dark holds and the light panel.
+ * Only display strokes change; frames and the controller's role tokens do not. */
+internal fun DrawScope.drawMoonBoardHoldMarker(centre: Offset, color: Color, radius: Float) {
     drawCircle(color = color.copy(alpha = 0.22f), radius = radius, center = centre, style = Fill)
+    drawCircle(color = Color.Black, radius = radius, center = centre, style = Stroke(radius * 0.72f))
+    drawCircle(color = Color.White, radius = radius, center = centre, style = Stroke(radius * 0.52f))
     drawCircle(
         color = color,
         radius = radius,
@@ -287,7 +291,7 @@ private fun DrawScope.drawClimbHolds(grid: Rect, holds: List<Pair<Int, Int>>, gr
         if (holdId !in 1..maxHoldId) return@forEach
         val column = (holdId - 1) % MoonBoardVariant.GRID_COLUMNS
         val rowIndex = (holdId - 1) / MoonBoardVariant.GRID_COLUMNS
-        drawHoldMarker(holdCentre(grid, column, rowIndex, gridRows), color, radius)
+        drawMoonBoardHoldMarker(holdCentre(grid, column, rowIndex, gridRows), color, radius)
     }
 }
 
@@ -301,6 +305,6 @@ private fun DrawScope.drawClimbHoldsMapped(
     holds.forEach { (holdId, roleCode) ->
         val color = roleColor(roleCode) ?: return@forEach
         val norm = asset.holdXy[holdId] ?: return@forEach
-        drawHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
+        drawMoonBoardHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
     }
 }

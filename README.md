@@ -1,6 +1,16 @@
 # CruxCoach
 
+> **Release status (2026-09-10):** this source tree prepares **0.2.3**;
+> the published app is still **0.2.2**. Features described here must be read
+> with that distinction. Competitions, separate key-custody/personal-sharing
+> work and BoardCell/FIPS mesh are not integrated. Start with the
+> [documentation index](docs/README.md) and core concepts
+> ([English](docs/en/CORE_CONCEPTS.md) · [Deutsch](docs/de/CORE_CONCEPTS.md)).
+
 Open-source multi-board climbing and training app for Android.
+
+**Primary repository, issues and pull requests:** [GitHub](https://github.com/CruxCoach/CruxCoach).
+[Codeberg](https://codeberg.org/CruxCoach/CruxCoach) is the secondary source and release mirror.
 
 Browse climbs, control supported LED boards over Bluetooth, play training playlists, import your Kilter or MoonBoard logbook and track your progress — with no mandatory account, no ads and full control over your data.
 
@@ -11,12 +21,12 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
     <img src="https://img.shields.io/badge/Zapstore-recommended-7c3aed?style=for-the-badge&logo=android&logoColor=white" alt="Install via Zapstore">
   </a>
   &nbsp;
-  <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">
-    <img src="https://img.shields.io/badge/Codeberg-latest_APK-2185d0?style=for-the-badge&logo=codeberg&logoColor=white" alt="Download latest APK from Codeberg">
+  <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">
+    <img src="https://img.shields.io/badge/GitHub-latest_APK-24292f?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Download latest APK from GitHub (primary)">
   </a>
   &nbsp;
-  <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">
-    <img src="https://img.shields.io/badge/GitHub-latest_APK-24292f?style=for-the-badge&logo=github&logoColor=white" alt="Download latest APK from GitHub">
+  <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">
+    <img src="https://img.shields.io/badge/Codeberg-APK_mirror-2185d0?style=for-the-badge&amp;logo=codeberg&amp;logoColor=white" alt="Download APK from the Codeberg mirror">
   </a>
   &nbsp;
   <a href="#building-from-source">
@@ -31,9 +41,9 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 <p align="center">
   <em>
     <a href="https://zapstore.dev/apps/com.cruxcoach.android">Zapstore</a> auto-updates, Nostr-native, verifiable builds &middot;
-    <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">Codeberg</a> and
-    <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">GitHub</a> carry the identical APK and <code>.apk.sha256</code> sidecar &middot;
-    <a href="#building-from-source">Source build</a> reproducible from <code>main</code><br>
+    <a href="https://github.com/CruxCoach/CruxCoach/releases/latest">GitHub</a> is the primary release source;
+    <a href="https://codeberg.org/CruxCoach/CruxCoach/releases/latest">Codeberg</a> mirrors the identical APK and <code>.apk.sha256</code> sidecar &middot;
+    <a href="#building-from-source">Source build</a> from a chosen tag or commit<br>
     Project site: <a href="https://cruxcoach.org/">cruxcoach.org</a> &middot;
     <a href="https://cruxcoach.org/boards/">board locations map</a>
   </em>
@@ -46,7 +56,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
   <img src="docs/screenshots/heatmap.png" alt="Heatmap" width="220">
 </p>
 
-> **First-time sideload from Codeberg or GitHub?** Android Settings → Apps → *Special app access* → *Install unknown apps* → enable for your browser or file manager. The signing certificate is stable across releases, so future updates install on top without re-enabling.
+> **First-time sideload from GitHub or Codeberg?** Android Settings → Apps → *Special app access* → *Install unknown apps* → enable for your browser or file manager. The signing certificate is stable across releases, so future updates install on top without re-enabling.
 
 ---
 
@@ -56,7 +66,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 
 **Nearby Sharing** — Share the current climb or active playlist state with nearby CruxCoach users over Bluetooth. No internet is required.
 
-**Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.
+**Your Data, Your Device** — Logbook and other personal records use an encrypted local database; local climb drafts also exist in the unencrypted board database. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.
 
 ---
 
@@ -81,7 +91,7 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 - **Data exchange** — JSON and CSV ZIP export/import for logbook data, private climb notes, lists/playlists and own climbs; readable Excel export for spreadsheets
 - **Encrypted cloud backup** *(0.1.3+, opt-in)* — your climbing data encrypted on-device, mirrored across the open Nostr network and Blossom storage servers. The maintainer cannot decrypt it; only your CruxCoach Account key can. Survives app uninstall + device transfer.
 - **App-share QR code** — share CruxCoach with nearby climbers by QR
-- **Reliable notifications** — guided setup for Android battery and autostart restrictions so dev-DMs and sync updates always arrive
+- **Reliable notifications** — guided setup for Android battery and autostart restrictions to improve delivery of dev-DMs and sync updates
 - **In-app auto-updater** — verifiable APK updates with TOFU certificate pinning (auto-disabled on Zapstore installs)
 - **In-app developer contact** via encrypted Nostr DMs
 
@@ -92,13 +102,13 @@ Browse climbs, control supported LED boards over Bluetooth, play training playli
 | Channel | When to pick it | Trade-off |
 |---|---|---|
 | **[Zapstore](https://zapstore.dev/apps/com.cruxcoach.android)** | You already use Zapstore, want hands-off auto-updates and Nostr-native verifiable builds | Requires the Zapstore client app installed |
-| **[Codeberg release APK](https://codeberg.org/CruxCoach/CruxCoach/releases/latest)** | You want a direct sideload, no app-store dependency, full SHA-256 transparency | Manual install + updates (or opt into the in-app updater under *Settings → Updates*) |
-| **[GitHub release APK](https://github.com/CruxCoach/CruxCoach/releases/latest)** | Codeberg is unavailable or GitHub is your preferred forge | Identical signed APK and SHA-256 sidecar |
+| **[GitHub release APK](https://github.com/CruxCoach/CruxCoach/releases/latest)** | Primary direct download, no app-store dependency, full SHA-256 transparency | Manual install + updates (or opt into the in-app updater under *Settings → Updates*) |
+| **[Codeberg release mirror](https://codeberg.org/CruxCoach/CruxCoach/releases/latest)** | Secondary download when GitHub is unavailable or you prefer Codeberg | Identical signed APK and SHA-256 sidecar |
 | **[Source build](#building-from-source)** | You want to read / patch the code first | Requires Android SDK + NDK and a few minutes |
 
 ### Verifying the APK
 
-Each Codeberg and GitHub release ships an `*.apk.sha256` sidecar next to the identical APK asset. After downloading both into the same folder:
+Each GitHub release and its Codeberg mirror ships an `*.apk.sha256` sidecar next to the identical APK asset. After downloading both into the same folder:
 
 ```bash
 sha256sum -c CruxCoach-v*.apk.sha256
@@ -109,15 +119,15 @@ Expected output: `CruxCoach-v0.2.2.apk: OK`. The signing certificate is the same
 ### Updating
 
 - **Zapstore**: handled by the Zapstore client.
-- **Codeberg/GitHub APK + in-app updater**: open *Settings → Updates → Check for updates*. CruxCoach checks the configured release sources and verified mirrors, then installs only an APK whose SHA-256 and signing certificate match.
-- **Source build**: `git pull && ./gradlew :androidApp:assembleRelease`.
+- **GitHub/Codeberg APK + in-app updater**: open *Settings → Updates → Check for updates*. CruxCoach checks the configured release sources and verified mirrors, then installs only an APK whose SHA-256 and signing certificate match.
+- **Source build**: choose the intended tag or commit and follow [contributor setup](CONTRIBUTING.md#development-setup). A local build is not an official signed release.
 
 ---
 
 ## Building from Source
 
 ```bash
-git clone https://codeberg.org/CruxCoach/CruxCoach.git
+git clone https://github.com/CruxCoach/CruxCoach.git
 cd CruxCoach
 bash scripts/setup_dev_env.sh   # installs JDK 17, Android SDK, NDK, CMake (Debian/Ubuntu)
 source ~/.bashrc                # or ~/.zshrc
@@ -145,7 +155,7 @@ For signing, testing, and full setup details see [CONTRIBUTING.md](CONTRIBUTING.
 | Nostr | Quartz (Vitor Pamplona) |
 | Background | WorkManager |
 
-Domain logic lives in a shared Kotlin Multiplatform module (~60–70% of code). See [CONTRIBUTING.md](CONTRIBUTING.md#project-structure) for the full project structure.
+Domain logic lives in a shared Kotlin Multiplatform module. See [CONTRIBUTING.md](CONTRIBUTING.md#project-structure) for the full project structure.
 
 ---
 
@@ -168,9 +178,9 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 **Board database** — community-created content distributed via Nostr Blossom. Content-addressed and verifiable by any client. See [LEGAL.md](LEGAL.md).
 
-**Personal data** — stored locally in an encrypted SQLCipher database. Encryption keys live in the Android Keystore and never leave the device.
+**Personal records** — the logbook and related records use SQLCipher, with database key material protected by Android Keystore. BoardDB also holds local drafts and is unencrypted; see [storage boundaries](docs/en/CORE_CONCEPTS.md#local-first-storage-and-sync).
 
-**Optional cloud backup** *(off by default)* — when you turn it on, your data is encrypted on the device with a key derived from your Nostr identity, then mirrored across the open Nostr network and Blossom storage servers. No single provider holds a usable copy. Saving your CruxCoach Account key once is what makes the backup recoverable on any other device — see [SECURITY.md](SECURITY.md#encrypted-cloud-backup-feat-002-013) for the full threat model.
+**Optional cloud backup** *(off by default)* — when you turn it on, your structured backup is encrypted on the device with a random data key wrapped for your Nostr identity, then mirrored across the open Nostr network and Blossom storage servers. No single provider holds a usable copy. Saving your CruxCoach Account key once is what makes the backup recoverable on any other device — see [SECURITY.md](SECURITY.md#encrypted-cloud-backup-feat-002-013) for the full threat model.
 
 **Your identity** — a Nostr key pair. No central server can lock you out. The same key pair that is your CruxCoach Account encrypts your cloud backup, so saving it once protects both.
 
@@ -182,7 +192,7 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reporting, dev setup, coding standards, and PR guidelines.
 
-For the active feature roadmap and per-release specifications, see [`docs/specs/`](docs/specs/).
+For implementation guidance and source links, start at the [documentation index](docs/README.md). [Feature specs](docs/specs/README.md) preserve proposals and historical decisions; their target folders do not prove a feature shipped.
 
 ## Security
 
@@ -196,7 +206,7 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
 
 ## Support
 
-- **Bug Reports**: [Codeberg Issues](https://codeberg.org/CruxCoach/CruxCoach/issues) or in-app via Settings
+- **Bug Reports**: [GitHub Issues](https://github.com/CruxCoach/CruxCoach/issues) or in-app via Settings
 - **Donate** (upstream maintainer): Lightning `npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash`
 
   <img src="docs/lightning-qr.png" alt="Lightning: npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s@npub.cash" width="220">

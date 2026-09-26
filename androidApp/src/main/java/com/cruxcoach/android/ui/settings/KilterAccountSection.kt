@@ -1,7 +1,13 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.kilter.KilterUploadStatus
+import com.cruxcoach.android.data.kilter.localized
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -22,6 +28,7 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
 data class KilterAccountState(
+    val uploadStatus: KilterUploadStatus? = null,
     val isConnected: Boolean = false,
     val username: String = "",
     val lastSync: String? = null,
@@ -83,6 +90,8 @@ internal fun KilterAccountSection(
     onDismissDisconnectConfirm: () -> Unit,
     onDismissResult: () -> Unit,
     onRetryPublishQueueNow: () -> Unit,
+    onRetryUpload: () -> Unit = {},
+    onReportUpload: () -> Unit = {},
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -104,10 +113,9 @@ internal fun KilterAccountSection(
             onRetryPublishQueueNow = onRetryPublishQueueNow,
         )
     } else {
-        Text(
-            stringResource(R.string.kilter_connect_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        SettingsInfoHeading(
+            title = stringResource(R.string.kilter_section_title),
+            description = stringResource(R.string.kilter_connect_desc),
         )
         OutlinedButton(
             onClick = onShowLogin,
@@ -119,6 +127,10 @@ internal fun KilterAccountSection(
         // Greyed-out climb-publish toggle: discoverable but inert until
         // the user connects. Tapping the row jumps to the login flow.
         DisconnectedClimbPublishHint(onConnect = onShowLogin)
+    }
+
+    if (state.isConnected) {
+        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload)
     }
 
     // Result message (success/error)
@@ -190,9 +202,47 @@ internal fun KilterAccountSection(
     }
 }
 
+/** Compact upload status; detailed counts, timestamps and HTTP codes stay in diagnostics. */
+@Composable
+internal fun KilterLogbookSyncStatus(
+    state: KilterAccountState,
+    onLogin: () -> Unit,
+    onRetry: () -> Unit,
+    onReport: () -> Unit,
+) {
+    val upload = state.uploadStatus
+    val needsLogin = state.sessionExpired || upload?.reason ==
+        com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
+    val active = state.pushEnabled && !state.isSyncing
+    val problem = active && (needsLogin || upload?.failed == true)
+    val message = when {
+        state.isSyncing -> stringResource(R.string.kilter_upload_syncing)
+        !state.pushEnabled -> stringResource(R.string.kilter_upload_disabled)
+        needsLogin -> stringResource(R.string.kilter_upload_auth)
+        upload == null -> stringResource(R.string.kilter_upload_unchecked)
+        else -> upload.localized(LocalContext.current)
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(message, style = MaterialTheme.typography.bodyMedium,
+            color = if (problem) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface)
+        if (active && (needsLogin || upload == null || upload.failed || upload.pending > 0)) {
+            Row {
+                TextButton(onClick = if (needsLogin) onLogin else onRetry) {
+                    Text(stringResource(if (needsLogin) R.string.kilter_login_button
+                        else R.string.kilter_sync_now))
+                }
+                if (problem) {
+                    TextButton(onClick = onReport) { Text(stringResource(R.string.devcontact_report_bug)) }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun KilterLoginSheet(
+internal fun KilterLoginSheet(
     email: String,
     password: String,
     error: String?,
@@ -204,11 +254,15 @@ private fun KilterLoginSheet(
 ) {
     // A stray scrim tap / back press must not dismiss the sheet while the
     // login runs — a late error would land in state nothing renders.
-    ModalBottomSheet(onDismissRequest = { if (!isLoading) onDismiss() }) {
+    ModalBottomSheet(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(
             modifier = Modifier
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(bottom = 32.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
@@ -280,11 +334,7 @@ private fun KilterLoginSheet(
                 Text(stringResource(R.string.kilter_login_button))
             }
 
-            Text(
-                stringResource(R.string.kilter_login_privacy),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
         }
     }
 }
@@ -299,9 +349,17 @@ private fun KilterImportPreviewDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
-        title = { Text(stringResource(R.string.kilter_preview_title)) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.kilter_preview_title), Modifier.weight(1f))
+                com.cruxcoach.android.ui.common.KilterDataInfoButton()
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(stringResource(
                     R.string.kilter_preview_found,
                     preview.totalLogs,
@@ -323,9 +381,7 @@ private fun KilterImportPreviewDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.kilter_import_one_time),
                             fontWeight = FontWeight.Bold)
-                        Text(stringResource(R.string.kilter_import_one_time_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                     }
                 }
 
@@ -340,9 +396,7 @@ private fun KilterImportPreviewDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.kilter_import_persistent),
                             fontWeight = FontWeight.Bold)
-                        Text(stringResource(R.string.kilter_import_persistent_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+
                     }
                 }
             }
@@ -419,28 +473,12 @@ private fun KilterConnectedCard(
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.kilter_push_label),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        stringResource(R.string.kilter_push_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = pushEnabled,
-                    onCheckedChange = onPushEnabledChanged,
-                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-                )
-            }
+            SettingsToggleRow(
+                title = stringResource(R.string.kilter_push_label),
+                description = stringResource(R.string.kilter_push_desc),
+                checked = pushEnabled,
+                onCheckedChange = onPushEnabledChanged,
+            )
 
             // Climb-publish toggle: also lives here, alongside the
             // ascent-push toggle, since both are "what should we mirror

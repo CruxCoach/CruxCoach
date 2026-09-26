@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">CruxCoach</string>
+    <string name="action_show_info">Informationen zu %1$s anzeigen</string>
+    <string name="settings_board_connections_info">Verbindungen am Board</string>
 
     <!-- Climb Creator (FEAT-003) -->
-    <string name="climb_creator_title">Neuer Climb</string>
-    <string name="climb_creator_open">Neuen Climb erstellen</string>
+    <string name="climb_creator_title">Editor</string>
+    <string name="climb_creator_open">Boulder oder Route erstellen</string>
     <string name="climb_creator_undo">Rückgängig</string>
     <string name="climb_creator_redo">Wiederherstellen</string>
     <string name="climb_creator_name">Name</string>
@@ -36,17 +38,23 @@
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
     <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
-    <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
-    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
-    <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
-    <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
-    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
+    <string name="auto_note_setting_title">Beim Veröffentlichen auf Nostr posten</string>
+    <string name="auto_note_setting_body">Vorgabe für den Editor\nWenn aktiv, entsteht beim Veröffentlichen eines Boulders zusätzlich ein kurzer öffentlicher Nostr-Beitrag mit einem Link darauf. Du kannst diese Auswahl für jeden Boulder im Editor ändern. Standardmäßig aus.</string>
+    <string name="nostr_profile_subscriber_status_title">Community-Verbindung</string>
+    <string name="nostr_profile_subscriber_status_running_never">Verbunden · noch keine Nachricht empfangen</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden · letzte Nachricht</string>
     <string name="nostr_profile_subscriber_status_stopped">Nicht verbunden</string>
     <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d Fehler in Folge (zuletzt: %2$s)</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
     <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s“. Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>
     <string name="climb_creator_dup_publish_anyway">Trotzdem veröffentlichen</string>
+    <string name="climb_creator_dup_own_title">Diesen Climb hast du schon veröffentlicht</string>
+    <string name="climb_creator_dup_own_message" formatted="false">Gleiche Griffe wie dein Climb „%s“. Aktualisiere ihn mit deinen Änderungen oder veröffentliche einen eigenen Climb.</string>
+    <string name="climb_creator_dup_own_draft_title">Diese Griffe hast du schon als Entwurf</string>
+    <string name="climb_creator_dup_own_draft_message" formatted="false">Gleiche Griffe wie dein Entwurf „%s“. Aktualisiere ihn mit deinen Änderungen oder veröffentliche einen eigenen Climb.</string>
+    <string name="climb_creator_dup_update_existing">Bestehenden aktualisieren</string>
+    <string name="climb_creator_dup_publish_new">Als neuen veröffentlichen</string>
     <string name="climb_creator_drafts_open">Entwürfe öffnen</string>
     <string name="climb_creator_drafts_title">Meine Entwürfe</string>
     <string name="climb_creator_drafts_count" formatted="false">%d</string>
@@ -141,18 +149,18 @@
     <string name="nostr_profile_title">Mein Profil</string>
     <string name="nostr_profile_settings_label">Profil</string>
     <string name="nostr_profile_settings_summary">Anzeigename, Profilbild, Lightning-Adresse</string>
-    <string name="nostr_profile_explainer">Dein Profil hat zwei klare Modi: das vollständige Profil privat auf diesem Gerät speichern oder das vollständige Profil ausdrücklich global auf Nostr veröffentlichen. Ausgewählte Bilder bleiben bis zur Bestätigung lokal.</string>
+    <string name="nostr_profile_explainer">Auf diesem Gerät speichern\nSpeichern behält alle Profilfelder und ausgewählten Bilder privat auf diesem Gerät, ohne profilbezogene Netzwerkanfrage.\n\nAuf Nostr veröffentlichen\nNach deiner Bestätigung wird das vollständige Profil öffentlich, einschließlich Bildern, Links und Adressen. Das ist vom verschlüsselten Daten-Backup getrennt.</string>
     <string name="nostr_profile_display_name">Anzeigename</string>
-    <string name="nostr_profile_display_name_hint">Wird neben deinen Climbs als Setter angezeigt.</string>
+    <string name="nostr_profile_display_name_hint">Wird bei deinen eigenen Bouldern als Name des Schraubers angezeigt.</string>
     <string name="nostr_profile_about">Über mich</string>
     <string name="nostr_profile_about_hint">Optional. Kurze Bio.</string>
     <string name="nostr_profile_lightning">Lightning-Adresse</string>
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — wird erst nach öffentlicher Veröffentlichung geprüft.</string>
     <string name="nostr_profile_picture">Profilbild-URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
-    <string name="nostr_profile_banner_label">Banner-Bild-URL</string>
+    <string name="nostr_profile_banner_label">Titelbild</string>
     <string name="nostr_profile_banner_hint">Optional. 3:1-Seitenverhältnis sieht am besten aus — Headerbild auf deinem Profil.</string>
-    <string name="nostr_profile_nip05_label">NIP-05-Kennung</string>
+    <string name="nostr_profile_nip05_label">Nostr-Adresse (NIP-05)</string>
     <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — wird erst nach öffentlicher Veröffentlichung geprüft.</string>
     <string name="nostr_profile_website_label">Webseite</string>
     <string name="nostr_profile_website_hint">Optional. Frei wählbare URL, wird auf deinem Profil angezeigt.</string>
@@ -161,27 +169,27 @@
     <string name="nostr_profile_nip05_unreachable">Konnte nicht verifizieren (offline oder Domain nicht konfiguriert)</string>
     <string name="nostr_profile_lud16_verified">Lightning-Adresse aktiv</string>
     <string name="nostr_profile_lud16_unreachable">Konnte Lightning-Adresse nicht verifizieren</string>
-    <string name="nostr_profile_banner_change">Banner ändern</string>
-    <string name="nostr_profile_banner_remove">Banner entfernen</string>
+    <string name="nostr_profile_banner_change">Titelbild ändern</string>
+    <string name="nostr_profile_banner_remove">Titelbild entfernen</string>
     <string name="nostr_profile_picture_change">Profilbild ändern</string>
     <string name="nostr_profile_picture_remove">Profilbild entfernen</string>
     <string name="nostr_profile_image_upload_failed" formatted="false">Bild-Upload fehlgeschlagen: %1$s</string>
     <string name="nostr_profile_image_local_failed" formatted="false">Das Bild konnte nicht privat gespeichert werden: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
-    <string name="nostr_profile_save">Vollständiges Profil lokal speichern</string>
+    <string name="nostr_profile_save">Lokal speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>
     <string name="profile_local_save_failed">Das Profil konnte nicht lokal gespeichert werden. Bitte erneut versuchen.</string>
-    <string name="profile_local_storage_hint">Alle Felder und ausgewählten Bilder bleiben privat auf diesem Gerät. Diese Aktion stellt keine profilbezogene Netzwerkverbindung her.</string>
+    <string name="profile_local_storage_hint">Speichert alle Profilangaben und ausgewählten Bilder privat auf diesem Gerät. Dein öffentliches Profil auf Nostr bleibt unverändert.</string>
     <string name="nostr_profile_save_failed">Die Veröffentlichung auf Nostr ist fehlgeschlagen. Dein lokales Profil bleibt gespeichert.</string>
-    <string name="nostr_profile_publish_action">Vollständiges Profil global veröffentlichen</string>
+    <string name="nostr_profile_publish_action">Auf Nostr veröffentlichen</string>
     <string name="nostr_profile_publishing">Wird veröffentlicht…</string>
     <string name="nostr_profile_published_toast">Profil auf Nostr veröffentlicht</string>
-    <string name="nostr_profile_publish_warning_title">Profil öffentlich veröffentlichen?</string>
-    <string name="nostr_profile_publish_warning_body">Dadurch werden zuerst dein ausgewähltes Profil- und Bannerbild in einen öffentlichen Blossom-Speicher hochgeladen und anschließend das vollständige Profil als öffentliches Nostr-Kind-0-Event veröffentlicht. Alle Profilfelder und Bild-URLs können von Servern, Relays und anderen Clients kopiert und dauerhaft gespeichert werden. Ein späteres vollständiges Entfernen kann nicht garantiert werden.</string>
+    <string name="nostr_profile_publish_warning_title">Profil auf Nostr veröffentlichen?</string>
+    <string name="nostr_profile_publish_warning_body">Dein Profil wird zuerst lokal gespeichert. Anschließend werden alle Profilangaben und Bilder öffentlich auf Nostr geteilt. Bilder werden dafür auf öffentliche Bildserver (Blossom) hochgeladen.\n\nAndere können Angaben und Bilder dauerhaft kopieren. Vollständiges Löschen ist später nicht garantiert.</string>
     <string name="nostr_profile_publish_confirm">Öffentlich veröffentlichen</string>
-    <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
-    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gehört zu CruxCoach und wird nur nach deiner ausdrücklichen Freigabe mit Nostr geteilt.</string>
+    <string name="nostr_profile_import_from_kilter">Kilter-Benutzernamen übernehmen</string>
+    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Benutzername („%1$s“) bleibt in der Kilter-App unverändert. Dieses CruxCoach-Profil wird nur mit deiner ausdrücklichen Freigabe auf Nostr veröffentlicht.</string>
 
     <!-- Setter-Detail / Liste (Community) -->
     <string name="setter_detail_title_fallback">Setter</string>
@@ -192,6 +200,7 @@
     <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d Begehungen</string>
     <string name="setters_list_title">CruxCoach-Setter</string>
     <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
+    <string name="setters_list_empty_board">Noch keine CruxCoach-Community-Climbs für %1$s. Schau später wieder rein oder leg selbst los.</string>
     <string name="setters_list_count">%1$d Climbs</string>
     <string name="setters_list_browse_button">Setter durchstöbern</string>
     <string name="board_lists_community_banner_title">CruxCoach-Community</string>
@@ -213,17 +222,17 @@
     <string name="onboarding_board_first_subtitle">Wähle Marke und Modell, das du am häufigsten nutzt. Du kannst später jederzeit wechseln.</string>
     <string name="onboarding_continue">Weiter</string>
     <string name="onboarding_start_without_import">Ohne Import starten</string>
-    <string name="onboarding_start_cruxcoach">CruxCoach starten</string>
+    <string name="onboarding_start_cruxcoach">App starten</string>
     <string name="onboarding_offline_status_title">Offline-Climbs werden vorbereitet</string>
-    <string name="onboarding_offline_status_starting">Startet automatisch im Hintergrund.</string>
+    <string name="onboarding_offline_status_starting">Wähle deine Boards und starte den Download.</string>
     <string name="onboarding_offline_status_loading">Lädt im Hintergrund — du kannst weitergehen.</string>
     <string name="onboarding_offline_status_ready">Offline-Kataloge sind bereit.</string>
-    <string name="onboarding_offline_status_waiting">Wird bei verfügbarer Verbindung fortgesetzt.</string>
+    <string name="onboarding_offline_status_waiting">Download unvollständig. Bitte erneut versuchen.</string>
     <string name="onboarding_existing_data_title">Hast du bereits Kletterdaten?</string>
     <string name="onboarding_existing_data_subtitle">Wähle die Quelle, um den passenden Import zu sehen. Sonst kannst du direkt starten.</string>
     <string name="onboarding_source_cruxcoach">CruxCoach</string>
     <string name="onboarding_cruxcoach_restore_title">Verschlüsseltes Backup wiederherstellen</string>
-    <string name="onboarding_cruxcoach_restore_desc">Stelle ein Backup eines anderen CruxCoach-Geräts mit dessen Account-Schlüssel wieder her.</string>
+    <string name="onboarding_cruxcoach_restore_desc">Wiederherstellen\nVerbinde dasselbe Konto über Amber oder importiere seinen privaten Schlüssel. Das verschlüsselte Backup muss noch verfügbar sein; die öffentliche Konto-ID (npub) allein reicht nicht aus.</string>
     <string name="onboarding_cruxcoach_restore_action">Wiederherstellen</string>
     <string name="onboarding_cruxcoach_file_title">CruxCoach-Datei importieren</string>
     <string name="onboarding_cruxcoach_file_desc">Öffne den bestehenden geprüften Dateiimport mit Vorschau und Zusammenführen.</string>
@@ -239,7 +248,7 @@
     <string name="onboarding_board_setup_title">Climbs offline verfügbar machen</string>
     <string name="onboarding_board_setup_subtitle">CruxCoach lädt die öffentlichen Kataloge einmal herunter. Danach funktionieren Browsen und Board-Steuerung ohne Internet. Du kannst währenddessen fortfahren.</string>
     <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
-    <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
+    <string name="onboarding_kilter_title">Kilter-Logbuch importieren</string>
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
     <string name="onboarding_kilter_logged_in">Angemeldet als %s</string>
@@ -261,11 +270,11 @@
     <string name="action_ok">OK</string>
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter-Datenaustausch — Info</string>
-    <string name="kilter_data_info_title">Kilter-Account: Was passiert mit deinen Daten?</string>
-    <string name="kilter_data_info_login">Melde dich an, um deine Sends und Projekte von Kilter zu importieren. „Einmalig importieren“ importiert sie und verwirft danach deine Zugangsdaten; „Dauerhaft synchronisieren“ lädt fortlaufend neue Kilter-Begehungen herunter.</string>
-    <string name="kilter_data_info_offline">Kein Account? Importiere offline per Aurora-JSON-Export aus der alten Kilter-App.</string>
-    <string name="kilter_data_info_local">Alles, was ZU Kilter geht, ist optional (standardmäßig aus): „Zu Kilter hochladen“ spielt deine Begehungen zurück, „Eigene Climbs auf Kilter veröffentlichen“ teilt selbst erstellte Climbs. Lässt du beides aus, bleibt CruxCoach lokal.</string>
-    <string name="kilter_data_info_publish">Was du aktivierst, betrifft nur DEINEN eigenen Kilter-Account — niemals fremde Daten.</string>
+    <string name="kilter_data_info_title">Kilter-Konto: Was passiert mit deinen Daten?</string>
+    <string name="kilter_data_info_login">Import\nÜbernimmt Logbuch, eigene Boulder und Boulderlisten („Circuits“) aus Kilter. Einmalig: Anmeldung danach entfernen, Daten behalten. Dauerhaft: neue Logbucheinträge nachladen.</string>
+    <string name="kilter_data_info_offline">Ohne Anmeldung\nImportiere eine Aurora-JSON-Datei unter Logbuch-Import.</string>
+    <string name="kilter_data_info_local">Zu Kilter hochladen\nStandardmäßig aus. Überträgt Begehungen und Versuche aus CruxCoach, auch ältere noch nicht übertragene Einträge. Eigene Boulder veröffentlichst du separat.</string>
+    <string name="kilter_data_info_publish">Unabhängige Einstellungen\nCloud-Backups und Veröffentlichungen in der CruxCoach-Community werden separat gesteuert.</string>
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
@@ -282,6 +291,11 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
+    <string name="map_search_open">Karte durchsuchen</string>
+    <string name="map_search_close">Suche schließen</string>
+    <string name="map_search_hint">Halle, Ort oder Board</string>
+    <string name="map_search_no_results">Keine Hallen oder Orte gefunden</string>
+    <string name="map_search_searching">Suche läuft…</string>
     <string name="cd_map">Boards auf der Karte entdecken</string>
     <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
@@ -291,6 +305,10 @@
     <string name="map_filter_sheet_title">Karte filtern</string>
     <string name="map_filter_section_layout">Layout</string>
     <string name="map_filter_section_access">Zugang</string>
+    <string name="map_filter_section_moon_variant">MoonBoard-Variante</string>
+    <string name="map_filter_section_moon_type">MoonBoard-Setup</string>
+    <string name="map_filter_section_moon_led">MoonBoard-Hardware</string>
+    <string name="map_filter_moon_no_led">Keine LEDs</string>
     <string name="map_filter_section_adjustability">Verstellbarkeit</string>
     <string name="map_filter_section_size">Größe</string>
     <string name="map_filter_section_country">Land</string>
@@ -306,7 +324,7 @@
     <string name="map_stats_label_countries">Länder</string>
     <string name="map_stats_label_public">Öffentlich</string>
     <string name="map_stats_label_adjustable">Verstellbar</string>
-    <string name="map_stats_total_locations">Standorte gesamt</string>
+    <string name="map_stats_total_locations">Erfasste Boards</string>
     <string name="map_stats_empty">Keine Daten</string>
     <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
     <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
@@ -354,8 +372,8 @@
     <string name="settings_language_title">Sprache</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_display_title">Anzeige</string>
-    <string name="settings_display_appearance">Erscheinungsbild:</string>
-    <string name="settings_display_grade_scale">Grad-Skala:</string>
+    <string name="settings_display_appearance">Design</string>
+    <string name="settings_display_grade_scale">Schwierigkeitsskala</string>
     <string name="settings_board_title">Board-Einstellungen</string>
     <string name="settings_board_collapse">Einklappen</string>
     <string name="settings_board_expand">Ausklappen</string>
@@ -400,27 +418,27 @@
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
-    <string name="settings_board_auto_download_desc">Lädt aktuelle Board-Kataloge im Hintergrund über WLAN (derzeit etwa 130 MB; wächst mit den Katalogen).</string>
+    <string name="settings_board_auto_download_desc">Täglich / Wöchentlich\nLädt neue Board-Kataloge für die App im Hintergrund, meist über WLAN. Als „getaktet“ markierte Netze werden nicht genutzt. Android kann den Start verzögern.\n\nManuell\nDu startest den Download selbst. Die Datenmenge kann groß sein.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Optional für exklusive Kilter-/Aurora- und Quantum-Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. MoonBoard-, Multi-Connect- und unbekannte Controller bleiben immer verbunden.</string>
-    <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Trennt nach der Wartezeit die Bluetooth-Verbindung zum Board, damit sich jemand anderes verbinden kann. Jeder gesendete Boulder startet die Zeit neu.\n\nVoraussetzung\nDas Board erlaubt nur eine Verbindung und seine LEDs leuchten nach dem Trennen weiter. Ausgenommen sind MoonBoard und Verbindungen, die etwa CruxRelay noch braucht.</string>
+    <string name="settings_ble_auto_disconnect_moonboard">Beim MoonBoard bleiben die LEDs nur an, solange mindestens eine App verbunden ist. Deshalb kein automatisches Trennen.</string>
     <string name="settings_ble_auto_disconnect_enable">Automatisch trennen</string>
-    <string name="settings_ble_auto_disconnect_off_hint">Die Verbindung bleibt bestehen, bis du sie selbst trennst.</string>
-    <string name="settings_ble_auto_disconnect_multi_mode">Im Mesh-, Gruppen-, Relay- oder Multi-Connect-Modus nicht verfügbar. Deine eingestellte Dauer bleibt erhalten.</string>
+    <string name="settings_ble_auto_disconnect_off_hint">Die App trennt die Board-Verbindung nicht automatisch nach einer Wartezeit. Du kannst sie selbst im Bluetooth-Menü trennen.</string>
+    <string name="settings_ble_auto_disconnect_multi_mode">Solange mehrere Apps zugelassen sind oder eine gemeinsame Verbindung genutzt wird, trennt dieser Timer nicht. Deine eingestellte Dauer bleibt gespeichert.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
-    <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
-    <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
+    <string name="settings_ble_keep_screen_on">Display eingeschaltet lassen</string>
+    <string name="settings_ble_keep_screen_on_desc">Lässt das Handy-Display eingeschaltet, solange du eine Board-Ansicht in der App geöffnet hast. Aus: Das Display schaltet sich wie in Android eingestellt ab.</string>
 
     <!-- Settings: LED Colors -->
-    <string name="settings_led_title">Kilter LED-Farben</string>
-    <string name="settings_led_desc">Farben, die Kilter-Boards für die einzelnen Griffrollen verwenden.</string>
-    <string name="settings_led_role_start">Start</string>
-    <string name="settings_led_role_hand">Hand</string>
-    <string name="settings_led_role_foot">Fuß</string>
-    <string name="settings_led_role_top">Top</string>
+    <string name="settings_led_title">Kilter: Farben für Griffe und Tritte</string>
+    <string name="settings_led_desc">In der App\nWählt die Farben der Markierungen für Startgriffe, Zwischengriffe, Topgriffe und Tritte.\n\nAm Board\nKann die aktuelle LED-Beleuchtung umfärben. Beim nächsten Senden gelten vorhandene Katalogfarben, sonst deine Auswahl.\n\nVorlagen\nStellen die Standardfarben von CruxCoach oder Kilter wieder her.</string>
+    <string name="settings_led_role_start">Startgriffe</string>
+    <string name="settings_led_role_hand">Zwischengriffe</string>
+    <string name="settings_led_role_foot">Tritte</string>
+    <string name="settings_led_role_top">Topgriffe</string>
     <string name="settings_led_selected">Ausgewählt</string>
     <string name="settings_led_pick_color">Farbe für %s wählen</string>
     <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
@@ -428,35 +446,35 @@
 
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
-    <string name="settings_timer_desc">Timer zwischen Boulder-Versuchen. Startet nach dem Loggen einer Begehung.</string>
+    <string name="settings_timer_desc">Dauer deiner Pause zwischen Versuchen. Starte den Timer in der Boulderansicht der App selbst oder aktiviere unten den Start nach einem Logbucheintrag.</string>
     <string name="settings_timer_auto_start">Auto-Start</string>
-    <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
+    <string name="settings_timer_auto_start_desc">Startet den Pausentimer nach einer eingetragenen Begehung oder einem Versuch, auch per Schnelleintrag.</string>
 
     <!-- Settings: Playback -->
-    <string name="settings_playback_title">Routen</string>
-    <string name="settings_playback_desc">Einstellungen für die Wiedergabe von Multi-Frame-Routen.</string>
-    <string name="settings_playback_setter_speed">Setter-Geschwindigkeit</string>
-    <string name="settings_playback_setter_speed_desc">Vom Ersteller festgelegte Speed verwenden</string>
-    <string name="settings_playback_frame_speed">Frame-Geschwindigkeit: %s</string>
-    <string name="settings_playback_frame_speed_desc">Eigene Geschwindigkeit für alle Routen</string>
-    <string name="settings_playback_fallback_speed">Fallback-Geschwindigkeit: %s</string>
-    <string name="settings_playback_fallback_speed_desc">Wird verwendet wenn keine Setter-Speed vorhanden</string>
+    <string name="settings_playback_title">Routenwiedergabe</string>
+    <string name="settings_playback_desc">Die App zeigt die Griffmarkierungen einer Route abschnittsweise an. Die LEDs am verbundenen Board folgen, wenn keine Session oder Playlist sie steuert. Start in der Routenansicht.</string>
+    <string name="settings_playback_setter_speed">Tempo des Schraubers verwenden</string>
+    <string name="settings_playback_setter_speed_desc">Ein\nDie Markierungen wechseln im vom Schrauber vorgegebenen Tempo. Fehlt eine Vorgabe, gilt die Zeit darunter.\n\nAus\nDeine eingestellte Zeit gilt für jeden Routenabschnitt.</string>
+    <string name="settings_playback_frame_speed">Zeit pro Routenabschnitt: %s</string>
+    <string name="settings_playback_frame_speed_desc">So lange bleiben die Markierungen eines Routenabschnitts stehen, bevor der nächste angezeigt wird. Gilt, wenn das Tempo des Schraubers ausgeschaltet ist.</string>
+    <string name="settings_playback_fallback_speed">Zeit ohne Tempovorgabe: %s</string>
+    <string name="settings_playback_fallback_speed_desc">Anzeigedauer eines Routenabschnitts, wenn der Schrauber kein Tempo gespeichert hat.</string>
     <string name="settings_playback_countdown">Countdown</string>
-    <string name="settings_playback_countdown_desc">Countdown vor Auto-Play</string>
+    <string name="settings_playback_countdown_desc">Zählt in der App herunter, bevor die Routenmarkierungen automatisch wechseln. So hast du Zeit, die Startposition einzunehmen. Die Dauer stellst du darunter ein.</string>
     <string name="settings_playback_countdown_duration">Countdown-Dauer: %ds</string>
-    <string name="settings_playback_auto_loop">Auto-Loop</string>
-    <string name="settings_playback_auto_loop_desc">Automatisch wiederholen</string>
+    <string name="settings_playback_auto_loop">Route wiederholen</string>
+    <string name="settings_playback_auto_loop_desc">Zeigt nach dem letzten Routenabschnitt wieder den ersten, bis du stoppst. Aus: Die Wiedergabe endet am letzten Abschnitt.</string>
 
     <!-- Settings: Data Management -->
     <string name="settings_data_title">Datenverwaltung</string>
     <string name="settings_data_export">Daten exportieren</string>
-    <string name="settings_data_export_desc">Ausgewählte CruxCoach-Daten als JSON, CSV-ZIP oder gut lesbare Excel-Datei speichern oder teilen</string>
+    <string name="settings_data_export_desc">JSON / CSV-ZIP\nZum Sichern, Teilen und Wiederimportieren in CruxCoach.\n\nExcel\nZum Lesen und Auswerten.\n\nWähle die gewünschten Daten und bewahre persönliche Exporte sicher auf.</string>
     <string name="settings_data_import">Daten importieren</string>
-    <string name="settings_data_import_desc">CruxCoach-Daten aus JSON oder einem CSV-ZIP importieren</string>
+    <string name="settings_data_import_desc">Wähle einen CruxCoach-Export als JSON oder CSV-ZIP und prüfe vor dem Import, welche Daten du übernehmen möchtest. Für Kilter und MoonBoard nutze den Logbuch-Import.</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
-    <string name="settings_data_delete_board_desc">Entfernt heruntergeladene Climbs, Statistiken und Layout-Daten — für alle Boards oder nur ausgewählte. Können jederzeit neu synchronisiert werden. Eigene und Community-Climbs bleiben erhalten.</string>
+    <string name="settings_data_delete_board_desc">Löscht heruntergeladene Boulder und Katalogstatistiken aus der App. Für alle oder ausgewählte Boards; erneutes Herunterladen bleibt möglich. Eigene und Community-Boulder bleiben samt Griffen erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
-    <string name="settings_data_delete_board_dialog_message">Heruntergeladene Climbs, Statistiken und Layout-Daten der ausgewählten Boards werden gelöscht. Du kannst sie jederzeit über die Board-Synchronisierung neu herunterladen. Eigene und Community-Climbs bleiben erhalten.</string>
+    <string name="settings_data_delete_board_dialog_message">Boulder-Kataloge und Statistiken der ausgewählten Boards werden aus der App gelöscht. Du kannst sie erneut herunterladen. Eigene und Community-Boulder bleiben samt Griffen erhalten. Gelöschte Boards werden auch von künftigen Downloads abgewählt.</string>
     <string name="settings_data_delete_board_progress">Board-Daten werden gelöscht…</string>
     <string name="settings_data_delete_select_all">Alle Boards</string>
     <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>
@@ -469,6 +487,12 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach und öffentliche Board-Kataloge teilen — niemals persönliche Daten.</string>
+    <string name="settings_licenses_title">Open-Source-Lizenzen</string>
+    <string name="settings_licenses_desc">Verwendete Bibliotheken und ihre Lizenzen.</string>
+    <string name="settings_privacy_title">Datenschutzerklärung</string>
+    <string name="settings_privacy_desc">Was App und Website mit Daten tun. Öffnet cruxcoach.org.</string>
+    <string name="settings_source_title">Quellcode</string>
+    <string name="settings_source_desc">CruxCoach ist Open Source. Öffnet GitHub.</string>
     <string name="board_filter_title">Filter</string>
     <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
@@ -506,7 +530,7 @@
     <!-- Settings: Climb Sharing -->
     <string name="settings_sharing_title">In der Nähe</string>
     <string name="settings_sharing_enable">Aktuellen Boulder teilen</string>
-    <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden — und erlaubt ihnen umgekehrt, dich um das Trennen vom Board zu bitten.</string>
+    <string name="settings_sharing_enable_desc">Andere CruxCoach-Nutzer in Bluetooth-Reichweite können den von dir am Board beleuchteten Boulder in ihrer App öffnen. Sie können dich auch bitten, die Board-Verbindung freizugeben. Du wirst dadurch nicht automatisch getrennt.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth ist ausgeschaltet. Schalte Bluetooth ein, um Climb-Teilen nutzen zu können.</string>
     <string name="settings_sharing_no_ble_advertising">Dieses Gerät unterstützt kein BLE Advertising. Das Feature ist nicht verfügbar.</string>
     <string name="settings_sharing_remote_disconnect">Remote-Disconnect erlauben</string>
@@ -703,7 +727,7 @@
     <string name="board_angle_setter_tag">Setter</string>
     <string name="board_moves">Züge</string>
     <string name="board_quality">Qualität</string>
-    <string name="board_sends">Sends</string>
+    <string name="board_sends">Begehungen</string>
     <string name="board_holds">Griffe</string>
     <string name="board_hold_types">Griff-Typen</string>
     <string name="board_hold_start">Start</string>
@@ -716,16 +740,19 @@
     <string name="board_show_on_board">Auf Board anzeigen</string>
     <string name="board_log_send">Send loggen</string>
     <string name="board_log_attempt">Attempt loggen</string>
-    <string name="board_browser_search_hint">Name oder Setter suchen…</string>
+    <string name="board_browser_search_hint">Name oder Schrauber suchen…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%1$d Climbs (%2$d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
-    <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
+    <string name="board_browser_preparing_db_hint">Beim ersten Start und nach einem Update kann das auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
     <string name="board_browser_empty_no_results">Keine Climbs passen zu den aktuellen Filtern</string>
     <string name="board_browser_empty_no_results_hint">Versuch einen größeren Grad-Bereich, einen anderen Winkel oder setz die Filter zurück.</string>
     <string name="board_browser_empty_clear_filters">Filter zurücksetzen</string>
     <string name="board_browser_empty_no_catalogue">Der Katalog für dieses Board wurde noch nicht heruntergeladen</string>
     <string name="board_browser_empty_load_catalogue">Katalog laden</string>
+    <string name="board_holds_need_catalogue">Die Griffpositionen kommen mit dem Katalog dieses Boards. Tippe in der Climb-Liste auf „Katalog laden“, um die Griffe zu sehen.</string>
+    <string name="board_browser_empty_change_board">Board ändern</string>
+    <string name="board_browser_community_only">Du siehst nur Climbs aus der CruxCoach-Community. Mit dem %1$s-Katalog kommen alle offiziellen Climbs dazu.</string>
     <string name="board_browser_empty_catalogue_loading">Katalog wird geladen…</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
@@ -737,20 +764,23 @@
     <string name="board_filter_my_climbs">Eigene Climbs</string>
     <string name="climb_card_draft_badge">Entwurf</string>
     <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
-    <string name="board_filter_ungraded_only">Nur unbewertete (Projekte)</string>
+    <string name="board_filter_ungraded_only">Ohne Schwierigkeitsgrad</string>
+    <string name="board_filter_ungraded_only_count">Ohne Schwierigkeitsgrad (%1$d)</string>
+    <string name="board_filter_ungraded_only_active">Zeigt nur Climbs, die noch niemand bewertet hat. Gradbereich, Min. Begehungen und Benchmarks gelten dabei nicht.</string>
+    <string name="board_filter_ungraded_only_none">Auf diesem Board gibt es bei diesem Winkel keine — hier hat jeder Climb einen Grad.</string>
     <string name="board_filter_info_action">Filterbegriffe erklären</string>
     <string name="board_filter_info_title">Filter- &amp; Sortierbegriffe</string>
-    <string name="board_filter_info_status_new">Climbs, die du noch nie probiert hast — weder Versuch noch Send geloggt.</string>
-    <string name="board_filter_info_status_attempted">Climbs, auf denen du Versuche geloggt hast, aber noch keinen Send.</string>
-    <string name="board_filter_info_status_sent">Climbs mit mindestens einem geloggten Send.</string>
-    <string name="board_filter_info_benchmarks">Nur offizielle Benchmark-Climbs — kuratierte Referenz-Probleme mit festgelegter Bewertung statt Community-Durchschnitt.</string>
-    <string name="board_filter_info_ungraded">Nur unbewertete Climbs (noch keine Community-Bewertung) — dein Projekte-Stapel.</string>
-    <string name="board_filter_info_sort_sends">Gesamtzahl der Kletterer weltweit, die den Climb gesendet haben — Community insgesamt, nicht deine eigenen Sends.</string>
-    <string name="board_filter_info_sort_quality">Durchschnittliche Sterne-Bewertung der Community.</string>
-    <string name="board_filter_info_sort_quality_sends">Bewertung × Sends — zeigt Climbs, die beliebt UND gut bewertet sind.</string>
-    <string name="board_filter_info_sort_moves">Anzahl der Züge des Climbs.</string>
-    <string name="board_filter_info_sort_random">Mischt die passenden Climbs in zufälliger Reihenfolge.</string>
-    <string name="board_filter_info_sort_newest">Das Erstelldatum des Climbs — absteigend zeigt die neuesten zuerst.</string>
+    <string name="board_filter_info_status_new">Boulder ohne Begehung oder Versuch in deinem CruxCoach-Logbuch.</string>
+    <string name="board_filter_info_status_attempted">Boulder mit eingetragenen Versuchen, aber noch ohne erfolgreiche Begehung in deinem Logbuch.</string>
+    <string name="board_filter_info_status_sent">Boulder mit mindestens einer erfolgreichen Begehung in deinem Logbuch. Das Aufleuchten am Board zählt nicht als Begehung.</string>
+    <string name="board_filter_info_benchmarks">Als Benchmark gekennzeichnete Boulder: Referenzboulder zum Vergleichen von Schwierigkeitsgraden.</string>
+    <string name="board_filter_info_ungraded">Boulder ohne Schwierigkeitsgrad im Katalog. Das sagt nichts darüber aus, ob du sie schon versucht oder geschafft hast.</string>
+    <string name="board_filter_info_sort_sends">Sortiert danach, wie viele Kletterer den Boulder laut Katalog geschafft haben. Deine persönlichen Logbucheinträge zählen hier nicht.</string>
+    <string name="board_filter_info_sort_quality">Sortiert nach der durchschnittlichen Sternebewertung.</string>
+    <string name="board_filter_info_sort_quality_sends">Sternebewertung × Anzahl der Begehungen: Viele Begehungen und viele Sterne erhöhen den Wert.</string>
+    <string name="board_filter_info_sort_moves">Sortiert nach der Anzahl der Kletterzüge eines Boulders.</string>
+    <string name="board_filter_info_sort_random">Mischt die passenden Boulder in zufälliger Reihenfolge.</string>
+    <string name="board_filter_info_sort_newest">Sortiert nach dem Erstelldatum der Boulder. Absteigend stehen die neuesten zuerst.</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
     <string name="board_filter_sort_desc">Absteigend</string>
@@ -814,10 +844,10 @@
     <string name="announcements_badge_issue">Problem</string>
     <string name="announcements_badge_tip">Tipp</string>
     <string name="announcements_badge_general">Allgemein</string>
-    <string name="announcement_cat_release_desc">Neue Versionen</string>
-    <string name="announcement_cat_issue_desc">Bekannte Bugs</string>
-    <string name="announcement_cat_tip_desc">Nutzungstipps</string>
-    <string name="announcement_cat_general_desc">Sonstige Mitteilungen</string>
+    <string name="announcement_cat_release_desc">Neue Versionen und Änderungen. App-Updates werden separat eingestellt.</string>
+    <string name="announcement_cat_issue_desc">Bekannte Probleme und mögliche Lösungen.</string>
+    <string name="announcement_cat_tip_desc">Tipps zur Bedienung und zu App-Funktionen.</string>
+    <string name="announcement_cat_general_desc">Weitere Mitteilungen des Entwicklers.</string>
     <string name="announcements_notification_release">Neue Version verfügbar</string>
     <string name="announcements_notification_issue">Bekanntes Problem</string>
     <string name="announcements_notification_tip">Tipp vom Entwickler</string>
@@ -838,6 +868,21 @@
     <string name="payment_success">Geschenk gesendet — Danke!</string>
     <string name="payment_error">Fehler beim Senden des Geschenks</string>
     <string name="payment_gift_disclaimer">CruxCoach ist und bleibt vollständig kostenlos — unabhängig davon, ob du ein Geschenk sendest oder nicht. Geschenke sind rein freiwillig und begründen keinen Anspruch auf Gegenleistungen.</string>
+    <string name="payment_lightning_private_title">Lightning (privat)</string>
+    <string name="payment_lightning_private_subtitle">Keine öffentliche Spur auf Nostr-Relays</string>
+    <string name="payment_lightning_zap_title">Lightning Zap (öffentlich)</string>
+    <string name="payment_lightning_zap_subtitle">Betrag + Absender auf Nostr sichtbar</string>
+    <string name="payment_card_title">Karte</string>
+    <string name="payment_coming_soon">Demnächst verfügbar</string>
+    <string name="payment_zap_title_private">Lightning-Spende</string>
+    <string name="payment_zap_title_public">Lightning Zap</string>
+    <string name="payment_zap_amount">Betrag in Sats:</string>
+    <string name="payment_zap_message_private">Nachricht (optional, verschlüsselt)</string>
+    <string name="payment_zap_message_public">Nachricht (optional, öffentlich)</string>
+    <string name="payment_open">Öffnen</string>
+    <string name="payment_invoice_title">Lightning-Rechnung</string>
+    <string name="payment_invoice_qr">QR-Code der Lightning-Rechnung</string>
+    <string name="payment_invoice_copied">Rechnung kopiert</string>
     <string name="payment_no_wallet_title">Keine Lightning-Wallet gefunden</string>
     <string name="payment_no_wallet_message">Du benötigst eine Lightning-Wallet-App, um Zaps zu senden.</string>
     <string name="payment_recommended_wallets">Empfohlene Wallets:</string>
@@ -907,10 +952,9 @@
     <!-- Board: Hold Search -->
     <string name="board_holdsearch_title">Hold-Suche</string>
     <string name="board_holdsearch_heatmap">Heatmap</string>
-    <string name="board_holdsearch_hold_search">Hold-Suche</string>
-    <string name="board_holdsearch_hint">Tippe Holds auf dem Board an, um Climbs zu finden die diese Holds verwenden.</string>
+    <string name="board_holdsearch_hint">Tippe Griffe in der Board-Abbildung an. Die App sucht Boulder, die diese Griffe verwenden.</string>
     <string name="board_holdsearch_zone_mode">Bereich wählen</string>
-    <string name="board_holdsearch_zone_hint">Ziehe mit einem Finger einen Rahmen um den Bereich. Es passen nur Climbs, die komplett im Bereich liegen.</string>
+    <string name="board_holdsearch_zone_hint">Ziehe in der Board-Abbildung einen Rahmen. Die App zeigt nur Boulder, deren Griffe vollständig darin liegen.</string>
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
@@ -924,20 +968,38 @@
     <string name="board_holdsearch_clear">Aufheben</string>
 
     <!-- Board: Logbook -->
-    <string name="board_logbook_title">Board Logbook</string>
+    <string name="key_management_title">Kontoschlüssel</string>
+    <string name="account_restore_topbar_title">Konto wiederherstellen</string>
+    <string name="board_logbook_title">Logbuch</string>
     <string name="board_logbook_selected">%d ausgewählt</string>
-    <string name="board_logbook_delete_title">%d Begehungen löschen?</string>
-    <string name="board_logbook_delete_message">Alle ausgewählten Begehungen werden unwiderruflich gelöscht.</string>
+    <plurals name="board_logbook_delete_title">
+        <item quantity="one">%d Logeintrag löschen?</item>
+        <item quantity="other">%d Logeinträge löschen?</item>
+    </plurals>
+    <string name="board_logbook_delete_message">Alle ausgewählten Logeinträge, auch erfolglose Versuche, werden unwiderruflich gelöscht.</string>
     <string name="board_logbook_ascent_count">%d Begehungen</string>
 
     <!-- Board: Lists -->
     <string name="board_lists_title">Listen</string>
+    <string name="board_browser_nav_board">Board</string>
+    <string name="board_browser_nav_filter">Filter</string>
+    <string name="board_browser_nav_logbook">Logbuch</string>
+    <string name="board_browser_nav_lists">Listen</string>
+    <string name="board_browser_nav_more">Mehr</string>
+    <string name="board_browser_change_board">Aktives Board ändern</string>
+    <string name="cd_open_menu">Hauptmenü öffnen</string>
+    <string name="main_menu_title">Hauptmenü</string>
+    <string name="main_menu_training">Training</string>
+    <string name="main_menu_board_map">Board-Karte</string>
+    <string name="board_browser_connect">Board verbinden</string>
+    <string name="board_browser_connected">Board verbunden</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
-    <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
+    <string name="board_lists_delete_message">„%1$s“ und alle Einträge darin werden gelöscht. Die Boulder selbst und dein Logbuch bleiben erhalten.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>
     <string name="board_lists_empty_message">Erstelle eine Liste, um Climbs zu organisieren.</string>
     <string name="board_lists_new_list">Neue Liste</string>
     <string name="board_lists_list_name">Listenname</string>
+    <string name="board_lists_name_taken">Eine Liste mit diesem Namen gibt es schon.</string>
     <string name="board_lists_create">Erstellen</string>
 
     <!-- Board: Add to List -->
@@ -949,15 +1011,20 @@
     <string name="board_ascenthistory_title">Deine Begehungen</string>
 
     <!-- Board: Ascent Logging -->
-    <string name="board_ascent_edit_title">Begehung bearbeiten</string>
-    <string name="board_ascent_log_title">Begehung loggen</string>
-    <string name="board_ascent_type">Typ:</string>
-    <string name="board_ascent_benchmark_label">Benchmark:</string>
-    <string name="board_ascent_benchmark_attempt">Benchmark-Versuch</string>
-    <string name="board_ascent_attempts">Versuche: %d</string>
+    <string name="board_ascent_edit_title">Logeintrag bearbeiten</string>
+    <string name="board_ascent_log_title">Kletterergebnis erfassen</string>
+    <string name="board_ascent_type">Ergebnis</string>
+    <string name="board_ascent_benchmark_label">Benchmark</string>
+    <string name="board_ascent_benchmark_attempt">Als Benchmark markieren</string>
+    <string name="board_ascent_attempts">Versuche</string>
+    <string name="board_ascent_attempt_count">Versuchsanzahl: %d</string>
+    <string name="cd_decrease_attempt_count">Versuchsanzahl verringern</string>
+    <string name="cd_increase_attempt_count">Versuchsanzahl erhöhen</string>
     <string name="board_ascent_first_try">Top · 1. Versuch</string>
     <string name="board_ascent_open_one">Offen · 1 Versuch</string>
-    <string name="board_ascent_quality">Qualität:</string>
+    <string name="board_ascent_quality">Qualität</string>
+    <string name="board_ascent_quality_none">Keine Qualitätsbewertung</string>
+    <string name="board_ascent_quality_selected">%d von 5 Sternen</string>
     <string name="board_ascent_comment">Kommentar (optional)</string>
 
     <!-- Board: Session Summary -->
@@ -1058,8 +1125,8 @@
     <string name="board_sync_no_wifi_banner">Kein WLAN — der Download nutzt mobile Daten</string>
     <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Board-Datenbanken</string>
-    <string name="board_sync_db_description">Lädt die öffentlichen Climb-Kataloge zur Offline-Nutzung (derzeit etwa 130 MB; abhängig vom Katalogstand). WLAN empfohlen.</string>
-    <string name="board_sync_compact_description">Alle Board-Kataloge · etwa 130 MB. Der Download läuft im Hintergrund, du kannst weitergehen.</string>
+    <string name="board_sync_db_description">Lädt öffentliche Boulder-Kataloge in die App, damit du sie ohne Internet nutzen kannst. WLAN empfohlen; die Datenmenge kann groß sein.</string>
+    <string name="board_sync_compact_description">Lädt ausgewählte Board-Kataloge im Hintergrund. Du kannst die App weiter nutzen.</string>
     <string name="board_sync_compact_waiting_wifi">Vorgemerkt — startet automatisch im WLAN</string>
     <string name="board_sync_compact_progress">%1$d von %2$d Boards bereit</string>
     <string name="board_sync_compact_show_details">Details anzeigen</string>
@@ -1084,7 +1151,15 @@
     <string name="board_sync_offline_share_confirm">Verbinden und vergleichen</string>
     <string name="board_sync_discovered_share_title">CruxCoach-Share in der Nähe verwenden?</string>
     <string name="board_sync_discovered_share_message">Ein Gerät unter %1$s bietet Board-Daten in diesem lokalen Netzwerk an. Dieser Peer ist nicht authentifiziert. Wähle vor jedem Download, ob CruxCoach ihn verwenden soll.</string>
-    <string name="board_sync_discovered_share_catalogues">Angebotene Kataloge: %1$s</string>
+    <string name="board_sync_discovered_share_from">Boards vom Gerät in der Nähe</string>
+    <string name="board_sync_discovered_share_unverified">Dieses Gerät ist nicht verifiziert. Lade nur von jemandem, dem du vertraust.</string>
+    <string name="board_sync_discovered_share_info">Das Gerät unter %1$s bietet seine Board-Daten in diesem lokalen Netzwerk an. Es kann nur die Boards teilen, die es selbst geladen hat, und es ist nicht authentifiziert — deshalb wählst du, bevor etwas übertragen wird. Boards, die es nicht hat, lädt CruxCoach danach aus dem Internet.</string>
+    <string name="board_sync_discovered_share_others">Weitere Boards (Internet nötig)</string>
+    <string name="board_sync_discovered_share_others_hint">Von diesem Gerät nicht verfügbar</string>
+    <plurals name="board_sync_share_climbs">
+        <item quantity="one">%s Climb</item>
+        <item quantity="other">%s Climbs</item>
+    </plurals>
     <string name="board_sync_discovered_share_confirm">Share in der Nähe verwenden</string>
     <string name="board_sync_discovered_share_internet">Internet verwenden</string>
     <string name="board_sync_local_update_title">App-Update bereit</string>
@@ -1093,16 +1168,16 @@
     <string name="action_not_now">Später</string>
 
     <!-- Kilter Account -->
-    <string name="kilter_section_title">Kilter Board Account</string>
-    <string name="kilter_connect_button">Kilter Account verbinden</string>
-    <string name="kilter_connect_desc">Importiere deine Begehungen aus der offiziellen Kilter App</string>
+    <string name="kilter_section_title">Kilter-Konto</string>
+    <string name="kilter_connect_button">Kilter-Konto verbinden</string>
+    <string name="kilter_connect_desc">Übernimmt dein Kilter-Logbuch und deine Boulderlisten („Circuits“) in CruxCoach: einmalig oder mit regelmäßigem Abruf neuer Einträge. Einträge hochladen und eigene Boulder veröffentlichen aktivierst du separat.</string>
     <string name="kilter_connected_as">Verbunden als: %s</string>
     <string name="kilter_last_sync">Letzter Sync: %s</string>
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
-    <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
+    <string name="kilter_push_desc">Beim Einschalten startet der Upload deiner Begehungen und Versuche, einschließlich älterer ausstehender Einträge. Neue Einträge werden bei verbundenem Kilter-Sync automatisch übertragen. Abrufen bleibt auch ohne Uploads möglich. Eigene Boulder veröffentlichst du separat.</string>
     <string name="kilter_climb_publish_label">Eigene Climbs auf Kilter veröffentlichen</string>
-    <string name="kilter_climb_publish_disconnected_hint">Verbinde deinen Kilter-Account, um Climbs auch dort zu spiegeln.</string>
+    <string name="kilter_climb_publish_disconnected_hint">Verbinde dein Kilter-Konto, um eigene Boulder auch dort zu veröffentlichen.</string>
     <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
     <string name="kilter_publish_queue_pending" formatted="false">%1$d Climbs warten auf Kilter-Sync</string>
     <string name="kilter_publish_queue_failed" formatted="false">%1$d zuletzt fehlgeschlagen</string>
@@ -1112,7 +1187,7 @@
     <string name="kilter_relogin_button">Neu anmelden</string>
     <string name="kilter_disconnect">Verbindung trennen</string>
     <string name="kilter_disconnect_confirm">Kilter-Konto wirklich trennen? Importierte Begehungen bleiben erhalten.</string>
-    <string name="kilter_login_title">Kilter Anmeldung</string>
+    <string name="kilter_login_title">Bei Kilter anmelden</string>
     <string name="kilter_email_label">E-Mail</string>
     <string name="kilter_password_label">Passwort</string>
     <string name="kilter_login_button">Anmelden</string>
@@ -1121,9 +1196,9 @@
     <string name="kilter_preview_title">Kilter Begehungen</string>
     <string name="kilter_preview_found">%1$d Begehungen gefunden (%2$d neu, %3$d bereits vorhanden)</string>
     <string name="kilter_import_one_time">Einmalig importieren</string>
-    <string name="kilter_import_one_time_desc">Begehungen importieren, Kilter-Zugangsdaten verwerfen</string>
+    <string name="kilter_import_one_time_desc">Logbuch importieren, gespeicherte Anmeldung danach entfernen</string>
     <string name="kilter_import_persistent">Dauerhaft synchronisieren</string>
-    <string name="kilter_import_persistent_desc">Neue Kilter-Begehungen fortlaufend herunterladen</string>
+    <string name="kilter_import_persistent_desc">Neue Kilter-Logbucheinträge auch später abrufen</string>
     <string name="kilter_import_success">%d Begehungen importiert</string>
     <string name="kilter_import_part_ascents">%d Begehungen</string>
     <string name="kilter_import_part_projects">%d Projekte</string>
@@ -1159,7 +1234,6 @@
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
     <string name="board_sync_local_progress_title">Board-Daten vom Gerät in der Nähe laden</string>
-    <string name="board_sync_local_catalogue_count">%d Board-Kataloge enthalten</string>
     <string name="board_sync_local_complete">Lokaler Import abgeschlossen</string>
     <string name="sync_finalizing">Finalisieren…</string>
     <!-- FEAT-031: per-board sync sections are titled by the board's name; a
@@ -1210,7 +1284,7 @@
     <string name="devcontact_feature_placeholder">Was wünschst du dir?</string>
     <string name="devcontact_wishes">Wünsche</string>
     <string name="devcontact_bug_reports">Fehlerberichte</string>
-    <string name="devcontact_crash_reports">Crash Reports</string>
+    <string name="devcontact_crash_reports">Crash-Berichte</string>
     <string name="devcontact_write_reply">Antwort schreiben…</string>
     <string name="devcontact_report_bug">Bug melden</string>
     <string name="devcontact_steps_optional">Schritte zum Reproduzieren (optional)</string>
@@ -1289,21 +1363,22 @@
     <string name="updater_settings_status_title">Status</string>
     <string name="updater_settings_status_last_check">Zuletzt geprüft: %1$s</string>
     <string name="updater_settings_status_never">Zuletzt geprüft: noch nie</string>
+    <string name="updater_settings_status_failed">Die letzte Prüfung hat die Update-Quellen nicht erreicht. Prüfe die Verbindung und versuche es erneut.</string>
     <string name="updater_settings_check_now">Jetzt prüfen</string>
     <string name="updater_settings_auto_check">Automatisch prüfen</string>
-    <string name="updater_settings_auto_check_desc">Prüft beim App-Start, nach Netzrückkehr und regelmäßig im Hintergrund.</string>
+    <string name="updater_settings_auto_check_desc">Sucht beim App-Start, nach dem Wiederverbinden mit dem Internet und regelmäßig im Hintergrund nach App-Updates. „Jetzt prüfen“ geht auch ohne Automatik.</string>
     <string name="updater_settings_automation_title">Wenn ein Update verfügbar ist</string>
     <string name="updater_mode_notify">Hinweis</string>
     <string name="updater_mode_auto_update">Automatisch</string>
-    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Du entscheidest, ob du es herunterladen und installieren möchtest.</string>
-    <string name="updater_mode_auto_update_desc">Lädt und prüft Updates automatisch und stößt anschließend die Installation an. Du kannst sie in Android bestätigen oder ablehnen.</string>
+    <string name="updater_mode_notify_desc">Meldet neue App-Versionen. Du startest Download und Installation.</string>
+    <string name="updater_mode_auto_update_desc">Lädt und prüft neue App-Versionen automatisch über die erlaubten Verbindungen. Die Installation bestätigst du in Android.</string>
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
-    <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
+    <string name="updater_settings_auto_mobile_desc">Erlaubt automatische App-Downloads auch über mobile Daten und als „getaktet“ markierte Netze. Aus: wartet auf eine ungetaktete Verbindung, meist WLAN. Updates können viel Datenvolumen verbrauchen.</string>
     <string name="updater_settings_anonymous_metrics">Anonymer Zähler verifizierter Updates</string>
-    <string name="updater_settings_anonymous_metrics_desc">Nachdem ein Update-Download sowohl Hash- als auch Signaturprüfung bestanden hat, wird pro Zielversion höchstens ein Best-Effort-Zählversuch unternommen. Er enthält nur die Zielversion und welche konfigurierte Download-Quelle die Datei geliefert hat, aber keine Nutzer-, Geräte-, Installations-, Account-, Nostr- oder Session-Kennung. Schalte dies aus, um nichts zu senden. Update-Prüfung, Download und Installation bleiben immer unbeeinflusst.</string>
+    <string name="updater_settings_anonymous_metrics_desc">Gemeldete Daten\nVersion und Quelle eines erfolgreich geprüften Downloads; keine Konto- oder Gerätekennung. Höchstens ein Sendeversuch pro Version.\n\nFreiwillig\nUpdates funktionieren auch ohne diese Meldungen.</string>
     <string name="updater_auto_update_info_title">Bestätigte Installation</string>
-    <string name="updater_auto_update_ready_desc">Nach Download und Prüfung fordert Android deine Bestätigung für die Installation an. CruxCoach installiert Updates nicht still.</string>
-    <string name="updater_auto_update_permission_desc">Erlaube CruxCoach einmalig, den Android-Installationsdialog für eigene geprüfte Updates zu öffnen. Jede Installation kannst du weiterhin bestätigen oder ablehnen.</string>
+    <string name="updater_auto_update_ready_desc">Nach Download und Prüfung bittet Android dich, die Installation zu bestätigen. Ohne Bestätigung wird das Update nicht installiert.</string>
+    <string name="updater_auto_update_permission_desc">Erlaube CruxCoach, geprüfte App-Updates zur Installation anzubieten. Jede Installation bestätigst du weiterhin selbst.</string>
     <string name="updater_auto_update_permission_action">App-Installationen erlauben</string>
     <string name="updater_settings_pending_title">Version %1$s verfügbar</string>
     <string name="updater_settings_pending_size">ca. %1$s</string>
@@ -1385,7 +1460,10 @@
     <string name="ble_your_climb">Dein Climb</string>
     <string name="board_ascent_tries">Top · %d Versuche</string>
     <string name="board_climb_frames">%d Frames</string>
-    <string name="board_climb_sends_count">%d sends</string>
+    <plurals name="board_climb_sends_count">
+        <item quantity="one">%d Begehung</item>
+        <item quantity="other">%d Begehungen</item>
+    </plurals>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_more_information">Climb-Details und Log-Verlauf</string>
     <string name="board_detail_quick_send_logged">Send geloggt</string>
@@ -1414,22 +1492,39 @@
     <string name="board_heatmap_personal">Meine Sends</string>
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
-    <string name="board_list_climb_count">%d Climbs</string>
-    <string name="board_list_climb_count_with_plan">%d Climbs · Trainingsablauf</string>
+    <plurals name="board_list_climb_count">
+        <item quantity="one">%d Climb</item>
+        <item quantity="other">%d Climbs</item>
+    </plurals>
+    <plurals name="board_list_climb_count_with_plan">
+        <item quantity="one">%d Climb · Trainingsablauf</item>
+        <item quantity="other">%d Climbs · Trainingsablauf</item>
+    </plurals>
     <string name="board_list_filter_all">Alle</string>
     <string name="board_list_unavailable_count">%d nicht angezeigt — Board nicht geladen</string>
     <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
     <string name="board_list_default_name">Liste</string>
+    <string name="board_list_builtin_favorites">Favoriten</string>
+    <string name="board_list_builtin_ignored">Ignoriert</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>
-    <string name="board_logbook_attempts">Attempts</string>
+    <string name="board_logbook_attempts">Versuche gesamt</string>
+    <string name="board_logbook_select_entry">%1$s auswählen</string>
+    <string name="board_logbook_filters">Logbuch filtern</string>
+    <string name="board_logbook_filter_outcome">Ergebnis</string>
+    <string name="board_logbook_filter_board">Board</string>
+    <string name="board_logbook_filter_angle">Winkel</string>
+    <string name="board_logbook_no_filter_matches">Keine Logbuch-Einträge entsprechen diesen Filtern.</string>
     <string name="board_logbook_best_grade">Bester Grad</string>
-    <string name="board_logbook_day_entries">%d Einträge</string>
-    <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
-    <string name="board_logbook_empty_title">Noch keine Begehungen</string>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%d Eintrag</item>
+        <item quantity="other">%d Einträge</item>
+    </plurals>
+    <string name="board_logbook_empty_message">Erfasse Versuche oder erfolgreiche Begehungen in der Detailansicht eines Boulders.</string>
+    <string name="board_logbook_empty_title">Noch keine Logeinträge</string>
     <string name="board_logbook_flash">Flash</string>
-    <string name="board_logbook_sessions">Sessions</string>
-    <string name="board_logbook_unique_climbs">Unique Climbs</string>
+    <string name="board_logbook_sessions">Klettertage</string>
+    <string name="board_logbook_unique_climbs">Verschiedene Boulder</string>
     <string name="stats_interval_all">Gesamt</string>
     <string name="stats_interval_30_days">30 Tage</string>
     <string name="stats_interval_90_days">90 Tage</string>
@@ -1452,10 +1547,15 @@
     <string name="notification_announcement_issue">Bekanntes Problem</string>
     <string name="notification_announcement_tip">Tipp vom Entwickler</string>
     <string name="notification_sender_developer">Entwickler</string>
+    <string name="notification_reply_chat">Entwickler · Chat</string>
+    <string name="notification_reply_bug">Entwickler · Fehlerbericht</string>
+    <string name="notification_reply_feature">Entwickler · Wunsch</string>
+    <string name="notification_reply_crash">Entwickler · Crash-Bericht</string>
+    <string name="notification_replies_summary">Neue Antworten vom Entwickler</string>
     <string name="notification_reliability_title">Zuverlässige Benachrichtigungen</string>
-    <string name="notification_reliability_battery_desc">Android kann Benachrichtigungen verzögern oder unterdrücken, wenn die App akku-optimiert ist. Deaktiviere die Optimierung für CruxCoach, damit Nachrichten zeitnah ankommen.</string>
+    <string name="notification_reliability_battery_desc">Der Android-Energiesparmodus kann Benachrichtigungen verzögern. Nimm CruxCoach von der Akkuoptimierung aus, damit Nachrichten rechtzeitig ankommen.</string>
     <string name="notification_reliability_battery_button">Akku-Optimierung deaktivieren</string>
-    <string name="notification_reliability_oem_desc">Dein Gerätehersteller betreibt einen zusätzlichen Hintergrund-App-Killer. Ohne Ausnahme können Benachrichtigungen verspätet oder gar nicht ankommen.</string>
+    <string name="notification_reliability_oem_desc">Dein Handy schränkt Apps im Hintergrund zusätzlich ein. Erlaube CruxCoach, im Hintergrund aktiv zu bleiben, damit Benachrichtigungen ankommen.</string>
     <string name="notification_reliability_oem_button">Hersteller-Einstellungen öffnen</string>
     <string name="notification_reliability_oem_button_fallback">App-Einstellungen öffnen</string>
     <string name="notification_reliability_dismiss">Später</string>
@@ -1491,7 +1591,7 @@
     <string name="board_rest_timer_rest">Pause</string>
     <string name="board_session_flashes">Flashes</string>
     <string name="board_session_label">Session</string>
-    <string name="board_sort_quality_sends">Sends × Qualität</string>
+    <string name="board_sort_quality_sends">Begehungen × Sterne</string>
     <string name="board_sort_random">Zufällig</string>
     <string name="board_sort_newest">Neueste</string>
     <string name="board_stats_activity">Aktivität</string>
@@ -1504,16 +1604,16 @@
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
     <string name="board_stats_board_comparison">Board-Vergleich</string>
     <string name="board_stats_board_comparison_board">Board</string>
-    <string name="board_stats_attempt">Versuch</string>
+    <string name="board_stats_attempt">Versucht</string>
     <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
     <string name="board_stats_date_range">Zeitraum…</string>
-    <string name="board_stats_flash_rate">Flash-Rate</string>
-    <string name="board_stats_flash_send_attempt">Flash / Send / Versuch</string>
+    <string name="board_stats_flash_rate">Flash-Quote</string>
+    <string name="board_stats_flash_send_attempt">Boulder-Ergebnisse nach Grad</string>
     <string name="board_stats_grade_easy">Leicht</string>
     <string name="board_stats_grade_elite">Elite</string>
     <string name="board_stats_grade_hard">Schwer</string>
     <string name="board_stats_grade_medium">Mittel</string>
-    <string name="board_stats_grade_progression">Grad-Progression</string>
+    <string name="board_stats_grade_progression">Rollierendes Leistungsniveau</string>
     <string name="board_stats_grade_pyramid">Grad-Pyramide</string>
     <string name="board_stats_hardest">Härtester</string>
     <string name="board_stats_hardest_flash">Härtester Flash</string>
@@ -1522,13 +1622,13 @@
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
     <string name="board_stats_week_streak">Wochen-Serie</string>
-    <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
-    <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
+    <string name="board_stats_most_sends_day">Begehungen/Tag</string>
+    <string name="board_stats_outcome_distribution">Geschaffte Boulder: Flash oder später</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>
-    <string name="board_stats_sends_over_time">Sends über Zeit</string>
+    <string name="board_stats_sends_over_time">Logeinträge im Zeitverlauf</string>
     <string name="board_stats_total">Gesamt</string>
-    <string name="board_stats_unique">Unique</string>
-    <string name="board_stats_weekly_volume">Wochen-Volumen</string>
+    <string name="board_stats_unique">Verschiedene Boulder</string>
+    <string name="board_stats_weekly_volume">Wöchentliche Einträge nach Gradbereich</string>
     <string name="board_zone_limit">Limit</string>
     <string name="board_zone_optimal">Optimal</string>
     <string name="board_zone_warmup">Warm-Up</string>
@@ -1596,7 +1696,6 @@
     <string name="cd_select_all">Alle auswählen</string>
     <string name="cd_select_view">Ansicht wählen</string>
     <string name="cd_settings">Einstellungen</string>
-    <string name="cd_signal">Signal: %1$d dBm</string>
     <string name="cd_signal_strength">Signalstärke</string>
     <string name="cd_stars">%d Sterne</string>
     <string name="cd_stop">Beenden</string>
@@ -1620,7 +1719,7 @@
     <string name="devcontact_category_release">Release</string>
     <string name="devcontact_category_tip">Tipp</string>
     <string name="devcontact_chat_empty">Noch keine Nachrichten.\nSchreib dem Entwickler!</string>
-    <string name="devcontact_crashes_empty">Keine Crash Reports gesendet</string>
+    <string name="devcontact_crashes_empty">Keine Crash-Berichte gesendet</string>
     <string name="devcontact_developer">Entwickler</string>
     <string name="devcontact_device">Gerät</string>
     <string name="devcontact_device_info">Geräteinformationen</string>
@@ -1629,9 +1728,9 @@
     <string name="devcontact_message">Nachricht</string>
     <string name="devcontact_messages">Nachrichten</string>
     <string name="devcontact_notifications">Ankündigungen im Hintergrund</string>
-    <string name="devcontact_notifications_desc">Ankündigungen automatisch abrufen und melden. Ausgeschaltet bleibt das Öffnen der Ankündigungen eine manuelle Aktualisierung.</string>
+    <string name="devcontact_notifications_desc">Benachrichtigt über Entwickler-Ankündigungen der gewählten Kategorien. Android muss Benachrichtigungen erlauben. Aus: neue Meldungen erst beim Öffnen der Ankündigungsseite.</string>
     <string name="devcontact_send_crash_reports">Crash-Berichte senden</string>
-    <string name="devcontact_send_crash_reports_desc">Verschlüsselte Crash-Berichte automatisch an den Entwickler senden, verknüpft mit deinem öffentlichen CruxCoach-Nostr-Schlüssel</string>
+    <string name="devcontact_send_crash_reports_desc">Automatischer Versand\nSendet gespeicherte Absturzberichte beim nächsten App-Start. Enthalten sind Fehlerdetails, Zeitpunkt, App- und Android-Version, Sprache und eine grobe Leistungsklasse des Geräts.\n\nDatenschutz\nEnde-zu-Ende-verschlüsselt, aber deinem öffentlichen Kontoschlüssel zugeordnet; nicht anonym. Aus: Du meldest Fehler selbst.</string>
     <string name="devcontact_send_failed">Senden fehlgeschlagen</string>
     <string name="devcontact_status_delivered">✓ Zugestellt · %1$s</string>
     <string name="devcontact_status_not_delivered">✗ Nicht zugestellt</string>
@@ -1659,6 +1758,8 @@
     <string name="error_not_cruxcoach_export">Wähle einen CruxCoach-JSON-Export oder ein CSV-ZIP</string>
     <string name="error_import_too_large">Der CruxCoach-Export ist größer als 64 MB</string>
     <string name="error_file_not_readable">Datei nicht lesbar: %1$s</string>
+    <string name="error_import_invalid_format">kein gültiger CruxCoach-Export (die Datei ist beschädigt, unvollständig oder hat ein anderes Format)</string>
+    <string name="error_import_newer_version">diese Datei stammt aus einer neueren CruxCoach-Version. Aktualisiere die App und versuche es erneut</string>
     <string name="error_export_failed">Export fehlgeschlagen: %1$s</string>
     <string name="error_import_failed">Import fehlgeschlagen: %1$s</string>
     <string name="error_label">Fehler</string>
@@ -1682,7 +1783,10 @@
     <string name="export_save_file">Auf Gerät speichern</string>
     <string name="export_share_app">Mit App teilen</string>
     <string name="export_share_chooser">CruxCoach-Daten teilen</string>
-    <string name="export_categories_exported">%1$d Kategorie(n) exportiert</string>
+    <plurals name="export_categories_exported">
+        <item quantity="one">%d Kategorie exportiert</item>
+        <item quantity="other">%d Kategorien exportiert</item>
+    </plurals>
     <string name="export_category_profile">Profil &amp; Einstellungen</string>
     <string name="export_category_assessments">Fitness-Assessments</string>
     <string name="export_category_body_stats">Körperdaten</string>
@@ -1698,25 +1802,63 @@
     <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
     <string name="import_no_data">Keine Daten gefunden</string>
     <string name="import_result_profile">Profil</string>
-    <string name="import_result_assessments">%1$d Assessments</string>
-    <string name="import_result_body_stats">%1$d Körperdaten</string>
-    <string name="import_result_workouts">%1$d Workouts</string>
-    <string name="import_result_climbs">%1$d Boulder</string>
-    <string name="import_result_plans">%1$d Trainingspläne</string>
-    <string name="import_result_board_sends">%1$d Board-Sends</string>
-    <string name="import_result_board_bids">%1$d Board-Versuche</string>
-    <string name="import_result_board_sessions">%1$d Board-Sessions</string>
-    <string name="import_result_lists">%1$d Listen</string>
-    <string name="import_result_own_climbs">%1$d eigene Climbs</string>
+    <plurals name="import_result_assessments">
+        <item quantity="one">%1$d Assessment</item>
+        <item quantity="other">%1$d Assessments</item>
+    </plurals>
+    <plurals name="import_result_body_stats">
+        <item quantity="one">%1$d Körperdatensatz</item>
+        <item quantity="other">%1$d Körperdaten</item>
+    </plurals>
+    <plurals name="import_result_workouts">
+        <item quantity="one">%1$d Workout</item>
+        <item quantity="other">%1$d Workouts</item>
+    </plurals>
+    <plurals name="import_result_climbs">
+        <item quantity="one">%1$d Boulder</item>
+        <item quantity="other">%1$d Boulder</item>
+    </plurals>
+    <plurals name="import_result_plans">
+        <item quantity="one">%1$d Trainingsplan</item>
+        <item quantity="other">%1$d Trainingspläne</item>
+    </plurals>
+    <plurals name="import_result_board_sends">
+        <item quantity="one">%1$d Board-Send</item>
+        <item quantity="other">%1$d Board-Sends</item>
+    </plurals>
+    <plurals name="import_result_board_bids">
+        <item quantity="one">%1$d Board-Versuch</item>
+        <item quantity="other">%1$d Board-Versuche</item>
+    </plurals>
+    <plurals name="import_result_board_sessions">
+        <item quantity="one">%1$d Board-Session</item>
+        <item quantity="other">%1$d Board-Sessions</item>
+    </plurals>
+    <plurals name="import_result_lists">
+        <item quantity="one">%1$d Liste</item>
+        <item quantity="other">%1$d Listen</item>
+    </plurals>
+    <plurals name="import_result_own_climbs">
+        <item quantity="one">%1$d eigener Climb</item>
+        <item quantity="other">%1$d eigene Climbs</item>
+    </plurals>
     <string name="import_result_no_data">Keine Daten</string>
+    <string name="import_catalogue_loading_hint">Die Board-Daten laden noch. Dein Logbuch wird jetzt importiert; Namen, Grade und eigene Climbs werden verknüpft, sobald der Katalog da ist.</string>
+    <plurals name="import_result_own_climbs_pending">
+        <item quantity="one">%1$d eigener Climb folgt, sobald die Board-Daten geladen sind.</item>
+        <item quantity="other">%1$d eigene Climbs folgen, sobald die Board-Daten geladen sind.</item>
+    </plurals>
     <string name="import_result_summary">Importiert: %1$s</string>
-    <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>
+    <plurals name="import_result_duplicates_skipped">
+        <item quantity="one">(%1$d Duplikat übersprungen)</item>
+        <item quantity="other">(%1$d Duplikate übersprungen)</item>
+    </plurals>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
     <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>
     <string name="import_pubkey_mismatch_confirm">Trotzdem importieren</string>
     <string name="import_pubkey_override_banner_title">Import aus anderem Schlüssel</string>
-    <string name="import_pubkey_override_banner_body">Du importierst Daten aus %1$s in deinen aktuellen Account. Climbs, die du später erneut publishst, werden deinem aktuellen Kilter-Account zugeordnet.</string>
+    <string name="import_pubkey_override_banner_body">Du importierst Daten aus %1$s in deinen aktuellen Account. Climbs, die du später erneut veröffentlichst, werden deinem aktuellen Kilter-Konto zugeordnet.</string>
     <string name="month_apr">Apr</string>
     <string name="month_aug">Aug</string>
     <string name="month_dec">Dez</string>
@@ -1749,41 +1891,41 @@
     <string name="settings_group_appearance">Darstellung &amp; Sprache</string>
     <string name="settings_group_training_playback">Training &amp; Wiedergabe</string>
     <string name="settings_group_all_boards">Alle Boards</string>
-    <string name="settings_group_selected_board">Ausgewähltes Board</string>
+    <string name="settings_group_selected_board">Einstellungen je Board</string>
     <string name="settings_group_board_accounts_imports">Board-Konten &amp; Logbuchimporte</string>
     <string name="settings_group_board_catalogs">Board-Kataloge</string>
     <string name="settings_group_backup_transfer">Sicherung &amp; Übertragung</string>
     <string name="settings_group_delete_data">Daten löschen</string>
-    <string name="settings_board_hub_desc">Tippe eine Karte an, um die Einstellungen dieses Boards anzusehen. Dadurch ändert sich das aktive Board nicht.</string>
+    <string name="settings_board_hub_desc">Wähle Kilter für LED-Farben oder MoonBoard für die LED-Position. Dein aktives Board bleibt dabei unverändert. „Alle Boards“ gilt für jede Marke.</string>
     <string name="settings_board_active_badge">Aktiv</string>
     <string name="settings_board_viewing">Einstellungen für %1$s</string>
     <string name="settings_board_make_active">Konfigurieren und aktiv setzen</string>
     <string name="settings_board_active_connection">Aktives Board &amp; Verbindung</string>
     <string name="settings_board_specific">Boardspezifische Einstellungen</string>
-    <string name="settings_board_inactive_hint">%1$s ist nicht aktiv. Markenspezifische Optionen kannst du hier ansehen; das aktive Board ändert sich immer erst nach einer eigenen Bestätigung.</string>
+    <string name="settings_board_inactive_hint">%1$s ist in der App nicht aktiv. Du kannst seine Einstellungen ansehen, ohne das aktive Board zu wechseln.</string>
     <string name="settings_board_layout_title">Wand</string>
-    <string name="settings_board_layout_desc">Wähle, welche Kilter-Wand du hast. Browse und Climb-Creator richten sich danach.</string>
+    <string name="settings_board_layout_desc">Wähle dein Kilter-Modell. Die App passt daran die Boulderliste und die Ansicht zum Erstellen eigener Boulder an.</string>
     <string name="settings_board_layout_original">Kilter Original</string>
     <string name="settings_board_layout_homewall">Kilter Homewall</string>
     <string name="settings_board_model_title">Board</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_moonboard_led_position_title">LED-Position</string>
-    <string name="settings_moonboard_led_position_desc">Wähle, welche vorhandenen LEDs den Griff markieren. Topgriffe und Positionen ohne obere LED bleiben von unten beleuchtet.</string>
+    <string name="settings_moonboard_led_position_desc">Wählt, ob die LEDs am MoonBoard unter, über oder auf beiden Seiten der Griffe leuchten. Topgriffe und Griffe ohne obere LED nutzen die untere. Die LED-Farben bleiben gleich.</string>
     <string name="settings_moonboard_led_position_below">Darunter</string>
     <string name="settings_moonboard_led_position_above">Darüber</string>
     <string name="settings_moonboard_led_position_both">Beide</string>
     <string name="settings_board_send_mode_title">Ans Board senden</string>
-    <string name="settings_board_send_mode_desc">Öffnen, Wischen oder Neuverbinden in der Climb-Detailansicht ändert die Wand nie; tippe ausdrücklich auf die Lampe. Diese Einstellung steuert den automatischen Playlist-/Wiedergabefortschritt für Controller mit einer oder mehreren möglichen App-Verbindungen. Klettern über einen Relay zählt als mehrere App-Verbindungen.</string>
+    <string name="settings_board_send_mode_desc">%1$s\nÖffnen oder Wischen in der App lässt den gewählten Boulder am verbundenen Board aufleuchten. Ebenso beim Verbinden und Weiterschalten einer Playlist.\n\n%2$s\nDu stöberst in der App; die Board-LEDs bleiben unverändert. Erst das Lampensymbol lässt deine Auswahl aufleuchten, auch beim nächsten Boulder einer Playlist.\n\nBluetooth-Verbindungen\nDie Zeilen gelten für Controller mit einer oder mehreren gleichzeitigen App-Verbindungen. CruxCoach erkennt dies; CruxRelay zählt als mehrere.\n\nSonderfälle\nLaufende Playlists haben beim automatischen Senden Vorrang. Quantum: in der Boulderansicht immer per Lampensymbol. Gemeinsame Session: Boulder per Warteschlangen-Taste hinzufügen. Gestartete Playlists und Routenwiedergaben können in beiden Modi die Board-LEDs ändern.</string>
     <string name="settings_board_capacity_recheck">Board-Fähigkeiten neu ermitteln</string>
-    <string name="settings_board_capacity_recheck_desc">CruxCoach merkt sich, ob ein Controller eine App oder mehrere zulässt. Nutze das, wenn ein Board getauscht oder umgestellt wurde — beim nächsten Verbinden wird neu gemessen.</string>
+    <string name="settings_board_capacity_recheck_desc">Prüft beim nächsten Verbinden neu, ob sich eine oder mehrere Apps gleichzeitig mit dem Board verbinden können. Hilfreich nach einem Controllerwechsel.</string>
     <string name="settings_board_capacity_recheck_done">Wird beim nächsten Verbinden neu gemessen</string>
     <string name="settings_board_send_mode_single">Nur eine Verbindung</string>
     <string name="settings_board_send_mode_multi">Mehrere Verbindungen</string>
-    <string name="settings_board_send_mode_automatic">Automatische Wiedergabe</string>
+    <string name="settings_board_send_mode_automatic">Automatisch</string>
     <string name="settings_board_send_mode_explicit">Per Taste</string>
-    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard akzeptiert mehrere Verbindungen. Die Beleuchtung bleibt bis zur letzten Trennung erhalten.</string>
-    <string name="settings_board_projection_lifecycle_retained">Moderne Controller akzeptieren mehrere Verbindungen; verifizierte ältere Controller lassen sich über CruxCoach Relay teilen.</string>
+    <string name="settings_board_projection_lifecycle_moonboard">LEDs am Board\nGehen aus, sobald die letzte Bluetooth-Verbindung endet. Deshalb trennt die App hier nicht per Timer.\n\nGemeinsam verbinden\nOb mehrere Handys gleichzeitig verbunden sein können, hängt vom Controller ab. Die App erkennt dies beim Verbinden.</string>
+    <string name="settings_board_projection_lifecycle_retained">LEDs am Board\nLeuchten nach dem Trennen weiter. Gib die Bluetooth-Verbindung selbst oder per Timer für andere frei.\n\nGemeinsam nutzen\nDie App erkennt, ob mehrere Handys direkt verbunden sein können. Sonst können andere bei unterstützten Boards über dein Handy Boulder aufleuchten lassen: mit CruxRelay.</string>
     <string name="cd_add_climb_to_shared_queue">Boulder zur gemeinsamen Warteschlange hinzufügen</string>
     <string name="cd_light_climb_on_board">Climb am Board beleuchten</string>
     <string name="cd_restore_queue_climb">Aktuellen Queue-Boulder erneut beleuchten</string>
@@ -1900,12 +2042,12 @@
     <string name="key_import_invalid_nsec">Ungültiger nsec-Schlüssel</string>
 
     <!-- Key Management: Screen -->
-    <string name="key_section_account_keys">CruxCoach Account</string>
-    <string name="key_section_nostr_intro">Dein CruxCoach Account funktioniert grundlegend anders als herkömmliche Accounts: Statt E-Mail und Passwort bei einer Firma zu hinterlegen, besitzt du einen kryptographischen Schlüssel. Dieser Schlüssel ist dein Account — wer ihn hat, hat Zugang. Kein Unternehmen kann deinen Account sperren, löschen oder deine Daten einsehen. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt. Dafür liegt die Verantwortung bei dir: Geht der Schlüssel verloren, kann ihn niemand zurücksetzen. Technisch basiert dein Account auf dem offenen Nostr-Protokoll.</string>
-    <string name="key_section_description">Hier kannst du deinen Account sichern, auf ein neues Gerät übertragen oder die externe Signer-App Amber verwenden.</string>
-    <string name="key_button_manage">Account verwalten</string>
-    <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
-    <string name="key_label_not_backed_up_desc">Ohne ihn kann weder dein Account noch dein Cloud-Backup wiederhergestellt werden, wenn du dieses Gerät verlierst.</string>
+    <string name="key_section_account_keys">CruxCoach-Konto</string>
+    <string name="key_section_nostr_intro">Kontoschlüssel\nCruxCoach nutzt Nostr: Der öffentliche Schlüssel identifiziert dich, der private gibt Zugang. Halte ihn geheim und sichere ihn; ein Zurücksetzen ist nicht möglich.\n\nSichtbarkeit\nVeröffentlichtes Profil und Community-Boulder sind öffentlich. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt, Backups vor dem Upload verschlüsselt. Mit deinem privaten Schlüssel kann jemand als du handeln und geschützte Daten lesen.</string>
+    <string name="key_section_description">Profil und Zugang\nBearbeite dein öffentliches Profil. In der Schlüsselverwaltung sicherst du deinen Zugang, nutzt ein vorhandenes Konto oder verbindest die Schlüssel-App Amber.</string>
+    <string name="key_button_manage">Schlüssel sichern &amp; wiederherstellen</string>
+    <string name="key_label_not_backed_up">Sicherung noch nicht bestätigt</string>
+    <string name="key_label_not_backed_up_desc">Bewahre eine Kopie sicher auf, damit du nach einem Handyverlust Konto und Backup wiederherstellen kannst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
     <string name="key_label_login_local">Lokaler Schlüssel</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1918,20 +2060,20 @@
     <string name="key_button_copy_nsec">nsec kopieren</string>
     <string name="key_button_import_nsec">nsec importieren</string>
     <string name="key_label_nsec_save_reminder">Sichere diesen Schlüssel an einem sicheren Ort — sowohl dein Account als auch dein Cloud-Backup können nur damit auf einem anderen Gerät wiederhergestellt werden. Ohne ihn ist beides verloren wenn du dieses Telefon verlierst.</string>
-    <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
+    <string name="key_label_nsec_warning">Gib deinen privaten Schlüssel niemals weiter. Wer ihn hat, kann dein Konto übernehmen.</string>
     <string name="key_section_recommended">Empfohlen</string>
     <string name="key_label_use_amber">Amber Signer verwenden</string>
     <string name="key_label_amber_active">Aktiv — Dein Schlüssel wird von Amber verwaltet.</string>
     <string name="key_label_amber_inactive">Dein Schlüssel bleibt in Amber. CruxCoach sieht ihn nie.</string>
     <string name="key_button_setup">Einrichten</string>
-    <string name="key_button_disconnect_amber">Zu lokalem Schlüssel wechseln</string>
+    <string name="key_button_disconnect_amber">Zum Schlüssel dieses Geräts wechseln</string>
     <string name="key_label_local_key_inactive">Lokaler Schlüssel (inaktiv)</string>
     <string name="key_label_active_identity">Aktiver Account</string>
 
     <!-- Key Management: Dialogs -->
-    <string name="key_dialog_nsec_title">Privater Schlüssel</string>
-    <string name="key_dialog_nsec_text">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Wenn jemand ihn sieht, kann er sich als du ausgeben. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
-    <string name="key_dialog_nsec_confirm">Ich verstehe, kopieren</string>
+    <string name="key_dialog_nsec_title">Kontoschlüssel sichern</string>
+    <string name="key_dialog_nsec_text">Mit deinem privaten Schlüssel kannst du dein Konto wiederherstellen. Wer ihn besitzt, kann dein Konto verwenden.\n\nEntsperre mit deiner Gerätesperre und kopiere den Schlüssel in einen Passwortmanager. Teile ihn niemals mit anderen. Das Kopieren dieses Schlüssels erstellt keine Sicherung deiner Daten.</string>
+    <string name="key_dialog_nsec_confirm">Entsperren und kopieren</string>
     <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
     <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
     <string name="key_button_open_settings">Zu den Einstellungen</string>
@@ -1940,9 +2082,9 @@
     <string name="key_button_install_zapstore">Zapstore</string>
     <string name="key_button_install_fdroid">F-Droid</string>
     <string name="key_dialog_amber_success_title">Amber eingerichtet</string>
-    <string name="key_dialog_amber_success_text">Amber ist eingerichtet. Dein Schlüssel wird jetzt von Amber verwaltet.\n\nDie App wird neu gestartet, um den Account zu wechseln.\n\nLokale Schlüsselkopie löschen?</string>
+    <string name="key_dialog_amber_success_text">Amber übernimmt jetzt die Freigaben. Falls CruxCoach noch eine Schlüsselkopie gespeichert hat, bleibt sie erhalten, bis du sie ausdrücklich entfernst.</string>
     <string name="key_button_delete">Löschen</string>
-    <string name="key_button_keep">Behalten</string>
+    <string name="key_button_keep">Kopie behalten und weiter</string>
     <string name="key_dialog_no_security_title">Kein Geräteschutz</string>
     <string name="key_dialog_no_security_text">Dieses Gerät hat keine Bildschirmsperre oder biometrische Sicherung. Dein privater Schlüssel ist dadurch nicht geschützt. Es wird dringend empfohlen, eine Bildschirmsperre einzurichten.</string>
     <string name="key_button_proceed_anyway">Trotzdem fortfahren</string>
@@ -1951,36 +2093,38 @@
     <string name="key_biometric_subtitle">Authentifiziere dich</string>
 
     <!-- Key Import Screen -->
-    <string name="key_import_title">Account importieren</string>
-    <string name="key_import_prompt">Füge deinen privaten Schlüssel ein:</string>
-    <string name="key_import_label">Schlüssel</string>
+    <string name="key_import_title">Konto wiederherstellen</string>
+    <string name="key_import_prompt">Füge deinen früher gesicherten Schlüssel ein, um zu deinem bestehenden Konto zurückzukehren.</string>
+    <string name="key_import_label">Privater Schlüssel</string>
     <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
     <string name="key_import_reveal">Schlüssel anzeigen</string>
     <string name="key_import_hide">Schlüssel ausblenden</string>
     <string name="key_import_detected">Erkannt: %1$s</string>
-    <string name="key_import_button">Importieren</string>
+    <string name="key_import_button">Konto prüfen</string>
+    <string name="key_import_hint_public_id">Das ist deine öffentliche Konto-ID (npub). Damit lässt sich der Zugang nicht wiederherstellen. Füge stattdessen den gesicherten privaten Schlüssel ein.</string>
+    <string name="key_import_hint_unrecognized">Das sieht nicht nach einem Schlüssel aus. Unterstützt: nsec, ncryptsec, 64-stelliger Hex-Wert oder Wiederherstellungswörter.</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
-    <string name="key_import_overwrite_title">Account wechseln?</string>
+    <string name="key_import_overwrite_title">Konto wechseln?</string>
     <string name="key_import_overwrite_text">Der Import wechselt zu dem importierten Schlüssel. Deine aktuellen Climbs und Listen bleiben gespeichert (werden nicht gelöscht), sind aber nur noch mit deinem jetzigen Schlüssel erreichbar — sie erscheinen wieder, wenn du ihn erneut importierst. Sichere deinen jetzigen Schlüssel.</string>
     <string name="key_import_overwrite_confirm">Trotzdem importieren</string>
     <string name="key_import_confirm_title">Ist das dein Schlüssel?</string>
-    <string name="key_import_confirm_button">Ja, importieren</string>
+    <string name="key_import_confirm_button">Dieses Konto verwenden</string>
     <string name="key_import_password_title">Passwort eingeben</string>
-    <string name="key_import_password_label">ncryptsec Passwort</string>
+    <string name="key_import_password_label">Passwort der Schlüsselsicherung</string>
     <string name="key_import_decrypt_button">Entschlüsseln</string>
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
-    <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
-    <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
-    <string name="settings_backup_device_local_note">Board-Auswahl und Browse-/Karten-Filter bleiben auf diesem Gerät und werden nicht aus einem Backup wiederhergestellt.</string>
+    <string name="settings_backup_title">Daten-Backup</string>
+    <string name="settings_backup_description">Inhalt und Schutz\nSichert Logbuch, Versuche, Listen, Notizen, eigene Boulder und Trainingsdaten. Die App verschlüsselt die Sicherung vor dem Hochladen auf öffentliche Server. Zum Wiederherstellen brauchst du denselben Kontoschlüssel.\n\nSichern und Wiederherstellen\nAktiviere Backups für geplante Sicherungen oder „Jetzt sichern“. Wiederherstellen geht auch bei ausgeschalteter Automatik.</string>
+    <string name="settings_backup_device_local_note">Nicht enthalten\nDie Board-Auswahl und Filter für Boulderliste und Karte bleiben auf diesem Gerät. Öffentliche Board-Kataloge lädst du bei Bedarf erneut herunter.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
-    <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
+    <string name="settings_backup_needs_key">Richte zuerst deinen Kontozugang ein.</string>
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
-    <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
-    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
+    <string name="settings_backup_status_no_key">Backup benötigt deinen Kontoschlüssel.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert. Auf diesem Gerät ist keine erfolgreiche Sicherung vermerkt.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
-    <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup aktiviert – auf diesem Gerät noch keine erfolgreiche Sicherung.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
     <string name="settings_backup_never_synced">Noch keine Sicherung</string>
     <string name="settings_backup_run_now">Jetzt sichern</string>
@@ -1998,10 +2142,7 @@
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_restored">Backup verarbeitet: %1$d Logbucheinträge, %2$d Listen. Bereits vorhandene Daten wurden nicht dupliziert.</string>
-    <string name="settings_backup_restore_wait_import">Boards werden noch geladen — Wiederherstellen ist verfügbar, sobald das fertig ist.</string>
-    <string name="import_board_data_not_ready">Die Board-Daten werden noch geladen. Der Import wird verfügbar, sobald der Katalogaufbau abgeschlossen ist.</string>
-    <string name="import_waiting_for_board_data">Der Import wartet auf den laufenden Katalogaufbau. Deine Datei bleibt ausgewählt und wird anschließend importiert.</string>
-    <string name="import_waiting_for_board_data_short">Warte auf Board-Daten…</string>
+    <string name="settings_backup_restore_catalogue_loading">Boards werden noch geladen. Die Wiederherstellung läuft trotzdem; Namen, Grade und eigene Climbs werden verknüpft, sobald sie da sind.</string>
     <string name="import_in_progress_short">Daten werden importiert…</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
@@ -2012,10 +2153,10 @@
          daran zu erinnern, dass ohne Schlüssel keine Wiederherstellung möglich ist. Zwei
          Body-Varianten: lokaler Schlüssel (= im Passwort-Manager sichern) vs. Amber
          (= Amber selbst sichern). -->
-    <string name="backup_key_warning_title">Sichere deinen CruxCoach-Account-Schlüssel</string>
-    <string name="backup_key_warning_body_local">Derselbe Schlüssel wie dein CruxCoach Account: identifiziert dich auf Nostr und verschlüsselt dein Cloud-Backup. Ohne ihn ist beides verloren wenn du dieses Gerät verlierst — auch wir können sie nicht wiederherstellen. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
-    <string name="backup_key_warning_body_amber">Dein CruxCoach-Account-Schlüssel liegt in Amber und verschlüsselt dein Cloud-Backup. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und sowohl Account als auch Cloud-Backup sind nicht mehr wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
-    <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
+    <string name="backup_key_warning_title">Schlüssel sichern</string>
+    <string name="backup_key_warning_body_local">Dein Daten-Backup lässt sich nur mit deinem Kontoschlüssel öffnen. Bewahre ihn in einem Passwortmanager auf, den du ohne dieses Handy öffnen kannst. CruxCoach kann einen verlorenen Schlüssel nicht ersetzen.</string>
+    <string name="backup_key_warning_body_amber">Dein Kontoschlüssel wird von Amber verwaltet. Sorge dafür, dass du ihn auch nach Verlust dieses Handys wiederherstellen kannst. Amber zu verbinden erstellt weder eine Schlüsselkopie noch ein Daten-Backup.</string>
+    <string name="backup_key_warning_view_account">Zur Schlüsselsicherung</string>
     <string name="backup_key_warning_acknowledged">Habe Schlüssel gesichert</string>
     <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
     <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen“ sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
@@ -2053,15 +2194,15 @@
     <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
-    <string name="settings_backup_delete_remote_dialog_body">Dies versieht dein Backup auf jedem Index-Server mit einem Lösch-Marker und fordert die verschlüsselten Backup-Daten von jedem Speicher-Server zur Entfernung an. Danach gilt:\n\n• Kein Gerät — weder dein eigenes noch ein fremdes — kann das Backup wiederherstellen, selbst wenn ein Speicher-Server die verschlüsselten Daten noch hält.\n• Das Aufräumen auf den Speicher-Servern ist Best-Effort. Ein Teilergebnis (z.B. 1/2 Server) ist kein Datenschutzproblem: Der Lösch-Marker garantiert, dass das Backup unwiederherstellbar ist.\n• Lokale Daten auf diesem Gerät bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_dialog_body">Die App fordert die konfigurierten Server zum Löschen deiner verschlüsselten Sicherung auf und veröffentlicht Löschmarker. Automatische Backups werden deaktiviert. Lokale Daten bleiben auf diesem Gerät.\n\nServer oder andere Personen können Kopien der verschlüsselten Daten und Schlüssel-Info behalten. Ein Löschmarker macht solche Kopien nicht unlesbar. Mit dem passenden nsec können sie weiterhin entschlüsselt werden.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
-    <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
+    <string name="settings_backup_delete_remote_done_header">Löschanfragen abgeschlossen.</string>
     <string name="settings_backup_delete_remote_partial_header">Remote-Backups nur teilweise gelöscht.</string>
     <string name="settings_backup_delete_remote_relays_line">Index-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
     <string name="settings_backup_delete_remote_blossom_line">Speicher-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
     <string name="settings_backup_delete_remote_no_blob">Keine Backup-Daten erfasst (nichts zu löschen dort).</string>
-    <string name="settings_backup_delete_remote_caveat">Hinweis: Backup-Server (Nostr-Relais + Blossom-CDNs unter der Haube) können Inhalte vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
+    <string name="settings_backup_delete_remote_caveat">Server-Bestätigungen beweisen nicht, dass alle Kopien gelöscht wurden. Auch ein anderer Client kann nur prüfen, was seine Server gerade zurückliefern.</string>
 
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup Onboarding (Schlüssel-Strings
          behalten Nostr-Branding, weil sie zur dezentralen Identität gehören —
@@ -2072,8 +2213,8 @@
     <string name="onboarding_nostr_key_hint_import_later">Du hast schon einen Nostr-Key? Du kannst ihn später unter Einstellungen → Nostr-Schlüssel importieren.</string>
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
     <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
-    <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nDer Inhalt wird mit deinen lokalen Daten zusammengeführt. Bereits vorhandene Einträge werden nicht dupliziert.</string>
-    <string name="onboarding_restore_progress_awaiting_board_sync">Warte auf den Download der Board-Datenbank… das kann bei frischer Installation einige Minuten dauern, bei langsamer Verbindung auch länger.</string>
+    <string name="onboarding_restore_dialog_body">Backup gefunden (%1$s). Deine Daten werden ergänzt; vorhandene Einträge bleiben erhalten und werden nicht doppelt importiert.</string>
+    <string name="restore_links_pending">Namen, Grade und eigene Climbs werden verknüpft, sobald der Board-Katalog geladen ist.</string>
     <string name="onboarding_restore_progress_active">Backup wird wiederhergestellt…</string>
 
     <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
@@ -2086,7 +2227,7 @@
     <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten“.</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
-    <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
+    <string name="onboarding_restart_confirm_body">Nach dem Verbinden deines Kontos startet CruxCoach neu und setzt die Wiederherstellung automatisch fort.</string>
     <string name="onboarding_kilter_step_title">Logbuch übernehmen</string>
     <string name="onboarding_kilter_step_subtitle">Optional: Nimm deinen bisherigen Verlauf mit. Wähle die App, die du vorher genutzt hast; vorhandene lokale Einträge bleiben erhalten.</string>
     <string name="onboarding_kilter_skip_hint">Noch kein Logbuch? Tippe „Fertig“. Alle Importe findest du später unter Einstellungen → Daten.</string>
@@ -2115,7 +2256,7 @@
     <string name="board_model_dialog_title_pick">Auf welchem Board kletterst du?</string>
     <string name="board_model_dialog_body_missing_with_sync">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync, danach kannst du dein Board-Modell auswählen.</string>
     <string name="board_model_dialog_body_missing_inline">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync unten auf diesem Screen, danach kannst du dein Board-Modell auswählen.</string>
-    <string name="board_model_dialog_hint">Die Auswahl bestimmt welche Griffe und LEDs angezeigt werden.</string>
+    <string name="board_model_dialog_hint">Wähle das Modell deines Boards. Die App verwendet die passende Griffanordnung und ordnet beim Senden die LEDs zu.</string>
     <string name="board_model_dialog_start_sync">Sync starten</string>
     <string name="board_model_dialog_close">Schließen</string>
     <string name="board_model_dialog_confirm">Bestätigen</string>
@@ -2231,7 +2372,7 @@
     <string name="whatsnew_gym_picker_action_later">Später</string>
 
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
-    <string name="settings_aurora_migration_desc">Begehungen, Versuche und Playlists aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
+    <string name="settings_aurora_migration_desc">Importiert Begehungen, Versuche und Boulderlisten aus einer Aurora-JSON-Datei, die du per E-Mail anfordern kannst. Die Dateiauswahl startet den Import; danach siehst du das Ergebnis. Ohne Anmeldung.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
     <string name="aurora_migration_what_happened_title">Was ist mit Aurora passiert?</string>
     <string name="aurora_migration_what_happened_body">Aurora Climbing hat Anfang 2026 die API abgeschaltet, und die offizielle Kilter-App ist auf ein neues Backend umgezogen. Aurora bedient einmalige Datenexport-Anfragen per E-Mail — die Datei, die sie zurückschicken, liest dieser Importer.</string>
@@ -2263,6 +2404,16 @@
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d importiert · %3$d schon vorhanden · %4$d übersprungen</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
     <string name="aurora_migration_import_another">Weitere Datei importieren</string>
+    <string name="aurora_migration_staged_title">Vorgemerkt</string>
+    <string name="aurora_migration_staged_body">%1$s und %2$s werden automatisch importiert, sobald der Kilter-Katalog geladen ist.</string>
+    <plurals name="aurora_migration_staged_ascents">
+        <item quantity="one">%1$d Begehung</item>
+        <item quantity="other">%1$d Begehungen</item>
+    </plurals>
+    <plurals name="aurora_migration_staged_attempts">
+        <item quantity="one">%1$d Versuch</item>
+        <item quantity="other">%1$d Versuche</item>
+    </plurals>
     <string name="aurora_migration_file_too_large">Datei zu groß für den direkten Import (%1$d MB). Aurora-Exports sind üblicherweise wenige MB groß — bei deutlich größeren Dateien bitte den Support kontaktieren.</string>
 
     <!-- Board climb history / Verlauf (FEAT-032) -->
@@ -2316,7 +2467,26 @@
     <string name="playlist_rest_decrease_second">Pausendauer um eine Sekunde verringern</string>
     <string name="playlist_rest_increase_second">Pausendauer um eine Sekunde erhöhen</string>
     <string name="playlist_rest_range">10 s bis 60 min</string>
-    <string name="playlist_generator_title">Trainingslisten-Generator</string>
+    <string name="playlist_generator_title">Generator</string>
+    <string name="playlist_generator_filters_hint">Selten gebrauchte Einschränkungen. Grade, Mindest-Begehungen und die Climb-Auswahl stellst du direkt im Generator ein.</string>
+    <string name="playlist_generator_grade_range">Trainingsgrade: %1$s\u00A0–\u00A0%2$s</string>
+    <string name="playlist_generator_grade_range_hint">Empfohlen aus deinem Logbuch. Passe den Bereich an, um die Einheit zu steuern; Pyramidenstufen werden gleichmäßig zwischen beiden Graden verteilt.</string>
+    <string name="playlist_generator_grade_range_hint_default">Startbereich ohne persönliche Daten. Passe den Bereich an, um die Einheit zu steuern; Pyramidenstufen werden gleichmäßig zwischen beiden Graden verteilt.</string>
+    <string name="playlist_generator_pyramid_per_tier">Climbs je Stufe: %1$d</string>
+    <string name="playlist_goal_pyramid">Pyramide</string>
+    <string name="playlist_goal_endurance">Ausdauer</string>
+    <string name="playlist_goal_hard">Am Limit</string>
+    <string name="playlist_goal_custom">Eigene Einheit</string>
+    <string name="playlist_generator_variant">Variante</string>
+    <string name="playlist_generator_section_size">Umfang</string>
+    <string name="playlist_generator_use_recommended">Zurück zum empfohlenen Bereich</string>
+    <string name="playlist_generator_min_ascents">Mindest-Begehungen</string>
+    <string name="playlist_generator_min_ascents_info">Nur Climbs, die mindestens so viele Leute geschafft haben. Mehr Begehungen bedeuten meist verlässlichere Grade und bessere Climbs — aber weniger Auswahl, sodass eine Einheit kürzer ausfallen kann.</string>
+    <string name="playlist_generator_more_filters">Weitere Filter</string>
+    <string name="playlist_generator_more_filters_active">Weitere Filter: %1$s</string>
+    <string name="playlist_generator_total">%1$d Climbs · etwa %2$d min · %3$s–%4$s</string>
+    <string name="playlist_generator_decrease">%1$s verringern</string>
+    <string name="playlist_generator_increase">%1$s erhöhen</string>
     <string name="playlist_generator_type">Trainingstyp</string>
     <string name="playlist_generator_duration">Dauer: %1$d min</string>
     <string name="playlist_generator_position">Wo bist du in deinem Training?</string>
@@ -2326,21 +2496,21 @@
     <string name="playlist_generator_name_title">Liste benennen</string>
     <string name="playlist_generator_summary">%1$d Climbs · %2$d Pausen · ~%3$d min · %4$s–%5$s</string>
     <string name="playlist_generator_profile">Dein Logbuch: Max %1$s · Flash %2$s</string>
-    <string name="playlist_generator_profile_empty">Noch keine Logbuch-Daten — die Grade basieren auf einem ~V5-Standard. Logge ein paar Climbs für persönliche Empfehlungen.</string>
+    <string name="playlist_generator_profile_empty">Auf diesem Board sind noch zu wenige Begehungen geloggt — die Grade starten mit einem allgemeinen Standardwert. Logge hier ein paar Boulder mehr für persönliche Empfehlungen.</string>
     <string name="playlist_generator_downgraded">Trainingsende: Maximalkraft wird auf Volume heruntergestuft — ermüdete Limit-Versuche sind ein Verletzungsrisiko.</string>
     <string name="playlist_generator_default_profile">Die Empfehlungen nutzen Standard-Grade, bis dein Logbuch ein paar Sends enthält.</string>
     <string name="playlist_generator_error">Nicht genug passende Climbs auf diesem Board — probiere einen anderen Typ, Winkel oder weniger Boulder.</string>
     <string name="playlist_generator_error_manual">Auf diesem Board gibt es keine Climbs in diesem Gradbereich — mach ihn weiter, oder probiere einen anderen Winkel.</string>
     <string name="playlist_type_pyramid">Pyramide</string>
-    <string name="playlist_type_pyramid_desc">Klettere eine Grad-Pyramide — breite Basis, eine harte Spitze etwa einen V-Grad unter deinem Max, damit jede Stufe auch getoppt wird.</string>
-    <string name="playlist_type_power_endurance">Kraftausdauer</string>
-    <string name="playlist_type_power_endurance_desc">4x4-Sets deutlich unter Max mit kurzen Pausen — Pump-Training.</string>
-    <string name="playlist_type_volume">Volume</string>
-    <string name="playlist_type_volume_desc">Viele Probleme um deinen Flash-Grad — Mileage und Bewegungsqualität.</string>
-    <string name="playlist_type_limit">Hartes Bouldern</string>
-    <string name="playlist_type_limit_desc">Wenige ganze Boulder an oder knapp über deinem Max, je mehrere Versuche, volle Pausen dazwischen. Kein klassisches Limit-Bouldern — das arbeitet an wenigen Zügen am absoluten Limit, und ein ganzer Boulder lässt sich darauf nicht kürzen. Unter „Manuell" baust du dir das selbst.</string>
+    <string name="playlist_type_pyramid_desc">Grad-Pyramide: breite Basis, Spitze einen Grad unter deinem Arbeitsniveau, damit jede Stufe getoppt wird.</string>
+    <string name="playlist_type_power_endurance">4x4 Kraftausdauer</string>
+    <string name="playlist_type_power_endurance_desc">Sets aus denselben Bouldern knapp unter deinem Flash-Grad, kurze Pausen — Pump-Training.</string>
+    <string name="playlist_type_volume">Volumen (viele Boulder)</string>
+    <string name="playlist_type_volume_desc">Viele Boulder bis zu deinem Flash-Grad — Kilometer und Bewegungsqualität.</string>
+    <string name="playlist_type_limit">Harte Boulder</string>
+    <string name="playlist_type_limit_desc">Wenige neue Boulder von deinem Arbeitsniveau bis zu deinem Max. Mehrere Versuche je Boulder, volle Pausen dazwischen.</string>
     <string name="playlist_type_projecting">Projekte</string>
-    <string name="playlist_type_projecting_desc">Arbeite an deinen offenen Projekten — Climbs, die du versucht, aber noch nicht geschafft hast.</string>
+    <string name="playlist_type_projecting_desc">Zuerst deine offenen Projekte — versucht, aber noch nicht geschafft. Sonst neue Boulder ab deinem Max aufwärts.</string>
     <string name="playlist_position_cold">Nicht aufgewärmt</string>
     <string name="playlist_position_warm">Aufgewärmt</string>
     <string name="playlist_position_end">Trainingsende</string>
@@ -2376,6 +2546,7 @@
     <string name="playlist_selection_all">Alle</string>
     <string name="list_playback_title">Liste abspielen</string>
     <string name="list_playback_start">Starten</string>
+    <string name="list_playback_resume">Fortsetzen</string>
     <string name="list_playback_source">Abspielquelle</string>
     <string name="list_playback_source_list">Liste</string>
     <string name="list_playback_source_plan">Trainingsablauf</string>
@@ -2393,7 +2564,7 @@
     <string name="list_playback_unavailable_hint">%1$d gespeicherte Climbs sind lokal nicht verfügbar und werden nicht einbezogen.</string>
     <string name="list_playback_error_empty">Es sind keine lokal verfügbaren Climbs abspielbar.</string>
     <string name="list_playback_error_multiple_boards">Dieser Trainingsablauf enthält mehrere Board-Konfigurationen. Teile ihn in einen Ablauf pro Board auf.</string>
-    <string name="list_plan_membership_info">Dieser Ablauf steuert nur das Abspielen. Neue Listen-Climbs werden automatisch mit einer geschätzten Pause angehängt. Schritte zu entfernen oder zu sortieren ändert die Liste nicht.</string>
+    <string name="list_plan_membership_info">Liste und Ablauf\nDieser Ablauf steuert das Abspielen. Schritte zu entfernen oder umzusortieren ändert die Liste nicht.\n\nNeue Boulder\nNeue Boulder aus der Liste werden automatisch mit einer geschätzten Pause angehängt. Wiederholte Schritte gehören zum Ablauf; sie erzeugen keine doppelten Listeneinträge.</string>
     <string name="list_plan_duplicate_step">Climb wiederholen</string>
     <string name="list_plan_reset_title">Trainingsablauf neu erstellen?</string>
     <string name="list_plan_reset_message">Die aktuelle Reihenfolge, Wiederholungen und Pausen werden durch die Listenreihenfolge mit automatisch geschätzten Pausen ersetzt.</string>
@@ -2402,16 +2573,16 @@
     <string name="list_plan_clear_message">Die Liste und alle Climbs bleiben erhalten. Nur die eigene Abspielreihenfolge wird entfernt.</string>
     <string name="list_plan_clear_action">Trainingsablauf entfernen</string>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
-    <string name="relay_share_description">Dieses Handy bleibt mit dem Board verbunden und leitet Boulder von anderen Handys an die Wand weiter.</string>
-    <string name="relay_share_button">Für andere Board-Apps freigeben</string>
-    <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere direkte App-Verbindungen. Verbinde die andere Board-App direkt mit der Wand; ein CruxRelay ist nicht nötig.</string>
-    <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps bereits über eigene Layer. CruxRelay kann diese Layer-Identitäten derzeit nicht sicher weiterleiten; verbinde weitere Apps direkt mit dem Board.</string>
+    <string name="relay_share_description">Andere Handys senden ihre Boulder über dich ans Board.</string>
+    <string name="relay_multi_connect_direct">Dieses Board erlaubt mehrere Apps gleichzeitig – CruxRelay ist nicht nötig.</string>
+    <string name="relay_unsupported_explanation">Quantum verwaltet mehrere Apps über eigene Layer. Verbinde weitere Apps direkt mit dem Board.</string>
     <string name="relay_chip_text">Relay für %1$s · %2$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
-    <string name="settings_relay_manual_start">CruxRelay manuell starten</string>
-    <string name="settings_relay_manual_start_desc">Standardmäßig aus: CruxRelay startet und endet mit der Board-Verbindung. Nur aktivieren, wenn du es manuell starten möchtest.</string>
+    <string name="settings_relay_manual_start">Board für andere Apps freigeben</string>
+    <string name="settings_relay_manual_start_desc">Andere lassen über dein Handy Boulder am Board leuchten – für Boards mit nur einer Verbindung. Läuft, solange ein Board verbunden ist.</string>
+    <string name="relay_status_waiting">Startet, sobald ein Board verbunden ist.</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxCoach…\". Andere Board-Apps können Climbs über CruxCoach senden. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
+    <string name="relay_disclosure_text">Dein Handy heißt währenddessen „CruxCoach…“ und nimmt Boulder anderer Board-Apps an. Der zuletzt gesendete Boulder leuchtet. Danach heißt dein Handy wieder wie vorher.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
@@ -2493,10 +2664,10 @@
          übersetzt sie ebenfalls nicht) — sie kommen aus MoonBoardHoldSets,
          nicht von hier. -->
     <string name="moonboard_hold_sets_title">Griffsets</string>
-    <string name="moonboard_hold_sets_subtitle">Welche Griffe an deinem Board hängen</string>
+    <string name="moonboard_hold_sets_subtitle">Wähle die Griffsets, die an deinem MoonBoard montiert sind. Die App zeigt dazu passende Boulder. Bei allen montierten Sets wähle das vollständige Setup.</string>
     <string name="moonboard_setup_complete">Komplettes %1$s Setup</string>
-    <string name="moonboard_setup_complete_hint">Das Bundle wie verkauft — alle Griffsets</string>
-    <string name="moonboard_setup_partial">Mir fehlen Griffe</string>
+    <string name="moonboard_setup_complete_hint">Alle Griffsets dieses Modells sind montiert.</string>
+    <string name="moonboard_setup_partial">Du hast nicht alle Griffe?</string>
     <string name="moonboard_hold_sets_summary">%1$d von %2$d Griffsets</string>
     <string name="moonboard_hold_sets_count">%1$s Griffe</string>
     <string name="moonboard_hold_sets_climbable">%1$s von %2$s Problemen kletterbar</string>
@@ -2506,19 +2677,19 @@
     <string name="cd_back">Zurück</string>
     <string name="ble_mesh_climb">Im Mesh auf dem Board</string>
     <string name="settings_moon_csv_title">MoonBoard-Logbuch importieren</string>
-    <string name="settings_moon_csv_desc">Übernimm dein Logbuch aus der installierten Moon-App oder importiere ihre CSV.</string>
-    <string name="moon_csv_title">MoonBoard-Logbuchimport</string>
+    <string name="settings_moon_csv_desc">Übernimmt dein Logbuch aus der Moon-App oder einer exportierten CSV-Datei. Danach siehst du importierte und nicht zugeordnete Einträge.</string>
+    <string name="moon_csv_title">MoonBoard-Import</string>
     <string name="moon_csv_intro">Übernimm deinen vorhandenen MoonBoard-Verlauf in CruxCoach. Die direkte Übertragung auf dem Gerät ist am schnellsten; CSV bleibt als Ausweichweg verfügbar.</string>
     <string name="moon_device_title">Aus der installierten Moon-App übernehmen</string>
     <string name="moon_device_explanation">Android bittet dich einmalig, eine Bedienungshilfe zu aktivieren. Nach dem Start öffnet CruxCoach Moon und liest ausschließlich die sichtbaren Logbook-Beschriftungen der Moon-App auf diesem Gerät. Andere Apps können nicht gelesen werden; dein Moon-Passwort wird nie abgefragt. Am Ende der Übertragung gibt CruxCoach den Bedienungshilfen-Zugriff automatisch wieder frei.</string>
-    <string name="moon_device_leave_alone">Wichtig: Lass das Gerät nach dem Start entsperrt und bis zum Abschluss der Übertragung in Ruhe. Wechsle nicht die App und bediene Moon nicht selbst.</string>
+    <string name="moon_device_leave_alone">Während der Übertragung: Telefon entsperrt lassen und nicht bedienen.</string>
     <string name="moon_device_enable">Einmaligen Zugriff aktivieren</string>
     <string name="moon_device_restricted_title">Zugriff in zwei Schritten erlauben</string>
-    <string name="moon_device_restricted_explanation">Android meldet aktuell, dass der Bedienungshilfen-Zugriff für CruxCoach eingeschränkt ist. Öffne die App-Info und wähle „Eingeschränkte Einstellungen zulassen“ (auf manchen Geräten im Überlaufmenü), dann kehre zurück. CruxCoach prüft das Ergebnis und öffnet nur noch die tatsächlich fehlende Einstellung. Ist der Zugriff bereits erlaubt, wird dieser Schritt automatisch übersprungen.</string>
+    <string name="moon_device_restricted_explanation">1. App-Info öffnen.\n2. Im Menü „Eingeschränkte Einstellungen zulassen“ wählen.\n3. Zu CruxCoach zurückkehren und die Bedienungshilfe aktivieren.</string>
     <string name="moon_device_open_app_info">App-Info öffnen</string>
     <string name="moon_device_start">Automatische Übertragung starten</string>
     <string name="moon_device_running">Übertragung läuft…</string>
-    <string name="moon_device_captured">%1$d Logbook-Einträge gefunden</string>
+    <string name="moon_device_captured">%1$d Logbuch-Einträge gefunden</string>
     <string name="moon_device_unresolved">%1$d Einträge konnten nicht eindeutig dem lokalen MoonBoard-Katalog zugeordnet werden.</string>
     <string name="moon_device_service_label">MoonBoard-Logbuchübertragung</string>
     <string name="moon_device_service_description">Vom Nutzer gestartete, lokale Übernahme sichtbarer Logbook-Einträge aus der offiziellen Moon-App nach CruxCoach. Auf das Moon-App-Paket beschränkt.</string>
@@ -2534,6 +2705,8 @@
     <string name="moon_csv_done">Import abgeschlossen</string>
     <string name="moon_csv_failed">Import fehlgeschlagen</string>
     <string name="moon_csv_summary">%1$d Begehungen und %2$d Projekte importiert; %3$d Duplikate übersprungen.</string>
+    <string name="moon_csv_error_not_moon_export">Das ist kein MoonBoard-Logbuchexport. Die CSV muss die Spalten ProblemId, Grade, Tries, Attempts, Rating und Date enthalten.</string>
+    <string name="moon_csv_error_row">Die MoonBoard-CSV konnte nicht gelesen werden: %1$s</string>
     <string name="moon_csv_unresolved">%1$d ProblemIds wurden im lokalen MoonBoard-Katalog nicht gefunden. Synchronisiere die Boarddaten und importiere dieselbe Datei erneut.</string>
     <string name="moon_csv_another">Weitere Datei importieren</string>
     <string name="moon_import_result_title">Übertragung abgeschlossen</string>
@@ -2630,7 +2803,10 @@
     <string name="board_layers_open">Board-Ebenen öffnen</string>
     <string name="board_layer_group_owns_board">Diese geteilte Session steuert die Wand. Layer können geändert werden, wenn keine geteilte Session sie steuert – auch in einer lokalen, nicht beitretbaren Playlist.</string>
     <string name="export_category_climb_notes">Private Climb-Notizen</string>
-    <string name="import_result_notes">%1$d Climb-Notizen</string>
+    <plurals name="import_result_notes">
+        <item quantity="one">%1$d Climb-Notiz</item>
+        <item quantity="other">%1$d Climb-Notizen</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Auf diesem Board liegt noch kein Climb, also hat der Würfel nichts zum Abgleichen. Füge zuerst einen Climb hinzu.</string>
     <string name="board_layer_color_green">Grün</string>
     <string name="board_layer_color_cyan">Cyan</string>
@@ -2697,4 +2873,281 @@
         <item quantity="one">Schon einmal in der Playlist</item>
         <item quantity="other">Schon %1$d mal in der Playlist</item>
     </plurals>
+    <string name="beta_videos">Beta-Videos (%1$d)</string>
+    <string name="beta_video_open">Beta-Video %1$d öffnen</string>
+    <string name="beta_video_other_angle">Video bei %1$d°</string>
+    <string name="beta_video_open_failed">Keine App und kein Browser konnte dieses Beta-Video öffnen.</string>
+    <string name="beta_video_external_hint">In der App des Anbieters oder im Browser ansehen.</string>
+    <string name="beta_video_number">Beta-Video %1$d</string>
+    <string name="beta_video_current_angle">%1$d° · Aktueller Winkel</string>
+    <string name="beta_video_close">Beta-Videos schließen</string>
+    <string name="board_stats_problem_outcomes_hint">Jeder Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht.</string>
+    <string name="whatsnew_023_title">Neu in 0.2.3</string>
+    <string name="whatsnew_023_body">• Beta-Videos – Play-Symbol in den Boulder-Details.\n• Neue Kopfzeile – Board, Winkel, Bluetooth und Filter direkt erreichbar.\n• Filter – übersichtlicher, mit „Geschaffte ausschließen“.\n• Board-Karte – Hallen und Boards nach Ort oder Name suchen.\n• Kataloge wählen – nur die Boards laden, die du brauchst.\n• Statistik – jeder Boulder zählt einmal: Flash, geschafft oder versucht.</string>
+    <string name="whatsnew_023_hint">Außerdem: MoonBoard-Griffsets in der Board-Auswahl, klareres Konto &amp; Backup, Einführung im Logo-Menü.</string>
+    <string name="board_filter_status_hint">Wähle einen oder mehrere Status. Alle hebt die Auswahl auf.</string>
+    <string name="board_filter_exclude_sent">Geschaffte ausschließen</string>
+
+    <!-- Task-based settings navigation (0.2.3). -->
+    <string name="settings_group_climbing">Beim Klettern</string>
+    <string name="settings_group_app_help">App &amp; Hilfe</string>
+    <string name="settings_page_display">Darstellung &amp; Sprache</string>
+    <string name="settings_summary_display">Sprache, Design und Schwierigkeitsskala der App wählen. Festlegen, ob das Handy-Display in der Board-Ansicht anbleibt.</string>
+    <string name="settings_page_board">Board &amp; Bluetooth</string>
+    <string name="settings_summary_board">Board für die App wählen, die LEDs am Board einstellen und die Bluetooth-Verbindung verwalten.</string>
+    <string name="settings_page_timers">Timer &amp; Wiedergabe</string>
+    <string name="settings_summary_timers">Pausentimer in der App und das schrittweise Anzeigen von Routen einstellen.</string>
+    <string name="settings_page_sharing">Teilen in der Nähe</string>
+    <string name="settings_summary_sharing">Boulder mit anderen in der Nähe teilen. Mit CruxRelay können sie über dein Handy die Board-LEDs steuern.</string>
+    <string name="settings_page_account">CruxCoach-Konto</string>
+    <string name="settings_summary_account">Öffentliches Profil bearbeiten und Kontoschlüssel verwalten, auch mit Amber.</string>
+    <string name="settings_page_imports">Board-Konten &amp; Importe</string>
+    <string name="settings_summary_imports">Kilter verbinden oder Logbücher aus MoonBoard und Aurora importieren.</string>
+    <string name="settings_summary_catalogues">Board-Kataloge herunterladen, Status prüfen und automatische Updates planen.</string>
+    <string name="settings_page_backup">Sichern &amp; übertragen</string>
+    <string name="settings_summary_backup">Daten in der Cloud sichern und wiederherstellen. CruxCoach-Daten als Dateien importieren und exportieren.</string>
+    <string name="settings_page_delete">Lokale Daten löschen</string>
+    <string name="settings_summary_delete">Kataloge oder persönliche Board-Daten gezielt löschen. Vorher bestätigst du die Auswahl.</string>
+    <string name="settings_summary_updates">App-Updates suchen und automatischen Download einstellen.</string>
+    <string name="settings_page_support">Fehler &amp; Funktionswünsche</string>
+    <string name="settings_summary_support">Fehler melden, Funktionen vorschlagen und den Entwickler kontaktieren. Benachrichtigungen und automatische Absturzberichte einstellen.</string>
+    <string name="settings_page_about">Über CruxCoach</string>
+    <string name="settings_summary_about">Version, Lizenzen, Datenschutz und Quellcode oder die App teilen.</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Hell</string>
+    <string name="settings_theme_dark">Dunkel</string>
+    <string name="settings_account_key_reminder">Dein Schlüssel öffnet dein Konto. Bewahre ihn sicher auf – er lässt sich nicht zurücksetzen.</string>
+    <string name="settings_account_explanation_show">Wie funktioniert mein Nostr-Konto?</string>
+    <string name="settings_account_explanation_hide">Konto-Erklärung ausblenden</string>
+    <string name="settings_active_board_title">Aktives Board</string>
+    <string name="settings_active_board_desc">Wählt Marke und Modell für die Boulderliste und Board-Ansicht in der App. „Ändern“ wechselt das aktive Board; die Markenkarten darunter öffnen nur die Einstellungen der jeweiligen Marke.</string>
+    <string name="ux_profile_identity">Name und Bilder</string>
+    <string name="ux_profile_links">Links und Adressen (optional)</string>
+    <string name="ux_plan_title">Ablauf</string>
+    <string name="ux_account_help">Kontozugang\nDein privater Schlüssel funktioniert wie ein Passwort. Halte ihn geheim und bewahre ihn außerhalb dieses Handys auf. Er lässt sich nicht zurücksetzen.\n\nDeine Daten\nEine Schlüsselkopie ist kein Daten-Backup. Logbuch und Listen benötigen eine zusätzliche Sicherung.\n\nOptionale Hilfen\nAmber kann deinen Schlüssel in einer eigenen App verwalten. Deine öffentliche Konto-ID darfst du teilen; sie stellt den Zugang aber nicht wieder her.</string>
+    <string name="ux_lists_help">Listen\nJede Liste enthält einen Boulder höchstens einmal. Favoriten sind eine integrierte Liste.\n\nAbspielen\nEin optionaler Ablauf ergänzt Wiederholungen, Winkel und Pausen. Ein abgespielter Schritt ist noch keine Begehung. Versuche und erfolgreiche Begehungen erfasst du im Logbuch.\n\nVerlauf\nDer Verlauf erfasst an die Board-LEDs übertragene Boulder. Er ist vom Kletterlogbuch getrennt.</string>
+    <string name="ux_logbook_help">Einträge\nBegehungen sind erfolgreiche Logeinträge, auch Wiederholungen. Versuche meint hier Einträge ohne erfolgreiche Begehung. Ein Eintrag kann mehrere Kletterversuche enthalten.\n\nFilter\nErgebnis, Board und Winkel grenzen diese Liste ein. Der in der Statistik gewählte Zeitraum gilt auch für diese Liste; der Board-Filter der Statistik ist unabhängig. Einen Boulder am Board aufleuchten zu lassen erfasst keinen Kletterversuch.</string>
+    <string name="ux_stats_help">Umfang\nBegehungen zählen erfolgreiche Einträge, auch Wiederholungen. Versuche summieren die erfassten Kletterversuche aller Einträge einschließlich erfolgreicher Begehungen; jeder Eintrag zählt mindestens einmal.\n\nBoulder-Ergebnisse\nJeder Boulder zählt pro Board-Familie im gewählten Zeitraum einmal, über alle Winkel: Flash, sonst geschafft, sonst versucht. Für einen Flash muss der erste erfasste Eintrag zu diesem Boulder bei diesem Winkel erfolgreich sein, mit höchstens einem Versuch. Frühere erfolglose Einträge schließen ihn aus, auch außerhalb des gewählten Zeitraums. Fehlende Einträge begrenzen diese Aussage. Die Flash-Quote teilt Flashes durch erfolgreiche Einträge einschließlich Wiederholungen.\n\nAktivität und Zeitdiagramm\nSie zählen Logeinträge, auch erfolglose, statt einzelner Kletterversuche oder nur erfolgreicher Begehungen. Rekorde beziehen sich auf die gesamte Historie; die übrigen Diagramme auf den gewählten Zeitraum.</string>
+    <string name="ux_restore_consequence">Wiederherstellen nutzt das bisherige Konto und aktiviert das verschlüsselte Backup. Den Kontowechsel bestätigst du vor dem Fortfahren.</string>
+    <string name="ux_logbook_unsent_attempts">Ohne Begehung</string>
+    <string name="ux_sent_climbs">Geschaffte Boulder</string>
+    <string name="ux_sent_climbs_grade">Geschaffte Boulder und Wiederholungen nach Grad</string>
+    <string name="ux_later_send">Später geschafft</string>
+    <string name="ux_outcome_donut_hint">Jeder geschaffte Boulder zählt pro Board-Familie in diesem Zeitraum einmal, über alle Winkel: Flash oder später geschafft. Erfolglose Boulder gehören nicht zu diesem Ring.</string>
+    <string name="ux_grade_progression_help">Vierwochenfenster\nJeder Punkt nutzt bis zu drei der schwersten verschiedenen Boulder-Winkel-Kombinationen mit erfolgreicher Begehung in dieser und den drei vorherigen Wochen, innerhalb des gewählten Zeitraums. Wiederholungen beim selben Winkel zählen einmal.\n\nNiveau\nBei drei Ergebnissen gilt der mittlere Grad, bei zwei deren Durchschnitt, bei einem dessen Grad. Es zählen nur erfolgreiche Einträge mit bekanntem Grad.</string>
+
+    <!-- Profile and account task pages -->
+    <string name="account_section_expanded">Aufgeklappt</string>
+    <string name="account_section_collapsed">Zugeklappt</string>
+    <string name="account_current_access">Aktueller Zugang</string>
+    <string name="account_access_local">Auf diesem Gerät</string>
+    <string name="account_access_amber">Mit Amber</string>
+    <string name="account_access_local_summary">CruxCoach verwaltet deinen Kontoschlüssel auf diesem Gerät.</string>
+    <string name="account_switch_title">Konto wechseln</string>
+    <string name="account_switch_help">Vorhandenes Konto nutzen\nImportiere dessen privaten Schlüssel. Deine bisherigen Daten bleiben gespeichert und sind mit deinem bisherigen Schlüssel wieder zugänglich. Sichere ihn vorher.</string>
+    <string name="account_switch_amber_help">Wechselt zum Kontoschlüssel, den CruxCoach auf diesem Gerät verwaltet, und startet die App neu. Verbinde Amber erneut, um zu deinem Amber-Konto zurückzukehren.</string>
+    <string name="account_import_action">Gesicherten Schlüssel verwenden</string>
+    <string name="account_amber_title">Schlüssel-App Amber</string>
+    <string name="account_amber_connected">Mit diesem Konto verbunden</string>
+    <string name="account_amber_optional">Optional: Schlüssel in einer eigenen App verwalten</string>
+    <string name="account_amber_help">Amber verwaltet deinen privaten Schlüssel in einer eigenen App auf deinem Handy und bestätigt Anfragen von CruxCoach. CruxCoach erhält diesen Schlüssel nicht. Beim Verbinden wird das Amber-Konto aktiv und CruxCoach startet neu.</string>
+    <string name="account_amber_connect">Amber verbinden</string>
+    <string name="account_public_id">Dein Konto</string>
+    <string name="account_public_id_help">Öffentliche Konto-ID (npub)\nDamit können andere dein Konto finden. Du darfst sie teilen. Sie ermöglicht keinen Zugriff auf dein Konto.</string>
+    <string name="account_copy_id">Konto-ID kopieren</string>
+    <string name="account_recovery_title">Kontozugang sichern</string>
+    <string name="account_recovery_help">Dein Kontoschlüssel\nDein privater Schlüssel funktioniert wie ein Kontopasswort. Er beginnt mit „nsec“. Wer ihn besitzt, kann dein Konto nutzen; teile ihn niemals. CruxCoach kann ihn nicht zurücksetzen oder ersetzen.\n\nSicher aufbewahren\nKopiere ihn in einen Passwortmanager, auf den du auch nach Verlust dieses Handys zugreifen kannst. Kopieren allein bedeutet noch nicht, dass er sicher aufbewahrt ist.\n\nDeine Daten\nDer Schlüssel stellt den Kontozugang wieder her. Für Logbuch, Listen und Trainingsdaten brauchst du zusätzlich ein bereits erstelltes Daten-Backup.</string>
+    <string name="account_backup_acknowledged">Von dir als gesichert bestätigt</string>
+    <string name="account_copy_secret">Schlüssel sichern</string>
+    <string name="profile_cover_title">Titelbild</string>
+    <string name="profile_cover_empty">Optionaler Hintergrund für dein Profil</string>
+    <string name="profile_cover_selected">Bild ausgewählt · ändern oder entfernen</string>
+    <string name="profile_links_summary">Webseite, Nostr-Adresse und Lightning</string>
+    <string name="profile_lightning_help">Optionale Adresse für Lightning-Zahlungen, etwa name@domain. Sie wird erst geprüft, nachdem du dein Profil öffentlich veröffentlicht hast.</string>
+    <string name="profile_nostr_address_help">Optionale Nostr-Adresse wie name@domain (NIP-05). Nach der öffentlichen Profilveröffentlichung prüft CruxCoach, ob sie zu deinem Konto gehört.</string>
+    <string name="profile_public_title">Öffentliches Profil</string>
+    <string name="profile_public_summary">Alle Profilfelder und Bilder auf Nostr teilen. Erst nach deiner Bestätigung.</string>
+    <string name="profile_community_title">Community</string>
+    <string name="profile_community_summary">Boulder-Beiträge und Verbindungsstatus</string>
+    <string name="profile_links_check_failed">Adressprüfung fehlgeschlagen · Details öffnen</string>
+    <string name="profile_community_error">Verbindungsfehler · Details öffnen</string>
+    <string name="profile_picture_title">Profilbild</string>
+    <string name="account_methods_title">Schlüssel verwalten</string>
+    <string name="account_method_local">In CruxCoach</string>
+    <string name="account_method_active">Aktiv</string>
+    <string name="account_method_amber">Mit Amber</string>
+    <string name="account_method_local_body">CruxCoach speichert deinen privaten Schlüssel auf diesem Gerät. Du sicherst ihn selbst für die Wiederherstellung.</string>
+    <string name="account_method_amber_body">Amber verwaltet deinen Schlüssel in einer separaten App. CruxCoach fragt dort Freigaben an, ohne den Schlüssel zu erhalten.</string>
+    <string name="account_amber_backup">Dein Schlüssel liegt in Amber. Sichere ihn dort außerhalb dieses Handys.</string>
+    <string name="account_amber_choose">Konto in Amber auswählen</string>
+    <string name="account_local_copy_available">Auf diesem Gerät ist noch ein Schlüssel in CruxCoach gespeichert. Vor dem Wechsel zeigen wir dir das zugehörige Konto.</string>
+    <string name="account_use_local">Gespeicherten Schlüssel verwenden</string>
+    <string name="account_backup_finish_title">Schlüssel sicher aufbewahren</string>
+    <string name="account_backup_finish_body">Füge den kopierten nsec in deinen Passwortmanager oder in Amber als bestehenden Schlüssel ein. Die Zwischenablage wird nach kurzer Zeit geleert. Bestätige erst, wenn du ihn sicher aufbewahrt hast – auch außerhalb dieses Handys.\n\nDer Schlüssel sichert deinen Kontozugang. Für Logbuch, Boulder und Listen brauchst du zusätzlich ein Daten-Backup.</string>
+    <string name="account_access_change_title">Schlüsselverwaltung ändern?</string>
+    <string name="account_access_same">Du verwendest weiterhin dasselbe Konto:</string>
+    <string name="account_access_different">Du wechselst zu diesem Konto. Deine bisherigen Boulder und Listen bleiben beim bisherigen Konto. Sichere dessen Zugang, damit du zurückkehren kannst.</string>
+    <string name="account_access_to_amber">Amber übernimmt die Freigaben. Eine vorhandene Schlüsselkopie in CruxCoach bleibt zunächst erhalten.</string>
+    <string name="account_access_to_local">CruxCoach verwaltet den Schlüssel auf diesem Gerät. Eine bestehende Amber-Verbindung wird getrennt.</string>
+    <string name="account_access_confirm">Bestätigen und fortfahren</string>
+    <string name="account_delete_copy_title">Schlüsselkopie entfernen?</string>
+    <string name="account_delete_copy_body">Entferne die Kopie nur, wenn du diesen Schlüssel anderweitig sicher aufbewahrt hast. Er kann zu einem anderen Konto als deinem Amber-Konto gehören. Ohne ihn kannst du zu diesem Konto nicht zurückkehren. Dein Schlüssel in Amber bleibt erhalten.</string>
+    <string name="account_remove_local_copy">Lokale Schlüsselkopie entfernen…</string>
+    <string name="account_import_replaces_local">Dabei wird ein anderer, in CruxCoach gespeicherter Schlüssel ersetzt. Sichere ihn vorher, um den Zugang zu diesem Konto zu behalten.</string>
+    <string name="account_import_error">Schlüssel konnte nicht eingelesen werden. Prüfe den vollständigen Schlüssel und gegebenenfalls das Passwort.</string>
+    <string name="account_import_checking">Schlüssel wird geprüft…</string>
+    <string name="account_recovery_words">Wiederherstellungswörter</string>
+    <string name="account_show_qr">Öffentliche Konto-ID als QR-Code anzeigen</string>
+    <string name="account_continue">Weiter</string>
+    <string name="account_access_error">Schlüsselverwaltung konnte nicht geändert werden. Öffne die Kontoverwaltung erneut und prüfe das aktive Konto.</string>
+    <string name="map_stats_brand_distribution">Board-Marken</string>
+    <string name="map_stats_unknown_layout">Layout unbekannt</string>
+    <string name="map_stats_scope">Alle erfassten Boards, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards haben.</string>
+    <string name="account_backup_priority">Dein Schlüssel gibt dir Zugang zum Konto. Bewahre ihn außerhalb dieses Handys auf – er lässt sich nicht zurücksetzen.</string>
+    <string name="account_amber_save_steps">Für dein aktuelles Konto: nsec oben kopieren und in Amber als bestehenden Schlüssel importieren. Danach hier genau dieses Konto verbinden. Nur Amber zu verbinden erstellt keine Sicherung. Bewahre auch eine Sicherung außerhalb dieses Handys auf.</string>
+    <string name="account_restore_title">Bestehendes Konto wiederherstellen</string>
+    <string name="account_restore_body">Mit einem bereits gesicherten Schlüssel zurück in dein Konto.</string>
+    <string name="account_public_optional">Optional: öffentliche Konto-ID. Kein Schlüssel zur Wiederherstellung.</string>
+    <string name="board_download_selection_title">Boards zum Herunterladen</string>
+    <string name="board_download_selection_description">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Abwählen behält bereits geladene Daten und dein Logbuch.</string>
+    <string name="board_download_selection_summary">Board-Auswahl: %1$d ausgewählt</string>
+    <string name="board_download_selection_empty">Keine automatischen Board-Downloads. Wähle Boards aus, um Daten herunterzuladen.</string>
+    <string name="board_download_disabled">Downloads für dieses Board sind abgewählt. Du kannst sie in der Board-Auswahl für Downloads aktivieren.</string>
+    <string name="board_download_not_selected">Von Downloads abgewählt</string>
+    <string name="onboarding_download_selection_title">Wähle die Board-Kataloge zum Herunterladen.</string>
+    <string name="onboarding_download_selection_failed">Die Download-Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
+    <string name="board_picker_download_title">%1$s herunterladen?</string>
+    <string name="board_picker_download_description">Dieses Board ist nicht offline verfügbar und für Downloads abgewählt. Jetzt herunterladen und dauerhaft für künftige Katalog- und Zusatzdaten-Updates auswählen?</string>
+    <string name="board_picker_download_confirm">Herunterladen und Updates aktivieren</string>
+    <string name="kilter_upload_counts">Übertragen: %1$d · Noch ausstehend: %2$d</string>
+    <string name="kilter_upload_status_title">Letzter Übertragungsversuch des Logbuchs</string>
+    <string name="kilter_upload_done">Logbuch synchronisiert</string>
+    <string name="kilter_upload_pending">Noch nicht alle Einträge synchronisiert.</string>
+    <string name="kilter_upload_disabled">Upload zu Kilter ausgeschaltet</string>
+    <string name="kilter_upload_auth">Kilter-Anmeldung abgelaufen. Bitte erneut anmelden.</string>
+    <string name="kilter_upload_wall">Kilter-Board konnte nicht zugeordnet werden.</string>
+    <string name="kilter_upload_network">Kilter nicht erreichbar. Bitte Internetverbindung prüfen.</string>
+    <string name="kilter_upload_http">Kilter hat den Upload abgelehnt. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_internal">Upload fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_retry">Upload wiederholen</string>
+    <string name="kilter_upload_report_title">Kilter-Logbuch übertragen</string>
+    <string name="kilter_diagnostics_attach">Kilter-Uploaddiagnose anhängen</string>
+    <string name="kilter_diagnostics_explanation">Optional: Sendet die folgende technische Vorschau mit diesem Bericht. Sie enthält Statuscodes und Zähler, keine Kontodaten, Tokens oder Logbuchinhalte.</string>
+    <string name="kilter_sync_download_count">Importiert: %1$d</string>
+    <string name="kilter_upload_syncing">Logbuch wird synchronisiert…</string>
+    <string name="kilter_upload_unchecked">Synchronisierung noch nicht geprüft</string>
+    <string name="kilter_upload_conflict">Dieser Eintrag weicht von Kilter ab. Bitte in der Kilter-App prüfen.</string>
+    <string name="board_angle_change">Winkel ändern, %1$d Grad</string>
+    <string name="board_angle_physical_hint">Stelle den Winkel wie am Board ein. Das Board wird dadurch nicht verstellt.</string>
+    <string name="board_angle_unavailable">Wähle zuerst ein Board mit verfügbaren Winkelangaben.</string>
+    <string name="board_filter_show_count">%1$d Boulder anzeigen</string>
+    <string name="board_filter_show_results">Boulder anzeigen</string>
+    <string name="board_filter_more">Weitere Filter</string>
+    <string name="board_filter_more_hint">Herkunft, eigene Boulder und Board-Optionen</string>
+    <string name="board_filter_order">Reihenfolge</string>
+    <string name="board_filter_own_scope">Eigene Boulder werden über alle Winkel und Schwierigkeitsgrade angezeigt, damit deine Entwürfe sichtbar bleiben.</string>
+    <string name="setup_skip">Einrichtung überspringen</string>
+    <string name="setup_board_title">Wähle dein Board</string>
+    <string name="setup_near_board">Du bist gerade am Board?</string>
+    <string name="setup_connect_hint">Verbinde dich jetzt oder wähle dein Board unten aus.</string>
+    <string name="setup_connected">Verbunden: %1$s</string>
+    <string name="setup_confirm_model">Wähle Modell und Größe deines Boards. Bluetooth kann die Board-Familie vorschlagen, erkennt aber Modell und Größe nicht zuverlässig. Du kannst die Auswahl später im Board-Browser ändern.</string>
+    <string name="setup_not_near_board">Ich bin gerade nicht am Board</string>
+    <string name="setup_ble_later">Verbindung verschoben. Wähle unten dein Board.</string>
+    <string name="setup_download_hint">Lade die Climbs deiner Boards zum Offline-Browsen.</string>
+    <string name="setup_more_catalogues">Katalog-Auswahl · %1$d ausgewählt</string>
+    <string name="setup_confirm_downloads">Laden und weiter</string>
+    <string name="setup_confirm_share">Vom Gerät in der Nähe laden</string>
+    <string name="setup_share_found_title">Ein Gerät in der Nähe teilt seine Boards</string>
+    <string name="setup_share_use_internet">Stattdessen alles aus dem Internet laden</string>
+    <string name="setup_board_not_among_downloads">Für dieses Board lädst du keine Climbs – tippe, um es zu ändern.</string>
+    <string name="tour_replay">Einführung ansehen</string>
+    <string name="tour_skip">Tour überspringen</string>
+    <string name="tour_spotlight_connect">Board per Bluetooth verbinden. Ohne Board einfach die Suche schließen.</string>
+    <string name="tour_spotlight_angle">Dein Wandwinkel. Er bestimmt Auswahl und Grade.</string>
+    <string name="tour_spotlight_filter">Filter: Grad-Bereich, geschaffte Boulder ausblenden, Sortierung.</string>
+    <string name="tour_spotlight_open">Tippe einen Boulder an: Griffe ansehen und am Board beleuchten.</string>
+    <string name="tour_spotlight_project">Tippe hier, um die Griffe am Board zu beleuchten.</string>
+    <string name="tour_spotlight_detail_connect">Board verbinden, um zu beleuchten. Ohne Board die Suche schließen.</string>
+    <string name="tour_spotlight_catalogue">Modell und Größe wählen – das lädt den passenden Boulder-Katalog.</string>
+    <string name="tour_spotlight_queue">Boulder in die gemeinsame Warteschlange einreihen.</string>
+    <string name="tour_spotlight_quicklog">„Versuch“ oder „Top“ antippen – landet direkt im Logbuch.</string>
+    <string name="tour_spotlight_logbook_back">Gespeichert. Zurück zur Liste, dann ins Logbuch.</string>
+    <string name="tour_spotlight_board_picker">Hier wählst du Board, Modell und Größe – das bestimmt den Katalog.</string>
+    <string name="tour_spotlight_connect_done">Board ist verbunden. Hier verbindest du es künftig.</string>
+    <string name="tour_spotlight_logbook_direct">Öffne dein Logbuch über den markierten Button.</string>
+    <string name="tour_spotlight_logbook_overflow">Dein Logbuch liegt unter Mehr (…).</string>
+    <string name="tour_spotlight_logbook">Dein Logbuch: alle Versuche und Begehungen.</string>
+    <string name="tour_spotlight_entry">Dein Eintrag. Mit dem Stift bearbeiten oder löschen.</string>
+    <string name="board_logbook_delete_entry_title">Logeintrag löschen?</string>
+    <string name="board_logbook_delete_entry_message">Dieser Logeintrag wird unwiderruflich gelöscht.</string>
+    <string name="moonboard_picker_hold_sets_pending">Deine Griffauswahl wird nach dem Katalog-Update berücksichtigt.</string>
+    <string name="account_data_backup_title">Daten sichern</string>
+    <string name="account_data_backup_explanation">Ein gesicherter Schlüssel ist noch keine Datenkopie. Sichere Logbuch, Listen und Trainingsdaten zusätzlich als Backup.</string>
+    <string name="account_data_backup_action">Daten-Backup öffnen</string>
+    <string name="account_key_saved_open_backup">Schlüssel gesichert – Daten-Backup einrichten</string>
+    <string name="account_import_backup_explanation">Das stellt deinen Kontozugang wieder her. Deine Daten holst du danach aus einem vorhandenen Backup zurück; eine neue Sicherung startet nicht automatisch.</string>
+    <string name="backup_public_storage_notice">Backups werden auf diesem Gerät verschlüsselt und auf öffentlichen Servern gespeichert. Betreiber können deine öffentliche Konto-ID, IP-Adresse, Übertragungszeit und Dateigröße sehen. Wer deinen nsec und eine aufbewahrte Sicherung besitzt, kann deren Inhalt lesen. Beim Löschen können Kopien zurückbleiben.</string>
+    <string name="backup_manual_schedule_notice">Automatische Sicherungen sind aus. Nutze „Jetzt sichern“ oder wähle täglich oder wöchentlich.</string>
+    <string name="account_flow_title">Schlüssel und Daten sichern</string>
+    <string name="account_flow_copied_title">Schlüssel kopiert</string>
+    <string name="account_flow_intro">Dein Schlüssel öffnet dein Konto. Bewahre ihn sicher auf und teile ihn niemals.</string>
+    <string name="account_flow_store">Füge den Schlüssel in deinen Passwortmanager ein. Bestätige erst, wenn du auch ohne dieses Handy darauf zugreifen kannst.</string>
+    <string name="account_flow_schedule">Nach bestätigter Schlüsselaufbewahrung: erste Sicherung erstellen, danach täglich sichern.</string>
+    <string name="account_flow_existing">Bereits aktiviert. Dein bisheriges Backup-Intervall bleibt unverändert.</string>
+    <string name="backup_storage_short">Daten-Backups werden verschlüsselt auf öffentlichen Servern gespeichert.</string>
+    <string name="account_flow_copy">Schlüssel entsperren und kopieren</string>
+    <string name="account_flow_copy_again">Schlüssel erneut kopieren</string>
+    <string name="account_flow_store_and_start">Schlüssel gespeichert · Backup starten</string>
+    <string name="account_flow_store_only">Schlüssel sicher aufbewahrt</string>
+    <string name="account_flow_running">Deine Sicherung wird abgeschlossen…</string>
+    <string name="account_flow_key_only_success">Schlüsselaufbewahrung bestätigt. Das Daten-Backup bleibt aus. Du kannst es später unter „Sichern &amp; übertragen“ einrichten.</string>
+    <string name="account_flow_success">Erste Datensicherung erfolgreich. Tägliche Backups sind jetzt aktiviert.</string>
+    <string name="account_flow_existing_success">Datensicherung erfolgreich. Dein bisheriges Intervall bleibt unverändert.</string>
+    <string name="account_flow_error">Die Backup-Einrichtung konnte nicht abgeschlossen werden. Deine Schlüsselaufbewahrung ist bestätigt. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="account_flow_existing_error">Die neue Sicherung konnte nicht abgeschlossen werden. Deine Schlüsselaufbewahrung ist bestätigt und deine bisherigen Backup-Einstellungen bleiben erhalten. Versuche es erneut.</string>
+    <string name="account_flow_retry">Erneut versuchen</string>
+    <string name="account_flow_already_stored">Bestätige, dass dein aktueller Kontoschlüssel sicher außerhalb dieses Handys aufbewahrt ist.</string>
+    <string name="account_restore_help">Zurück in dein Konto\nVerwende den privaten Schlüssel, den du früher gesichert hast. Ein Import kann das aktive Konto wechseln; die Bestätigung zeigt dir, welches Konto verwendet wird. Dein aktuelles Konto wird dadurch nicht gesichert.\n\nDaten wiederherstellen\nNach dem Import öffnet sich die Backup-Seite. Stelle ein vorhandenes Backup wieder her, bevor du ein neues erstellst. Ohne vorhandenes Daten-Backup kann der Schlüssel allein dein Logbuch nicht zurückholen.</string>
+    <string name="account_import_help">Kontozugang und Daten\nImportiere den privaten Schlüssel des Kontos, das du nutzen möchtest. Er heißt auch „nsec“. Er stellt den Zugang wieder her, nicht dein Logbuch.\n\nDanach\nNach dem Import öffnet sich die Backup-Seite. Suche dort ein vorhandenes Backup zu diesem Schlüssel und stelle es wieder her, bevor du ein neues erstellst. Der Import aktiviert keine automatischen Uploads.</string>
+    <string name="account_amber_summary">Für dein aktuelles Konto: Importiere zuerst denselben gesicherten Schlüssel in Amber.</string>
+    <string name="backup_key_short_local">Ohne deinen Schlüssel kannst du dein Backup auf einem neuen Handy nicht wiederherstellen. Bewahre eine Kopie außerhalb dieses Geräts auf.</string>
+    <string name="backup_key_short_amber">Sichere deinen Schlüssel auch in Amber. Ohne ihn kannst du dein Backup nicht wiederherstellen.</string>
+    <string name="account_flow_backup_option">Auch meine Daten sichern</string>
+    <string name="account_flow_data_summary">Logbuch, Listen und Trainingsdaten brauchen eine eigene Sicherung.</string>
+    <string name="account_flow_help">Was ist dieser Schlüssel?\nDein privater Kontoschlüssel beginnt mit „nsec“ und funktioniert wie ein Passwort. Teile ihn niemals. CruxCoach kann ihn nicht zurücksetzen.\n\nZuerst sicher aufbewahren\nEntsperre und kopiere den Schlüssel. Füge ihn in einen Passwortmanager ein, auf den du ohne dieses Handy zugreifen kannst. Die Zwischenablage wird nach 60 Sekunden geleert; über „Schlüssel erneut kopieren“ kannst du den Vorgang wiederholen. Bestätige dann die sichere Aufbewahrung.\n\nOptionales Daten-Backup\nDer Schlüssel allein sichert keine Daten. Das Einschalten lädt noch nichts hoch. Erst deine Bestätigung startet die erste Sicherung; nach Erfolg folgen tägliche Backups. Bestehende Backup-Einstellungen bleiben unverändert.</string>
+    <string name="setup_catalogues_title">Climbs herunterladen</string>
+    <string name="setup_catalogues_info">Wähle die Boards, deren Climbs du nutzen möchtest. Mit „Laden und weiter“ startet der Download; diese Kataloge bleiben auch für künftige Updates ausgewählt. Du kannst währenddessen fortfahren.\n\nDu kannst die Auswahl später ändern. Ohne Auswahl wird nichts heruntergeladen.</string>
+    <string name="setup_bluetooth_find">Per Bluetooth finden</string>
+    <string name="setup_bluetooth_result_detected">Per Bluetooth wurde ein %1$s-Board erkannt. Wähle jetzt unten Modell und Größe – das kann Bluetooth nicht unterscheiden.</string>
+    <string name="setup_bluetooth_result_none">Keine Board-Familie erkannt. Wähle dein Board unten aus.</string>
+    <string name="setup_bluetooth_info">Optional vor Ort: Verbinde dein Board, um bei der Board-Auswahl eine passende Familie vorgeschlagen zu bekommen. Modell und Größe wählst du selbst. Du kannst dich auch später im Board-Browser verbinden.</string>
+    <string name="board_preview_unavailable">Kein Vorschaubild verfügbar</string>
+    <string name="board_preview_enlarge">Boardbild vergrößern: %1$s</string>
+    <string name="setup_selected_count">%1$d ausgewählt</string>
+    <string name="setup_deselect_all">Auswahl aufheben</string>
+    <string name="setup_database_section">1. Board-Kataloge</string>
+    <string name="setup_database_info">Öffentliche Climbs\nDie gewählten Board-Kataloge werden auf dein Gerät geladen. Danach kannst du sie offline durchsuchen.\n\nIm Hintergrund\nDu kannst währenddessen deine privaten Kletterdaten importieren oder die App starten. Die Climbs erscheinen, sobald ihr Katalog fertig ist.</string>
+    <string name="setup_private_section">2. Private Kletterdaten</string>
+    <string name="setup_private_info">Dein bisheriges Logbuch\nÜbernimm Begehungen und Projekte aus einer anderen App oder stelle ein CruxCoach-Backup wieder her. Wähle dafür die passende Quelle.\n\nOptional\nOhne Import startest du mit einem leeren Logbuch. Du kannst Daten später in den Einstellungen importieren.</string>
+    <string name="setup_private_optional">Schon ein Logbuch? Übernimm es jetzt oder starte ohne Import.</string>
+    <string name="setup_download_none">Keine Kataloge ausgewählt</string>
+    <string name="setup_download_no_network">Keine Internetverbindung</string>
+    <string name="setup_download_pending">Download noch nicht abgeschlossen</string>
+    <string name="setup_download_start">Download starten</string>
+    <string name="setup_download_change">Auswahl ändern</string>
+    <string name="setup_catalogue_failed">Download fehlgeschlagen</string>
+    <string name="catalogue_choose_action">Boards auswählen &amp; herunterladen</string>
+    <string name="catalogue_confirm">Übernehmen</string>
+    <string name="catalogue_queue_hint">Neue Boards werden nach dem laufenden Download geladen.</string>
+    <string name="catalogue_confirm_hint">Neue Boards werden nach deiner Bestätigung geladen.</string>
+    <string name="catalogue_share_boards_fixed">Diese Boards werden gerade übertragen; ändern kannst du sie nach dem Share wieder.</string>
+    <string name="catalogue_selection_help">Nur ausgewählte Boards werden online heruntergeladen und automatisch aktualisiert. Änderungen gelten erst nach deiner Bestätigung.\n\nAbwählen bricht einen laufenden Download nicht ab und löscht weder geladene Climbs noch dein Logbuch. Vor dem Start eines vorgemerkten Downloads abgewählte Boards werden nicht mitgeladen.\n\nEine direkte Übertragung von einem anderen Gerät enthält dessen gesamte freigegebene Board-Datenbank.</string>
+    <string name="import_restore_backup_enabled">Aktiviert auch dein Daten-Backup.</string>
+    <string name="import_catalogue_pending_short">Namen und Grade erscheinen nach dem Katalogdownload.</string>
+    <string name="import_key_access_only">Stellt den Kontozugang wieder her. Daten werden separat aus dem Backup geladen.</string>
+    <string name="import_moon_device_short">Die Android-Bedienungshilfe liest dein Moon-Logbuch auf diesem Gerät.</string>
+    <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
+    <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
+    <string name="account_restore_key_method">Mit Schlüssel</string>
 </resources>

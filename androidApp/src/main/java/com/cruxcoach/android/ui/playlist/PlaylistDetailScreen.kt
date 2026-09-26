@@ -62,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
@@ -279,7 +281,7 @@ fun PlaylistDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(state.name) },
+                    title = { Text(state.name, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -289,6 +291,7 @@ fun PlaylistDetailScreen(
                         }
                     },
                     actions = {
+                        InfoButton(stringResource(R.string.ux_plan_title), stringResource(R.string.list_plan_membership_info))
                         IconButton(
                             onClick = { showBleSheet = true },
                             modifier = Modifier.testTag("playlist_ble_button"),
@@ -402,6 +405,8 @@ fun PlaylistDetailScreen(
         floatingActionButton = {
             val playable = state.entries.any { !it.isRest && it.climb != null }
             if (playable) {
+                val playingThis by viewModel.playingThis.collectAsStateWithLifecycle()
+                val playLabel = stringResource(if (playingThis) R.string.list_playback_resume else R.string.playlist_play)
                 ExtendedFloatingActionButton(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
@@ -410,29 +415,19 @@ fun PlaylistDetailScreen(
                     },
                     text = {
                         Text(
-                            stringResource(R.string.playlist_play),
+                            playLabel,
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    modifier = Modifier.testTag("playlist_play_fab"),
+                    // Material3 clears this variant's text row from semantics, so
+                    // TalkBack announced a bare "Button" without the label here.
+                    modifier = Modifier.testTag("playlist_play_fab").semantics { contentDescription = playLabel },
                 )
             }
         },
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
-            Surface(
-                color = InfoBlue.copy(alpha = 0.10f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    stringResource(R.string.list_plan_membership_info),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = InfoBlue,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
-            }
             if (state.unavailableCount > 0) {
                 Text(
                     stringResource(R.string.playlist_unavailable_climbs, state.unavailableCount),

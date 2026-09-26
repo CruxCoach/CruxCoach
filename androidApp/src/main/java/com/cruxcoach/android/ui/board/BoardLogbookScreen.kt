@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.onboarding.*
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,10 +12,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,9 +29,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -38,9 +47,28 @@ fun BoardLogbookScreen(
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            // The view model decides whether this is the initial resume: this effect restarts
+            // whenever the screen re-enters composition, the view model survives the back stack.
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.onScreenResumed()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
+    val tourEntry = tour.loggedEntry()
+    LaunchedEffect(tourStep, state.isLoading, state.ascents, state.canLoadMore) {
+        if (tourStep == TourStep.ENTRY && !state.isLoading && state.ascents.none { it.uuid == tourEntry }) {
+            if (state.canLoadMore) viewModel.loadMore() else tour.move(TourStep.DONE)
+        }
+    }
     val hasSelection = state.selectedUuids.isNotEmpty()
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
 
     // Own-Kilter-climb publish feedback (same outcome mapping as the
     // climb-detail surface).
@@ -61,7 +89,7 @@ fun BoardLogbookScreen(
     if (state.showEditDialog) {
         AscentLoggingDialog(
             isEditing = true,
-            isSend = true,
+            isSend = state.editingIsSend,
             bidCount = state.editBidCount,
             quality = state.editQuality,
             comment = state.editComment,
@@ -70,15 +98,26 @@ fun BoardLogbookScreen(
             onQualityChanged = { viewModel.updateEditQuality(it) },
             onCommentChanged = { viewModel.updateEditComment(it) },
             onSave = { viewModel.saveEdit() },
-            onDismiss = { viewModel.dismissEditDialog() }
+            onDismiss = { viewModel.dismissEditDialog() },
+            onDelete = { viewModel.requestDeleteFromEdit() },
         )
+    }
+
+    state.showDeleteConfirm?.let {
+        AlertDialog(onDismissRequest = viewModel::dismissDeleteConfirm,
+            title = { Text(stringResource(R.string.board_logbook_delete_entry_title)) },
+            text = { Text(stringResource(R.string.board_logbook_delete_entry_message)) },
+            confirmButton = { TextButton(onClick = viewModel::confirmDeleteAscent) {
+                Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
+            } },
+            dismissButton = { TextButton(onClick = viewModel::dismissDeleteConfirm) { Text(stringResource(R.string.action_cancel)) } })
     }
 
     // Batch delete confirm
     if (state.showBatchDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissBatchDeleteConfirm() },
-            title = { Text(stringResource(R.string.board_logbook_delete_title, state.selectedUuids.size), fontWeight = FontWeight.Bold) },
+            title = { Text(pluralStringResource(R.plurals.board_logbook_delete_title, state.selectedUuids.size, state.selectedUuids.size), fontWeight = FontWeight.Bold) },
             text = { Text(stringResource(R.string.board_logbook_delete_message)) },
             confirmButton = {
                 Button(
@@ -129,14 +168,26 @@ fun BoardLogbookScreen(
         )
     }
 
+    if (showFilters) {
+        LogbookFilterSheet(
+            state = state,
+            onOutcomeSelect = viewModel::setLogbookOutcomeFilter,
+            onBoardSelect = viewModel::setLogbookBoardFilter,
+            onAngleSelect = viewModel::setLogbookAngleFilter,
+            onDismiss = { showFilters = false },
+        )
+    }
+
+    TourHost(tourTargets, if (tourStep == TourStep.ENTRY) TourTarget.EDIT else null,
+        R.string.tour_spotlight_entry, { tour.move(TourStep.DONE) },
+        visible = !state.showEditDialog && state.showDeleteConfirm == null) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
                     title = {
-                        if (hasSelection) Text(stringResource(R.string.board_logbook_selected, state.selectedUuids.size))
-                        else Text(stringResource(R.string.board_logbook_title))
+                        Text(stringResource(R.string.board_logbook_title))
                     },
                     navigationIcon = {
                         IconButton(
@@ -148,6 +199,16 @@ fun BoardLogbookScreen(
                     },
                     actions = {
                         if (state.hasData) {
+                            IconButton(onClick = { showFilters = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = stringResource(R.string.board_logbook_filters),
+                                    tint = if (
+                                        state.logbookOutcomeFilter != LogbookOutcomeFilter.ALL ||
+                                        state.logbookBoardFilter != null || state.logbookAngleFilter != null
+                                    ) OrangeAccent else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                             val allSelected = state.ascents.isNotEmpty() &&
                                 state.selectedUuids.size == state.ascents.size
                             IconButton(onClick = { viewModel.selectAll() }) {
@@ -218,6 +279,17 @@ fun BoardLogbookScreen(
                     state.ascents.groupBy { it.climbedAt.take(10) }
                 }
 
+                LaunchedEffect(tourStep, grouped) {
+                    if (tourStep == TourStep.ENTRY) {
+                        var index = 2 // interval and statistics rows
+                        for (entries in grouped.values) {
+                            index++ // date heading
+                            val entryIndex = entries.indexOfFirst { it.uuid == tourEntry }
+                            if (entryIndex >= 0) { listState.scrollToItem(index + entryIndex); break }
+                            index += entries.size
+                        }
+                    }
+                }
                 LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
@@ -235,6 +307,17 @@ fun BoardLogbookScreen(
                     // Summary cards only (no charts)
                     item(key = "stats") {
                         StatsSummaryRow(state.stats)
+                    }
+
+                    if (state.ascents.isEmpty()) {
+                        item(key = "no_filter_matches") {
+                            Text(
+                                stringResource(R.string.board_logbook_no_filter_matches),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                            )
+                        }
                     }
 
                     // Ascent cards grouped by day
@@ -257,7 +340,11 @@ fun BoardLogbookScreen(
                                     onNavigateToClimb(ascent.climbUuid, ascent.angle.toInt())
                                 },
                                 onToggleSelect = { viewModel.toggleSelection(ascent.uuid) },
-                                onEdit = { viewModel.editAscent(ascent) }
+                                highlightEdit = tourStep == TourStep.ENTRY && ascent.uuid == tourEntry,
+                                onEdit = {
+                                    viewModel.editAscent(ascent)
+                                    if (tourStep == TourStep.ENTRY && ascent.uuid == tourEntry) tour.move(TourStep.DONE)
+                                }
                             )
                             // Own-Kilter-climb publish action, authorship-gated:
                             // shown ONLY for entries whose climb the connected
@@ -292,6 +379,78 @@ fun BoardLogbookScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+    } // TourHost
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LogbookFilterSheet(
+    state: BoardLogbookState,
+    onOutcomeSelect: (LogbookOutcomeFilter) -> Unit,
+    onBoardSelect: (String?) -> Unit,
+    onAngleSelect: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            InfoHeading(stringResource(R.string.board_logbook_filters), stringResource(R.string.ux_logbook_help))
+            Text(stringResource(R.string.board_logbook_filter_outcome), style = MaterialTheme.typography.titleSmall)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LogbookOutcomeFilter.entries.forEach { filter ->
+                    val label = when (filter) {
+                        LogbookOutcomeFilter.ALL -> stringResource(R.string.map_filter_show_all)
+                        LogbookOutcomeFilter.SENDS -> stringResource(R.string.board_sends)
+                        LogbookOutcomeFilter.ATTEMPTS -> stringResource(R.string.ux_logbook_unsent_attempts)
+                    }
+                    FilterChip(
+                        selected = state.logbookOutcomeFilter == filter,
+                        onClick = { onOutcomeSelect(filter) },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            if (state.availableBoardBrands.size > 1) {
+                Text(stringResource(R.string.board_logbook_filter_board), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.logbookBoardFilter == null,
+                        onClick = { onBoardSelect(null) },
+                        label = { Text(stringResource(R.string.map_filter_show_all)) },
+                    )
+                    state.availableBoardBrands.forEach { brand ->
+                        FilterChip(
+                            selected = state.logbookBoardFilter == brand,
+                            onClick = { onBoardSelect(brand) },
+                            label = { Text(BoardBrand.fromWire(brand).displayName) },
+                        )
+                    }
+                }
+            }
+            if (state.availableLogbookAngles.isNotEmpty()) {
+                Text(stringResource(R.string.board_logbook_filter_angle), style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = state.logbookAngleFilter == null,
+                        onClick = { onAngleSelect(null) },
+                        label = { Text(stringResource(R.string.map_filter_show_all)) },
+                    )
+                    state.availableLogbookAngles.forEach { angle ->
+                        FilterChip(
+                            selected = state.logbookAngleFilter == angle,
+                            onClick = { onAngleSelect(angle) },
+                            label = { Text("$angle°") },
+                        )
+                    }
+                }
+            }
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.action_done))
             }
         }
     }

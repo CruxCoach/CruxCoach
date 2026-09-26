@@ -105,14 +105,22 @@ class MoonBoardCatalogueSync @Inject constructor(
                                 cumulativeTotalBytes = chunk.size,
                             )
                         )
-                    }
+                    },
+                    onVerifying = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.VerifyingSnapshot)
+                    },
+                    onDecompressing = {
+                        onProgress?.invoke(BoardDatabaseImporter.ImportStep.Extract)
+                    },
                 )
-                withBackgroundThreadPriority {
-                    importer.importMoonBoardSnapshot(outFile) { step ->
-                        if (step is BoardDatabaseImporter.ImportStep.Done) {
-                            importedClimbs = step.climbs.toLong()
+                retryBoardImport {
+                    withBackgroundThreadPriority {
+                        importer.importMoonBoardSnapshot(outFile) { step ->
+                            if (step is BoardDatabaseImporter.ImportStep.Done) {
+                                importedClimbs = step.climbs.toLong()
+                            }
+                            onProgress?.invoke(step)
                         }
-                        onProgress?.invoke(step)
                     }
                 }
                 // Persist the hash and rollback watermark together only after

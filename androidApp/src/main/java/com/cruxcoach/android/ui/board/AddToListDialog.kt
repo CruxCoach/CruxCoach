@@ -1,6 +1,8 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Check
@@ -32,6 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -88,6 +95,16 @@ internal fun AddToListDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.board_addtolist_title), fontWeight = FontWeight.Bold) },
         text = {
+            // The keyboard stayed up after an inline create and covered
+            // "Done", so the next tap meant for it typed into the name field.
+            // Read here: the dialog is its own window with its own focus.
+            val focusManager = LocalFocusManager.current
+            val keyboard = LocalSoftwareKeyboardController.current
+            val createAndCloseKeyboard = {
+                if (newListName.isNotBlank()) onCreateAndAdd()
+                keyboard?.hide()
+                focusManager.clearFocus()
+            }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (showAddToRunning && onAddToRunning != null) {
                     Row(
@@ -117,33 +134,42 @@ internal fun AddToListDialog(
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 }
-                lists.forEach { list ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = climbInListIds.contains(list.id),
-                            onCheckedChange = { onToggleList(list.id) },
-                            colors = CheckboxDefaults.colors(checkedColor = OrangeAccent)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            when {
-                                list.isBuiltin -> Icons.Default.Star
-                                list.hasPlaybackPlan -> Icons.AutoMirrored.Filled.PlaylistPlay
-                                else -> Icons.AutoMirrored.Filled.PlaylistAdd
-                            },
-                            contentDescription = null,
-                            tint = when {
-                                list.isBuiltin -> WarningYellow
-                                list.hasPlaybackPlan -> OrangeAccent
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(list.name, style = MaterialTheme.typography.bodyMedium)
+                // Only the lists scroll. With a dozen lists the column ran past
+                // the dialog, clipping the last ones and pushing the "New
+                // list" field out of sight below "Done".
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    lists.forEach { list ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = climbInListIds.contains(list.id),
+                                onCheckedChange = { onToggleList(list.id) },
+                                colors = CheckboxDefaults.colors(checkedColor = OrangeAccent)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                when {
+                                    list.isBuiltin -> Icons.Default.Star
+                                    list.hasPlaybackPlan -> Icons.AutoMirrored.Filled.PlaylistPlay
+                                    else -> Icons.AutoMirrored.Filled.PlaylistAdd
+                                },
+                                contentDescription = null,
+                                tint = when {
+                                    list.isBuiltin -> WarningYellow
+                                    list.hasPlaybackPlan -> OrangeAccent
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(list.displayName(), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
 
@@ -158,13 +184,15 @@ internal fun AddToListDialog(
                         onValueChange = onNewListNameChanged,
                         placeholder = { Text(stringResource(R.string.board_addtolist_new_list)) },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { createAndCloseKeyboard() }),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
                         textStyle = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
-                        onClick = onCreateAndAdd,
+                        onClick = createAndCloseKeyboard,
                         enabled = newListName.isNotBlank()
                     ) {
                         Icon(

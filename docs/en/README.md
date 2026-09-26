@@ -1,5 +1,7 @@
 # CruxCoach documentation in English
 
-- [FIPS explained: an architectural comparison of CruxCoach, Myco, and fips-android](FIPS_MESH_ARCHITECTURE_COMPARISON.md)
+- [Core concepts and architecture](CORE_CONCEPTS.md)
+- [Complete documentation index and release status](../README.md)
+- [Historical FIPS comparison — separate experimental branch](FIPS_MESH_ARCHITECTURE_COMPARISON.md)
 
-[Deutsche Dokumentation](../de/README.md)
+[Deutsch](../de/README.md)

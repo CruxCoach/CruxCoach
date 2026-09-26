@@ -311,8 +311,50 @@ class LocalApkServer(
     var baseUrl: String? = null
         private set
 
+    /**
+     * What this sender has, counted off the live database at start — so the manifest can name
+     * the catalogues while the snapshot is still "preparing".
+     *
+     * A receiver decides which boards to take on its first setup screen, seconds after
+     * opening the freshly installed app. The snapshot is armed only after the APK transfer
+     * and takes minutes, so until it was ready the manifest named no catalogue at all and
+     * that screen had nothing to show: the receiver got the ordinary list with Kilter
+     * pre-ticked from a sender that only had MoonBoard. Counted on its own thread — the
+     * manifest must stay cheap, and the receiver's probe waits barely a second.
+     */
+    @Volatile private var liveCatalogues: List<LocalShareProtocol.BoardCatalogue> = emptyList()
+
+    private fun countLiveCatalogues() {
+        val live = boardDbFile?.takeIf { it.exists() } ?: return
+        thread(isDaemon = true, name = "apk-server-catalogues") {
+            runCatching {
+                android.database.sqlite.SQLiteDatabase.openDatabase(
+                    live.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+                ).use { db ->
+                    db.rawQuery(
+                        // Catalogue climbs only: CruxCoach community climbs never cross a share
+                        // (they travel through Nostr), so a family this sender only has
+                        // community climbs of is not offered, and the counts are what arrives.
+                        "SELECT COALESCE(board_brand, 'kilter'), COUNT(*) FROM climbs " +
+                            "WHERE is_listed = 1 AND COALESCE(source, '') NOT IN ('nostr','local') " +
+                            "GROUP BY 1 ORDER BY 1",
+                        null,
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(LocalShareProtocol.BoardCatalogue(cursor.getString(0), cursor.getLong(1)))
+                            }
+                        }
+                    }
+                }
+            }.onSuccess { liveCatalogues = it }
+                .onFailure { Log.w("LocalApkServer", "Could not count live catalogues", it) }
+        }
+    }
+
     fun start(port: Int = LOCAL_SHARE_PORT, hostIp: String? = null): Int {
         restoreCachedSnapshot()
+        countLiveCatalogues()
         // Bind to a specific interface IP so the share server isn't reachable
         // on every network the device happens to be connected to (mobile data,
         // home WiFi, …). Default to loopback if the caller didn't pass an IP —
@@ -589,6 +631,22 @@ class LocalApkServer(
                         }
                     },
                 )
+        } else if (boardJson.getString("status") == "preparing" && liveCatalogues.isNotEmpty()) {
+            // Additive: an older receiver ignores it. The v1 artifact carries no Quantum.
+            boardJson.put(
+                "catalogues",
+                org.json.JSONArray().apply {
+                    liveCatalogues
+                        .filter { protocolVersion == LocalShareProtocol.VERSION_V2 || it.boardBrand != "quantum" }
+                        .forEach { catalogue ->
+                            put(
+                                org.json.JSONObject()
+                                    .put("boardBrand", catalogue.boardBrand)
+                                    .put("climbCount", catalogue.climbCount),
+                            )
+                        }
+                },
+            )
         }
         val json = org.json.JSONObject()
             .put("protocolVersion", protocolVersion)
@@ -996,7 +1054,7 @@ class LocalApkServer(
                     """
                     SELECT COALESCE(board_brand, 'kilter'), COUNT(*)
                     FROM climbs
-                    WHERE is_listed = 1
+                    WHERE is_listed = 1 AND COALESCE(source, '') NOT IN ('nostr','local')
                     GROUP BY COALESCE(board_brand, 'kilter')
                     ORDER BY COALESCE(board_brand, 'kilter')
                     """.trimIndent(),

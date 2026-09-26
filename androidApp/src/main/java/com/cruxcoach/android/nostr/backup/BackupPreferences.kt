@@ -226,8 +226,11 @@ class BackupPreferences @Inject constructor(
             prefs.asMap().keys
                 .filter { it.name.startsWith("backup_ct_") }
                 .forEach { prefs.remove(it) }
-            // Intentionally NOT cleared: BACKUP_ENABLED, BACKUP_FEATURE_ENABLED,
-            // BACKUP_ONBOARDING_SEEN, DEVICE_ID — these survive identity changes.
+            // Consent and cadence belong to the identity, too. A newly imported
+            // account must be able to restore before any automatic upload.
+            prefs[Keys.BACKUP_ENABLED] = false
+            prefs.remove(Keys.BACKUP_INTERVAL) // MANUAL default
+            // Feature availability, onboarding visibility and device ID survive.
         }
     }
 

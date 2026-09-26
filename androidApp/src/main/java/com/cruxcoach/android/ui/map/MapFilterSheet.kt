@@ -32,6 +32,7 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.domain.board.BoardBrand
+import java.util.Locale
 
 /**
  * Bottom sheet that exposes every map-side filter dimension. Stays
@@ -48,8 +49,9 @@ fun MapFilterSheet(
     onDismiss: () -> Unit,
     onSelectAllBrands: () -> Unit,
     onToggleBrand: (BoardBrand) -> Unit,
-    onToggleOtherBrands: () -> Unit,
     onToggleWellpassOnly: () -> Unit,
+    onToggleMoonLayoutId: (Int) -> Unit,
+    onToggleMoonLedState: (MoonLedState) -> Unit,
     onSelectAllLayouts: () -> Unit,
     onToggleShowOriginal: () -> Unit,
     onToggleShowHomewalls: () -> Unit,
@@ -88,27 +90,22 @@ fun MapFilterSheet(
                 }
 
                 item {
+                    val availableBrands = state.unfilteredLocations
+                        .mapTo(linkedSetOf()) { it.boardBrand }
                     Section(stringResource(R.string.board_selection_brand_label)) {
                         FilterChip(
                             selected = state.filters.brands.isEmpty(),
                             onClick = onSelectAllBrands,
                             label = { Text(stringResource(R.string.map_filter_show_all)) },
                         )
-                        FilterChip(
-                            selected = BoardBrand.KILTER in state.filters.brands,
-                            onClick = { onToggleBrand(BoardBrand.KILTER) },
-                            label = { Text(stringResource(R.string.board_selection_brand_kilter)) },
-                        )
-                        FilterChip(
-                            selected = BoardBrand.MOONBOARD in state.filters.brands,
-                            onClick = { onToggleBrand(BoardBrand.MOONBOARD) },
-                            label = { Text(stringResource(R.string.board_selection_brand_moonboard)) },
-                        )
-                        FilterChip(
-                            selected = state.filters.brands.any { !it.isInteractive },
-                            onClick = onToggleOtherBrands,
-                            label = { Text(stringResource(R.string.map_filter_brand_other)) },
-                        )
+                        BoardBrand.entries.filter { it in availableBrands }.forEach { brand ->
+                            val count = state.unfilteredVenues.count { brand in it.brands }
+                            FilterChip(
+                                selected = brand in state.filters.brands,
+                                onClick = { onToggleBrand(brand) },
+                                label = { Text("${brand.displayName} ($count)") },
+                            )
+                        }
                     }
                 }
 
@@ -122,7 +119,7 @@ fun MapFilterSheet(
                     }
                 }
 
-                item {
+                if (state.filters.brands.isEmpty() || BoardBrand.KILTER in state.filters.brands) item {
                     Section(stringResource(R.string.map_filter_section_layout)) {
                         FilterChip(
                             selected = state.filters.showOriginal && state.filters.showHomewalls,
@@ -148,8 +145,25 @@ fun MapFilterSheet(
                     }
                 }
 
-                item {
-                    Section(stringResource(R.string.map_filter_section_access)) {
+                if (state.filters.brands.isEmpty() || BoardBrand.MOONBOARD in state.filters.brands) item {
+                    val moonLocations = state.unfilteredLocations.filter {
+                        it.boardBrand == BoardBrand.MOONBOARD
+                    }
+                    Section(stringResource(R.string.map_filter_section_moon_variant)) {
+                        moonLocations.mapNotNull { location ->
+                            location.layoutId?.let { it to location.layoutName }
+                        }
+                            .distinctBy { it.first }
+                            .sortedBy { it.first }
+                            .forEach { (layoutId, label) ->
+                                FilterChip(
+                                    selected = layoutId in state.filters.moonLayoutIds,
+                                    onClick = { onToggleMoonLayoutId(layoutId) },
+                                    label = { Text(label ?: layoutId.toString()) },
+                                )
+                            }
+                    }
+                    Section(stringResource(R.string.map_filter_section_moon_type)) {
                         AccessType.entries.forEach { type ->
                             FilterChip(
                                 selected = type in state.filters.accessTypes,
@@ -158,9 +172,26 @@ fun MapFilterSheet(
                             )
                         }
                     }
+                    Section(stringResource(R.string.map_filter_section_moon_led)) {
+                        MoonLedState.entries.forEach { ledState ->
+                            FilterChip(
+                                selected = ledState in state.filters.moonLedStates,
+                                onClick = { onToggleMoonLedState(ledState) },
+                                label = {
+                                    Text(
+                                        when (ledState) {
+                                            MoonLedState.LED -> "LED"
+                                            MoonLedState.NO_LED -> stringResource(R.string.map_filter_moon_no_led)
+                                            MoonLedState.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
+                                        }
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
 
-                item {
+                if (state.filters.brands.isEmpty() || BoardBrand.KILTER in state.filters.brands) item {
                     Section(stringResource(R.string.map_filter_section_adjustability)) {
                         // FULL/LIMITED almost never appear in source data; collapse
                         // them into the "Adjustable" bucket via Adjustability.UNKNOWN
@@ -179,7 +210,7 @@ fun MapFilterSheet(
                     }
                 }
 
-                item {
+                if (state.filters.brands.isEmpty() || BoardBrand.KILTER in state.filters.brands) item {
                     val sizeOptions = state.unfilteredStats.bySize
                     if (sizeOptions.isNotEmpty()) {
                         Section(stringResource(R.string.map_filter_section_size)) {
@@ -205,10 +236,11 @@ fun MapFilterSheet(
                     if (countries.isNotEmpty()) {
                         Section(stringResource(R.string.map_filter_section_country)) {
                             countries.forEach { (code, count) ->
+                                val countryName = Locale("", code).getDisplayCountry(Locale.getDefault())
                                 FilterChip(
                                     selected = code in state.filters.countries,
                                     onClick = { onToggleCountry(code) },
-                                    label = { Text("$code ($count)") },
+                                    label = { Text("${countryName.ifBlank { code }} ($count)") },
                                 )
                             }
                         }
@@ -227,8 +259,8 @@ fun MapFilterSheet(
                 Text(
                     text = stringResource(
                         R.string.map_filter_count_template,
-                        state.filteredLocations.size,
-                        state.unfilteredLocations.size,
+                        state.filteredVenues.size,
+                        state.unfilteredVenues.size,
                     ),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,

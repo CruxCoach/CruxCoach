@@ -91,7 +91,7 @@ class BoardDeliveryPolicyTest {
     }
 
     @Test
-    fun `automatic detail delivery is explicit only for independent layer boards`() {
+    fun `automatic detail delivery keeps a visible relight action on every board`() {
         BoardBrand.entries.filter { it.isInteractive }.forEach { brand ->
             val decision = BoardDeliveryPolicy.resolve(
                 sendMode = BoardSendMode.AUTOMATIC,
@@ -109,7 +109,7 @@ class BoardDeliveryPolicyTest {
             )
             assertEquals(
                 "$brand visible action",
-                brand.supportsIndependentClimbLayers,
+                true,
                 decision.showAction,
             )
         }
@@ -143,7 +143,7 @@ class BoardDeliveryPolicyTest {
 
         assertEquals(BoardDeliveryTarget.DIRECT_BOARD, automatic.target)
         assertTrue(automatic.dispatchAutomatically)
-        assertFalse(automatic.showAction)
+        assertTrue(automatic.showAction)
 
         val explicit = BoardDeliveryPolicy.resolve(
             sendMode = BoardSendMode.EXPLICIT,
@@ -169,7 +169,7 @@ class BoardDeliveryPolicyTest {
         )
 
         assertTrue(decision.dispatchAutomatically)
-        assertFalse(decision.showAction)
+        assertTrue(decision.showAction)
     }
 
     @Test

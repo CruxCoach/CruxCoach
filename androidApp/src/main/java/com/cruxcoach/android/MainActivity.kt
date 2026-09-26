@@ -155,7 +155,10 @@ class MainActivity : AppCompatActivity() {
         }
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
-        requestNotificationPermissionIfNeeded()
+        // Once per launch, not per activity: onCreate also runs on every
+        // configuration change (dark mode, language, font size), and a
+        // declined prompt came straight back each time.
+        if (savedInstanceState == null) requestNotificationPermissionIfNeeded()
         PerfLogger.startFrameMonitor()
 
         PerfLogger.milestone("MainActivity.setContent START")
@@ -312,6 +315,12 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED
             ) {
+                // Once per install. A declined prompt came back on the next
+                // launch, seconds later, until Android stopped showing it; the
+                // screens that need notifications ask again in context.
+                val prompts = getSharedPreferences("startup_prompts", MODE_PRIVATE)
+                if (prompts.getBoolean("notifications_asked", false)) return
+                prompts.edit().putBoolean("notifications_asked", true).apply()
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
@@ -357,6 +366,8 @@ class MainActivity : AppCompatActivity() {
             raw == "announcements" -> raw
             raw == "dev_chat" -> raw
             raw == "settings" -> raw
+            raw == "backup_settings" -> raw // UI only; never starts restore or upload.
+            raw == "support_settings" -> raw // UI only: the reply-notification summary.
             raw == "app_share" -> raw
             // Carries no parameters and reaches no import sink of its own: the
             // MoonBoard screen only offers a file picker and the opt-in
@@ -464,19 +475,21 @@ class MainActivity : AppCompatActivity() {
 
         // Expected dTag: "cruxcoach:climb:<pubkey-prefix-8>:<uuid>"
         val dParts = nAddress.dTag.split(":")
-        if (dParts.size < 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
+        if (dParts.size != 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
             android.util.Log.w("MainActivity", "App link dTag doesn't look like cruxcoach climb: ${nAddress.dTag}")
             return null
         }
         val uuid = dParts.last()
-        if (uuid.isBlank()) return null
+        if (!uuid.matches(Regex("[0-9a-fA-F-]{8,64}")) ||
+            !nAddress.author.matches(Regex("[0-9a-fA-F]{64}")) ||
+            !dParts[2].equals(nAddress.author.take(8), ignoreCase = true)) return null
 
         // Angle: best-effort lookup at runtime would require Hilt-injected
         // prefs reachable from the deep-link helper. Default to 40 (the
         // user-preferences default) — the detail screen exposes an angle
         // selector if the user wants a different angle.
         val angle = 40
-        return "board_climb_detail/$uuid/$angle"
+        return "board_climb_detail/$uuid/$angle?author=${nAddress.author.lowercase()}"
     }
 
 
@@ -505,33 +518,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun sendCrashReport(crashText: String) {
-        val eventId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val sender = nostrMessageSender.get()
 
-        withContext(Dispatchers.IO) {
-            messageRepository.get().insert(
-                id = eventId,
-                type = MessageType.CRASH.label,
-                direction = "sent",
-                content = crashText,
-                subject = null,
-                senderPubkey = try {
-                    nostrSigner.get().getPublicKeyHex()
-                } catch (e: Exception) {
-                    android.util.Log.w("MainActivity", "No signer key for crash report", e)
-                    "unknown"
-                },
-                createdAt = now,
-                relayAccepted = false,
-                read = true
-            )
-        }
-
+        // Build first, like DevContactViewModel.sendMessage: the self-wrap id
+        // is the row key, so the relay echo dedupes instead of listing the
+        // report twice, and the recipient-wrap id anchors the developer's
+        // replies to this report. A failed build stores nothing; the crash
+        // file stays for the next launch.
         val buildResult = sender.buildMessage(crashText, MessageType.CRASH)
         when (buildResult) {
             is SendResult.Queued -> {
+                val eventId = buildResult.selfWrapId ?: UUID.randomUUID().toString()
                 withContext(Dispatchers.IO) {
+                    messageRepository.get().insert(
+                        id = eventId,
+                        type = MessageType.CRASH.label,
+                        direction = "sent",
+                        content = crashText,
+                        subject = null,
+                        senderPubkey = try {
+                            nostrSigner.get().getPublicKeyHex()
+                        } catch (e: Exception) {
+                            android.util.Log.w("MainActivity", "No signer key for crash report", e)
+                            "unknown"
+                        },
+                        createdAt = now,
+                        relayAccepted = false,
+                        read = true,
+                        threadAnchorId = buildResult.recipientWrapId
+                    )
                     messageRepository.get().markQueued(eventId, now, buildResult.eventJsons)
                 }
                 queueManager.get().refreshCount()

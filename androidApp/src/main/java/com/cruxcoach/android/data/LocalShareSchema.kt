@@ -268,6 +268,14 @@ object LocalShareSchema {
         "kilter_board_location" to PeerTableRule(true, "public gym directory (FEAT-006)"),
         "kilter_board_wall" to PeerTableRule(true, "public per-wall detail (FEAT-007)"),
         "sync_states" to PeerTableRule(true, "catalogue freshness marker; the modern-source marker table"),
+        "climb_beta_links" to PeerTableRule(
+            true,
+            "public board-scoped media metadata; copied additively only for an imported target climb"
+        ),
+        "moonboard_climb_aliases" to PeerTableRule(
+            true,
+            "public exact-duplicate identity bridge; accepted only after structural duplicate validation"
+        ),
 
         "board_hold_positions" to PeerTableRule(
             false,

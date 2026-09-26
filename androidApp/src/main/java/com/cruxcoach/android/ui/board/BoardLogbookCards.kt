@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ui.onboarding.*
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
@@ -39,11 +44,14 @@ internal fun AscentCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     onToggleSelect: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    highlightEdit: Boolean = false,
 ) {
     val grade = ascent.difficultyAverage?.let {
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
     } ?: "?"
+
+    val selectLabel = stringResource(R.string.board_logbook_select_entry, ascent.climbName)
 
     val containerColor = if (isSelected) {
         OrangeAccent.copy(alpha = 0.15f)
@@ -67,7 +75,7 @@ internal fun AscentCard(
                 checked = isSelected,
                 onCheckedChange = { onToggleSelect() },
                 colors = CheckboxDefaults.colors(checkedColor = OrangeAccent),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(36.dp).semantics { contentDescription = selectLabel }
             )
             Spacer(modifier = Modifier.width(8.dp))
 
@@ -175,7 +183,8 @@ internal fun AscentCard(
             }
 
             Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(48.dp).testTag("logbook_edit")
+                .then(if (highlightEdit) Modifier.tourTarget(TourTarget.EDIT) else Modifier)) {
                 Icon(
                     Icons.Default.Edit,
                     contentDescription = stringResource(R.string.cd_edit),
@@ -308,7 +317,7 @@ internal fun DayHeader(dateKey: String, count: Int) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.board_logbook_day_entries, count),
+                text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )

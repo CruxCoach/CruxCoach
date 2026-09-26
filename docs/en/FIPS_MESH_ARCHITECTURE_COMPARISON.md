@@ -1,5 +1,9 @@
 # FIPS explained: an architectural comparison of CruxCoach, Myco, and fips-android
 
+> **Scope:** historical research / separate experimental branch, not integrated
+> into the 0.2.3 preparation line or published 0.2.2. Hardware procedures and
+> implementation claims below apply to that experiment. [Current scope](../README.md).
+
 **Language:** [Deutsch](../de/FIPS_MESH_ARCHITECTURE_COMPARISON.md) | English
 
 **As of:** August 17, 2026<br>
@@ -7,7 +11,7 @@
 **CruxCoach revision examined:** `feat/board-cell-mesh-mvp-20260814` at commit `ed2a4b44`<br>
 **Short answer for gym operators:** The current local CruxCoach board mesh requires **no separate FIPS node operated by the gym**. Every participating phone running CruxCoach is itself a FIPS node. A permanently installed gym device could improve availability and radio coverage in the future, but it is neither required nor automatically useful in the current model. A generic `fips-android` installation or arbitrary FIPS daemon cannot simply extend the CruxCoach board island today.
 
-![FIPS, Myco, and CruxCoach use different network boundaries](diagrams/fips-myco-cruxcoach-mesh-slide.svg)
+![FIPS, Myco, and CruxCoach use different network boundaries](../diagrams/fips-myco-cruxcoach-mesh-slide.svg)
 
 ## 1. The most important points first
 
@@ -868,14 +872,14 @@ This preserves the offline advantage: a gym can improve the experience, but need
 
 ### CruxCoach
 
-- [`native/fips-bridge/Cargo.toml`](../../native/fips-bridge/Cargo.toml) — pinned FIPS dependency
-- [`native/fips-bridge/src/android.rs`](../../native/fips-bridge/src/android.rs) — embedded node, enabled BLE transport, and internal TUN/DNS seams
-- [`FipsMeshRuntime.kt`](../../androidApp/src/main/java/com/cruxcoach/android/fips/FipsMeshRuntime.kt) — Android lifecycle, realm, peers, frames, and foreground service
-- [`FipsBleRadio.kt`](../../androidApp/src/main/java/com/cruxcoach/android/fips/FipsBleRadio.kt) — Android L2CAP, scanning, and advertising bridge
-- [`FipsRealm.kt`](../../androidApp/src/main/java/com/cruxcoach/android/fips/FipsRealm.kt) — realm/cell tags and direct admission
-- [`FipsRealmKeyStore.kt`](../../androidApp/src/main/java/com/cruxcoach/android/fips/FipsRealmKeyStore.kt) — persistent realm identity separated from the account
-- [`FipsFrameCodec.kt`](../../androidApp/src/main/java/com/cruxcoach/android/fips/FipsFrameCodec.kt) — bounded fragmentation and assembly
-- [`BoardCellCoordinator.kt`](../../androidApp/src/main/java/com/cruxcoach/android/boardcell/BoardCellCoordinator.kt) — canonical controller and commit rules
+- [`native/fips-bridge/Cargo.toml`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/native/fips-bridge/Cargo.toml) — pinned FIPS dependency
+- [`native/fips-bridge/src/android.rs`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/native/fips-bridge/src/android.rs) — embedded node, enabled BLE transport, and internal TUN/DNS seams
+- [`FipsMeshRuntime.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/fips/FipsMeshRuntime.kt) — Android lifecycle, realm, peers, frames, and foreground service
+- [`FipsBleRadio.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/fips/FipsBleRadio.kt) — Android L2CAP, scanning, and advertising bridge
+- [`FipsRealm.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/fips/FipsRealm.kt) — realm/cell tags and direct admission
+- [`FipsRealmKeyStore.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/fips/FipsRealmKeyStore.kt) — persistent realm identity separated from the account
+- [`FipsFrameCodec.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/fips/FipsFrameCodec.kt) — bounded fragmentation and assembly
+- [`BoardCellCoordinator.kt`](https://github.com/CruxCoach/CruxCoach/blob/ed2a4b44c9b176b536b0021b1c61440183867bbf/androidApp/src/main/java/com/cruxcoach/android/boardcell/BoardCellCoordinator.kt) — canonical controller and commit rules
 - [`OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](../specs/0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md) — normative detailed architecture
 - [`FIPS_DEVICE_TEST_PROTOCOL.md`](../FIPS_DEVICE_TEST_PROTOCOL.md) — hardware acceptance tests
 

@@ -62,6 +62,7 @@ class LocalShareModernSchemaTest {
 
     private val kilterUuid = "11111111-1111-1111-1111-000000000001"
     private val moonUuid = "22222222-2222-2222-2222-000000000002"
+    private val moonAliasUuid = "22222222-2222-2222-2222-000000000099"
     private val communityUuid = "33333333-3333-3333-3333-000000000003"
     private val draftUuid = "44444444-4444-4444-4444-000000000004"
     private val tombstoneUuid = "55555555-5555-5555-5555-000000000005"
@@ -138,6 +139,10 @@ class LocalShareModernSchemaTest {
                 moonUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 1,
                 method = moonMethod,
             )
+            insertClimb(
+                moonAliasUuid, 100, "Moon Bench", "moonboard", "kilter", "kilter", null, 0,
+                method = moonMethod,
+            )
             insertClimb(communityUuid, 1, "Community Proj", "kilter", "nostr", "cruxcoach", authorPubkey, 1)
             insertClimb(draftUuid, 100, "Secret Draft", "moonboard", "local", "cruxcoach", authorPubkey, 1)
             insertClimb(tombstoneUuid, 1, "Gone Climb", "kilter", "kilter", "kilter", null, 0)
@@ -168,6 +173,21 @@ class LocalShareModernSchemaTest {
             db.execSQL("INSERT INTO leds(board_brand, hole_id, product_size_id, position) VALUES ('moonboard', 5001, 15, 77)")
             db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('kilter', 12, 'start', '00FF00', '00FF00')")
             db.execSQL("INSERT INTO placement_roles(board_brand, id, name, led_color, screen_color) VALUES ('moonboard', 1, 'start', '00DD00', '00DD00')")
+
+            db.execSQL(
+                """INSERT INTO climb_beta_links(
+                       board_brand,climb_uuid,url,provider,media_id,foreign_username,
+                       angle,thumbnail,created_at)
+                   VALUES ('moonboard',?,'https://www.instagram.com/reel/offline-share/',
+                           'instagram','offline-share','setter_beta',40,
+                           'https://example.com/thumb.jpg','2026-09-01 00:00:00')""".trimIndent(),
+                arrayOf<Any?>(moonUuid),
+            )
+            db.execSQL(
+                "INSERT INTO moonboard_climb_aliases(alias_uuid,canonical_uuid,match_kind) " +
+                    "VALUES (?,?,'legacy-exact-duplicate')",
+                arrayOf<Any?>(moonAliasUuid, moonUuid),
+            )
 
             db.execSQL("INSERT INTO sync_states(table_name, last_synchronized_at) VALUES ('climbs', '2026-07-01 00:00:00')")
 
@@ -225,6 +245,26 @@ class LocalShareModernSchemaTest {
 
             // Gym locations came along (replace-all via importLocations).
             assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-1'"))
+            // Public media and the verified exact-duplicate bridge remain
+            // available when the receiver has no internet connection.
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "climb_beta_links",
+                    "board_brand='moonboard' AND climb_uuid='$moonUuid' " +
+                        "AND media_id='offline-share' AND angle=40",
+                ),
+            )
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "moonboard_climb_aliases",
+                    "alias_uuid='$moonAliasUuid' AND canonical_uuid='$moonUuid' " +
+                        "AND match_kind='legacy-exact-duplicate'",
+                ),
+            )
         }
 
         // Modern sync-state table resolved (pre-fix: "no such table:
@@ -234,16 +274,18 @@ class LocalShareModernSchemaTest {
 
     @Test
     fun eachMissingAdditiveGeometryTableStillImportsTheGenericCatalogueAtomically() {
-        val additiveGeometryTables = listOf(
+        val additivePublicTables = listOf(
             "placements",
             "holes",
             "product_sizes",
             "board_images",
             "leds",
             "placement_roles",
+            "climb_beta_links",
+            "moonboard_climb_aliases",
         )
 
-        additiveGeometryTables.forEach { missingTable ->
+        additivePublicTables.forEach { missingTable ->
             recreateEmptyTarget()
             val parkedTable = "${missingTable}_pre022_parked"
             SQLiteDatabase.openDatabase(
@@ -935,6 +977,67 @@ class LocalShareModernSchemaTest {
         }
     }
 
+    /**
+     * The official Quantum catalogue is ~9k routes. The bridge copy once joined every
+     * route to the peer's climbs on LOWER(TRIM(uuid)) — normalized on both sides, so no
+     * index could serve it — and a real share sat in that one statement for 46 minutes
+     * without finishing on a Nokia 6.1. At this size that join cost ~30 s per bridge table on desktop SQLite,
+     * the IN-list form 0.04 s; the bound only separates "linear" from "per-route scan".
+     */
+    @Test
+    fun v2QuantumBridgeImportStaysLinearInTheCatalogueSize() {
+        val routes = 6_000
+        val apps = List(routes) { i -> "6f06c97d-a92f-5ec0-a02f-%012x".format(i) }
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransaction()
+            try {
+                apps.forEachIndexed { i, app ->
+                    db.execSQL(
+                        """INSERT INTO climbs(uuid,layout_id,setter_username,name,frames,
+                               frames_count,is_listed,created_at,description,is_nomatch,
+                               frames_pace,hsm,move_count,source,sync_status,origin,board_brand)
+                           VALUES (?,9101,'quantum','Quantum $i','p1000001r12p1000002r14',
+                               1,1,'2026-08-01 00:00:00','',0,0,31,2,
+                               'quantum','synced','quantum','quantum')""".trimIndent(),
+                        arrayOf<Any?>(app),
+                    )
+                    db.execSQL(
+                        "INSERT INTO quantum_route_refs(app_uuid,route_uuid,model) VALUES (?,?,'xl')",
+                        arrayOf<Any?>(app.uppercase(), "7a1b2c3d-4444-5555-8666-%012x".format(i)),
+                    )
+                    db.execSQL(
+                        """INSERT INTO quantum_route_metadata(
+                               app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                           VALUES (?, '[18]', 0, 1, 0, 1, 1, '')""".trimIndent(),
+                        arrayOf<Any?>(" ${app.uppercase()} "),
+                    )
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+
+        val started = System.nanoTime()
+        importer.importFromLocalDb(srcPath, includeQuantum = true)
+        val seconds = (System.nanoTime() - started) / 1e9
+
+        openTarget().use { db ->
+            assertEquals(routes, countWhere(db, "climbs", "board_brand='quantum' AND source='quantum'"))
+            assertEquals(routes, countWhere(db, "quantum_route_refs", "model='xl'"))
+            assertEquals(routes, countWhere(db, "quantum_route_metadata", "standard=1"))
+            assertEquals(
+                0,
+                countWhere(
+                    db,
+                    "quantum_route_refs r",
+                    "NOT EXISTS (SELECT 1 FROM climbs c WHERE c.uuid=r.app_uuid)",
+                ),
+            )
+        }
+        assertTrue("Quantum bridge import took ${"%.1f".format(seconds)}s", seconds < 20.0)
+    }
+
     @Test
     fun v2NormalizesWhitespaceAroundQuantumClimbAndBridgeUuidsTogether() {
         val (appUuid, routeUuid) = seedQuantumBridge(model = "xl")
@@ -1541,6 +1644,22 @@ class LocalShareModernSchemaTest {
             assertTrue(countWhere(db, "placements", "board_brand = 'moonboard'") >= 1)
             // Draft exclusion holds on the incremental path too.
             assertEquals(0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
+        }
+    }
+    @Test
+    fun peerCannotReplaceOrExtendInstalledGeometryButCanImportMissingBrand() {
+        openTarget().use { db ->
+            db.execSQL("INSERT INTO placements(board_brand,placement_id,hole_id,set_id,x,y) VALUES ('kilter',1100,77,1,7,8)")
+            db.execSQL("INSERT INTO leds(board_brand,hole_id,product_size_id,position) VALUES ('kilter',77,1,99)")
+        }
+        importer.importFromLocalDb(srcPath)
+        openTarget().use { db ->
+            assertEquals(1, countWhere(db, "placements", "board_brand='kilter' AND placement_id=1100 AND hole_id=77 AND x=7"))
+            assertEquals(1, countWhere(db, "leds", "board_brand='kilter' AND position=99"))
+            assertEquals(1, countWhere(db, "leds", "board_brand='kilter'"))
+            assertEquals(0, countWhere(db, "holes", "board_brand='kilter'"))
+            assertEquals(1, countWhere(db, "placements", "board_brand='moonboard'"))
+            assertEquals(1, countWhere(db, "holes", "board_brand='moonboard'"))
         }
     }
 }

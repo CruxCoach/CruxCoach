@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.annotation.ColorInt
 import androidx.annotation.StringRes
@@ -9,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +33,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -55,6 +60,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -68,6 +74,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.data.repository.ClimbBetaLink
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.BoardMismatchFixAction
 import com.cruxcoach.android.ble.BoardProjectionPolicy
@@ -92,6 +99,8 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.MoonBoardVariant
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.ui.onboarding.*
+import androidx.compose.runtime.DisposableEffect
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
@@ -117,6 +126,8 @@ fun BoardClimbDetailScreen(
     // leaving the climb stale after an edit even though the VM reloaded it.
     // The setter list (which refreshes correctly) uses plain collectAsState too.
     val state by viewModel.state.collectAsState()
+    val (tour, tourStep) = rememberBrowserTour()
+    val tourTargets = remember { TourTargets() }
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
@@ -181,7 +192,7 @@ fun BoardClimbDetailScreen(
 
     if (showBleSheet) {
         BleConnectionSheet(
-            onDismiss = { showBleSheet = false },
+            onDismiss = { showBleSheet = false; if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
             onBoardMismatchExit = onNavigateToBoardBrowser,
         )
     }
@@ -416,13 +427,19 @@ fun BoardClimbDetailScreen(
 
     LaunchedEffect(state.quickLogFeedback?.eventId) {
         val feedback = state.quickLogFeedback ?: return@LaunchedEffect
+        if (tour.step() == TourStep.LOG) {
+            tour.logged(feedback.entryUuid)
+            viewModel.consumeQuickLogFeedback()
+            return@LaunchedEffect
+        }
         val result = snackbarHostState.showSnackbar(
             resources.getString(
                 if (feedback.isSend) R.string.board_detail_quick_send_logged
                 else R.string.board_detail_quick_attempt_logged,
             ),
             actionLabel = resources.getString(R.string.climb_creator_undo),
-            withDismissAction = true,
+            withDismissAction = false,
+            duration = SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.undoQuickLog()
         else viewModel.consumeQuickLogFeedback()
@@ -488,6 +505,28 @@ fun BoardClimbDetailScreen(
                 "countdown=${state.playback.countdownSeconds}"
         )
     }
+    LaunchedEffect(state.climb?.uuid, tourStep) {
+        if (state.climb != null && tourStep == TourStep.OPEN) tour.move(TourStep.PROJECT)
+    }
+    val tourLamp = BoardDeliveryPolicy.lampMode(
+        decision = deliveryDecision, hasDirectPayload = hasDirectPayload,
+        boardConnected = state.ble.connectionState == ConnectionState.CONNECTED || state.ble.connectionState == ConnectionState.SENDING,
+        boardOwnedByOthers = detailQueueState.isConnecting, countdownRunning = state.playback.countdownSeconds > 0)
+    val detailTourTarget = when (tourStep) {
+        TourStep.PROJECT -> if (tourLamp == BoardDetailLampMode.HIDDEN) TourTarget.QUICK_ATTEMPT else TourTarget.PROJECT
+        TourStep.LOG -> TourTarget.QUICK_ATTEMPT
+        TourStep.LOGBOOK -> TourTarget.BACK
+        else -> null
+    }
+    TourHost(tourTargets, detailTourTarget,
+        if (detailTourTarget == TourTarget.QUICK_ATTEMPT) R.string.tour_spotlight_quicklog
+        else if (detailTourTarget == TourTarget.BACK) R.string.tour_spotlight_logbook_back
+        else if (tourLamp == BoardDetailLampMode.CONNECT) R.string.tour_spotlight_detail_connect
+        else if (tourLamp == BoardDetailLampMode.SHARED_QUEUE) R.string.tour_spotlight_queue
+        else R.string.tour_spotlight_project,
+        { tour.move(TourStep.DONE) },
+        secondaryTarget = if (detailTourTarget == TourTarget.QUICK_ATTEMPT) TourTarget.QUICK_SEND else null,
+        visible = !showBleSheet && !showMismatchPicker && !state.ascent.showDialog && state.climb != null && state.error == null) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
@@ -495,16 +534,18 @@ fun BoardClimbDetailScreen(
             // logbook-only stub there is no climb to act on, and a dock
             // offering to light one would be offering nothing.
             if (state.climb != null && state.error == null && state.logbookOnly == null) {
+                Column {
                 BoardDetailBottomActions(
                     state = state,
                     decision = deliveryDecision,
                     hasDirectPayload = hasDirectPayload,
                     boardOwnedByOthers = detailQueueState.isConnecting,
-                    onAttempt = { viewModel.quickLogAscent(isSend = false) },
-                    onLight = viewModel::deliverClimb,
+                    onAttempt = { if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG); viewModel.quickLogAscent(isSend = false) },
+                    onLight = { viewModel.deliverClimb(); if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG) },
                     onConnectBoard = { showBleSheet = true },
-                    onSend = { viewModel.quickLogAscent(isSend = true) },
+                    onSend = { if (tour.step() == TourStep.PROJECT) tour.move(TourStep.LOG); viewModel.quickLogAscent(isSend = true) },
                 )
+                }
             }
         },
         topBar = {
@@ -514,7 +555,7 @@ fun BoardClimbDetailScreen(
                     navigationIcon = {
                         IconButton(
                             onClick = onNavigateBack,
-                            modifier = Modifier.testTag("boarddetail_back_button")
+                            modifier = Modifier.testTag("boarddetail_back_button").tourTarget(TourTarget.BACK)
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                         }
@@ -587,10 +628,14 @@ fun BoardClimbDetailScreen(
                         val kilterImmutable = state.climb?.kilterStatus == "synced" ||
                             state.climb?.kilterStatus == "diverged"
                         var moreExpanded by remember { mutableStateOf(false) }
+                        DisposableEffect(moreExpanded) {
+                            tourTargets.menuOpen = moreExpanded
+                            onDispose { tourTargets.menuOpen = false }
+                        }
                         Box {
                             IconButton(
                                 onClick = { moreExpanded = true },
-                                modifier = Modifier.testTag("boarddetail_more_button"),
+                                modifier = Modifier.testTag("boarddetail_more_button").tourTarget(TourTarget.LOG),
                             ) {
                                 Icon(
                                     Icons.Default.MoreVert,
@@ -626,8 +671,16 @@ fun BoardClimbDetailScreen(
                                         moreExpanded = false
                                         viewModel.showAscentDialog()
                                     },
-                                    modifier = Modifier.testTag("boarddetail_log_button"),
+                                    modifier = Modifier.testTag("boarddetail_log_button").tourMenuTarget(TourTarget.LOG),
                                 )
+                                if (tourTargets.active != null) {
+                                    FilledTonalButton(onClick = { moreExpanded = false; tour.move(TourStep.DONE) },
+                                        modifier = Modifier.padding(8.dp).fillMaxWidth().heightIn(min = 48.dp)) {
+                                        Icon(Icons.Default.Close, null, Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.tour_skip))
+                                    }
+                                }
                                 HorizontalDivider()
                                 // Mirror toggle — a display-only left/right flip
                                 // of the climb. Only shown for layouts that are
@@ -640,6 +693,7 @@ fun BoardClimbDetailScreen(
                                 // overflow, above the owner-gated Edit/Delete.
                                 if (state.isMirrorable) {
                                     DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
                                         text = {
                                             Text(
                                                 stringResource(
@@ -669,6 +723,7 @@ fun BoardClimbDetailScreen(
                                 // with the mirror toggle above the owner-gated
                                 // Edit/Delete actions.
                                 DropdownMenuItem(
+                                    enabled = tourTargets.active == null,
                                     text = {
                                         Text(
                                             stringResource(
@@ -702,6 +757,7 @@ fun BoardClimbDetailScreen(
                                 val shareUuid = shareClimb?.uuid
                                 if (shareUuid != null) {
                                     DropdownMenuItem(
+                                        enabled = tourTargets.active == null,
                                         text = { Text(stringResource(R.string.board_detail_share_link)) },
                                         leadingIcon = {
                                             Icon(
@@ -735,7 +791,7 @@ fun BoardClimbDetailScreen(
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
                                         },
-                                        enabled = !state.isOwnPublishInProgress,
+                                        enabled = tourTargets.active == null && !state.isOwnPublishInProgress,
                                         onClick = {
                                             moreExpanded = false
                                             viewModel.publishOwnClimb()
@@ -760,7 +816,7 @@ fun BoardClimbDetailScreen(
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     },
-                                    enabled = state.climb != null,
+                                    enabled = tourTargets.active == null && state.climb != null,
                                     onClick = {
                                         moreExpanded = false
                                         state.climb?.uuid?.let(onNavigateToFork)
@@ -770,6 +826,7 @@ fun BoardClimbDetailScreen(
                                 if (canEdit) {
                                     if (!kilterImmutable) {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.climb_creator_edit_action)) },
                                             leadingIcon = {
                                                 Icon(
@@ -848,6 +905,7 @@ fun BoardClimbDetailScreen(
                                     } ?: false
                                     if (isUnpublishedDraft) {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.climb_creator_drafts_delete_action)) },
                                             leadingIcon = {
                                                 Icon(
@@ -864,6 +922,7 @@ fun BoardClimbDetailScreen(
                                         )
                                     } else {
                                         DropdownMenuItem(
+                                            enabled = tourTargets.active == null,
                                             text = { Text(stringResource(R.string.community_climb_delete_action)) },
                                             leadingIcon = {
                                                 Icon(
@@ -959,6 +1018,11 @@ fun BoardClimbDetailScreen(
                     onNavigateToSetter = onNavigateToSetter,
                     layerControlsAllowed = layerControlsAllowed,
                     onFixBoardMismatch = { showMismatchPicker = true },
+                    onBetaOpenFailed = {
+                        shareScope.launch {
+                            snackbarHostState.showSnackbar(resources.getString(R.string.beta_video_open_failed))
+                        }
+                    },
                 )
             }
         } else {
@@ -971,10 +1035,16 @@ fun BoardClimbDetailScreen(
                 onNavigateToSetter = onNavigateToSetter,
                 layerControlsAllowed = layerControlsAllowed,
                 onFixBoardMismatch = { showMismatchPicker = true },
+                onBetaOpenFailed = {
+                    shareScope.launch {
+                        snackbarHostState.showSnackbar(resources.getString(R.string.beta_video_open_failed))
+                    }
+                },
                 modifier = Modifier.padding(padding)
             )
         }
     }
+    } // TourHost
 }
 
 /**
@@ -1693,12 +1763,14 @@ private fun ClimbDetailPageContent(
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     layerControlsAllowed: Boolean,
     onFixBoardMismatch: () -> Unit,
+    onBetaOpenFailed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
     val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     var showDetails by remember { mutableStateOf(false) }
     var showLayers by remember { mutableStateOf(false) }
+    var betaVideosExpanded by remember(state.climb?.uuid) { mutableStateOf(false) }
     var pendingLiveLayerRemoval by remember { mutableStateOf<BoardClimbLayer?>(null) }
     LaunchedEffect(state.personalNoteDraft, showDetails, state.climb?.uuid) {
         if (showDetails && state.personalNoteDraft.trim() != state.personalNote) {
@@ -1819,10 +1891,22 @@ private fun ClimbDetailPageContent(
                 CompactClimbOverview(
                     state = state,
                     onShowDetails = { showDetails = true },
+                    onShowBetaVideos = { betaVideosExpanded = true },
                     onAngleSelected = viewModel::onAngleSelected,
                     onNavigateToSetter = onNavigateToSetter,
                     isSharingEnabled = isSharingEnabled,
                 )
+
+                if (state.betaLinks.isNotEmpty()) {
+                    BetaVideoSheet(
+                        links = state.betaLinks,
+                        selectedAngle = state.angle,
+                        climbName = climb.name,
+                        expanded = betaVideosExpanded,
+                        onToggle = { betaVideosExpanded = !betaVideosExpanded },
+                        onOpenFailed = onBetaOpenFailed,
+                    )
+                }
 
                 // Boards that hold several climbs at once get a legend for
                 // what is on the wall right above the wall itself. It is the
@@ -1958,6 +2042,30 @@ private fun ClimbDetailPageContent(
     }
 }
 
+internal fun openBetaLink(
+    context: android.content.Context,
+    link: ClimbBetaLink,
+): Boolean {
+    return betaLinkIntents(link).any { intent ->
+        try {
+            context.startActivity(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+}
+
+internal fun betaLinkIntents(link: ClimbBetaLink): List<Intent> {
+    val uri = betaVideoUri(link.url) ?: return emptyList()
+    val fallback = Intent(Intent.ACTION_VIEW, uri)
+    return if (betaVideoProviderLabel(link) == "Instagram") {
+        listOf(Intent(Intent.ACTION_VIEW, uri).setPackage("com.instagram.android"), fallback)
+    } else listOf(fallback)
+}
+
 /**
  * The whole bottom of a climb page, in the order somebody needs it.
  *
@@ -2061,7 +2169,7 @@ private fun BoardDetailActionDock(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
-                .testTag("boarddetail_quick_attempt"),
+                .testTag("boarddetail_quick_attempt").tourTarget(TourTarget.QUICK_ATTEMPT),
             shape = RoundedCornerShape(18.dp),
             color = ErrorRed.copy(alpha = 0.13f),
             contentColor = ErrorRed,
@@ -2081,7 +2189,7 @@ private fun BoardDetailActionDock(
                 modifier = Modifier
                     .weight(1.12f)
                     .height(64.dp)
-                    .testTag("boarddetail_connect_board_button"),
+                    .testTag("boarddetail_connect_board_button").tourTarget(TourTarget.PROJECT),
                 shape = RoundedCornerShape(18.dp),
                 // Same treatment as the lamp: this is the primary action of
                 // the dock whenever there is no board yet, and a grey control
@@ -2106,6 +2214,7 @@ private fun BoardDetailActionDock(
                     modifier = Modifier
                         .weight(1.12f)
                         .height(64.dp)
+                        .tourTarget(TourTarget.PROJECT)
                         .testTag(
                             if (sharedQueue) "boarddetail_add_to_shared_queue_button"
                             else "boarddetail_light_climb_button",
@@ -2146,7 +2255,7 @@ private fun BoardDetailActionDock(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp)
-                .testTag("boarddetail_quick_send"),
+                .testTag("boarddetail_quick_send").tourTarget(TourTarget.QUICK_SEND),
             shape = RoundedCornerShape(18.dp),
             color = SuccessGreen.copy(alpha = 0.16f),
             contentColor = SuccessGreen,
@@ -2165,6 +2274,7 @@ private fun BoardDetailActionDock(
 private fun CompactClimbOverview(
     state: ClimbDetailState,
     onShowDetails: () -> Unit,
+    onShowBetaVideos: () -> Unit,
     onAngleSelected: (Int) -> Unit,
     onNavigateToSetter: (String) -> Unit,
     isSharingEnabled: Boolean,
@@ -2181,131 +2291,135 @@ private fun CompactClimbOverview(
         ),
         shape = RoundedCornerShape(14.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = climb.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    setter?.takeIf { it.isNotBlank() }?.let {
-                        val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            text = it,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .widthIn(max = 112.dp)
-                                .then(
-                                    if (climb.origin == "cruxcoach" && pubkey != null) {
-                                        Modifier.clickable { onNavigateToSetter(pubkey) }
-                                    }
-                                    else Modifier,
-                                ),
-                        )
-                    }
-                }
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.board_detail_more_information),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                climb.difficultyAverage?.let { difficulty ->
-                    val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
-                    val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
-                    Surface(
-                        color = zoneColorForDifficulty(difficulty, state.zones),
-                        shape = RoundedCornerShape(8.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "$french / $vScale",
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            text = climb.name,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        setter?.takeIf { it.isNotBlank() }?.let {
+                            val pubkey = climb.createdByPubkey?.takeIf(String::isNotBlank)
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = it,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .widthIn(max = 112.dp)
+                                    .then(
+                                        if (climb.origin == "cruxcoach" && pubkey != null) {
+                                            Modifier.clickable { onNavigateToSetter(pubkey) }
+                                        }
+                                        else Modifier,
+                                    ),
+                            )
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    climb.difficultyAverage?.let { difficulty ->
+                        val french = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.FRENCH)
+                        val vScale = GradeDisplayHelper.formatDifficulty(difficulty, GradeScale.V_SCALE)
+                        Surface(
+                            color = zoneColorForDifficulty(difficulty, state.zones),
+                            shape = RoundedCornerShape(8.dp),
+                        ) {
+                            Text(
+                                "$french / $vScale",
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DarkBackground,
+                            )
+                        }
+                    }
+                    CompactAngleMenu(
+                        currentAngle = state.angle,
+                        availableAngles = state.availableAngles,
+                        onAngleSelected = onAngleSelected,
+                    )
+                    Text(
+                        text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (climb.benchmarkDifficulty > 0.0) {
+                        Icon(
+                            Icons.Default.Verified,
+                            contentDescription = stringResource(R.string.board_detail_benchmark),
+                            tint = OrangeAccent,
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                    if (climb.isMatchStateKnown) {
+                        MatchIcon(
+                            crossed = climb.isNomatch,
+                            tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
+                            size = 15,
+                        )
+                    }
+                    // "This climb is going out over nearby-sharing right now" is
+                    // ambient state somebody needs to be able to see without
+                    // opening anything, so it sits with the other status icons.
+                    val advertisingLive = isSharingEnabled && state.nearby.isAdvertising &&
+                        state.ble.connectionState.let {
+                            it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+                        }
+                    if (advertisingLive) {
+                        Icon(
+                            Icons.Default.CellTower,
+                            contentDescription = stringResource(R.string.board_detail_climb_shared),
+                            tint = OrangeAccent,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .testTag("boarddetail_climb_shared_icon"),
+                        )
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Groups,
+                            contentDescription = stringResource(R.string.board_sends),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Text(
+                            text = "${climb.ascensionistCount ?: 0}",
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                CompactAngleMenu(
-                    currentAngle = state.angle,
-                    availableAngles = state.availableAngles,
-                    onAngleSelected = onAngleSelected,
-                )
-                Text(
-                    text = if (state.playback.isRoute) "${state.playback.totalFrames}F" else "${climb.moveCount}M",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "${climb.qualityAverage?.let { "%.1f".format(it) } ?: "–"}★",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                if (climb.benchmarkDifficulty > 0.0) {
-                    Icon(
-                        Icons.Default.Verified,
-                        contentDescription = stringResource(R.string.board_detail_benchmark),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
-                if (climb.isMatchStateKnown) {
-                    MatchIcon(
-                        crossed = climb.isNomatch,
-                        tint = if (climb.isNomatch) ErrorRed else SuccessGreen,
-                        size = 15,
-                    )
-                }
-                // "This climb is going out over nearby-sharing right now" is
-                // ambient state somebody needs to be able to see without
-                // opening anything, so it sits with the other status icons.
-                val advertisingLive = isSharingEnabled && state.nearby.isAdvertising &&
-                    state.ble.connectionState.let {
-                        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
-                    }
-                if (advertisingLive) {
-                    Icon(
-                        Icons.Default.CellTower,
-                        contentDescription = stringResource(R.string.board_detail_climb_shared),
-                        tint = OrangeAccent,
-                        modifier = Modifier
-                            .size(15.dp)
-                            .testTag("boarddetail_climb_shared_icon"),
-                    )
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Groups,
-                        contentDescription = stringResource(R.string.board_sends),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Text(
-                        text = "${climb.ascensionistCount ?: 0}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            }
+            if (state.betaLinks.isNotEmpty()) {
+                Spacer(Modifier.width(6.dp))
+                BetaVideoAction(count = state.betaLinks.size, onClick = onShowBetaVideos)
             }
         }
     }

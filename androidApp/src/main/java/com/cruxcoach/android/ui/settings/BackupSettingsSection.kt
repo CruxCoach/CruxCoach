@@ -2,20 +2,20 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,27 +41,12 @@ internal fun BackupSettingsSection(
 ) {
     if (!state.featureEnabled) return
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Text(
-            stringResource(R.string.settings_backup_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.settings_backup_description),
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        Spacer(Modifier.height(4.dp))
-        // Device-local exclusions the backup intentionally does not carry
-        // (backup-compat audit, 0.2.0): board selection + browse/map filters
-        // live in DataStore and are re-set in seconds, so they are not backed
-        // up. Stated here so restore expectations are accurate.
-        Text(
-            stringResource(R.string.settings_backup_device_local_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SettingsInfoHeading(
+            title = stringResource(R.string.settings_backup_title),
+            description = stringResource(R.string.settings_backup_description) + "\n\n" +
+                stringResource(R.string.settings_backup_device_local_note) + "\n\n" +
+                stringResource(R.string.backup_public_storage_notice),
         )
 
         Spacer(Modifier.height(12.dp))
@@ -83,33 +68,30 @@ internal fun BackupSettingsSection(
         }
         Text(
             statusText,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(Modifier.height(12.dp))
 
+        Text(stringResource(R.string.account_data_backup_explanation), style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.backup_storage_short), style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(12.dp))
+
         // Toggle row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                stringResource(R.string.settings_backup_enable),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Switch(
-                checked = state.backupEnabled,
-                onCheckedChange = onSetBackupEnabled,
-                enabled = state.hasNostrKey,
-            )
-        }
+        SettingsToggleRow(
+            title = stringResource(R.string.settings_backup_enable),
+            description = "",
+            checked = state.backupEnabled,
+            onCheckedChange = onSetBackupEnabled,
+            enabled = state.hasNostrKey,
+        )
 
         if (!state.hasNostrKey) {
             Text(
                 stringResource(R.string.settings_backup_needs_key),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
         }
@@ -136,15 +118,16 @@ internal fun BackupSettingsSection(
                 stringResource(R.string.settings_backup_interval),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SyncInterval.entries.forEach { interval ->
-                    FilterChip(
-                        selected = state.interval == interval,
-                        onClick = { onSetInterval(interval) },
-                        label = { Text(stringResource(interval.labelRes)) },
-                    )
-                }
-            }
+            SettingsChoices(
+                options = SyncInterval.entries.map { it to stringResource(it.labelRes) },
+                selected = state.interval,
+                onSelect = onSetInterval,
+            )
+
+            if (state.interval == SyncInterval.MANUAL) Text(
+                stringResource(R.string.backup_manual_schedule_notice),
+                style = MaterialTheme.typography.bodyMedium,
+            )
 
             // "Letzte Sicherung" / "Noch keine Sicherung" has moved up
             // into the always-visible status line above the toggle, so
@@ -153,7 +136,7 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onRunBackupNow,
-                enabled = !state.isRunningOneShot,
+                enabled = !state.isRunningOneShot && !state.isRestoring && !state.isDeletingRemote,
             ) {
                 if (state.isRunningOneShot) {
                     CircularProgressIndicator(
@@ -173,7 +156,7 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onTriggerRestore,
-                enabled = !state.isCheckingForBackup && !state.isRestoring && !state.boardImportInProgress,
+                enabled = !state.isCheckingForBackup && !state.isRestoring,
             ) {
                 if (state.isCheckingForBackup || state.isRestoring) {
                     CircularProgressIndicator(
@@ -195,14 +178,13 @@ internal fun BackupSettingsSection(
                     Text(stringResource(R.string.settings_backup_restore))
                 }
             }
-            // Restoring while the board catalogue is still importing raced the
-            // bulk-import for the SQLite writer lock and silently rolled the
-            // restore back. Block it until the import settles, with a reason.
-            if (state.boardImportInProgress) {
+            // The restore never waits for a catalogue download; say what
+            // follows once it is in.
+            if (state.catalogueLoading) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.settings_backup_restore_wait_import),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = stringResource(R.string.settings_backup_restore_catalogue_loading),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -238,7 +220,11 @@ internal fun DeleteRemoteBackupsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_title)) },
-        text = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_body)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.settings_backup_delete_remote_dialog_body))
+            }
+        },
         confirmButton = {
             Button(
                 onClick = onConfirm,
@@ -260,7 +246,7 @@ internal fun DeleteRemoteBackupsDialog(
 @Composable
 internal fun BackupRestoreDialog(
     info: BackupInfo,
-    boardImportInProgress: Boolean,
+    catalogueLoading: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -268,24 +254,24 @@ internal fun BackupRestoreDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.settings_backup_restore_dialog_title)) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
                     stringResource(
                         R.string.settings_backup_restore_dialog_body,
                         formatSize(info.pointer.size),
                     ),
                 )
-                if (boardImportInProgress) {
+                if (catalogueLoading) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = stringResource(R.string.settings_backup_restore_wait_import),
+                        text = stringResource(R.string.settings_backup_restore_catalogue_loading),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm, enabled = !boardImportInProgress) {
+            Button(onClick = onConfirm) {
                 Text(stringResource(R.string.settings_backup_restore_confirm))
             }
         },

@@ -64,12 +64,34 @@ enum class PyramidShape {
 
 /** What a session type counts, and the range the UI offers. */
 fun GeneratorType.structureRange(): IntRange = when (this) {
-    GeneratorType.VOLUME -> TrainingRanges.VOLUME_COUNT
-    GeneratorType.LIMIT -> TrainingRanges.LIMIT_COUNT
-    GeneratorType.PROJECTING -> TrainingRanges.PROJECT_COUNT
+    GeneratorType.VOLUME -> TrainingRanges.VOLUME_SIZE
+    GeneratorType.LIMIT -> TrainingRanges.LIMIT_SIZE
+    GeneratorType.PROJECTING -> TrainingRanges.PROJECT_SIZE
     GeneratorType.POWER_ENDURANCE -> TrainingRanges.PE_SETS
     GeneratorType.PYRAMID -> TrainingRanges.PYRAMID_TIERS
     GeneratorType.MANUAL -> TrainingRanges.MANUAL_COUNT
+}
+
+/**
+ * Where the size control starts for a type — a typical session, not the
+ * middle of what is possible. The ranges are deliberately wide so a climber
+ * can plan a four-problem top-up or a forty-problem day; their midpoint is
+ * nobody's normal session.
+ */
+fun GeneratorType.defaultStructureSize(): Int = when (this) {
+    GeneratorType.VOLUME -> 16
+    GeneratorType.LIMIT -> 3
+    GeneratorType.PROJECTING -> 2
+    GeneratorType.POWER_ENDURANCE -> 4
+    GeneratorType.PYRAMID -> 4
+    GeneratorType.MANUAL -> 10
+}
+
+/** Tries per problem where the type plans them; null where it does not. */
+fun GeneratorType.defaultAttempts(): Int? = when (this) {
+    GeneratorType.LIMIT -> TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM
+    GeneratorType.PROJECTING -> TrainingRanges.BURNS_PER_PROJECT
+    else -> null
 }
 
 /** Where in the training session the playlist will be climbed — shifts
@@ -121,6 +143,13 @@ data class PlaylistGeneratorParams(
     val selection: CandidateSelection = CandidateSelection.NEW,
     /** Pyramid only — see [PyramidShape]. */
     val pyramidShape: PyramidShape = PyramidShape.ASCENDING,
+    /** Optional hard grade range chosen in the generator. Null keeps the
+     * logbook-derived recommendation used by older saved playlists. */
+    val targetMinDifficulty: Double? = null,
+    val targetMaxDifficulty: Double? = null,
+    /** Pyramid only: a fixed number of climbs on every grade tier. Null keeps
+     * the classic 4-3-2-1 shape for older saved playlists. */
+    val pyramidClimbsPerTier: Int? = null,
     /**
      * How big the session is, in whatever the type counts: problems for
      * volume and hard bouldering, projects, 4x4 sets, pyramid tiers.
@@ -148,9 +177,21 @@ data class PlaylistGeneratorParams(
      * for playlists saved before this was a control.
      */
     val problemsPerSet: Int? = null,
+    /**
+     * Hard bouldering and projects: tries per problem. Null keeps the
+     * protocol's own number (five attempts, four burns) for playlists saved
+     * before this was a control.
+     */
+    val attemptsPerProblem: Int? = null,
     /** Manual mode: seconds between problems, and between tries of one. */
     val manualRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REST,
     val manualRepeatRestSeconds: Int = TrainingRanges.MANUAL_DEFAULT_REPEAT_REST,
+    /** Relevant board-browser filters captured when the list was generated. */
+    val minAscensionists: Int = 0,
+    val benchmarkOnly: Boolean = false,
+    val originFilter: String = "ALL",
+    val statusFilter: String = "ALL",
+    val climbType: String = "BOULDER",
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 

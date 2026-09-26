@@ -16,12 +16,14 @@ import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.data.repository.WorkoutRepository
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -83,13 +85,11 @@ class BackupRepository @Inject constructor(
      *  for the rationale. */
     private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
-    /** Read-only access for the [restore]-time gate that suspends until
-     *  any in-flight board-sync finishes — prevents SQLITE_BUSY when
-     *  the typical fresh-install flow (onboarding triggers board-sync,
-     *  user immediately taps "restore from cloud-backup") tries to
-     *  write own-climbs into the same `climbs` table the importer is
-     *  bulk-loading into. Same pattern as [com.cruxcoach.android.community.ClimbCreatorRepository]. */
-    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
+    /** Own climbs go to the board DB, which a catalogue import holds (the
+     *  typical fresh install: onboarding starts the download, the user
+     *  restores right away). They are written now or staged; the logbook
+     *  never waits for the catalogue. */
+    private val pendingImports: com.cruxcoach.android.data.PendingImports,
 ) {
 
     /**
@@ -134,7 +134,7 @@ class BackupRepository @Inject constructor(
         )
         val plaintext = json.toByteArray(Charsets.UTF_8)
         val compressed = BackupCompression.compress(plaintext)
-        val ciphertext = BackupCrypto.encrypt(compressed, dataKey)
+        val ciphertext = try { BackupCrypto.encrypt(compressed, dataKey) } finally { dataKey.fill(0) }
         val sha256 = ciphertext.sha256Hex()
 
         // 4 — discover Blossom servers (user's Kind 10063 + defaults).
@@ -194,6 +194,9 @@ class BackupRepository @Inject constructor(
             throw BackupException(BackupErrorReason.BlobNotVisibleAfterUpload(total = total))
         }
 
+        // Require acceptance of the wrapped key before advertising a new pointer.
+        republishKeyEvent()
+
         // 7 — ONLY NOW publish pointer event
         val previousSha = preferences.getPreviousBlobSha256()
         val pointer = BackupPointer(
@@ -214,17 +217,6 @@ class BackupRepository @Inject constructor(
             Log.d(TAG, "event=backup_cleanup previousShaPresent=true serversCleaned=${servers.size}")
         } ?: Log.d(TAG, "event=backup_cleanup previousShaPresent=false serversCleaned=0")
 
-        // 8b — keep the Kind-30078 key event from aging off the relays.
-        // The pointer is republished on every backup (so it stays fresh
-        // by construction); republish the key event on the SAME cadence.
-        // Replaceable-parameterized events can be evicted by relays over
-        // time, so a stale-gated (~30 d) refresh left a window where the
-        // pointer + blob survived but the key event was already evicted —
-        // a reinstalled user with the nsec could then find but not decrypt
-        // the backup. Best-effort + non-fatal (blob + pointer are already
-        // durable); for local signers there is no popup.
-        republishKeyEvent()
-
         // 9 — record success
         val now = System.currentTimeMillis() / 1000
         preferences.setLastBackupSync(now)
@@ -234,27 +226,13 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    /**
-     * Republish the Kind-30078 key event on every backup, matching the
-     * pointer cadence. Unconditional (was stale-gated to ~30 d): a relay
-     * could evict the older key event by age while keeping the pointer +
-     * blob, leaving a reinstalled user able to find but not decrypt the
-     * backup. Best-effort + non-fatal — blob + pointer are already durable,
-     * so a publish failure simply retries on the next backup.
-     */
-    private suspend fun republishKeyEvent() {
-        val nowEpoch = System.currentTimeMillis() / 1000
-        val wrapped = preferences.getWrappedDataKey() ?: return
-        runCatching { publishKeyEvent(wrapped) }
-            .onSuccess {
-                preferences.setLastKeyEventPublish(nowEpoch)
-                Log.d(TAG, "event=key_event_republished")
-            }
-            .onFailure { e ->
-                // Not fatal — blob + pointer are already durable; we'll
-                // try again on the next backup.
-                Log.w(TAG, "event=key_event_republish_failed reason=${e.message}", e)
-            }
+    /** Require a relay acknowledgement before publishing a fresh backup reference. */
+    internal suspend fun republishKeyEvent() {
+        val wrapped = preferences.getWrappedDataKey()
+            ?: throw BackupException(BackupErrorReason.KeyFetchAmbiguous)
+        publishKeyEvent(wrapped)
+        preferences.setLastKeyEventPublish(System.currentTimeMillis() / 1000)
+        Log.d(TAG, "event=key_event_republished")
     }
 
     /**
@@ -403,20 +381,6 @@ class BackupRepository @Inject constructor(
      * the worker.
      */
     suspend fun restore(info: BackupInfo): BackupRestoreResult = pipelineMutex.withLock {
-        // Wait out any in-flight board-sync before we start writing into
-        // the (unencrypted) board DB's climbs table — concurrent writers
-        // race for the SQLite writer-lock and bulk-import wins on
-        // duration, which would surface here as SQLITE_BUSY. The typical
-        // fresh-install flow is: onboarding kicks off board-sync, user
-        // taps Settings → Cloud-Restore while sync is still importing
-        // 190K rows. The gate is a no-op when no sync is in flight
-        // (common case for users restoring from a settled state).
-        if (boardSyncManager.state.value.isSyncing) {
-            android.util.Log.i(TAG, "restore: awaiting board-sync to finish before write")
-            boardSyncManager.state.first { !it.isSyncing }
-            android.util.Log.i(TAG, "restore: board-sync done, proceeding")
-        }
-
         val started = System.currentTimeMillis()
         val pointer = info.pointer
 
@@ -452,7 +416,7 @@ class BackupRepository @Inject constructor(
             TAG,
             "event=restore_download_ok sha256Prefix=${pointer.sha256.take(8)} bytes=${ciphertext.size} durationMs=${System.currentTimeMillis() - started}",
         )
-        val compressed = BackupCrypto.decrypt(ciphertext, dataKey)
+        val compressed = try { BackupCrypto.decrypt(ciphertext, dataKey) } finally { dataKey.fill(0) }
         val json = BackupCompression
             .decompress(compressed, maxBytes = MAX_PLAINTEXT_BYTES)
             .toString(Charsets.UTF_8)
@@ -474,21 +438,35 @@ class BackupRepository @Inject constructor(
         // pubkey check catches bookkeeping bugs (re-imported own old
         // nsec, mid-flow identity flip before A2 clears ran, etc.)
         // before any row is written.
-        val importResult = importRetryingOnDbLock {
-            CruxCoachBackup.import(
-                jsonString = json,
-                selectedCategories = CruxCoachBackup.Category.entries.toSet(),
-                userRepository = userRepository,
-                bodyStatRepository = bodyStatRepository,
-                workoutRepository = workoutRepository,
-                climbRepository = climbRepository,
-                planRepository = planRepository,
-                personalBoardRepo = personalBoardRepo,
-                boardRepository = boardRepository,
-                transactionRunner = transactionRunner,
-                expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
-            )
+        // Off the caller's (main) thread: it now runs alongside a catalogue
+        // download instead of after it.
+        val logbookResult = withContext(Dispatchers.IO) {
+            importRetryingOnDbLock {
+                CruxCoachBackup.import(
+                    jsonString = json,
+                    selectedCategories = CruxCoachBackup.Category.entries.toSet(),
+                    userRepository = userRepository,
+                    bodyStatRepository = bodyStatRepository,
+                    workoutRepository = workoutRepository,
+                    climbRepository = climbRepository,
+                    planRepository = planRepository,
+                    personalBoardRepo = personalBoardRepo,
+                    boardRepository = boardRepository,
+                    transactionRunner = transactionRunner,
+                    expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
+                    restoreOwnClimbsNow = false,
+                )
+            }
         }
+        // The logbook is in; own climbs are written now or after the catalogue import.
+        val own = withContext(Dispatchers.IO) {
+            pendingImports.restoreOrStageOwnClimbs(json, adoptLocalDraftsForPubkey = null)
+        }
+        val importResult = logbookResult.copy(
+            ownClimbs = own.restored,
+            skippedDuplicates = logbookResult.skippedDuplicates + own.skipped,
+            pendingOwnClimbs = own.staged,
+        )
 
         // 4 — cache dataKey for future backups (self-encrypt via NIP-44)
         val wrappedFresh = nip44EncryptToSelf(dataKeyHex)
@@ -517,20 +495,11 @@ class BackupRepository @Inject constructor(
 
     /**
      * Retry the secure-DB import when it fails with a transient SQLite
-     * lock ("database is locked" / "busy"). Root cause: the secure DB
-     * ATTACHes the unencrypted board DB to resolve ascent→climb names,
-     * so the very first ascent step JOINs the board DB — which collides
-     * with an in-progress board-catalogue bulk import (index rebuilds /
-     * checkpoints can hold the board-DB write lock past the connection's
-     * 5 s busy_timeout). A fresh-install "restore while boards are still
-     * downloading" then rolled the whole secure transaction back to zero
-     * and surfaced only as a transient generic snackbar. The import is
-     * idempotent (UUID dedup + name-merged lists), so re-running after a
-     * short backoff — by which point the offending board-DB batch has
-     * committed — completes cleanly. `restore()` already waits for
-     * `isSyncing` to clear up front; this covers the residual windows it
-     * can't (ensureActiveBoardCatalogue runs before that guard; the
-     * detached post-sync ANALYZE runs after it).
+     * lock ("database is locked" / "busy"), e.g. a background logbook
+     * refresh holding the secure DB. The import is idempotent (UUID dedup +
+     * name-merged lists), so re-running after a short backoff completes
+     * cleanly. The board DB is not involved: own climbs are written or
+     * staged afterwards ([com.cruxcoach.android.data.PendingImports]).
      */
     private suspend fun <T> importRetryingOnDbLock(block: () -> T): T {
         val maxAttempts = 4
@@ -896,7 +865,7 @@ class BackupRepository @Inject constructor(
         return event?.content
     }
 
-    private suspend fun publishKeyEvent(wrappedDataKey: String) {
+    internal suspend fun publishKeyEvent(wrappedDataKey: String) {
         val keyDTag = dTagDeriver.derive(BackupPreferences.IDENTIFIER_KEY)
         val tags = arrayOf(arrayOf("d", keyDTag))
         val event = nostrSigner.signer.sign<com.vitorpamplona.quartz.nip01Core.core.Event>(

@@ -1,4 +1,55 @@
-# Releasing on GitHub
+# Release status and GitHub workflow
+
+> **Operational status — 2026-09-10:** published app **0.2.2**; this tree
+> prepares **0.2.3**. This page preserves a repository workflow and historical
+> operator procedure; its presence does not establish a running release service.
+> No stable publication is authorized by this document.
+
+## Current authority and evidence
+
+The 2026-09-06 development-host handoff (`~/SERVER-SPLIT-STATUS.md`) reports
+that production remains separate, no GitHub self-hosted runner was registered,
+and the existing Forgejo runner had not yet been decommissioned. This was a
+verified handoff snapshot, not a live availability check in this audit.
+The statements below about a retired Forgejo path describe the intended
+workflow migration, not proof that the old production runner was removed.
+
+| Path | What is present / what it establishes |
+|---|---|
+| [PR CI](../.github/workflows/pr-ci.yml) | Hosted unit tests and debug build; lint advisory. No production signing authority |
+| [Feature build](../.github/workflows/feature-build.yml) | Feature artifact request, separate from stable |
+| [Feature publisher](../.github/workflows/feature-publish.yml) | Trusted-main token-based APKTrack path in this tree; authorization and deterministic identity checks |
+| [Stable workflow](../.github/workflows/release.yml) | Manual, main-only self-hosted workflow definition; deployment/runner readiness is separate |
+| OIDC/private signing draft PR14 | Proposed migration, **not activated in production**, per owner handoff |
+
+Feature identity comes from [feature_identity.py](../scripts/feature_identity.py),
+including the compatibility-critical Fips override. A branch named for Fips
+having a reserved package does not mean this release contains FIPS code.
+Feature build code never receives upload tokens or Android signing keys.
+APKTrack success requires both `status="published"` and
+`receipt_delivered=true`; a queued job is insufficient. The owner's review
+and required checks own merge authority. Stable requires separate, explicit
+operator authorization for that release.
+
+Before migration activation, the owner must finish private broker/signer
+installation, policy and negative-access checks, end-to-end feature
+publication and the trusted production executor. The draft does not revoke
+old token access or replace the stable/website/Blossom operator procedures.
+A general signing-capable runner for contributor code is not a substitute.
+
+Release configuration is prepared for owner review: the 0.2.3 candidate
+values are `versionName=0.2.3`, stable `versionCode=9`, `minSdk=28`. Check
+[Gradle](../androidApp/build.gradle.kts) for implemented values and the actual
+APK metadata for published values; this documentation does not set them.
+The [pre-release checklist](releases/0.2.3-pre-release.md) records pending
+device validation and the steps before stable publication.
+
+## Historical workflow procedure — operator reference
+
+The remainder records the earlier self-hosted design and recovery commands.
+Revalidate runner isolation, protected environments, credentials and signer
+interaction on the operator side before reusing it. Commands here are not
+instructions for a remote documentation or feature agent to execute.
 
 GitHub is the primary forge. Dispatching `.github/workflows/release.yml` from
 `main` runs it on a **self-hosted** runner: unit tests, one signed APK, the tag,
@@ -21,16 +72,18 @@ the protected GitHub workflow, not a second place that builds or signs.
 ## Why GitHub Actions is acceptable, given the signing key
 
 The standing objection to Actions was that it would put the release signing key
-into GitHub's secret store. That key is the one thing here whose loss or
-compromise cannot be undone: a rotation is only installable from 0.2.3 onwards,
-and only on Android 9+. Everything else in this system has a second path; the
-key does not.
+into GitHub's secret store. Losing or compromising that key can strand
+existing installs. Safe rotation depends on the installed client's lineage
+support and Android version; see [key rotation](KEY_ROTATION.md). A prepared
+0.2.3 release is not evidence that a rotation has occurred.
 
 A **self-hosted runner** answers the objection rather than accepting it. The
 job runs on our own machine, reads the keystore from `$CRUXCOACH_SECRETS_DIR`
-on the local filesystem, and uploads nothing. The workflow declares
+on the local filesystem, and does not upload the keystore. The workflow declares
 `permissions: contents: read` and defines no secrets — nothing in the GitHub
-secret store is load-bearing, so a GitHub-side compromise cannot reach the key.
+secret store is load-bearing for this stable workflow. A compromised
+authorized workflow or runner can still reach the key; keeping it out of
+GitHub secrets alone does not close that boundary.
 
 The trade is different, not free: a self-hosted runner executes repository
 code on a host that holds the signing key. The release job therefore has three
@@ -99,6 +152,27 @@ size against the bytes sent — names alone would not catch a truncated upload.
 
 Re-running is safe: an existing release is reused and same-named assets are
 replaced.
+
+## Historical runner configuration
+
+The runner expects these environment variables in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
+
+| Variable | Purpose |
+|----------|---------|
+| `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
+| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` and `aapt2` |
+| `CRUXCOACH_APK_LOCAL_DIR` | Optional. Download-server APK directory; defaults to `~/cruxcoach-dlstats/apk` |
+| `CRUXCOACH_PAGES_DIR` | Optional. Website checkout whose `tools/publish-release.sh` refreshes the download links; defaults to `~/cruxcoach-pages` |
+
+Files the runner reads off its own filesystem, none of which is a forge secret:
+
+| Path | Purpose |
+|------|---------|
+| `$CRUXCOACH_SECRETS_DIR/local.properties` | Build config, including `RELEASE_STORE_FILE` — beware the trap documented above: an empty value makes a release build fall back to debug signing **silently** |
+| `$CRUXCOACH_SECRETS_DIR/.signing/` | Release keystore |
+| `$CRUXCOACH_SECRETS_DIR/.env` | Zapstore publishing. Mode 600; must define a headless `SIGN_WITH` (`nsec1…`, hex private key, or a provisioned `bunker://` NIP-46 signer) whose public key matches `zapstore.yaml`. A bare `npub1…` only creates unsigned output. The file uses raw zsp `KEY=value` syntax and is never sourced as shell. See [`.env.example`](../.env.example) |
+| `~/.config/cruxcoach/github-release-token` | Mode 600, `Contents: Read and write` on `CruxCoach/CruxCoach`. Authenticates both the GitHub API calls and the tag push. Override with `GITHUB_TOKEN` / `GITHUB_TOKEN_FILE`, or `GITHUB_RELEASE_TOKEN` for the dev-release cleanup step |
+| `~/.config/cruxcoach/codeberg-release-token` | Mode 600, repository write access on `CruxCoach/CruxCoach`. Pushes the identical tag and mirrors the already-built GitHub APK plus sidecar to Codeberg. Override with `CODEBERG_TOKEN` / `CODEBERG_TOKEN_FILE` |
 
 ## Authentication: one token, no SSH
 
@@ -277,7 +351,10 @@ it makes the target match the source and deletes refs the source does not have.
 The first tag pushed straight to GitHub is exactly such a ref, and the next
 mirror run would remove it along with the release hanging off it.
 
-## For 0.2.3
+## Historical proposal for 0.2.3
+
+This proposal is retained for owner review, not an instruction to change the
+release configuration or evidence of deployment:
 
 Move the compiled-in default (`UPDATER_API_BASE` in `androidApp/build.gradle.kts`)
 to `https://api.github.com`, so fresh installs do not depend on the runtime list

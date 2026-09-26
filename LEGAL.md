@@ -46,7 +46,7 @@ CruxCoach distributes board reference data and community-created climb data via 
 
 | Data | Type | Source | Rationale |
 |------|------|--------|-----------|
-| Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware |
+| Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware; also bundled in the APK ([below](#bundled-board-geometry)) |
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
 | Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
@@ -111,6 +111,25 @@ fair-use doctrines elsewhere. CruxCoach claims no ownership, affiliation, or
 endorsement. See the in-directory
 [`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
 per-board rights holders, and removal-request contacts.
+
+### Bundled board geometry
+
+The hold positions, board sizes, layout-image references and LED addresses of
+Kilter and five Aurora-family boards (Tension, Grasshopper, Decoy, So iLL,
+Touchstone) also ship inside the APK under
+[`androidApp/src/main/assets/board_geometry/`](androidApp/src/main/assets/board_geometry/).
+Community climbs arrive over Nostr as placement ids only; without this
+geometry a board whose catalogue was not downloaded could not draw or light
+them.
+
+These are the same rows listed above as hardware reference data and already
+distributed via Blossom: functional facts about the physical boards,
+dictated by their manufactured layout, with no climbs, user data, images or
+descriptive text. Bundling them adds a delivery channel, not a new category
+of data. CruxCoach claims no ownership, affiliation or endorsement. Quantum
+geometry is not bundled. Per-board provenance is in the in-directory
+[`README.md`](androidApp/src/main/assets/board_geometry/README.md), attribution
+and removal contacts in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
 
 ### Map rendering & tile data
 
@@ -203,4 +222,4 @@ We will review all concerns in good faith.
 
 ---
 
-*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-04-14.*
+*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-09-24.*

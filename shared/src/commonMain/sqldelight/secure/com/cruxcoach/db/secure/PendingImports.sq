@@ -1,0 +1,26 @@
+CREATE TABLE pending_import (
+    id TEXT NOT NULL PRIMARY KEY,
+    source TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    options TEXT,
+    created_at INTEGER NOT NULL
+);
+
+stagePendingImport:
+INSERT OR REPLACE INTO pending_import(id, source, payload, options, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+selectPendingImports:
+SELECT * FROM pending_import ORDER BY created_at, id;
+
+deletePendingImport:
+DELETE FROM pending_import WHERE id = ?;
+
+countPendingImports:
+SELECT COUNT(*) FROM pending_import;
+
+deleteAllPendingImports:
+DELETE FROM pending_import;
+
+deletePendingImportsBySource:
+DELETE FROM pending_import WHERE source = ?;

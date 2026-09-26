@@ -62,6 +62,7 @@ class UpdaterRepository @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher + exceptionHandler)
     private var downloadMonitorJob: Job? = null
     private val downloadCompletionMutex = Mutex()
+    private val pendingNotificationMutex = Mutex()
     private val anonymousUpdateMetricsMutex = Mutex()
     private val automaticUpdateInstallInFlight = AtomicBoolean(false)
 
@@ -112,6 +113,9 @@ class UpdaterRepository @Inject constructor(
      * otherwise. Called from every trigger source.
      */
     suspend fun checkNow(trigger: UpdateChecker.Trigger): UpdateChecker.CheckOutcome {
+        if (trigger != UpdateChecker.Trigger.MANUAL && !preferences.snapshot().autoCheckEnabled) {
+            return UpdateChecker.CheckOutcome.Skipped(reason = "auto_check_disabled")
+        }
         val outcome = checker.maybeCheck(trigger)
         if (outcome is UpdateChecker.CheckOutcome.Skipped &&
             outcome.reason == UpdateChecker.REASON_END_OF_SUPPORT
@@ -119,6 +123,9 @@ class UpdaterRepository @Inject constructor(
             notifyEndOfSupportOnce()
             return outcome
         }
+        // A skipped automatic check must not revive cached reminders/downloads.
+        if (outcome is UpdateChecker.CheckOutcome.Skipped) return outcome
+        if (trigger != UpdateChecker.Trigger.MANUAL && !preferences.snapshot().autoCheckEnabled) return outcome
         if (outcome is UpdateChecker.CheckOutcome.Update) {
             onNewerUpdateDetected(outcome.info)
         } else {
@@ -249,7 +256,7 @@ class UpdaterRepository @Inject constructor(
         if (prefs.automationMode != UpdateAutomationMode.NOTIFY && transportAllowed) {
             startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
         } else {
-            notifier.showPendingDownload(info)
+            showPendingNotificationIfDue(info)
         }
     }
 
@@ -270,7 +277,7 @@ class UpdaterRepository @Inject constructor(
             if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD) return@launch
             if (prefs.notifDismissedAtEpochMs != null) return@launch
             val info = prefs.pendingUpdate() ?: return@launch
-            notifier.showPendingDownload(info)
+            showPendingNotificationIfDue(info)
         }
     }
 
@@ -537,7 +544,7 @@ class UpdaterRepository @Inject constructor(
             "event=download_complete version=${info.versionName} " +
                 "source=$sourceIndex bytes=${apk.length()}",
         )
-        when (val result = verifier.verify(apk, info.apkSha256)) {
+        when (val result = verifier.verify(apk, info.apkSha256, info.versionName)) {
             IntegrityVerifier.Result.Ok -> {
                 Log.i(
                     TAG,
@@ -799,7 +806,7 @@ class UpdaterRepository @Inject constructor(
      * and bump the dismissal count — [maybeReArmPendingNotification] uses both to
      * re-surface the update later on an escalating backoff (§6.10).
      */
-    suspend fun onNotificationDismissed() {
+    suspend fun onNotificationDismissed() = pendingNotificationMutex.withLock {
         preferences.update {
             it.copy(
                 notifDismissedAtEpochMs = System.currentTimeMillis(),
@@ -809,9 +816,9 @@ class UpdaterRepository @Inject constructor(
     }
 
     /**
-     * §6.10 re-arm: re-post a pending update the user swiped away, on an
-     * escalating backoff keyed to how many times they've dismissed it — ~24h
-     * after the first dismissal, ~72h for the next ten, then ~30d forever. Called
+     * §6.10 re-arm: re-post a pending update the user swiped away, on a
+     * backoff keyed to how many times they've dismissed it — ~24h
+     * after each of the first two dismissals, then ~72h thereafter. Called
      * from [checkNow] on every trigger (foreground / network / 24h periodic), so
      * even a run that returns NotModified (ETag 304) gets a chance to re-surface
      * the update. No-op unless there is a dismissed, still-pending download whose
@@ -819,23 +826,37 @@ class UpdaterRepository @Inject constructor(
      */
     suspend fun maybeReArmPendingNotification() {
         val prefs = preferences.snapshot()
-        if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD) return
-        val dismissedAt = prefs.notifDismissedAtEpochMs ?: return // showing / never dismissed
+        if (!prefs.autoCheckEnabled || prefs.notifDismissedAtEpochMs == null) return
         val info = prefs.pendingUpdate() ?: return
-        if (System.currentTimeMillis() - dismissedAt < reArmDelayMs(prefs.notifReArmCount)) return
-        notifier.showPendingDownload(info)
-        // It's on screen again → clear the dismissed marker. The dismissal COUNT
-        // is kept (it drives the escalating backoff); a fresh swipe bumps it via
-        // onNotificationDismissed and lengthens the next interval.
-        preferences.update { it.copy(notifDismissedAtEpochMs = null) }
-        Log.i(TAG, "event=notif_rearmed version=${info.versionName} dismissCount=${prefs.notifReArmCount}")
+        showPendingNotificationIfDue(info)
+    }
+
+    /** One gate for discovery, cached state, permission grants and reminders. */
+    private suspend fun showPendingNotificationIfDue(info: UpdateInfo) = pendingNotificationMutex.withLock {
+        val prefs = preferences.snapshot()
+        if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD || prefs.pendingTagName != info.tagName) return@withLock
+        val dismissedAt = prefs.notifDismissedAtEpochMs
+        if (dismissedAt != null) {
+            if (!prefs.autoCheckEnabled ||
+                System.currentTimeMillis() - dismissedAt < reArmDelayMs(prefs.notifReArmCount)
+            ) return@withLock
+        } else if (SemVer.parseOrNull(prefs.lastNotifiedTagName.orEmpty()) == info.version) {
+            return@withLock
+        }
+        // Do not consume the first notification or reminder when Android blocks it.
+        if (!notifier.showPendingDownload(info)) return@withLock
+        preferences.update {
+            if (it.pendingTagName != info.tagName) it else it.copy(
+                lastNotifiedTagName = "v${info.version}",
+                notifDismissedAtEpochMs = null,
+            )
+        }
     }
 
     /** Backoff before re-showing a dismissed update, by dismissal count (§6.10). */
     private fun reArmDelayMs(dismissCount: Int): Long = when {
-        dismissCount <= 1 -> TimeUnit.HOURS.toMillis(24)
-        dismissCount <= 11 -> TimeUnit.HOURS.toMillis(72) // dismissals 2..11 — the "×10" window
-        else -> TimeUnit.DAYS.toMillis(30)
+        dismissCount <= 2 -> TimeUnit.HOURS.toMillis(24)
+        else -> TimeUnit.HOURS.toMillis(72)
     }
 
     suspend fun setAutoCheck(enabled: Boolean) =

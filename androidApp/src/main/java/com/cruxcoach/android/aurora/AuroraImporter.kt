@@ -107,6 +107,11 @@ class AuroraImporter @Inject constructor(
         )
     }
 
+    /** Entries of an export without importing it — for staging an import
+     *  that waits for the Kilter catalogue ([com.cruxcoach.android.data.PendingImports]). */
+    fun summarize(json: String): Result<AuroraFileSummary> =
+        parser.parse(json).map { AuroraFileSummary(ascents = it.ascents.size, attempts = it.attempts.size) }
+
     // ── Name resolution ───────────────────────────────────────────────
 
     private data class NameResolution(

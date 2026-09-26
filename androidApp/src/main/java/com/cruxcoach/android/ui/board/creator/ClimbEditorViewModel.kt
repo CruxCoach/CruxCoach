@@ -64,6 +64,7 @@ data class ClimbEditorUiState(
     val canRedo: Boolean = false,
     val validationIssues: List<ClimbValidation.Issue> = emptyList(),
     val duplicateOf: CommunityClimbRow? = null,    // populated when frames_hash matches existing
+    val duplicateIsOwn: Boolean = false,           // duplicateOf is the user's own climb → offer to update it
     val pendingPublishConfirm: Boolean = false,    // dup-warn dialog gate
     val isPublishing: Boolean = false,
     val publishedUuid: String? = null,             // success terminal — UI navigates back
@@ -742,7 +743,9 @@ class ClimbEditorViewModel @Inject constructor(
                 val ownLoaded = _state.value.loadedDraftUuid
                 val isSelfReplace = dup != null && dup.uuid == ownLoaded
                 if (dup != null && !isSelfReplace) {
-                    _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
+                    val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                    val isOwn = ownPubkey != null && dup.createdByPubkey == ownPubkey && dup.source != "kilter"
+                    _state.update { it.copy(duplicateOf = dup, duplicateIsOwn = isOwn, pendingPublishConfirm = true) }
                     return@launch
                 }
                 // Profile-Hint: only on first publish without a Kind 0
@@ -811,10 +814,13 @@ class ClimbEditorViewModel @Inject constructor(
      *  guarantee as [acceptProfileHint]: a DataStore write failure
      *  doesn't strand the user on the dialog. */
     fun dismissProfileHintAndPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
+        // "Skip" and a tap outside the dialog both land here; only the first
+        // of them may publish (see [confirmPublishWithDuplicate]).
+        val taken = _state.consumePending({ it.pendingProfileHint }) { it.copy(pendingProfileHint = false) }
+        if (!taken) return
         viewModelScope.launch {
             runCatching { userPreferences.setProfileHintDismissed(true) }
                 .onFailure { Log.w(TAG, "setProfileHintDismissed failed", it) }
-            _state.update { it.copy(pendingProfileHint = false) }
             doPublish(sizeLabel, autoNoteTemplate)
         }
     }
@@ -825,9 +831,34 @@ class ClimbEditorViewModel @Inject constructor(
         _state.update { it.copy(profileSetupRequested = false) }
     }
 
-    /** User accepted the duplicate-warning dialog → continue publish. */
+    /** User accepted the duplicate-warning dialog → continue publish.
+     *  Only the tap that closes the dialog publishes: a second tap before
+     *  the dialog left the screen started a second publish, and without a
+     *  draft uuid each created its own climb, a second apart. */
     fun confirmPublishWithDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
-        _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
+        val taken = _state.consumePending({ it.pendingPublishConfirm }) {
+            it.copy(duplicateOf = null, duplicateIsOwn = false, pendingPublishConfirm = false)
+        }
+        if (!taken) return
+        doPublish(sizeLabel, autoNoteTemplate)
+    }
+
+    /** The duplicate is the user's own climb: publish the editor as an edit of
+     *  it. Same uuid, so relays replace the original event; re-creating a
+     *  climb to fix its name used to publish a second one with the same holds.
+     *  The editor's name, grade and description replace the old ones. */
+    fun updateExistingOnDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
+        val own = _state.value.duplicateOf?.takeIf { _state.value.duplicateIsOwn } ?: return
+        val taken = _state.consumePending({ it.pendingPublishConfirm }) {
+            it.copy(
+                duplicateOf = null,
+                duplicateIsOwn = false,
+                pendingPublishConfirm = false,
+                loadedDraftUuid = own.uuid,
+                isEditingExisting = true,
+            )
+        }
+        if (!taken) return
         doPublish(sizeLabel, autoNoteTemplate)
     }
 
@@ -835,7 +866,7 @@ class ClimbEditorViewModel @Inject constructor(
      *  Releases the isPublishing claim taken by publish(). */
     fun cancelPublishOnDuplicate() {
         _state.update {
-            it.copy(duplicateOf = null, pendingPublishConfirm = false, isPublishing = false)
+            it.copy(duplicateOf = null, duplicateIsOwn = false, pendingPublishConfirm = false, isPublishing = false)
         }
     }
 
@@ -951,7 +982,19 @@ class ClimbEditorViewModel @Inject constructor(
         // right after we clear it.
         autosaveJob?.cancel()
         viewModelScope.launch { autosave.clear(autosaveBoardKey) }
-        applyEditor(ClimbEditorState())
+        // Clear the climb, not the board it is set on. A bare ClimbEditorState()
+        // is a Kilter one: on a MoonBoard the editor turned into a Kilter wall
+        // with foot holds, Kilter colours and no angle.
+        // Through the undo stack: the button asks nothing, so an accidental
+        // tap wiped every hold with no way back.
+        val current = _state.value.editor
+        push(
+            ClimbEditorState(
+                boardBrand = current.boardBrand,
+                activeBrush = defaultBrushFor(current.boardBrand),
+                angle = current.angle,
+            )
+        )
         _state.update { it.copy(loadedDraftUuid = null) }
     }
 
@@ -1300,4 +1343,23 @@ class ClimbEditorViewModel @Inject constructor(
         private const val AUTOSAVE_DEBOUNCE_MS = 500L
         private const val HEATMAP_DEBOUNCE_MS = 500L
     }
+}
+
+/**
+ * Clears a pending one-shot dialog flag and reports whether this caller was
+ * the one that cleared it, atomically. Two taps on the same dialog button can
+ * both arrive before recomposition removes the dialog.
+ */
+internal fun <T> MutableStateFlow<T>.consumePending(isPending: (T) -> Boolean, clear: (T) -> T): Boolean {
+    var taken = false
+    update { s ->
+        if (isPending(s)) {
+            taken = true
+            clear(s)
+        } else {
+            taken = false
+            s
+        }
+    }
+    return taken
 }

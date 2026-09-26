@@ -34,8 +34,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.data.repository.Climb_lists
 
@@ -70,17 +72,22 @@ fun BoardListsScreen(
     if (state.showCreateDialog) {
         CreateListDialog(
             name = state.newListName,
+            // The same rule createList() applies. It used to refuse a taken name
+            // without a word: the button stayed active and simply did nothing.
+            nameTaken = state.lists.any { it.name.equals(state.newListName.trim(), ignoreCase = true) },
             onNameChanged = { viewModel.updateNewListName(it) },
             onCreate = viewModel::createList,
             onDismiss = { viewModel.dismissCreateDialog() }
         )
     }
 
-    state.deleteConfirmListId?.let {
+    state.deleteConfirmListId?.let { deleteId ->
+        // Name the list: a generic "Delete list?" does not say which one is about to go.
+        val deleteName = state.lists.firstOrNull { it.id == deleteId }?.name.orEmpty()
         AlertDialog(
             onDismissRequest = { viewModel.dismissDeleteConfirm() },
             title = { Text(stringResource(R.string.board_lists_delete_title), fontWeight = FontWeight.Bold) },
-            text = { Text(stringResource(R.string.board_lists_delete_message)) },
+            text = { Text(stringResource(R.string.board_lists_delete_message, deleteName)) },
             confirmButton = {
                 Button(
                     onClick = { viewModel.confirmDeleteList() },
@@ -101,6 +108,9 @@ fun BoardListsScreen(
             Column {
                 TopAppBar(
                     title = { Text(stringResource(R.string.board_lists_title)) },
+                    actions = {
+                        InfoButton(stringResource(R.string.board_lists_title), stringResource(R.string.ux_lists_help))
+                    },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -158,7 +168,17 @@ fun BoardListsScreen(
         // of thing: not your lists, but the broader CruxCoach community."
         LazyColumn(
             modifier = Modifier.padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            // Scaffold overlays its FAB on the content instead of including it
+            // in [padding]. Reserve a full FAB + margin at the end so the last
+            // card can always scroll above it; this also fixes the short-list
+            // case where the FAB covered the card's delete action but there was
+            // previously no remaining content to scroll.
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = 88.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "community-banner") {
@@ -370,15 +390,15 @@ private fun ListCard(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    list.name,
+                    list.displayName(),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     if (list.hasPlaybackPlan) {
-                        stringResource(R.string.board_list_climb_count_with_plan, list.climbCount)
+                        pluralStringResource(R.plurals.board_list_climb_count_with_plan, list.climbCount.toInt(), list.climbCount)
                     } else {
-                        stringResource(R.string.board_list_climb_count, list.climbCount)
+                        pluralStringResource(R.plurals.board_list_climb_count, list.climbCount.toInt(), list.climbCount)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -448,6 +468,7 @@ private fun HistoryCard(onClick: () -> Unit) {
 @Composable
 private fun CreateListDialog(
     name: String,
+    nameTaken: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
     onDismiss: () -> Unit
@@ -461,6 +482,10 @@ private fun CreateListDialog(
                 onValueChange = onNameChanged,
                 placeholder = { Text(stringResource(R.string.board_lists_list_name)) },
                 singleLine = true,
+                isError = nameTaken,
+                supportingText = if (nameTaken) {
+                    { Text(stringResource(R.string.board_lists_name_taken)) }
+                } else null,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -470,7 +495,7 @@ private fun CreateListDialog(
         confirmButton = {
             Button(
                 onClick = onCreate,
-                enabled = name.isNotBlank(),
+                enabled = name.isNotBlank() && !nameTaken,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp)
             ) { Text(stringResource(R.string.board_lists_create), fontWeight = FontWeight.Bold) }

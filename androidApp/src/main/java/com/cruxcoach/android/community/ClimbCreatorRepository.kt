@@ -210,7 +210,8 @@ class ClimbCreatorRepository @Inject constructor(
         val layoutId = userPreferences.boardLayoutId.first().toLong()
         val frames = state.encodeFrames()
         val hash = FramesHash.of(frames, layoutId)
-        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand)
+        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand, ownPubkey)
     }
 
     /**

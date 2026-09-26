@@ -6,10 +6,12 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.util.PerfLogger
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -63,9 +65,69 @@ class BoardSyncViewModel @Inject constructor(
 
     /** Recompute per-board catalogue sizes off the main thread. Call on first
      *  composition and whenever a sync completes. */
+    private var countsJob: Job? = null
+
     fun refreshBoardCounts() {
+        countsJob?.cancel()
+        countsJob = viewModelScope.launch {
+            _boardCounts.value = withContext(Dispatchers.IO) {
+                PerfLogger.traceQuery("boardSync.countClimbsByBrand") {
+                    boardRepository.getClimbCountsByBrand()
+                }
+            }
+        }
+    }
+
+    val downloadBrands: StateFlow<Set<BoardBrand>?> = userPreferences.boardDownloadBrands
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
+
+    /** Whether the first step's "Continue" was pressed with this model alive. */
+    private var onboardingChoiceConfirmed = false
+
+    suspend fun initialDownloadSelection(): Set<BoardBrand> {
+        if (!userPreferences.isOnboardingCompleted() && !state.value.alreadyImported &&
+            !onboardingChoiceConfirmed) {
+            val saved = if (userPreferences.hasBoardDownloadSelection()) {
+                userPreferences.boardDownloadBrands.first()
+            } else null
+            // Nothing chosen yet — or only the empty placeholder below, left by
+            // an earlier visit that never reached "Continue". Read as a choice,
+            // leaving the app on this step came back with nothing ticked.
+            if (saved.isNullOrEmpty()) {
+                // Skipping onboarding's download must not leave the legacy all-board
+                // default for a later periodic worker to download without a choice.
+                if (saved == null) userPreferences.setBoardDownloadBrands(emptySet())
+                return setOf(BoardBrand.fromWire(userPreferences.boardBrand.first()))
+            }
+            return saved
+        }
+        return userPreferences.boardDownloadBrands.first()
+    }
+
+    /** Persist consent before enqueueing; the application owns the download lifetime. */
+    suspend fun confirmOnboardingDownloads(brands: Set<BoardBrand>) {
+        onboardingChoiceConfirmed = true
+        val added = brands - userPreferences.boardDownloadBrands.first()
+        userPreferences.setBoardDownloadBrands(brands)
+        if (brands.isEmpty()) return
+        if (state.value.isSyncing || state.value.alreadyImported) {
+            if (added.isNotEmpty()) syncManager.startSelectedSyncAfterCurrent()
+        } else {
+            syncManager.startInitialSyncIfNeeded()
+        }
+    }
+
+    fun saveDownloadSelection(brands: Set<BoardBrand>, startInitial: Boolean = false) {
         viewModelScope.launch {
-            _boardCounts.value = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
+            val added = brands - userPreferences.boardDownloadBrands.first()
+            userPreferences.setBoardDownloadBrands(brands)
+            if (brands.isNotEmpty()) {
+                if (state.value.isSyncing || state.value.alreadyImported || !startInitial) {
+                    if (added.isNotEmpty()) syncManager.startSelectedSyncAfterCurrent()
+                } else {
+                    syncManager.startInitialSyncIfNeeded()
+                }
+            }
         }
     }
 
@@ -94,7 +156,12 @@ class BoardSyncViewModel @Inject constructor(
     fun confirmOfflineShare(invitation: com.cruxcoach.android.util.LocalShareProtocol.Invitation) =
         syncManager.confirmOfflineShare(invitation)
     fun dismissOfflineShare() = syncManager.dismissOfflineShare()
+    fun probeOnboardingShare() = syncManager.probeOnboardingShare()
+    fun updateShareSelection(selected: Set<BoardBrand>) = syncManager.updateShareSelection(selected)
+    fun presentDiscoveredShareAsDialog() = syncManager.presentDiscoveredShareAsDialog()
     fun confirmDiscoveredShare() = syncManager.confirmDiscoveredShare()
+    fun confirmDiscoveredShare(shareBrands: Set<BoardBrand>, onlineBrands: Set<BoardBrand>) =
+        syncManager.confirmDiscoveredShare(shareBrands, onlineBrands)
     fun dismissDiscoveredShare() = syncManager.dismissDiscoveredShare()
     fun dismissLocalShareUpdate() = syncManager.dismissLocalShareUpdate()
 

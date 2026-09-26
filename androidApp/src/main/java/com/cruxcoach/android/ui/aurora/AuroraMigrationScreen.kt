@@ -53,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -129,17 +130,10 @@ fun MigrationFlowContent(
         onResult = { uri -> uri?.let(onPickFile) },
     )
 
-    Text(
-        text = stringResource(R.string.aurora_migration_what_happened_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
+    com.cruxcoach.android.ui.common.InfoHeading(
+        stringResource(R.string.aurora_migration_title),
+        stringResource(R.string.aurora_migration_what_happened_body),
     )
-    Text(
-        text = stringResource(R.string.aurora_migration_what_happened_body),
-        style = MaterialTheme.typography.bodyMedium,
-    )
-
-    HorizontalDivider()
 
     NumberedStep(
         number = 1,
@@ -244,6 +238,47 @@ fun MigrationFlowContent(
         Spacer(Modifier.height(8.dp))
         ImportResultCard(result, onReset = onReset)
     }
+    state.staged?.let { staged ->
+        Spacer(Modifier.height(8.dp))
+        StagedCard(staged, onReset = onReset)
+    }
+}
+
+/** The export waits for the Kilter catalogue and is imported automatically. */
+@Composable
+private fun StagedCard(
+    staged: com.cruxcoach.android.aurora.AuroraFileSummary,
+    onReset: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = stringResource(R.string.aurora_migration_staged_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                text = stringResource(
+                    R.string.aurora_migration_staged_body,
+                    pluralStringResource(R.plurals.aurora_migration_staged_ascents, staged.ascents, staged.ascents),
+                    pluralStringResource(R.plurals.aurora_migration_staged_attempts, staged.attempts, staged.attempts),
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onReset, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.aurora_migration_import_another))
+            }
+        }
+    }
 }
 
 @Composable
@@ -274,15 +309,7 @@ private fun NumberedStep(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            com.cruxcoach.android.ui.common.InfoHeading(title, body)
             content()
         }
     }

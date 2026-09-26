@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -45,7 +45,7 @@ fun BackupKeyWarningCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -61,30 +61,33 @@ fun BackupKeyWarningCard(
                 Icon(
                     Icons.Default.Warning,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     stringResource(R.string.backup_key_warning_title),
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
+                InfoButton(stringResource(R.string.backup_key_warning_title), stringResource(
+                    if (signerMode == SignerMode.AMBER) R.string.backup_key_warning_body_amber else R.string.backup_key_warning_body_local))
             }
             Text(
                 stringResource(
-                    if (signerMode == SignerMode.AMBER) R.string.backup_key_warning_body_amber
-                    else R.string.backup_key_warning_body_local
+                    if (signerMode == SignerMode.AMBER) R.string.backup_key_short_amber
+                    else R.string.backup_key_short_local
                 ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (showPostOnboardingHint) {
                 Text(
                     stringResource(R.string.backup_key_warning_post_onboarding_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(
+            TextButton(
                 onClick = onOpenAccount,
                 modifier = Modifier.fillMaxWidth(),
             ) {

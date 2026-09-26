@@ -10,6 +10,7 @@ data class BlossomManifest(
     val board: String,
     /** Optional provenance marker used by independently licensed catalogues. */
     val source: String? = null,
+    @SerialName("media_schema") val mediaSchema: Int? = null,
     /**
      * Aurora product ID — Kilter-only. The MoonBoard catalogue manifest
      * has no Aurora product, so this field is absent there: nullable so

@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -45,6 +46,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var kilterSyncEngine: dagger.Lazy<com.cruxcoach.android.data.kilter.KilterSyncEngine>
+
+    @Inject
+    lateinit var pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>
 
     @Inject
     lateinit var connectivityObserver: dagger.Lazy<NostrRelayConnectivityObserver>
@@ -126,7 +130,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
         // Delivers gift-wrapped DMs with sub-3-second latency while the
         // process is alive; NotificationPollWorker (15 min) remains the
         // backstop for when the process gets killed.
-        PerfLogger.trace("NostrPushCoordinator.start") { pushCoordinator.get().start() }
+        // Constructing the message graph opens SQLCipher. On older phones that
+        // can take seconds; only lifecycle registration belongs on the UI thread.
+        appScope.launch {
+            val coordinator = PerfLogger.trace("NostrPushCoordinator.create") { pushCoordinator.get() }
+            withContext(Dispatchers.Main.immediate) {
+                PerfLogger.trace("NostrPushCoordinator.start") { coordinator.start() }
+            }
+        }
 
         // Auto-recovery from "reconnect attempts exhausted" after long
         // offline periods — re-triggers reconnect on every new Network.
@@ -226,6 +237,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().recoverPartialImportIfNeeded()
             }.onFailure { PerfLogger.warn("[appScope] recoverPartialImport failed", it) }
             runCatching {
+                // Community climbs of boards without a catalogue need hold
+                // geometry to be drawn, fitted and lit: seed the bundled copy
+                // for every board that has none.
+                syncManager.get().seedBundledGeometry()
+            }.onFailure { PerfLogger.warn("[appScope] seedBundledGeometry failed", it) }
+            runCatching {
                 // One-shot consumer of the 7.sqm post-migration marker:
                 // wipes chunk hashes + lastSyncTimestamp and triggers a
                 // background sync so the user doesn't land on an empty
@@ -255,6 +272,13 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
                 kilterSyncEngine.get().syncOnAppStartIfEnabled()
             }.onFailure { PerfLogger.warn("[appScope] kilterSync failed", it) }
+            runCatching {
+                // Imports that finished while a catalogue was loading left
+                // what needs it staged; apply it now and after every sync.
+                // Last on purpose: it opens the secure DB, whose unlock must
+                // not compete with the first frame (M-055).
+                pendingImports.get().start()
+            }.onFailure { PerfLogger.warn("[appScope] pendingImports start failed", it) }
 
             // Reading the interval is the only step that can plausibly
             // fail before the schedule calls (DataStore I/O); fall back

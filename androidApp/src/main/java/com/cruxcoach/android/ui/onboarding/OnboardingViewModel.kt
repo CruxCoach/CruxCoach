@@ -39,7 +39,7 @@ import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
- * New 3-step onboarding:
+ * Setup before the independent, contextual browser tour:
  *  - BOARD_SETUP  — welcome header + the one must-have action (Board-DB download).
  *  - PRIVACY      — privacy + backup + (inline) backup-restore choice in a single screen.
  *  - KILTER       — optional Kilter-logbook import, prominent skip.
@@ -95,15 +95,9 @@ data class OnboardingState(
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val restoreInProgress: Boolean = false,
-    /** True iff [restoreInProgress] AND board-sync is still finishing
-     *  the climbs-table import. The restore pipeline blocks on
-     *  board-sync to avoid a SQLITE_BUSY race against the bulk
-     *  importer; on a fresh install this typically takes 1–3
-     *  minutes (Blossom CDN download + decompression + bulk SQL
-     *  insert of ~190K climbs), during which the previous UI showed
-     *  no indication beyond a frozen confirm dialog. Drives a phase-
-     *  aware progress message in the dialog. */
-    val restoreAwaitingBoardSync: Boolean = false,
+    /** The restore finished while a catalogue was still loading: names,
+     *  grades and own climbs are linked once it is in ([com.cruxcoach.android.data.PendingImports]). */
+    val restoreLinksPending: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
     /** Counts from the completed restore — surfaced in the onboarding success
@@ -148,10 +142,12 @@ class OnboardingViewModel @Inject constructor(
     private val kilterTokenStore: KilterTokenStore,
     private val kilterSyncEngine: KilterSyncEngine,
     private val keyStore: NostrKeyStore,
+    private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle = androidx.lifecycle.SavedStateHandle(),
 ) : ViewModel() {
 
     private companion object {
@@ -162,8 +158,13 @@ class OnboardingViewModel @Inject constructor(
         _state.update { it.copy(auroraSheetOpen = value) }
     }
 
+    private fun hasRestoreAccount(): Boolean =
+        nostrSigner.getStoredSignerMode() == com.cruxcoach.android.nostr.SignerMode.AMBER || keyStore.hasKey()
+
     private val _state = MutableStateFlow(
-        OnboardingState(hasNostrKey = keyStore.hasKey()),
+        OnboardingState(hasNostrKey = hasRestoreAccount(), currentStep = runCatching {
+            OnboardingStep.valueOf(savedStateHandle.get<String>("setupStep") ?: "BOARD_SETUP")
+        }.getOrDefault(OnboardingStep.BOARD_SETUP)),
     )
 
     init {
@@ -232,30 +233,20 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         currentStep = OnboardingStep.KILTER,
-                        backupOptIn = true,
+                        // Resuming a restore is not a backup consent: the user may cancel the
+                        // key import, find no backup or decline it. Only a successful restore
+                        // (confirmOnboardingRestore) turns the opt-in on; the default stays off.
                         backupChoice = BackupChoice.RESTORE,
-                        hasNostrKey = keyStore.hasKey(),
+                        hasNostrKey = hasRestoreAccount(),
                     )
                 }
                 triggerBackupCheckIfNeeded()
             }
         }
-        // Seed the board-model fields from the persisted preferences so
-        // the user's prior choice survives onboarding restarts (e.g.
-        // backup-restore round trip).
-        viewModelScope.safeLaunch("OnboardingViewModel") {
-            val layoutId = userPreferences.boardLayoutId.first()
-            val sizeId = userPreferences.boardProductSizeId.first()
-            val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(
-                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId)
-            _state.update {
-                it.copy(
-                    boardLayoutId = layoutId,
-                    boardProductSizeId = sizeId,
-                    boardProductSizeName = name,
-                )
-            }
-        }
+        // The persisted board choice reaches the state through the mirror
+        // above, which starts from the stored values. A separate seed used to
+        // race it with a Kilter size label whatever the board, so a cold start
+        // could show "MoonBoard · 12x12, with Kickboard".
     }
 
     fun nextStep() {
@@ -264,6 +255,7 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.PRIVACY -> OnboardingStep.KILTER
             OnboardingStep.KILTER -> return
         }
+        savedStateHandle["setupStep"] = next.name
         _state.update { it.copy(currentStep = next) }
     }
 
@@ -273,6 +265,7 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
             OnboardingStep.KILTER -> OnboardingStep.BOARD_SETUP
         }
+        savedStateHandle["setupStep"] = prev.name
         _state.update { it.copy(currentStep = prev) }
     }
 
@@ -496,7 +489,7 @@ class OnboardingViewModel @Inject constructor(
      */
     private fun triggerBackupCheckIfNeeded() {
         val s = _state.value
-        if (!keyStore.hasKey()) {
+        if (!hasRestoreAccount()) {
             _state.update { it.copy(hasNostrKey = false) }
             return
         }
@@ -530,26 +523,11 @@ class OnboardingViewModel @Inject constructor(
 
     fun confirmOnboardingRestore() {
         val info = _state.value.pendingRestore ?: return
-        _state.update { it.copy(
-            restoreInProgress = true,
-            restoreAwaitingBoardSync = boardSyncManager.state.value.isSyncing,
-            restoreFailed = false,
-        ) }
-        // Surface the board-sync wait phase to the UI. The restore
-        // pipeline itself blocks on `boardSyncManager.state.first
-        // { !it.isSyncing }`; without this collector the user sees
-        // a frozen "Wiederherstellen…" dialog for the ~30 s of board
-        // sync on a fresh install. Cancellation is automatic when the
-        // restore launch above completes (collector lives inside the
-        // same viewModelScope job).
-        val boardSyncWatcher = viewModelScope.launch {
-            boardSyncManager.state.collect { sync ->
-                _state.update { it.copy(restoreAwaitingBoardSync = sync.isSyncing) }
-            }
-        }
+        _state.update { it.copy(restoreInProgress = true, restoreFailed = false) }
         viewModelScope.launch {
+            // Never waits for the catalogue download: the logbook is written
+            // now, own climbs follow once the board DB is free.
             val result = runCatching { backupRepository.restore(info) }
-            boardSyncWatcher.cancel()
             val restored = result.getOrNull()
             if (restored != null) {
                 backupPreferences.setBackupEnabled(true)
@@ -557,9 +535,10 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
-                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
+                        restoreLinksPending = restored.imported.pendingOwnClimbs > 0 ||
+                            boardSyncManager.state.value.isSyncing,
                         restoredAscents = restored.logbookEntriesInBackup,
                         restoredLists = restored.listsInBackup,
                         backupOptIn = true,
@@ -571,7 +550,6 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
-                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreFailed = true,
                     )
@@ -593,7 +571,7 @@ class OnboardingViewModel @Inject constructor(
 
     // ────────────────────────────────────────────────────────────────────
 
-    fun completeOnboarding(onComplete: () -> Unit) {
+    fun completeOnboarding(onComplete: () -> Unit, skipTour: Boolean = false) {
         val s = _state.value
         _state.update { it.copy(isSaving = true, error = null) }
 
@@ -647,6 +625,9 @@ class OnboardingViewModel @Inject constructor(
                     userPreferences.setBoardProductSizeId(s.boardProductSizeId)
                     userPreferences.setBoardBrand(BoardBrand.fromWire(s.boardBrand).wireValue)
                 }
+                if (skipTour && !userPreferences.hasBoardDownloadSelection()) userPreferences.setBoardDownloadBrands(emptySet())
+                if (skipTour) BrowserTour(appContext).move(TourStep.DONE)
+                else BrowserTour(appContext).startForNewUser(userPreferences.isOnboardingCompleted())
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

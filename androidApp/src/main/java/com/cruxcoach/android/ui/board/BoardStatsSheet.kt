@@ -9,10 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -42,14 +44,13 @@ private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
     GradeChartView.PYRAMID -> stringResource(R.string.board_stats_grade_pyramid)
     GradeChartView.FLASH_SEND_ATTEMPT -> stringResource(R.string.board_stats_flash_send_attempt)
     GradeChartView.OUTCOME_DONUT -> stringResource(R.string.board_stats_outcome_distribution)
-    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.board_stats_unique)
+    GradeChartView.UNIQUE_CLIMBS -> stringResource(R.string.ux_sent_climbs_grade)
 }
 
 @Composable
 private fun timeChartViewLabel(view: TimeChartView): String = when (view) {
     TimeChartView.SENDS_OVER_TIME -> stringResource(R.string.board_stats_sends_over_time)
     TimeChartView.WEEKLY_VOLUME -> stringResource(R.string.board_stats_weekly_volume)
-    TimeChartView.GRADE_PROGRESSION -> stringResource(R.string.board_stats_grade_progression)
 }
 
 @Composable
@@ -104,6 +105,9 @@ private fun BoardComparisonSection(
     selected: String?,
     onSelect: (String?) -> Unit,
 ) {
+    // Wide enough for "Begehungen" on one line at the default font scale.
+    val SENDS_COLUMN_WIDTH = 88.dp
+    val GRADE_COLUMN_WIDTH = 76.dp
     ChartSection(stringResource(R.string.board_stats_board_comparison)) {
         // Column header.
         Row(
@@ -121,14 +125,20 @@ private fun BoardComparisonSection(
                 stringResource(R.string.board_sends),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp),
+                // A single long word has no wrap point, so a narrow column split it into
+                // "Begehunge / n". Keep the header on one line and shorten it if it must.
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(SENDS_COLUMN_WIDTH),
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
             )
             Text(
                 stringResource(R.string.board_logbook_best_grade),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(72.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(GRADE_COLUMN_WIDTH),
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
             )
         }
@@ -163,7 +173,7 @@ private fun BoardComparisonSection(
                         fontWeight = FontWeight.Bold,
                         color = SuccessGreen,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(64.dp),
+                        modifier = Modifier.width(SENDS_COLUMN_WIDTH),
                     )
                     Text(
                         entry.hardestGrade ?: "-",
@@ -171,7 +181,7 @@ private fun BoardComparisonSection(
                         fontWeight = FontWeight.Bold,
                         color = GradeHard,
                         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                        modifier = Modifier.width(72.dp),
+                        modifier = Modifier.width(GRADE_COLUMN_WIDTH),
                     )
                 }
             }
@@ -227,11 +237,7 @@ internal fun BoardStatsSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                stringResource(R.string.board_stats_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            InfoHeading(stringResource(R.string.board_stats_title), stringResource(R.string.ux_stats_help))
 
             // Per-board split: only when the user has logged on >1 board.
             if (availableBoardBrands.size > 1) {
@@ -264,6 +270,20 @@ internal fun BoardStatsSheet(
             // Personal Records (always visible, compact)
             BoardPersonalRecordsRow(stats.personalRecords)
 
+            // Central performance signal: a rolling four-week level based on
+            // the best distinct sends, deliberately separate from volume.
+            if (stats.gradeProgression.size >= 2) {
+                ChartSection(
+                    stringResource(R.string.board_stats_grade_progression),
+                    help = stringResource(R.string.ux_grade_progression_help),
+                ) {
+                    BoardGradeProgressionChart(
+                        entries = stats.gradeProgression,
+                        gradeScale = gradeScale,
+                    )
+                }
+            }
+
             // Activity heatmap (no dropdown — always the same)
             if (stats.activityMap.isNotEmpty()) {
                 ChartSection(stringResource(R.string.board_stats_activity)) {
@@ -284,6 +304,19 @@ internal fun BoardStatsSheet(
                     onSelect = onGradeChartViewSelect,
                     labelOf = { gradeChartViewLabel(it) }
                 ) {
+                    if (gradeChartView == GradeChartView.FLASH_SEND_ATTEMPT ||
+                        gradeChartView == GradeChartView.OUTCOME_DONUT
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (gradeChartView == GradeChartView.OUTCOME_DONUT) R.string.ux_outcome_donut_hint
+                                else R.string.board_stats_problem_outcomes_hint,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     when (gradeChartView) {
                         GradeChartView.PYRAMID -> {
                             BoardGradePyramidChart(
@@ -326,12 +359,6 @@ internal fun BoardStatsSheet(
                         }
                         TimeChartView.WEEKLY_VOLUME -> {
                             BoardWeeklyVolumeChart(entries = stats.weeklyVolume)
-                        }
-                        TimeChartView.GRADE_PROGRESSION -> {
-                            BoardGradeProgressionChart(
-                                entries = stats.gradeProgression,
-                                gradeScale = gradeScale
-                            )
                         }
                     }
                 }
@@ -623,7 +650,14 @@ private fun CustomDateRangeDialog(
     ) {
         DateRangePicker(
             state = datePickerState,
-            modifier = Modifier.height(460.dp),
+            // The calendar needs a bounded height for its month list, but the text-input mode
+            // must not keep it: with the keyboard open the fixed height pushed OK/Cancel off
+            // screen (M-008). Input mode wraps its two fields instead.
+            modifier = if (datePickerState.displayMode == DisplayMode.Input) {
+                Modifier.heightIn(max = 460.dp)
+            } else {
+                Modifier.height(460.dp)
+            },
             title = { Text(stringResource(R.string.board_stats_select_date_range), modifier = Modifier.padding(16.dp)) }
         )
     }

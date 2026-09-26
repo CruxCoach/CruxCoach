@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.ui.common.InfoHeading
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.domain.board.IntensityZones
@@ -448,7 +449,7 @@ internal fun BoardSendsOverTimeChart(
 }
 
 @Composable
-internal fun ChartSection(title: String, content: @Composable () -> Unit) {
+internal fun ChartSection(title: String, help: String? = null, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -461,11 +462,15 @@ internal fun ChartSection(title: String, content: @Composable () -> Unit) {
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
+            if (help != null) {
+                InfoHeading(title, help)
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             content()
         }

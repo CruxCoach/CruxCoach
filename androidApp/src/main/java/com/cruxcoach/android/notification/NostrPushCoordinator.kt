@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrRelaySubscription
@@ -165,7 +164,7 @@ class NostrPushCoordinator @Inject constructor(
         if (!isSelfWrap && !alreadyExists) {
             notificationHelper.showMessageNotification(
                 eventId = msg.id,
-                senderName = context.getString(R.string.notification_sender_developer),
+                type = msg.type,
                 preview = msg.content.take(100),
                 threadRoute = threadRoute
             )

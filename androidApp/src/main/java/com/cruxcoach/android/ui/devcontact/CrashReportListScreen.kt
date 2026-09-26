@@ -52,6 +52,7 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
 @Composable
 fun CrashReportListScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToThread: (String) -> Unit,
     viewModel: DevContactViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -60,6 +61,10 @@ fun CrashReportListScreen(
     // previously dropped send, status flips queued → delivered.
     LaunchedEffect(Unit) {
         viewModel.drainQueue()
+    }
+    // A reply listed on its own has no thread to be read in; showing it reads it.
+    LaunchedEffect(state.crashReports) {
+        viewModel.markListedCrashRepliesRead()
     }
 
     Scaffold(
@@ -101,6 +106,8 @@ fun CrashReportListScreen(
                 ) { report ->
                     CrashReportItem(
                         report = report,
+                        // The thread shows the full report and the developer's replies.
+                        onOpen = { onNavigateToThread(report.id) },
                         onRetry = { viewModel.retryMessage(report.id) },
                         onDelete = { viewModel.deleteMessage(report.id) }
                     )
@@ -113,6 +120,7 @@ fun CrashReportListScreen(
 @Composable
 private fun CrashReportItem(
     report: UiMessage,
+    onOpen: () -> Unit,
     onRetry: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -122,7 +130,7 @@ private fun CrashReportItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded },
+            .clickable { if (report.isSent) onOpen() else expanded = !expanded },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -139,11 +147,14 @@ private fun CrashReportItem(
             ) {
                 // Delivery status
                 val statusText = when {
+                    // A reply no report could take (see crashReportList).
+                    !report.isSent -> "${stringResource(R.string.devcontact_developer)} · ${formatTimestamp(report.timestamp)}"
                     report.isDelivered -> stringResource(R.string.devcontact_status_delivered, formatTimestamp(report.timestamp))
                     report.isQueued -> stringResource(R.string.devcontact_status_queued)
                     else -> stringResource(R.string.devcontact_status_not_delivered)
                 }
                 val statusColor = when {
+                    !report.isSent -> MaterialTheme.colorScheme.onSurfaceVariant
                     report.isDelivered -> SuccessGreen
                     report.isQueued -> OrangeAccent
                     else -> MaterialTheme.colorScheme.error
@@ -156,7 +167,7 @@ private fun CrashReportItem(
                 )
 
                 // Retry + Delete for undelivered
-                if (!report.isDelivered) {
+                if (report.isSent && !report.isDelivered) {
                     IconButton(
                         onClick = onRetry,
                         modifier = Modifier.size(32.dp)

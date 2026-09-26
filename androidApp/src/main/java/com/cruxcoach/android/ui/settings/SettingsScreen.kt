@@ -1,28 +1,21 @@
 package com.cruxcoach.android.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -41,16 +34,17 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
-import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    startPage: SettingsPage? = null,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
+    onNavigateToLicenses: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -58,6 +52,7 @@ fun SettingsScreen(
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
+    onReportKilterUpload: () -> Unit = {},
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
@@ -69,128 +64,76 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
 
-    // Hoisted to top level (not inside Scaffold content) so they survive the
-    // isLoading guard and are restored by the NavBackStackEntry SavedStateHolder
-    // on back-navigation from sub-screens.
-    val scrollState = rememberScrollState()
-    var generalExpanded by rememberSaveable { mutableStateOf(false) }
-    // Keep the dense board-specific hub collapsed on entry, like the other
-    // settings groups. The header remains the explicit discovery affordance.
-    var boardSettingsExpanded by rememberSaveable { mutableStateOf(false) }
-    var accountExpanded by rememberSaveable { mutableStateOf(false) }
-    var devContactExpanded by rememberSaveable { mutableStateOf(false) }
-    var accountsDataExpanded by rememberSaveable { mutableStateOf(false) }
-    var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
     var settingsBoardWire by rememberSaveable { mutableStateOf<String?>(null) }
-
-    // Notification-tap deep-link auto-expand: opens the updater section so
-    // the inline confirmation dialog inside [UpdaterSettingsSection] can
-    // actually compose. Without this expansion the section stays collapsed
-    // and the dialog's LaunchedEffect never runs, so the user is dropped on
-    // an empty Settings screen and has to find the section themselves.
+    // The global active-board picker must not inherit the card being inspected.
+    var boardPickerWire by rememberSaveable { mutableStateOf<String?>(null) }
     val updaterVm: UpdaterSettingsViewModel = hiltViewModel()
     val updaterDialogRequested by updaterVm.downloadDialogRequested.collectAsStateWithLifecycle()
-    LaunchedEffect(updaterDialogRequested) {
-        if (updaterDialogRequested) updaterExpanded = true
-    }
     LaunchedEffect(state.isLoading, state.boardBrand) {
-        if (!state.isLoading && settingsBoardWire == null) settingsBoardWire = state.boardBrand
+        if (!state.isLoading) {
+            if (settingsBoardWire == null) settingsBoardWire = state.boardBrand
+            viewModel.loadProductSizes()
+        }
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.settings_title)) },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
-                        }
-                    },
-                    actions = {
-                        // Profile button hidden — training features not ready for first release
-                        // IconButton(onClick = onNavigateToProfile) {
-                        //     Icon(Icons.Outlined.Person, contentDescription = stringResource(R.string.cd_profile_assessment))
-                        // }
-                        IconButton(onClick = onNavigateToAppShare) {
-                            Icon(Icons.Outlined.Share, contentDescription = stringResource(R.string.cd_app_share))
-                        }
-                    }
-                )
-                RestTimerBannerSlot()
-                SyncStatusBannerSlot()
-                BleStatusArea()
-            }
-        }
-    ) { padding ->
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = OrangeAccent)
-            }
-            return@Scaffold
-        }
-
-        // Eager-load so "Ändern" doesn't open onto an empty list while the
-        // background load races the dialog visibility flag.
-        LaunchedEffect(Unit) { viewModel.loadProductSizes() }
-
-        if (showBoardModelDialog) {
-            // FEAT-031: the one shared board picker — identical state + options
-            // (Kilter / MoonBoard / Aurora family) across every call site. The
-            // selection persists via the shared VM; this screen's board section
-            // updates reactively from the prefs.
-            BoardPickerDialog(
-                onDismiss = { showBoardModelDialog = false },
-                onSelected = { showBoardModelDialog = false },
-                onFindViaGym = {
-                    showBoardModelDialog = false
-                    showGymSearch = true
+    if (showBoardModelDialog) {
+        // FEAT-031: the one shared board picker — identical state + options
+        // (Kilter / MoonBoard / Aurora family) across every call site. The
+        // selection persists via the shared VM; this screen's board section
+        // updates reactively from the prefs.
+        BoardPickerDialog(
+            onDismiss = { showBoardModelDialog = false },
+            onSelected = {
+                showBoardModelDialog = false
+                settingsBoardWire = null
+            },
+            onFindViaGym = {
+                showBoardModelDialog = false
+                showGymSearch = true
+            },
+            prefill = boardPickerWire
+                ?.let(BoardBrand::fromWire)
+                ?.takeIf { it.wireValue != state.boardBrand }
+                ?.let {
+                    BoardPickerPrefill(
+                        brand = it,
+                        source = BoardPickerPrefillSource.CLIMB,
+                    )
                 },
-                prefill = settingsBoardWire
-                    ?.let(BoardBrand::fromWire)
-                    ?.takeIf { it.wireValue != state.boardBrand }
-                    ?.let {
-                        BoardPickerPrefill(
-                            brand = it,
-                            source = BoardPickerPrefillSource.CLIMB,
-                        )
-                    },
-            )
-        }
-        if (showGymSearch) {
-            GymBoardSearchSheet(
-                onClose = { showGymSearch = false },
-                onFallbackToDirect = {
-                    showGymSearch = false
-                    showBoardModelDialog = true
-                },
-                onDismiss = { showGymSearch = false },
-            )
-        }
+        )
+    }
+    if (showGymSearch) {
+        GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardModelDialog = true
+            },
+            onDismiss = { showGymSearch = false },
+        )
+    }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
-            val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
 
-            // General preferences apply regardless of the selected board.
-            CollapsibleHeader(stringResource(R.string.settings_section_general), generalExpanded) { generalExpanded = !generalExpanded }
-            AnimatedVisibility(visible = generalExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SettingsGroupHeader(stringResource(R.string.settings_group_appearance))
+    SettingsLayout(
+        startPage = startPage,
+        isLoading = state.isLoading,
+        openUpdates = updaterDialogRequested,
+        onNavigateBack = onNavigateBack,
+        onNavigateToAppShare = onNavigateToAppShare,
+        banners = {
+            RestTimerBannerSlot()
+            SyncStatusBannerSlot()
+            BleStatusArea()
+        },
+    ) { page ->
+        when (page) {
+            SettingsPage.DISPLAY -> {
+                SettingsSectionCard {
                     LanguageSection()
-                    HorizontalDivider()
+                }
+                SettingsSectionCard {
                     DisplaySection(
                         gradeScale = state.gradeScale,
                         darkMode = state.darkMode,
@@ -199,118 +142,18 @@ fun SettingsScreen(
                         onDarkModeChange = { viewModel.updateDarkMode(it) },
                         onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
                     )
-                    HorizontalDivider()
-                    SettingsGroupHeader(stringResource(R.string.settings_group_training_playback))
-                    RestTimerSection(
-                        restTimer = state.restTimer,
-                        onDurationChange = { viewModel.updateRestTimerDuration(it) },
-                        onAutoStartChange = { viewModel.updateRestTimerAutoStart(it) }
-                    )
-                    HorizontalDivider()
-                    RoutePlaybackSection(
-                        routePlayback = state.routePlayback,
-                        onFrameSpeedChange = { viewModel.updateRouteFrameSpeed(it) },
-                        onUseSetterSpeedChange = { viewModel.updateRouteUseSetterSpeed(it) },
-                        onCountdownChange = { viewModel.updateRouteCountdown(it) },
-                        onCountdownSecondsChange = { viewModel.updateRouteCountdownSeconds(it) },
-                        onAutoLoopChange = { viewModel.updateRouteAutoLoop(it) }
-                    )
-                    HorizontalDivider()
-                    ClimbSharingSection(
-                        climbSharing = state.climbSharing,
-                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
-                        relayManualStart = state.relayManualStart,
-                        onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
-                    )
                 }
             }
-
-            HorizontalDivider()
-
-            // Board hub: selecting a card only changes the settings context.
-            // Persisting an active board remains isolated in BoardPickerDialog's
-            // explicit confirm callback.
-            CollapsibleHeader(
-                stringResource(R.string.settings_section_board),
-                boardSettingsExpanded,
-            ) { boardSettingsExpanded = !boardSettingsExpanded }
-            AnimatedVisibility(visible = boardSettingsExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
-                    BoardSendModeSection(
-                        singleConnectionMode = state.singleConnectionBoardSendMode,
-                        multiConnectionMode = state.multiConnectionBoardSendMode,
-                        onSingleConnectionModeChange =
-                            viewModel::updateSingleConnectionBoardSendMode,
-                        onMultiConnectionModeChange =
-                            viewModel::updateMultiConnectionBoardSendMode,
-                    )
-                    HorizontalDivider()
-                    BleAutoDisconnectSection(
-                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                    )
-                    HorizontalDivider()
-                    SettingsGroupHeader(stringResource(R.string.settings_group_selected_board))
-                    Text(
-                        stringResource(R.string.settings_board_hub_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        boardSettingsCards(activeBoardBrand).forEach { card ->
-                            BoardHubCard(
-                                card = card,
-                                selectedForSettings = settingsBoardBrand == card.brand,
-                                onSelect = { settingsBoardWire = card.brand.wireValue },
-                            )
-                        }
-                    }
-                    Text(
-                        stringResource(R.string.settings_board_viewing, settingsBoardBrand.displayName),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    if (settingsBoardBrand != activeBoardBrand) {
-                        Text(
-                            stringResource(R.string.settings_board_inactive_hint, settingsBoardBrand.displayName),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Button(
-                            onClick = { showBoardModelDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                        ) {
-                            Text(stringResource(R.string.settings_board_make_active))
-                        }
-                    }
-                    val hasSelectedBoardSettings =
-                        settingsBoardBrand == activeBoardBrand ||
-                            settingsBoardBrand == BoardBrand.MOONBOARD ||
-                            showsKilterLedColors(settingsBoardBrand)
-                    if (hasSelectedBoardSettings) {
-                        SettingsGroupHeader(
-                            stringResource(
-                                if (settingsBoardBrand == activeBoardBrand) {
-                                    R.string.settings_board_active_connection
-                                } else {
-                                    R.string.settings_board_specific
-                                },
-                            ),
-                        )
-                    }
-                    // FEAT-027: for a MoonBoard show the variant name; else the
-                    // Kilter board-size label. (0.1.5 dropped the standalone
-                    // Original/Homewall toggle — the picker resolves layout.)
-                    if (settingsBoardBrand == activeBoardBrand) BoardModelSection(
-                        // Always show WHICH board it is, not just the size
-                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
-                        // shows its name/variant + size; Kilter shows the size.
+            SettingsPage.BOARD -> {
+                val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
+                val settingsCards = boardSettingsCards(activeBoardBrand)
+                val settingsBoardBrand = (settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand)
+                    .takeIf { brand -> settingsCards.any { it.brand == brand } }
+                    ?: settingsCards.first().brand
+                SettingsSectionCard {
+                    BoardModelSection(
+                        titleRes = R.string.settings_active_board_title,
+                        descriptionRes = R.string.settings_active_board_desc,
                         boardModelName = run {
                             val brand = activeBoardBrand
                             val detail = when {
@@ -327,22 +170,56 @@ fun SettingsScreen(
                             }
                             boardSelectionLabel(brand, state.boardLayoutId, detail)
                         },
-                        onChangeModel = { showBoardModelDialog = true },
+                        onChangeModel = {
+                            boardPickerWire = null
+                            showBoardModelDialog = true
+                        },
                     )
-                    // FEAT-049: which of the variant's hold sets are actually
-                    // mounted. Renders nothing for any other brand, and none
-                    // for MoonBoard 2010 (one set, no choice).
-                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand == BoardBrand.MOONBOARD) {
-                        MoonBoardHoldSetSection()
+                }
+                SettingsSectionCard {
+                    SettingsGroupHeader(stringResource(R.string.settings_group_all_boards))
+                    BoardSendModeSection(
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
+                    )
+                    HorizontalDivider()
+                    BleAutoDisconnectSection(
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
+                }
+                SettingsSectionCard {
+                    SettingsInfoHeading(
+                        title = stringResource(R.string.settings_group_selected_board),
+                        description = stringResource(R.string.settings_board_hub_desc),
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        settingsCards.forEach { card ->
+                            BoardHubCard(
+                                card = card,
+                                selectedForSettings = settingsBoardBrand == card.brand,
+                                onSelect = { settingsBoardWire = card.brand.wireValue },
+                            )
+                        }
                     }
+                    Text(
+                        stringResource(R.string.settings_board_viewing, settingsBoardBrand.displayName),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                     if (settingsBoardBrand == BoardBrand.MOONBOARD) {
                         MoonBoardLedPositionSection(
                             ledMode = state.moonBoardLedMode,
                             onModeChange = viewModel::updateMoonBoardLedMode,
                         )
-                    }
-                    if (settingsBoardBrand == activeBoardBrand) {
-                        BoardProjectionLifecycleHint(activeBoardBrand)
                     }
                     if (showsKilterLedColors(settingsBoardBrand)) {
                         HorizontalDivider()
@@ -355,14 +232,48 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            HorizontalDivider()
-
-            // Accounts, board-logbook imports and data lifecycle belong together.
-            CollapsibleHeader(stringResource(R.string.settings_section_accounts_data), accountsDataExpanded) { accountsDataExpanded = !accountsDataExpanded }
-            AnimatedVisibility(visible = accountsDataExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SettingsGroupHeader(stringResource(R.string.settings_group_board_accounts_imports))
+            SettingsPage.TIMERS -> {
+                SettingsSectionCard {
+                    RestTimerSection(
+                        restTimer = state.restTimer,
+                        onDurationChange = { viewModel.updateRestTimerDuration(it) },
+                        onAutoStartChange = { viewModel.updateRestTimerAutoStart(it) }
+                    )
+                }
+                SettingsSectionCard {
+                    RoutePlaybackSection(
+                        routePlayback = state.routePlayback,
+                        onFrameSpeedChange = { viewModel.updateRouteFrameSpeed(it) },
+                        onUseSetterSpeedChange = { viewModel.updateRouteUseSetterSpeed(it) },
+                        onCountdownChange = { viewModel.updateRouteCountdown(it) },
+                        onCountdownSecondsChange = { viewModel.updateRouteCountdownSeconds(it) },
+                        onAutoLoopChange = { viewModel.updateRouteAutoLoop(it) }
+                    )
+                }
+            }
+            SettingsPage.SHARING -> {
+                SettingsSectionCard {
+                    ClimbSharingSection(
+                        climbSharing = state.climbSharing,
+                        onSharingChange = { viewModel.updateNearbyClimbSharing(it) },
+                        relayManualStart = state.relayManualStart,
+                        onRelayManualStartChange = { viewModel.updateRelayManualStart(it) },
+                    )
+                }
+            }
+            SettingsPage.ACCOUNT -> {
+                SettingsSectionCard {
+                    AccountKeysSection(
+                        onNavigateToKeyManagement = onNavigateToKeyManagement,
+                        onNavigateToNostrProfile = onNavigateToNostrProfile,
+                    )
+                }
+            }
+            SettingsPage.IMPORTS -> {
+                LaunchedEffect(state.kilterAccount.isConnected) {
+                    if (state.kilterAccount.isConnected) viewModel.loadKilterPublishQueueStats()
+                }
+                SettingsSectionCard {
                     KilterAccountSection(
                         state = state.kilterAccount,
                         onShowLogin = { viewModel.showKilterLogin() },
@@ -381,21 +292,28 @@ fun SettingsScreen(
                         onDismissDisconnectConfirm = { viewModel.dismissKilterDisconnectConfirm() },
                         onDismissResult = { viewModel.dismissKilterResult() },
                         onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
+                        onRetryUpload = { viewModel.retryKilterUpload() },
+                        onReportUpload = onReportKilterUpload,
                     )
-                    HorizontalDivider()
+                }
+                SettingsSectionCard {
                     BoardLogbookImportSection(
                         onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onNavigateToMoonBoardCsvImport = onNavigateToMoonBoardCsvImport,
                     )
-                    HorizontalDivider()
-                    SettingsGroupHeader(stringResource(R.string.settings_group_board_catalogs))
+                }
+            }
+            SettingsPage.CATALOGUES -> {
+                BoardSyncInlineCard()
+                SettingsSectionCard {
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
                     )
-                    BoardSyncInlineCard()
-                    HorizontalDivider()
-                    SettingsGroupHeader(stringResource(R.string.settings_group_backup_transfer))
+                }
+            }
+            SettingsPage.BACKUP -> {
+                SettingsSectionCard {
                     BackupSettingsSection(
                         state = backupState,
                         onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
@@ -405,15 +323,18 @@ fun SettingsScreen(
                         onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
                         onNavigateToKeyManagement = onNavigateToKeyManagement,
                     )
-                    HorizontalDivider()
+                }
+                SettingsSectionCard {
                     AppDataTransferSection(
                         deleteSuccess = state.deleteSuccess,
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
                         onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                     )
-                    HorizontalDivider()
-                    SettingsGroupHeader(stringResource(R.string.settings_group_delete_data))
+                }
+            }
+            SettingsPage.DELETE -> {
+                SettingsSectionCard {
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
                         showDeleteUserDataDialog = state.showDeleteUserDataDialog,
@@ -427,19 +348,26 @@ fun SettingsScreen(
                         onDeleteBoardData = { viewModel.deleteBoardData() },
                         onDeleteUserBoardData = { viewModel.deleteUserBoardData() },
                     )
+                    DataResultMessage(
+                        message = state.deleteSuccess,
+                        onDismiss = viewModel::dismissDeleteSuccess,
+                    )
                 }
             }
-
-            HorizontalDivider()
-
-            // Section 4: Entwickler-Kontakt
-            CollapsibleHeader(stringResource(R.string.settings_section_dev_contact), devContactExpanded) { devContactExpanded = !devContactExpanded }
-            AnimatedVisibility(visible = devContactExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SettingsPage.UPDATES -> {
+                SettingsSectionCard {
+                    UpdaterSettingsSection(viewModel = updaterVm)
+                }
+            }
+            SettingsPage.SUPPORT -> {
+                // Also runs on return from a thread, which may have cleared a badge.
+                LaunchedEffect(Unit) { viewModel.refreshUnreadMessages() }
+                SettingsSectionCard {
                     DevContactSection(
-                        unreadChat = 0,
-                        unreadBugs = 0,
-                        unreadFeatures = 0,
+                        unreadChat = state.unreadChat,
+                        unreadBugs = state.unreadBugs,
+                        unreadFeatures = state.unreadFeatures,
+                        unreadCrashes = state.unreadCrashes,
                         unreadAnnouncements = state.unreadAnnouncements,
                         crashReportOptIn = state.crashReportOptIn,
                         announcementsEnabled = state.announcementsEnabled,
@@ -461,43 +389,43 @@ fun SettingsScreen(
                     )
                 }
             }
-
-            HorizontalDivider()
-
-            // Section: App updates (FEAT-004)
-            CollapsibleHeader(stringResource(R.string.updater_settings_title), updaterExpanded) { updaterExpanded = !updaterExpanded }
-            AnimatedVisibility(visible = updaterExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    UpdaterSettingsSection()
-                }
-            }
-
-            HorizontalDivider()
-
-            // Section: Nostr-Schlüssel (Fortgeschritten)
-            CollapsibleHeader(stringResource(R.string.key_section_account_keys), accountExpanded) { accountExpanded = !accountExpanded }
-            AnimatedVisibility(visible = accountExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AccountKeysSection(
-                        onNavigateToKeyManagement = onNavigateToKeyManagement,
-                        onNavigateToNostrProfile = onNavigateToNostrProfile,
+            SettingsPage.ABOUT -> {
+                SettingsSectionCard {
+                    AppInfoSection(
+                        easterAnimationsUnlocked = state.easterAnimationsUnlocked,
+                        isAnimating = state.isAnimating,
+                        isBleConnected = viewModel.isBleConnected(),
+                        onUnlockEasterAnimations = { viewModel.unlockEasterAnimations() },
+                        onPlayEasterAnimation = { viewModel.playEasterAnimation() },
+                        onStopAnimation = { viewModel.stopAnimation() }
                     )
                 }
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_share_title),
+                    summary = stringResource(R.string.settings_share_desc),
+                    icon = Icons.Outlined.Share,
+                    onClick = onNavigateToAppShare,
+                )
+                val uriHandler = LocalUriHandler.current
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_licenses_title),
+                    summary = stringResource(R.string.settings_licenses_desc),
+                    icon = Icons.Outlined.Gavel,
+                    onClick = onNavigateToLicenses,
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_privacy_title),
+                    summary = stringResource(R.string.settings_privacy_desc),
+                    icon = Icons.Outlined.Policy,
+                    onClick = { uriHandler.openUri(PRIVACY_NOTICE_URL) },
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_source_title),
+                    summary = stringResource(R.string.settings_source_desc),
+                    icon = Icons.Outlined.Code,
+                    onClick = { uriHandler.openUri(SOURCE_CODE_URL) },
+                )
             }
-
-            HorizontalDivider()
-
-            // Section: App Info
-            AppInfoSection(
-                easterAnimationsUnlocked = state.easterAnimationsUnlocked,
-                isAnimating = state.isAnimating,
-                isBleConnected = viewModel.isBleConnected(),
-                onUnlockEasterAnimations = { viewModel.unlockEasterAnimations() },
-                onPlayEasterAnimation = { viewModel.playEasterAnimation() },
-                onStopAnimation = { viewModel.stopAnimation() }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 
@@ -506,7 +434,7 @@ fun SettingsScreen(
     backupState.pendingRestore?.let { info ->
         BackupRestoreDialog(
             info = info,
-            boardImportInProgress = backupState.boardImportInProgress,
+            catalogueLoading = backupState.catalogueLoading,
             onConfirm = { backupViewModel.confirmRestore() },
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
@@ -534,7 +462,7 @@ fun SettingsScreen(
                     R.string.settings_backup_restored,
                     snackbar.logbookEntries,
                     snackbar.lists,
-                )
+                ) + if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else ""
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
@@ -606,43 +534,6 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun CollapsibleHeader(
-    title: String,
-    expanded: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Icon(
-            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (expanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
-            tint = OrangeAccent
-        )
-    }
-}
-
-@Composable
-private fun SettingsGroupHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = OrangeAccent,
-    )
-}
-
-@Composable
 internal fun BoardHubCard(
     card: BoardSettingsCard,
     selectedForSettings: Boolean,
@@ -651,7 +542,8 @@ internal fun BoardHubCard(
     val activeLabel = stringResource(R.string.settings_board_active_badge)
     OutlinedCard(
         modifier = Modifier
-            .widthIn(min = 132.dp, max = 176.dp)
+            .widthIn(min = 112.dp, max = 176.dp)
+            .heightIn(min = 48.dp)
             .testTag("settings_board_card_${card.brand.wireValue}")
             .selectable(
                 selected = selectedForSettings,
@@ -664,7 +556,7 @@ internal fun BoardHubCard(
             },
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (selectedForSettings) {
-                OrangeAccent.copy(alpha = 0.10f)
+                MaterialTheme.colorScheme.secondaryContainer
             } else MaterialTheme.colorScheme.surface
         ),
         border = CardDefaults.outlinedCardBorder().copy(
@@ -680,7 +572,7 @@ internal fun BoardHubCard(
                 Text(
                     activeLabel,
                     style = MaterialTheme.typography.labelSmall,
-                    color = OrangeAccent,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -758,3 +650,9 @@ private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (no
     is DeleteRemoteNote.UnexpectedError ->
         stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }
+
+/** Public privacy notice for the site and the app (README "Privacy notice"). */
+private const val PRIVACY_NOTICE_URL = "https://cruxcoach.org/privacy.html"
+
+/** Primary repository (README: GitHub primary, Codeberg mirror). */
+private const val SOURCE_CODE_URL = "https://github.com/CruxCoach/CruxCoach"

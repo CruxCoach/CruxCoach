@@ -74,20 +74,23 @@ object TrainingRanges {
      *  Lattice) — the old 2-V band reached needlessly easy terrain. */
     const val VOLUME_BAND_BELOW_FLASH = 3 * DIFF_PER_FONT_STEP
 
-    /** Limit: max … max + 1 Font step — hard enough to need 3-5 tries,
-     *  close enough to send within the session (Hörst). A full V above
-     *  max is project territory, not limit bouldering. */
+    /** Hard bouldering: from the work anchor up to the hardest send, and at
+     *  least this far past the anchor — hard enough to need 3-5 tries, close
+     *  enough to send within the session (Hörst). Also the width of one
+     *  problem's window when the range is wide enough to be ramped. */
     const val LIMIT_BAND_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
 
-    /** Projecting: max + 1 … max + 2 Font steps — deliberately ABOVE the
-     *  limit band; a project is multi-session difficulty. (Open projects
-     *  from the logbook still take precedence over fresh candidates.) */
+    /** Projecting: starts where hard bouldering ends — at the hardest send,
+     *  or one grade past the anchor if that is higher — and spans
+     *  TOP − LOW grades. A project is multi-session difficulty. (Open
+     *  projects from the logbook still take precedence over fresh climbs.) */
     const val PROJECT_BAND_LOW_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
     const val PROJECT_BAND_TOP_ABOVE_MAX = 2 * DIFF_PER_FONT_STEP
 
-    /** Power endurance: max − 3 V … max − 2 V (fresh: 1-2 tries; lap 4:
-     *  barely topping — the classic 4x4 window). */
     /**
+     * Power endurance: flash − 2 … flash − 1 (fresh: first or second try;
+     * lap four: barely topping — the classic 4x4 window).
+     *
      * Anchored on the repeatable FLASH, not on the working max.
      *
      * A 4x4 only works if the fourth lap still tops out, and what a climber
@@ -107,10 +110,20 @@ object TrainingRanges {
      *  constant: see PlaylistPlanner.pyramidBase. */
     const val PYRAMID_STEP = 1 * DIFF_PER_FONT_STEP
 
-    /** Pyramid apex sits 2 Font steps (1 V) below max: a session pyramid
-     *  only works when every tier actually gets TOPPED — an apex at the
-     *  all-time max is a limit session in disguise. */
-    const val PYRAMID_APEX_BELOW_MAX = 2 * DIFF_PER_FONT_STEP
+    /**
+     * Pyramid apex sits one grade below the WORK ANCHOR.
+     *
+     * A session pyramid only works when every tier gets topped, so the apex
+     * may not be the anchor itself — that is a hard-bouldering session in
+     * disguise. Two grades below it, though, landed the apex on the flash
+     * grade: the whole pyramid was flashable, which made it a volume block
+     * with a shape, while its top tiers were given four-minute rests meant for
+     * real efforts. One below is the step between the two — above the volume
+     * band, below the hard-bouldering band, and what those rests are for. The
+     * anchor is already the outlier-robust mean, typically a grade under the
+     * all-time peak, so this is not "max minus one".
+     */
+    const val PYRAMID_APEX_BELOW_MAX = 1 * DIFF_PER_FONT_STEP
 
     /**
      * Warm-up ladder, defined entirely against the FIRST WORKING GRADE.
@@ -132,8 +145,8 @@ object TrainingRanges {
     /** Within this of the work grade, one problem per tier instead of two. */
     const val WARMUP_TAPER_DISTANCE = 3 * DIFF_PER_FONT_STEP
 
-    /** Per-tier tolerance when matching climbs to a planned grade (± half
-     *  a V-grade keeps "a V5 slot" honest while accepting 6b vs 6b+). */
+    /** Tolerance around a warm-up tier: one grade either side, so the
+     *  two-point ladder covers its range without gaps. */
     const val SLOT_TOLERANCE = 1.0
 
     /** Tighter, for tiers that are only one step apart — see
@@ -215,6 +228,19 @@ object TrainingRanges {
 
     // ── Count clamps per type ────────────────────────────────────
 
+    /**
+     * What the size control offers. Wider than the *_COUNT clamps below, which
+     * only bound the old duration-derived sizes of saved playlists: a climber
+     * choosing a number directly may want a four-problem top-up after a rope
+     * session as much as a forty-problem mileage day.
+     */
+    val VOLUME_SIZE = 4..40
+    val LIMIT_SIZE = 1..8
+    val PROJECT_SIZE = 1..4
+
+    /** Tries per problem the climber may ask for (hard bouldering, projects). */
+    val ATTEMPTS_RANGE = 1..6
+
     val VOLUME_COUNT = 8..30
     /** One hard problem with full rests is a legitimate short session; two
      *  was a floor that made the shortest slider setting overshoot threefold. */
@@ -251,6 +277,7 @@ object TrainingRanges {
      * and collapse two tiers onto the same grade.
      */
     val PYRAMID_TIERS = 3..6
+    val PYRAMID_CLIMBS_PER_TIER = 1..5
 
     // ── How far the filler may stray from a band ─────────────────
 

@@ -120,6 +120,8 @@ class RelayGattServer(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     synchronized(lock) {
+                        // Claiming the link below can report it a second time.
+                        if (address in connectedDevices) return
                         if (connectedDevices.size >= MAX_CONNECTED_DEVICES) {
                             Log.w(TAG, "Max devices reached, rejecting $address")
                             gattServer?.cancelConnection(device)
@@ -128,6 +130,14 @@ class RelayGattServer(private val context: Context) {
                         connectedDevices.add(address)
                         reassemblers[address] = RelayFrameReassembler()
                     }
+                    // Claim the link for the server. A link the guest opened belongs to the
+                    // guest as far as the stack is concerned, and cancelConnection() on it
+                    // is a no-op: two-phone test, the relay stopped sharing and the radio
+                    // link stayed up for minutes with the guest still "connected". Once the
+                    // server has connect()ed it too, cancelConnection() in stop() really
+                    // takes the link down — for guests of any Android version.
+                    runCatching { gattServer?.connect(device, false) }
+                        .onFailure { Log.w(TAG, "Could not claim relay client link $address", it) }
                     // Count + members: the chip shows this number, and a stale
                     // entry is the difference between "one client" and "two".
                     Log.d(TAG, "Client connected: $address — devices=$connectedDevices")

@@ -372,48 +372,28 @@ class BoardSessionManager(
     private fun recoverSession() {
         try {
             val session = personalBoardRepo.getActiveSession() ?: return
-            val now = System.currentTimeMillis()
-
-            // Parse startedAt to millis for elapsed time calculation
-            val startedAtMs = DateTimeUtil.isoToEpochMs(session.startedAt)
-            if (startedAtMs == null) {
-                Log.e(TAG, "Failed to parse session startedAt: ${session.startedAt}")
-                return
-            }
-
-            // Auto-end sessions older than 12 hours
-            val twelveHoursMs = 12 * 60 * 60 * 1000L
-            if (now - startedAtMs > twelveHoursMs) {
-                Log.w(TAG, "Auto-ending stale session (>12h old)")
-                personalBoardRepo.endBoardSession(
-                    id = session.id,
-                    endedAt = DateTimeUtil.nowIso(),
-                    totalDurationSeconds = (now - startedAtMs) / 1000,
-                    pauseDurationSeconds = session.pauseDurationSeconds,
-                    ascentCount = session.ascentCount,
-                    bidCount = session.bidCount
-                )
-                return
-            }
-
-            // Restore active session
-            activeSessionId = session.id
-            sessionStartTimeMs = startedAtMs
-            accumulatedPauseMs = session.pauseDurationSeconds * 1000L
-
-            _state.update { BoardSessionState(
-                isActive = true,
-                startedAt = session.startedAt,
-                ascentCount = session.ascentCount.toInt(),
-                bidCount = session.bidCount.toInt(),
-                elapsedSeconds = ((now - startedAtMs) / 1000).toInt(),
-                pauseSeconds = session.pauseDurationSeconds.toInt()
-            ) }
-
-            ensureTickerRunning()
-            Log.i(TAG, "Recovered active session ${session.id}")
+            // A session is always played through a queue, and the queue lives in
+            // memory: it died with the process that ran it. Resurrected, the
+            // session ran on with no player to show it, the next training
+            // silently continued its clock, and the 12-hour auto-end booked the
+            // whole night as training. End it where it was last recorded.
+            val endedAt = DateTimeUtil.isoToEpochMs(session.startedAt)
+                ?.let { startMs ->
+                    java.time.Instant.ofEpochMilli(startMs + session.totalDurationSeconds * 1000L)
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toString()
+                }
+                ?: DateTimeUtil.nowIso()
+            personalBoardRepo.endBoardSession(
+                id = session.id,
+                endedAt = endedAt,
+                totalDurationSeconds = session.totalDurationSeconds,
+                pauseDurationSeconds = session.pauseDurationSeconds,
+                ascentCount = session.ascentCount,
+                bidCount = session.bidCount
+            )
+            Log.i(TAG, "Ended session ${session.id} left over from a previous process")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to recover session", e)
+            Log.e(TAG, "Failed to end leftover session", e)
         }
     }
 

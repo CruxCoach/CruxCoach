@@ -86,4 +86,53 @@ class BrowseRefillTest {
         assertEquals(1, source.calls)
         assertEquals(50, results.size)
     }
+    @Test
+    fun `overlapping pages refill to unique depth and preserve source offset`() = runTest {
+        val offsets = mutableListOf<Int>()
+        val (rows, offset, exhausted) = refillBrowsePages(5) { cursor ->
+            offsets += cursor
+            when (cursor) {
+                0 -> Triple(climbs(0..2), 3, false)
+                3 -> Triple(climbs(2..3), 5, false)
+                else -> Triple(climbs(3..4), 7, true)
+            }
+        }
+        assertEquals(climbs(0..4), rows)
+        assertEquals(listOf(0, 3, 5), offsets)
+        assertEquals(7, offset) // Never derive the SQL offset from unique row count.
+        assertTrue(exhausted)
+    }
+
+    @Test
+    fun `duplicates on the first page cannot reach Compose`() = runTest {
+        val reportedUuid = "3e99addb94d54e089a1450edc77fd62b"
+        val climb = TestClimb.stats(uuid = reportedUuid)
+        val (rows, offset, _) = refillBrowsePages(0) {
+            Triple(listOf(climb, climb), 2, true)
+        }
+        assertEquals(listOf(climb), rows)
+        assertEquals(2, offset)
+    }
+
+    @Test
+    fun `append preserves visible identity and ignores repeated incoming rows`() {
+        val first = TestClimb.stats(uuid = "0f6d63dbcf74438b82bdbb4c7035d7ec")
+        val next = TestClimb.stats(uuid = "next")
+        assertEquals(
+            listOf(first, next),
+            mergeBrowseClimbs(listOf(first), listOf(first.copy(name = "updated"), next, next)),
+        )
+    }
+
+    @Test
+    fun `non advancing duplicate page cannot loop forever`() = runTest {
+        var calls = 0
+        val (rows, _, _) = refillBrowsePages(5) {
+            calls++
+            Triple(climbs(0..0), 1, false)
+        }
+        assertEquals(climbs(0..0), rows)
+        assertEquals(2, calls)
+    }
+
 }

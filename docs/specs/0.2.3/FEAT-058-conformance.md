@@ -1,5 +1,10 @@
 # FEAT-058 — Cross-client conformance matrix
 
+> **Release scope (2026-09-10):** retained proposal / separate-branch design.
+> Competitions and BoardCell/FIPS are not integrated into this 0.2.3 line
+> and do not ship in published 0.2.2. Original decisions below are preserved.
+> [Current documentation scope](../../README.md).
+
 Every acceptance criterion in [`FEAT-058-competitions.md`](FEAT-058-competitions.md)
 §10, mapped to the automation that proves it. A criterion with no automation is
 listed as device-owed or manual, and says why.

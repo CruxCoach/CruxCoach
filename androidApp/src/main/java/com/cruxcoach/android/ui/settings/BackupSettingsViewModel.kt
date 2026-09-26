@@ -34,7 +34,7 @@ import javax.inject.Inject
 data class BackupSettingsState(
     val featureEnabled: Boolean = true,
     val backupEnabled: Boolean = false,
-    val interval: SyncInterval = SyncInterval.DAILY,
+    val interval: SyncInterval = SyncInterval.MANUAL,
     val lastBackupIso: String? = null,
     val hasNostrKey: Boolean = false,
     /** Mirrors [com.cruxcoach.android.data.UserPreferences.keyBackedUp]. The
@@ -52,12 +52,9 @@ data class BackupSettingsState(
      *  payload has been applied. Kept separate from the relay/Blossom lookup
      *  so the UI can say what is actually happening. */
     val isRestoring: Boolean = false,
-    /** True while the board catalogue is still importing on a fresh install
-     *  (or during any active board-sync). The restore button is disabled
-     *  meanwhile: restoring against a half-imported board DB raced the
-     *  bulk-import for the SQLite writer lock and silently rolled the whole
-     *  restore back to zero. */
-    val boardImportInProgress: Boolean = false,
+    /** A catalogue is still loading. The restore runs anyway; names, grades
+     *  and own climbs are linked afterwards ([com.cruxcoach.android.data.PendingImports]). */
+    val catalogueLoading: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val snackbar: Snackbar? = null,
     val showDeleteRemoteConfirm: Boolean = false,
@@ -83,7 +80,7 @@ data class BackupSettingsState(
         /** Restore completed — carries authenticated payload counts rather
          *  than only newly inserted rows. UUID-deduplicated local rows are
          *  therefore reported as present, not misleadingly as missing. */
-        data class RestoreSucceeded(val logbookEntries: Int, val lists: Int) : Snackbar
+        data class RestoreSucceeded(val logbookEntries: Int, val lists: Int, val linksPending: Boolean = false) : Snackbar
         data object BackupSucceeded : Snackbar
         /**
          * [reason] is the structured BackupException reason — the UI
@@ -172,7 +169,8 @@ class BackupSettingsViewModel @Inject constructor(
         // init is correct.
         _state.update {
             it.copy(
-                hasNostrKey = keyStore.hasKey(),
+                hasNostrKey = keyStore.hasKey() ||
+                    (signer.getStoredSignerMode() == SignerMode.AMBER && signer.getStoredAmberPubkey() != null),
                 signerMode = signer.getStoredSignerMode(),
             )
         }
@@ -185,16 +183,9 @@ class BackupSettingsViewModel @Inject constructor(
                 _state.update { it.copy(keyBackedUp = acked) }
             }
         }
-        // Gate the restore button on board-catalogue readiness. Restoring
-        // while the board DB is still bulk-importing (the default fresh-
-        // install state) raced the importer for the SQLite writer lock and
-        // silently rolled the restore back to zero. `isSyncing` covers an
-        // active sync; `!alreadyImported` covers the pre-first-import window.
         viewModelScope.launch {
             boardSyncManager.state.collect { sync ->
-                _state.update {
-                    it.copy(boardImportInProgress = sync.isSyncing || !sync.alreadyImported)
-                }
+                _state.update { it.copy(catalogueLoading = sync.isSyncing) }
             }
         }
     }
@@ -239,6 +230,7 @@ class BackupSettingsViewModel @Inject constructor(
      * scratch.
      */
     fun runBackupNow() {
+        if (!_state.value.backupEnabled || _state.value.isRunningOneShot || _state.value.isRestoring) return
         viewModelScope.launch {
             _state.update { it.copy(isRunningOneShot = true) }
             val outcome = runCatching { backupRepository.performFullBackup(trigger = "manual") }
@@ -268,7 +260,7 @@ class BackupSettingsViewModel @Inject constructor(
 
     fun triggerManualRestore() {
         val existing = _state.value
-        if (existing.isCheckingForBackup || existing.isRestoring || existing.boardImportInProgress) return
+        if (existing.isCheckingForBackup || existing.isRestoring) return
         viewModelScope.launch {
             _state.update { it.copy(isCheckingForBackup = true) }
             val outcome = runCatching { backupRepository.checkForBackup() }
@@ -295,7 +287,7 @@ class BackupSettingsViewModel @Inject constructor(
     }
 
     fun confirmRestore() {
-        if (_state.value.boardImportInProgress || _state.value.isRestoring) return
+        if (_state.value.isRestoring) return
         val info = _state.value.pendingRestore ?: return
         viewModelScope.launch {
             _state.update { it.copy(pendingRestore = null, isRestoring = true) }
@@ -313,6 +305,7 @@ class BackupSettingsViewModel @Inject constructor(
                         snackbar = BackupSettingsState.Snackbar.RestoreSucceeded(
                             logbookEntries = result.logbookEntriesInBackup,
                             lists = result.listsInBackup,
+                            linksPending = result.imported.pendingOwnClimbs > 0 || it.catalogueLoading,
                         ),
                     )
                 }

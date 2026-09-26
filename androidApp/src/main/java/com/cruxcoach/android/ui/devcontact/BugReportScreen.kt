@@ -64,6 +64,9 @@ fun BugReportScreen(
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var description by rememberSaveable { mutableStateOf(initialDescription) }
     var steps by rememberSaveable { mutableStateOf("") }
+    var attachDiagnostics by rememberSaveable { mutableStateOf(false) }
+    // Freeze the preview when the form opens; background attempts cannot replace it.
+    val diagnostics = rememberSaveable { viewModel.uploadDiagnosticSnapshot() }
 
     LaunchedEffect(state.sendSuccess) {
         if (state.sendSuccess == true) {
@@ -139,13 +142,30 @@ fun BugReportScreen(
             // Device info card
             DeviceInfoCard()
 
+            if (diagnostics.isNotBlank()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Checkbox(
+                                checked = attachDiagnostics, onCheckedChange = { attachDiagnostics = it })
+                            Text(stringResource(R.string.kilter_diagnostics_attach))
+                        }
+                        Text(stringResource(R.string.kilter_diagnostics_explanation), style = MaterialTheme.typography.bodySmall)
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            Text(diagnostics, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
             // Send button
             Button(
                 onClick = {
                     viewModel.sendBugReport(
                         title = title.trim(),
                         description = description.trim(),
-                        steps = steps.trim()
+                        steps = steps.trim(),
+                        diagnostics = diagnostics.takeIf { attachDiagnostics }
                     )
                 },
                 enabled = title.isNotBlank() && description.isNotBlank() && !state.isSending,

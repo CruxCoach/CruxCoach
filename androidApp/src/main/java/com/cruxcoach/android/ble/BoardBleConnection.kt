@@ -2,7 +2,10 @@ package com.cruxcoach.android.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -432,6 +435,8 @@ class BoardBleConnection(
         const val QUANTUM_CONFIRM_TIMEOUT_MS = 3000L
         const val QUANTUM_REFRESH_INTERVAL_MS = 10_000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
+        /** Long enough to ride out a brief stack hiccup, short enough to notice a dead link. */
+        const val LINK_WATCHDOG_INTERVAL_MS = 8_000L
 
         // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
         // routinely fail a first direct connect with a transient status 133;
@@ -503,6 +508,91 @@ class BoardBleConnection(
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private var linkWatchdogJob: Job? = null
+
+    /** The GATT whose services are being re-read after onServiceChanged, if any. */
+    @Volatile private var serviceRecheckGatt: BluetoothGatt? = null
+
+    private fun dropAfterServiceLoss(detail: String) {
+        Log.w(TAG, "Board service gone from a live link ($detail) — disconnecting")
+        disconnect()
+        onRestartScannersAfterConnect?.invoke()
+    }
+
+    // Some stacks never deliver STATE_DISCONNECTED when the adapter is switched off. The link
+    // then stayed "connected" on every screen and sends failed silently; retire it ourselves.
+    private val adapterStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+            if (state == BluetoothAdapter.STATE_OFF &&
+                _connectionState.value != ConnectionState.DISCONNECTED
+            ) {
+                Log.w(TAG, "Bluetooth adapter turned off while connected; disconnecting")
+                disconnect()
+            }
+        }
+    }
+
+    init {
+        runCatching {
+            context.registerReceiver(adapterStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        }
+        // Every path that reaches CONNECTED gets the watchdog — sends, resends and the relay
+        // guest path each set the state themselves, and tying it to one of them missed the rest.
+        scope.launch {
+            _connectionState.collect { state ->
+                if (state == ConnectionState.DISCONNECTED) {
+                    linkWatchdogJob?.cancel()
+                    linkWatchdogJob = null
+                } else {
+                    currentBoard?.address?.let { address ->
+                        if (linkWatchdogJob?.isActive != true) startLinkWatchdog(address)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Periodic reality check while we believe we are connected. A board that is switched off or
+     * taken over by another phone does not always produce a STATE_DISCONNECTED callback on every
+     * stack, and the app then kept claiming a link that no longer carries sends.
+     */
+
+    @SuppressLint("MissingPermission")
+    private fun startLinkWatchdog(address: String) {
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = scope.launch {
+            // Two strikes: a single miss can be a momentary stack inconsistency, and dropping a
+            // healthy link would be worse than showing a stale one for another 8 seconds.
+            var misses = 0
+            while (true) {
+                delay(LINK_WATCHDOG_INTERVAL_MS)
+                if (_connectionState.value == ConnectionState.DISCONNECTED) return@launch
+                if (currentBoard?.address != address) return@launch
+                val stackConnected = runCatching {
+                    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                    // Two independent signals: a relay operator that simply disappears leaves one
+                    // of them stale on some stacks, so a link counts as alive only if both agree.
+                    val listed = manager.getConnectedDevices(BluetoothProfile.GATT)
+                        .any { it.address == address }
+                    val reported = manager.adapter?.getRemoteDevice(address)?.let { device ->
+                        manager.getConnectionState(device, BluetoothProfile.GATT) ==
+                            BluetoothProfile.STATE_CONNECTED
+                    } ?: false
+                    listed && reported
+                }.getOrElse { return@launch }
+                misses = if (stackConnected) 0 else misses + 1
+                if (misses >= 2) {
+                    Log.w(TAG, "Link watchdog: $address gone from the stack twice; dropping stale state")
+                    disconnect()
+                    return@launch
+                }
+            }
+        }
+    }
     private var disconnectJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var closeSafetyJob: Job? = null
@@ -984,7 +1074,53 @@ class BoardBleConnection(
         }
 
         @SuppressLint("MissingPermission")
+        /**
+         * The remote GATT table changed under a live link.
+         *
+         * A real board never does this; a CruxRelay phone does exactly this when its owner
+         * stops sharing. The relay closes its GATT server, but the radio link between the two
+         * phones survives — cancelConnection() from the server side does not drop a link the
+         * other phone opened — so no disconnect ever arrives and the link watchdog, which
+         * looks at the link, sees nothing wrong. The guest stayed "connected" to a service
+         * that no longer existed. Look again, and leave if the board service is gone.
+         */
+        override fun onServiceChanged(gatt: BluetoothGatt) {
+            if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+            if (_connectionState.value != ConnectionState.CONNECTED) return
+            Log.i(TAG, "onServiceChanged — re-checking the board service")
+            serviceRecheckGatt = gatt
+            val queued = try {
+                gatt.discoverServices()
+            } catch (e: SecurityException) {
+                false
+            }
+            if (!queued) {
+                serviceRecheckGatt = null
+                dropAfterServiceLoss("rediscovery could not be queued")
+            }
+        }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (serviceRecheckGatt === gatt) {
+                serviceRecheckGatt = null
+                if (this@BoardBleConnection.gatt !== gatt || isGattClosed(gatt)) return
+                val stillThere = status == BluetoothGatt.GATT_SUCCESS && (
+                    gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                        ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR) != null ||
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE) != null ||
+                        gatt.getService(BoardBleUuids.QUANTUM_SERVICE_OLD) != null
+                    )
+                if (stillThere) {
+                    Log.i(TAG, "Service change re-check: board service still present")
+                    // Rediscovery invalidates the old characteristic objects.
+                    gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                        ?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
+                        ?.let { writeCharacteristic = it }
+                } else {
+                    dropAfterServiceLoss("status=$status")
+                }
+                return
+            }
             if (!serviceDiscoveryCompletionAllowed(
                     connecting = _connectionState.value == ConnectionState.CONNECTING,
                     currentGattMatches = this@BoardBleConnection.gatt === gatt,
@@ -2149,6 +2285,8 @@ class BoardBleConnection(
     fun disconnect() {
         Log.d(TAG, "disconnect() called (SDK=${Build.VERSION.SDK_INT})")
         val wasQuantum = _connectedBoardBrand.value == BoardBrand.QUANTUM
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = null
         connectJob?.cancel()
         connectJob = null
         connectionTimeoutJob?.cancel()

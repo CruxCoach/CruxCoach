@@ -13,6 +13,8 @@ import org.junit.Test
  * onRelaysChanged. No network, no coroutines — just verifies the `@Volatile`
  * snapshot semantics.
  */
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(application = android.app.Application::class)
 class NostrRelayPoolContractTest {
 
     private fun pool(): NostrRelayPool = NostrRelayPool(OkHttpClient())
@@ -80,12 +82,32 @@ class NostrRelayPoolContractTest {
     }
 
     @Test
-    fun `stored refetch bypasses an id already seen by discovery`() {
-        val p = pool()
-        val eventId = "ab".repeat(32)
+    fun `forged event cannot suppress authentic legacy event or another subscriber`() {
+        val valid = """{"pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1788600000,"kind":1,"tags":[],"content":"legacy signed event","id":"05d4c98d95453b5ab2968f82e7372285e86140874108f8bfe55f0fd918326d51","sig":"890b4223e4126feab0731d2fe295e0f867ab103ec57dc83c666988fda003af19901dcffb1ffc1ffb22e3d23744401b62e0642714cdb46c7dc0e5b4800f45d07f"}"""
+        // Quartz's Android artifact is Java 21 bytecode; CI uses JVM 17.
+        // Exercise the delivery/authentication boundary with a deterministic
+        // authenticator, not a mock event ID parsed from untrusted input.
+        var checks = 0
+        val authenticate: (String) -> String? = {
+            checks++
+            if (it == valid) "05d4c98d95453b5ab2968f82e7372285e86140874108f8bfe55f0fd918326d51" else null
+        }
+        val forged = valid.replace("legacy signed event", "forged body")
+        val gate = VerifiedEventDeliveryGate(authenticate)
+        assertFalse(gate.accepts(forged))
+        assertFalse(gate.accepts(forged, skipDedup = true))
+        assertTrue(gate.accepts(valid))
+        assertFalse(gate.accepts(valid))
+        assertTrue(gate.accepts(valid, skipDedup = true))
+        assertTrue(VerifiedEventDeliveryGate(authenticate).accepts(valid))
+        assertEquals(6, checks)
+    }
 
-        assertTrue(p.shouldDeliverEvent(eventId, skipDedup = false))
-        assertFalse(p.shouldDeliverEvent(eventId, skipDedup = false))
-        assertTrue(p.shouldDeliverEvent(eventId, skipDedup = true))
+    @Test
+    fun `bounds oversized unicode and deeply nested frames before parsing`() {
+        assertFalse(RelayInputGuard.accepts("x".repeat(RelayInputGuard.MAX_BYTES + 1)))
+        assertFalse(RelayInputGuard.accepts("\"" + "ä".repeat(RelayInputGuard.MAX_BYTES / 2) + "\""))
+        assertFalse(RelayInputGuard.accepts("[".repeat(33) + "]".repeat(33)))
+        assertTrue(RelayInputGuard.accepts("""["NOTICE","[brackets in text]"]"""))
     }
 }

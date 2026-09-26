@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.settings
 
+import com.cruxcoach.android.data.kilter.localized
+import com.cruxcoach.android.data.kilter.KilterUploadTrigger
+import com.cruxcoach.android.nostr.model.MessageType
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -126,6 +129,11 @@ data class SettingsState(
     val announcementCatTip: Boolean = true,
     val announcementCatGeneral: Boolean = true,
     val unreadAnnouncements: Int = 0,
+    /** Unread developer replies behind each dev-contact row. */
+    val unreadChat: Int = 0,
+    val unreadBugs: Int = 0,
+    val unreadFeatures: Int = 0,
+    val unreadCrashes: Int = 0,
     val queuedCount: Int = 0,
     val productSizes: List<com.cruxcoach.data.repository.BoardSize> = emptyList(),
     val showDeleteBoardDataDialog: Boolean = false,
@@ -153,6 +161,7 @@ class SettingsViewModel @Inject constructor(
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
+    private val messageRepository: com.cruxcoach.android.data.NostrMessageRepository,
     private val queueManager: OfflineQueueManager,
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
@@ -163,6 +172,7 @@ class SettingsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
+    private var kilterPublishQueueStatsLoaded = false
 
     init {
         loadSettings()
@@ -188,6 +198,30 @@ class SettingsViewModel @Inject constructor(
                     seenCompletions = deletion.completions
                     _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_board_success)) }
                 }
+            }
+        }
+    }
+
+    /**
+     * Unread developer replies and announcements for the dev-contact badges.
+     * Re-read whenever the support page shows, so a thread read in between
+     * clears its badge.
+     */
+    fun refreshUnreadMessages() {
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            val unread = withContext(Dispatchers.IO) {
+                listOf(MessageType.CHAT, MessageType.BUG, MessageType.FEATURE, MessageType.CRASH)
+                    .map { messageRepository.getUnreadCountByType(it.label).toInt() }
+            }
+            val announcements = withContext(Dispatchers.IO) { announcementRepository.getUnreadCount().toInt() }
+            _state.update {
+                it.copy(
+                    unreadChat = unread[0],
+                    unreadBugs = unread[1],
+                    unreadFeatures = unread[2],
+                    unreadCrashes = unread[3],
+                    unreadAnnouncements = announcements,
+                )
             }
         }
     }
@@ -237,9 +271,6 @@ class SettingsViewModel @Inject constructor(
                 val unreadAnnouncements = announcementRepository.getUnreadCount().toInt()
                 val darkMode = userPreferences.darkMode.first()
                 val advertisingSupported = climbAdvertiser.checkSupported()
-                val queueStats = runCatching { boardRepository.getKilterPublishQueueStats() }
-                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
-
                 val profileForm = if (profile != null) {
                     val gradeIndex = GradeConverter.gradeToIndex(profile.maxBoulderGrade)
                         .let { if (it < 0) 6 else it }
@@ -308,14 +339,25 @@ class SettingsViewModel @Inject constructor(
                         lastSync = userPreferences.kilterLastSync.first(),
                         pushEnabled = userPreferences.kilterPushEnabled.first(),
                         climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
-                        publishPendingCount = queueStats.pendingCount,
-                        publishFailedCount = queueStats.failedCount,
-                        publishLastAttemptAtMs = queueStats.lastAttemptAtMs,
                     )
                 )
             }
-            _state.update { initialState }
+            // The batch result is built from scratch. Keep what the independent collectors in init
+            // may already have delivered, otherwise e.g. the manual relay start switch always
+            // showed "off" regardless of the stored value.
+            _state.update {
+                initialState.copy(
+                    relayManualStart = it.relayManualStart,
+                    boardSizeFrequency = it.boardSizeFrequency,
+                    boardSearchEnabled = it.boardSearchEnabled,
+                )
+            }
 
+            launch {
+                kilterSyncEngine.uploadStatus.collect { upload ->
+                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(uploadStatus = upload)) }
+                }
+            }
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
             launch {
@@ -384,6 +426,29 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.announcementCatGeneral.collect { v -> _state.update { it.copy(announcementCatGeneral = v) } } }
             launch { queueManager.queuedCount.collect { v -> _state.update { it.copy(queuedCount = v) } } }
             launch { queueManager.refreshCount() }
+        }
+    }
+
+    /**
+     * Load the Kilter publish-queue card only when its collapsed settings
+     * section is opened.  The values are irrelevant to initial Settings and
+     * used to make that screen wait on two catalogue COUNTs on slower phones.
+     */
+    fun loadKilterPublishQueueStats() {
+        if (kilterPublishQueueStatsLoaded) return
+        kilterPublishQueueStatsLoaded = true
+        viewModelScope.launch {
+            val stats = withContext(Dispatchers.IO) {
+                runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
+            }
+            _state.update {
+                it.copy(kilterAccount = it.kilterAccount.copy(
+                    publishPendingCount = stats.pendingCount,
+                    publishFailedCount = stats.failedCount,
+                    publishLastAttemptAtMs = stats.lastAttemptAtMs,
+                ))
+            }
         }
     }
 
@@ -484,6 +549,8 @@ class SettingsViewModel @Inject constructor(
             // every other picker so they behave identically (FEAT-031).
             val message = try {
                 when (auroraBoardSelector.select(board).status) {
+                    AuroraBoardSelector.Status.DOWNLOAD_DISABLED ->
+                        context.getString(R.string.board_download_disabled)
                     AuroraBoardSelector.Status.FAILED ->
                         context.getString(R.string.aurora_sync_failed_generic)
                     AuroraBoardSelector.Status.ALREADY_CURRENT ->
@@ -766,10 +833,15 @@ class SettingsViewModel @Inject constructor(
         get() = BoardBrand.entries.filter { it.isInteractive }
 
     fun showDeleteBoardDataDialog() {
-        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Start with nothing selected, like the logbook dialog below. With every
+        // board pre-ticked, tapping the one board to delete UNticked it — and the
+        // confirm then deleted all the others instead, and excluded them from
+        // future downloads.
+        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun showDeleteUserDataDialog() {
-        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Irreversible: start with nothing selected so the user names what to delete.
+        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
     fun dismissDeleteSuccess() { _state.update { it.copy(deleteSuccess = null) } }
@@ -1002,7 +1074,7 @@ class SettingsViewModel @Inject constructor(
 
     fun kilterSyncNow() {
         if (_state.value.kilterAccount.isSyncing) return
-        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true)) }
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true, resultMessage = null, resultIsError = false)) }
         viewModelScope.launch {
             // Same defensive wrap as kilterLogin/kilterImport*: an unexpected
             // throw (e.g. from the DataStore read) must not strand the
@@ -1014,13 +1086,12 @@ class SettingsViewModel @Inject constructor(
                     isSyncing = false,
                     lastSync = lastSync,
                     resultMessage = result.fold(
-                        onSuccess = { r ->
-                            if (r.uploadFailed) context.getString(R.string.kilter_sync_upload_failed, r.downloaded)
-                            else context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
-                        },
+                        // The persistent status is sufficient; do not add an
+                        // "Imported: 0" result card after every manual sync.
+                        onSuccess = { null },
                         onFailure = { localizeKilterImportError(context, it) }
                     ),
-                    resultIsError = result.isFailure || result.getOrNull()?.uploadFailed == true,
+                    resultIsError = result.isFailure,
                 )) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -1093,7 +1164,29 @@ class SettingsViewModel @Inject constructor(
 
     fun setKilterPushEnabled(enabled: Boolean) {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(pushEnabled = enabled)) }
-        viewModelScope.launch { userPreferences.setKilterPushEnabled(enabled) }
+        viewModelScope.launch {
+            userPreferences.setKilterPushEnabled(enabled)
+            if (enabled) {
+                state.first { !it.kilterAccount.isSyncing }
+                if (userPreferences.kilterPushEnabled.first()) retryKilterUpload(KilterUploadTrigger.ENABLED)
+            }
+        }
+    }
+
+    fun retryKilterUpload(trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL) {
+        if (_state.value.kilterAccount.isSyncing) return
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+            isSyncing = true, resultMessage = null, resultIsError = false,
+        )) }
+        viewModelScope.launch {
+            try {
+                // The observed upload status owns the result and retry/report actions.
+                // Do not repeat it in the generic import/sync result card.
+                kilterSyncEngine.uploadPendingLogs(trigger)
+            } finally {
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = false)) }
+            }
+        }
     }
 
     fun kilterDisconnect() {
@@ -1102,8 +1195,10 @@ class SettingsViewModel @Inject constructor(
             // triage of "I lost my Kilter login" or "my pending publishes
             // disappeared" reports can be matched against logcat.
             Log.i(TAG, "destructive: kilterDisconnect() requested at ${System.currentTimeMillis() / 1000}")
+            userPreferences.setKilterPushEnabled(false)
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
+            kilterSyncEngine.clearUploadDiagnostics()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
             Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")

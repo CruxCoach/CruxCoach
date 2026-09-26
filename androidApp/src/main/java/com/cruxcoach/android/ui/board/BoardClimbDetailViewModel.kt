@@ -27,6 +27,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.ClimbBetaLink
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.QuantumBoardModel
@@ -62,6 +63,7 @@ import com.cruxcoach.android.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -204,6 +206,7 @@ internal fun ClimbDetailState.withLiveDeviceState(live: ClimbDetailState): Climb
 data class ClimbDetailState(
     val isLoading: Boolean = true,
     val climb: ClimbWithStats? = null,
+    val betaLinks: List<ClimbBetaLink> = emptyList(),
     /** Non-null when the climb is absent from the board DB but the user has
      *  local logbook history for it — drives the friendly logbook-only
      *  fallback instead of [error]. */
@@ -355,6 +358,11 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
     val initialClimbUuid: String = savedStateHandle["climbUuid"] ?: ""
+    private val requiredLinkAuthor: String? = savedStateHandle["author"]
+    private fun matchesLinkAuthor(uuid: String, author: String?): Boolean =
+        !uuid.replace("-", "").equals(initialClimbUuid.replace("-", ""), ignoreCase = true) ||
+            requiredLinkAuthor == null || author.equals(requiredLinkAuthor, ignoreCase = true)
+
     private var currentClimbUuid: String = initialClimbUuid
     private var currentAngle: Int = savedStateHandle.get<String>("angle")?.toIntOrNull() ?: 40
 
@@ -388,7 +396,16 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val personalNoteSaveStatuses = ConcurrentHashMap<String, PersonalNoteSaveStatus>()
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
-    private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
+    /** Per brand: the pager can move between boards' climbs (cross-board
+     *  lists), and one shared map drew a Tension climb on Kilter positions.
+     *  Empty results are not kept, so seeded geometry shows up on the next
+     *  climb. */
+    private val cachedPlacementMaps = java.util.concurrent.ConcurrentHashMap<String, Map<Int, BoardPlacement>>()
+
+    private fun placementMapFor(brand: String): Map<Int, BoardPlacement> =
+        cachedPlacementMaps[brand]
+            ?: boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
+                .also { if (it.isNotEmpty()) cachedPlacementMaps[brand] = it }
     private val supportedAnglesCache = ConcurrentHashMap<Pair<Int, String>, Set<Int>>()
 
     // --- Delegated controllers ---
@@ -400,11 +417,17 @@ class BoardClimbDetailViewModel @Inject constructor(
         sessionManager = sessionManager,
         zoneManager = zoneManager,
         climbNavState = climbNavState,
-        currentClimbUuid = { currentClimbUuid },
+        // A legacy MoonBoard alias may be the navigation key. Once the
+        // catalogue resolves it, new ascents belong to the canonical UUID;
+        // existing secure rows remain untouched and are read as equivalents.
+        currentClimbUuid = { _state.value.climb?.uuid ?: currentClimbUuid },
         onAscentSaved = { isSend ->
             if (_state.value.restTimerAutoStart) startRestTimer()
             kilterSyncEngine.uploadNewAscentIfEnabled()
-        }
+        },
+        onQuickLogSaved = {
+            if (_state.value.restTimerAutoStart) startRestTimer()
+        },
     )
 
     private val playbackController = RoutePlaybackController(
@@ -890,7 +913,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // doesn't block auto-send for the new climb.
         val currentConn = bleConnection.connectionState.value
         // Use cached page state if available to avoid loading flash during pager swipe
-        val cached = _pageCache.value[uuid]
+        val cached = _pageCache.value[uuid]?.takeIf { matchesLinkAuthor(uuid, it.climb?.createdByPubkey) }
         if (cached != null) {
             _state.update { current -> cached.withLiveDeviceState(current).copy(
                 ascent = AscentFormState(),
@@ -1004,21 +1027,17 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     private fun loadClimb(uuid: String, angle: Int) {
+        // A cached/preloaded page must never display media from its neighbour.
+        _state.update { it.copy(betaLinks = emptyList()) }
         loadJob = viewModelScope.launch {
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
                 withContext(Dispatchers.IO) {
-                    // Try exact match first, then case variants (DB may store
-                    // upper/lowercase). Keep the fast primary-key path first;
-                    // only on a miss fall back to the normalized (strip-hyphens
-                    // + lowercase) scan, which resolves uuids whose hyphenation
-                    // differs from the stored row (logbook dashed-lowercase vs
-                    // legacy nodash-UPPERCASE board rows).
+                    // Indexed spellings first, normalized scan only on a miss.
                     val climb = PerfLogger.trace("loadClimb.getClimbByUuid") {
-                        boardRepository.getClimbByUuid(uuid, angle)
-                            ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-                            ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
-                            ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
+                        boardRepository.getClimbByUuidAnySpelling(uuid, angle)
+                    }?.takeIf {
+                        matchesLinkAuthor(uuid, it.createdByPubkey)
                     }
                     if (climb != null) {
                         // FEAT-027: a MoonBoard climb has no Aurora
@@ -1035,17 +1054,16 @@ class BoardClimbDetailViewModel @Inject constructor(
                         // wrong board for Tension/Grasshopper/etc.).
                         val brand = climb.brand.wireValue
                         val placementMap = if (isMoonBoard) emptyMap() else
-                            PerfLogger.trace("loadClimb.placements") {
-                                cachedPlacementMap ?: run {
-                                    val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                                    cachedPlacementMap = map
-                                    map
-                                }
-                            }
+                            PerfLogger.trace("loadClimb.placements") { placementMapFor(brand) }
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
                         val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                            climbUuid = uuid,
+                            // The CANONICAL uuid: canRenderClimbOnSize and
+                            // getProductSizeForClimbRender match climbs.uuid
+                            // exactly, so the spelling the caller navigated
+                            // with would miss and drop the pick through to
+                            // the user's own board.
+                            climbUuid = climb.uuid,
                             climbLayoutId = climb.layoutId.toInt(),
                             preferredSizeId = prefSizeId,
                             preferredLayoutId = prefLayoutId,
@@ -1057,15 +1075,24 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
                             boardRepository.getBoardImages(sizeId, layoutId, brand)
                         } ?: emptyList()
+                        val identityUuids = boardRepository.equivalentClimbUuids(climb.uuid)
                         val userAscents = PerfLogger.trace("loadClimb.userHistory") {
-                            personalBoardRepo.getUserHistoryForClimb(uuid)
+                            identityUuids.flatMap(personalBoardRepo::getUserHistoryForClimb)
+                                .distinctBy { it.uuid }
+                                .sortedByDescending { it.climbedAt }
                         }
-                        val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
-                        val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
-                        val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
+                        val isFavorited = identityUuids.any(personalBoardRepo::isClimbFavorited)
+                        val isIgnored = identityUuids.any(personalBoardRepo::isClimbIgnored)
+                        val personalNote = identityUuids.asSequence()
+                            .mapNotNull(personalBoardRepo::getClimbNote).firstOrNull().orEmpty()
                         val personalNoteDraft = personalNoteDrafts[climb.uuid] ?: personalNote
                         val personalNoteStatus = personalNoteSaveStatuses[climb.uuid]
                             ?: PersonalNoteSaveStatus.IDLE
+                        val betaLinks = boardRepository.getClimbBetaLinks(
+                            climb.brand.wireValue,
+                            climb.uuid,
+                            angle,
+                        )
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
@@ -1101,6 +1128,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 error = null,
                                 logbookOnly = null,
                                 climb = climb,
+                                betaLinks = betaLinks,
                                 holds = holds,
                                 placements = placementMap,
                                 boardSize = boardSize,
@@ -1239,22 +1267,19 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val climb = boardRepository.getClimbByUuid(uuid, angle) ?: return@withContext
+                    val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
+                        ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()
                     val brand = climb.brand.wireValue
-                    val placementMap = if (isMoonBoard) emptyMap() else cachedPlacementMap ?: run {
-                        val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                        cachedPlacementMap = map
-                        map
-                    }
+                    val placementMap = if (isMoonBoard) emptyMap() else placementMapFor(brand)
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
                     val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                        climbUuid = uuid,
+                        climbUuid = climb.uuid,
                         climbLayoutId = climb.layoutId.toInt(),
                         preferredSizeId = prefSizeId,
                         preferredLayoutId = prefLayoutId,
@@ -1266,18 +1291,28 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
                         boardRepository.getBoardImages(sizeId, layoutId, brand)
                     } ?: emptyList()
-                    val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
-                    val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
-                    val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
-                    val personalNote = personalBoardRepo.getClimbNote(climb.uuid).orEmpty()
+                    val identityUuids = boardRepository.equivalentClimbUuids(climb.uuid)
+                    val userAscents = identityUuids.flatMap(personalBoardRepo::getUserHistoryForClimb)
+                        .distinctBy { it.uuid }
+                        .sortedByDescending { it.climbedAt }
+                    val isFavorited = identityUuids.any(personalBoardRepo::isClimbFavorited)
+                    val isIgnored = identityUuids.any(personalBoardRepo::isClimbIgnored)
+                    val personalNote = identityUuids.asSequence()
+                        .mapNotNull(personalBoardRepo::getClimbNote).firstOrNull().orEmpty()
                     val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                     val isMirrorable = BoardConstants.isLayoutMirrorable(
                         climb.brand, climb.layoutId.toInt()
+                    )
+                    val betaLinks = boardRepository.getClimbBetaLinks(
+                        climb.brand.wireValue,
+                        climb.uuid,
+                        angle,
                     )
 
                     val pageState = _state.value.copy(
                         isLoading = false,
                         climb = climb,
+                        betaLinks = betaLinks,
                         holds = holds,
                         placements = placementMap,
                         boardSize = boardSize,
@@ -1428,7 +1463,15 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val newState = withContext(Dispatchers.IO) {
-                    personalBoardRepo.toggleFavorite(currentClimbUuid)
+                    val identities = boardRepository.equivalentClimbUuids(currentClimbUuid)
+                    val existing = identities.filter(personalBoardRepo::isClimbFavorited)
+                    if (existing.isEmpty()) {
+                        personalBoardRepo.toggleFavorite(identities.first())
+                        true
+                    } else {
+                        existing.forEach(personalBoardRepo::toggleFavorite)
+                        false
+                    }
                 }
                 _state.update { it.copy(isFavorited = newState) }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1466,7 +1509,12 @@ class BoardClimbDetailViewModel @Inject constructor(
         personalNoteSaveJobs[climbUuid] = viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    personalBoardRepo.saveClimbNote(climbUuid, normalized)
+                    // Mirror an explicit edit across the exact identities.
+                    // This keeps a later downgrade usable too: released apps
+                    // still address the legacy UUID directly.
+                    boardRepository.equivalentClimbUuids(climbUuid).forEach { identity ->
+                        personalBoardRepo.saveClimbNote(identity, normalized)
+                    }
                 }
                 personalNoteDrafts.remove(climbUuid)
                 personalNoteSaveStatuses[climbUuid] = PersonalNoteSaveStatus.SAVED
@@ -1531,7 +1579,15 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val newState = withContext(Dispatchers.IO) {
-                    personalBoardRepo.toggleIgnored(currentClimbUuid)
+                    val identities = boardRepository.equivalentClimbUuids(currentClimbUuid)
+                    val existing = identities.filter(personalBoardRepo::isClimbIgnored)
+                    if (existing.isEmpty()) {
+                        personalBoardRepo.toggleIgnored(identities.first())
+                        true
+                    } else {
+                        existing.forEach(personalBoardRepo::toggleIgnored)
+                        false
+                    }
                 }
                 _state.update { it.copy(isIgnored = newState) }
                 climbNavState.creatorDataChanged = true
@@ -1712,7 +1768,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(listDialog = it.listDialog.copy(show = false)) }
         viewModelScope.launch {
             try {
-                val isFav = withContext(Dispatchers.IO) { personalBoardRepo.isClimbFavorited(currentClimbUuid) }
+                val isFav = withContext(Dispatchers.IO) {
+                    boardRepository.equivalentClimbUuids(currentClimbUuid)
+                        .any(personalBoardRepo::isClimbFavorited)
+                }
                 _state.update { it.copy(isFavorited = isFav) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

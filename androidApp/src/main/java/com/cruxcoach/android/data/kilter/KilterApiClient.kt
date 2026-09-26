@@ -100,7 +100,11 @@ private data class ClimbCreatePayload(
     val username: String,
     val name: String,
     val description: String,
-    /** Concat of placement+role per hold: `h{placementId}p{roleId}…`. */
+    /** Concat of HOLE+role per hold: `h{holeId}p{roleId}…`. The leading id
+     *  is a mounting hole, NOT a placement — verified against the published
+     *  catalogue, where the API's numbers are exactly the hole_ids of the
+     *  catalogue frames' placements. The two id spaces overlap numerically,
+     *  so mixing them up draws a different hold instead of failing. */
     val climbConcat: String,
     val productName: String,
     /** Server-side identifier of the layout (board size + variant).
@@ -187,6 +191,10 @@ data class KilterLoggedClimb(
     val productName: String = "",
     val isListed: Boolean = true,
     val isDraft: Boolean = false,
+    // Kilter kennt Soft-Delete: `/climbs/logged` liefert geloeschte Routen
+    // weiterhin mit `isDeleted: true`. Ohne dieses Feld hat der Backfill sie
+    // wie lebende Routen in die Board-DB geschrieben.
+    val isDeleted: Boolean = false,
     val origin: String = "",
     val userUuid: String = "",
     val username: String = "",
@@ -361,6 +369,7 @@ class KilterApiClient @Inject constructor(
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
+        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
         // `kilter_error` column / Android backup blob). 5xx renders can
@@ -865,6 +874,15 @@ class KilterApiClient @Inject constructor(
         }
     }
 
+    private fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
+        local.climbUuid == remote.climbUuid && local.angle == remote.angle &&
+            local.topped == remote.topped && local.flashed == remote.flashed &&
+            local.attempts == remote.attempts && local.userUuid == remote.userUuid &&
+            local.gymUuid == remote.gymUuid && local.wallUuid == remote.wallUuid &&
+            local.productLayoutUuid == remote.productLayoutUuid &&
+            runCatching { java.time.Instant.parse(local.createdAt) == java.time.Instant.parse(remote.createdAt) }
+                .getOrDefault(local.createdAt == remote.createdAt)
+
     /**
      * Upload local ascents to Kilter in bulk.
      */
@@ -875,7 +893,25 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            val payload = json.encodeToString(logs)
+            // Legacy catalogue keys are case-sensitive upstream: compact uppercase.
+            // Lowercase compact IDs fail; adding UUID hyphens creates a different
+            // statistics identity even when the server resolves the climb's name.
+            // Keep native hyphenated IDs and all local/log identities unchanged.
+            val wireLogs = logs.map { log ->
+                if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
+                    log.copy(climbUuid = log.climbUuid.uppercase())
+                } else log
+            }
+            // Kilter bulk inserts are not upserts: duplicate log UUIDs return 500.
+            // Reconcile before posting, including retries after a lost response.
+            val existing = fetchLogs().getOrThrow().associateBy { it.logUuid }
+            val missing = wireLogs.filter { log ->
+                val remote = existing[log.logUuid]
+                if (remote != null && !sameUploadedLog(log, remote)) throw KilterLogConflictException()
+                remote == null
+            }
+            if (missing.isEmpty()) return@withContext Result.success(Unit)
+            val payload = json.encodeToString(missing)
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
@@ -883,18 +919,17 @@ class KilterApiClient @Inject constructor(
                 .addHeader("Authorization", "Bearer $token")
                 .post(requestBody)
                 .build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
-                )
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    // Do not retain response bodies: servers can echo private log data.
+                    return@withContext Result.failure(KilterUploadException(response.code))
+                }
+                Result.success(Unit)
             }
-            Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "uploadLogs failed", e)
+            Log.w(TAG, "uploadLogs failed (${e.javaClass.simpleName})")
             Result.failure(e)
         }
     }
@@ -1073,6 +1108,52 @@ class KilterApiClient @Inject constructor(
         edgeBottom = edgeBottom,
         edgeTop = edgeTop,
     )
+
+    /**
+     * Delete one logbook entry upstream. `DELETE /api/logs/{log_uuid}` —
+     * verified live against the account on 2026-09-25: a throwaway log was
+     * created via `/logs/bulk`, confirmed present in `/logs`, deleted here
+     * (HTTP 200, "Logs have been deleted.") and confirmed gone, with no other
+     * entry touched. The endpoint is absent from the reverse-engineering
+     * notes, which list only GET/POST for logs — it exists nonetheless, and
+     * the official app carries a matching `deleteLog` symbol next to
+     * `createLog` and `updateLog`.
+     *
+     * A uuid Kilter does not know is a harmless no-op, so the caller does not
+     * have to establish first whether the entry was ever uploaded.
+     */
+    suspend fun deleteLog(logUuid: String): KilterPublishResult = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        val request = Request.Builder()
+            .url("$apiBase/logs/$logUuid")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    Log.i(TAG, "deleteLog ok")
+                    return@withContext KilterPublishResult.Success(logUuid)
+                }
+                val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
+                Log.w(TAG, "deleteLog HTTP ${resp.code}: $responseBody")
+                return@withContext when (resp.code) {
+                    401, 403 -> KilterPublishResult.NotAuthenticated
+                    // 404 = Kilter kennt den Eintrag nicht (mehr). Das ist das
+                    // gewuenschte Ergebnis, nicht ein Fehler zum Wiederholen.
+                    404 -> KilterPublishResult.Success(logUuid)
+                    in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
+                    else -> KilterPublishResult.TransientError("HTTP ${resp.code}: $responseBody")
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteLog exception", e)
+            return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
+        }
+    }
 
     /**
      * Delete an own climb. Method `DELETE /api/climbs/{uuid}` — verified

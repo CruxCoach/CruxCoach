@@ -66,7 +66,32 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteAscent(uuid: String) {
-        database.ascentsQueries.deleteAscent(uuid)
+        database.transaction {
+            database.ascentsQueries.deleteAscent(uuid)
+            queueLogDeletion(uuid)
+        }
+    }
+
+    /** Merkt die Löschung vor, bis Kilter sie bestätigt hat. Auch für rein
+     *  lokale Einträge: ein DELETE für eine uuid, die Kilter nicht kennt,
+     *  antwortet 404 und gilt als erledigt — das spart die Extra-Abfrage, ob
+     *  die Zeile je hochgeladen war, und die Vormerkung ist gleich wieder weg. */
+    private fun queueLogDeletion(logUuid: String) {
+        database.pendingLogDeletionsQueries.queueLogDeletion(
+            log_uuid = logUuid,
+            deleted_at = kotlin.time.Clock.System.now().toEpochMilliseconds(),
+        )
+    }
+
+    override fun pendingLogDeletions(): List<String> =
+        database.pendingLogDeletionsQueries.pendingLogDeletionUuids().executeAsList()
+
+    override fun clearLogDeletion(logUuid: String) {
+        database.pendingLogDeletionsQueries.clearLogDeletion(logUuid)
+    }
+
+    override fun clearAllLogDeletions() {
+        database.pendingLogDeletionsQueries.clearAllLogDeletions()
     }
 
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {
@@ -343,7 +368,10 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteBid(uuid: String) {
-        database.bidsQueries.deleteBid(uuid)
+        database.transaction {
+            database.bidsQueries.deleteBid(uuid)
+            queueLogDeletion(uuid)
+        }
     }
 
     override fun promoteQuickBidToSend(send: QuickLogSendInput) {
@@ -1154,6 +1182,9 @@ class PersonalBoardRepositoryImpl(
             // cache. Keeping them after a full wipe silently recreated rows
             // at the next import and reported them as already present.
             database.moonImportStagingQueries.deleteAllMoonImportStaging()
+            // Same for an Aurora import waiting for the Kilter catalogue.
+            // Staged own climbs stay: they are climbs, not logbook entries.
+            database.pendingImportsQueries.deletePendingImportsBySource(com.cruxcoach.data.PendingImportSource.AURORA)
             database.boardSessionsQueries.deleteAllBoardSessions()
             database.climbListsQueries.deleteAllPlaybackSteps()
             database.climbListsQueries.deleteAllClimbListEntries()
@@ -1180,6 +1211,9 @@ class PersonalBoardRepositoryImpl(
                 // The staging table contains Moon data exclusively and has no
                 // separate brand column. A Moon-scoped wipe clears it whole.
                 database.moonImportStagingQueries.deleteAllMoonImportStaging()
+            }
+            if ("kilter" in brands) {
+                database.pendingImportsQueries.deletePendingImportsBySource(com.cruxcoach.data.PendingImportSource.AURORA)
             }
             // Sessions stay: brand-less aggregates, see BoardSessions.sq.
             // Each uuid binds one SQLite host parameter — chunk well below

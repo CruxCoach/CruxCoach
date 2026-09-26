@@ -42,10 +42,10 @@ class MapFiltersTest {
     }
 
     @Test
-    fun `default filters keep Original layout but drop Homewalls`() {
+    fun `default filters show Original and Homewalls like the web map`() {
         val items = listOf(loc("a", layoutId = 1), loc("b", layoutId = 8))
         val out = MapFilters().apply(items)
-        assertEquals(listOf("a"), out.map { it.id })
+        assertEquals(setOf("a", "b"), out.map { it.id }.toSet())
     }
 
     @Test
@@ -150,17 +150,18 @@ class MapFiltersTest {
     }
 
     @Test
-    fun `accessType + adjustability filter intersect`() {
+    fun `Kilter wall and MoonBoard setup filters stay board-specific`() {
         val items = listOf(
-            loc("a", accessType = AccessType.PUBLIC, adjustability = Adjustability.ADJUSTABLE),
-            loc("b", accessType = AccessType.PRIVATE, adjustability = Adjustability.ADJUSTABLE),
-            loc("c", accessType = AccessType.PUBLIC, adjustability = Adjustability.FIXED),
+            loc("kilter-adjustable", accessType = AccessType.UNKNOWN, adjustability = Adjustability.ADJUSTABLE),
+            loc("kilter-fixed", accessType = AccessType.UNKNOWN, adjustability = Adjustability.FIXED),
+            loc("moon-commercial", accessType = AccessType.PUBLIC, adjustability = Adjustability.UNKNOWN, boardBrand = BoardBrand.MOONBOARD),
+            loc("moon-home", accessType = AccessType.PRIVATE, adjustability = Adjustability.UNKNOWN, boardBrand = BoardBrand.MOONBOARD),
         )
         val out = MapFilters(
             accessTypes = setOf(AccessType.PUBLIC),
             adjustabilities = setOf(Adjustability.ADJUSTABLE),
         ).apply(items)
-        assertEquals(listOf("a"), out.map { it.id })
+        assertEquals(setOf("kilter-adjustable", "moon-commercial"), out.map { it.id }.toSet())
     }
 
     @Test
@@ -241,7 +242,35 @@ class MapFiltersTest {
     fun `isAtDefault is false when any filter applied`() {
         assertEquals(false, MapFilters(matchesMyBoard = true).isAtDefault)
         assertEquals(false, MapFilters(countries = setOf("DE")).isAtDefault)
-        assertEquals(false, MapFilters(showHomewalls = true).isAtDefault)
+        assertEquals(false, MapFilters(showHomewalls = false).isAtDefault)
         assertEquals(false, MapFilters(brands = setOf(BoardBrand.MOONBOARD)).isAtDefault)
+    }
+
+    @Test
+    fun `Kilter size and adjustability filters do not hide other board families`() {
+        val items = listOf(
+            loc("kilter-match", productSizeId = 10, adjustability = Adjustability.ADJUSTABLE),
+            loc("kilter-miss", productSizeId = 12, adjustability = Adjustability.FIXED),
+            loc("moon", productSizeId = null, adjustability = Adjustability.UNKNOWN, boardBrand = BoardBrand.MOONBOARD),
+        )
+        val out = MapFilters(
+            sizeIds = setOf(10),
+            adjustabilities = setOf(Adjustability.ADJUSTABLE),
+        ).apply(items)
+        assertEquals(setOf("kilter-match", "moon"), out.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `MoonBoard variant and LED filters are board-specific`() {
+        val moon2019 = loc("moon2019", layoutId = 5, boardBrand = BoardBrand.MOONBOARD)
+            .copy(hasLed = true)
+        val moon2016 = loc("moon2016", layoutId = 2, boardBrand = BoardBrand.MOONBOARD)
+            .copy(hasLed = false)
+        val kilter = loc("kilter")
+        val out = MapFilters(
+            moonLayoutIds = setOf(5),
+            moonLedStates = setOf(MoonLedState.LED),
+        ).apply(listOf(moon2019, moon2016, kilter))
+        assertEquals(setOf("moon2019", "kilter"), out.map { it.id }.toSet())
     }
 }

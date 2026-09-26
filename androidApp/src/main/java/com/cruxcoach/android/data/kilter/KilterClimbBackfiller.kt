@@ -2,7 +2,9 @@ package com.cruxcoach.android.data.kilter
 
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardHold
 
 /**
  * Backfills the local board DB with the user's OWN Kilter climbs that the
@@ -57,38 +59,55 @@ internal class KilterClimbBackfiller(
         // legacy nodash-UPPERCASE spelling counts as present.
         val missing = response.climbs.filter { climb ->
             climb.climbUuid.isNotBlank() &&
+                // Kilter kennt Soft-Delete und liefert geloeschte Routen
+                // weiter mit; ohne diese Pruefung landeten sie als lebende
+                // Zeilen in der Board-DB und im Browser.
+                !climb.isDeleted &&
                 boardRepository.findClimbCanonicalUuid(climb.climbUuid) == null
         }
         if (missing.isEmpty()) return 0
 
-        // Stats keyed by (uuid, angle) so each climb-stat row pairs with its
-        // climb. The detail screen resolves a climb via the (uuid, angle)
-        // LEFT JOIN, and insertLogs' denormalization needs the climb_stats
-        // row to exist for the logged angle — so we upsert a stat at each
-        // climb's own angle, falling back to the API stats list.
-        val statsByKey = response.climbStats.associateBy { it.climbUuid to it.angle }
+        // Every stat the endpoint sends for a climb, by uuid. It used to be
+        // keyed by (uuid, climb.angle) and read at the climb's own angle —
+        // but `climb.angle` is the SETTER's angle while the stats, like the
+        // logbook, come at the angle the climb was CLIMBED at. Measured on a
+        // real account: every stat arrived at 40° while the climb records
+        // said 40°, 55° and 60°, so a third of them found nothing, wrote a
+        // bare ungraded row at an angle nobody logged, and left the logged
+        // angle without a stat — the entry resolved but showed no grade.
+        val statsByClimb = response.climbStats.groupBy { it.climbUuid }
 
         var upserted = 0
         try {
             boardRepository.runInTransaction {
                 for (climb in missing) {
                     upsertBackfilledClimb(climb)
-                    // Stat row at the climb's own angle so the (uuid, angle)
-                    // lookup resolves. Use the API stat if present; otherwise
-                    // write a bare row carrying only the angle key.
-                    val stat = statsByKey[climb.climbUuid to climb.angle]
-                    boardRepository.upsertClimbStat(
-                        climbUuid = climb.climbUuid,
-                        angle = climb.angle.toLong(),
-                        displayDifficulty = stat?.difficultyAverage,
-                        difficultyAverage = stat?.difficultyAverage,
-                        qualityAverage = stat?.qualityAverage,
-                        ascensionistCount = stat?.ascentCount?.toLong(),
-                        benchmarkDifficulty = null,
-                        faUsername = stat?.faUsername,
-                        faAt = stat?.faAt,
-                        officialKilterDifficulty = stat?.currentDifficultyId?.toLong(),
-                    )
+                    val stats = statsByClimb[climb.climbUuid].orEmpty()
+                    for (stat in stats) {
+                        boardRepository.upsertClimbStat(
+                            climbUuid = climb.climbUuid.lowercase(),
+                            angle = stat.angle.toLong(),
+                            displayDifficulty = stat.difficultyAverage,
+                            difficultyAverage = stat.difficultyAverage,
+                            qualityAverage = stat.qualityAverage,
+                            ascensionistCount = stat.ascentCount?.toLong(),
+                            benchmarkDifficulty = null,
+                            faUsername = stat.faUsername,
+                            faAt = stat.faAt,
+                            officialKilterDifficulty = stat.currentDifficultyId?.toLong(),
+                        )
+                    }
+                    // A climb the endpoint sent no stats for still needs a row
+                    // at its own angle, or the (uuid, angle) lookup has
+                    // nothing to resolve. NULL difficulty = "ungraded".
+                    if (stats.none { it.angle == climb.angle }) {
+                        boardRepository.upsertClimbStat(
+                            climbUuid = climb.climbUuid.lowercase(), angle = climb.angle.toLong(),
+                            displayDifficulty = null, difficultyAverage = null,
+                            qualityAverage = null, ascensionistCount = null,
+                            benchmarkDifficulty = null,
+                        )
+                    }
                     upserted++
                 }
             }
@@ -146,7 +165,7 @@ internal class KilterClimbBackfiller(
                         // climb's own (setter) angle so it resolves + renders
                         // there. NULL difficulty/quality = "ungraded".
                         boardRepository.upsertClimbStat(
-                            climbUuid = climb.climbUuid,
+                            climbUuid = climb.climbUuid.lowercase(),
                             angle = climb.angle.toLong(),
                             displayDifficulty = null,
                             difficultyAverage = null,
@@ -188,6 +207,91 @@ internal class KilterClimbBackfiller(
     }
 
     /**
+     * The layout a backfilled climb belongs to.
+     *
+     * `product_layout_uuid` was read as a layout id. It is a product SIZE.
+     * Checked against the published catalogue on a real account: the values
+     * that arrive are 7, 8, 10 and 14 — Kilter sizes — and every one of them
+     * belongs to layout 1, Original, which is also what `productName` says.
+     * Written as layouts they became 7, 10 and 14, which have no row in
+     * `layouts` and no hold geometry at all, and 8, which is Homewall: a
+     * different Kilter board. Every render lookup then missed and the detail
+     * screen fell back to the user's own configured board.
+     *
+     * The size is the authority, because it is what the field actually
+     * carries. The holes are the fallback — a hole carries a placement per
+     * hold set and a set is published for one layout — and both are served by
+     * the geometry bundled in the APK, so either answers before a download.
+     */
+    private fun resolveLayoutId(climb: KilterLoggedClimb, frames: String): Long {
+        climb.productLayoutUuid.toIntOrNull()
+            ?.let { boardRepository.getLayoutForProductSize(it) }
+            ?.let { return it }
+        val holeIds = BoardClimbParser.parseFrames(frames).map { it.placementId }
+        boardRepository.getLayoutForHoles(holeIds)?.let { return it }
+        return boardRepository.getDefaultLayoutForBrand("kilter")?.toLong()
+            ?: BoardConstants.KILTER_ORIGINAL_LAYOUT.toLong()
+    }
+
+    /**
+     * A Kilter `climbConcat` in the placement-id form every other climbs row
+     * and every renderer uses.
+     *
+     * `climbConcat` names HOLES ("h1174p12"); the catalogue names PLACEMENTS
+     * ("p1174r12"). The two id spaces overlap numerically — 80 of 85 sampled
+     * hole ids also exist as placement ids — so storing the string verbatim
+     * did not fail loudly, it silently drew a different hold. Verified on the
+     * published catalogue: for every sampled climb the API's hole ids are
+     * exactly the hole_ids of the catalogue frames' placements, and the
+     * rewrite below reproduces those frames hold for hold and role for role.
+     *
+     * [BoardClimbParser.parseFrames] reports the leading number as
+     * `placementId` for both formats, so for a climbConcat that field is the
+     * hole id. An incomplete mapping returns the input untouched rather than
+     * a half-rewritten frame that would render part of the climb in the wrong
+     * place.
+     */
+    private fun toPlacementFrames(frames: String, layoutId: Long, frameCount: Int): String {
+        if (frames.isBlank() || !BoardClimbParser.isClimbConcat(frames)) return frames
+        val holds = BoardClimbParser.parseClimbConcat(frames)
+        if (holds.isEmpty()) return frames
+
+        // hole -> placement innerhalb des aufgeloesten Layouts. Unvollstaendig
+        // heisst: Eingabe unveraendert behalten, statt eine halb umgeschriebene
+        // Route zu rendern.
+        val resolved = holds.map { hold ->
+            val placementId = boardRepository
+                .getPlacementForHoleInLayout(hold.holeId, layoutId) ?: return frames
+            placementId.toInt() to hold
+        }
+
+        val lastFrame = maxOf(
+            frameCount.coerceAtLeast(1),
+            holds.maxOf { maxOf(it.startFrame, it.endFrame ?: 1) },
+        )
+        if (lastFrame <= 1) {
+            return BoardClimbParser.encodeFrames(
+                resolved.map { (pid, hold) -> BoardHold(pid, hold.roleId) }
+            )
+        }
+
+        // Mehr-Frame-Route: Aurora erwartet Delta-Frames, komma-getrennt —
+        // je Frame erst die Griffe, die ihn verlassen (`x{pid}`), dann die
+        // neu hinzukommenden. Ohne das fielen alle Griffe in einen Frame
+        // zusammen und die Route verlor ihre Abfolge.
+        return (1..lastFrame).joinToString(",") { frame ->
+            buildString {
+                if (frame > 1) {
+                    resolved.filter { (_, h) -> (h.endFrame ?: lastFrame) == frame - 1 }
+                        .forEach { (pid, _) -> append("x").append(pid) }
+                }
+                resolved.filter { (_, h) -> h.startFrame == frame }
+                    .forEach { (pid, h) -> append("p").append(pid).append("r").append(h.roleId) }
+            }
+        }
+    }
+
+    /**
      * Shared climb-row mapping for both backfills. Only ever called for
      * uuids [BoardRepository.findClimbCanonicalUuid] reported missing under
      * ANY spelling, inside the caller's transaction. Also records the climb author's Kilter userUuid
@@ -200,16 +304,20 @@ internal class KilterClimbBackfiller(
         val moveCount = if (frames.isNotBlank()) {
             BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
         } else 0L
-        // productLayoutUuid is a numeric string in Kilter's API
-        // ("10", "27", …) — the same value the board DB stores as
-        // layout_id. Unparseable → 0 (still resolvable by uuid).
-        val layoutId = climb.productLayoutUuid.toLongOrNull() ?: 0L
+        val layoutId = resolveLayoutId(climb, frames)
         boardRepository.upsertClimb(
-            uuid = climb.climbUuid,
+            // 7.sqm settled LOWER(uuid) as the canonical persisted form, and
+            // the catalogue importer lowercases at its boundary for exactly
+            // that reason. Writing the API spelling through made these the
+            // only mixed-case rows in the board DB: the importer's exists-gate
+            // missed them and inserted a SECOND row for the same climb, while
+            // a logbook lookup tries the API spelling first and kept landing
+            // on this one. Downloading the catalogue then repaired nothing.
+            uuid = climb.climbUuid.lowercase(),
             layoutId = layoutId,
             setter = climb.username.ifBlank { null },
             name = climb.name,
-            frames = frames,
+            frames = toPlacementFrames(frames, layoutId, climb.frameCount),
             framesCount = climb.frameCount.toLong().coerceAtLeast(1L),
             isListed = if (climb.isListed) 1L else 0L,
             edgeLeft = climb.edgeLeft?.toLong(),
@@ -223,7 +331,7 @@ internal class KilterClimbBackfiller(
         )
         if (climb.userUuid.isNotBlank()) {
             boardRepository.setClimbKilterAuthorUuid(
-                uuid = climb.climbUuid,
+                uuid = climb.climbUuid.lowercase(),
                 authorUuid = climb.userUuid,
             )
         }

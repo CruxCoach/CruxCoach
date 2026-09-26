@@ -4,6 +4,243 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.3] - 2026-09-26
+
+### Changed
+- MoonBoard hold sets can be adjusted under “Missing some holds?” in the board
+  picker. Changes apply only on confirmation; the empty connection heading is
+  removed from MoonBoard settings.
+- First-run setup offers optional Bluetooth discovery before board selection,
+  shows catalogue downloads explicitly and groups account restoration with imports.
+- A skippable visual tour highlights the actual browser and detail controls.
+  Users advance through normal actions, including Quicklog and editing in the
+  logbook; replay is available from the app menu behind the logo.
+- The one-row browser header keeps the logo, board family, angle, Bluetooth and
+  filter directly accessible. A compact board picker leaves room for additional
+  actions; those that do not fit move into the right-hand overflow menu. Filters prioritise
+  grade, status and sorting, with further restrictions under an expandable section
+  and vertical choice lists. Resetting filters preserves the board angle.
+- Settings show compact titles and controls, with optional explanations behind
+  labelled info buttons. Help opens in a scrollable dialog; current status,
+  prerequisites and destructive-action warnings remain visible.
+- Board & Bluetooth starts with a separate active-board selector, followed by
+  options for all boards and then individual boards. Inspecting another board
+  does not change the active-board picker context.
+- Settings help explains the available choices and their actual triggers in
+  English and German, including automatic versus explicit board sending,
+  controller connections, timers, imports, backups and data sharing.
+- The status filter has a direct "Exclude sent problems" switch synchronized
+  with the existing multi-select statuses. Checkmarks and wrapping chips make
+  the selection visible on narrow screens.
+- MoonBoard hold markers have light and dark outlines for contrast over blue,
+  light and dark holds, while preserving the familiar role colours.
+- Android 9 (API 28) is now the minimum supported version, as announced in 0.2.2.
+- A compact board picker and main menu simplify navigation; header actions move
+  into an overflow menu on narrow screens.
+- Logbook statistics count distinct problems by their best outcome in the selected
+  period: Flash, Sent, then Attempt. Total attempts remain available as training volume.
+- Quick logging and playlist generation respect the selected board and browser filters.
+- Beta videos open from a compact play button in the climb detail card.
+- Supported boards synchronize optional beta media separately from their catalogues.
+- Blossom previews are checked against their SHA-256 hash before display and
+  local caching, with mirror fallback and a stable placeholder when unavailable.
+- Community climbs work on every board, with or without its catalogue: the app
+  ships the hold geometry of Kilter, Tension, Grasshopper, Decoy, So iLL and
+  Touchstone, so their community climbs are drawn, fitted to your board size and
+  lit. The browser says when it shows only community climbs.
+- Republishing the holds of one of your own climbs offers to update that climb
+  instead of creating a second one.
+- The training-list generator plans from one grade range with a rising warm-up,
+  names goal and variant apart, lets hard bouldering reach your max and projects
+  start there, and never plans below the easiest grade a board has. Lists are
+  generated in about two seconds on low-end phones.
+- "Start" on a list with a training plan plays the plan with its tries and rests,
+  and resumes a list that is already running.
+- Nearby sharing lets the receiver choose which of the sender's boards to take.
+  A first-time receiver is asked once, on the first setup screen, with the
+  sender's boards; the statistics import finishes in minutes instead of hours.
+- Logbook imports and restores never wait for a board catalogue download. The
+  logbook is in at once; own climbs, an Aurora export and the Kilter backfill of
+  your own climbs wait in the background and are linked automatically once the
+  catalogue is in, as MoonBoard imports already were.
+- Name search waits for a pause in typing instead of running on every letter.
+- About lists the open-source licenses, including vendored code and data, and
+  links the privacy notice and the source code.
+- Replies from the developer are easier to find: the support page shows unread
+  badges, reply notifications name their thread ("Developer · Bug report") and
+  group under one that opens Bugs & feature requests.
+
+### Fixed
+- An entry imported from a Kilter account shows the grade of the angle it was
+  climbed at. It took whichever angle the catalogue happened to return first —
+  in practice the flattest — so a problem sent at 40° could appear several
+  grades too easy, which also skewed the logbook statistics. Where an angle has
+  no rating the grade now stays empty instead of borrowing another angle's.
+  Existing entries are corrected on the next Kilter or catalogue sync.
+- Deleting a logbook entry now sticks. With Kilter sync on it came back at the
+  next sync — the duplicate check only knows the entries that are present, so a
+  deleted one looked new — and nothing was ever removed on Kilter's side. The
+  entry is now deleted there too, and a deletion made offline or while uploads
+  are switched off is remembered until it can be carried out.
+- Climbs deleted in the Kilter app are no longer fetched back into the board
+  data.
+- A route logged in Kilter keeps its sequence. Its holds carry the frame they
+  belong to, which was read as a single frame, so a multi-frame route collapsed
+  into one.
+- Entries imported from a Kilter account record their board family and layout
+  right away instead of waiting for the next catalogue refresh.
+- Logbook entries find their climb whatever spelling the catalogue stores it
+  under. The published Kilter catalogue holds three at once — nodash-UPPERCASE,
+  nodash-lowercase and dashed-lowercase — and a logbook carries whichever its
+  source produced, so name, grade and frames stayed empty for entries whose
+  spelling differed from the stored row.
+- Opening a climb from the logbook shows it on its own board. The screen
+  resolved the climb by any spelling but then asked which board to draw it on
+  with the spelling it had navigated with, and that question is answered by an
+  exact uuid match — so it missed and fell back to the user's configured board.
+- The climb detail screen, the session queue, the Bluetooth name banners and
+  the hold renderer resolve a climb the same way. Each carried its own list of
+  uuid variants covering a different subset, so the same climb could open on
+  the detail screen and show as eight characters in the queue.
+- Climbs fetched back from a connected Kilter account show their own board,
+  their real holds and their grade. Three things were wrong at once: the
+  logbook entry's board field names a product size and was stored as a layout
+  (size "12 x 12 with kickboard" became a layout that does not exist, size
+  "8 x 12" became Homewall), the hold list names holes and was stored as the
+  placement ids everything else uses — which drew a different hold rather than
+  failing — and the grade was looked up at the angle the climb was set at
+  instead of the angle it was climbed at, leaving a third of the entries
+  ungraded.
+- Climbs the app fetches back from a Kilter account are stored under the same
+  canonical uuid form as everything else. They were kept in the spelling the
+  API sent, which made them the only mixed-case rows in the board data: the
+  catalogue import did not recognise them and added a second row for the same
+  climb, and the logbook kept reading the first one — so downloading the
+  catalogue never repaired an affected entry. Existing rows of that shape are
+  removed on upgrade and come back correct with the next sync.
+- Connecting a Kilter account no longer hides the "Load catalogue" banner.
+  Those climbs are the user's own, not a catalogue, but they were counted as
+  one — leaving the browser showing a handful of climbs and no way to start the
+  download.
+- Board catalogue imports preserve the indexes used by existing boards, repair
+  missing indexes, and roll back interrupted index preparation. Temporary SQLite
+  locks retry the local import with the already verified downloads.
+- The browser toolbar retains the familiar Bluetooth, Filter, Logbook, Lists,
+  Settings order. Compact-screen priorities independently choose which actions
+  remain visible; both the toolbar and overflow menu preserve that visual order.
+- Board-sync network warnings update when Wi-Fi or mobile connectivity changes,
+  including after reconnecting without leaving the screen.
+- Randomized search uses one stable shuffled result set across pages. Duplicate
+  problem IDs are removed before display, preventing duplicate-key list crashes.
+- Filter counts use the same restrictions as the result list, including hidden
+  problems, logged status, hold selection, source and Quantum occupancy filters.
+  Fully filtered results are no longer truncated after the first 50 problems.
+- MoonBoard legacy problem IDs resolve consistently for videos and logged status.
+- Playlist generation publishes the board selection before profile loading and
+  reuses candidate pools for planned grade bands.
+- The floating action button no longer covers the last playlist card's actions.
+- Unverified local shares preserve existing board geometry and LED mappings while
+  keeping historical first-import formats and resumable transfers supported.
+- Relay events are authenticated before subscription-local duplicate suppression;
+  oversized and excessively nested messages are rejected before JSON parsing.
+- Video provider labels follow the actual destination, and addressed community
+  links retain their author when resolving a climb.
+- Local transfers and legacy APK extraction have resource limits. Session commands
+  have a generous burst allowance and a sustained rate limit for joined peers.
+- App updates verify the archive package and version name as well as its hash and
+  signing history.
+- Board map search no longer freezes the app: results are computed from a
+  prepared index in the background instead of on every keystroke.
+- Starting and then cancelling account restoration during setup no longer turns
+  on the encrypted data backup; only a successful restore does.
+- Importing a backup from another account now moves its local drafts to the
+  active account instead of leaving them invisible. Published problems keep
+  their original author.
+- Custom statistics date ranges no longer include the day after the end date.
+- Training plan steps show the grade for their pinned angle.
+- Import and export results stay visible long enough to read, the board picker
+  shows a loading state instead of "no preview", pasted public account IDs and
+  unrecognised keys are explained, tour hints stay legible over busy screens,
+  long list names no longer fill the top bar, and singular counts read
+  correctly.
+- The venue sheet on the board map scrolls, so venues with several boards show
+  every board; map search shows a searching state instead of a premature "no
+  results"; the expanded nearby banner has a visible collapse control.
+- The board picker offers the optional Bluetooth family search in the browser
+  too and states what was recognised and that model and size still need to be
+  chosen.
+- The board picker in the browser top bar only takes the width its name
+  needs (still capped), so short board names leave room for logbook, lists
+  and settings as direct icons.
+- Closing the climb search with its "clear search" button really clears the
+  query instead of leaving an invisible filter on the list.
+- Switching Bluetooth off while a board is connected now ends the connection
+  in the app too, instead of still showing the board as connected.
+- Shorter top bar titles (Logbook, Editor, Account key) so they no longer wrap
+  next to the action icons.
+- Sharing the board with other apps (CruxRelay) no longer interrupts with a dialog
+  after every connection. The connection sheet explains it on an info card, the first
+  tap on "share" is the one-time consent, and a switch there chooses whether sharing
+  starts automatically with every board connection.
+- The custom statistics date range keeps its OK and Cancel buttons reachable when
+  the keyboard opens in text entry mode.
+- Cancelling "delete entry?" returns to the entry you were editing instead of
+  closing both dialogs.
+- LED colour swatches announce their colour name and selection to screen readers.
+- In the expanded nearby banner, tapping the climb opens it on every screen and only
+  the arrow collapses the banner; the card no longer swallowed those taps.
+- The nearby banner drops the board signal strength; the connection sheet still shows
+  it where it helps to pick a board.
+- The tour points at where the logbook actually is: the direct icon when it fits in the
+  top bar, otherwise the overflow button, without hedging about narrow screens.
+- Shorter, more focused tour and sharing explanations.
+- Import and export results count properly: "1 climb note", not "1 climb notes"
+  or "3 category(ies)".
+- The tour marks the menu entry to tap and no longer shows two skip buttons at once.
+- Session summaries include attempts, not only sends.
+- Deleting logbook data starts with no board selected and uses full-height rows.
+- Import errors no longer quote the selected file, explain exports from newer
+  versions, and MoonBoard CSV errors are localised. The catalogue page formats
+  the last sync time, and the training list generator no longer claims an empty
+  logbook when a board merely has too few sends.
+- CruxRelay guests notice a vanished board or relay operator within seconds and
+  disconnect instead of staying attached to a dead link.
+- Logs of CruxCoach community climbs stay out of the Kilter upload, where Kilter
+  cannot match them and they could block the logs behind them.
+- A publish confirmation starts one publish, however often it is tapped, and the
+  duplicate check no longer fails when several climbs share the same holds.
+- Topping a climb continues an open attempt from earlier in the session or day
+  instead of logging a second entry; commented attempts stay their own entries,
+  and the player counts attempts toward the following send.
+- "Random" picks varied climbs instead of nearly always the same one.
+- Lists: a taken name says why it cannot be created, "new list" with an existing
+  name adds the climb instead of removing it, Favorites and Ignored are
+  translated, a list of unavailable climbs no longer claims to be empty, and
+  "Add to list" keeps the new-list field reachable and closes the keyboard.
+- Each crash report is listed once, with the developer's replies in its thread.
+- An Aurora export imported before the Kilter catalogue no longer loses the entries
+  it could not match yet, and the file import no longer stays disabled forever
+  when no board catalogue is chosen.
+- Back closes the open main menu instead of leaving the app. Notifications are
+  requested once per install and Bluetooth once after granting nearby devices.
+- Leaving the first setup step keeps the suggested board, and the board label is
+  right after a cold start.
+- A session left over from a closed app is ended instead of revived.
+- Clearing the editor keeps the board and angle and can be undone.
+- Deleting board data starts with nothing selected, and a deleted board size
+  disappears from the picker.
+- Offline, a catalogue download no longer blames battery optimisation, a failed
+  update check says so, and the map shows its offline hint only before it ever
+  loaded.
+- The "still on the board" banner covers only climbs the board received and does
+  not survive restarts.
+- Donation and Lightning dialogs, feature requests and crash reports are named
+  consistently in English and German, and import previews use plural forms.
+- The notification-settings shortcut opens the app page while the whole app is
+  blocked.
+- The hold search shows its heading once, the setter list names its board, and
+  statistics labels no longer break mid-word.
+
 ## [0.2.2] - 2026-08-29
 
 Training playlists you can actually play — climb by climb, with rests,

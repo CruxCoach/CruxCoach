@@ -1,19 +1,13 @@
 package com.cruxcoach.android.ui.settings
 
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -49,12 +43,25 @@ internal fun resolveSystemLocaleTag(context: android.content.Context): String {
  */
 internal fun applyLocaleChoice(context: android.content.Context, choice: String) {
     val effectiveTag = if (choice == "system") resolveSystemLocaleTag(context) else choice
+    // Setting a per-app locale recreates every running activity — on a first
+    // launch the one that is just starting, which then did all its startup
+    // work twice and lost its notification-permission request. So only set
+    // one that changes something. From Android 13 the framework holds the
+    // per-app locale, so the current value can be trusted this early.
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        val current = AppCompatDelegate.getApplicationLocales()
+        if (current.toLanguageTags() == effectiveTag) return
+        // Following the system already shows its language when it is the
+        // one the app would pick.
+        val systemLanguage = context.getSystemService(android.app.LocaleManager::class.java)
+            .systemLocales[0].language
+        if (current.isEmpty && choice == "system" && effectiveTag == systemLanguage) return
+    }
     AppCompatDelegate.setApplicationLocales(
         LocaleListCompat.forLanguageTags(effectiveTag)
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LanguageSection() {
     val context = LocalContext.current
@@ -75,20 +82,15 @@ internal fun LanguageSection() {
         fontWeight = FontWeight.Bold
     )
 
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, (tag, label) ->
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                onClick = {
-                    if (tag != userChoice) {
-                        prefs.edit().putString(KEY_USER_CHOICE, tag).apply()
-                        userChoice = tag
-                        applyLocaleChoice(context, tag)
-                    }
-                },
-                selected = tag == userChoice,
-                label = { Text(label) }
-            )
-        }
-    }
+    SettingsChoices(
+        options = options,
+        selected = userChoice,
+        onSelect = { tag ->
+            if (tag != userChoice) {
+                prefs.edit().putString(KEY_USER_CHOICE, tag).apply()
+                userChoice = tag
+                applyLocaleChoice(context, tag)
+            }
+        },
+    )
 }

@@ -66,6 +66,15 @@ class BoardStatsComputerTest {
     private var idCounter = 0
     private fun nextId(): Int = ++idCounter
 
+    @Test
+    fun `send timeline excludes attempts but retains repeat sends`() {
+        val rows = listOf(ascent(isSend = false, bidCount = 4), ascent(), ascent())
+        val stats = BoardStatsComputer.computeStats(rows, StatsTimeInterval.ALL, GradeScale.FRENCH, clock = fixedClock)
+        assertEquals(2, stats.sendsOverTime.sumOf { it.count })
+        assertEquals(6, stats.totalAttempts)
+        assertTrue(BoardStatsComputer.computeSendsOverTime(rows.take(1), StatsTimeInterval.ALL).isEmpty())
+    }
+
     // -- filterByInterval --
 
     @Test
@@ -73,6 +82,21 @@ class BoardStatsComputerTest {
         val ascents = listOf(ascent(climbedAt = "2020-01-01T10:00:00"), ascent(climbedAt = "2026-03-05T10:00:00"))
         val out = BoardStatsComputer.filterByInterval(ascents, StatsTimeInterval.ALL)
         assertEquals(2, out.size)
+    }
+
+    @Test
+    fun `custom range includes both boundary days but not the day after`() {
+        val rows = listOf(
+            ascent(climbedAt = "2026-02-28T23:59:00"),
+            ascent(climbedAt = "2026-03-01T00:01:00"),
+            ascent(climbedAt = "2026-03-31T23:59:00"),
+            ascent(climbedAt = "2026-04-01T20:00:00Z"),
+        )
+        val out = BoardStatsComputer.filterByInterval(
+            rows, StatsTimeInterval.ALL,
+            customFrom = java.time.LocalDate.of(2026, 3, 1), customTo = java.time.LocalDate.of(2026, 3, 31),
+        )
+        assertEquals(listOf("2026-03-01T00:01:00", "2026-03-31T23:59:00"), out.map { it.climbedAt })
     }
 
     @Test
@@ -322,6 +346,92 @@ class BoardStatsComputerTest {
         assertNull(stats.periodComparison)
     }
 
+    // -- Rolling grade-performance progression --
+
+    @Test
+    fun `one hard outlier does not dominate three confirmed lower sends`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "outlier", difficulty = 30.0, climbedAt = "2026-01-08T10:00:00"),
+            ascent(climbUuid = "confirmed-1", difficulty = 20.0, climbedAt = "2026-01-08T11:00:00"),
+            ascent(climbUuid = "confirmed-2", difficulty = 19.0, climbedAt = "2026-01-09T10:00:00"),
+            ascent(climbUuid = "confirmed-3", difficulty = 18.0, climbedAt = "2026-01-10T10:00:00"),
+        )
+        assertEquals(20.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `three hard distinct sends raise the rolling level`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "low-1", difficulty = 18.0, climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "low-2", difficulty = 17.0, climbedAt = "2026-01-05T11:00:00"),
+            ascent(climbUuid = "low-3", difficulty = 16.0, climbedAt = "2026-01-05T12:00:00"),
+            ascent(climbUuid = "hard-1", difficulty = 26.0, climbedAt = "2026-02-02T10:00:00"),
+            ascent(climbUuid = "hard-2", difficulty = 25.0, climbedAt = "2026-02-02T11:00:00"),
+            ascent(climbUuid = "hard-3", difficulty = 24.0, climbedAt = "2026-02-02T12:00:00"),
+        )
+        assertEquals(17.0, stats.gradeProgression.first().performanceDifficulty, 0.001)
+        assertEquals(25.0, stats.gradeProgression.last().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `send older than four-week window drops out`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "old-hard", difficulty = 30.0, climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "current-1", difficulty = 20.0, climbedAt = "2026-02-02T10:00:00"),
+            ascent(climbUuid = "current-2", difficulty = 18.0, climbedAt = "2026-02-02T11:00:00"),
+        )
+        assertEquals(19.0, stats.gradeProgression.last().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `duplicate sends of same climb and angle count once`() {
+        val stats = statsForProgression(
+            ascent(uuid = "repeat-1", climbUuid = "same", angle = 40, difficulty = 30.0),
+            ascent(uuid = "repeat-2", climbUuid = "same", angle = 40, difficulty = 30.0),
+            ascent(climbUuid = "other-1", difficulty = 20.0),
+            ascent(climbUuid = "other-2", difficulty = 18.0),
+        )
+        assertEquals(20.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `same climb at different angles counts separately`() {
+        val stats = statsForProgression(
+            ascent(climbUuid = "same", angle = 30, difficulty = 30.0),
+            ascent(climbUuid = "same", angle = 40, difficulty = 28.0),
+            ascent(climbUuid = "other", angle = 40, difficulty = 20.0),
+        )
+        assertEquals(28.0, stats.gradeProgression.single().performanceDifficulty, 0.001)
+    }
+
+    @Test
+    fun `progression uses ISO week-based year at year boundary`() {
+        val point = statsForProgression(
+            ascent(climbUuid = "new-year", climbedAt = "2024-12-30T10:00:00"),
+        ).gradeProgression.single()
+        assertEquals(LocalDate.of(2024, 12, 30), point.weekStart)
+        assertEquals("CW 1/25", point.label)
+    }
+
+    @Test
+    fun `inactive weeks remain real proportional gaps in model and chart`() {
+        val points = statsForProgression(
+            ascent(climbUuid = "w1", climbedAt = "2026-01-05T10:00:00"),
+            ascent(climbUuid = "w2", climbedAt = "2026-01-12T10:00:00"),
+            ascent(climbUuid = "w5", climbedAt = "2026-02-02T10:00:00"),
+        ).gradeProgression
+        assertEquals(
+            listOf(LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 2)),
+            points.map { it.weekStart },
+        )
+        assertEquals(0f, progressionXFraction(points, 0), 0.001f)
+        assertEquals(0.25f, progressionXFraction(points, 1), 0.001f)
+        assertEquals(1f, progressionXFraction(points, 2), 0.001f)
+    }
+
+    private fun statsForProgression(vararg ascents: AscentWithClimb) =
+        BoardStatsComputer.computeStats(ascents.toList(), StatsTimeInterval.ALL, GradeScale.V_SCALE)
+
     // -- Personal records --
 
     @Test
@@ -457,7 +567,7 @@ class BoardStatsComputerTest {
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.outcomeDistribution.flashes)
         assertEquals(1, stats.outcomeDistribution.redpoints)
-        assertEquals(6, stats.outcomeDistribution.attempts)
+        assertEquals(1, stats.outcomeDistribution.attempts)
     }
 
     @Test
@@ -595,4 +705,50 @@ class BoardStatsComputerTest {
         assertEquals(1, out.size)
         assertEquals("kilter", out[0].boardBrand)
     }
+    @Test
+    fun `outcomes count each problem once and keep total tries as volume`() {
+        val logs = listOf(
+            ascent(uuid = "a1", climbUuid = "project", isSend = false, bidCount = 8),
+            ascent(uuid = "a2", climbUuid = "project", isSend = false, bidCount = 6,
+                climbedAt = "2026-03-06T18:00:00"),
+            ascent(uuid = "b1", climbUuid = "topped", isSend = false, bidCount = 4),
+            ascent(uuid = "b2", climbUuid = "topped", isSend = true, bidCount = 2,
+                climbedAt = "2026-03-06T18:00:00"),
+            ascent(uuid = "b3", climbUuid = "topped", isSend = true,
+                climbedAt = "2026-03-07T18:00:00"),
+            ascent(uuid = "f1", climbUuid = "flash", isSend = true),
+            ascent(uuid = "f2", climbUuid = "flash", isSend = true,
+                climbedAt = "2026-03-07T18:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(OutcomeDistribution(1, 1, 1), stats.outcomeDistribution)
+        assertEquals(1, stats.gradeOutcomes.single().attemptCount)
+        assertEquals(3, stats.gradeOutcomes.single().total)
+        assertEquals(23, stats.totalAttempts)
+        assertEquals(4, stats.totalSends)
+    }
+
+    @Test
+    fun `outcomes are scoped to period but earlier attempts still prevent a flash`() {
+        val logs = listOf(
+            ascent(uuid = "old", isSend = false, bidCount = 5, climbedAt = "2026-02-01T12:00:00"),
+            ascent(uuid = "new", isSend = true, climbedAt = "2026-03-05T12:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE,
+            customFrom = LocalDate.parse("2026-03-01"), customTo = LocalDate.parse("2026-03-10"))
+        assertEquals(OutcomeDistribution(0, 1, 0), stats.outcomeDistribution)
+    }
+
+    @Test
+    fun `ungraded attempts count once in donut and same ids on different boards stay separate`() {
+        val logs = listOf(
+            ascent(uuid = "one", isSend = false, difficulty = null, bidCount = 7),
+            ascent(uuid = "two", isSend = false, difficulty = null, angle = 30),
+            ascent(uuid = "moon", isSend = false, difficulty = null, boardBrand = "moonboard"),
+        )
+        val stats = BoardStatsComputer.computeStats(logs, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(2, stats.outcomeDistribution.attempts)
+        assertTrue(stats.gradeOutcomes.isEmpty())
+    }
+
 }

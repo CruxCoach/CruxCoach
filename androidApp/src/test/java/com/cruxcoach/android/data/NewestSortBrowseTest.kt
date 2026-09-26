@@ -153,4 +153,46 @@ class NewestSortBrowseTest {
             resorted.map { it.uuid },
         )
     }
+    @Test
+    fun `random search snapshot uses the same match set as its first page`() {
+        for (query in listOf("c-", "2024", "s", "missing")) {
+            val snapshot = repo.getAllSearchMatchingUuids(
+                query, angle, layoutId, "kilter", ClimbTypeFilter.BOULDER,
+            )
+            val matches = repo.searchClimbsByName(
+                query, angle, layoutId, "kilter", ClimbSortField.RANDOM,
+                SortDirection.DESC, 100, 0, ClimbTypeFilter.BOULDER,
+            )
+            assertEquals(matches.map { it.uuid }.toSet(), snapshot.toSet())
+            assertEquals(snapshot.size, snapshot.toSet().size)
+        }
+        assertEquals(emptyList(), repo.getAllSearchMatchingUuids(
+            "c-", angle, layoutId, "moonboard", ClimbTypeFilter.BOULDER,
+        ))
+        assertEquals(emptyList(), repo.getAllSearchMatchingUuids(
+            "c-", angle + 5, layoutId, "kilter", ClimbTypeFilter.BOULDER,
+        ))
+        assertEquals(emptyList(), repo.getAllSearchMatchingUuids(
+            "c-", angle, layoutId, "kilter", ClimbTypeFilter.ROUTE,
+        ))
+    }
+
+    @Test
+    fun `random search snapshot respects hold exclusions without adding grade filters`() {
+        driver.execute(null, "UPDATE climbs SET hsm = 1 WHERE uuid = 'c-2024-iso'", 0)
+        driver.execute(null, "UPDATE climb_stats SET difficulty_average = NULL WHERE climb_uuid = 'c-unknown'", 0)
+        val snapshot = repo.getAllSearchMatchingUuids(
+            "c-", angle, layoutId, "kilter", ClimbTypeFilter.BOULDER,
+            hsmExcludedMask = 1L,
+        )
+        val expected = repo.searchClimbsByName(
+            "c-", angle, layoutId, "kilter", ClimbSortField.RANDOM,
+            SortDirection.DESC, 100, 0, ClimbTypeFilter.BOULDER,
+            hsmExcludedMask = 1L,
+        ).map { it.uuid }.toSet()
+        assertEquals(expected, snapshot.toSet())
+        assertEquals(false, "c-2024-iso" in snapshot)
+        assertEquals(true, "c-unknown" in snapshot)
+    }
+
 }

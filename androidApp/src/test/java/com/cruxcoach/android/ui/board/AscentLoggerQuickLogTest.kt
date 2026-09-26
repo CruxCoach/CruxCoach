@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.BoardSessionState
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -10,6 +11,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -73,6 +75,29 @@ class AscentLoggerQuickLogTest {
 
         logger.consumeQuickLogFeedback()
         assertTrue(finalized)
+    }
+
+    @Test
+    fun `every successful quick log triggers its immediate follow-up`() = runBlocking {
+        val state = MutableStateFlow(ClimbDetailState(isLoading = false, climb = climb))
+        val repo = mockk<PersonalBoardRepository>(relaxed = true)
+        every { repo.getUserHistoryForClimb(climb.uuid) } returns emptyList()
+        every { repo.observeClimbHistory() } returns flowOf(emptyList())
+        val quickFollowUps = Channel<Unit>(capacity = Channel.UNLIMITED)
+        val logger = logger(
+            state = state,
+            repo = repo,
+            session = mockk(relaxed = true),
+            onSaved = {},
+            onQuickSaved = { quickFollowUps.trySend(Unit).getOrThrow() },
+        )
+
+        repeat(2) {
+            logger.quickLog(isSend = false)
+            withTimeout(5_000) { quickFollowUps.receive() }
+        }
+
+        assertTrue(quickFollowUps.tryReceive().isFailure)
     }
 
     @Test
@@ -198,15 +223,22 @@ class AscentLoggerQuickLogTest {
         state: MutableStateFlow<ClimbDetailState>,
         repo: PersonalBoardRepository,
         session: BoardSessionManager,
+        onQuickSaved: (Boolean) -> Unit = {},
         onSaved: (Boolean) -> Unit,
-    ) = AscentLogger(
-        scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
-        state = state,
-        personalBoardRepo = repo,
-        sessionManager = session,
-        zoneManager = mockk<IntensityZoneManager>(relaxed = true),
-        climbNavState = mockk<ClimbNavigationState>(relaxed = true),
-        currentClimbUuid = { climb.uuid },
-        onAscentSaved = onSaved,
-    )
+    ): AscentLogger {
+        // A quick log reads the running session's start to continue an attempt
+        // from an earlier visit; a relaxed mock's state is no session state.
+        every { session.state } returns MutableStateFlow(BoardSessionState())
+        return AscentLogger(
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default),
+            state = state,
+            personalBoardRepo = repo,
+            sessionManager = session,
+            zoneManager = mockk<IntensityZoneManager>(relaxed = true),
+            climbNavState = mockk<ClimbNavigationState>(relaxed = true),
+            currentClimbUuid = { climb.uuid },
+            onAscentSaved = onSaved,
+            onQuickLogSaved = onQuickSaved,
+        )
+    }
 }
