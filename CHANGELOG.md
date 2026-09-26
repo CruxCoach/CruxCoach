@@ -4,6 +4,14 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- The in-app updater's built-in fallback list now includes GitHub next to
+  Codeberg, matching the published source list. A device that cannot reach
+  cruxcoach.org or its mirror still checks both forges every release is
+  published on.
+
 ## [0.2.3] - 2026-09-26
 
 ### Changed

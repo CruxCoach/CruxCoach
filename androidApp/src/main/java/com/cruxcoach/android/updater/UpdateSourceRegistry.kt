@@ -219,6 +219,25 @@ class UpdateSourceRegistry @Inject constructor(
             .distinct()
 
         /**
+         * The second compiled-in forge, or null when a build configures none
+         * or repeats the first. GitHub keeps the id the runtime list gives it,
+         * because the id is also the source label of the anonymous updater
+         * counter: one host must not be counted under two names depending on
+         * which list happened to be in effect.
+         */
+        internal fun secondaryForge(apiBase: String, primaryApiBase: String): UpdateSource? {
+            val base = apiBase.trim().trimEnd('/')
+            if (!base.startsWith("https://") || base == primaryApiBase.trim().trimEnd('/')) return null
+            return UpdateSource(
+                id = if (base == "https://api.github.com") "github" else "forge-2",
+                kind = UpdateSource.Kind.FORGE,
+                url = base,
+                owner = BuildConfig.UPDATER_REPO_OWNER,
+                repo = BuildConfig.UPDATER_REPO_NAME,
+            )
+        }
+
+        /**
          * Compiled-in fallback, used when the manifest is unreachable or
          * unusable. Order matters: most trustworthy and most likely to be
          * current first.
@@ -235,6 +254,7 @@ class UpdateSourceRegistry @Inject constructor(
                 owner = BuildConfig.UPDATER_REPO_OWNER,
                 repo = BuildConfig.UPDATER_REPO_NAME,
             ),
+            secondaryForge(BuildConfig.UPDATER_SECONDARY_API_BASE, BuildConfig.UPDATER_API_BASE),
             UpdateSource(
                 id = "zapstore",
                 kind = UpdateSource.Kind.NOSTR,
