@@ -103,4 +103,28 @@ class BoardCatalogueStatusTest {
         compose.onNodeWithTag("onboarding_offline_retry").assertDoesNotExist()
     }
 
+    @Test fun `a nearby share names its step while its boards all wait`() {
+        // Onboarding shows only this card. A share keeps every board at "0 ready" until it is
+        // done, so without the step a running import looked stuck for ten minutes.
+        val sharing = BoardSyncState(
+            isSyncing = true,
+            localShareInProgress = true,
+            importStep = ImportStep.ImportClimbs(0, 120_000, 532_675),
+            localShareBoardSteps = mapOf(
+                BoardBrand.KILTER to ImportStep.ImportClimbs(0, 120_000, 532_675),
+                BoardBrand.MOONBOARD to ImportStep.ImportClimbs(0, 120_000, 532_675),
+            ),
+        )
+        show(emptyMap(), sharing)
+        compose.onNodeWithTag("local_share_progress").assertIsDisplayed()
+        compose.onNodeWithText("Loading board data from nearby device").assertIsDisplayed()
+        compose.onNodeWithText("Import climbs").assertIsDisplayed()
+        compose.onNodeWithText("0 of 2 boards ready").assertIsDisplayed()
+    }
+
+    @Test fun `an internet sync keeps the plain bar`() {
+        show(emptyMap(), BoardSyncState(isSyncing = true, importStep = ImportStep.ImportClimbs(0, 1, 2)))
+        compose.onNodeWithTag("local_share_progress").assertDoesNotExist()
+    }
+
 }

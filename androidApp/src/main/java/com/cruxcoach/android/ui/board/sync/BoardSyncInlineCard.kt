@@ -541,7 +541,14 @@ internal fun CompactDatabasePreparation(
                 Text(stringResource(R.string.board_sync_compact_progress, readyBoards, supportedBoards.size),
                     style = MaterialTheme.typography.bodyMedium)
             }
-            if (state.isSyncing) {
+            // A share is one transfer and one import for all of its boards, so the count above
+            // stays at 0 until the very end. Name the step and its progress as the full card
+            // does: an unlabelled bar for the ten minutes of a share read as a hang, and the
+            // sender was stopped by hand in the middle of a running import.
+            val shareStep = state.importStep.takeIf { state.localShareInProgress }
+            if (shareStep != null) {
+                LocalShareProgressSummary(step = shareStep)
+            } else if (state.isSyncing) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
             if (hasErrors && !state.isSyncing) {

@@ -1831,8 +1831,8 @@ class BoardSyncManager(
             }
             compressed.delete()
             val finalizedMs = phaseMillis()
-            val asleepMs = (android.os.SystemClock.elapsedRealtime() - wallStarted) -
-                (android.os.SystemClock.uptimeMillis() - awakeStarted)
+            val asleepMs = ((android.os.SystemClock.elapsedRealtime() - wallStarted) -
+                (android.os.SystemClock.uptimeMillis() - awakeStarted)).coerceAtLeast(0)
             Log.i(
                 TAG,
                 "Local share timings: verify+extract=${verifiedMs}ms prune=${prunedMs}ms " +
