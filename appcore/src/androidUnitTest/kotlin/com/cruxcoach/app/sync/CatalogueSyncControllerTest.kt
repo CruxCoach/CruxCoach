@@ -51,6 +51,24 @@ class CatalogueSyncControllerTest {
     )
 
     @Test
+    fun `standalone videos update even when the catalogue has not changed`() {
+        manifests[CatalogueTrust.KILTER_D_TAG] = manifest("kilter", 1_000, *kilterChunks())
+        run(BoardBrand.KILTER)
+        val source = fx.source("media.sqlite3",
+            """CREATE TABLE climb_beta_links(board_brand TEXT, climb_uuid TEXT, url TEXT,
+                provider TEXT, media_id TEXT, foreign_username TEXT, angle INTEGER, thumbnail TEXT, created_at TEXT)""",
+            "INSERT INTO climb_beta_links VALUES ('kilter','K1','https://www.instagram.com/p/abc/','instagram',NULL,NULL,40,NULL,NULL)")
+        manifests["cruxcoach/kilter-beta-media"] = manifest("kilter", 1_100,
+            publish("beta-media-full", "beta", source)).copy(mediaSchema = 1)
+        val updated = run(BoardBrand.KILTER)
+        assertEquals(CatalogueSyncPhase.UP_TO_DATE, updated.brands.single().phase)
+        assertEquals(2, updated.catalogueRevision)
+        assertEquals(1L, fx.long("SELECT COUNT(*) FROM climb_beta_links"))
+        assertEquals(2, run(BoardBrand.KILTER).catalogueRevision)
+        assertEquals(emptyList(), work.list()!!.toList())
+    }
+
+    @Test
     fun `kilter sync imports, records markers, then reports up to date and refuses a rollback`() {
         manifests[CatalogueTrust.KILTER_D_TAG] = manifest("kilter", 1_000, *kilterChunks())
         val first = run(BoardBrand.KILTER)

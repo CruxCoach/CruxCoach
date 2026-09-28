@@ -1,7 +1,8 @@
 # CruxCoach for iOS
 
 Native SwiftUI app on top of the Kotlin core in [`appcore/`](../appcore/README.md).
-Status and feature coverage are tracked honestly in the pull request description;
+Release alignment and remaining differences are tracked in
+[the iOS 0.2.3 report](../docs/releases/0.2.3-ios-parity.md);
 this is **not** a released product and has not been validated on a physical board.
 
 ## Build (macOS, Xcode 16 or newer, JDK 17, Android SDK for Gradle configuration)

@@ -488,9 +488,43 @@ class CatalogueImporter(private val handle: BoardDatabaseHandle) {
     fun importQuantumSnapshot(@Suppress("UNUSED_PARAMETER") snapshotFile: String): ImportResult =
         ImportResult.Failed(ImportFailure.UNSUPPORTED)
 
-    /** Standalone beta-media / MoonBoard beta-link snapshots are not ported. */
-    fun importBetaMediaSnapshot(@Suppress("UNUSED_PARAMETER") snapshotFile: String, @Suppress("UNUSED_PARAMETER") board: String): ImportResult =
-        ImportResult.Failed(ImportFailure.UNSUPPORTED)
+    /** Optional release 0.2.3 media lane: validation and replacement share one transaction. */
+    fun importBetaMediaSnapshot(snapshotFile: String, board: String): ImportResult = guarded {
+        if (board !in setOf("kilter", "moonboard", "tension", "decoy", "touchstone", "grasshopper", "soill")) {
+            throw SourceRejected("Unsupported media board")
+        }
+        withAttached(snapshotFile, "bm") {
+            val total = queryLong("SELECT COUNT(*) FROM bm.climb_beta_links")
+            if (total == 0L) throw SourceRejected("Empty media snapshot")
+            val invalid = queryLong(
+                "SELECT COUNT(*) FROM bm.climb_beta_links WHERE board_brand IS NULL OR board_brand<>? " +
+                    "OR climb_uuid IS NULL OR TRIM(climb_uuid)='' OR provider IS NULL OR TRIM(provider)='' " +
+                    "OR url IS NULL OR url NOT LIKE 'https://%' OR url LIKE '% %' " +
+                    "OR (thumbnail IS NOT NULL AND (thumbnail NOT LIKE 'https://%' OR thumbnail LIKE '% %'))", board)
+            if (invalid != 0L) throw SourceRejected("Invalid media rows")
+            try {
+                exec("""CREATE TEMP TABLE resolved_beta_media AS
+                    SELECT b.* FROM bm.climb_beta_links b
+                    JOIN main.climbs c ON c.uuid=LOWER(b.climb_uuid)
+                    WHERE c.board_brand=? AND c.is_deleted=0""", board)
+                val resolved = queryLong("SELECT COUNT(*) FROM resolved_beta_media")
+                if (resolved == 0L || resolved * 100 < total * 99) {
+                    throw SourceRejected("Media does not match installed catalogue")
+                }
+                if (queryLong("SELECT COUNT(*) FROM (SELECT climb_uuid,url FROM resolved_beta_media GROUP BY climb_uuid,url HAVING COUNT(*)>1)") != 0L) {
+                    throw SourceRejected("Duplicate media rows")
+                }
+                exec("DELETE FROM main.climb_beta_links WHERE board_brand=?", board)
+                exec("""INSERT INTO main.climb_beta_links(
+                    board_brand,climb_uuid,url,provider,media_id,foreign_username,angle,thumbnail,created_at)
+                    SELECT board_brand,LOWER(climb_uuid),url,provider,media_id,foreign_username,angle,thumbnail,created_at
+                    FROM resolved_beta_media""")
+            } finally {
+                exec("DROP TABLE IF EXISTS temp.resolved_beta_media")
+            }
+        }
+        result(board)
+    }
 
     // ── Shared passes ────────────────────────────────────────────────
 
