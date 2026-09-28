@@ -1,5 +1,10 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -43,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.updater.CheckResult
 import com.cruxcoach.android.updater.PipelineStage
 import com.cruxcoach.android.updater.UpdateAutomationMode
 import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
@@ -171,8 +177,11 @@ internal fun UpdaterSettingsSection(
                     text = stringResource(R.string.updater_settings_status_title),
                     fontWeight = FontWeight.Bold,
                 )
+                val justNow = stringResource(R.string.relative_time_just_now)
                 val lastCheckText = state.lastCheckAtEpochMs?.let {
-                    val relative = DateUtils.getRelativeTimeSpanString(
+                    // The platform renders the first minute as "0 minutes ago".
+                    val relative = if (System.currentTimeMillis() - it < DateUtils.MINUTE_IN_MILLIS) justNow
+                    else DateUtils.getRelativeTimeSpanString(
                         it,
                         System.currentTimeMillis(),
                         DateUtils.MINUTE_IN_MILLIS,
@@ -184,6 +193,15 @@ internal fun UpdaterSettingsSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // A failed check left only the older "Last checked" time, so
+                // "Check now" offline looked like it did nothing at all.
+                if (state.lastCheckResult == CheckResult.ERROR) {
+                    Text(
+                        text = stringResource(R.string.updater_settings_status_failed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
             OutlinedButton(onClick = { viewModel.checkNow() }, enabled = !checkingNow) {
                 Text(stringResource(R.string.updater_settings_check_now))
@@ -415,6 +433,11 @@ private fun PendingUpdateRow(
                             else R.string.updater_settings_release_notes_more
                         ),
                         style = MaterialTheme.typography.labelMedium,
+                    )
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }

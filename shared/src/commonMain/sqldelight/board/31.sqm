@@ -1,0 +1,37 @@
+-- Migration version 31 → 32: drop the mixed-case rows the Kilter own-climb
+-- backfill left behind, so a device that already has them recovers.
+--
+-- 7.sqm settled that every persisted uuid is stored LOWER()'d and that BINARY
+-- collation enforces identity; the catalogue importer lowercases at its
+-- boundary for exactly that reason. The Kilter own-climb backfill, added
+-- later, passed `climbUuid` through as the API spelled it. Its rows were
+-- therefore the only mixed-case uuids in the board DB, and three things
+-- followed from that:
+--
+--   * The importer's exists-gate compares the lowercased catalogue uuid
+--     against them, misses, and inserts a SECOND row for the same climb.
+--   * A logbook lookup tries the uuid as the API spelled it first and lands
+--     on the backfill row rather than the catalogue one — which is why
+--     downloading the catalogue repaired nothing.
+--   * Those rows carry the two defects the backfill has since been fixed
+--     for: a product SIZE stored in `layout_id`, and `climbConcat` HOLE ids
+--     stored where placement ids belong. Both render the climb on the wrong
+--     board with the wrong holds.
+--
+-- They are deleted rather than normalized in place. The importer skips a row
+-- that already exists, so a lowercased-but-unchanged row would keep its wrong
+-- layout and frames forever. Deleting is safe and self-repairing: the
+-- catalogue re-inserts every climb it carries, and the next Kilter sync
+-- re-creates the rest correctly — the backfill is idempotent and its
+-- exists-gate is spelling-blind, so it will not duplicate what is already
+-- there. Logbook entries keep their own rows throughout; they are in the
+-- secure DB and only re-link.
+--
+-- No user-authored climb is touched: the editor (ClimbCreatorRepository) and
+-- the community subscriber have always written lowercase.
+
+DELETE FROM climb_stats WHERE climb_uuid IN (
+    SELECT uuid FROM climbs WHERE uuid <> LOWER(uuid)
+);
+
+DELETE FROM climbs WHERE uuid <> LOWER(uuid);

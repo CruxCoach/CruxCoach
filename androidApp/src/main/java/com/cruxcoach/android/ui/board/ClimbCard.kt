@@ -255,7 +255,7 @@ private fun ClimbCatalogueStats(
         }
         climb.ascensionistCount?.let {
             Text(
-                stringResource(R.string.board_climb_sends_count, it),
+                pluralStringResource(R.plurals.board_climb_sends_count, it.toInt(), it),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

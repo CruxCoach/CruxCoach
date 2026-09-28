@@ -207,12 +207,12 @@ class KilterApiTest {
                 KilterLog(logUuid = "l3", climbUuid = "missing", angle = 40, topped = true, createdAt = "2026-01-02T12:00:00Z"),
             )
             val first = importer.import(logs)
-            assertEquals(2, first.imported)
+            assertEquals(3, first.imported)
             assertEquals(1, first.unknownClimb)
 
             val second = importer.import(logs)
             assertEquals(0, second.imported, "a second import must not duplicate anything")
-            assertEquals(2, second.alreadyPresent)
+            assertEquals(3, second.alreadyPresent)
 
             val rows = personal.getUserHistoryForClimb("c1")
             assertEquals(2, rows.size)
@@ -223,7 +223,7 @@ class KilterApiTest {
     }
 
     @Test
-    fun `a flashed send is recorded as a single try`() = runTest {
+    fun `portal attempt volume is preserved even when its flash flag disagrees`() = runTest {
         val personal = newPersonalRepo()
         val db = com.cruxcoach.app.browse.testing.BrowseTestDb()
         try {
@@ -231,7 +231,7 @@ class KilterApiTest {
             KilterLogImporter(db.boardRepo, personal).import(
                 listOf(KilterLog(logUuid = "f1", climbUuid = "c9", angle = 40, topped = true, flashed = true, attempts = 7, createdAt = "2026-02-01T09:00:00Z"))
             )
-            assertEquals(1L, personal.getUserHistoryForClimb("c9").single().bidCount)
+            assertEquals(7L, personal.getUserHistoryForClimb("c9").single().bidCount)
         } finally {
             db.close()
         }

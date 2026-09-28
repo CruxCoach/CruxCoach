@@ -1,6 +1,12 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Activity
+import android.net.Uri
+import androidx.compose.ui.platform.testTag
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.cruxcoach.android.nostr.AmberIntegration
 import android.view.WindowManager
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.heightIn
@@ -62,6 +68,36 @@ fun KeyImportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
+    var useAmber by rememberSaveable { mutableStateOf(false) }
+    var amberMissing by rememberSaveable { mutableStateOf(false) }
+    val amberLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.getStringExtra("signature")?.let { publicKey ->
+                viewModel.previewAmberAccount(publicKey, result.data?.getStringExtra("package"))
+            }
+        }
+    }
+    state.amberTargetNpub?.let { target ->
+        AccountAccessConfirmation(targetNpub = target, sameAccount = state.sameAccount, toAmber = true,
+            onDismiss = viewModel::dismissAmberImport, onConfirm = viewModel::confirmAmberImport)
+    }
+    if (amberMissing) {
+        AmberNotInstalledDialog(
+            onDismiss = { amberMissing = false },
+            onInstallZapstore = {
+                amberMissing = false
+                openInStoreOrBrowser(context, "dev.zapstore.app",
+                    Uri.parse("market://details?id=${AmberIntegration.AMBER_PACKAGE}"),
+                    "https://zapstore.dev/apps/${AmberIntegration.AMBER_PACKAGE}")
+            },
+            onInstallFdroid = {
+                amberMissing = false
+                openInStoreOrBrowser(context, "org.fdroid.fdroid",
+                    Uri.parse("market://details?id=${AmberIntegration.AMBER_PACKAGE}"),
+                    "https://f-droid.org/packages/${AmberIntegration.AMBER_PACKAGE}/")
+            },
+        )
+    }
 
     // Prevent screenshots and the recents-thumbnail from capturing pasted
     // nsec/mnemonic while this screen is active.
@@ -82,7 +118,7 @@ fun KeyImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.key_import_title)) },
+                title = { Text(stringResource(R.string.account_restore_topbar_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -99,15 +135,34 @@ fun KeyImportScreen(
                 .padding(16.dp).imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            SettingsSectionCard {
-                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.account_import_help) + "\n\n" + stringResource(R.string.key_import_supported_formats))
+            SettingsChoices(
+                options = listOf(false to stringResource(R.string.account_restore_key_method),
+                    true to stringResource(R.string.account_method_amber)),
+                selected = useAmber,
+                onSelect = { if (!state.isWorking) useAmber = it },
+            )
+            if (useAmber) SettingsSectionCard {
+                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_amber),
+                    stringResource(R.string.account_amber_help) + "\n\n" + stringResource(R.string.account_import_backup_explanation))
+                Text(stringResource(R.string.account_amber_restore_summary), style = MaterialTheme.typography.bodyMedium)
+                Button(
+                    onClick = {
+                        if (AmberIntegration.isInstalled(context)) amberLauncher.launch(AmberIntegration.buildGetPubkeyIntent())
+                        else amberMissing = true
+                    },
+                    enabled = !state.isWorking,
+                    modifier = Modifier.fillMaxWidth().testTag("restore_with_amber"),
+                ) { Text(stringResource(R.string.account_amber_connect)) }
+                state.error?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+            } else SettingsSectionCard {
+                com.cruxcoach.android.ui.common.InfoHeading(stringResource(R.string.account_method_local), stringResource(R.string.account_import_help) + "\n\n" + stringResource(R.string.key_import_supported_formats) + "\n\n" + stringResource(R.string.account_import_backup_explanation))
                 Text(
                     text = stringResource(R.string.key_import_prompt),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
 
-                Text(stringResource(R.string.account_import_backup_explanation),
+                Text(stringResource(R.string.import_key_access_only),
                     style = MaterialTheme.typography.bodyMedium)
 
                 // Keep input masked by default; never persist the reveal state.
@@ -148,6 +203,21 @@ fun KeyImportScreen(
                         else -> detectedFormat.name.lowercase()
                     }), style = MaterialTheme.typography.bodySmall)
 
+                }
+
+                // A disabled button alone does not tell a beginner what is wrong. Only the
+                // public "npub" prefix is inspected; the input itself is never displayed.
+                val trimmedInput = state.input.trim()
+                if (detectedFormat == ImportFormat.UNKNOWN && trimmedInput.isNotEmpty() && state.error == null) {
+                    Text(
+                        text = stringResource(
+                            if (trimmedInput.startsWith("npub", ignoreCase = true)) R.string.key_import_hint_public_id
+                            else R.string.key_import_hint_unrecognized
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("key_import_format_hint"),
+                    )
                 }
 
                 // Error message
@@ -217,7 +287,7 @@ fun KeyImportScreen(
                     Text(stringResource(if (state.sameAccount) R.string.account_access_same else R.string.account_access_different))
                     Text(state.derivedNpub, style = MaterialTheme.typography.bodyMedium)
                     Text(stringResource(R.string.account_access_to_local))
-                    Text(stringResource(R.string.account_import_backup_explanation))
+                    Text(stringResource(R.string.import_key_access_only))
                     if (state.replacesLocalKey) Text(stringResource(R.string.account_import_replaces_local))
                 }
             },

@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    // Writes res/raw/aboutlibraries.json (the open-source licence list) from
+    // the resolved dependencies on every build.
+    alias(libs.plugins.aboutlibraries.android)
 }
 
 import java.io.FileInputStream
@@ -104,6 +107,15 @@ if (featureBranch != null) {
     }
     require(featureVersionCode != null && featureVersionCode in 1..Int.MAX_VALUE) {
         "featureVersionCode must be a positive Android version code"
+    }
+}
+
+aboutLibraries {
+    collect {
+        // Vendored code and data the dependency scan cannot see: zstd (its BSD
+        // licence asks for the notice in binaries), the BoardSesh hold-set map
+        // and the dontkillmyapp.com data (CC BY-SA).
+        configPath.set(layout.projectDirectory.dir("aboutlibraries"))
     }
 }
 
@@ -457,6 +469,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
+    implementation(libs.aboutlibraries.compose.m3)
     debugImplementation(libs.compose.ui.tooling)
 
     // AppCompat (per-app language switching)

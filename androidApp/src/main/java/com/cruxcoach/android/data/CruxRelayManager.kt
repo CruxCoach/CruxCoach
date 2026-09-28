@@ -131,6 +131,9 @@ class CruxRelayManager(
      * connection. Board writes briefly transition CONNECTED -> SENDING ->
      * CONNECTED and must not turn that transition into another prompt. */
     private var autoDisclosureDismissedBoardAddress: String? = null
+    private var pendingDisclosureIsAutomatic = false
+    /** Set when the caller showed the disclosure inline, so the deliberate tap is the consent. */
+    private var disclosureShownInline = false
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(receiverContext: Context?, intent: Intent?) {
             if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
@@ -200,11 +203,14 @@ class CruxRelayManager(
             ) { manual, st -> !manual && st == ConnectionState.CONNECTED }
                 .distinctUntilChanged()
                 .collect { shouldShare ->
-                    if (shouldShare && !enabledFlow.value) requestAutomaticEnable()
-                    else if (!shouldShare &&
-                        bleConnection.connectionState.value == ConnectionState.DISCONNECTED
-                    ) {
-                        autoDisclosureDismissedBoardAddress = null
+                    if (shouldShare) {
+                        if (!enabledFlow.value) requestAutomaticEnable()
+                    } else {
+                        // The switch is authoritative: switching it off stops sharing right
+                        // away, and a lost board link stops it too.
+                        if (bleConnection.connectionState.value == ConnectionState.DISCONNECTED) {
+                            autoDisclosureDismissedBoardAddress = null
+                        }
                         disable()
                     }
                 }
@@ -213,9 +219,41 @@ class CruxRelayManager(
 
     /** The sole start entry point for manual, automatic and permission-retry
      * paths. No caller can enable transport before the persisted disclosure. */
-    fun requestEnable() {
+    fun requestEnable() = requestEnable(disclosureShown = false)
+
+    private fun requestEnable(disclosureShown: Boolean) {
         autoDisclosureDismissedBoardAddress = null
+        pendingDisclosureIsAutomatic = false
+        // Bound to this very request: an early rejection must not leave a consent behind.
+        disclosureShownInline = disclosureShown
         requestEnableInternal()
+    }
+
+    /** Manual start from a surface that displays the disclosure text itself: the tap is the
+     *  one-time consent, so no separate dialog is needed. */
+    fun requestEnableWithShownDisclosure() = requestEnable(disclosureShown = true)
+
+    /** Whether the one-time disclosure was accepted; drives the inline info card. */
+    val disclosureSeen get() = userPreferences.relayDisclosureSeen
+
+    /** False means sharing follows the board connection (after the one-time consent). */
+    val manualStart get() = userPreferences.relayManualStart
+
+    /** The one control the sharing surfaces offer. Switching it on is the informed consent —
+     *  the disclosure sits directly above the switch — and starts sharing on the connected
+     *  board straight away; switching it off stops it and keeps it off. */
+    fun setSharingEnabled(enabled: Boolean) {
+        scope.launch {
+            if (enabled) {
+                userPreferences.setRelayDisclosureSeen()
+                autoDisclosureDismissedBoardAddress = null
+                userPreferences.setRelayManualStart(false)
+                if (!enabledFlow.value) requestEnableWithShownDisclosure()
+            } else {
+                userPreferences.setRelayManualStart(true)
+                disable()
+            }
+        }
     }
 
     private fun requestAutomaticEnable() {
@@ -234,6 +272,8 @@ class CruxRelayManager(
                 locationEnabled = BlePermissionHelper.isLocationServicesEnabled(context),
             )
         ) return
+        pendingDisclosureIsAutomatic = true
+        disclosureShownInline = false
         requestEnableInternal()
     }
 
@@ -261,7 +301,15 @@ class CruxRelayManager(
                 BoardRelayPolicy.availability(currentBoard) != BoardRelayAvailability.AVAILABLE
             ) return@launch
             if (seen) enableInternal()
-            else {
+            else if (pendingDisclosureIsAutomatic) {
+                // Never interrupt with an unprompted consent: automatic sharing simply waits
+                // until the user has started sharing once from the connection sheet.
+                return@launch
+            } else if (disclosureShownInline) {
+                disclosureShownInline = false
+                userPreferences.setRelayDisclosureSeen()
+                enableInternal()
+            } else {
                 pendingDisclosureBoardAddress = expectedAddress
                 _state.update {
                     it.copy(

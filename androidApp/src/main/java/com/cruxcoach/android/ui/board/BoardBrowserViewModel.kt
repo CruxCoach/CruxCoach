@@ -431,6 +431,11 @@ data class BoardBrowserState(
      *  board switch it stays true on the Kilter catalogue while the new
      *  board has zero rows — this flag drives the "load catalogue" empty
      *  state for exactly that case. */
+    /**
+     * The active board has catalogue climbs (not just CruxCoach community climbs from Nostr).
+     * False with climbs on screen means the list shows community climbs only — the browser
+     * says so and offers the catalogue.
+     */
     val activeBrandHasCatalogue: Boolean = true,
     /** True while a board-data sync is running and the ACTIVE brand's
      *  catalogue import hasn't completed yet. Drives the third empty-state
@@ -457,6 +462,14 @@ data class BoardBrowserState(
      *  board-config change, never cached across variants. */
     val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
+    /**
+     * How many climbs on this board and angle have no grade at all; null until counted.
+     *
+     * The "without a grade" switch is only worth offering where this is not zero. The Kilter
+     * and MoonBoard catalogues grade every climb, so there the switch could only ever produce
+     * an empty list — and nothing said why.
+     */
+    val ungradedAvailable: Long? = null,
     val ble: BrowserBleState = BrowserBleState(),
     val holdSearch: HoldSearchState = HoldSearchState(),
     val quantumLayers: BrowserQuantumLayerState = BrowserQuantumLayerState(),
@@ -621,6 +634,9 @@ class BoardBrowserViewModel @Inject constructor(
         private const val MAX_STATUS_SCAN_PAGES = 10
         // Dice re-rolls to skip an ignored climb before giving up (see fetchRandomClimb).
         private const val RANDOM_PICK_MAX_ROLLS = 8
+        private const val RANDOM_PICK_SAMPLE = 50
+        /** Pause in typing before a name search runs. */
+        private const val SEARCH_TYPING_DEBOUNCE_MS = 350L
 
         // Ungraded-only mode rides on the existing SQL grade predicate
         //   ((difficulty_average >= :minDiff AND <= :maxDiff)
@@ -1048,6 +1064,16 @@ class BoardBrowserViewModel @Inject constructor(
                         // the browse list doesn't carry over Kilter geometry.
                         _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
                     }
+                    // A forced refresh follows a catalogue change. Deleting a board's
+                    // data removes the product_sizes row the cached size came from;
+                    // kept, its id made the fit filter reject every climb left —
+                    // community climbs included — and the browser claimed the board
+                    // had nothing at all. Without the row there is nothing to fit to.
+                    if (force && !needsBoardReload && !isMoonBoard && _state.value.boardSize != null &&
+                        boardRepository.getProductSize(prefSizeId, prefBoardBrand) == null
+                    ) {
+                        _state.update { it.copy(boardSize = null, hsmExcludedMask = 0L) }
+                    }
                     if (isMoonBoard) {
                         // FEAT-049: MoonBoard's second axis is the user's OWNED
                         // hold sets, not a product size — there is no
@@ -1133,7 +1159,11 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun updateSearchQuery(query: String) {
         _state.update { it.copy(filter = it.filter.copy(searchQuery = query)) }
-        searchClimbs()
+        // Typing calls this per character. Cancelling the job cannot stop a
+        // query SQLite is already running, so each keystroke queued a full
+        // name scan behind the last one (Kilter on the Nokia: ~4 s each, the
+        // final result after 20+ s). Wait for a short pause in typing first.
+        searchClimbs(debounceMs = SEARCH_TYPING_DEBOUNCE_MS)
     }
 
     fun updateSortField(field: ClimbSortField) {
@@ -1262,9 +1292,35 @@ class BoardBrowserViewModel @Inject constructor(
      *  ONLY ungraded climbs and the grade slider is inert (see
      *  [BrowserFilterState.ungradedOnly]). */
     fun updateUngradedOnlyFilter(enabled: Boolean) {
-        _state.update { it.copy(filter = it.filter.copy(ungradedOnly = enabled)) }
+        _state.update {
+            it.copy(
+                filter = if (enabled) {
+                    // A climb without a grade has no ascents and is no benchmark: left on,
+                    // either of these turned the mode into a guaranteed empty list.
+                    it.filter.copy(ungradedOnly = true, minAscensionists = 0, benchmarkOnly = false)
+                } else it.filter.copy(ungradedOnly = false),
+            )
+        }
         persistFilters()
         searchClimbs()
+    }
+
+    /** Counts the climbs the "without a grade" switch would show — see [BoardBrowserState.ungradedAvailable]. */
+    fun refreshUngradedAvailable() {
+        val f = _state.value.filter
+        viewModelScope.safeLaunch(TAG) {
+            val count = withContext(Dispatchers.IO) {
+                boardRepository.countFilteredClimbs(
+                    f.angle, f.layoutId, f.boardBrand, UNGRADED_ONLY_MIN_DIFF, UNGRADED_ONLY_MAX_DIFF,
+                    0, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(),
+                    showUngraded = true,
+                )
+            }
+            val now = _state.value.filter
+            if (now.angle == f.angle && now.layoutId == f.layoutId && now.boardBrand == f.boardBrand) {
+                _state.update { it.copy(ungradedAvailable = count) }
+            }
+        }
     }
 
     private suspend fun ensureStatusLoaded() {
@@ -1400,7 +1456,7 @@ class BoardBrowserViewModel @Inject constructor(
      *  the list is refilled to the depth the user had already scrolled to
      *  (instead of truncating back to one page), so the restored scroll
      *  position survives while the status-dependent rows still update. */
-    fun searchClimbs(preserveDepth: Boolean = false) {
+    fun searchClimbs(preserveDepth: Boolean = false, debounceMs: Long = 0L) {
         if (!_state.value.hasBoardData) return
 
         countJob?.cancel()
@@ -1408,6 +1464,7 @@ class BoardBrowserViewModel @Inject constructor(
         val targetSize = if (preserveDepth) _state.value.climbs.size else 0
         searchJob?.cancel()
         searchJob = viewModelScope.safeLaunch(TAG) {
+            if (debounceMs > 0) delay(debounceMs)
             val hasExisting = _state.value.climbs.isNotEmpty()
             _state.update { it.copy(
                 isLoading = !hasExisting,
@@ -1948,10 +2005,15 @@ class BoardBrowserViewModel @Inject constructor(
                     var fallback: String? = null
                     repeat(RANDOM_PICK_MAX_ROLLS) {
                         if (result == null) {
-                            val candidate = pickOneAtOffset(randomized, 0)
-                            if (candidate != null) {
-                                fallback = candidate
-                                if (candidate !in hiddenUuids) result = candidate
+                            // One climb out of a sampled run, not the run's first: the
+                            // sample starts at a random row of a table all boards share,
+                            // and whenever that start lies past this board's last match
+                            // it wraps to the first — which made "Zufall" open the same
+                            // climb nearly every time.
+                            val sample = pickSample(randomized, RANDOM_PICK_SAMPLE)
+                            if (sample.isNotEmpty()) {
+                                fallback = sample.random()
+                                result = sample.filterNot { it in hiddenUuids }.randomOrNull()
                             }
                         }
                     }
@@ -1969,24 +2031,24 @@ class BoardBrowserViewModel @Inject constructor(
         _state.value.climbs.randomOrNull()?.uuid?.let(onResult)
     }
 
-    /** Fetch the single climb at [offset] in the current filter's ordering
-     *  (one row, no client-side filtering). Caller handles ignore re-rolls. */
-    private fun pickOneAtOffset(f: BrowserFilterState, offset: Int): String? {
+    /** Up to [limit] climbs in the current filter's ordering (no client-side
+     *  filtering). Caller handles ignore re-rolls. */
+    private fun pickSample(f: BrowserFilterState, limit: Int): List<String> {
         val climb = if (f.searchQuery.isNotBlank()) {
             boardRepository.searchClimbsByName(
                 f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
-                limit = 1, offset = offset, climbType = f.climbTypeFilter,
+                limit = limit, offset = 0, climbType = f.climbTypeFilter,
                 selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
             )
         } else {
             val gb = gradeBounds(f)
             boardRepository.searchClimbsSorted(
                 f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
-                f.sortField, f.sortDirection, limit = 1, offset = offset,
+                f.sortField, f.sortDirection, limit = limit, offset = 0,
                 climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
             )
         }
-        return climb.firstOrNull()?.uuid
+        return climb.map { it.uuid }
     }
 
     // --- Hold search & heatmap ---
@@ -2282,9 +2344,9 @@ class BoardBrowserViewModel @Inject constructor(
             viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
                 val summary = withContext(Dispatchers.IO) {
-                    val ascents = personalBoardRepo.getUserAscentsBetween(
-                        session.startedAt, session.endedAt ?: session.startedAt
-                    )
+                    val ascents = SessionSummaryBuilder.sessionRows(
+                    personalBoardRepo, session.startedAt, session.endedAt ?: session.startedAt
+                )
                     // True flashes need the FULL history — a first-try repeat
                     // of an old project must not count as a flash.
                     val flashUuids =

@@ -64,7 +64,7 @@ fun SettersListScreen(
                 title = { Text(stringResource(R.string.setters_list_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
             )
@@ -124,7 +124,11 @@ fun SettersListScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = stringResource(R.string.setters_list_empty),
+                    // The counts are scoped to the active board; without its
+                    // name this read as "no community climbs anywhere" while
+                    // another board's browser listed some.
+                    text = state.boardName?.let { stringResource(R.string.setters_list_empty_board, it) }
+                        ?: stringResource(R.string.setters_list_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

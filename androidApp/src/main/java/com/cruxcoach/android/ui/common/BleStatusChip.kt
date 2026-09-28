@@ -16,9 +16,7 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.SignalCellularAlt
-import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
@@ -116,10 +114,6 @@ internal fun BleStatusChip(
                 modifier = Modifier.weight(1f)
             )
 
-            if (effectiveOnBoard != null) {
-                SignalIndicator(rssi = effectiveOnBoard.rssi ?: -80)
-                Spacer(Modifier.width(4.dp))
-            }
             Icon(
                 Icons.Default.ExpandMore,
                 contentDescription = stringResource(R.string.cd_expand),
@@ -331,20 +325,6 @@ internal fun SessionChipContent(
     }
 }
 
-@Composable
-internal fun SignalIndicator(rssi: Int) {
-    val icon = when {
-        rssi >= -50 -> Icons.Default.SignalCellular4Bar
-        rssi >= -65 -> Icons.Default.SignalCellularAlt
-        else -> Icons.Default.SignalCellularAlt1Bar
-    }
-    val tint = when {
-        rssi >= -50 -> OrangeAccent
-        rssi >= -65 -> OrangeAccent.copy(alpha = 0.7f)
-        else -> OrangeAccent.copy(alpha = 0.4f)
-    }
-    Icon(icon, stringResource(R.string.cd_signal, rssi), tint = tint, modifier = Modifier.size(16.dp))
-}
 
 @Composable
 internal fun buildChipSummary(

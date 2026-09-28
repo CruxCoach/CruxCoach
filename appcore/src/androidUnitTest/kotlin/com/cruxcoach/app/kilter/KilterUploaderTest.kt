@@ -38,11 +38,17 @@ class KilterUploaderTest {
     private class Http : HttpTransport {
         var remoteLogs = "[]"
         var uploadStatus = 200
+        var deleteStatus = 204
+        val deletions = ArrayList<String>()
         val posts = ArrayList<String>()
         override suspend fun request(
             method: String, url: String, headers: Map<String, String>, body: ByteArray?,
             maxResponseBytes: Long, timeoutSeconds: Int,
         ): HttpResult = when {
+            method == "DELETE" -> {
+                deletions += url.substringAfterLast('/')
+                HttpResult.Ok(HttpResponse(deleteStatus, emptyMap(), ByteArray(0)))
+            }
             method == "GET" && url.endsWith("/logs") ->
                 HttpResult.Ok(HttpResponse(200, emptyMap(), remoteLogs.encodeToByteArray()))
             method == "POST" && url.endsWith("/logs/bulk") -> {
@@ -88,6 +94,21 @@ class KilterUploaderTest {
     private val remoteWithContext =
         """[{"logUuid":"old","climbUuid":"c0","angle":40,"topped":true,"attempts":1,""" +
             """"gymUuid":"g1","wallUuid":"w1","productLayoutUuid":"p1"}]"""
+
+    @Test
+    fun `offline deletion stays queued until portal confirms absence`() = runTest {
+        signIn()
+        logSend("delete-me", "climb-1", 1)
+        repo.deleteAscent("delete-me")
+        http.deleteStatus = 503
+        assertEquals(KilterFailure.SERVER_ERROR, uploader.push().failure)
+        assertEquals(listOf("delete-me"), repo.pendingLogDeletions())
+        http.deleteStatus = 404
+        assertEquals(KilterFailure.NONE, uploader.push().failure)
+        assertTrue(repo.pendingLogDeletions().isEmpty())
+        assertEquals(listOf("delete-me", "delete-me"), http.deletions)
+        assertTrue(http.posts.isEmpty())
+    }
 
     @Test
     fun `sends and attempts go up with the wall the account already uses`() = runTest {

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -29,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -115,7 +118,7 @@ fun BoardListDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(state.listName.ifEmpty { stringResource(R.string.board_list_default_name) }) },
+                    title = { Text(builtinListName(state.listName, state.isBuiltin, state.isIgnored).ifEmpty { stringResource(R.string.board_list_default_name) }, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -167,6 +170,8 @@ fun BoardListDetailScreen(
         },
         floatingActionButton = {
             if (!state.isIgnored && state.totalCount > 0) {
+                val playingThis by viewModel.playingThis.collectAsStateWithLifecycle()
+                val playLabel = stringResource(if (playingThis) R.string.list_playback_resume else R.string.list_playback_start)
                 ExtendedFloatingActionButton(
                     onClick = startPlaylist,
                     containerColor = OrangeAccent,
@@ -175,12 +180,14 @@ fun BoardListDetailScreen(
                     },
                     text = {
                         Text(
-                            stringResource(R.string.list_playback_start),
+                            playLabel,
                             color = DarkBackground,
                             fontWeight = FontWeight.Bold,
                         )
                     },
-                    modifier = Modifier.testTag("list_play_fab"),
+                    // Material3 clears this variant's text row from semantics, so
+                    // TalkBack announced a bare "Button" without the label here.
+                    modifier = Modifier.testTag("list_play_fab").semantics { contentDescription = playLabel },
                 )
             }
         },
@@ -194,7 +201,10 @@ fun BoardListDetailScreen(
                     CircularProgressIndicator(color = OrangeAccent)
                 }
             }
-            state.entries.isEmpty() -> {
+            // Truly empty only. A list whose climbs all sit on a board with no
+            // catalogue has entries it cannot show: it read "List is empty" while
+            // Start silently failed, and the lines below that say why never showed.
+            state.entries.isEmpty() && state.unavailableCount == 0 -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -229,7 +239,7 @@ fun BoardListDetailScreen(
 
                 Column(modifier = Modifier.padding(padding)) {
                     Text(
-                        stringResource(R.string.board_list_climb_count, state.totalCount),
+                        pluralStringResource(R.plurals.board_list_climb_count, state.totalCount.toInt(), state.totalCount),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

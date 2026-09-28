@@ -44,6 +44,24 @@ data class UiMessage(
     val isDelivered: Boolean = false
 )
 
+/**
+ * The crash list: each own report once; the developer's replies live in the
+ * report's thread. Reports sent before 0.2.3 had a random row id and no
+ * thread anchor, so their relay echo became a second row (wire content with
+ * the "[CRASH]" prefix) and replies cannot find them — such replies stay in
+ * the list on their own rather than disappear.
+ */
+internal fun crashReportList(messages: List<UiMessage>): List<UiMessage> {
+    val crashes = messages.filter { it.type == MessageType.CRASH.label }
+    val wirePrefix = "${MessageType.CRASH.prefix} "
+    val seenContent = HashSet<String>()
+    val reportIds = crashes
+        // The relay echo is trimmed on receipt (NostrEventDecryptor); the stored report ends in a newline.
+        .filter { it.isSent && it.replyToId == null && seenContent.add(it.content.removePrefix(wirePrefix).trim()) }
+        .mapTo(HashSet()) { it.id }
+    return crashes.filter { it.id in reportIds || (!it.isSent && it.replyToId !in reportIds) }
+}
+
 data class DevContactState(
     val chatMessages: List<UiMessage> = emptyList(),
     val bugReports: List<UiMessage> = emptyList(),
@@ -290,7 +308,7 @@ class DevContactViewModel @Inject constructor(
                     featureRequests = uiMessages.filter {
                         it.type == MessageType.FEATURE.label && it.replyToId == null && it.isSent
                     },
-                    crashReports = uiMessages.filter { it.type == MessageType.CRASH.label },
+                    crashReports = crashReportList(uiMessages),
                     unreadChat = unreadChat.toInt(),
                     unreadBugs = unreadBugs.toInt(),
                     unreadFeatures = unreadFeatures.toInt()
@@ -403,6 +421,16 @@ class DevContactViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 messageRepository.markAllReadByType(MessageType.CHAT.label)
             }
+            loadMessages()
+        }
+    }
+
+    /** Crash replies no report could take (see [crashReportList]) are read by being listed. */
+    fun markListedCrashRepliesRead() {
+        val unread = _state.value.crashReports.filter { !it.isSent && !it.isRead }
+        if (unread.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { unread.forEach { messageRepository.markRead(it.id) } }
             loadMessages()
         }
     }

@@ -113,8 +113,8 @@ fun KeyManagementScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.key_button_manage)) },
-                actions = { InfoButton(stringResource(R.string.key_button_manage), stringResource(R.string.ux_account_help)) },
+                title = { Text(stringResource(R.string.key_management_title)) },
+                actions = { InfoButton(stringResource(R.string.key_management_title), stringResource(R.string.ux_account_help)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
@@ -404,7 +404,7 @@ internal fun restartApp(context: Context, openBackup: Boolean = false) {
     exitProcess(0)
 }
 
-private fun openInStoreOrBrowser(
+internal fun openInStoreOrBrowser(
     context: Context,
     storePackage: String,
     storeUri: Uri,

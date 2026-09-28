@@ -1,0 +1,15 @@
+{
+  "uniqueId": "com.facebook:zstd",
+  "artifactVersion": "1.5.6",
+  "name": "Zstandard (zstd)",
+  "description": "Decompresses the board catalogue chunks. Vendored C sources (androidApp/src/main/cpp/zstd), BSD-3-Clause election of the dual licence.",
+  "website": "https://github.com/facebook/zstd",
+  "developers": [
+    {
+      "name": "Meta Platforms, Inc. and affiliates"
+    }
+  ],
+  "licenses": [
+    "zstd-BSD-3-Clause"
+  ]
+}

@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -32,6 +37,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -54,17 +61,30 @@ internal fun rememberBoardImageBitmaps(
     brand: BoardBrand,
     sizeId: Long,
     layoutId: Long?,
-): List<ImageBitmap> {
+    maxDimension: Int? = null,
+): List<ImageBitmap> = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension).orEmpty()
+
+/** Like [rememberBoardImageBitmaps], but distinguishes "still decoding" (null)
+ *  from "no asset resolves" (empty). Decoding a bundled board photo takes
+ *  seconds on slow phones; callers must not claim a missing image meanwhile. */
+@Composable
+internal fun rememberBoardImageLoadState(
+    brand: BoardBrand,
+    sizeId: Long,
+    layoutId: Long?,
+    maxDimension: Int? = null,
+): List<ImageBitmap>? {
     val assets = LocalContext.current.assets
     val candidates = remember(brand, sizeId, layoutId) {
         boardPreviewCandidatePaths(brand, sizeId, layoutId)
     }
-    val bitmaps by produceState(emptyList<ImageBitmap>(), candidates, assets, brand, layoutId) {
+    val bitmaps by produceState<List<ImageBitmap>?>(null, candidates, assets, brand, layoutId, maxDimension) {
+        value = null
         value = withContext(Dispatchers.IO) {
             if (brand == BoardBrand.MOONBOARD) {
-                decodeMoonBoardPreviewAssets(assets, layoutId)
+                decodeMoonBoardPreviewAssets(assets, layoutId, maxDimension)
             } else {
-                candidates.firstNotNullOfOrNull { decodePreviewAsset(assets, it) }
+                candidates.firstNotNullOfOrNull { decodePreviewAsset(assets, it, maxDimension) }
                     ?.let(::listOf)
                     .orEmpty()
             }
@@ -87,9 +107,19 @@ internal fun BoardPreviewImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     onClick: (() -> Unit)? = null,
+    showZoomHint: Boolean = false,
     fallback: @Composable () -> Unit = {},
 ) {
-    val bitmaps = rememberBoardImageBitmaps(brand, sizeId, layoutId)
+    val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId, maxDimension = 512)
+    if (loaded == null) {
+        // Still decoding: keep the slot, but never show the "unavailable" fallback yet.
+        // Same tap target as the loaded image, so the zoom request is not lost mid-decode.
+        Box(if (onClick != null) modifier.clickable(onClick = onClick) else modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        }
+        return
+    }
+    val bitmaps: List<ImageBitmap> = loaded
     if (bitmaps.isNotEmpty()) {
         Box(modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier) {
             bitmaps.forEach { bitmap ->
@@ -99,6 +129,13 @@ internal fun BoardPreviewImage(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = contentScale,
                 )
+            }
+            if (showZoomHint) {
+                Icon(Icons.Default.OpenInFull, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                        .padding(5.dp).size(18.dp))
             }
         }
     } else {
@@ -119,15 +156,19 @@ internal fun ZoomableBoardPreview(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     fallback: @Composable () -> Unit = {},
+    imageLabel: String = brand.displayName,
+    showZoomHint: Boolean = false,
 ) {
-    var zoomed by remember { mutableStateOf(false) }
+    var zoomed by remember(brand, sizeId, layoutId) { mutableStateOf(false) }
+    val zoomDescription = stringResource(R.string.board_preview_enlarge, imageLabel)
     BoardPreviewImage(
         brand = brand,
         sizeId = sizeId,
         layoutId = layoutId,
-        modifier = modifier,
+        modifier = modifier.semantics { contentDescription = zoomDescription },
         contentScale = contentScale,
         onClick = { zoomed = true },
+        showZoomHint = showZoomHint,
         fallback = fallback,
     )
     if (zoomed) {
@@ -147,8 +188,11 @@ internal fun BoardImageZoomDialog(
     layoutId: Long?,
     onDismiss: () -> Unit,
 ) {
-    val bitmaps = rememberBoardImageBitmaps(brand, sizeId, layoutId)
-    if (bitmaps.isEmpty()) return
+    // Full-resolution decode takes seconds on slow devices: open at once with a
+    // progress indicator instead of leaving the tap without any visible effect.
+    val loaded = rememberBoardImageLoadState(brand, sizeId, layoutId)
+    if (loaded != null && loaded.isEmpty()) return
+    val bitmaps = loaded.orEmpty()
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -166,6 +210,7 @@ internal fun BoardImageZoomDialog(
         ) {
             var scale by remember { mutableFloatStateOf(1f) }
             var offset by remember { mutableStateOf(Offset.Zero) }
+            if (loaded == null) CircularProgressIndicator(color = Color.White)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -224,14 +269,14 @@ internal fun boardPreviewCandidatePaths(brand: BoardBrand, sizeId: Long, layoutI
 
 /** Decode the complete fixed MoonBoard configuration for picker previews.
  *  Existing variants have one image; 2010/2025 add transparent hold layers. */
-private fun decodeMoonBoardPreviewAssets(am: AssetManager, layoutId: Long?): List<ImageBitmap> {
+private fun decodeMoonBoardPreviewAssets(am: AssetManager, layoutId: Long?, maxDimension: Int?): List<ImageBitmap> {
     val base = layoutId?.let { MoonBoardVariant.fromLayoutId(it) }?.assetBaseName() ?: return emptyList()
     return try {
         val layout = am.open("board_images/$base.json").use {
             parseMoonBoardLayout(it.readBytes().decodeToString())
         }
         (listOf(layout.image) + layout.overlays).map { filename ->
-            decodePreviewAsset(am, "board_images/$filename")
+            decodePreviewAsset(am, "board_images/$filename", maxDimension)
                 ?: error("bitmap decode returned null for $filename")
         }
     } catch (_: Exception) {
@@ -239,8 +284,17 @@ private fun decodeMoonBoardPreviewAssets(am: AssetManager, layoutId: Long?): Lis
     }
 }
 
-private fun decodePreviewAsset(am: AssetManager, path: String): ImageBitmap? = try {
-    am.open(path).use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
+private fun decodePreviewAsset(am: AssetManager, path: String, maxDimension: Int?): ImageBitmap? = try {
+    val options = BitmapFactory.Options().apply { inSampleSize = 1 }
+    if (maxDimension != null) {
+        options.inJustDecodeBounds = true
+        am.open(path).use { BitmapFactory.decodeStream(it, null, options) }
+        options.inJustDecodeBounds = false
+        while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > maxDimension) {
+            options.inSampleSize *= 2
+        }
+    }
+    am.open(path).use { BitmapFactory.decodeStream(it, null, options) }?.asImageBitmap()
 } catch (_: java.io.FileNotFoundException) {
     null
 }

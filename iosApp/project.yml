@@ -33,6 +33,9 @@ targets:
       - path: ../androidApp/src/main/assets/board_images
         type: folder
         buildPhase: resources
+      - path: ../androidApp/src/main/assets/board_geometry
+        type: folder
+        buildPhase: resources
       - path: ../androidApp/src/main/assets/board_map
         type: folder
         buildPhase: resources

@@ -97,7 +97,8 @@ fun BoardBrowserScreen(
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
-    var searchVisible by remember { mutableStateOf(false) }
+    // Returning from a climb recreates this state while the view model keeps the query: show the field then.
+    var searchVisible by remember { mutableStateOf(state.filter.searchQuery.isNotEmpty()) }
     var showMismatchPicker by remember { mutableStateOf(false) }
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
@@ -220,10 +221,31 @@ fun BoardBrowserScreen(
             },
         )
     }
+    // Same optional Bluetooth family search as in setup: close the picker, run the regular
+    // connection sheet, then reopen the picker seeded with the recognised family.
+    var pickerReturnFromBluetooth by rememberSaveable { mutableStateOf(false) }
+    var pickerBluetoothSearched by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(showBleSheet) {
+        if (pickerReturnFromBluetooth && !showBleSheet) {
+            pickerReturnFromBluetooth = false
+            pickerBluetoothSearched = true
+            showBoardPicker = true
+        }
+    }
     if (showBoardPicker) {
+        val bluetoothSuggestion = com.cruxcoach.android.ui.onboarding.onboardingBoardSuggestion(bleConnState.connectedBoard)
         BoardPickerDialog(
-            onDismiss = { showBoardPicker = false },
-            onSelected = { showBoardPicker = false },
+            onDismiss = { showBoardPicker = false; pickerBluetoothSearched = false },
+            onSelected = { showBoardPicker = false; pickerBluetoothSearched = false },
+            suggestedBrand = if (pickerBluetoothSearched) bluetoothSuggestion else null,
+            bluetoothResult = if (!pickerBluetoothSearched) null else bluetoothSuggestion
+                ?.let { com.cruxcoach.android.ui.settings.BluetoothFamilyResult.Detected(it) }
+                ?: com.cruxcoach.android.ui.settings.BluetoothFamilyResult.None,
+            onFindViaBluetooth = {
+                pickerReturnFromBluetooth = true
+                showBoardPicker = false
+                showBleSheet = true
+            },
             onFindViaGym = {
                 showBoardPicker = false
                 showGymSearch = true
@@ -324,9 +346,8 @@ fun BoardBrowserScreen(
         )
     }
 
-    LaunchedEffect(isBleConnected, tourStep) {
-        if (isBleConnected && tourStep == TourStep.CONNECT) tour.move(TourStep.ANGLE)
-    }
+    // A board connected during setup used to skip this step silently, leaving the user without
+    // the one place where connecting happens later. The step stays; its text says it is done.
     var showAngleSheet by remember { mutableStateOf(false) }
     if (showAngleSheet) {
         BoardBrowserAngleSheet(
@@ -336,8 +357,20 @@ fun BoardBrowserScreen(
         )
     }
 
+    // The header decides at layout time whether the logbook is a direct icon or sits in the
+    // overflow; the tour text follows that instead of mentioning a menu that may not apply.
+    var logbookInOverflow by remember { mutableStateOf(false) }
     val catalogueReady = state.hasBoardData && state.activeBrandHasCatalogue && !state.activeBrandImporting
+    // The tour walks through a filled browser. Shown earlier — over the sync card, over an
+    // empty list, while a share is still importing — its spotlights pointed at controls whose
+    // actions could not happen yet and it read as broken. It waits, with its step kept, until
+    // the active board's catalogue is there and listed. Other boards may still be loading:
+    // an ordinary background sync must not hold back a tour the climber just asked for. A
+    // nearby share does, because its single import transaction blocks the browser's reads.
+    val syncState by com.cruxcoach.android.ui.common.LocalBoardSyncManager.current.state.collectAsStateWithLifecycle()
+    val browserFilled = catalogueReady && state.climbs.isNotEmpty() && !syncState.localShareInProgress
     val tourTarget = when (tourStep) {
+        TourStep.BOARD -> TourTarget.BOARD
         TourStep.LOGBOOK -> TourTarget.MENU
         TourStep.CONNECT -> TourTarget.BLUETOOTH
         TourStep.ANGLE -> if (catalogueReady) TourTarget.ANGLE else TourTarget.BOARD
@@ -346,15 +379,22 @@ fun BoardBrowserScreen(
         else -> null
     }
     val tourMessage = when (tourTarget) {
-        TourTarget.MENU -> R.string.tour_spotlight_logbook_menu
-        TourTarget.BLUETOOTH -> R.string.tour_spotlight_connect
+        TourTarget.BOARD ->
+            if (tourStep == TourStep.BOARD) R.string.tour_spotlight_board_picker
+            else R.string.tour_spotlight_catalogue
+        TourTarget.BLUETOOTH ->
+            if (isBleConnected) R.string.tour_spotlight_connect_done
+            else R.string.tour_spotlight_connect
+        TourTarget.MENU ->
+            if (logbookInOverflow) R.string.tour_spotlight_logbook_overflow
+            else R.string.tour_spotlight_logbook_direct
         TourTarget.ANGLE -> R.string.tour_spotlight_angle
         TourTarget.FILTER -> R.string.tour_spotlight_filter
         TourTarget.CLIMB -> R.string.tour_spotlight_open
         else -> R.string.tour_spotlight_catalogue
     }
     TourHost(tourTargets, tourTarget, tourMessage, { tour.move(TourStep.DONE) },
-        visible = !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch && !state.activeBrandImporting) {
+        visible = browserFilled && !isMenuOpen && !showBleSheet && !showAngleSheet && !showBoardPicker && !showGymSearch) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         BoardBrowserHeader(
@@ -366,19 +406,22 @@ fun BoardBrowserScreen(
             isBleConnected = isBleConnected,
             angle = state.filter.angle,
             onAngle = { showAngleSheet = true },
-            activeFilterCount = state.filter.activeBrowseFilterCount(),
             onOpenMenu = onOpenMenu,
             onLogbook = { if (tour.step() == TourStep.LOGBOOK) tour.move(TourStep.ENTRY); onNavigateToLogbook() },
             onLists = onNavigateToLists,
             onSettings = onNavigateToSettings,
             logbookTour = tourStep == TourStep.LOGBOOK,
-            onSkipTour = { tour.move(TourStep.DONE) },
-            onBoardPicker = { showBoardPicker = true },
+            onLogbookPlacement = { logbookInOverflow = it },
+            onBoardPicker = {
+                if (tour.step() == TourStep.BOARD) tour.move(tour.afterBoardStep())
+                showBoardPicker = true
+            },
             onBluetooth = { showBleSheet = true },
             onFilter = { if (tour.step() == TourStep.FILTER) tour.move(TourStep.OPEN); onNavigateToFilter() },
         )
         RestTimerBannerSlot()
-        SyncStatusBannerSlot()
+        // While the sync card itself is on this screen the banner would only repeat it.
+        if (state.hasBoardData) SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
             // First DB access lazily runs any pending schema migration +
             // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
@@ -443,6 +486,36 @@ fun BoardBrowserScreen(
                 onRandomToQueue = { viewModel.addRandomClimbToQueue() },
             )
 
+            // The list shows CruxCoach community climbs only (they come through Nostr for every
+            // board); the board's catalogue is not loaded. Say so and offer it, without taking
+            // the community climbs away. (Without climbs the empty state below offers it.)
+            if (!state.activeBrandHasCatalogue && state.climbs.isNotEmpty() && !state.activeBrandImporting) {
+                Surface(
+                    color = OrangeAccent.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth().testTag("board_community_only"),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.board_browser_community_only,
+                                BoardBrand.fromWire(state.filter.boardBrand).displayName,
+                            ),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(
+                            onClick = { viewModel.loadActiveBoardCatalogue() },
+                            modifier = Modifier.testTag("board_community_only_load"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                    }
+                }
+            }
             queueState.boardMismatch?.let {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -610,6 +683,15 @@ fun BoardBrowserScreen(
                         ) {
                             Text(stringResource(R.string.board_browser_empty_load_catalogue))
                         }
+                        // Somebody who loaded only MoonBoard from a friend lands here with the
+                        // app's default Kilter; a 94 MB download is not the only way out.
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showBoardPicker = true },
+                            modifier = Modifier.testTag("board_empty_change_board"),
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_change_board))
+                        }
                     } else {
                         Text(
                             text = stringResource(R.string.board_browser_empty_no_results),
@@ -775,7 +857,11 @@ fun BoardBrowserScreen(
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.climb_creator_open))
                 }
                 FloatingActionButton(
-                    onClick = { searchVisible = !searchVisible },
+                    onClick = {
+                        // Closing is labelled "clear search": a hidden field must not keep filtering.
+                        if (searchVisible && state.filter.searchQuery.isNotEmpty()) viewModel.updateSearchQuery("")
+                        searchVisible = !searchVisible
+                    },
                     containerColor = OrangeAccent,
                     contentColor = DarkBackground,
                     modifier = Modifier.testTag("board_search_fab")

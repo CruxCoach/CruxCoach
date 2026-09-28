@@ -41,13 +41,16 @@ object UpdateNotificationReliabilityHelper {
     /**
      * Best-fit Settings intent: prefer the per-channel page (so the user
      * lands one tap away from the right toggle); fall back to per-app
-     * notification settings; finally the generic app-info page.
+     * notification settings; finally the generic app-info page. While the
+     * whole app is blocked the channel page is a dead end — Android only
+     * says it suppresses the category — so the app page comes first then.
      */
     fun nudgeIntent(context: Context): Intent {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             val channel = mgr?.getNotificationChannel(AppNotificationService.Channel.UPDATER)
-            if (channel != null) {
+            val appEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            if (channel != null && appEnabled) {
                 return Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
                     putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                     putExtra(Settings.EXTRA_CHANNEL_ID, AppNotificationService.Channel.UPDATER)

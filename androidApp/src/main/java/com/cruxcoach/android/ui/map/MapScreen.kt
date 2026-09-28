@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.map
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -36,6 +37,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,8 +90,12 @@ fun MapScreen(
 
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
 
+    // Once a style has loaded, the areas viewed stay in MapLibre's cache.
+    // The dialog says the map needs internet the first time, so it only
+    // belongs before that; afterwards it blocked a map that worked offline.
+    val mapState = remember { context.getSharedPreferences(MAP_STATE_PREFS, Context.MODE_PRIVATE) }
     var showOfflineDialog by remember {
-        mutableStateOf(!isNetworkAvailable(context))
+        mutableStateOf(!isNetworkAvailable(context) && !mapState.getBoolean(KEY_STYLE_LOADED, false))
     }
     if (showOfflineDialog) {
         OfflineMapDialog(onDismiss = { showOfflineDialog = false })
@@ -166,9 +174,33 @@ fun MapScreen(
         requestedPlace = null
     }
 
-    val searchResults = remember(searchQuery, state.unfilteredVenues, state.places) {
-        searchBoardMap(searchQuery, state.unfilteredVenues, state.places)
+    // Search never runs on the main thread: the corpus (venues plus the bundled city index)
+    // is normalised once in the background, and typing only triggers a debounced lookup.
+    var searchIndex by remember { mutableStateOf<BoardMapSearchIndex?>(null) }
+    LaunchedEffect(state.unfilteredVenues, state.places) {
+        searchIndex = null
+        searchIndex = withContext(Dispatchers.Default) {
+            BoardMapSearchIndex(state.unfilteredVenues, state.places)
+        }
     }
+    var searchResults by remember { mutableStateOf<List<MapSearchResult>>(emptyList()) }
+    // The query the current results belong to. "No results" may only be claimed for a
+    // finished lookup of exactly the typed text, never while the index or a lookup is pending.
+    var searchedQuery by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(searchQuery, searchIndex) {
+        val index = searchIndex
+        if (searchQuery.trim().length < 2) {
+            searchResults = emptyList()
+            searchedQuery = searchQuery
+            return@LaunchedEffect
+        }
+        if (index == null) return@LaunchedEffect
+        delay(200)
+        val query = searchQuery
+        searchResults = withContext(Dispatchers.Default) { index.search(query) }
+        searchedQuery = query
+    }
+    val searchPending = searchQuery.trim().length >= 2 && searchedQuery != searchQuery
 
     LaunchedEffect(mapHandle, selectedVenue) {
         val (map, style) = mapHandle ?: return@LaunchedEffect
@@ -289,6 +321,7 @@ fun MapScreen(
                 onMapReady = { map, style ->
                     MapMarkerLayer.install(style)
                     mapHandle = map to style
+                    mapState.edit().putBoolean(KEY_STYLE_LOADED, true).apply()
                 },
                 onMapTap = { map, x, y ->
                     // Cluster first: tapping a count bubble eases the camera to
@@ -323,7 +356,19 @@ fun MapScreen(
                     tonalElevation = 6.dp,
                     shadowElevation = 8.dp,
                 ) {
-                    if (searchResults.isEmpty()) {
+                    if (searchPending && searchResults.isEmpty()) {
+                        Row(
+                            modifier = Modifier.padding(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                stringResource(R.string.map_search_searching),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (searchResults.isEmpty()) {
                         Text(
                             stringResource(R.string.map_search_no_results),
                             modifier = Modifier.padding(20.dp),
@@ -426,3 +471,7 @@ private fun StatsSheet(state: MapState, onDismiss: () -> Unit) {
         StatsScreen(state = state, modifier = Modifier.fillMaxSize())
     }
 }
+
+/** Kept out of backups: a restored flag could hide the dialog on a phone whose map never loaded. */
+private const val MAP_STATE_PREFS = "map_state"
+private const val KEY_STYLE_LOADED = "style_loaded_once"

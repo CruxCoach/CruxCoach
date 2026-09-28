@@ -16,3 +16,8 @@ func LI(_ key: String, _ args: CVarArg...) -> String {
     let format = NSLocalizedString(key, tableName: "IOS", comment: "")
     return args.isEmpty ? format : String(format: format, arguments: args)
 }
+
+/// Android plural resources share the same one/other categories in English and German.
+func LP(_ key: String, _ count: Int) -> String {
+    L(key + (count == 1 ? ".one" : ".other"), count)
+}

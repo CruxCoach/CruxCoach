@@ -175,12 +175,28 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_header_overflow_action_2").assertIsDisplayed()
     }
 
+    @Config(qualifiers = "w411dp-h800dp")
+    @Test fun `short board name shrinks the picker so every action is directly reachable`() {
+        compose.setContent { MaterialTheme { Box(Modifier.width(411.dp)) {
+            BoardBrowserHeader(BoardBrowserHeaderContext("Decoy", "12 x 12"), false, 40,
+                onAngle = {}, onOpenMenu = {}, onBoardPicker = {}, onBluetooth = {}, onFilter = {})
+        } } }
+        assertTrue(compose.onNodeWithTag("board_browser_board_picker").getUnclippedBoundsInRoot().let { it.right - it.left <= 75.dp })
+        compose.onNodeWithTag("board_header_action_0").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_action_1").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_action_2").assertIsDisplayed()
+        compose.onNodeWithTag("board_header_overflow").assertDoesNotExist()
+    }
+
     @Test fun `filter header leaves controls visible with large text`() {
         val viewModel = io.mockk.mockk<BoardBrowserViewModel>(relaxed = true)
         io.mockk.every { viewModel.state } returns kotlinx.coroutines.flow.MutableStateFlow(BoardBrowserState())
+        var reviewView: android.view.View? = null
+        val reviewScale = mutableStateOf(2f)
         compose.setContent {
+            reviewView = androidx.compose.ui.platform.LocalView.current
             val density = LocalDensity.current.density
-            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 2f)) {
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = reviewScale.value)) {
                 MaterialTheme { Box(Modifier.width(320.dp).height(500.dp)) {
                     BoardFilterScreen(viewModel, {})
                 } }
@@ -190,17 +206,32 @@ class BrowserUxTest {
         compose.onNodeWithTag("board_filter_reset").assertIsDisplayed().performClick()
         io.mockk.verify { viewModel.clearAllBrowseFilters() }
         compose.onNodeWithTag("board_filter_show_results").assertIsDisplayed()
+        System.getenv("CRUXCOACH_UI_REVIEW_DIR")?.let { directory ->
+            for (scale in listOf(2f, 1f)) {
+                compose.runOnIdle { reviewScale.value = scale }
+                compose.waitForIdle()
+                compose.runOnIdle {
+                    val root = requireNotNull(reviewView)
+                    val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+                    root.draw(android.graphics.Canvas(bitmap))
+                    java.io.File(directory).mkdirs()
+                    java.io.File(directory, "filter-type-$scale.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+            }
+        }
     }
 
-    @Test fun `compact status keeps multi selection when reopening details`() {
+    @Test fun `status multi selection is open without an extra tap`() {
         val selected = mutableStateOf(setOf(ClimbStatusFilter.NEW))
-        compose.setContent { MaterialTheme { BoardStatusFilter(selected.value, compact = true) { selected.value = it } } }
-        compose.onNodeWithTag("board_filter_status_new").assertDoesNotExist()
-        compose.onNodeWithTag("board_filter_status_details").performClick()
+        compose.setContent { MaterialTheme { BoardStatusFilter(selected.value) { selected.value = it } } }
+        compose.onNodeWithTag("board_filter_status_details").assertDoesNotExist()
         compose.onNodeWithTag("board_filter_status_new").assertIsSelected()
         compose.onNodeWithTag("board_filter_status_attempted").performClick()
-        compose.onNodeWithTag("board_filter_status_details").performClick().performClick()
         compose.onNodeWithTag("board_filter_status_attempted").assertIsSelected()
+        compose.onNodeWithTag("board_filter_status_new").assertIsSelected()
     }
 
     @Test fun `angle set retains negative and nonuniform catalogue angles`() {
@@ -209,8 +240,5 @@ class BrowserUxTest {
         assertEquals((0..70 step 5).toList(), browserAngleOptions(BrowserFilterState()))
     }
 
-    @Test fun `filter count excludes physical angle and sorting but includes hidden restrictions`() {
-        assertEquals(0, BrowserFilterState(angle = 15).activeBrowseFilterCount())
-        assertEquals(3, BrowserFilterState(benchmarkOnly = true, myClimbsOnly = true, originFilter = OriginFilter.CRUXCOACH).activeBrowseFilterCount())
-    }
+
 }

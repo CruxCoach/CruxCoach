@@ -119,12 +119,17 @@ fun SyncStatusBannerSlot() {
                 // entry is the one currently running (earlier ones finished).
                 // Falls back to the last known stream so the banner never
                 // reads "done" while a sync is still in flight.
-                val active = syncState.boardSteps.entries
-                    .firstOrNull { it.value !is ImportStep.Done }
-                    ?: syncState.boardSteps.entries.lastOrNull()
+                val steps = syncState.boardSteps
+                val active = steps.entries.firstOrNull { it.value !is ImportStep.Done }
+                    ?: steps.entries.lastOrNull()
+                // Boards in the same step load together — a nearby share is one transfer
+                // for all of its boards — so name them all, not the first in map order.
+                val together = if (active == null) emptyList()
+                    else steps.filterValues { it == active.value }.keys.toList()
                 SyncProgressBanner(
-                    brand = active?.key,
-                    step = active?.value,
+                    brands = together,
+                    // A run with no per-board lane (a full-database import) still has a step.
+                    step = active?.value ?: syncState.importStep,
                     onClick = navigateToSync,
                 )
             }
@@ -139,7 +144,7 @@ fun SyncStatusBannerSlot() {
 }
 
 @Composable
-private fun SyncProgressBanner(brand: BoardBrand?, step: ImportStep?, onClick: () -> Unit) {
+private fun SyncProgressBanner(brands: List<BoardBrand>, step: ImportStep?, onClick: () -> Unit) {
     Surface(
         color = OrangeAccent.copy(alpha = 0.12f),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -159,7 +164,8 @@ private fun SyncProgressBanner(brand: BoardBrand?, step: ImportStep?, onClick: (
                 // "<Board> · <current step>" — names the board being synced so
                 // the banner mirrors the per-board status list.
                 Text(
-                    if (brand != null) "${brand.displayName} · ${stepLabel(step)}" else stepLabel(step),
+                    if (brands.isNotEmpty()) "${brands.joinToString(", ") { it.displayName }} · ${stepLabel(step)}"
+                    else stepLabel(step),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = OrangeAccent,

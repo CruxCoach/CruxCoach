@@ -152,6 +152,39 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   via the contacts in `SECURITY.md`. Requests are forwarded upstream
   to the dataset maintainer where applicable.
 
+### Board geometry — Kilter and Aurora-family boards
+
+- **Used in:** [`BundledBoardGeometry.kt`](androidApp/src/main/java/com/cruxcoach/android/data/BundledBoardGeometry.kt)
+  (draws, size-fits and lights community climbs of a board whose catalogue
+  was never downloaded or was deleted).
+- **Location:** [`androidApp/src/main/assets/board_geometry/`](androidApp/src/main/assets/board_geometry/) —
+  one SQLite file each for Kilter, Tension, Grasshopper, Decoy, So iLL and
+  Touchstone.
+- **Content:** hold positions (`placements`: hole id, set id, x/y), board
+  sizes (`product_sizes`: size name such as "12 x 12 with kickboard", edges,
+  image file name), layout image references (`board_images`), LED addresses
+  (`leds`) and hold-role colours (`placement_roles`). No climbs, user data,
+  images or descriptive text.
+- **Source:** the same rows CruxCoach already distributes in its signed
+  Blossom catalogue chunks (the Kilter `meta` chunk and each Aurora board's
+  full chunk), which were taken from each board's official app data. The
+  per-board manifest event and chunk SHA-256 are listed in the
+  [`README.md`](androidApp/src/main/assets/board_geometry/README.md);
+  `scripts/build_board_geometry_assets.py` rebuilds the files.
+- **Rights holders:** Kilter Grips, LLC (formerly Aurora Climbing) and the
+  respective board makers (Tension Climbing, Grasshopper, Decoy, So iLL,
+  Touchstone Climbing).
+- **Basis for bundling:** functional hardware reference data about the
+  physical boards, the same category CruxCoach already distributes via
+  Blossom — see [`LEGAL.md`](LEGAL.md#bundled-board-geometry). CruxCoach
+  claims no rights in it; it is not covered by the CruxCoach GPLv3 source
+  license.
+- **Not bundled:** Quantum (its geometry comes from an authorised eWalls
+  snapshot and stays a download).
+- **Takedown:** any rights holder may request removal at any time via the
+  contacts in [`SECURITY.md`](SECURITY.md); a board can be dropped from the
+  bundle without affecting its catalogue download.
+
 ---
 
 ## Map Rendering & Tile Data
@@ -243,10 +276,14 @@ When vendoring a new third-party source tree:
    license election (if dual-licensed).
 4. Add an entry to this file linking to the texts and stating the election.
 5. Add an entry to [`NOTICE`](NOTICE) if attribution is required by the license.
+6. Add a library (and, for a non-standard text, a license) JSON under
+   [`androidApp/aboutlibraries/`](androidApp/aboutlibraries/): the in-app
+   license list (About → Open-source licenses) is generated from Gradle
+   dependencies and cannot see vendored code on its own.
 
 When bundling a third-party asset (image, font, model, dataset):
 
 1. Keep an attribution entry in this file with source, license, and any
    restrictions on redistribution.
 2. If the license requires it, surface the attribution in the app's about /
-   credits screen.
+   credits screen (a JSON under `androidApp/aboutlibraries/`, as above).

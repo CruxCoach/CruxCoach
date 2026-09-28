@@ -67,7 +67,9 @@ data class KeyImportState(
     val showOverwriteWarning: Boolean = false,
     val derivedNpub: String = "",
     val error: String? = null,
-    val requireRestart: Boolean = false
+    val requireRestart: Boolean = false,
+    val amberTargetNpub: String? = null,
+    val amberPackage: String? = null,
 )
 
 @HiltViewModel
@@ -200,42 +202,53 @@ class KeyImportViewModel @Inject constructor(
 
     // ── Amber flow ───────────────────────────────────────────────
 
-    /**
-     * Handle the Amber ActivityResult: normalize the returned pubkey (Amber
-     * returns npub; our store expects hex), persist the signer-mode config,
-     * switch the signer, purge foreign-identity message rows, and require
-     * an app restart so SQLCipher re-derives its key from the new pubkey.
-     */
-    fun onAmberLoginSuccess(pubkeyInput: String, packageName: String?) {
-        viewModelScope.launch {
-            val pubkeyHex = NostrSigner.normalizeToHex(pubkeyInput) ?: run {
-                _state.update {
-                    it.copy(error = context.getString(R.string.key_import_format_unknown))
-                }
-                return@launch
-            }
-            val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
-            withContext(Dispatchers.IO) {
-                try {
-                    // Cancel periodic backup before identity swap (see confirmImport
-                    // for the full reasoning). Same pattern; same caveats.
-                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+    /** Stage the public account returned by Amber; only confirmation may switch identity. */
+    fun previewAmberAccount(pubkeyInput: String, packageName: String?) {
+        if (_state.value.isWorking) return
+        val target = accountNpub(pubkeyInput)
+        if (target == null) {
+            _state.update { it.copy(error = context.getString(R.string.key_import_format_unknown)) }
+            return
+        }
+        _state.update { it.copy(
+            amberTargetNpub = target,
+            amberPackage = packageName ?: AmberIntegration.AMBER_PACKAGE,
+            sameAccount = target == accountNpub(nostrSigner.getPublicKeyHex()),
+            error = null,
+        ) }
+    }
 
+    fun dismissAmberImport() {
+        _state.update { it.copy(amberTargetNpub = null, amberPackage = null) }
+    }
+
+    fun confirmAmberImport() {
+        val pending = _state.value
+        if (pending.isWorking) return
+        val pubkeyHex = pending.amberTargetNpub?.let { NostrSigner.normalizeToHex(it) } ?: return
+        val pkg = pending.amberPackage ?: return
+        _state.update { it.copy(isWorking = true, amberTargetNpub = null, amberPackage = null) }
+        viewModelScope.launch {
+            try {
+                val sameAccount = sameAccountIdentity(nostrSigner.getPublicKeyHex(), pubkeyHex)
+                withContext(Dispatchers.IO) {
+                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
                     nostrSigner.saveAmberConfig(pubkeyHex, pkg)
                     nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
-                    messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
-                    userPreferences.setNostrSyncCursor(0L)
-                    backupPreferences.clearAllIdentityState()
-                    relayListCache.clear()
-                    // Amber is inherently "backed up" (key lives in Amber).
-                    userPreferences.setKeyBackedUp(true)
-                    _state.update { it.copy(requireRestart = true) }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Amber import failed", e)
-                    _state.update {
-                        it.copy(error = context.getString(R.string.key_import_failed, e.message ?: ""))
+                    if (!sameAccount) {
+                        messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
+                        userPreferences.setNostrSyncCursor(0L)
+                        backupPreferences.clearAllIdentityState()
+                        relayListCache.clear()
                     }
+                    userPreferences.setKeyBackedUp(true)
                 }
+                _state.update { it.copy(requireRestart = true) }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.update { it.copy(error = context.getString(R.string.account_access_error)) }
+            } finally {
+                _state.update { it.copy(isWorking = false) }
             }
         }
     }

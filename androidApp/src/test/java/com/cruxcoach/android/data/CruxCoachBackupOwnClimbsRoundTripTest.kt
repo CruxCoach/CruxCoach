@@ -218,7 +218,13 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             nostrPubkey = pubkey,
         )
 
-    private fun mockedImport(boardRepo: BoardRepositoryImpl, json: String): CruxCoachBackup.ImportResult =
+    private fun mockedImport(
+        boardRepo: BoardRepositoryImpl,
+        json: String,
+        expectedPubkey: String? = ownPubkey,
+        adoptLocalDraftsFor: String? = null,
+        restoreOwnClimbsNow: Boolean = true,
+    ): CruxCoachBackup.ImportResult =
         CruxCoachBackup.import(
             jsonString = json,
             selectedCategories = CruxCoachBackup.Category.entries.toSet(),
@@ -242,8 +248,49 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             },
             boardRepository = boardRepo,
             transactionRunner = passThroughTxn,
-            expectedNostrPubkey = ownPubkey,
+            expectedNostrPubkey = expectedPubkey,
+            adoptLocalDraftsForPubkey = adoptLocalDraftsFor,
+            restoreOwnClimbsNow = restoreOwnClimbsNow,
         )
+
+    // ── Deferred while a catalogue import holds the board DB (PendingImports) ──
+
+    @Test
+    fun `own climbs wait while the board DB is busy and restore unchanged from their payload`() {
+        val uuid = "11111111-2222-3333-4444-555555555561"
+        seedPublishedOwnClimb(uuid)
+        val before = rowFor(uuid)
+        val json = mockedExport(boardRepo)
+        driver.execute(null, "DELETE FROM climbs WHERE uuid = '$uuid'", 0)
+        driver.execute(null, "DELETE FROM climb_stats WHERE climb_uuid = '$uuid'", 0)
+
+        val result = mockedImport(boardRepo, json, restoreOwnClimbsNow = false)
+
+        assertEquals(0, result.ownClimbs, "nothing written to the board DB yet")
+        assertEquals(1, result.pendingOwnClimbs)
+        assertEquals(0L, climbCount(uuid))
+
+        val payload = CruxCoachBackup.ownClimbsPayload(json)!!
+        val restored = CruxCoachBackup.restoreOwnClimbs(payload, boardRepo)
+
+        assertEquals(1, restored.ownClimbs)
+        assertEquals(1, restored.ownClimbStats)
+        val after = rowFor(uuid)
+        assertEquals(before.name, after.name)
+        assertEquals(before.frames, after.frames)
+        assertEquals(before.nostr_event_id, after.nostr_event_id)
+        assertEquals(before.created_by_pubkey, after.created_by_pubkey)
+        // Applying the same staged payload again is a no-op.
+        assertEquals(0, CruxCoachBackup.restoreOwnClimbs(payload, boardRepo).ownClimbs)
+        assertEquals(1L, climbCount(uuid))
+    }
+
+    @Test
+    fun `a backup without own climbs stages nothing`() {
+        val json = mockedExport(boardRepo)
+
+        assertNull(CruxCoachBackup.ownClimbsPayload(json))
+    }
 
     // ── Round-trip: draft + published climb survive export → wipe → import ──
 
@@ -634,6 +681,33 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         val afterStat = statFor(uuid)
         assertEquals(beforeClimb, afterClimb, "catalogue data and lifecycle remain byte-for-byte equivalent")
         assertEquals(beforeStat, afterStat, "colliding backup stats cannot replace catalogue stats")
+    }
+
+    @Test
+    fun `accepted cross-identity import adopts local drafts but never published climbs`() {
+        val draftUuid = "11111111-2222-4333-8444-555555555555"
+        val publishedUuid = "66666666-7777-4888-8999-aaaaaaaaaaaa"
+        val json = """
+            {
+              "version": 3,
+              "exportedAt": "2026-09-19T00:00:00Z",
+              "nostrPubkey": "$otherPubkey",
+              "boardClimbs": [{
+                "uuid": "$draftUuid", "layoutId": 1, "name": "Old account draft", "frames": "p1093r15p1387r14",
+                "source": "local", "syncStatus": "draft", "createdByPubkey": "$otherPubkey", "boardBrand": "kilter"
+              }, {
+                "uuid": "$publishedUuid", "layoutId": 1, "name": "Old account published", "frames": "p1093r15p1387r14",
+                "source": "nostr", "syncStatus": "published_nostr", "createdByPubkey": "$otherPubkey",
+                "nostrEventId": "${"e".repeat(64)}", "boardBrand": "kilter"
+              }]
+            }
+        """.trimIndent()
+
+        mockedImport(boardRepo, json, expectedPubkey = null, adoptLocalDraftsFor = ownPubkey)
+
+        val mine = boardRepo.getOwnClimbsForBackup(ownPubkey).map { it.uuid }
+        assertEquals(listOf(draftUuid), mine, "only the local draft becomes the importing account's own climb")
+        assertEquals(otherPubkey, boardRepo.getOwnClimbsForBackup(otherPubkey).single().createdByPubkey)
     }
 
     @Test

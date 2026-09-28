@@ -1,12 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Solid black circle background (ensures logo center is never transparent) -->
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="#000000"/>
-            <size android:width="108dp" android:height="108dp"/>
-        </shape>
-    </item>
-    <!-- Logo foreground -->
-    <item android:drawable="@mipmap/ic_launcher_foreground"/>
-</layer-list>
+<!--
+  Splash logo as a vector. The launcher foreground bitmap is 108dp; the splash screen shows its
+  icon at 288dp, so the bitmap was stretched to almost three times its size and its gradients
+  banded. Traced from that bitmap (same geometry, same colours), this stays sharp at any size.
+
+  The mark is scaled so that it lies inside the inner two thirds of the canvas: from Android 12
+  on the system masks the splash icon to that circle, which cut the ring of the unscaled logo.
+  No backing disc — the orange ring and the gold cross read on the light and on the dark splash
+  background alike, and a black disc on white was the heaviest thing on the screen.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.76"
+        android:scaleY="0.76">
+        <!-- Left half of the ring -->
+        <path android:pathData="M53.25,10.5065 A43.5,43.5 0 0 0 53.25,97.4935 L53.25,82.24 A28.25,28.25 0 0 1 53.25,25.76 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="54"
+                    android:centerY="54"
+                    android:gradientRadius="43.5">
+                    <item android:offset="0.65" android:color="#FFE06C17" />
+                    <item android:offset="1.0" android:color="#FFBE4A03" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- Right half of the ring -->
+        <path android:pathData="M55.75,10.5352 A43.5,43.5 0 0 1 55.75,97.4648 L55.75,82.1957 A28.25,28.25 0 0 0 55.75,25.8043 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="54"
+                    android:centerY="54"
+                    android:gradientRadius="43.5">
+                    <item android:offset="0.65" android:color="#FFBC4700" />
+                    <item android:offset="1.0" android:color="#FF903200" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- Cross -->
+        <group
+            android:pivotX="54"
+            android:pivotY="54"
+            android:rotation="45">
+            <path android:pathData="M38.1,50.65 H69.9 V57.35 H38.1 Z M50.65,38.1 H57.35 V69.9 H50.65 Z">
+                <aapt:attr name="android:fillColor">
+                    <gradient
+                        android:type="radial"
+                        android:centerX="54"
+                        android:centerY="54"
+                        android:gradientRadius="16">
+                        <item android:offset="0.0" android:color="#FFFFCF7F" />
+                        <item android:offset="1.0" android:color="#FFE59513" />
+                    </gradient>
+                </aapt:attr>
+            </path>
+        </group>
+    </group>
+</vector>

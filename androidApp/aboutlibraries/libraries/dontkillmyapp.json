@@ -1,0 +1,14 @@
+{
+  "uniqueId": "com.dontkillmyapp:oem-taxonomy",
+  "name": "Don't kill my app! – OEM background-killer data",
+  "description": "Which phone makers stop background work, and where their autostart settings are; adapted in NotificationReliabilityHelper.kt.",
+  "website": "https://dontkillmyapp.com/",
+  "developers": [
+    {
+      "name": "Urbandroid Team"
+    }
+  ],
+  "licenses": [
+    "CC-BY-SA-4.0"
+  ]
+}

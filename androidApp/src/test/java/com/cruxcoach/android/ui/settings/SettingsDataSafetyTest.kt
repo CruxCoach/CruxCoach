@@ -60,7 +60,7 @@ class SettingsDataSafetyTest {
         compose.runOnIdle { assertEquals(1, deletes) }
     }
 
-    @Test fun `existing backup history and import lock remain visible while backup is disabled`() {
+    @Test fun `backup history stays visible and restore stays available while catalogues load`() {
         var restores = 0
         compose.setContent {
             MaterialTheme {
@@ -68,7 +68,7 @@ class SettingsDataSafetyTest {
                     BackupSettingsSection(
                         state = BackupSettingsState(
                             hasNostrKey = true, lastBackupIso = "2026-09-01",
-                            backupEnabled = false, boardImportInProgress = true,
+                            backupEnabled = false, catalogueLoading = true,
                         ),
                         onSetBackupEnabled = {}, onSetInterval = {}, onRunBackupNow = {},
                         onTriggerRestore = { restores++ },
@@ -77,8 +77,9 @@ class SettingsDataSafetyTest {
             }
         }
         compose.onNodeWithText("2026-09-01", substring = true).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Backup wiederherstellen").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("Boards werden noch geladen", substring = true).performScrollTo().assertIsDisplayed()
-        compose.runOnIdle { assertEquals(0, restores) }
+        // The logbook never waits for the catalogue download (PendingImports).
+        compose.onNodeWithText("Backup wiederherstellen").performScrollTo().assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(1, restores) }
     }
 }

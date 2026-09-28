@@ -334,11 +334,7 @@ internal fun KilterLoginSheet(
                 Text(stringResource(R.string.kilter_login_button))
             }
 
-            Text(
-                stringResource(R.string.kilter_login_privacy),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
         }
     }
 }
@@ -353,7 +349,12 @@ private fun KilterImportPreviewDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!isImporting) onDismiss() },
-        title = { Text(stringResource(R.string.kilter_preview_title)) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.kilter_preview_title), Modifier.weight(1f))
+                com.cruxcoach.android.ui.common.KilterDataInfoButton()
+            }
+        },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -380,9 +381,7 @@ private fun KilterImportPreviewDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.kilter_import_one_time),
                             fontWeight = FontWeight.Bold)
-                        Text(stringResource(R.string.kilter_import_one_time_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                     }
                 }
 
@@ -397,9 +396,7 @@ private fun KilterImportPreviewDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(stringResource(R.string.kilter_import_persistent),
                             fontWeight = FontWeight.Bold)
-                        Text(stringResource(R.string.kilter_import_persistent_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+
                     }
                 }
             }

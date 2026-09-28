@@ -1,5 +1,6 @@
 package com.cruxcoach.domain.playlist
 
+import kotlin.math.floor
 import kotlin.random.Random
 
 /** One candidate climb from the board catalogue (already board-fit- and
@@ -16,9 +17,21 @@ data class PlaylistCandidate(
     /** Any logbook contact within the last ~2 weeks — variety first:
      *  yesterday's problems are a weaker stimulus than fresh ones. */
     val recentlyTried: Boolean = false,
-)
+) {
+    /**
+     * The grade the app displays this climb as — the community average rounded
+     * half up, exactly as the grade mapper does it.
+     *
+     * Bands are matched against THIS, not the raw average. Compared raw, a
+     * range of 6a…6b excluded the 6a climbs averaging 15.6 and the 6b climbs
+     * averaging 18.3, and a single-grade range matched only climbs whose
+     * average happened to be a whole number.
+     */
+    val grade: Double get() = floor(difficulty + 0.5)
+}
 
-/** Supplies candidates inside a difficulty band. Implemented Android-side
+/** Supplies candidates whose displayed [PlaylistCandidate.grade] lies inside
+ *  a band (both ends inclusive). Implemented Android-side
  *  on top of BoardRepository.searchClimbsSorted (layout + angle + size-fit
  *  + min-ascents already applied). */
 fun interface CandidateSource {
@@ -55,8 +68,11 @@ data class GenerationResult(
  *    which MUST repeat the same problem across sets).
  *  - Prefers unclimbed material, then quality; PROJECTING slots prefer the
  *    profile's open projects.
- *  - Widens the band stepwise (±0.5 V up to ±2 V) when a slot has no
- *    candidates; drops the slot (and its now-orphaned rest) if still dry.
+ *  - Widens the band a grade at a time, as far as the plan's type allows,
+ *    when a slot has no candidates — never past the plan's ceiling, and for
+ *    working slots never below the chosen range; then falls back to the
+ *    nearest grade the board really has, and only then drops the slot (and
+ *    its now-orphaned rest).
  *  - Randomness is seeded by the caller: picks among the top candidates so
  *    two "Neu generieren" runs don't return the identical list.
  */
@@ -120,7 +136,7 @@ object PlaylistFiller {
             plan.effectiveType != GeneratorType.MANUAL && uniqueBoardCandidates.isNotEmpty()) {
             val easiest = uniqueBoardCandidates.sortedBy { it.difficulty }
             val needed = easiest[(requiredUniqueClimbs - 1).coerceIn(0, easiest.lastIndex)]
-            maxOf(plan.hardCeiling, needed.difficulty)
+            maxOf(plan.hardCeiling, needed.grade)
         } else plan.hardCeiling
 
         plan.slots.forEach { slot ->
@@ -140,7 +156,8 @@ object PlaylistFiller {
                         slot.section == PlanSection.WARM_UP
                     val (pick, didWiden) = pickClimb(
                         slot, cachedSource, used, preferProjects, openProjects, selection,
-                        random, effectiveHardCeiling, plan.maxWidening, projectCandidates,
+                        random, effectiveHardCeiling, plan.maxWidening, plan.workFloor,
+                        projectCandidates,
                         uniqueBoardCandidates.takeIf {
                             plan.effectiveType != GeneratorType.MANUAL || isManualWarmUp
                         }.orEmpty(),
@@ -164,7 +181,7 @@ object PlaylistFiller {
         }
 
         return GenerationResult(
-            entries = entries.normalize(),
+            entries = entries.warmUpAscending().normalize(),
             droppedClimbs = dropped,
             widenedSlots = widened,
         )
@@ -180,6 +197,7 @@ object PlaylistFiller {
         random: Random,
         hardCeiling: Double,
         maxWidening: Double,
+        workFloor: Double?,
         projectCandidates: List<PlaylistCandidate>,
         boardCandidates: List<PlaylistCandidate>,
         preferBoardFallback: Boolean,
@@ -199,14 +217,26 @@ object PlaylistFiller {
                 return ordered.first() to false
             }
         }
+        // The chosen range binds the work, not the ladder underneath it. A
+        // warm-up slot may go as low as the board does and as high as the
+        // bottom of the range — on a board with nothing easier, the easiest
+        // working grade IS the warm-up — but never into the work itself.
+        // A range that starts below the board leaves nothing under it, so
+        // there the ladder reaches the board's easiest grade instead.
+        val warmUp = slot.section == PlanSection.WARM_UP
+        val lowest = if (warmUp) TrainingRanges.MIN_DIFFICULTY
+        else workFloor ?: TrainingRanges.MIN_DIFFICULTY
+        val boardFloor = boardCandidates.minOfOrNull { it.grade }
+        val warmUpCap = workFloor?.let { maxOf(it, boardFloor ?: it) } ?: hardCeiling
+        val cap = if (warmUp) minOf(warmUpCap, hardCeiling) else hardCeiling
         fun nearestBoardCandidate(): PlaylistCandidate? {
             val safe = boardCandidates.filter {
-                it.climbUuid !in used && it.difficulty <= hardCeiling
+                it.climbUuid !in used && it.grade in lowest..cap
             }
             if (safe.isEmpty()) return null
             fun distance(candidate: PlaylistCandidate): Double = when {
-                candidate.difficulty < slot.minDifficulty -> slot.minDifficulty - candidate.difficulty
-                candidate.difficulty > slot.maxDifficulty -> candidate.difficulty - slot.maxDifficulty
+                candidate.grade < slot.minDifficulty -> slot.minDifficulty - candidate.grade
+                candidate.grade > slot.maxDifficulty -> candidate.grade - slot.maxDifficulty
                 else -> 0.0
             }
             val nearestDistance = safe.minOf(::distance)
@@ -224,14 +254,19 @@ object PlaylistFiller {
         if (preferBoardFallback) {
             nearestBoardCandidate()?.let { return it to true }
         }
+        // The ladder wants mileage, whatever the work set's tolerance is.
+        val widenLimit = if (warmUp) maxOf(maxWidening, TrainingRanges.WIDEN_MAX_DEFAULT)
+        else maxWidening
         var widening = 0.0
-        while (widening <= maxWidening) {
+        while (widening <= widenLimit) {
             // Downwards is free — an easier climb than planned costs intensity,
             // not safety. Upwards stops at the plan's ceiling: widening used to
             // be symmetric, so a slot that found nothing could be served a climb
             // several grades above the cap the planner had just applied.
-            val upper = minOf(slot.maxDifficulty + widening, hardCeiling)
-            val lower = maxOf(slot.minDifficulty - widening, TrainingRanges.MIN_DIFFICULTY)
+            // A warm-up slot only ever widens downwards.
+            val upper = if (warmUp) minOf(slot.maxDifficulty, cap)
+            else minOf(slot.maxDifficulty + widening, cap)
+            val lower = maxOf(slot.minDifficulty - widening, lowest)
             val pool = source
                 .candidates(lower, upper)
                 .filter { it.climbUuid !in used }
@@ -295,6 +330,21 @@ object PlaylistFiller {
     }
 
     /** Strip rests orphaned by dropped climbs (leading/trailing/double). */
+    /**
+     * A warm-up only ever climbs. Its tiers sit two grades apart but each takes
+     * a grade either side, so two picks from neighbouring tiers could come out
+     * 6a then 5b — a ladder that steps down. Its climbs are put in order of
+     * difficulty; the rests between them keep their places.
+     */
+    private fun List<GeneratedEntry>.warmUpAscending(): List<GeneratedEntry> {
+        val slots = indices.filter { (this[it] as? GeneratedEntry.Climb)?.section == PlanSection.WARM_UP }
+        if (slots.size < 2) return this
+        val ordered = slots.map { this[it] as GeneratedEntry.Climb }.sortedBy { it.difficulty }
+        val out = toMutableList()
+        slots.forEachIndexed { k, index -> out[index] = ordered[k] }
+        return out
+    }
+
     private fun List<GeneratedEntry>.normalize(): List<GeneratedEntry> {
         val trimmed = dropWhile { it is GeneratedEntry.Rest }
             .dropLastWhile { it is GeneratedEntry.Rest }

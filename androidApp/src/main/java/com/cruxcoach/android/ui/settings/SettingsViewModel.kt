@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.data.kilter.KilterUploadTrigger
+import com.cruxcoach.android.nostr.model.MessageType
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -128,6 +129,11 @@ data class SettingsState(
     val announcementCatTip: Boolean = true,
     val announcementCatGeneral: Boolean = true,
     val unreadAnnouncements: Int = 0,
+    /** Unread developer replies behind each dev-contact row. */
+    val unreadChat: Int = 0,
+    val unreadBugs: Int = 0,
+    val unreadFeatures: Int = 0,
+    val unreadCrashes: Int = 0,
     val queuedCount: Int = 0,
     val productSizes: List<com.cruxcoach.data.repository.BoardSize> = emptyList(),
     val showDeleteBoardDataDialog: Boolean = false,
@@ -155,6 +161,7 @@ class SettingsViewModel @Inject constructor(
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
+    private val messageRepository: com.cruxcoach.android.data.NostrMessageRepository,
     private val queueManager: OfflineQueueManager,
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
@@ -191,6 +198,30 @@ class SettingsViewModel @Inject constructor(
                     seenCompletions = deletion.completions
                     _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_board_success)) }
                 }
+            }
+        }
+    }
+
+    /**
+     * Unread developer replies and announcements for the dev-contact badges.
+     * Re-read whenever the support page shows, so a thread read in between
+     * clears its badge.
+     */
+    fun refreshUnreadMessages() {
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            val unread = withContext(Dispatchers.IO) {
+                listOf(MessageType.CHAT, MessageType.BUG, MessageType.FEATURE, MessageType.CRASH)
+                    .map { messageRepository.getUnreadCountByType(it.label).toInt() }
+            }
+            val announcements = withContext(Dispatchers.IO) { announcementRepository.getUnreadCount().toInt() }
+            _state.update {
+                it.copy(
+                    unreadChat = unread[0],
+                    unreadBugs = unread[1],
+                    unreadFeatures = unread[2],
+                    unreadCrashes = unread[3],
+                    unreadAnnouncements = announcements,
+                )
             }
         }
     }
@@ -311,7 +342,16 @@ class SettingsViewModel @Inject constructor(
                     )
                 )
             }
-            _state.update { initialState }
+            // The batch result is built from scratch. Keep what the independent collectors in init
+            // may already have delivered, otherwise e.g. the manual relay start switch always
+            // showed "off" regardless of the stored value.
+            _state.update {
+                initialState.copy(
+                    relayManualStart = it.relayManualStart,
+                    boardSizeFrequency = it.boardSizeFrequency,
+                    boardSearchEnabled = it.boardSearchEnabled,
+                )
+            }
 
             launch {
                 kilterSyncEngine.uploadStatus.collect { upload ->
@@ -793,10 +833,15 @@ class SettingsViewModel @Inject constructor(
         get() = BoardBrand.entries.filter { it.isInteractive }
 
     fun showDeleteBoardDataDialog() {
-        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Start with nothing selected, like the logbook dialog below. With every
+        // board pre-ticked, tapping the one board to delete UNticked it — and the
+        // confirm then deleted all the others instead, and excluded them from
+        // future downloads.
+        _state.update { it.copy(showDeleteBoardDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun showDeleteUserDataDialog() {
-        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = deletableBrands.toSet()) }
+        // Irreversible: start with nothing selected so the user names what to delete.
+        _state.update { it.copy(showDeleteUserDataDialog = true, deleteDialogSelection = emptySet()) }
     }
     fun dismissDeleteDialog() { _state.update { it.copy(showDeleteBoardDataDialog = false, showDeleteUserDataDialog = false) } }
     fun dismissDeleteSuccess() { _state.update { it.copy(deleteSuccess = null) } }

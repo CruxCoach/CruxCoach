@@ -61,7 +61,8 @@ internal fun SessionSummarySheet(
                     modifier = Modifier.weight(1f)
                 )
                 HighlightCard(
-                    value = "${session.bidCount}",
+                    // Same definition as the logbook stats: every logged row counts at least one try.
+                    value = "${summary?.totalAttempts ?: session.bidCount}",
                     label = stringResource(R.string.board_session_summary_attempts),
                     color = OrangeAccent,
                     modifier = Modifier.weight(1f)

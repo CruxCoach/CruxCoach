@@ -44,6 +44,25 @@ class CatalogueImporter(private val handle: BoardDatabaseHandle) {
     var lastFailureDetail: String? = null
         private set
 
+    /** Release 0.2.3 geometry makes community climbs usable without a catalogue. */
+    fun seedBundledGeometry(source: String, brand: String): ImportResult = guarded {
+        withAttached(source, "geo") {
+            if (queryLong("SELECT COUNT(*) FROM main.placements WHERE board_brand = ?", brand) == 0L) {
+                val columns = mapOf(
+                    "placements" to "board_brand, placement_id, hole_id, set_id, x, y",
+                    "product_sizes" to "board_brand, id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename",
+                    "board_images" to "board_brand, id, product_size_id, layout_id, set_id, image_filename",
+                    "leds" to "board_brand, hole_id, product_size_id, position",
+                    "placement_roles" to "board_brand, id, name, led_color, screen_color",
+                )
+                for ((table, names) in columns) {
+                    exec("INSERT OR IGNORE INTO main.$table($names) SELECT $names FROM geo.$table WHERE board_brand = ?", brand)
+                }
+            }
+        }
+        result(brand)
+    }
+
     // ── Kilter: multi-chunk ──────────────────────────────────────────
 
     fun importKilterChunks(

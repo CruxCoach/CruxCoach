@@ -102,6 +102,8 @@ data class BoardLogbookState(
     val editComment: String = "",
     // Delete confirm
     val showDeleteConfirm: String? = null,
+    /** The delete confirmation was opened from the edit dialog; cancelling returns there. */
+    val reopenEditAfterDeleteCancel: Boolean = false,
     // Multi-select
     val selectedUuids: Set<String> = emptySet(),
     val showBatchDeleteConfirm: Boolean = false,
@@ -333,12 +335,29 @@ class BoardLogbookViewModel @Inject constructor(
         }
     }
 
-    private fun loadAscents() {
+    /** Reload after the screen becomes visible again. The ViewModel survives on the back
+     *  stack, so entries logged, edited or deleted in the climb detail were missing (and the
+     *  totals stale) until the logbook was left and reopened. */
+    private var resumedOnce = false
+
+    /** init already loads once; every later resume (return from a detail, app switch) reloads. */
+    fun onScreenResumed() {
+        if (resumedOnce) refreshAfterReturn() else resumedOnce = true
+    }
+
+    fun refreshAfterReturn() {
+        // Silent and at least as many rows as shown: a spinner would drop the scroll position.
+        loadAscents(silent = true)
+        refreshOwnPublishable()
+    }
+
+    private fun loadAscents(silent: Boolean = false) {
         viewModelScope.safeLaunch(TAG) {
-            _state.update { it.copy(isLoading = true, error = null) }
+            val limit = if (silent) maxOf(PAGE_SIZE, _state.value.ascents.size) else PAGE_SIZE
+            if (!silent) _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
-                    val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0).toMutableList()
+                    val list = personalBoardRepo.getUserLogbookPage(limit, 0).toMutableList()
                     val total = personalBoardRepo.countUserLogbook()
                     repairMissingDenormalized(list)
                     list to total
@@ -347,7 +366,7 @@ class BoardLogbookViewModel @Inject constructor(
                     isLoading = false,
                     ascents = ascents,
                     totalCount = count,
-                    canLoadMore = ascents.size >= PAGE_SIZE,
+                    canLoadMore = ascents.size >= limit,
                     hasData = ascents.isNotEmpty()
                 ) }
                 // Preload stats data in background so sheet opens instantly
@@ -803,8 +822,22 @@ class BoardLogbookViewModel @Inject constructor(
         _state.update { it.copy(showDeleteConfirm = uuid) }
     }
 
+    /** Delete tapped inside the edit dialog: hide it, but bring it back if the user cancels. */
+    fun requestDeleteFromEdit() {
+        val uuid = _state.value.editingAscentUuid ?: return
+        _state.update {
+            it.copy(showEditDialog = false, showDeleteConfirm = uuid, reopenEditAfterDeleteCancel = true)
+        }
+    }
+
     fun dismissDeleteConfirm() {
-        _state.update { it.copy(showDeleteConfirm = null) }
+        _state.update {
+            it.copy(
+                showDeleteConfirm = null,
+                showEditDialog = it.reopenEditAfterDeleteCancel,
+                reopenEditAfterDeleteCancel = false,
+            )
+        }
     }
 
     fun confirmDeleteAscent() {
@@ -816,14 +849,21 @@ class BoardLogbookViewModel @Inject constructor(
                     if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                     else personalBoardRepo.deleteAscent(uuid)
                 }
-                _state.update { it.copy(showDeleteConfirm = null, selectedUuids = it.selectedUuids - uuid) }
+                _state.update {
+                    it.copy(
+                        showDeleteConfirm = null,
+                        reopenEditAfterDeleteCancel = false,
+                        editingAscentUuid = null,
+                        selectedUuids = it.selectedUuids - uuid,
+                    )
+                }
                 reloadAscents()
                 zoneManager.recompute()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "confirmDeleteAscent failed uuid=$uuid", e)
-                _state.update { it.copy(showDeleteConfirm = null) }
+                _state.update { it.copy(showDeleteConfirm = null, reopenEditAfterDeleteCancel = false) }
             }
         }
     }

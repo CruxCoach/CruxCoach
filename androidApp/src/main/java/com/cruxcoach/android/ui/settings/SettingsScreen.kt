@@ -4,6 +4,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,11 +39,12 @@ import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    startInBackup: Boolean = false,
+    startPage: SettingsPage? = null,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
+    onNavigateToLicenses: () -> Unit = {},
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
@@ -112,7 +117,7 @@ fun SettingsScreen(
 
 
     SettingsLayout(
-        startInBackup = startInBackup,
+        startPage = startPage,
         isLoading = state.isLoading,
         openUpdates = updaterDialogRequested,
         onNavigateBack = onNavigateBack,
@@ -141,7 +146,10 @@ fun SettingsScreen(
             }
             SettingsPage.BOARD -> {
                 val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
-                val settingsBoardBrand = settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand
+                val settingsCards = boardSettingsCards(activeBoardBrand)
+                val settingsBoardBrand = (settingsBoardWire?.let(BoardBrand::fromWire) ?: activeBoardBrand)
+                    .takeIf { brand -> settingsCards.any { it.brand == brand } }
+                    ?: settingsCards.first().brand
                 SettingsSectionCard {
                     BoardModelSection(
                         titleRes = R.string.settings_active_board_title,
@@ -194,7 +202,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        boardSettingsCards(activeBoardBrand).forEach { card ->
+                        settingsCards.forEach { card ->
                             BoardHubCard(
                                 card = card,
                                 selectedForSettings = settingsBoardBrand == card.brand,
@@ -207,30 +215,11 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
-                    if (settingsBoardBrand != activeBoardBrand) {
-                        Text(
-                            stringResource(R.string.settings_board_inactive_hint, settingsBoardBrand.displayName),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Button(
-                            onClick = {
-                                boardPickerWire = settingsBoardBrand.wireValue
-                                showBoardModelDialog = true
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        ) {
-                            Text(stringResource(R.string.settings_board_make_active))
-                        }
-                    }
                     if (settingsBoardBrand == BoardBrand.MOONBOARD) {
                         MoonBoardLedPositionSection(
                             ledMode = state.moonBoardLedMode,
                             onModeChange = viewModel::updateMoonBoardLedMode,
                         )
-                    }
-                    if (settingsBoardBrand == activeBoardBrand && settingsBoardBrand != BoardBrand.MOONBOARD) {
-                        BoardProjectionLifecycleHint(activeBoardBrand)
                     }
                     if (showsKilterLedColors(settingsBoardBrand)) {
                         HorizontalDivider()
@@ -315,13 +304,13 @@ fun SettingsScreen(
                 }
             }
             SettingsPage.CATALOGUES -> {
+                BoardSyncInlineCard()
                 SettingsSectionCard {
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
                     )
                 }
-                BoardSyncInlineCard()
             }
             SettingsPage.BACKUP -> {
                 SettingsSectionCard {
@@ -371,11 +360,14 @@ fun SettingsScreen(
                 }
             }
             SettingsPage.SUPPORT -> {
+                // Also runs on return from a thread, which may have cleared a badge.
+                LaunchedEffect(Unit) { viewModel.refreshUnreadMessages() }
                 SettingsSectionCard {
                     DevContactSection(
-                        unreadChat = 0,
-                        unreadBugs = 0,
-                        unreadFeatures = 0,
+                        unreadChat = state.unreadChat,
+                        unreadBugs = state.unreadBugs,
+                        unreadFeatures = state.unreadFeatures,
+                        unreadCrashes = state.unreadCrashes,
                         unreadAnnouncements = state.unreadAnnouncements,
                         crashReportOptIn = state.crashReportOptIn,
                         announcementsEnabled = state.announcementsEnabled,
@@ -414,6 +406,25 @@ fun SettingsScreen(
                     icon = Icons.Outlined.Share,
                     onClick = onNavigateToAppShare,
                 )
+                val uriHandler = LocalUriHandler.current
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_licenses_title),
+                    summary = stringResource(R.string.settings_licenses_desc),
+                    icon = Icons.Outlined.Gavel,
+                    onClick = onNavigateToLicenses,
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_privacy_title),
+                    summary = stringResource(R.string.settings_privacy_desc),
+                    icon = Icons.Outlined.Policy,
+                    onClick = { uriHandler.openUri(PRIVACY_NOTICE_URL) },
+                )
+                SettingsDestinationRow(
+                    title = stringResource(R.string.settings_source_title),
+                    summary = stringResource(R.string.settings_source_desc),
+                    icon = Icons.Outlined.Code,
+                    onClick = { uriHandler.openUri(SOURCE_CODE_URL) },
+                )
             }
         }
     }
@@ -423,7 +434,7 @@ fun SettingsScreen(
     backupState.pendingRestore?.let { info ->
         BackupRestoreDialog(
             info = info,
-            boardImportInProgress = backupState.boardImportInProgress,
+            catalogueLoading = backupState.catalogueLoading,
             onConfirm = { backupViewModel.confirmRestore() },
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
@@ -451,7 +462,7 @@ fun SettingsScreen(
                     R.string.settings_backup_restored,
                     snackbar.logbookEntries,
                     snackbar.lists,
-                )
+                ) + if (snackbar.linksPending) " " + stringResource(R.string.restore_links_pending) else ""
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
@@ -639,3 +650,9 @@ private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (no
     is DeleteRemoteNote.UnexpectedError ->
         stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }
+
+/** Public privacy notice for the site and the app (README "Privacy notice"). */
+private const val PRIVACY_NOTICE_URL = "https://cruxcoach.org/privacy.html"
+
+/** Primary repository (README: GitHub primary, Codeberg mirror). */
+private const val SOURCE_CODE_URL = "https://github.com/CruxCoach/CruxCoach"

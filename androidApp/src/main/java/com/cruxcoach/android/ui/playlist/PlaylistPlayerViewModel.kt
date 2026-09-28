@@ -12,10 +12,12 @@ import com.cruxcoach.android.ui.board.ClimbRenderData
 import com.cruxcoach.android.ui.board.ClimbRenderLoader
 import com.cruxcoach.android.ui.board.EnhancedSessionSummary
 import com.cruxcoach.android.ui.board.SessionSummaryBuilder
+import com.cruxcoach.android.ui.board.openQuickAttempt
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.QuickLogSendInput
 import com.cruxcoach.domain.board.IntensityZones
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -121,7 +123,9 @@ class PlaylistPlayerViewModel @Inject constructor(
      * Quick-log for the current climb: send (isSend) or attempt. Same
      * write path as the detail screen's AscentLogger — ascent/bid row,
      * Verlauf entry for sends, session counters, zone recompute — but
-     * one tap instead of dialog + form. Defaults: 1 attempt, no comment.
+     * one tap instead of dialog + form. Like the detail screen's quick log,
+     * repeated attempts add to one open attempt row and a send promotes that
+     * row, so the send carries its real number of tries.
      */
     fun quickLog(isSend: Boolean) {
         val climb = _state.value.render?.climb ?: return
@@ -130,8 +134,30 @@ class PlaylistPlayerViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val uuid = java.util.UUID.randomUUID().toString()
                 val now = com.cruxcoach.util.DateTimeUtil.nowIso()
+                val open = openQuickAttempt(
+                    history = personalBoardRepo.getUserHistoryForClimb(climb.uuid),
+                    angle = angle.toLong(),
+                    isMirror = false,
+                    since = boardSessionManager.state.value.startedAt,
+                )
                 if (isSend) {
-                    personalBoardRepo.insertAscent(
+                    if (open != null) personalBoardRepo.promoteQuickBidToSend(
+                        QuickLogSendInput(
+                            uuid = open.uuid,
+                            climbUuid = climb.uuid,
+                            angle = angle.toLong(),
+                            isMirror = false,
+                            bidCount = open.bidCount + 1,
+                            difficulty = climb.difficultyAverage?.toLong(),
+                            climbedAt = now,
+                            climbName = climb.name,
+                            difficultyAverage = climb.difficultyAverage,
+                            climbFrames = climb.frames,
+                            framesCount = climb.framesCount,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
+                        )
+                    ) else personalBoardRepo.insertAscent(
                         uuid = uuid,
                         climbUuid = climb.uuid,
                         angle = angle.toLong(),
@@ -160,6 +186,12 @@ class PlaylistPlayerViewModel @Inject constructor(
                         layoutId = climb.layoutId,
                         climbedAt = now,
                         recordedAt = now,
+                    )
+                } else if (open != null) {
+                    personalBoardRepo.updateBid(
+                        uuid = open.uuid,
+                        bidCount = open.bidCount + 1,
+                        comment = open.comment,
                     )
                 } else {
                     personalBoardRepo.insertBid(
@@ -209,8 +241,8 @@ class PlaylistPlayerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             val gradeScale = userPreferences.gradeScale.first()
             val summary = withContext(Dispatchers.IO) {
-                val ascents = personalBoardRepo.getUserAscentsBetween(
-                    finished.startedAt, finished.endedAt ?: finished.startedAt
+                val ascents = com.cruxcoach.android.ui.board.SessionSummaryBuilder.sessionRows(
+                    personalBoardRepo, finished.startedAt, finished.endedAt ?: finished.startedAt
                 )
                 // True flashes need the FULL history — a first-try repeat of
                 // an old project must not count as a flash.

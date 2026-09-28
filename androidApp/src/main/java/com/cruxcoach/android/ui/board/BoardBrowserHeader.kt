@@ -2,6 +2,9 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -73,7 +76,6 @@ internal fun BoardBrowserHeader(
     isBleConnected: Boolean,
     angle: Int,
     onAngle: () -> Unit,
-    activeFilterCount: Int = 0,
     onOpenMenu: () -> Unit,
     onBoardPicker: () -> Unit,
     onBluetooth: () -> Unit,
@@ -82,7 +84,9 @@ internal fun BoardBrowserHeader(
     onLists: () -> Unit = {},
     onSettings: () -> Unit = {},
     logbookTour: Boolean = false,
-    onSkipTour: () -> Unit = {},
+    /** Reports whether the logbook action currently sits in the overflow menu, so the tour can
+     *  point at where it actually is instead of hedging about narrow screens. */
+    onLogbookPlacement: (inOverflow: Boolean) -> Unit = {},
 ) {
     val angleDescription = stringResource(R.string.board_angle_change, angle)
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, shadowElevation = 1.dp) {
@@ -92,11 +96,18 @@ internal fun BoardBrowserHeader(
             val familyWidth = with(density) {
                 measurer.measure(AnnotatedString(context.family), MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width.toDp()
             }
-            val minimumBoardWidth = (familyWidth + 20.dp).coerceAtLeast(80.dp)
+            // The picker only takes what its content needs (capped), so short names leave room for more direct actions.
+            val preferredBoardWidth = with(density) {
+                val titleWidth = measurer.measure(AnnotatedString(context.title), MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), softWrap = false).size.width
+                val subtitleWidth = measurer.measure(AnnotatedString(context.subtitle), MaterialTheme.typography.labelSmall, softWrap = false).size.width
+                maxOf(titleWidth, subtitleWidth).toDp()
+            }.plus(22.dp).coerceIn(56.dp, 132.dp)
+            val minimumBoardWidth = (familyWidth + 20.dp).coerceAtLeast(80.dp).coerceAtMost(preferredBoardWidth)
             val allFit = maxWidth >= 192.dp + minimumBoardWidth + 144.dp
             val directCount = if (allFit) 3 else ((maxWidth - 240.dp - minimumBoardWidth).value / 48f).toInt().coerceIn(0, 2)
             val boardWidth = (maxWidth - 192.dp - (directCount * 48).dp - if (allFit) 0.dp else 48.dp)
-                .coerceAtMost(132.dp).coerceAtLeast(1.dp)
+                .coerceAtMost(preferredBoardWidth).coerceAtLeast(1.dp)
+            LaunchedEffect(directCount) { onLogbookPlacement(directCount == 0) }
             var overflowOpen by remember { mutableStateOf(false) }
             val actions = listOf(
                 Triple(R.string.board_logbook_title, Icons.Default.Book, onLogbook),
@@ -153,9 +164,7 @@ internal fun BoardBrowserHeader(
                 }
                 IconButton(onClick = onFilter, modifier = Modifier.size(48.dp).testTag("board_filter_toggle")
                     .tourTarget(TourTarget.FILTER)) {
-                    BadgedBox(badge = { if (activeFilterCount > 0) Badge { Text(activeFilterCount.toString()) } }) {
-                        Icon(Icons.Default.Tune, stringResource(R.string.cd_filter))
-                    }
+                    Icon(Icons.Default.Tune, stringResource(R.string.cd_filter))
                 }
                 actions.take(directCount).forEachIndexed { index, (label, icon, action) ->
                     IconButton(onClick = action, modifier = Modifier.size(48.dp)
@@ -172,14 +181,25 @@ internal fun BoardBrowserHeader(
                     }
                     DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
                         actions.drop(directCount).forEachIndexed { index, (label, icon, action) ->
+                            // During the tour the menu is the spotlight's continuation: mark the
+                            // one entry to tap the same way the highlighted button was marked.
+                            val isTourTarget = logbookTour && directCount + index == 0
                             DropdownMenuItem(text = { Text(stringResource(label)) },
                                 leadingIcon = { Icon(icon, null) },
-                                enabled = !logbookTour || directCount + index == 0,
-                                modifier = Modifier.testTag("board_header_overflow_action_${directCount + index}"),
+                                enabled = !logbookTour || isTourTarget,
+                                modifier = Modifier
+                                    .testTag("board_header_overflow_action_${directCount + index}")
+                                    .then(
+                                        if (isTourTarget) {
+                                            Modifier
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                                .border(2.dp, OrangeAccent, RoundedCornerShape(8.dp))
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 onClick = { overflowOpen = false; action() })
                         }
-                        if (logbookTour) DropdownMenuItem(text = { Text(stringResource(R.string.tour_skip)) },
-                            onClick = { overflowOpen = false; onSkipTour() })
                     }
                 }
             }

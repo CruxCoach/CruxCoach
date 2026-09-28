@@ -806,9 +806,13 @@ object AppModule {
         personalBoardRepo: PersonalBoardRepository,
         secureDatabase: SecureDatabase,
         userPreferences: UserPreferences,
-        uploadDiagnostics: com.cruxcoach.android.data.kilter.KilterUploadDiagnostics
+        uploadDiagnostics: com.cruxcoach.android.data.kilter.KilterUploadDiagnostics,
+        pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>,
     ): KilterSyncEngine {
-        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences, uploadDiagnostics)
+        return KilterSyncEngine(
+            apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences,
+            uploadDiagnostics, pendingImports,
+        )
     }
 
     @Provides

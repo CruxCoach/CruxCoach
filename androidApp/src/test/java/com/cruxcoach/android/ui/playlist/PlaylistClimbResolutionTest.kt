@@ -50,4 +50,15 @@ class PlaylistClimbResolutionTest {
 
         assertNull(climbs[PlaylistDetailViewModel.normUuidKey("ffffffff-0000-1111-2222-333333333333")])
     }
+    @Test
+    fun `pinned step shows the grade of its own angle and never another angle's grade`() {
+        val uuid = "aabbccdd00112233aabbccdd00112233"
+        val anyAngle = TestClimb.stats(uuid = uuid, difficulty = 14.0)
+        val at40 = TestClimb.stats(uuid = uuid, difficulty = 22.0)
+        val pinned = mapOf((PlaylistDetailViewModel.normUuidKey(uuid) to 40) to at40)
+
+        assertEquals(22.0, PlaylistDetailViewModel.gradeForPinnedAngle(anyAngle, pinned, uuid, 40L)?.difficultyAverage)
+        assertNull(PlaylistDetailViewModel.gradeForPinnedAngle(anyAngle, pinned, uuid, 45L)?.difficultyAverage)
+        assertEquals(14.0, PlaylistDetailViewModel.gradeForPinnedAngle(anyAngle, pinned, uuid, null)?.difficultyAverage)
+    }
 }

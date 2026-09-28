@@ -112,6 +112,43 @@ object BoardClimbParser {
     fun isClimbConcat(frames: String): Boolean = frames.trimStart().startsWith("h")
 
     /**
+     * One hold of a Kilter `climbConcat`, with the frame range it is present
+     * for.
+     *
+     * The full wire form is `h{holeId}p{roleId}[s{startFrame}][e{endFrame}]`.
+     * [RANGE_PATTERN] deliberately ignores the optional `s`/`e` suffixes —
+     * they only occur on multi-frame routes and the common single-frame case
+     * does not need them — but a route parsed without them collapses into one
+     * frame, losing its sequence. [parseClimbConcat] keeps them.
+     *
+     * `holeId`, not placement id: the leading number names a mounting hole.
+     */
+    data class ConcatHold(
+        val holeId: Int,
+        val roleId: Int,
+        val startFrame: Int,
+        val endFrame: Int?,
+    )
+
+    private val CONCAT_PATTERN = Regex("""h(\d+)p(\d+)(?:s(\d+))?(?:e(\d+))?""")
+
+    /** Parses a `climbConcat` including its frame ranges. Empty when the
+     *  string is not in that format. */
+    fun parseClimbConcat(frames: String): List<ConcatHold> {
+        if (!isClimbConcat(frames)) return emptyList()
+        return CONCAT_PATTERN.findAll(frames).mapNotNull { m ->
+            val hole = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val role = m.groupValues[2].toIntOrNull() ?: return@mapNotNull null
+            ConcatHold(
+                holeId = hole,
+                roleId = HoldRole.normalize(role),
+                startFrame = m.groupValues[3].toIntOrNull() ?: 1,
+                endFrame = m.groupValues[4].toIntOrNull(),
+            )
+        }.toList()
+    }
+
+    /**
      * Parse a single frame section, extracting hold entries and
      * ignoring x{id} removal entries (only relevant in multi-frame context).
      * Auto-detects delta-format (p…r…) vs. range-format (h…p…).

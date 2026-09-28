@@ -16,12 +16,14 @@ import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.data.repository.WorkoutRepository
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -83,13 +85,11 @@ class BackupRepository @Inject constructor(
      *  for the rationale. */
     private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
-    /** Read-only access for the [restore]-time gate that suspends until
-     *  any in-flight board-sync finishes — prevents SQLITE_BUSY when
-     *  the typical fresh-install flow (onboarding triggers board-sync,
-     *  user immediately taps "restore from cloud-backup") tries to
-     *  write own-climbs into the same `climbs` table the importer is
-     *  bulk-loading into. Same pattern as [com.cruxcoach.android.community.ClimbCreatorRepository]. */
-    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
+    /** Own climbs go to the board DB, which a catalogue import holds (the
+     *  typical fresh install: onboarding starts the download, the user
+     *  restores right away). They are written now or staged; the logbook
+     *  never waits for the catalogue. */
+    private val pendingImports: com.cruxcoach.android.data.PendingImports,
 ) {
 
     /**
@@ -381,20 +381,6 @@ class BackupRepository @Inject constructor(
      * the worker.
      */
     suspend fun restore(info: BackupInfo): BackupRestoreResult = pipelineMutex.withLock {
-        // Wait out any in-flight board-sync before we start writing into
-        // the (unencrypted) board DB's climbs table — concurrent writers
-        // race for the SQLite writer-lock and bulk-import wins on
-        // duration, which would surface here as SQLITE_BUSY. The typical
-        // fresh-install flow is: onboarding kicks off board-sync, user
-        // taps Settings → Cloud-Restore while sync is still importing
-        // 190K rows. The gate is a no-op when no sync is in flight
-        // (common case for users restoring from a settled state).
-        if (boardSyncManager.state.value.isSyncing) {
-            android.util.Log.i(TAG, "restore: awaiting board-sync to finish before write")
-            boardSyncManager.state.first { !it.isSyncing }
-            android.util.Log.i(TAG, "restore: board-sync done, proceeding")
-        }
-
         val started = System.currentTimeMillis()
         val pointer = info.pointer
 
@@ -452,21 +438,35 @@ class BackupRepository @Inject constructor(
         // pubkey check catches bookkeeping bugs (re-imported own old
         // nsec, mid-flow identity flip before A2 clears ran, etc.)
         // before any row is written.
-        val importResult = importRetryingOnDbLock {
-            CruxCoachBackup.import(
-                jsonString = json,
-                selectedCategories = CruxCoachBackup.Category.entries.toSet(),
-                userRepository = userRepository,
-                bodyStatRepository = bodyStatRepository,
-                workoutRepository = workoutRepository,
-                climbRepository = climbRepository,
-                planRepository = planRepository,
-                personalBoardRepo = personalBoardRepo,
-                boardRepository = boardRepository,
-                transactionRunner = transactionRunner,
-                expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
-            )
+        // Off the caller's (main) thread: it now runs alongside a catalogue
+        // download instead of after it.
+        val logbookResult = withContext(Dispatchers.IO) {
+            importRetryingOnDbLock {
+                CruxCoachBackup.import(
+                    jsonString = json,
+                    selectedCategories = CruxCoachBackup.Category.entries.toSet(),
+                    userRepository = userRepository,
+                    bodyStatRepository = bodyStatRepository,
+                    workoutRepository = workoutRepository,
+                    climbRepository = climbRepository,
+                    planRepository = planRepository,
+                    personalBoardRepo = personalBoardRepo,
+                    boardRepository = boardRepository,
+                    transactionRunner = transactionRunner,
+                    expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
+                    restoreOwnClimbsNow = false,
+                )
+            }
         }
+        // The logbook is in; own climbs are written now or after the catalogue import.
+        val own = withContext(Dispatchers.IO) {
+            pendingImports.restoreOrStageOwnClimbs(json, adoptLocalDraftsForPubkey = null)
+        }
+        val importResult = logbookResult.copy(
+            ownClimbs = own.restored,
+            skippedDuplicates = logbookResult.skippedDuplicates + own.skipped,
+            pendingOwnClimbs = own.staged,
+        )
 
         // 4 — cache dataKey for future backups (self-encrypt via NIP-44)
         val wrappedFresh = nip44EncryptToSelf(dataKeyHex)
@@ -495,20 +495,11 @@ class BackupRepository @Inject constructor(
 
     /**
      * Retry the secure-DB import when it fails with a transient SQLite
-     * lock ("database is locked" / "busy"). Root cause: the secure DB
-     * ATTACHes the unencrypted board DB to resolve ascent→climb names,
-     * so the very first ascent step JOINs the board DB — which collides
-     * with an in-progress board-catalogue bulk import (index rebuilds /
-     * checkpoints can hold the board-DB write lock past the connection's
-     * 5 s busy_timeout). A fresh-install "restore while boards are still
-     * downloading" then rolled the whole secure transaction back to zero
-     * and surfaced only as a transient generic snackbar. The import is
-     * idempotent (UUID dedup + name-merged lists), so re-running after a
-     * short backoff — by which point the offending board-DB batch has
-     * committed — completes cleanly. `restore()` already waits for
-     * `isSyncing` to clear up front; this covers the residual windows it
-     * can't (ensureActiveBoardCatalogue runs before that guard; the
-     * detached post-sync ANALYZE runs after it).
+     * lock ("database is locked" / "busy"), e.g. a background logbook
+     * refresh holding the secure DB. The import is idempotent (UUID dedup +
+     * name-merged lists), so re-running after a short backoff completes
+     * cleanly. The board DB is not involved: own climbs are written or
+     * staged afterwards ([com.cruxcoach.android.data.PendingImports]).
      */
     private suspend fun <T> importRetryingOnDbLock(block: () -> T): T {
         val maxAttempts = 4

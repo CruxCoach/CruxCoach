@@ -85,6 +85,21 @@ class BoardStatsComputerTest {
     }
 
     @Test
+    fun `custom range includes both boundary days but not the day after`() {
+        val rows = listOf(
+            ascent(climbedAt = "2026-02-28T23:59:00"),
+            ascent(climbedAt = "2026-03-01T00:01:00"),
+            ascent(climbedAt = "2026-03-31T23:59:00"),
+            ascent(climbedAt = "2026-04-01T20:00:00Z"),
+        )
+        val out = BoardStatsComputer.filterByInterval(
+            rows, StatsTimeInterval.ALL,
+            customFrom = java.time.LocalDate.of(2026, 3, 1), customTo = java.time.LocalDate.of(2026, 3, 31),
+        )
+        assertEquals(listOf("2026-03-01T00:01:00", "2026-03-31T23:59:00"), out.map { it.climbedAt })
+    }
+
+    @Test
     fun `filterByInterval DAYS_30 drops ascents older than cutoff`() {
         val todayStr = today.toString()
         val old = today.minusDays(90).toString()

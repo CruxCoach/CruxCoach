@@ -115,7 +115,24 @@ class BoardStateManager @Inject constructor(
                 return
             }
             Log.d(TAG, "RESTORE uuid=${uuid.take(8)} angle=$angle")
-            setLastClimb(uuid, angle, projectionSurvivesDisconnect)
+            // Keep the original time. Restoring through setLastClimb saved it
+            // as new, so every app start inside the window began another 30
+            // minutes and a climb could stay "on the board" indefinitely.
+            val name = withContext(Dispatchers.IO) {
+                climbNameResolver.resolveName(uuid, angle)
+            }
+            val restored = LastBoardClimb(
+                uuid = uuid,
+                angle = angle,
+                name = name,
+                timestamp = persistedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+            )
+            // A climb set while the name was resolving is newer; keep it.
+            if (_lastClimb.compareAndSet(null, restored)) {
+                val elapsed = if (persistedAt > 0) age.coerceIn(0L, STALE_THRESHOLD_MS) else 0L
+                scheduleStaleCleanup(STALE_THRESHOLD_MS - elapsed)
+            }
         }
     }
 
@@ -158,10 +175,10 @@ class BoardStateManager @Inject constructor(
      * Schedules a coroutine that clears [_lastClimb] after [STALE_THRESHOLD_MS].
      * Resets on every new climb so only truly idle boards get cleared.
      */
-    private fun scheduleStaleCleanup() {
+    private fun scheduleStaleCleanup(delayMs: Long = STALE_THRESHOLD_MS) {
         staleJob?.cancel()
         staleJob = scope.launch {
-            delay(STALE_THRESHOLD_MS)
+            delay(delayMs)
             Log.d(TAG, "STALE — clearing last climb after ${STALE_THRESHOLD_MS / 60_000}min")
             _lastClimb.value = null
         }

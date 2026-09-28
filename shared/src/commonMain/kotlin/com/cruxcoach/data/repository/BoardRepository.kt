@@ -1,6 +1,7 @@
 package com.cruxcoach.data.repository
 
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.BoardClimbParser
 
 /**
@@ -465,6 +466,11 @@ interface BoardClimbQueries {
     /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
      *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
     fun hasClimbsForBrand(boardBrand: String): Boolean
+    /** Whether a catalogue meta import finished (its sync states are present). */
+    fun hasCatalogueSyncState(): Boolean = false
+    /** Difficulty of the easiest graded, listed climb this board has at [angle],
+     *  or null without one. An index walk, cheap enough for every profile load. */
+    fun lowestGradedDifficulty(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double): Double? = null
     /** Presence gate for the MoonBoard hold-set filter (FEAT-049): true once
      *  the CATALOGUE carries a real `hsm` for any MoonBoard row. The value is
      *  produced by the build pipeline, so before that ships every row is 0 and
@@ -496,6 +502,13 @@ interface BoardClimbQueries {
      *  climbs are preserved. */
     fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
+
+    /**
+     * CruxCoach community climbs among [uuids] that Kilter never accepted.
+     * Their logs must not go to a Kilter account: Kilter does not know the
+     * climb. Defaults to none so fakes keep the plain upload behaviour.
+     */
+    fun communityOnlyClimbUuids(uuids: Collection<String>): Set<String> = emptySet()
     /** Format-blind existence/identity resolution: returns the CANONICAL
      *  stored uuid of the climb matching [uuid] across the DB's mixed uuid
      *  spellings (legacy nodash-UPPERCASE curated rows vs new-world
@@ -525,6 +538,16 @@ interface BoardClimbQueries {
      *  per climb. Fallback for list display so MoonBoard problems set only at
      *  a non-default angle (e.g. Masters 25°) aren't dropped. */
     fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats>
+
+    /** Schwierigkeit je Climb für GENAU [angle], als normalisierter Schlüssel
+     *  auf den Wert. [getClimbsByUuidsAnyAngle] kollabiert die Winkel und
+     *  liefert einen beliebigen — für Name und Frames richtig, für den Grad
+     *  nicht: derselbe Boulder steht bei 0° und 40° mehrere Grade
+     *  auseinander. Fehlt die Zeile für den Winkel, fehlt der Eintrag hier,
+     *  statt mit einem fremden Winkel beantwortet zu werden.
+     *  Default leer, damit Test-Fakes unverändert übersetzen. */
+    fun getClimbDifficultiesForAngle(uuids: Collection<String>, angle: Int): Map<String, Double> =
+        emptyMap()
     /** Active-board-scoped uuid resolution at [angle] (user lists). Returns only
      *  climbs on the active board ([boardBrand] + [layoutId]); when
      *  [boardBrand] == "kilter" ALSO includes Kilter climbs from other layouts
@@ -560,6 +583,8 @@ interface BoardClimbQueries {
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
     fun getAllPlacements(boardBrand: String = "kilter"): List<BoardPlacement>
+    /** Whether [boardBrand] has any hold geometry, seeded or imported. */
+    fun hasPlacementsForBrand(boardBrand: String): Boolean = getAllPlacements(boardBrand).isNotEmpty()
     /** Placements restricted to the set_ids that the active layout actually
      *  paints onto the board photo (one row per layered board_image). The
      *  unfiltered [getAllPlacements] mixes in placements from every set
@@ -601,6 +626,22 @@ interface BoardLayoutQueries {
      *  board community climb on the right physical board even when the
      *  user's preferred layout differs from the climb's. */
     fun getProductSizesForLayout(layoutId: Int, boardBrand: String = "kilter"): List<Int>
+
+    /** Which layout a product size belongs to — every Kilter size maps to
+     *  exactly one. A Kilter log's `product_layout_uuid` names a SIZE, so
+     *  this is how it becomes a layout instead of being stored as one.
+     *  Default null so test fakes that model no board geometry compile. */
+    fun getLayoutForProductSize(productSizeId: Int, boardBrand: String = "kilter"): Long? = null
+
+    /** Which layout a climb's holds belong to, read from the HOLE ids a
+     *  Kilter `climbConcat` carries. Served by the geometry bundled in the
+     *  APK, so it answers before any catalogue download. Default null, as
+     *  above. */
+    fun getLayoutForHoles(holeIds: Collection<Int>, boardBrand: String = "kilter"): Long? = null
+
+    /** The placement a hole carries inside [layoutId] — how a `climbConcat`
+     *  becomes the placement-id frames every renderer expects. Default null. */
+    fun getPlacementForHoleInLayout(holeId: Int, layoutId: Long, boardBrand: String = "kilter"): Long? = null
     /** FEAT-031: a sensible default active-board config for an Aurora board,
      *  derived from its just-synced catalogue — the most-climbed layout and
      *  the largest product_size. Lets the picker configure the active board
@@ -1513,7 +1554,8 @@ interface CommunityClimbQueries {
     /** Look up an existing climb by frames_hash for duplicate detection, scoped
      *  to [boardBrand] (frames_hash folds in layout_id but not the brand, and
      *  layout_id=1 is shared across boards). */
-    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow?
+    /** A climb with the same holds, the [ownPubkey]'s own first; deleted ones excluded. */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String, ownPubkey: String?): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
     fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
 
@@ -1561,3 +1603,18 @@ interface BoardRepository :
     BoardLayoutQueries,
     BoardWriteOperations,
     CommunityClimbQueries
+
+/**
+ * Spelling-blind climb lookup: every spelling the catalogue is known to store
+ * ([ClimbUuid.spellings]) on the uuid index, then the normalized scan for
+ * anything else. Call sites used to hand-roll a ladder of case and hyphenation
+ * variants, each covering a different subset, so the same climb could open on
+ * the detail screen and be missing from the session queue.
+ *
+ * Deliberately an extension, not a member with a default body: mockk mocks
+ * interface defaults too, so a member would return null in every test that
+ * fakes [BoardRepository] instead of running this lookup.
+ */
+fun BoardRepository.getClimbByUuidAnySpelling(uuid: String, angle: Int): ClimbWithStats? =
+    ClimbUuid.spellings(uuid).firstNotNullOfOrNull { getClimbByUuid(it, angle) }
+        ?: getClimbByUuidNormalized(uuid, angle)

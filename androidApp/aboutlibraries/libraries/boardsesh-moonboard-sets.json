@@ -1,0 +1,14 @@
+{
+  "uniqueId": "com.boardsesh:moonboard-hold-sets",
+  "name": "BoardSesh MoonBoard hold-set map",
+  "description": "Which grid cells belong to which MoonBoard hold set, transcribed from BoardSesh (packages/shared/board-config) into MoonBoardHoldSets.kt.",
+  "website": "https://github.com/boardsesh/boardsesh",
+  "developers": [
+    {
+      "name": "BoardSesh contributors"
+    }
+  ],
+  "licenses": [
+    "Apache-2.0"
+  ]
+}

@@ -3,6 +3,8 @@ package com.cruxcoach.android.ui.common
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CellTower
@@ -29,7 +31,7 @@ internal fun BleStatusExpanded(
     state: BleShareUiState,
     effectiveOnBoard: OnBoardClimbEntry?,
     onCollapse: () -> Unit,
-    onClimbTapped: ((uuid: String, angle: Int) -> Unit)?,
+    onClimbTapped: (uuid: String, angle: Int) -> Unit,
     onRequestDisconnect: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null,
@@ -37,14 +39,33 @@ internal fun BleStatusExpanded(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onCollapse),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = OrangeAccent.copy(alpha = 0.10f)
         ),
         shape = RoundedCornerShape(14.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
+            // Collapsing belongs to the arrow alone: the rows below are tap targets of their
+            // own (open climb, open player), and a card-wide collapse swallowed those taps.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.settings_sharing_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onCollapse, modifier = Modifier.testTag("ble_status_collapse")) {
+                    Icon(
+                        Icons.Filled.ExpandLess,
+                        contentDescription = stringResource(R.string.cd_collapse),
+                        tint = OrangeAccent,
+                    )
+                }
+            }
             // Bug 1: Session queue section (shown when own session active)
             val session = state.ownSession
             if (session != null) {
@@ -165,7 +186,7 @@ private fun SessionQueueSection(
 @Composable
 private fun OnBoardClimbSection(
     climb: OnBoardClimbEntry,
-    onClimbTapped: ((uuid: String, angle: Int) -> Unit)?
+    onClimbTapped: (uuid: String, angle: Int) -> Unit,
 ) {
     val name = climb.name ?: stringResource(R.string.ble_unknown_climb)
     val statusText = when (climb.source) {
@@ -183,11 +204,8 @@ private fun OnBoardClimbSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (onClimbTapped != null) Modifier.clickable {
-                    onClimbTapped(climb.climbUuid, climb.angle)
-                } else Modifier
-            )
+            .clickable { onClimbTapped(climb.climbUuid, climb.angle) }
+            .heightIn(min = 48.dp)
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -210,13 +228,7 @@ private fun OnBoardClimbSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        if (climb.rssi != null) {
-            SignalIndicator(rssi = climb.rssi)
-            Spacer(Modifier.width(4.dp))
-        }
-        if (onClimbTapped != null) {
-            Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

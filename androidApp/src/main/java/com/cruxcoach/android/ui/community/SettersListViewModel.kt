@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.community
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.SetterStat
@@ -30,6 +31,8 @@ data class SettersListState(
      *  from "the read threw and we're showing nothing because of a bug".
      *  UI surfaces this as an inline error card with a retry button. */
     val errorMessage: String? = null,
+    /** The active board the counts are scoped to, for the empty state. */
+    val boardName: String? = null,
 )
 
 @HiltViewModel
@@ -62,11 +65,15 @@ class SettersListViewModel @Inject constructor(
                 val brand = userPreferences.boardBrand.first()
                 val layoutId = userPreferences.boardLayoutId.first().toInt()
                 val sizeId = userPreferences.boardProductSizeId.first().toInt()
-                runCatching { boardRepository.getCommunitySetterStats(brand, layoutId, sizeId) }
+                BoardBrand.fromWire(brand).displayName to
+                    runCatching { boardRepository.getCommunitySetterStats(brand, layoutId, sizeId) }
             }
-            result.fold(
+            val (boardName, stats) = result
+            stats.fold(
                 onSuccess = { rows ->
-                    _state.update { it.copy(setters = rows, isLoading = false, errorMessage = null) }
+                    _state.update {
+                        it.copy(setters = rows, isLoading = false, errorMessage = null, boardName = boardName)
+                    }
                 },
                 onFailure = { e ->
                     Log.w(TAG, "getCommunitySetterStats failed", e)

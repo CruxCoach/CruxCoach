@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.moonboard
 
+import com.cruxcoach.android.R
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -33,13 +34,23 @@ class MoonBoardCsvImportViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching {
                 val csv = withContext(Dispatchers.IO) { readBounded(uri) }
-                importer.import(csv)
-            }.getOrElse { MoonBoardCsvImportResult(error = it.message ?: it.javaClass.simpleName) }
+                // The importer reports parser failures as a result, not as an exception.
+                importer.import(csv).let { r -> r.error?.let { r.copy(error = localizedError(it)) } ?: r }
+            }.getOrElse {
+                MoonBoardCsvImportResult(error = localizedError(it.message ?: it.javaClass.simpleName))
+            }
             _state.update { State(result = result) }
         }
     }
 
     fun reset() { _state.value = State() }
+
+    // Parser messages are English developer text; none of them quotes file content.
+    private fun localizedError(reason: String): String = when {
+        reason.contains("header not found") || reason.contains("no logbook entries") ->
+            context.getString(R.string.moon_csv_error_not_moon_export)
+        else -> context.getString(R.string.moon_csv_error_row, reason)
+    }
 
     private fun readBounded(uri: Uri): String {
         val declared = context.contentResolver.query(

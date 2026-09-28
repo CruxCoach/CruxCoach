@@ -234,6 +234,15 @@ interface PersonalBoardRepository {
      *  count how many fetched logs are genuinely new vs re-imported. */
     fun getExistingLogUuids(): Set<String>
 
+    /** Löschungen, die Kilter noch nicht kennt. Ohne sie holt der nächste
+     *  Download einen gelöschten Eintrag zurück: die Dedup-Prüfung kennt nur
+     *  die vorhandenen Zeilen. Die Vormerkung verschwindet, sobald Kilter
+     *  bestätigt hat — im Normalfall also nach Sekunden. Defaults, damit
+     *  Test-Fakes, die den Löschpfad nicht nachbilden, weiter übersetzen. */
+    fun pendingLogDeletions(): List<String> = emptyList()
+    fun clearLogDeletion(logUuid: String) {}
+    fun clearAllLogDeletions() {}
+
     /** Batch-update denormalized fields after a board sync. Also back-fills
      *  board_brand + layout_id from the matched climb, self-healing legacy /
      *  restored rows that defaulted to kilter/NULL. */

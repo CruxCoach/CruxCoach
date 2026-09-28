@@ -201,4 +201,4 @@ private fun BoardSendIdentity.mismatch(
 data class BoardSettingsCard(val brand: BoardBrand, val isActive: Boolean)
 
 fun boardSettingsCards(activeBrand: BoardBrand): List<BoardSettingsCard> =
-    BoardBrand.entries.filter { it.isInteractive }.map { BoardSettingsCard(it, it == activeBrand) }
+    listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD).map { BoardSettingsCard(it, it == activeBrand) }

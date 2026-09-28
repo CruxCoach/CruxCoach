@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -405,6 +409,11 @@ private fun AppShareActiveCard(
                         else R.string.settings_share_manual_show,
                     ),
                 )
+                Icon(
+                        if (showManualDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
             }
             if (showManualDetails) {
                 val context = LocalContext.current

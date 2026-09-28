@@ -1,5 +1,9 @@
 package com.cruxcoach.android.ui.board.sync
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -7,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -108,15 +113,11 @@ fun BoardSyncInlineCard(
         }
     }
     selectionDraft?.let { draft ->
-        com.cruxcoach.android.ui.settings.BoardMultiSelectDialog(
-            title = stringResource(R.string.board_download_selection_title),
-            message = stringResource(R.string.board_download_selection_description),
-            note = stringResource(R.string.board_download_selection_local_share),
-            confirmLabel = stringResource(
-                if (startAfterSelection) R.string.board_sync_update_online else R.string.action_save,
-            ),
-            confirmColor = OrangeAccent,
+        // Mid-share, the dialog is split like the offer was: the sender's boards and the rest.
+        val offered = if (state.localShareInProgress) offeredCatalogues(state.localShareOffered) else emptyList()
+        CatalogueSelectionDialog(
             selectedBrands = draft,
+            isSyncing = state.isSyncing,
             onToggleBrand = { brand ->
                 selectionDraft = if (brand in draft) draft - brand else draft + brand
             },
@@ -125,11 +126,13 @@ fun BoardSyncInlineCard(
                 selectionDraft = if (draft.containsAll(all)) emptySet() else all
             },
             onConfirm = {
+                if (offered.isNotEmpty()) viewModel.updateShareSelection(draft)
                 viewModel.saveDownloadSelection(draft, startInitial = startAfterSelection)
                 selectionDraft = null
             },
             onDismiss = { selectionDraft = null },
-            allowEmpty = !startAfterSelection,
+            offered = offered,
+            offeredEditable = state.localShareSelectionEditable,
         )
     }
 
@@ -167,66 +170,49 @@ fun BoardSyncInlineCard(
         )
     }
 
-    state.pendingDiscoveredShare?.let { found ->
+    // An inline offer belongs to onboarding's first screen; no dialog on top of it.
+    state.pendingDiscoveredShare?.takeIf { !state.discoveredShareInline }?.let { found ->
         val host = remember(found.baseUrl) {
             runCatching { Uri.parse(found.baseUrl).host }.getOrNull() ?: found.baseUrl
         }
-        val offeredCatalogues = remember(found.manifest) {
-            found.manifest.board?.catalogues.orEmpty().joinToString(", ") { catalogue ->
-                val brand = BoardBrand.fromWireOrNull(catalogue.boardBrand)
-                val name = brand?.displayName ?: catalogue.boardBrand
-                "$name (${catalogue.climbCount})"
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissDiscoveredShare() },
-            icon = {
-                Icon(
-                    Icons.Default.NetworkWifi,
-                    contentDescription = null,
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(40.dp),
-                )
-            },
-            title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.board_sync_discovered_share_message, host))
-                    if (offeredCatalogues.isNotBlank()) {
-                        Text(
-                            stringResource(
-                                R.string.board_sync_discovered_share_catalogues,
-                                offeredCatalogues,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+        val offered = remember(found.manifest) { offeredCatalogues(found.manifest) }
+        val savedSelection by viewModel.downloadBrands.collectAsStateWithLifecycle()
+        if (offered.isEmpty()) {
+            // An old sender that declares no catalogues: nothing to choose from, so the
+            // question stays the plain yes/no it always was and the share is taken whole.
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissDiscoveredShare() },
+                title = { Text(stringResource(R.string.board_sync_discovered_share_title)) },
+                text = { Text(stringResource(R.string.board_sync_discovered_share_message, host)) },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.confirmDiscoveredShare() },
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                        modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
+                    ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { viewModel.dismissDiscoveredShare() },
+                        modifier = Modifier.testTag("board_sync_discovered_share_internet"),
+                    ) {
+                        Text(stringResource(
+                            if (state.pendingDiscoveredShareFallsBackOnline) R.string.board_sync_discovered_share_internet
+                            else R.string.action_cancel,
+                        ))
                     }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.confirmDiscoveredShare() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                    modifier = Modifier.testTag("board_sync_discovered_share_confirm"),
-                ) { Text(stringResource(R.string.board_sync_discovered_share_confirm)) }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { viewModel.dismissDiscoveredShare() },
-                    modifier = Modifier.testTag("board_sync_discovered_share_internet"),
-                ) {
-                    Text(
-                        stringResource(
-                            if (state.pendingDiscoveredShareFallsBackOnline) {
-                                R.string.board_sync_discovered_share_internet
-                            } else {
-                                R.string.action_cancel
-                            },
-                        ),
-                    )
-                }
-            },
-        )
+                },
+            )
+        } else {
+            DiscoveredShareDialog(
+                host = host,
+                offered = offered,
+                savedSelection = savedSelection,
+                fallsBackOnline = state.pendingDiscoveredShareFallsBackOnline,
+                onConfirm = { share, online -> viewModel.confirmDiscoveredShare(share, online) },
+                onDismiss = { viewModel.dismissDiscoveredShare() },
+            )
+        }
     }
 
     // Local-share import consent. The tap on the hotspot's landing page
@@ -448,7 +434,7 @@ fun BoardSyncInlineCard(
                 !state.wifiConnected -> NoWifiWarningBanner()
             }
         }
-        state.autoSyncOverdueDays?.takeIf { !downloadBrands.isNullOrEmpty() }
+        state.autoSyncOverdueDays?.takeIf { !compact && !downloadBrands.isNullOrEmpty() }
             ?.let { days -> AutoSyncOverdueBanner(days) }
         val startSync: () -> Unit = {
             if (autoStartIfNeeded && !state.alreadyImported) {
@@ -456,17 +442,17 @@ fun BoardSyncInlineCard(
                 startAfterSelection = true
             } else viewModel.startApiSync()
         }
-        OutlinedButton(
+        if (!compact) OutlinedButton(
             onClick = {
                 selectionDraft = downloadBrands
                 startAfterSelection = false
             },
-            enabled = downloadBrands != null && !state.isSyncing,
+            enabled = downloadBrands != null,
             modifier = Modifier.fillMaxWidth().testTag("board_download_selection"),
         ) {
-            Text(stringResource(R.string.board_download_selection_summary, downloadBrands?.size ?: 0))
+            Text(stringResource(R.string.catalogue_choose_action))
         }
-        if (downloadBrands?.isEmpty() == true) {
+        if (!compact && downloadBrands?.isEmpty() == true) {
             Text(stringResource(R.string.board_download_selection_empty),
                 style = MaterialTheme.typography.bodySmall)
         }
@@ -478,6 +464,8 @@ fun BoardSyncInlineCard(
                 selectedBrands = downloadBrands.orEmpty(),
                 onRetry = startSync,
                 onLoadBoard = { viewModel.loadBoard(it) },
+                onChangeSelection = { selectionDraft = downloadBrands; startAfterSelection = false },
+                canChangeSelection = downloadBrands != null,
             )
         } else {
             DatabaseImportSection(
@@ -486,6 +474,7 @@ fun BoardSyncInlineCard(
                 activeBrand = activeBrand,
                 selectedBrands = downloadBrands.orEmpty(),
                 onStartSync = startSync,
+                onChangeSelection = { selectionDraft = downloadBrands; startAfterSelection = false },
                 onLoadBoard = { viewModel.loadBoard(it) },
                 onDismissError = { viewModel.clearError() },
                 onReportBug = { error ->
@@ -500,6 +489,7 @@ fun BoardSyncInlineCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CompactDatabasePreparation(
     state: BoardSyncState,
@@ -508,121 +498,96 @@ internal fun CompactDatabasePreparation(
     selectedBrands: Set<BoardBrand>,
     onRetry: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
+    onChangeSelection: (() -> Unit)? = null,
+    canChangeSelection: Boolean = true,
 ) {
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    val supportedBoards = BoardBrand.entries.filter { it in selectedBrands }
-    val readyBoards = supportedBoards.count { brand ->
-        catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, state.boardSteps[brand]) > 0L
+    // The selection, plus whatever is still loading or failed: a board ticked off
+    // mid-download keeps downloading (the change applies to the next run), and the
+    // card lost its count and details while it did.
+    val supportedBoards = BoardBrand.entries.filter { brand ->
+        brand in selectedBrands || brand in state.boardErrors ||
+            state.boardSteps[brand].let { it != null && it !is ImportStep.Done }
     }
-    val hasErrors = state.errorMessage != null || state.boardErrors.isNotEmpty()
-    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors
-    Surface(
-        modifier = Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (allReady) Icons.Default.CheckCircle else Icons.Default.CloudDownload,
-                    contentDescription = null,
-                    tint = if (allReady) SuccessGreen else OrangeAccent,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.onboarding_offline_status_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        stringResource(
-                            when {
-                                state.isSyncing -> R.string.onboarding_offline_status_loading
-                                selectedBrands.isEmpty() -> R.string.board_download_selection_empty
-                                allReady -> R.string.onboarding_offline_status_ready
-                                state.waitingForUnmeteredNetwork || !state.networkAvailable ->
-                                    R.string.board_sync_compact_waiting_wifi
-                                hasErrors -> R.string.onboarding_offline_status_waiting
-                                else -> R.string.onboarding_offline_status_starting
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (!allReady && !state.isSyncing) {
-                    TextButton(onClick = onRetry, enabled = selectedBrands.isNotEmpty(), modifier = Modifier.testTag("onboarding_offline_retry")) {
-                        Text(stringResource(if (hasErrors) R.string.action_retry else R.string.board_sync_update_online))
-                    }
-                }
+    val readyBoards = supportedBoards.count { brand ->
+        val step = state.boardSteps[brand]
+        (step == null || step is ImportStep.Done) && brand !in state.boardErrors &&
+            catalogueDisplayCount(boardCounts[brand.wireValue] ?: 0L, step) > 0L
+    }
+    val hasErrors = state.errorMessage != null || supportedBoards.any { it in state.boardErrors }
+    val allReady = supportedBoards.isNotEmpty() && readyBoards == supportedBoards.size && !hasErrors && !state.isSyncing
+    val status = when {
+        state.isSyncing -> R.string.onboarding_offline_status_loading
+        supportedBoards.isEmpty() -> R.string.setup_download_none
+        allReady -> R.string.onboarding_offline_status_ready
+        !state.networkAvailable -> R.string.setup_download_no_network
+        state.waitingForUnmeteredNetwork -> R.string.board_sync_compact_waiting_wifi
+        hasErrors -> R.string.onboarding_offline_status_waiting
+        else -> R.string.setup_download_pending
+    }
+    Surface(Modifier.fillMaxWidth().testTag("onboarding_offline_preparation"),
+        shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(when {
+                    allReady -> Icons.Default.CheckCircle
+                    hasErrors && !state.isSyncing -> Icons.Default.Warning
+                    !state.networkAvailable && !state.localShareInProgress -> Icons.Default.SignalWifiOff
+                    else -> Icons.Default.CloudDownload
+                }, null, tint = if (allReady) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(status), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
             }
-            Text(
-                stringResource(R.string.board_sync_compact_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (state.isSyncing && readyBoards > 0) {
-                LinearProgressIndicator(
-                    progress = { readyBoards.toFloat() / supportedBoards.size },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = OrangeAccent,
-                    trackColor = OrangeAccent.copy(alpha = 0.16f),
-                )
-                Text(
-                    stringResource(
-                        R.string.board_sync_compact_progress,
-                        readyBoards,
-                        supportedBoards.size,
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (supportedBoards.isNotEmpty()) {
+                Text(stringResource(R.string.board_sync_compact_progress, readyBoards, supportedBoards.size),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+            // A share is one transfer and one import for all of its boards, so the count above
+            // stays at 0 until the very end. Name the step and its progress as the full card
+            // does: an unlabelled bar for the ten minutes of a share read as a hang, and the
+            // sender was stopped by hand in the middle of a running import.
+            val shareStep = state.importStep.takeIf { state.localShareInProgress }
+            if (shareStep != null) {
+                LocalShareProgressSummary(step = shareStep)
             } else if (state.isSyncing) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = OrangeAccent,
-                    trackColor = OrangeAccent.copy(alpha = 0.16f),
-                )
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            TextButton(
-                onClick = { showDetails = !showDetails },
-                contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.testTag("board_sync_compact_details"),
-            ) {
-                Text(
-                    stringResource(
-                        if (showDetails) R.string.board_sync_compact_hide_details
-                        else R.string.board_sync_compact_show_details,
-                    ),
-                )
+            if (hasErrors && !state.isSyncing) {
+                val failed = supportedBoards.filter { it in state.boardErrors }.joinToString { it.displayName }
+                if (failed.isNotEmpty()) Text(failed, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error)
             }
-            AnimatedVisibility(showDetails) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BoardCatalogueStatusList(
-                        boardCounts = boardCounts,
-                        activeBrand = activeBrand,
-                        selectedBrands = selectedBrands,
-                        boardSteps = state.boardSteps,
-                        boardErrors = state.boardErrors,
-                        syncing = state.isSyncing,
-                        localShareInProgress = state.localShareInProgress,
-                        globalStep = state.importStep,
-                        onLoadBoard = onLoadBoard,
+            if (!allReady && !state.isSyncing && supportedBoards.isNotEmpty()) {
+                OutlinedButton(onClick = onRetry, modifier = Modifier.testTag("onboarding_offline_retry")) {
+                    Text(stringResource(if (hasErrors) R.string.action_retry else R.string.setup_download_start))
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (supportedBoards.isNotEmpty()) {
+                    TextButton(onClick = { showDetails = !showDetails }, modifier = Modifier.testTag("board_sync_compact_details")) {
+                        Text(stringResource(if (showDetails) R.string.board_sync_compact_hide_details else R.string.board_sync_compact_show_details))
+                        Icon(
+                        if (showDetails) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
-                    state.errorMessage?.let { error ->
-                        Text(
-                            error,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                    }
+                }
+                onChangeSelection?.let { change ->
+                    TextButton(onClick = change, enabled = canChangeSelection,
+                        modifier = Modifier.testTag("board_download_selection")) {
+                        Text(stringResource(R.string.setup_download_change))
                     }
                 }
             }
+            AnimatedVisibility(showDetails && supportedBoards.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BoardCatalogueStatusList(boardCounts, activeBrand, selectedBrands, state.boardSteps, state.boardErrors,
+                        state.isSyncing, state.localShareInProgress, onLoadBoard, onlySelected = true)
+                    state.errorMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error) }
+                }
+            }
+
         }
     }
 }
@@ -680,6 +645,7 @@ private fun DatabaseImportSection(
     activeBrand: BoardBrand,
     selectedBrands: Set<BoardBrand>,
     onStartSync: () -> Unit,
+    onChangeSelection: () -> Unit,
     onLoadBoard: (BoardBrand) -> Unit,
     onDismissError: () -> Unit,
     onReportBug: (error: String) -> Unit,
@@ -710,17 +676,18 @@ private fun DatabaseImportSection(
                 )
             }
 
-            Text(
-                stringResource(R.string.board_sync_db_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // "Wi-Fi recommended, the data can be large" is advice about the internet; while
+            // a nearby device is sending, the transfer summary says what is happening instead.
+            if (!state.localShareInProgress) {
+                Text(
+                    stringResource(R.string.board_sync_db_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             if (state.localShareInProgress && state.importStep != null) {
-                LocalShareProgressSummary(
-                    step = state.importStep,
-                    boardCount = state.localShareBoardSteps.size,
-                )
+                LocalShareProgressSummary(step = state.importStep)
             }
 
             if (!state.alreadyImported && !state.isSyncing) {
@@ -755,8 +722,8 @@ private fun DatabaseImportSection(
                     boardErrors = state.boardErrors,
                     syncing = state.isSyncing,
                     localShareInProgress = state.localShareInProgress,
-                    globalStep = state.importStep,
                     onLoadBoard = onLoadBoard,
+                    onChangeSelection = onChangeSelection,
                 )
 
                 if (!state.isSyncing) {
@@ -800,10 +767,7 @@ private fun DatabaseImportSection(
 }
 
 @Composable
-private fun LocalShareProgressSummary(
-    step: ImportStep,
-    boardCount: Int,
-) {
+private fun LocalShareProgressSummary(step: ImportStep) {
     val label = when (step) {
         is ImportStep.DiscoveringLocalShare ->
             stringResource(R.string.board_sync_step_discover_local_share)
@@ -919,15 +883,6 @@ private fun LocalShareProgressSummary(
                     trackColor = OrangeAccent.copy(alpha = 0.18f),
                 )
             }
-            if (step !is ImportStep.DiscoveringLocalShare &&
-                step !is ImportStep.PreparingSnapshot && boardCount > 0
-            ) {
-                Text(
-                    stringResource(R.string.board_sync_local_catalogue_count, boardCount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
@@ -957,8 +912,9 @@ private fun BoardCatalogueStatusList(
     boardErrors: Map<BoardBrand, String>,
     syncing: Boolean,
     localShareInProgress: Boolean,
-    globalStep: ImportStep?,
     onLoadBoard: (BoardBrand) -> Unit,
+    onlySelected: Boolean = false,
+    onChangeSelection: (() -> Unit)? = null,
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
@@ -967,30 +923,31 @@ private fun BoardCatalogueStatusList(
             }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val sharedPhasePending = localShareInProgress &&
-            globalStep?.isSharedLocalSharePhase() == true
-        boards.forEach { brand ->
-            // Discovery, snapshot creation, download and verification are
-            // global share phases. LocalShareProgressSummary already renders
-            // them once above the list; repeating the same (potentially long)
-            // sentence in every board row made the onboarding layout explode.
-            val rowStep = boardSteps[brand]?.takeUnless {
-                localShareInProgress && it.isSharedLocalSharePhase()
-            }
+        // Only what is, or is being, loaded. The overview used to list every family there is,
+        // most of them as "deselected —": eight rows to find the one that was downloading.
+        // Adding another board is what the selection button above the list is for.
+        boards.filter { brand ->
+            val loading = boardSteps[brand].let { it != null && it !is ImportStep.Done }
+            brand in selectedBrands || loading || boardErrors.containsKey(brand) ||
+                (!onlySelected && ((boardCounts[brand.wireValue] ?: 0L) > 0L || boardSteps.containsKey(brand)))
+        }.forEach { brand ->
+            // A nearby share is ONE transfer and one import for all of its boards. The
+            // summary above the list carries its step and progress; the boards it brings
+            // wait in a neutral state until it is done, so the same sentence is not repeated
+            // per row — and a board that is not part of it (loaded earlier) keeps its count.
+            val step = boardSteps[brand]
+            val inShare = localShareInProgress && step != null && step !is ImportStep.Done
             BoardStatusRow(
                 brand = brand,
                 count = boardCounts[brand.wireValue] ?: 0L,
                 isActive = brand == activeBrand,
-                step = rowStep,
-                // Discovery/snapshot/download are one global operation. A
-                // missing per-board step during that window is not a Kilter
-                // failure (and stale errors must not leak into the waiting
-                // UI): every catalogue gets the same neutral pending state.
-                sharedPhasePending = sharedPhasePending,
-                hasError = !sharedPhasePending && boardErrors.containsKey(brand),
+                step = if (inShare) null else step,
+                sharedPhasePending = inShare,
+                hasError = !inShare && boardErrors.containsKey(brand),
                 anySyncing = syncing,
                 downloadSelected = brand in selectedBrands,
                 onLoad = { onLoadBoard(brand) },
+                onChangeSelection = onChangeSelection,
             )
         }
     }
@@ -1007,6 +964,7 @@ private fun BoardStatusRow(
     anySyncing: Boolean,
     downloadSelected: Boolean,
     onLoad: () -> Unit,
+    onChangeSelection: (() -> Unit)?,
 ) {
     // This board is mid-sync when it has a non-terminal step in the map.
     val boardSyncing = step != null && step !is ImportStep.Done
@@ -1056,7 +1014,10 @@ private fun BoardStatusRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("board_status_${brand.wireValue}"),
+            .testTag("board_status_${brand.wireValue}")
+            .then(if (!downloadSelected && onChangeSelection != null)
+                Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
+                    onClick = onChangeSelection) else Modifier),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             when {
@@ -1118,6 +1079,12 @@ private fun BoardStatusRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                hasError -> Text(
+                    stringResource(R.string.setup_catalogue_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.widthIn(max = 140.dp),
+                )
                 loaded -> Text(
                     "%,d".format(displayCount),
                     style = MaterialTheme.typography.bodySmall,
@@ -1178,39 +1145,6 @@ private fun BoardStatusRow(
     }
 }
 
-private fun ImportStep.isSharedLocalSharePhase(): Boolean = when (this) {
-    is ImportStep.DiscoveringLocalShare,
-    is ImportStep.PreparingSnapshot,
-    is ImportStep.CheckingUpdate,
-    is ImportStep.FetchingManifest,
-    is ImportStep.Download,
-    is ImportStep.DownloadApk,
-    is ImportStep.VerifyingSnapshot,
-    is ImportStep.VerifyingApk,
-    is ImportStep.Extract,
-    is ImportStep.Decompress -> true
-    is ImportStep.ImportClimbs,
-    is ImportStep.ImportStats,
-    is ImportStep.ImportLayout,
-    is ImportStep.Finalizing,
-    is ImportStep.DownloadChunk,
-    is ImportStep.Done -> false
-}
-
-/**
- * Render an ISO-8601 timestamp string as a short, locale-aware date+time.
- * The previous implementation hand-concatenated `dd.MM.yyyy, HH:mm`
- * unconditionally, which is the German format but was also shown to
- * English-locale users. SHORT-style formatting gives `25.04.26, 14:32`
- * for `de`, `4/25/26, 2:32 PM` for `en-US`, etc.
- */
-/**
- * Automatic syncing has not produced anything for several cycles.
- *
- * The background worker cannot report to anyone — it fails, retries, and the
- * app looks unchanged. Without this the catalogue can go a month out of date
- * with "daily" configured and nothing on screen ever says so.
- */
 @Composable
 private fun AutoSyncOverdueBanner(days: Int) {
     Surface(
@@ -1238,17 +1172,20 @@ private fun AutoSyncOverdueBanner(days: Int) {
     }
 }
 
-private fun formatTimestamp(iso: String): String {
+internal fun formatTimestamp(iso: String): String {
+    val formatter = java.time.format.DateTimeFormatter
+        .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
+        .withLocale(java.util.Locale.getDefault())
     return try {
-        java.time.Instant.parse(iso)
-            .atZone(java.time.ZoneId.systemDefault())
-            .format(
-                java.time.format.DateTimeFormatter
-                    .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
-                    .withLocale(java.util.Locale.getDefault()),
-            )
+        java.time.Instant.parse(iso).atZone(java.time.ZoneId.systemDefault()).format(formatter)
     } catch (_: Exception) {
-        iso
+        // The sync state is stored as a zone-less local timestamp; without this branch the
+        // raw ISO string with microseconds was shown to the user.
+        try {
+            java.time.LocalDateTime.parse(iso).format(formatter)
+        } catch (_: Exception) {
+            iso
+        }
     }
 }
 

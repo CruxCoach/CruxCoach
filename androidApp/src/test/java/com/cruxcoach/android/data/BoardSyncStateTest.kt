@@ -53,6 +53,7 @@ class BoardSyncStateTest {
         val tension = ImportStep.Finalizing
         val state = BoardSyncState(
             importStep = kilter,
+            kilterSyncing = true,
             moonBoardStep = moon,
             auroraSteps = mapOf(BoardBrand.TENSION to tension),
         )
@@ -63,6 +64,17 @@ class BoardSyncStateTest {
         assertEquals(kilter, state.boardSteps[BoardBrand.KILTER])
         assertEquals(moon, state.boardSteps[BoardBrand.MOONBOARD])
         assertEquals(tension, state.boardSteps[BoardBrand.TENSION])
+    }
+
+    @Test
+    fun globalStepIsNotKiltersUnlessKilterIsSyncing() {
+        // A MoonBoard-only download, or a share of MoonBoard alone: the run has a global step,
+        // but no Kilter row may come out of it.
+        val state = BoardSyncState(
+            importStep = ImportStep.ImportStats(0, 10, 20),
+            moonBoardStep = ImportStep.ImportStats(0, 10, 20),
+        )
+        assertEquals(listOf(BoardBrand.MOONBOARD), state.boardSteps.keys.toList())
     }
 
     @Test

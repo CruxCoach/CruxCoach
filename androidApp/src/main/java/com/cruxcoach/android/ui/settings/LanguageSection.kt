@@ -43,6 +43,20 @@ internal fun resolveSystemLocaleTag(context: android.content.Context): String {
  */
 internal fun applyLocaleChoice(context: android.content.Context, choice: String) {
     val effectiveTag = if (choice == "system") resolveSystemLocaleTag(context) else choice
+    // Setting a per-app locale recreates every running activity — on a first
+    // launch the one that is just starting, which then did all its startup
+    // work twice and lost its notification-permission request. So only set
+    // one that changes something. From Android 13 the framework holds the
+    // per-app locale, so the current value can be trusted this early.
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        val current = AppCompatDelegate.getApplicationLocales()
+        if (current.toLanguageTags() == effectiveTag) return
+        // Following the system already shows its language when it is the
+        // one the app would pick.
+        val systemLanguage = context.getSystemService(android.app.LocaleManager::class.java)
+            .systemLocales[0].language
+        if (current.isEmpty && choice == "system" && effectiveTag == systemLanguage) return
+    }
     AppCompatDelegate.setApplicationLocales(
         LocaleListCompat.forLanguageTags(effectiveTag)
     )

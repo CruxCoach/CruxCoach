@@ -50,7 +50,7 @@ class ClimbCardAccessibilityTest {
         }
         val moves = compose.onNodeWithText(app.getString(R.string.board_climb_moves, 8), useUnmergedTree = true)
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val sends = compose.onNodeWithText(app.getString(R.string.board_climb_sends_count, 56569), useUnmergedTree = true)
+        val sends = compose.onNodeWithText(app.resources.getQuantityString(R.plurals.board_climb_sends_count, 56569, 56569), useUnmergedTree = true)
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val card = compose.onNodeWithTag("board_climb_card").fetchSemanticsNode().boundsInRoot
         assertTrue("Moves and catalogue sends must not overlap", !moves.overlaps(sends))

@@ -48,6 +48,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     lateinit var kilterSyncEngine: dagger.Lazy<com.cruxcoach.android.data.kilter.KilterSyncEngine>
 
     @Inject
+    lateinit var pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>
+
+    @Inject
     lateinit var connectivityObserver: dagger.Lazy<NostrRelayConnectivityObserver>
 
     @Inject
@@ -234,6 +237,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().recoverPartialImportIfNeeded()
             }.onFailure { PerfLogger.warn("[appScope] recoverPartialImport failed", it) }
             runCatching {
+                // Community climbs of boards without a catalogue need hold
+                // geometry to be drawn, fitted and lit: seed the bundled copy
+                // for every board that has none.
+                syncManager.get().seedBundledGeometry()
+            }.onFailure { PerfLogger.warn("[appScope] seedBundledGeometry failed", it) }
+            runCatching {
                 // One-shot consumer of the 7.sqm post-migration marker:
                 // wipes chunk hashes + lastSyncTimestamp and triggers a
                 // background sync so the user doesn't land on an empty
@@ -263,6 +272,13 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
                 kilterSyncEngine.get().syncOnAppStartIfEnabled()
             }.onFailure { PerfLogger.warn("[appScope] kilterSync failed", it) }
+            runCatching {
+                // Imports that finished while a catalogue was loading left
+                // what needs it staged; apply it now and after every sync.
+                // Last on purpose: it opens the secure DB, whose unlock must
+                // not compete with the first frame (M-055).
+                pendingImports.get().start()
+            }.onFailure { PerfLogger.warn("[appScope] pendingImports start failed", it) }
 
             // Reading the interval is the only step that can plausibly
             // fail before the schedule calls (DataStore I/O); fall back

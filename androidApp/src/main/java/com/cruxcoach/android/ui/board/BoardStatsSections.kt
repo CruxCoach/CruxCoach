@@ -194,12 +194,14 @@ internal fun BoardPersonalRecordsRow(records: PersonalRecords) {
     if (items.isEmpty()) return
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // Equal height, so a label that needs a third line does not make its tile taller than
+        // the rest — and does not have to be cut off to keep the row tidy.
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items.forEach { (label, value) ->
             Card(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
                 colors = CardDefaults.cardColors(
                     containerColor = OrangeAccent.copy(alpha = 0.12f)
                 ),
@@ -220,7 +222,9 @@ internal fun BoardPersonalRecordsRow(records: PersonalRecords) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 9.sp,
-                        maxLines = 2,
+                        // Three lines fit the shortest labels we ship; cutting a record's name
+                        // off leaves the number meaningless.
+                        maxLines = 3,
                         textAlign = TextAlign.Center,
                         overflow = TextOverflow.Ellipsis
                     )

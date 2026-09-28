@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.map
 
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -76,7 +79,12 @@ fun BoardLocationDetailSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                // A venue can list several boards; without its own scroll the sheet cut off
+                // everything below the fully expanded height (last boards unreachable).
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(

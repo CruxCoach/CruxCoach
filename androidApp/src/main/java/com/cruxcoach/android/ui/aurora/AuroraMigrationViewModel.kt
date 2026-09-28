@@ -36,6 +36,9 @@ import javax.inject.Inject
 class AuroraMigrationViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val importer: AuroraImporter,
+    /** Names resolve against the Kilter catalogue: while it is still loading
+     *  the export is staged and imported automatically afterwards. */
+    private val pendingImports: com.cruxcoach.android.data.PendingImports,
 ) : ViewModel() {
 
     companion object {
@@ -60,6 +63,8 @@ class AuroraMigrationViewModel @Inject constructor(
          *  the user hasn't yet imported anything in this session.
          *  Drives the result-summary card. */
         val result: AuroraImportResult? = null,
+        /** The export waits for the Kilter catalogue ([pendingImports]). */
+        val staged: com.cruxcoach.android.aurora.AuroraFileSummary? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -73,12 +78,24 @@ class AuroraMigrationViewModel @Inject constructor(
     fun importFromUri(uri: Uri) {
         if (_state.value.isImporting) return  // double-tap guard
         _state.update {
-            it.copy(isImporting = true, progress = null, result = null)
+            it.copy(isImporting = true, progress = null, result = null, staged = null)
         }
         viewModelScope.launch {
             val outcome = try {
                 val json = withContext(Dispatchers.IO) { readBoundedJson(uri) }
-                importer.import(json) { p ->
+                if (pendingImports.waitingForKilterCatalogue()) {
+                    // Before the catalogue no name resolves and every entry was
+                    // dropped; stage a readable export instead.
+                    val summary = withContext(Dispatchers.IO) { importer.summarize(json) }
+                    summary.getOrNull()?.let { staged ->
+                        withContext(Dispatchers.IO) { pendingImports.stageAurora(json) }
+                        _state.update { it.copy(isImporting = false, progress = null, staged = staged) }
+                        return@launch
+                    }
+                    AuroraImportResult.parseError(
+                        summary.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }.orEmpty(),
+                    )
+                } else importer.import(json) { p ->
                     _state.update { it.copy(progress = p) }
                 }
             } catch (e: FileTooLargeException) {

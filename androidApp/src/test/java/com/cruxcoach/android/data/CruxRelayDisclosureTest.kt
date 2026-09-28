@@ -87,7 +87,7 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
-    fun `cancelled automatic disclosure is not repeated after a board send`() = runTest {
+    fun `automatic sharing never raises the consent and the sheet tap is the consent`() = runTest {
         val connection = mockk<BoardBleConnection>(relaxed = true)
         val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
         val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
@@ -109,33 +109,108 @@ class CruxRelayDisclosureTest {
             scope = backgroundScope,
         )
         runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
 
-        manager.dismissDisclosure()
+        // Connecting, sending and reconnecting must never interrupt with a dialog.
+        assertFalse(manager.state.value.pendingDisclosure)
         connectionState.value = ConnectionState.SENDING
         runCurrent()
-        connectionState.value = ConnectionState.CONNECTED
-        runCurrent()
-
-        assertFalse(manager.state.value.pendingDisclosure)
-
-        // A deliberate action remains able to ask again without reconnecting.
-        manager.requestEnable()
-        runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
-
-        // Cancelling again is scoped only to this connection. A real
-        // disconnect/reconnect may offer automatic sharing once more.
-        manager.dismissDisclosure()
         connectionState.value = ConnectionState.DISCONNECTED
         runCurrent()
         connectionState.value = ConnectionState.CONNECTED
         runCurrent()
-        assertTrue(manager.state.value.pendingDisclosure)
+        assertFalse(manager.state.value.pendingDisclosure)
+        coVerify(exactly = 0) { preferences.setRelayDisclosureSeen() }
+
+        // The connection sheet shows the disclosure on its card; that tap is the consent.
+        manager.requestEnableWithShownDisclosure()
+        runCurrent()
+        assertFalse(manager.state.value.pendingDisclosure)
+        coVerify(exactly = 1) { preferences.setRelayDisclosureSeen() }
     }
 
     @Test
-    fun `automatic disclosure waits for capacity and multi-connect suppresses it`() = runTest {
+    fun `the sharing switch is the consent, starts the transport and off keeps it off`() = runTest {
+        org.robolectric.Shadows.shadowOf(context as android.app.Application)
+            .grantPermissions(Manifest.permission.BLUETOOTH_ADVERTISE)
+        val connection = mockk<BoardBleConnection>(relaxed = true)
+        val connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+        val connectedBoard = MutableStateFlow<DiscoveredBoard?>(
+            board("00:11:22:33:44:55", advertisesWhileConnected = false),
+        )
+        every { connection.connectionState } returns connectionState
+        every { connection.connectedBoardDescriptor } returns connectedBoard
+        every { connection.connectedBoard } answers { connectedBoard.value }
+        val preferences = mockk<UserPreferences>(relaxed = true)
+        val manualStart = MutableStateFlow(true)
+        val seen = MutableStateFlow(false)
+        every { preferences.relayManualStart } returns manualStart
+        every { preferences.relayDisclosureSeen } returns seen
+        coEvery { preferences.setRelayManualStart(any()) } answers { manualStart.value = firstArg() }
+        coEvery { preferences.setRelayDisclosureSeen() } answers { seen.value = true }
+        val server = mockk<RelayGattServer>(relaxed = true)
+        coEvery { server.start() } returns true
+        every { server.climbs } returns MutableSharedFlow<RelayInboundClimb>()
+        every { server.connectionEvents } returns MutableSharedFlow<GattConnectionEvent>()
+        val advertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+        every { advertiser.startRelayAdvertising() } returns "started"
+        coEvery { advertiser.awaitRelayAdvertisingStart() } returns
+            AdvertisingSetCallback.ADVERTISE_SUCCESS
+        var adapterName = "Test phone"
+        val adapter = mockk<BluetoothAdapter>(relaxed = true)
+        every { adapter.name } answers { adapterName }
+        every { adapter.setName(any()) } answers { adapterName = firstArg(); true }
+        val manager = CruxRelayManager(
+            context = context,
+            relayServer = server,
+            advertiser = advertiser,
+            bleConnection = connection,
+            projectionCoordinator = mockk<BoardProjectionCoordinator>(relaxed = true),
+            userPreferences = preferences,
+            scope = backgroundScope,
+            adapterProvider = { adapter },
+        )
+        // advanceUntilIdle skips backgroundScope-only work. Drain the manager's
+        // initial collectors before changing the switch.
+        runCurrent()
+        // Sharing is off, so nothing starts on its own and no dialog is raised.
+        coVerify(exactly = 0) { server.start() }
+        assertFalse(manager.state.value.pendingDisclosure)
+
+        manager.setSharingEnabled(true)
+        runCurrent()
+        // Startup persists the adapter name on Dispatchers.IO. Await the observable
+        // result instead of assuming that draining the test scheduler finishes IO.
+        val started = manager.state.first { it.advertising || it.error != null }
+        assertTrue("Relay startup failed: $started", started.enabled && started.advertising)
+        // Switching it on is the consent and starts the transport right away.
+        assertTrue(seen.value)
+        assertFalse(manualStart.value)
+        assertFalse(manager.state.value.pendingDisclosure)
+        coVerify(exactly = 1) { server.start() }
+        verify(exactly = 1) { advertiser.startRelayAdvertising() }
+
+        manager.setSharingEnabled(false)
+        runCurrent()
+        manager.state.first { !it.enabled && !it.advertising }
+        assertTrue(manualStart.value)
+        assertFalse(manager.state.value.enabled)
+        coVerify(exactly = 1) { server.stop() }
+        verify(exactly = 1) { advertiser.stopRelayAdvertising() }
+        assertTrue(adapterName == "Test phone")
+
+        // A reconnect must not revive what the switch turned off.
+        connectionState.value = ConnectionState.DISCONNECTED
+        runCurrent()
+        connectionState.value = ConnectionState.CONNECTED
+        runCurrent()
+        assertFalse(manager.state.value.enabled)
+        assertFalse(manager.state.value.advertising)
+        coVerify(exactly = 1) { server.start() }
+        verify(exactly = 1) { advertiser.startRelayAdvertising() }
+    }
+
+    @Test
+    fun `automatic sharing waits for capacity and multi-connect suppresses it`() = runTest {
         org.robolectric.Shadows.shadowOf(context as android.app.Application)
             .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
         val connection = mockk<BoardBleConnection>(relaxed = true)
@@ -174,7 +249,7 @@ class CruxRelayDisclosureTest {
     }
 
     @Test
-    fun `automatic disclosure starts after controller proves single-connect`() = runTest {
+    fun `proven single-connect without consent neither asks nor shares`() = runTest {
         org.robolectric.Shadows.shadowOf(context as android.app.Application)
             .grantPermissions(Manifest.permission.BLUETOOTH_SCAN)
         val connection = mockk<BoardBleConnection>(relaxed = true)
@@ -207,7 +282,8 @@ class CruxRelayDisclosureTest {
         )
         runCurrent()
 
-        assertTrue(manager.state.value.pendingDisclosure)
+        // Proven single-connect, but consent was never given: stay silent, share nothing.
+        assertFalse(manager.state.value.pendingDisclosure)
         assertFalse(manager.state.value.enabled)
     }
 

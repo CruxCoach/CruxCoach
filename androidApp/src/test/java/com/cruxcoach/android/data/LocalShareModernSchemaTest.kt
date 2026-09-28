@@ -977,6 +977,67 @@ class LocalShareModernSchemaTest {
         }
     }
 
+    /**
+     * The official Quantum catalogue is ~9k routes. The bridge copy once joined every
+     * route to the peer's climbs on LOWER(TRIM(uuid)) — normalized on both sides, so no
+     * index could serve it — and a real share sat in that one statement for 46 minutes
+     * without finishing on a Nokia 6.1. At this size that join cost ~30 s per bridge table on desktop SQLite,
+     * the IN-list form 0.04 s; the bound only separates "linear" from "per-route scan".
+     */
+    @Test
+    fun v2QuantumBridgeImportStaysLinearInTheCatalogueSize() {
+        val routes = 6_000
+        val apps = List(routes) { i -> "6f06c97d-a92f-5ec0-a02f-%012x".format(i) }
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.beginTransaction()
+            try {
+                apps.forEachIndexed { i, app ->
+                    db.execSQL(
+                        """INSERT INTO climbs(uuid,layout_id,setter_username,name,frames,
+                               frames_count,is_listed,created_at,description,is_nomatch,
+                               frames_pace,hsm,move_count,source,sync_status,origin,board_brand)
+                           VALUES (?,9101,'quantum','Quantum $i','p1000001r12p1000002r14',
+                               1,1,'2026-08-01 00:00:00','',0,0,31,2,
+                               'quantum','synced','quantum','quantum')""".trimIndent(),
+                        arrayOf<Any?>(app),
+                    )
+                    db.execSQL(
+                        "INSERT INTO quantum_route_refs(app_uuid,route_uuid,model) VALUES (?,?,'xl')",
+                        arrayOf<Any?>(app.uppercase(), "7a1b2c3d-4444-5555-8666-%012x".format(i)),
+                    )
+                    db.execSQL(
+                        """INSERT INTO quantum_route_metadata(
+                               app_uuid,source_grade,campusing,edge,kickplate,matching,standard,tags)
+                           VALUES (?, '[18]', 0, 1, 0, 1, 1, '')""".trimIndent(),
+                        arrayOf<Any?>(" ${app.uppercase()} "),
+                    )
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        }
+
+        val started = System.nanoTime()
+        importer.importFromLocalDb(srcPath, includeQuantum = true)
+        val seconds = (System.nanoTime() - started) / 1e9
+
+        openTarget().use { db ->
+            assertEquals(routes, countWhere(db, "climbs", "board_brand='quantum' AND source='quantum'"))
+            assertEquals(routes, countWhere(db, "quantum_route_refs", "model='xl'"))
+            assertEquals(routes, countWhere(db, "quantum_route_metadata", "standard=1"))
+            assertEquals(
+                0,
+                countWhere(
+                    db,
+                    "quantum_route_refs r",
+                    "NOT EXISTS (SELECT 1 FROM climbs c WHERE c.uuid=r.app_uuid)",
+                ),
+            )
+        }
+        assertTrue("Quantum bridge import took ${"%.1f".format(seconds)}s", seconds < 20.0)
+    }
+
     @Test
     fun v2NormalizesWhitespaceAroundQuantumClimbAndBridgeUuidsTogether() {
         val (appUuid, routeUuid) = seedQuantumBridge(model = "xl")

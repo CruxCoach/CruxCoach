@@ -1,5 +1,9 @@
 package com.cruxcoach.app.kilter
 
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.ClimbUuid
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
@@ -31,10 +35,30 @@ class KilterUploader(
     private val api: KilterApi,
     private val tokens: KilterTokens,
     private val repository: PersonalBoardRepository,
+    private val boardRepository: BoardRepository? = null,
 ) {
-    suspend fun push(): KilterPushOutcome {
-        val ascents = repository.getUnsyncedAscents()
-        val bids = repository.getUnsyncedBids()
+    private val mutex = Mutex()
+
+    suspend fun push(): KilterPushOutcome = mutex.withLock { pushLocked() }
+
+    private suspend fun pushLocked(): KilterPushOutcome {
+        // Explicit push also applies offline deletions when there are no new logs.
+        for (uuid in repository.pendingLogDeletions()) {
+            val failure = api.deleteLog(uuid)
+            if (failure != KilterFailure.NONE) {
+                return KilterPushOutcome(0, repository.pendingLogDeletions().size, failure)
+            }
+            repository.clearLogDeletion(uuid)
+        }
+        val allAscents = repository.getUnsyncedAscents()
+        val allBids = repository.getUnsyncedBids()
+        val lookup = (allAscents.map { it.climbUuid } + allBids.map { it.climbUuid })
+            .distinct().flatMap { ClimbUuid.spellings(it) }.distinct()
+        val community = lookup.chunked(400)
+            .flatMap { boardRepository?.communityOnlyClimbUuids(it).orEmpty() }
+            .mapTo(HashSet()) { ClimbUuid.normKey(it) }
+        val ascents = allAscents.filter { ClimbUuid.normKey(it.climbUuid) !in community }
+        val bids = allBids.filter { ClimbUuid.normKey(it.climbUuid) !in community }
         val pending = ascents.size + bids.size
         if (pending == 0) return KilterPushOutcome(0, 0, KilterFailure.NONE)
 

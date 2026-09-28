@@ -182,20 +182,6 @@ internal fun BoardSendModeSection(
 
 }
 
-@Composable
-internal fun BoardProjectionLifecycleHint(boardBrand: BoardBrand) {
-    SettingsInfoHeading(
-        title = stringResource(R.string.settings_board_connections_info),
-        description = stringResource(
-            if (boardBrand == BoardBrand.MOONBOARD) {
-                R.string.settings_board_projection_lifecycle_moonboard
-            } else {
-                R.string.settings_board_projection_lifecycle_retained
-            },
-        ),
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoardSendModePicker(

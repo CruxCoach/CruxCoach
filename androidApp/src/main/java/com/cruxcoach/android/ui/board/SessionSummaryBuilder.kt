@@ -54,4 +54,18 @@ object SessionSummaryBuilder {
             gradeDistribution = gradePyramid
         )
     }
+
+    /**
+     * All log rows of a session window: sends AND attempts. The summary used to be fed from
+     * the send-only query, so an attempts-only problem vanished from "attempts" and
+     * "distinct problems" although it was logged during the session.
+     */
+    fun sessionRows(
+        repo: com.cruxcoach.data.repository.PersonalBoardRepository,
+        from: String,
+        to: String,
+    ): List<com.cruxcoach.data.repository.AscentWithClimb> =
+        repo.getUserLogbookAllLight()
+            .filter { it.climbedAt >= from && it.climbedAt <= to }
+            .sortedBy { it.climbedAt }
 }

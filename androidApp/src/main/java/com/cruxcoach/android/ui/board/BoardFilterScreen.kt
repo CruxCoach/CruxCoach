@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -154,7 +157,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 )
                 Text(
                     stringResource(R.string.board_filter_grade_range, minLabel, maxLabel),
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 RangeSlider(
@@ -181,7 +184,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 
             if (state.filter.myClimbsOnly) Text(stringResource(R.string.board_filter_own_scope), style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
-            BoardStatusFilter(statuses = state.filter.statusFilter, onChange = viewModel::updateStatusFilter, compact = true)
+            BoardStatusFilter(statuses = state.filter.statusFilter, onChange = viewModel::updateStatusFilter)
             HorizontalDivider()
             val sortOptions = listOf(
                 ClimbSortField.ASCENSIONISTS to stringResource(R.string.board_sends),
@@ -201,17 +204,36 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
             ListItem(
                 headlineContent = { Text(stringResource(R.string.board_filter_more)) },
                 supportingContent = { Text(if (advancedLabels.isEmpty()) stringResource(R.string.board_filter_more_hint) else advancedLabels.joinToString(" · ")) },
-                trailingContent = { Text(if (advanced) "−" else "+") },
+                // A chevron, like every other collapsible section — "+" read as "add a filter".
+                trailingContent = { Icon(if (advanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth().clickable { advanced = !advanced }.testTag("board_filter_more"),
             )
             if (advanced) {
-                FilterSwitchRow(stringResource(R.string.board_filter_ungraded_only), state.filter.ungradedOnly, viewModel::updateUngradedOnlyFilter, "board_filter_ungraded_only")
+                // Offered with its count, and not at all where the catalogue grades every climb.
+                LaunchedEffect(state.filter.angle, state.filter.layoutId, state.filter.boardBrand, state.filter.climbTypeFilter) {
+                    viewModel.refreshUngradedAvailable()
+                }
+                val ungraded = state.ungradedAvailable
+                FilterSwitchRow(
+                    label = if (ungraded != null && ungraded > 0) stringResource(R.string.board_filter_ungraded_only_count, ungraded.toInt())
+                    else stringResource(R.string.board_filter_ungraded_only),
+                    checked = state.filter.ungradedOnly,
+                    onChange = viewModel::updateUngradedOnlyFilter,
+                    tag = "board_filter_ungraded_only",
+                    // Still switchable when it is on, so a stale "on" can always be turned off.
+                    enabled = state.filter.ungradedOnly || (ungraded ?: 0L) > 0L,
+                    supporting = when {
+                        state.filter.ungradedOnly -> stringResource(R.string.board_filter_ungraded_only_active)
+                        ungraded == 0L -> stringResource(R.string.board_filter_ungraded_only_none)
+                        else -> null
+                    },
+                )
                 FilterSwitchRow(stringResource(R.string.board_filter_my_climbs), state.filter.myClimbsOnly, viewModel::updateMyClimbsFilter, "board_filter_my_climbs")
-                if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark")
-                Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleSmall)
+                if (activeBrand.supportsBenchmarkFilter) FilterSwitchRow(stringResource(R.string.board_filter_benchmarks_only), state.filter.benchmarkOnly, viewModel::updateBenchmarkFilter, "board_filter_benchmark", enabled = !state.filter.ungradedOnly)
+                Text(stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists), style = MaterialTheme.typography.titleMedium)
                 Slider(value = state.filter.minAscensionists.toFloat(), onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
                     onValueChangeFinished = { viewModel.commitFilterChange() }, valueRange = 0f..50f, steps = 49,
-                    enabled = !state.filter.myClimbsOnly)
+                    enabled = !state.filter.myClimbsOnly && !state.filter.ungradedOnly)
                 if (activeBrand.supportsClimbTypeFilter) FilterChoiceRow(stringResource(R.string.board_filter_type), state.filter.climbTypeFilter,
                     listOf(ClimbTypeFilter.BOULDER to stringResource(R.string.board_filter_type_boulder), ClimbTypeFilter.ROUTE to stringResource(R.string.board_filter_type_routes), ClimbTypeFilter.ALL to stringResource(R.string.board_filter_all)),
                     "board_filter_type", viewModel::updateClimbTypeFilter)
@@ -225,7 +247,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                 if (activeBrand == BoardBrand.QUANTUM) {
                     Text(
                         stringResource(R.string.board_filter_quantum_rules),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Column(
@@ -243,7 +265,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                             FilterChip(
                                 selected = (state.filter.quantumRuleMask and rule.bit) != 0L,
                                 onClick = { viewModel.toggleQuantumRuleFilter(rule) },
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                                     selectedLabelColor = OrangeAccent
@@ -255,7 +277,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 
                     Text(
                         stringResource(R.string.board_filter_quantum_overlap_title),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     Column(
@@ -276,7 +298,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                                 onClick = { viewModel.setQuantumOverlapFilter(option) },
                                 enabled = option == QuantumOverlapFilter.OFF ||
                                     state.quantumLayers.available,
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                label = { Text(label, style = MaterialTheme.typography.bodyLarge) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                                     selectedLabelColor = OrangeAccent,
@@ -300,7 +322,7 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
                             )
                             else -> stringResource(R.string.board_filter_quantum_overlap_hint)
                         },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = if (!state.quantumLayers.complete &&
                             state.quantumLayers.occupied
                         ) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -315,18 +337,23 @@ fun BoardFilterScreen(viewModel: BoardBrowserViewModel, onNavigateBack: () -> Un
 }
 
 @Composable
-internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange).testTag(tag),
+internal fun FilterSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, tag: String, enabled: Boolean = true, supporting: String? = null) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, modifier = Modifier.weight(1f)); Switch(checked = checked, onCheckedChange = null)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+            if (supporting != null) Text(supporting, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 
 @Composable
 internal fun <T> FilterChoiceRow(title: String, selected: T, choices: List<Pair<T, String>>, tag: String, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    ListItem(headlineContent = { Text(title) }, supportingContent = { Text(choices.firstOrNull { it.first == selected }?.second.orEmpty()) },
-        trailingContent = { Text("›") }, modifier = Modifier.clickable { open = true }.testTag(tag))
+    ListItem(headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) }, supportingContent = { Text(choices.firstOrNull { it.first == selected }?.second.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface) },
+        // Opens a list of choices, so it looks like one: the drop-down arrow, not "›".
+        trailingContent = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) }, modifier = Modifier.clickable { open = true }.testTag(tag))
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             choices.forEach { (value, label) ->
@@ -337,14 +364,6 @@ internal fun <T> FilterChoiceRow(title: String, selected: T, choices: List<Pair<
         }
     }, confirmButton = { TextButton(onClick = { open = false }) { Text(stringResource(R.string.action_close)) } })
 }
-
-internal fun BrowserFilterState.activeBrowseFilterCount(): Int = listOf(
-    minGradeIndex != BrowserFilterState.DEFAULT_MIN_GRADE_INDEX || maxGradeIndex != BrowserFilterState.DEFAULT_MAX_GRADE_INDEX,
-    minAscensionists > 0, searchQuery.isNotBlank(),
-    statusFilter.isNotEmpty() && statusFilter.size != ClimbStatusFilter.entries.size,
-    climbTypeFilter != ClimbTypeFilter.BOULDER, benchmarkOnly, originFilter != OriginFilter.ALL,
-    quantumRuleMask != 0L, quantumOverlapFilter.active, myClimbsOnly, ungradedOnly,
-).count { it }
 
 /** Plain-language glossary for the browse filter / sort terms, opened from the
  *  ℹ action. Adapted to 0.2.0's multi-select status model (Neu / Versucht /

@@ -2,6 +2,13 @@ package com.cruxcoach.android.ui.board
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -115,6 +122,9 @@ internal object BoardImageCache {
 // leaves big gaps and looks unfinished. Light + semi-transparent so it sits
 // quietly under the LED hold rings on the dark board image (FEAT-031).
 private val MountingDotColor = Color(0x40FFFFFF)
+
+/** How long an empty hold layout may still be loading before the note shows. */
+private const val MISSING_LAYOUT_NOTE_DELAY_MS = 800L
 
 // Heatmap color gradient: green → yellow → orange → red
 private val HEATMAP_COLORS = listOf(
@@ -697,6 +707,32 @@ internal fun KilterBoardVisualization(
                             )
                         }
                     }
+                }
+            }
+
+            // Hold positions arrive with the board's catalogue. Community
+            // climbs stay listed without it, and their wall used to render
+            // empty, as if the climb had no holds. The short wait keeps the
+            // note from flashing while the layout is still being read.
+            if (placements.isEmpty() && holds.isNotEmpty()) {
+                val showNote by produceState(false) {
+                    delay(MISSING_LAYOUT_NOTE_DELAY_MS)
+                    value = true
+                }
+                if (showNote) {
+                    Text(
+                        stringResource(R.string.board_holds_need_catalogue),
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(24.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                RoundedCornerShape(8.dp),
+                            )
+                            .padding(12.dp),
+                    )
                 }
             }
         }

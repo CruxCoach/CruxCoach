@@ -99,7 +99,9 @@ class AddToListViewModel @Inject constructor(
         val name = _state.value.newListName.trim()
         if (name.isBlank()) return
         _state.value.lists.firstOrNull { it.name.equals(name, ignoreCase = true) }?.let {
-            toggleList(it.id)
+            // "Create and add" names a list that exists: add to it. Toggling took
+            // the climb OUT of that list when it was already in it.
+            if (it.id !in _state.value.climbInListIds) toggleList(it.id)
             _state.update { s -> s.copy(newListName = "") }
             return
         }

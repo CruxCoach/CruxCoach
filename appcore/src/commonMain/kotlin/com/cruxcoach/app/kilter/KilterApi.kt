@@ -194,6 +194,28 @@ class KilterApi(
         return KilterLogsOutcome(logs.filter { it.climbUuid.isNotBlank() }, KilterFailure.NONE)
     }
 
+    /** A confirmed deletion (including an already absent log) clears the retry queue. */
+    suspend fun deleteLog(logUuid: String): KilterFailure {
+        // IDs are one path segment; never let stored/imported text alter the endpoint.
+        if (!Regex("[A-Za-z0-9_-]+").matches(logUuid)) return KilterFailure.MALFORMED_RESPONSE
+        val token = validAccessToken() ?: return KilterFailure.NOT_SIGNED_IN
+        val result = http.request(
+            method = "DELETE", url = "$apiBase/logs/$logUuid",
+            headers = mapOf("Authorization" to "Bearer $token"), body = null,
+            maxResponseBytes = MAX_TOKEN_BYTES, timeoutSeconds = TIMEOUT_SECONDS,
+        )
+        val response = when (result) {
+            is HttpResult.Failed -> return result.reason.toFailure()
+            is HttpResult.Ok -> result.response
+        }
+        return when (response.status) {
+            in 200..299, 404 -> KilterFailure.NONE
+            401, 403 -> KilterFailure.NOT_SIGNED_IN
+            429 -> KilterFailure.THROTTLED
+            else -> KilterFailure.SERVER_ERROR
+        }
+    }
+
     /**
      * Posts logs the portal does not have yet.
      *

@@ -63,6 +63,7 @@ import com.cruxcoach.android.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.data.repository.getClimbByUuidAnySpelling
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -395,7 +396,16 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val personalNoteSaveStatuses = ConcurrentHashMap<String, PersonalNoteSaveStatus>()
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
-    private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
+    /** Per brand: the pager can move between boards' climbs (cross-board
+     *  lists), and one shared map drew a Tension climb on Kilter positions.
+     *  Empty results are not kept, so seeded geometry shows up on the next
+     *  climb. */
+    private val cachedPlacementMaps = java.util.concurrent.ConcurrentHashMap<String, Map<Int, BoardPlacement>>()
+
+    private fun placementMapFor(brand: String): Map<Int, BoardPlacement> =
+        cachedPlacementMaps[brand]
+            ?: boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
+                .also { if (it.isNotEmpty()) cachedPlacementMaps[brand] = it }
     private val supportedAnglesCache = ConcurrentHashMap<Pair<Int, String>, Set<Int>>()
 
     // --- Delegated controllers ---
@@ -1023,17 +1033,9 @@ class BoardClimbDetailViewModel @Inject constructor(
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
                 withContext(Dispatchers.IO) {
-                    // Try exact match first, then case variants (DB may store
-                    // upper/lowercase). Keep the fast primary-key path first;
-                    // only on a miss fall back to the normalized (strip-hyphens
-                    // + lowercase) scan, which resolves uuids whose hyphenation
-                    // differs from the stored row (logbook dashed-lowercase vs
-                    // legacy nodash-UPPERCASE board rows).
+                    // Indexed spellings first, normalized scan only on a miss.
                     val climb = PerfLogger.trace("loadClimb.getClimbByUuid") {
-                        boardRepository.getClimbByUuid(uuid, angle)
-                            ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-                            ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
-                            ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
+                        boardRepository.getClimbByUuidAnySpelling(uuid, angle)
                     }?.takeIf {
                         matchesLinkAuthor(uuid, it.createdByPubkey)
                     }
@@ -1052,17 +1054,16 @@ class BoardClimbDetailViewModel @Inject constructor(
                         // wrong board for Tension/Grasshopper/etc.).
                         val brand = climb.brand.wireValue
                         val placementMap = if (isMoonBoard) emptyMap() else
-                            PerfLogger.trace("loadClimb.placements") {
-                                cachedPlacementMap ?: run {
-                                    val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                                    cachedPlacementMap = map
-                                    map
-                                }
-                            }
+                            PerfLogger.trace("loadClimb.placements") { placementMapFor(brand) }
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
                         val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                            climbUuid = uuid,
+                            // The CANONICAL uuid: canRenderClimbOnSize and
+                            // getProductSizeForClimbRender match climbs.uuid
+                            // exactly, so the spelling the caller navigated
+                            // with would miss and drop the pick through to
+                            // the user's own board.
+                            climbUuid = climb.uuid,
                             climbLayoutId = climb.layoutId.toInt(),
                             preferredSizeId = prefSizeId,
                             preferredLayoutId = prefLayoutId,
@@ -1266,7 +1267,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val climb = boardRepository.getClimbByUuid(uuid, angle)
+                    val climb = boardRepository.getClimbByUuidAnySpelling(uuid, angle)
                         ?.takeIf { matchesLinkAuthor(uuid, it.createdByPubkey) } ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
@@ -1274,15 +1275,11 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()
                     val brand = climb.brand.wireValue
-                    val placementMap = if (isMoonBoard) emptyMap() else cachedPlacementMap ?: run {
-                        val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
-                        cachedPlacementMap = map
-                        map
-                    }
+                    val placementMap = if (isMoonBoard) emptyMap() else placementMapFor(brand)
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
                     val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
-                        climbUuid = uuid,
+                        climbUuid = climb.uuid,
                         climbLayoutId = climb.layoutId.toInt(),
                         preferredSizeId = prefSizeId,
                         preferredLayoutId = prefLayoutId,

@@ -999,6 +999,32 @@ SELECT * FROM climb_browse
 WHERE uuid IN ?
 GROUP BY uuid;
 
+-- Schwierigkeit für GENAU einen Winkel.
+--
+-- getClimbsByUuidsAnyAngle kollabiert die Winkel per GROUP BY zu einer
+-- beliebigen Zeile — in SQLite praktisch der kleinste Winkel. Für Name und
+-- Frames ist das richtig, die sind winkelunabhängig. Die Schwierigkeit ist
+-- es nicht, und zwar deutlich: "Floats Your Boat" steht bei 0° auf 10,01
+-- (4a) und bei 40° auf 15,96 (6a) — sechs Grade Unterschied. Ein Logbuch-
+-- eintrag, der bei 40° geklettert wurde, bekam so die 0°-Bewertung.
+--
+-- Liest climb_stats direkt statt climb_browse: fehlt einem Climb die Zeile
+-- für diesen Winkel, soll er hier schlicht fehlen (der Eintrag bleibt dann
+-- ohne Grad) und nicht mit einem fremden Winkel beantwortet werden.
+getClimbDifficultiesForAngle:
+SELECT climb_uuid, difficulty_average FROM climb_stats
+WHERE climb_uuid IN :uuids AND angle = :angle;
+
+-- CruxCoach community climbs among the given uuids that Kilter never
+-- accepted. Kilter does not know their uuid, so logs of them must stay out of
+-- a Kilter account upload. Reads climbs directly: climb_browse would drop a
+-- climb without a stats row.
+communityOnlyClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?
+  AND origin = 'cruxcoach'
+  AND (kilter_status IS NULL OR kilter_status != 'synced');
+
 -- ═══ Board-scoped list / setter resolution (active-board scoping) ═══
 --
 -- The plain getClimbsByUuids*/getClimbsByPubkey queries above resolve a
@@ -1180,8 +1206,52 @@ SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 -- the strength of the Kilter catalogue while the new board has zero rows —
 -- the browser then renders an unexplained blank list instead of a
 -- "load catalogue" empty state.
+-- `kilter_author_uuid IS NULL` keeps the own-climb backfill out of the
+-- answer. KilterClimbBackfiller upserts the user's own logged/authored
+-- climbs through the plain importer path, so they inherit the catalogue
+-- provenance default source='kilter' although they are a handful of rows
+-- fetched one account at a time, not a catalogue. A user who connected a
+-- Kilter account before downloading the catalogue was then told the
+-- catalogue was there: the browser showed only those climbs (plus any
+-- community routes) and dropped the "Load catalogue" banner. The column
+-- separates them without a migration and without touching the
+-- load-bearing `source` semantics: the published catalogue carries no
+-- kilter_author_uuid column, so an imported row never arrives with one.
+-- The backfill does stamp the marker onto existing catalogue rows the user
+-- authored, which is harmless here — those are a handful among a quarter of
+-- a million, and EXISTS still finds the rest.
 hasClimbsForBrand:
-SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum')) LIMIT 1);
+SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ?
+    AND (source = 'kilter' OR (board_brand = 'quantum' AND source = 'quantum'))
+    AND kilter_author_uuid IS NULL LIMIT 1);
+
+-- Whether one board has any hold geometry (catalogue-imported or seeded
+-- from the geometry bundled in the APK).
+hasPlacementsForBrand:
+SELECT EXISTS(SELECT 1 FROM placements WHERE board_brand = ? LIMIT 1);
+
+-- Whether a catalogue's meta import finished: its sync states arrive with
+-- the Kilter meta chunk, imported last. apk_version_code is a legacy app
+-- marker kept across deletions, not catalogue evidence. Geometry is no longer
+-- that evidence: every board gets bundled geometry seeded.
+hasCatalogueSyncState:
+SELECT EXISTS(SELECT 1 FROM sync_states WHERE table_name != 'apk_version_code' LIMIT 1);
+
+
+-- The easiest graded climb one board has at one angle. The playlist planner
+-- seats its warm-up and working tiers on it: a MoonBoard at 40° starts at 6b,
+-- and a plan drawn from the bottom of the scale asked it for grades it lacks.
+-- Walks idx_climb_stats_browse up from the bottom of the (layout, angle)
+-- slice, so it stops after a handful of rows instead of sorting the catalogue.
+lowestGradedDifficulty:
+SELECT cs.difficulty_average AS difficulty
+FROM climb_stats cs INDEXED BY idx_climb_stats_browse
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = :layoutId AND cs.angle = :angle
+  AND cs.difficulty_average >= :minDifficulty
+  AND c.board_brand = :boardBrand AND c.is_listed = 1
+ORDER BY cs.difficulty_average ASC
+LIMIT 1;
 
 -- Catalogue provenance is 'kilter' (legacy) or 'quantum'. Own/peer routes must
 -- never suppress the initial catalogue download.
@@ -1451,6 +1521,43 @@ ORDER BY set_id;
 -- first candidate.
 getProductSizesForLayout:
 SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId AND board_brand = :brand;
+
+-- Inverse of the above: which layout a product size belongs to. Every
+-- Kilter size maps to exactly one layout (sizes 7/8/10/14/27/28 → Original,
+-- 17-26/29 → Homewall), so the first row is the answer. Used to read a
+-- Kilter log's `product_layout_uuid`, which names a product SIZE and not a
+-- layout, without writing that number into climbs.layout_id.
+getLayoutForProductSize:
+SELECT DISTINCT layout_id FROM board_images
+WHERE product_size_id = :productSizeId AND board_brand = :brand
+LIMIT 1;
+
+-- Which layout a climb's holds belong to, derived from the climb itself.
+-- A Kilter `climbConcat` names HOLES ("h1174p12"), not placements — verified
+-- against the published catalogue: for every checked climb the API's numbers
+-- are exactly the hole_ids of the catalogue frames' placements, and never the
+-- placement ids themselves. A hole carries a placement per hold set and a set
+-- is published for one layout, so the holes still answer the question. Served
+-- by the geometry bundled in the APK, so it answers before any download.
+getLayoutForHoles:
+SELECT DISTINCT bi.layout_id FROM board_images bi
+WHERE bi.board_brand = :brand
+  AND bi.set_id IN (
+      SELECT p.set_id FROM placements p
+      WHERE p.board_brand = :brand AND p.hole_id IN :holeIds
+  )
+LIMIT 1;
+
+-- The placement a hole carries within one layout, so a `climbConcat` can be
+-- rewritten into the placement-id frames every renderer and every other
+-- climbs row uses. Unambiguous: checked across the sampled climbs, a hole has
+-- exactly one placement inside a layout, and the rewritten frames matched the
+-- catalogue's own frames hold for hold, role for role.
+getPlacementForHoleInLayout:
+SELECT DISTINCT p.placement_id FROM placements p
+JOIN board_images bi ON bi.set_id = p.set_id AND bi.board_brand = p.board_brand
+WHERE p.board_brand = :brand AND p.hole_id = :holeId AND bi.layout_id = :layoutId
+LIMIT 1;
 
 -- FEAT-031: derive a sensible default (layout, size) for an Aurora board
 -- right after its catalogue is synced, so the picker can configure the
@@ -2407,9 +2514,17 @@ ORDER BY created_at DESC;
 -- board_brand too: frames_hash folds in layout_id but NOT the brand, and
 -- layout_id=1 is shared across five brands, so without this a draft could be
 -- flagged a duplicate of a same-hash row on a DIFFERENT board.
+-- One climb with the same holds, for the editor's duplicate warning. Several
+-- can match (catalogue duplicates, a climb already published twice), and a
+-- one-row read threw on those, failing every publish of such holds. Deleted
+-- climbs do not count; the author's own climb comes first so the editor can
+-- offer to update it.
 findClimbByFramesHash:
-SELECT uuid, name, source, created_by_pubkey FROM climbs
-WHERE frames_hash = ? AND layout_id = ? AND board_brand = ?;
+SELECT uuid, name, source, sync_status, created_by_pubkey FROM climbs
+WHERE frames_hash = :framesHash AND layout_id = :layoutId AND board_brand = :boardBrand
+  AND sync_status != 'deleted'
+ORDER BY (created_by_pubkey IS NOT NULL AND created_by_pubkey = :ownPubkey) DESC, rowid DESC
+LIMIT 1;
 
 -- ── Backup / restore for own-authored climbs (FEAT-008 Phase B) ───
 -- Drives the v3 backup envelope's `boardClimbs` + `boardClimbStats`

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.navigation
 
 import com.cruxcoach.android.ui.onboarding.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Settings
@@ -68,6 +69,8 @@ import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
+import com.cruxcoach.android.ui.settings.LicensesScreen
+import com.cruxcoach.android.ui.settings.SettingsPage
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
 import com.cruxcoach.android.ui.settings.SettingsScreen
@@ -94,6 +97,7 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalOpenClimbDetail
 import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
@@ -156,6 +160,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
+    const val LICENSES = "licenses"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
     const val BUG_REPORT = "bug_report?title={title}&description={description}"
@@ -167,6 +172,8 @@ object Routes {
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
     const val BACKUP_SETTINGS = "backup_settings"
+    /** Settings opened on "Bugs & feature requests" (reply notifications). */
+    const val SUPPORT_SETTINGS = "support_settings"
     const val NOSTR_PROFILE = "nostr_profile"
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
@@ -279,6 +286,7 @@ fun CruxCoachNavHost(
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
             route == Routes.BACKUP_SETTINGS ||
+            route == Routes.SUPPORT_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
             route.startsWith("message_thread/") ||
@@ -333,6 +341,9 @@ fun CruxCoachNavHost(
         LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
         LocalOpenPlaylistPlayer provides {
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
+        },
+        LocalOpenClimbDetail provides { uuid, angle ->
+            navController.navigate(Routes.boardClimbDetail(uuid, angle)) { launchSingleTop = true }
         },
     ) {
     CruxRelayDisclosureEffect(startViewModel.cruxRelayManager)
@@ -544,6 +555,11 @@ fun CruxCoachNavHost(
                 val (_, browserTourStep) = rememberBrowserTour()
                 val drawerState = rememberDrawerState(DrawerValue.Closed)
                 val drawerScope = rememberCoroutineScope()
+                // The drawer sheet only takes Back when it is handed the drawer
+                // state; without this, Back with the menu open left the app.
+                BackHandler(enabled = drawerState.isOpen) {
+                    drawerScope.launch { drawerState.close() }
+                }
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = browserTourStep in listOf(TourStep.INACTIVE, TourStep.DONE),
@@ -879,7 +895,7 @@ fun CruxCoachNavHost(
                 }
             }
 
-            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS).forEach { settingsRoute ->
+            listOf(Routes.SETTINGS, Routes.BACKUP_SETTINGS, Routes.SUPPORT_SETTINGS).forEach { settingsRoute ->
                 composable(settingsRoute) {
                     var showPaymentSheet by remember { mutableStateOf(false) }
                     val paymentViewModel: PaymentViewModel = hiltViewModel()
@@ -887,10 +903,15 @@ fun CruxCoachNavHost(
                     val context = LocalContext.current
 
                     SettingsScreen(
-                        startInBackup = settingsRoute == Routes.BACKUP_SETTINGS,
+                        startPage = when (settingsRoute) {
+                            Routes.BACKUP_SETTINGS -> SettingsPage.BACKUP
+                            Routes.SUPPORT_SETTINGS -> SettingsPage.SUPPORT
+                            else -> null
+                        },
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                         onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
+                        onNavigateToLicenses = { navController.navigate(Routes.LICENSES) },
                         onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                         onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
@@ -925,6 +946,10 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToAssessment = { navController.navigate(Routes.ASSESSMENT) }
                 )
+            }
+
+            composable(Routes.LICENSES) {
+                LicensesScreen(onNavigateBack = { navController.popBackStack() })
             }
 
             composable(Routes.APP_SHARE) {
@@ -993,7 +1018,10 @@ fun CruxCoachNavHost(
 
             composable(Routes.CRASH_REPORT_LIST) {
                 CrashReportListScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToThread = { eventId ->
+                        navController.navigate(Routes.messageThread(eventId))
+                    }
                 )
             }
 
@@ -1157,8 +1185,8 @@ private fun CruxRelayAdvertisingPermissionEffect(relayManager: CruxRelayManager)
     }
 }
 
-/** App-global one-time disclosure. Automatic sharing may be requested while
- * the connection sheet is closed, so this trust gate overlays every route. */
+/** Fallback only: the connection sheet shows the disclosure inline and takes the consent
+ * there. This dialog remains for a manual start from a surface without that card. */
 @Composable
 private fun CruxRelayDisclosureEffect(relayManager: CruxRelayManager) {
     val relayState by relayManager.state.collectAsStateWithLifecycle()

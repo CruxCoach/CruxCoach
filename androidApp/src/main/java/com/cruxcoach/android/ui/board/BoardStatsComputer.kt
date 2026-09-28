@@ -165,7 +165,9 @@ object BoardStatsComputer {
         // Custom date range overrides interval
         if (customFrom != null && customTo != null) {
             val from = customFrom.toString()
-            val to = customTo.plusDays(1).toString() // inclusive end
+            // Both bounds are calendar days compared against the entry's date prefix, so the
+            // end day is already inclusive. Adding a day counted the following day as well.
+            val to = customTo.toString()
             return ascents.filter { it.climbedAt.take(10) in from..to }
         }
         val cutoffDays = interval.days ?: return ascents

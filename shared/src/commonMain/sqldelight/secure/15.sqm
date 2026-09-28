@@ -1,0 +1,29 @@
+-- Migration 15 → 16: Warteschlange für Löschungen, die Kilter noch nicht
+-- kennt.
+--
+-- Löschen war bei aktivem Kilter-Dauersync wirkungslos: `deleteAscent` ist ein
+-- hartes DELETE, und die Dedup-Prüfung des Downloads (`getExistingLogUuids`)
+-- kennt nur die VORHANDENEN Zeilen — die gelöschte uuid fehlt dort, der
+-- nächste Sync hält den Eintrag für neu und legt ihn wieder an. Nach Kilter
+-- ging nichts raus, es gab keinen Lösch-Aufruf.
+--
+-- Diese Tabelle ist bewusst KEINE Grabsteinsammlung. Sie hält nur, was noch
+-- offen ist: sobald Kilter das Löschen bestätigt hat, verschwindet die Zeile
+-- wieder, denn dann liefert `/logs` den Eintrag ohnehin nicht mehr und es
+-- gibt nichts abzuwehren. Im Normalfall — online, Push aktiv — existiert eine
+-- Zeile nur für die Dauer eines Syncs und die Tabelle ist leer.
+--
+-- Gebraucht wird sie für die Fälle, in denen das Fern-Löschen nicht sofort
+-- greifen kann:
+--   * offline gelöscht — der Auftrag muss bis zur nächsten Verbindung irgendwo
+--     stehen, und dieses "irgendwo" ist genau diese Zeile;
+--   * `kilterPushEnabled` ist aus — dann wird bewusst nichts nach Kilter
+--     geschrieben, und nur die Vormerkung hält den Eintrag lokal fern;
+--   * Kilter lehnt dauerhaft ab.
+--
+-- Der Eintrag selbst wird nicht aufgehoben: die Ascent-/Bid-Zeile ist hart
+-- gelöscht, hier steht nur die uuid.
+CREATE TABLE pending_log_deletion (
+    log_uuid TEXT NOT NULL PRIMARY KEY,
+    deleted_at INTEGER NOT NULL
+);

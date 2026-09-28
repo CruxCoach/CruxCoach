@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +47,16 @@ fun BoardLogbookScreen(
     viewModel: BoardLogbookViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            // The view model decides whether this is the initial resume: this effect restarts
+            // whenever the screen re-enters composition, the view model survives the back stack.
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.onScreenResumed()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val (tour, tourStep) = rememberBrowserTour()
     val tourTargets = remember { TourTargets() }
     val tourEntry = tour.loggedEntry()
@@ -88,11 +99,7 @@ fun BoardLogbookScreen(
             onCommentChanged = { viewModel.updateEditComment(it) },
             onSave = { viewModel.saveEdit() },
             onDismiss = { viewModel.dismissEditDialog() },
-            onDelete = {
-                val uuid = state.editingAscentUuid
-                viewModel.dismissEditDialog()
-                if (uuid != null) viewModel.requestDeleteAscent(uuid)
-            },
+            onDelete = { viewModel.requestDeleteFromEdit() },
         )
     }
 
@@ -110,7 +117,7 @@ fun BoardLogbookScreen(
     if (state.showBatchDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissBatchDeleteConfirm() },
-            title = { Text(stringResource(R.string.board_logbook_delete_title, state.selectedUuids.size), fontWeight = FontWeight.Bold) },
+            title = { Text(pluralStringResource(R.plurals.board_logbook_delete_title, state.selectedUuids.size, state.selectedUuids.size), fontWeight = FontWeight.Bold) },
             text = { Text(stringResource(R.string.board_logbook_delete_message)) },
             confirmButton = {
                 Button(

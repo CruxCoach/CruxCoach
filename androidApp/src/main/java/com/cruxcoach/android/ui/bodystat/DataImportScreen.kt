@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -43,7 +44,8 @@ fun DataImportScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val importBugReportTitle = stringResource(R.string.error_bug_report_import_title)
-    val snackbarHostState = SnackbarHostState()
+    // Remembered: a fresh host per recomposition dropped the import result after a moment.
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -130,16 +132,9 @@ fun DataImportScreen(
             }
 
             if (state.importPreview == null) {
-                Text(
+                com.cruxcoach.android.ui.common.InfoHeading(
                     stringResource(R.string.bodystat_select_file),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
                     stringResource(R.string.import_auto_detect_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 OutlinedButton(
@@ -175,8 +170,7 @@ fun DataImportScreen(
                     onConfirm = { viewModel.confirmImport() },
                     onCancel = { viewModel.cancelImport() },
                     isImporting = state.isImporting,
-                    boardImportInProgress = state.boardImportInProgress,
-                    waitingForBoardSync = state.waitingForBoardSync,
+                    catalogueLoading = state.catalogueLoading,
                 )
             }
 
@@ -193,8 +187,7 @@ private fun ImportPreviewCard(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
     isImporting: Boolean,
-    boardImportInProgress: Boolean,
-    waitingForBoardSync: Boolean,
+    catalogueLoading: Boolean,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -207,17 +200,9 @@ private fun ImportPreviewCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                stringResource(R.string.import_backup_detected),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = InfoBlue
-            )
-
-            Text(
+            com.cruxcoach.android.ui.common.InfoHeading(
                 stringResource(R.string.import_select_categories),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                stringResource(R.string.import_duplicate_hint),
             )
 
             val detected = preview.detectedCategories()
@@ -227,7 +212,7 @@ private fun ImportPreviewCard(
                         label = category.localizedLabel(),
                         checked = category in selectedCategories,
                         onCheckedChange = { onToggleCategory(category) },
-                        count = preview.summaryLine(category)
+                        count = preview.countLine(category)
                     )
                 }
             }
@@ -240,22 +225,11 @@ private fun ImportPreviewCard(
                 )
             }
 
-            Text(
-                stringResource(R.string.import_duplicate_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
-            if (boardImportInProgress || waitingForBoardSync) {
+            if (catalogueLoading) {
                 Text(
-                    text = stringResource(
-                        if (waitingForBoardSync) {
-                            R.string.import_waiting_for_board_data
-                        } else {
-                            R.string.import_board_data_not_ready
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = stringResource(R.string.import_catalogue_loading_hint),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -274,7 +248,7 @@ private fun ImportPreviewCard(
                 Button(
                     onClick = onConfirm,
                     modifier = Modifier.weight(1f),
-                    enabled = !isImporting && !boardImportInProgress && selectedCategories.isNotEmpty(),
+                    enabled = !isImporting && selectedCategories.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -284,15 +258,7 @@ private fun ImportPreviewCard(
                             color = MaterialTheme.colorScheme.onPrimary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            stringResource(
-                                if (waitingForBoardSync) {
-                                    R.string.import_waiting_for_board_data_short
-                                } else {
-                                    R.string.import_in_progress_short
-                                },
-                            ),
-                        )
+                        Text(stringResource(R.string.import_in_progress_short))
                     } else {
                         Text(stringResource(R.string.bodystat_import), fontWeight = FontWeight.Bold)
                     }
@@ -333,7 +299,7 @@ private fun PubkeyOverrideBanner(sourceNpubTruncated: String) {
                         R.string.import_pubkey_override_banner_body,
                         sourceNpubTruncated,
                     ),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
@@ -377,3 +343,27 @@ private fun PubkeyMismatchDialog(
         }
     )
 }
+
+/**
+ * The preview count for [category] in the app's language, with plural forms. The
+ * shared summaryLine() is fixed German without plurals, so English showed
+ * "3 Listen" and one own climb read "1 eigene Climbs".
+ */
+@Composable
+private fun com.cruxcoach.data.CruxCoachBackup.ImportPreview.countLine(category: Category): String =
+    when (category) {
+        Category.PROFILE -> stringResource(R.string.import_result_profile)
+        Category.ASSESSMENTS -> pluralStringResource(R.plurals.import_result_assessments, assessments, assessments)
+        Category.BODY_STATS -> pluralStringResource(R.plurals.import_result_body_stats, bodyStats, bodyStats)
+        Category.WORKOUT_LOGS -> pluralStringResource(R.plurals.import_result_workouts, workoutLogs, workoutLogs)
+        Category.CLIMB_LOGS -> pluralStringResource(R.plurals.import_result_climbs, climbLogs, climbLogs)
+        Category.TRAINING_PLANS -> pluralStringResource(R.plurals.import_result_plans, trainingPlans, trainingPlans)
+        Category.BOARD_LOGBOOK -> listOfNotNull(
+            boardAscents.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.import_result_board_sends, it, it) },
+            boardBids.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.import_result_board_bids, it, it) },
+        ).joinToString(", ")
+        Category.BOARD_SESSIONS -> pluralStringResource(R.plurals.import_result_board_sessions, boardSessions, boardSessions)
+        Category.CLIMB_LISTS -> pluralStringResource(R.plurals.import_result_lists, climbLists, climbLists)
+        Category.OWN_CLIMBS -> pluralStringResource(R.plurals.import_result_own_climbs, ownClimbs, ownClimbs)
+        Category.CLIMB_NOTES -> pluralStringResource(R.plurals.import_result_notes, climbNotes, climbNotes)
+    }

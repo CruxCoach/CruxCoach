@@ -62,6 +62,7 @@ internal fun DevContactSection(
     unreadChat: Int,
     unreadBugs: Int,
     unreadFeatures: Int,
+    unreadCrashes: Int = 0,
     unreadAnnouncements: Int = 0,
     crashReportOptIn: Boolean,
     announcementsEnabled: Boolean = true,
@@ -113,7 +114,7 @@ internal fun DevContactSection(
         DevContactRow(
             icon = Icons.Filled.ErrorOutline,
             label = stringResource(R.string.devcontact_crash_reports),
-            badge = 0,
+            badge = unreadCrashes,
             onClick = onNavigateToCrashReports
         )
 

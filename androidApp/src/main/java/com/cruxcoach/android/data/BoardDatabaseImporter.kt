@@ -63,6 +63,9 @@ class BoardDatabaseImporter(
         private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+
+        /** Per-connection temp table of the peer climbs whose stats may be imported. */
+        private const val PEER_STAT_CLIMBS = "peer_stat_climbs"
         private val QUANTUM_MODELS = setOf("xl", "l", "m", "s", "belay")
 
         // Hot-path indexes for the climbs table — dropped before bulk
@@ -1551,7 +1554,10 @@ class BoardDatabaseImporter(
             // transaction AFTER climbs/stats had already committed — a
             // partial import. Probing every source SELECT first turns that
             // into a clean, zero-write abort.
+            val started = System.nanoTime()
+            fun elapsedMs() = (System.nanoTime() - started) / 1_000_000
             if (isModernSource) preflightModernSource(dbFile, includeQuantum)
+            val preflightMs = elapsedMs()
             var modernLayoutCount: Int? = null
             val (climbCount, statCount) = withDeferredIndexes {
                 if (isModernSource) {
@@ -1585,8 +1591,10 @@ class BoardDatabaseImporter(
                     climbs to stats
                 }
             }
+            val catalogueMs = elapsedMs()
 
             backfillMoveCounts()
+            val backfillMs = elapsedMs()
 
             if (boardRepository.getSyncState("metadata_v7") == null) {
                 boardRepository.upsertSyncState("metadata_v7", "done")
@@ -1631,6 +1639,11 @@ class BoardDatabaseImporter(
             // accounting after geometry. Emit an explicit terminal phase so
             // the UI never appears frozen at "Layout 100%".
             onProgress?.invoke(ImportStep.Finalizing)
+            Log.i(
+                TAG,
+                "importFromDbFile(modern=$isModernSource) cumulative ms: preflight=$preflightMs " +
+                    "catalogue+indexes=$catalogueMs backfill=$backfillMs geometry+sync=${elapsedMs()}",
+            )
             val nomatchCount = boardRepository.countNomatchClimbs()
             onProgress?.invoke(ImportStep.Done(
                 climbCount, statCount, layoutCount,
@@ -2363,29 +2376,48 @@ class BoardDatabaseImporter(
             // peer catalogue policy and whose target climb has the same brand
             // are eligible. Authenticated/legacy catalogue imports retain their
             // historical unfiltered behavior.
+            //
+            // The eligible peer climbs are normalised ONCE into an indexed temp table. The join
+            // used to compare LOWER(TRIM(sc.uuid)) with LOWER(TRIM(s.climb_uuid)) directly — an
+            // expression on both sides, so no index could serve it and every stats row scanned
+            // the whole peer climbs table. With a real three-board share (~870k stats rows
+            // against ~700k climbs) that is 6·10^11 comparisons: on a Nokia 6.1 the import sat
+            // at "Stats: 0 / 0" for a quarter of an hour inside the COUNT alone, holding the
+            // write lock so the rest of the app ran into "database is locked". Fixtures with a
+            // few dozen rows never showed it.
             val peerJoin = peerClimbsTable?.let { climbsTable ->
                 val sourceBrand = if ("board_brand" in peerClimbColumns) {
                     "LOWER(COALESCE(sc.board_brand,'kilter'))"
                 } else {
                     "'kilter'"
                 }
-                """JOIN src.$climbsTable sc
-                       ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(s.climb_uuid))
+                val eligible = buildString {
+                    append("sc.is_listed=1")
+                    if ("source" in peerClimbColumns) {
+                        append(" AND LOWER(COALESCE(sc.source,'kilter'))!='local'")
+                    }
+                    if ("is_deleted" in peerClimbColumns) {
+                        append(" AND COALESCE(sc.is_deleted,0)=0")
+                    }
+                }
+                targetDb.execSQL("DROP TABLE IF EXISTS temp.$PEER_STAT_CLIMBS")
+                targetDb.execSQL(
+                    "CREATE TEMP TABLE $PEER_STAT_CLIMBS(" +
+                        "uuid TEXT NOT NULL, brand TEXT NOT NULL, PRIMARY KEY(uuid, brand)) WITHOUT ROWID"
+                )
+                targetDb.execSQL(
+                    "INSERT OR IGNORE INTO temp.$PEER_STAT_CLIMBS(uuid, brand) " +
+                        "SELECT LOWER(TRIM(sc.uuid)), $sourceBrand FROM src.$climbsTable sc " +
+                        "WHERE sc.uuid IS NOT NULL AND $eligible"
+                )
+                """JOIN temp.$PEER_STAT_CLIMBS pc
+                       ON pc.uuid=LOWER(TRIM(s.climb_uuid))
                    JOIN main.climbs tc
-                       ON tc.uuid=LOWER(TRIM(s.climb_uuid))
-                      AND LOWER(tc.board_brand)=$sourceBrand""".trimIndent()
+                       ON tc.uuid=pc.uuid
+                      AND LOWER(tc.board_brand)=pc.brand""".trimIndent()
             }.orEmpty()
-            val peerFilter = if (peerClimbsTable == null) {
-                ""
-            } else buildString {
-                append(" AND sc.is_listed=1")
-                if ("source" in peerClimbColumns) {
-                    append(" AND LOWER(COALESCE(sc.source,'kilter'))!='local'")
-                }
-                if ("is_deleted" in peerClimbColumns) {
-                    append(" AND COALESCE(sc.is_deleted,0)=0")
-                }
-            }
+            // Already applied while the temp table was built.
+            val peerFilter = ""
             // A peer catalogue is additive: its aggregate row may fill a
             // missing (climb_uuid, angle), but it must never replace an
             // already-authoritative receiver row after a same-brand UUID
@@ -2444,6 +2476,8 @@ class BoardDatabaseImporter(
                 onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
+
+            if (peerClimbsTable != null) targetDb.execSQL("DROP TABLE IF EXISTS temp.$PEER_STAT_CLIMBS")
 
             val inserted = if (freshInstall && peerClimbsTable == null) {
                 scanned
@@ -2515,6 +2549,16 @@ class BoardDatabaseImporter(
     }
 
     /** Open the target board database directly for ATTACH operations. */
+    /** Seeds one board's bundled hold geometry when it has none; see [BundledBoardGeometry]. */
+    fun seedBundledGeometry(source: File, brand: String): Int {
+        val db = openTargetDb()
+        try {
+            return BundledBoardGeometry.seed(db, source, brand)
+        } finally {
+            db.close()
+        }
+    }
+
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
         val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
@@ -2591,7 +2635,12 @@ class BoardDatabaseImporter(
      * filtered counts once the catalogue is large. The MoonBoard catalogue
      * alone adds ~245k climbs, which turned `countFilteredClimbs` into a ~3s
      * query and janked the UI. Safe to call on a background dispatcher.
+     *
+     * Serialized with the imports: detached, it can overlap a board load queued
+     * behind the sync, and that import would otherwise fail on the 5 s busy
+     * timeout while ANALYZE reads every index for tens of seconds.
      */
+    @Synchronized
     fun analyzeDatabase() {
         val db = openTargetDb()
         try {
@@ -3064,15 +3113,19 @@ class BoardDatabaseImporter(
             // carry the table next to an older brandless climbs shape; without
             // the brand discriminator there is no safe way to prove that both
             // ends are MoonBoard identities, so treat it like an older sender.
+            // Every join below is column = expression, so the peer's own uuid indexes serve
+            // them. The alias table only exists from 0.2.3 on, whose uuids are canonical; the
+            // earlier LOWER(TRIM(uuid)) on the looked-up side scanned a whole table per alias.
+            // A non-canonical peer row now simply contributes no alias.
             if (has("moonboard_climb_aliases") && "board_brand" in columns("climbs")) add(
                 """INSERT OR IGNORE INTO moonboard_climb_aliases(
                        alias_uuid,canonical_uuid,match_kind)
                    SELECT LOWER(TRIM(a.alias_uuid)),LOWER(TRIM(a.canonical_uuid)),a.match_kind
                    FROM src.moonboard_climb_aliases a
                    JOIN src.climbs alias_climb
-                     ON LOWER(TRIM(alias_climb.uuid))=LOWER(TRIM(a.alias_uuid))
+                     ON alias_climb.uuid=LOWER(TRIM(a.alias_uuid))
                    JOIN src.climbs canonical_climb
-                     ON LOWER(TRIM(canonical_climb.uuid))=LOWER(TRIM(a.canonical_uuid))
+                     ON canonical_climb.uuid=LOWER(TRIM(a.canonical_uuid))
                    JOIN main.climbs imported_canonical
                      ON imported_canonical.uuid=LOWER(TRIM(a.canonical_uuid))
                     AND LOWER(imported_canonical.board_brand)='moonboard'
@@ -3085,7 +3138,7 @@ class BoardDatabaseImporter(
                      AND alias_climb.frames=canonical_climb.frames
                      AND NOT EXISTS (
                        SELECT 1 FROM src.moonboard_climb_aliases chained
-                       WHERE LOWER(TRIM(chained.alias_uuid))=LOWER(TRIM(a.canonical_uuid))
+                       WHERE chained.alias_uuid=LOWER(TRIM(a.canonical_uuid))
                      )""".trimIndent(),
             )
             if (includeQuantum) {
@@ -3111,16 +3164,29 @@ class BoardDatabaseImporter(
                             append(" AND COALESCE(sc.is_deleted,0)=0")
                         }
                     }
+                    // Both sides of these lookups are normalized, so neither can
+                    // use an index. As correlated joins they were O(bridge ×
+                    // Quantum catalogue): 9,147 official routes compared ~78M
+                    // ICU LOWER() pairs; on a Nokia 6.1 the refs copy alone ran
+                    // 46 minutes without finishing, inside the import's exclusive
+                    // transaction. A non-correlated IN (SELECT …) is built once
+                    // into an ephemeral index and probed per row. It selects the
+                    // same rows: validation has already rejected duplicate
+                    // normalized accepted UUIDs, so the join could never multiply
+                    // a row, and app_uuid is NOT NULL on both tables, so NOT IN
+                    // cannot swallow a row.
                     add(
                         """INSERT INTO quantum_route_refs(app_uuid,route_uuid,model)
                            SELECT LOWER(TRIM(r.app_uuid)),LOWER(TRIM(r.route_uuid)),LOWER(TRIM(r.model))
                            FROM src.quantum_route_refs r
-                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(r.app_uuid))
                            JOIN main.climbs c ON c.uuid=LOWER(TRIM(r.app_uuid))
-                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
-                             AND NOT EXISTS (
-                               SELECT 1 FROM main.quantum_route_refs existing
-                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(r.app_uuid))
+                           WHERE LOWER(TRIM(r.app_uuid)) IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE $sourceGuard
+                             )
+                             AND LOWER(c.board_brand)='quantum'
+                             AND LOWER(TRIM(r.app_uuid)) NOT IN (
+                               SELECT LOWER(existing.app_uuid) FROM main.quantum_route_refs existing
                              )""".trimIndent(),
                     )
                     add(
@@ -3131,12 +3197,14 @@ class BoardDatabaseImporter(
                                   COALESCE(m.kickplate,0),COALESCE(m.matching,0),
                                   COALESCE(m.standard,0),COALESCE(m.tags,'')
                            FROM src.quantum_route_metadata m
-                           JOIN src.climbs sc ON LOWER(TRIM(sc.uuid))=LOWER(TRIM(m.app_uuid))
                            JOIN main.climbs c ON c.uuid=LOWER(TRIM(m.app_uuid))
-                           WHERE $sourceGuard AND LOWER(c.board_brand)='quantum'
-                             AND NOT EXISTS (
-                               SELECT 1 FROM main.quantum_route_metadata existing
-                               WHERE LOWER(existing.app_uuid)=LOWER(TRIM(m.app_uuid))
+                           WHERE LOWER(TRIM(m.app_uuid)) IN (
+                               SELECT LOWER(TRIM(sc.uuid)) FROM src.climbs sc
+                               WHERE $sourceGuard
+                             )
+                             AND LOWER(c.board_brand)='quantum'
+                             AND LOWER(TRIM(m.app_uuid)) NOT IN (
+                               SELECT LOWER(existing.app_uuid) FROM main.quantum_route_metadata existing
                              )""".trimIndent(),
                     )
                     // importClimbs intentionally distrusts and does not copy a

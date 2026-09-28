@@ -18,7 +18,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
-import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 
 /**
@@ -52,7 +51,7 @@ fun BoardSyncScreen(
                     },
                 )
                 RestTimerBannerSlot()
-                SyncStatusBannerSlot()
+                // The card below is what the banner links to; above it, it only repeated it.
                 BleStatusArea()
             }
         },

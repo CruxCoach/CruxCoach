@@ -63,8 +63,8 @@ final class AppCoreTests: XCTestCase {
         XCTAssertEqual(detail.currentState.status, "loading")
         detail.close()
 
-        // No catalogue is installed in a test run, so there is nothing to pick.
-        XCTAssertTrue(core.boardOptions(brandWire: "kilter").isEmpty)
+        // Bundled geometry makes boards selectable before downloading a catalogue.
+        XCTAssertFalse(core.boardOptions(brandWire: "kilter").isEmpty)
         XCTAssertFalse(core.boardOptions(brandWire: "moonboard").isEmpty, "MoonBoard variants need no catalogue")
         XCTAssertTrue(core.boardOptions(brandWire: "nonsense").isEmpty)
     }

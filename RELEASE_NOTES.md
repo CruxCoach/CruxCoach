@@ -1,6 +1,6 @@
-# CruxCoach 0.2.3 — Unreleased
+# CruxCoach 0.2.3 — 2026-09-26
 
-This release focuses on reliable browsing, clearer statistics and quicker board navigation.
+This release brings beta videos, quicker board navigation, a searchable board map, clearer statistics and more reliable browsing.
 
 ## Highlights
 - **A guided first session.** Connect your board during setup, choose catalogue
@@ -28,6 +28,23 @@ This release focuses on reliable browsing, clearer statistics and quicker board 
 - **Beta videos close at hand.** Open videos from the climb detail card. Optional
   beta media synchronizes separately from the board catalogue; previews are verified
   before caching and fall back gracefully when a mirror is unavailable.
+- **A Kilter logbook that matches Kilter.** Imported entries now find their problem
+  whatever spelling the catalogue stores it under, show the grade of the angle they
+  were climbed at, render on their own board and keep their sequence. Deleting an
+  entry removes it on Kilter too, and a deletion made offline is carried out later.
+  Existing entries are corrected on the next sync.
+
+- **Find boards on the map.** Search the board map for gyms, cities and boards and
+  open a venue to see every board installed there.
+- **Download only what you climb.** Choose which board catalogues to keep on your
+  phone during setup or later in Settings → Board catalogs.
+- **Community climbs on every board.** CruxCoach community climbs show their holds,
+  fit your board size and light the wall even for boards whose catalogue you did
+  not download.
+- **Training lists play their plan.** Generated lists start with their tries and
+  rests; the generator plans from one grade range with a rising warm-up.
+- **Share boards nearby, your choice.** The receiver picks which of the sender's
+  boards to take, right on the first setup screen if needed.
 
 ## Other improvements
 - Board-aware quick logging and playlist generation, with candidate pools for each
@@ -36,10 +53,20 @@ This release focuses on reliable browsing, clearer statistics and quicker board 
 - Extra space below playlists keeps the add button clear of the last card's actions.
 - Stronger validation and resource limits for local sharing, relay messages and
   downloaded app updates.
+- About lists the open-source licenses and links the privacy notice and source code.
+- Developer replies show unread badges and name their thread in notifications.
+- Logs of CruxCoach community climbs stay out of the Kilter upload.
 
 ## Android compatibility
 CruxCoach 0.2.3 requires **Android 9 or newer**. As announced in the previous release,
-0.2.2 is the last version for Android 8.0 and 8.1. Existing installations on those
-versions can continue using 0.2.2.
+0.2.2 is the last version for Android 8.0 and 8.1.
 
-These notes describe the release candidate branch. Stable publication is pending.
+On Android 8, CruxCoach 0.2.2 already knows this. Its updater stops before it even
+checks and tells you once that this device keeps the version it has. Nothing is
+downloaded and nothing changes: the app stays fully usable and your data is untouched.
+
+If you are on Android 8 and still running 0.2.1 or older, update to **0.2.2** rather
+than to this release — 0.2.3 cannot install there. An older updater may offer it
+anyway; Android then refuses the package before installing it, which leaves your
+existing app and its data exactly as they were. Moving to a newer device: install
+CruxCoach there and restore your backup.

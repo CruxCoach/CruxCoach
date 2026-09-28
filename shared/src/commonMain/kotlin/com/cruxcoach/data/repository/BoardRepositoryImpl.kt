@@ -2,6 +2,7 @@ package com.cruxcoach.data.repository
 
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.board.SupportedBoard
 import kotlin.concurrent.Volatile
@@ -316,6 +317,24 @@ class BoardRepositoryImpl(
         return q.hasClimbsForBrand(boardBrand).executeAsOne()
     }
 
+    override fun hasPlacementsForBrand(boardBrand: String): Boolean =
+        q.hasPlacementsForBrand(boardBrand).executeAsOne()
+
+    override fun hasCatalogueSyncState(): Boolean =
+        q.hasCatalogueSyncState().executeAsOne()
+
+    override fun lowestGradedDifficulty(
+        angle: Int,
+        layoutId: Int,
+        boardBrand: String,
+        minDifficulty: Double,
+    ): Double? = q.lowestGradedDifficulty(
+        layoutId = layoutId.toLong(),
+        angle = angle.toLong(),
+        minDifficulty = minDifficulty,
+        boardBrand = boardBrand,
+    ).executeAsOneOrNull()?.difficulty
+
     override fun hasMoonBoardHoldSetMask(): Boolean {
         return q.hasMoonBoardHoldSetMask().executeAsOne()
     }
@@ -360,13 +379,12 @@ class BoardRepositoryImpl(
     }
 
     override fun findClimbCanonicalUuid(uuid: String): String? {
-        // Indexed fast paths first: the uuid as given, then the legacy
-        // curated spelling (nodash-UPPERCASE) a dashed-lowercase API uuid
-        // maps to. Both are PK point-lookups.
-        q.getClimbUuidExact(uuid).executeAsOneOrNull()?.let { return it }
-        val legacySpelling = uuid.replace("-", "").uppercase()
-        if (legacySpelling != uuid) {
-            q.getClimbUuidExact(legacySpelling).executeAsOneOrNull()?.let { return it }
+        // Indexed fast paths first — every spelling the catalogue is known
+        // to store ([ClimbUuid.spellings]), each a PK point-lookup. The
+        // legacy pair (uuid as given + nodash-UPPERCASE) left the
+        // nodash-lowercase and dashed-lowercase rows to the scan below.
+        for (spelling in ClimbUuid.spellings(uuid)) {
+            q.getClimbUuidExact(spelling).executeAsOneOrNull()?.let { return it }
         }
         // Last resort: format-blind normalized scan (covers any residual
         // case/hyphenation mix).
@@ -420,6 +438,21 @@ class BoardRepositoryImpl(
                 .executeAsList().map { mapBrowse(it) }
         }
     }
+    override fun communityOnlyClimbUuids(uuids: Collection<String>): Set<String> =
+        if (uuids.isEmpty()) emptySet()
+        else q.communityOnlyClimbUuids(uuids).executeAsList().toSet()
+
+    override fun getClimbDifficultiesForAngle(
+        uuids: Collection<String>,
+        angle: Int,
+    ): Map<String, Double> {
+        if (uuids.isEmpty()) return emptyMap()
+        return q.getClimbDifficultiesForAngle(uuids, angle.toLong())
+            .executeAsList()
+            .mapNotNull { row -> row.difficulty_average?.let { row.climb_uuid to it } }
+            .toMap()
+    }
+
     override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
         return resolveAliasesInRequestedOrder(uuids) { canonical ->
             q.getClimbsByUuidsAnyAngle(canonical)
@@ -607,6 +640,17 @@ class BoardRepositoryImpl(
     override fun getProductSizesForLayout(layoutId: Int, boardBrand: String): List<Int> {
         return q.getProductSizesForLayout(layoutId.toLong(), boardBrand).executeAsList().map { it.toInt() }
     }
+
+    override fun getLayoutForProductSize(productSizeId: Int, boardBrand: String): Long? =
+        q.getLayoutForProductSize(productSizeId.toLong(), boardBrand).executeAsOneOrNull()
+
+    override fun getLayoutForHoles(holeIds: Collection<Int>, boardBrand: String): Long? {
+        if (holeIds.isEmpty()) return null
+        return q.getLayoutForHoles(boardBrand, holeIds.map { it.toLong() }).executeAsOneOrNull()
+    }
+
+    override fun getPlacementForHoleInLayout(holeId: Int, layoutId: Long, boardBrand: String): Long? =
+        q.getPlacementForHoleInLayout(boardBrand, holeId.toLong(), layoutId).executeAsOneOrNull()
 
     override fun getDefaultLayoutForBrand(boardBrand: String): Int? =
         q.getMostCommonLayoutForBrand(boardBrand).executeAsOneOrNull()?.toInt()
@@ -1665,9 +1709,10 @@ class BoardRepositoryImpl(
         )
     }
 
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow? {
-        val row = q.findClimbByFramesHash(framesHash, layoutId, boardBrand).executeAsOneOrNull() ?: return null
-        // Lightweight projection — we only need uuid + name + source + pubkey for dup-detection
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String, ownPubkey: String?): CommunityClimbRow? {
+        val row = q.findClimbByFramesHash(framesHash, layoutId, boardBrand, ownPubkey).executeAsOneOrNull() ?: return null
+        // Lightweight projection for dup-detection: uuid, name, source, pubkey
+        // and the sync status (the editor words a draft match differently).
         return CommunityClimbRow(
             uuid = row.uuid,
             name = row.name,
@@ -1675,7 +1720,7 @@ class BoardRepositoryImpl(
             description = "",
             framesText = "",
             source = row.source,
-            syncStatus = "",
+            syncStatus = row.sync_status,
             createdByPubkey = row.created_by_pubkey,
             nostrEventId = null,
             nostrDTag = null,

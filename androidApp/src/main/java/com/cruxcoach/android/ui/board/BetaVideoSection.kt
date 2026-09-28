@@ -16,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -139,16 +138,13 @@ internal fun BetaVideoSheet(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (link.thumbnail != null) {
-                                    val verifiedFile by produceState<java.io.File?>(null, link.thumbnail) {
-                                        value = null
-                                        value = try {
-                                            link.thumbnail?.let { VerifiedBetaThumbnail.load(context.cacheDir, it) }
-                                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                                        catch (_: Exception) { null }
+                                val thumbnail = link.thumbnail
+                                if (thumbnail != null) {
+                                    val request = remember(context, thumbnail) {
+                                        betaThumbnailRequest(context, thumbnail)
                                     }
                                     AsyncImage(
-                                        model = verifiedFile,
+                                        model = request,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),

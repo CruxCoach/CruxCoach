@@ -130,6 +130,50 @@ class BoardSyncInitialDiscoveryConsentTest {
     }
 
     @Test
+    fun `onboarding probe offers the sender inline and the internet choice is final`() = runTest {
+        val found = LocalShareDiscovery.Found(
+            network = mockk<Network>(),
+            baseUrl = "http://192.168.49.1:4949",
+            manifest = manifest(),
+        )
+        var probes = 0
+        var fallbacks = 0
+        var transfers = 0
+        val manager = manager(
+            discover = { probes++; found },
+            fallback = { fallbacks++ },
+            runner = { transfers++ },
+        )
+        runCurrent()
+
+        manager.probeOnboardingShare()
+        manager.probeOnboardingShare()
+        runCurrent()
+
+        // Found, presented inline, and nothing started: neither a transfer nor a download.
+        assertEquals(1, probes)
+        assertSame(found, manager.state.value.pendingDiscoveredShare)
+        assertTrue(manager.state.value.discoveredShareInline)
+        assertFalse(manager.state.value.isSyncing)
+        assertEquals(0, transfers)
+        assertEquals(0, fallbacks)
+
+        // "Load from the internet instead": the offer goes, nothing starts by itself…
+        manager.dismissDiscoveredShare()
+        runCurrent()
+        assertNull(manager.state.value.pendingDiscoveredShare)
+        assertFalse(manager.state.value.discoveredShareInline)
+        assertEquals(0, fallbacks)
+
+        // …and the confirmed download does not rediscover the sender it was just told to skip.
+        manager.startInitialSyncIfNeeded()
+        runCurrent()
+        assertEquals(1, probes)
+        assertEquals(1, fallbacks)
+        assertNull(manager.state.value.pendingDiscoveredShare)
+    }
+
+    @Test
     fun `dismiss and no-peer each choose online fallback exactly once`() = runTest {
         val found = LocalShareDiscovery.Found(
             network = mockk<Network>(),

@@ -1,0 +1,7 @@
+{
+  "hash": "CC-BY-SA-4.0",
+  "name": "Creative Commons Attribution-ShareAlike 4.0",
+  "url": "https://creativecommons.org/licenses/by-sa/4.0/legalcode",
+  "spdxId": "CC-BY-SA-4.0",
+  "content": "The manufacturer severity classification and autostart-settings components come from dontkillmyapp.com by the Urbandroid Team, licensed under the Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses/by-sa/4.0/legalcode). CruxCoach adapted them into Kotlin lookups; the adaptation is shared under the same license."
+}
