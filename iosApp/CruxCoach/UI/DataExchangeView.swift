@@ -68,8 +68,9 @@ struct DataExchangeView: View {
             // the Kotlin side reads a plain path, so the scope is opened here
             // and closed once the file has been read into the database.
             let scoped = url.startAccessingSecurityScopedResource()
-            model.importFile(path: url.path)
-            if scoped { url.stopAccessingSecurityScopedResource() }
+            model.importFile(path: url.path, onFinished: {
+                if scoped { url.stopAccessingSecurityScopedResource() }
+            })
         }
         .alert(LI(errorKey(ui.errorCode)),
                isPresented: Binding(get: { ui.errorCode != "none" }, set: { if !$0 { model.consumeError() } })) {

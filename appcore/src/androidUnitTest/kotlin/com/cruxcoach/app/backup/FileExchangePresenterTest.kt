@@ -76,6 +76,23 @@ class FileExchangePresenterTest {
     }
 
     @Test
+    fun `document access is released after the asynchronous import and on cancellation`() = runBlocking {
+        val store = FakeStore()
+        val presenter = presenter(store)
+        val file = File(root, "scoped.json").apply { writeText("{}") }
+        val finished = kotlinx.coroutines.CompletableDeferred<Unit>()
+        presenter.import(file.absolutePath) {
+            assertEquals("{}", store.imported)
+            finished.complete(Unit)
+        }
+        withTimeout(CI_WAIT_MS) { finished.await() }
+        presenter.close()
+        val cancelled = kotlinx.coroutines.CompletableDeferred<Unit>()
+        presenter.import(file.absolutePath) { cancelled.complete(Unit) }
+        withTimeout(CI_WAIT_MS) { cancelled.await() }
+    }
+
+    @Test
     fun `export writes the payload and discarding removes the file`() = runBlocking {
         val store = FakeStore()
         val presenter = presenter(store)

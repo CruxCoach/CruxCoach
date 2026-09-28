@@ -29,7 +29,7 @@ class DataExchangeScreenModel(private val presenter: FileExchangePresenter) {
 
     fun export() = presenter.export()
     fun discardExport() = presenter.discardExport()
-    fun importFile(path: String) = presenter.import(path)
+    fun importFile(path: String, onFinished: () -> Unit) = presenter.import(path, onFinished)
     fun consumeError() = presenter.consumeError()
     fun close() = presenter.close()
 
