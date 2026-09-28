@@ -90,6 +90,9 @@ import com.cruxcoach.app.ui.SettingsModel
 import com.cruxcoach.app.ui.SettingsScreenModel
 import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
+import platform.Foundation.NSBundle
+import com.cruxcoach.app.sync.CatalogueImporter
+import com.cruxcoach.app.sync.ImportResult
 import kotlinx.coroutines.MainScope
 import com.cruxcoach.data.BoardDatabaseHandle
 import com.cruxcoach.data.repository.BoardLocationRepositoryImpl
@@ -122,6 +125,17 @@ class AppCore private constructor(
     private val boardDb: BoardDatabaseHandle,
     secureDb: SecureDatabase,
 ) {
+    init {
+        val bundle = NSBundle.mainBundle.resourcePath
+            ?: error("Bundled board geometry is missing")
+        val importer = CatalogueImporter(boardDb)
+        for (brand in listOf("kilter", "tension", "decoy", "touchstone", "grasshopper", "soill")) {
+            check(importer.seedBundledGeometry("$bundle/board_geometry/$brand.sqlite3", brand) is ImportResult.Imported) {
+                "Bundled board geometry could not be loaded: $brand"
+            }
+        }
+    }
+
     private val boardRepository: BoardRepository = BoardRepositoryImpl(boardDb.database, boardDb.driver)
     private val personalRepository: PersonalBoardRepository = PersonalBoardRepositoryImpl(secureDb)
     private val secureDatabase: SecureDatabase = secureDb
@@ -272,7 +286,7 @@ class AppCore private constructor(
             api,
             tokens,
             KilterLogImporter(boardRepository, personalRepository),
-            KilterUploader(api, tokens, personalRepository),
+            KilterUploader(api, tokens, personalRepository, boardRepository),
         )
     }
 

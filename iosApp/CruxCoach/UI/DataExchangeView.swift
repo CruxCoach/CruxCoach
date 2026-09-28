@@ -51,9 +51,9 @@ struct DataExchangeView: View {
                     .disabled(ui.isBusy)
                 if ui.importedAscents >= 0 {
                     Text([
-                        L("import_result_board_sends", Int(ui.importedAscents)),
-                        L("import_result_board_bids", Int(ui.importedBids)),
-                        L("import_result_lists", Int(ui.importedLists)),
+                        LP("import_result_board_sends", Int(ui.importedAscents)),
+                        LP("import_result_board_bids", Int(ui.importedBids)),
+                        LP("import_result_lists", Int(ui.importedLists)),
                     ].joined(separator: " · "))
                     .font(.footnote)
                 }

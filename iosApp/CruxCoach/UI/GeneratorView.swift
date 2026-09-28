@@ -188,7 +188,7 @@ struct GeneratorView: View {
                 model.setTargetRange(low: low, high: high)
             }
             if ui.gradeRangeCustomized {
-                Button(L("playlist_generator_recommended")) { model.useRecommendedRange() }
+                Button(L("playlist_generator_use_recommended")) { model.useRecommendedRange() }
             }
             Text(L("playlist_generator_grade_range_hint")).font(.footnote).foregroundStyle(.secondary)
         }

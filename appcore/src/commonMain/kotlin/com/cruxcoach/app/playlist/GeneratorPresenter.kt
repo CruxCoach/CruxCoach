@@ -35,6 +35,7 @@ import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 import com.cruxcoach.domain.playlist.estimatedMinutes
 import com.cruxcoach.domain.playlist.structureRange
+import com.cruxcoach.domain.playlist.defaultStructureSize
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -196,7 +197,7 @@ class GeneratorPresenter(
                 it.copy(
                     angle = board.angle,
                     angleAdjustable = board.boardBrand != "moonboard",
-                    structureSize = it.type.structureRange().midpoint(),
+                    structureSize = it.type.defaultStructureSize(),
                     boardBrand = board.boardBrand,
                     layoutId = board.layoutId,
                     productSizeId = playlistProductSizeFilter(
@@ -316,7 +317,7 @@ class GeneratorPresenter(
             } else it
             seeded.copy(
                 type = type,
-                structureSize = type.structureRange().midpoint(),
+                structureSize = type.defaultStructureSize(),
                 targetMinDifficulty = null,
                 targetMaxDifficulty = null,
                 gradeRangeCustomized = false,
@@ -545,8 +546,6 @@ class GeneratorPresenter(
             manualRestSeconds = s.manualRestSeconds,
             manualRepeatRestSeconds = s.manualRepeatRestSeconds,
             minAscensionists = s.minAscensionists,
-            browserMinDifficulty = s.browserMinDifficulty,
-            browserMaxDifficulty = s.browserMaxDifficulty,
             benchmarkOnly = s.benchmarkOnly,
             originFilter = s.originFilter.name,
             statusFilter = s.statusFilter.joinToString(",") { it.name },
@@ -682,11 +681,11 @@ class GeneratorPresenter(
 
         val overallLow = maxOf(
             params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY,
-            params.browserMinDifficulty,
+            TrainingRanges.MIN_DIFFICULTY,
         )
         val overallHigh = minOf(
             params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY,
-            params.browserMaxDifficulty,
+            TrainingRanges.MAX_DIFFICULTY,
         )
         // Query each distinct planned band once: a large board's easiest grade
         // can consume a single broad query's whole row limit before the upper
@@ -694,7 +693,8 @@ class GeneratorPresenter(
         val plannedCandidates = plan.slots
             .filterIsInstance<PlanSlot.ClimbSlot>()
             .map { slot ->
-                maxOf(slot.minDifficulty, overallLow) to minOf(slot.maxDifficulty, overallHigh)
+                if (slot.section == PlanSection.WARM_UP) slot.minDifficulty to slot.maxDifficulty
+                else maxOf(slot.minDifficulty, overallLow) to minOf(slot.maxDifficulty, overallHigh)
             }
             .filter { (low, high) -> low <= high }
             .distinct()
@@ -710,10 +710,10 @@ class GeneratorPresenter(
                 candidates = candidateSnapshot,
                 minDifficulty = minDiff,
                 maxDifficulty = maxDiff,
-                targetMinDifficulty = params.targetMinDifficulty,
-                targetMaxDifficulty = params.targetMaxDifficulty,
-                browserMinDifficulty = params.browserMinDifficulty,
-                browserMaxDifficulty = params.browserMaxDifficulty,
+                targetMinDifficulty = null,
+                targetMaxDifficulty = null,
+                browserMinDifficulty = TrainingRanges.MIN_DIFFICULTY,
+                browserMaxDifficulty = TrainingRanges.MAX_DIFFICULTY,
                 limit = CANDIDATE_POOL_SIZE,
             )
         }
@@ -729,8 +729,8 @@ class GeneratorPresenter(
                 .filter { climb ->
                     val diff = climb.difficultyAverage
                     diff != null &&
-                        diff >= params.browserMinDifficulty &&
-                        diff <= params.browserMaxDifficulty &&
+                        diff >= TrainingRanges.MIN_DIFFICULTY &&
+                        diff <= TrainingRanges.MAX_DIFFICULTY &&
                         diff >= (params.targetMinDifficulty ?: TrainingRanges.MIN_DIFFICULTY) &&
                         diff <= (params.targetMaxDifficulty ?: TrainingRanges.MAX_DIFFICULTY) &&
                         (climb.ascensionistCount ?: 0) >= params.minAscensionists &&

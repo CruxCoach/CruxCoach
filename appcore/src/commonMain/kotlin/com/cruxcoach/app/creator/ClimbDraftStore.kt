@@ -64,7 +64,7 @@ class ClimbDraftStore(
      */
     fun findDuplicate(state: ClimbEditorState, layoutId: Long): CommunityClimbRow? {
         val hash = FramesHash.of(state.encodeFrames(), layoutId)
-        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand)
+        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand, pubkeyProvider())
     }
 
     /**
