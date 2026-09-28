@@ -157,7 +157,7 @@ internal fun playlistCandidatesInBand(
     )
     if (low > high || limit <= 0) return emptyList()
     return candidates.asSequence()
-        .filter { it.difficulty in low..high }
+        .filter { it.grade in low..high }
         .take(limit)
         .toList()
 }
@@ -562,9 +562,9 @@ class GeneratorPresenter(
             if (work.isNotEmpty()) {
                 _state.update {
                     it.copy(
-                        targetMinDifficulty = work.minOf { slot -> slot.minDifficulty }
+                        targetMinDifficulty = kotlin.math.ceil(work.minOf { slot -> slot.minDifficulty })
                             .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
-                        targetMaxDifficulty = work.maxOf { slot -> slot.maxDifficulty }
+                        targetMaxDifficulty = kotlin.math.floor(work.maxOf { slot -> slot.maxDifficulty })
                             .coerceIn(TrainingRanges.MIN_DIFFICULTY, TrainingRanges.MAX_DIFFICULTY),
                     )
                 }
@@ -659,8 +659,8 @@ class GeneratorPresenter(
                 minDifficulty = minDifficulty,
                 maxDifficulty = maxDifficulty,
                 minAscensionists = params.minAscensionists,
-                sortField = ClimbSortField.DIFFICULTY,
-                sortDirection = SortDirection.ASC,
+                sortField = ClimbSortField.ASCENSIONISTS,
+                sortDirection = SortDirection.DESC,
                 limit = limit,
                 climbType = climbType,
                 selProductSizeId = params.productSizeId,
@@ -692,13 +692,15 @@ class GeneratorPresenter(
         // tiers ever appear.
         val plannedCandidates = plan.slots
             .filterIsInstance<PlanSlot.ClimbSlot>()
-            .map { slot ->
-                if (slot.section == PlanSection.WARM_UP) slot.minDifficulty to slot.maxDifficulty
-                else maxOf(slot.minDifficulty, overallLow) to minOf(slot.maxDifficulty, overallHigh)
+            .flatMap { slot ->
+                val low = if (slot.section == PlanSection.WARM_UP) slot.minDifficulty else maxOf(slot.minDifficulty, overallLow)
+                val high = if (slot.section == PlanSection.WARM_UP) slot.maxDifficulty else minOf(slot.maxDifficulty, overallHigh)
+                val first = kotlin.math.ceil(low).toInt()
+                val last = kotlin.math.floor(high).toInt()
+                if (first > last) emptyList() else (first..last).toList()
             }
-            .filter { (low, high) -> low <= high }
             .distinct()
-            .flatMap { (low, high) -> loadCandidateSnapshot(low, high, CANDIDATE_POOL_SIZE) }
+            .flatMap { grade -> loadCandidateSnapshot(grade - 0.5, grade + 0.5, CANDIDATE_POOL_SIZE) }
         // Real board distribution for last-resort grade adaptation.
         val boardCandidates = loadCandidateSnapshot(overallLow, overallHigh, BOARD_GRADE_POOL_SIZE)
         val candidateSnapshot = (plannedCandidates + boardCandidates).distinctBy { it.climbUuid }

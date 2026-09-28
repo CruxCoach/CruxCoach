@@ -142,7 +142,12 @@ class CatalogueSyncController internal constructor(
             try {
                 for (brand in wanted) {
                     try {
-                        if (syncBrand(brand)) {
+                        val catalogueChanged = syncBrand(brand)
+                        val mediaChanged = if (_state.value.brands.firstOrNull { it.brand == brand }?.phase
+                            in setOf(CatalogueSyncPhase.DONE, CatalogueSyncPhase.UP_TO_DATE)) {
+                            syncOptionalMedia(brand, catalogueChanged)
+                        } else false
+                        if (catalogueChanged || mediaChanged) {
                             changed = true
                             _state.update { it.copy(catalogueRevision = it.catalogueRevision + 1) }
                         }
@@ -228,6 +233,33 @@ class CatalogueSyncController internal constructor(
         }
         return if (brand == BoardBrand.KILTER) syncKilter(manifest, changed, store)
         else syncSnapshot(brand, manifest, changed, store, track.importVersion)
+    }
+
+    /** Same independently signed media manifest as Android; failure keeps last-good videos. */
+    private suspend fun syncOptionalMedia(brand: BoardBrand, forceImport: Boolean): Boolean {
+        val board = brand.wireValue
+        val output = "${files.workDirectory()}/beta_media_$board.sqlite3"
+        try {
+            val manifest = (fetchManifest("cruxcoach/$board-beta-media") as? ManifestFetchResult.Found)?.manifest
+                ?: return false
+            if (manifest.board != board || manifest.mediaSchema != 1 || manifest.compression != "zstd" ||
+                manifest.chunks.size != 1) return false
+            val chunk = manifest.chunks.single()
+            if (chunk.name != "beta-media-full" || chunk.type != "beta") return false
+            val store = ManifestTrackStore(keyValues, "beta_media_v1_$board", clock)
+            if (!store.canApplyManifest(manifest)) return false
+            if (!forceImport && store.getChangedChunks(manifest, "beta_media_v1").isEmpty()) return false
+            if (downloader.downloadAndDecompress(chunk, manifest.compression, output) is ChunkResult.Failed) return false
+            if (importer.importBetaMediaSnapshot(output, board) is ImportResult.Failed) return false
+            store.saveCompletedManifest(manifest, manifest.chunks, "beta_media_v1")
+            return true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return false
+        } finally {
+            files.delete(output)
+        }
     }
 
     private suspend fun syncSnapshot(
