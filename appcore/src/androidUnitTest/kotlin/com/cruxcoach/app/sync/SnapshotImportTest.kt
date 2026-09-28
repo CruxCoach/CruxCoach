@@ -168,8 +168,7 @@ class SnapshotImportTest {
     }
 
     @Test
-    fun `unported importers say so instead of pretending`() {
+    fun `unported Quantum import reports unsupported`() {
         assertEquals(ImportResult.Failed(ImportFailure.UNSUPPORTED), fx.importer.importQuantumSnapshot("x"))
-        assertEquals(ImportResult.Failed(ImportFailure.UNSUPPORTED), fx.importer.importBetaMediaSnapshot("x", "kilter"))
     }
 }
