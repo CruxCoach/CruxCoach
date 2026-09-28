@@ -102,11 +102,15 @@ class FileExchangePresenter(
     }
 
     /** Reads a file the user picked and writes it into the current identity. */
-    fun import(path: String) {
-        if (_state.value.isBusy) return
+    fun import(path: String, onFinished: () -> Unit = {}) {
+        if (_state.value.isBusy) {
+            onFinished()
+            return
+        }
         val pubkey = pubkeyHex()
         if (pubkey.isEmpty()) {
             _state.update { it.copy(error = FileExchangeError.NO_IDENTITY) }
+            onFinished()
             return
         }
         _state.update { FileExchangeState(isBusy = true) }
@@ -138,7 +142,7 @@ class FileExchangePresenter(
                     )
                 }
             }
-        }
+        }.invokeOnCompletion { onFinished() }
     }
 
     fun consumeError() {

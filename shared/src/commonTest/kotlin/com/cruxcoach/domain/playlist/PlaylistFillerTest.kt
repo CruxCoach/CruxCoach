@@ -234,7 +234,7 @@ class PlaylistFillerTest {
     }
 
     @Test
-    fun `the warm-up never steps down, even where its tiers overlap`() {
+    fun `the warm-up never steps down even where its tiers overlap`() {
         // Neighbouring tiers overlap by a grade: the lower one can draw a 6a and the
         // upper one a 5b. Seen on the Nokia as a limit warm-up 4c, 4c, 6a, 5b, 6b.
         val plan = PlaylistPlan(
