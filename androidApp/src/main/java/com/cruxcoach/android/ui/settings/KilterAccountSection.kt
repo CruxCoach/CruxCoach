@@ -14,6 +14,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -92,6 +96,7 @@ internal fun KilterAccountSection(
     onRetryPublishQueueNow: () -> Unit,
     onRetryUpload: () -> Unit = {},
     onReportUpload: () -> Unit = {},
+    onUploadImported: () -> Unit = {},
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -130,7 +135,7 @@ internal fun KilterAccountSection(
     }
 
     if (state.isConnected) {
-        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload)
+        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload, onUploadImported)
     }
 
     // Result message (success/error)
@@ -209,8 +214,10 @@ internal fun KilterLogbookSyncStatus(
     onLogin: () -> Unit,
     onRetry: () -> Unit,
     onReport: () -> Unit,
+    onUploadImported: () -> Unit = {},
 ) {
     val upload = state.uploadStatus
+    var confirmImported by remember { mutableStateOf(false) }
     val needsLogin = state.sessionExpired || upload?.reason ==
         com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
     val active = state.pushEnabled && !state.isSyncing
@@ -237,6 +244,29 @@ internal fun KilterLogbookSyncStatus(
                 }
             }
         }
+        if (active && !needsLogin && (upload?.heldImported ?: 0) > 0) {
+            TextButton(onClick = { confirmImported = true }) {
+                Text(stringResource(R.string.kilter_upload_imported_action))
+            }
+        }
+    }
+    if (confirmImported) {
+        AlertDialog(
+            onDismissRequest = { confirmImported = false },
+            title = { Text(stringResource(R.string.kilter_upload_imported_title)) },
+            text = { Text(stringResource(R.string.kilter_upload_imported_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmImported = false
+                    onUploadImported()
+                }) { Text(stringResource(R.string.kilter_upload_imported_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmImported = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 }
 

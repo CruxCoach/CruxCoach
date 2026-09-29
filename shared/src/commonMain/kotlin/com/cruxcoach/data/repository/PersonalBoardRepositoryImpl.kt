@@ -262,7 +262,8 @@ class PersonalBoardRepositoryImpl(
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
                 productLayoutUuid = row.product_layout_uuid,
-                rowVersion = row.row_version
+                rowVersion = row.row_version,
+                externalId = row.external_id,
             )
         }
     }
@@ -447,7 +448,8 @@ class PersonalBoardRepositoryImpl(
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
                 productLayoutUuid = row.product_layout_uuid,
-                rowVersion = row.row_version
+                rowVersion = row.row_version,
+                externalId = row.external_id,
             )
         }
     }

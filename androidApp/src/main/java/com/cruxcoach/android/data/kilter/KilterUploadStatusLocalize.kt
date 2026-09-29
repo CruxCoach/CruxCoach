@@ -14,5 +14,12 @@ fun KilterUploadStatus.localized(context: Context): String {
         KilterUploadReason.CONFLICT -> R.string.kilter_upload_conflict
         KilterUploadReason.INTERNAL -> R.string.kilter_upload_internal
     }
-    return context.getString(reasonText)
+    val res = context.resources
+    val refused = rejectedByKilter + rejectedInvalid
+    return buildList {
+        add(context.getString(reasonText))
+        if (refused > 0) add(res.getQuantityString(R.plurals.kilter_upload_rejected, refused, refused))
+        if (rejectedConflict > 0) add(res.getQuantityString(R.plurals.kilter_upload_conflicts, rejectedConflict, rejectedConflict))
+        if (heldImported > 0) add(res.getQuantityString(R.plurals.kilter_upload_held_imported, heldImported, heldImported))
+    }.joinToString("\n")
 }

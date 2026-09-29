@@ -98,4 +98,22 @@ class KilterUploadStatusUiTest {
         compose.onNodeWithText("Logbuch synchronisiert").assertDoesNotExist()
         compose.onNodeWithText("Jetzt synchronisieren").assertDoesNotExist()
     }
+
+    @Test fun held_imported_entries_are_explained_and_uploaded_only_after_confirmation() {
+        var uploads = 0
+        compose.setContent {
+            MaterialTheme {
+                KilterLogbookSyncStatus(KilterAccountState(pushEnabled = true,
+                    uploadStatus = KilterUploadStatus(uploaded = 3, heldImported = 12, rejectedByKilter = 1)),
+                    {}, {}, {}, { uploads++ })
+            }
+        }
+        compose.onNodeWithText("12 Einträge aus einem Aurora-Export", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Kilter hat 1 Eintrag abgelehnt", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Importierte übertragen").performClick()
+        compose.onNodeWithText("Importierte Einträge übertragen?").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, uploads) }
+        compose.onNodeWithText("Übertragen").performClick()
+        compose.runOnIdle { assertEquals(1, uploads) }
+    }
 }
