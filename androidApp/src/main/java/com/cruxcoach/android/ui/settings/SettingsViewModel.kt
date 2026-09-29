@@ -1193,6 +1193,8 @@ class SettingsViewModel @Inject constructor(
     fun uploadImportedKilterLogs() {
         viewModelScope.launch {
             kilterSyncEngine.setImportedUploadEnabled(true)
+            // A run already in flight read the opt-in before it was given.
+            state.first { !it.kilterAccount.isSyncing }
             retryKilterUpload()
         }
     }

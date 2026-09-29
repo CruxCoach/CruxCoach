@@ -26,20 +26,28 @@ class KilterLogUploadPlanTest {
         assertFalse(KilterLogUploadPlan.sameContent(local.copy(createdAt = "2026-09-17T15:06:30Z"), remote))
     }
 
-    @Test fun a_twin_is_claimed_once_and_imported_entries_also_match_within_a_day() {
+    @Test fun each_remote_log_backs_one_entry_exact_before_day_matches() {
         val remote = KilterLog("remote", climbUuid = "D0E5387D5B974D38B4E93FC4DFD61EF6", angle = 40,
             topped = true, createdAt = "2026-03-01T23:30:00Z")
         val twins = KilterTwinIndex(listOf(remote))
         val sameSecond = remote.copy(logUuid = "local", climbUuid = "d0e5387d5b974d38b4e93fc4dfd61ef6",
             createdAt = "2026-03-01T23:30:00.400Z")
-        assertTrue(twins.claim(sameSecond, imported = false))
-        assertFalse(twins.claim(sameSecond, imported = false), "one remote log backs one local entry")
+        assertTrue(twins.claimExact(sameSecond))
+        assertFalse(twins.claimExact(sameSecond), "one remote log backs one local entry")
+        assertFalse(twins.claimDay(sameSecond, 0), "an exact claim also uses up the day match")
 
-        val fuzzy = KilterTwinIndex(listOf(remote))
-        val exportNextDay = remote.copy(logUuid = "imported", createdAt = "2026-03-02T01:30:00Z")
-        assertFalse(fuzzy.claim(exportNextDay, imported = false), "regular entries need an exact twin")
-        assertTrue(fuzzy.claim(exportNextDay, imported = true))
-        assertFalse(fuzzy.claim(exportNextDay.copy(logUuid = "second"), imported = true))
-        assertFalse(KilterTwinIndex(listOf(remote)).claim(exportNextDay.copy(topped = false), imported = true))
+        val nextDay = remote.copy(logUuid = "imported", createdAt = "2026-03-02T01:30:00Z")
+        val fresh = KilterTwinIndex(listOf(remote))
+        assertFalse(fresh.claimExact(nextDay))
+        assertFalse(fresh.claimDay(nextDay, 0))
+        assertTrue(fresh.claimDay(nextDay, -1))
+        assertFalse(fresh.claimDay(nextDay.copy(logUuid = "second"), -1))
+        assertFalse(KilterTwinIndex(listOf(remote)).claimDay(nextDay.copy(topped = false), -1))
+    }
+
+    @Test fun remote_times_with_an_offset_still_match() {
+        val remote = KilterLog("remote", climbUuid = "X", angle = 40, topped = true, createdAt = "2026-03-01T23:30:00+00:00")
+        assertTrue(KilterTwinIndex(listOf(remote)).claimExact(remote.copy(logUuid = "local", createdAt = "2026-03-01T23:30:00Z")))
+        assertTrue(KilterLogUploadPlan.sameContent(remote.copy(createdAt = "2026-03-01T23:30:00Z"), remote))
     }
 }

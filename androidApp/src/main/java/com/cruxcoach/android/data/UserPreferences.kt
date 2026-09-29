@@ -83,6 +83,7 @@ object KeyScopedKeys {
     // opt-in for entries imported from an Aurora export. See KilterUploadLedger.
     val KILTER_UPLOAD_REJECTIONS = stringPreferencesKey("kilter_upload_rejections")
     val KILTER_UPLOAD_IMPORTED = booleanPreferencesKey("kilter_upload_imported")
+    val KILTER_UPLOAD_LAST_ACCEPTED = longPreferencesKey("kilter_upload_last_accepted")
 
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
@@ -1004,6 +1005,17 @@ class UserPreferences(
 
     suspend fun setKilterUploadImportedEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] = enabled }
+    }
+
+    val kilterUploadLastAccepted: Flow<Long?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED]
+    }
+
+    suspend fun setKilterUploadLastAccepted(atMs: Long?) {
+        keyScoped.edit { prefs ->
+            if (atMs == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED] = atMs
+        }
     }
 
     /**

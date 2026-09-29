@@ -46,12 +46,17 @@ such row blocked the whole logbook.
   bundled `assets/kilter/lowercase_climb_ids.bin` index
   (`scripts/kilter/build_lowercase_climb_index.py`), otherwise uppercase.
   Dashed spellings of legacy climbs are compacted.
-- `KilterSyncEngine.uploadPendingLogs` reads Kilter's logbook once per run,
-  settles known and twin entries locally, splits refused requests down to the
-  single row, retries it once in the other case, and holds it back
-  (`KilterUploadLedger`) only with proof — an accepted request in the same run,
-  or a second lone failure at least an hour later. Transient statuses stop the
-  run; requests per run are bounded.
+- `KilterSyncEngine.uploadPendingLogs` reads Kilter's logbook once per run
+  (logs pending deletion excluded; re-read if another upload ran since a
+  caller's snapshot), settles known and twin entries locally, sends every full
+  chunk, then splits refused requests down to the single row, retries it once
+  in the other case, and holds it back (`KilterUploadLedger`, tied to the
+  row's content and app build, 7 days) only with proof: Kilter accepted some
+  upload after the row's first lone failure. Kilter answers its own failures
+  with 500 too, so an outage never parks rows. Conflicts and unreadable
+  timestamps cost no request and are recomputed each run. Transient statuses
+  stop the run; requests per run are bounded (40).
 - Aurora-imported entries (`external_id` `aurora-json:*`) stay local unless the
-  user opts in; opted-in entries are matched to Kilter's logs by climb, angle
-  and day first.
+  user opts in; the opt-in covers the entries present and is withdrawn once a
+  run worked through them. Opted-in entries are matched to Kilter's logs by
+  exact second first, then climb, angle and day, then a day either side.

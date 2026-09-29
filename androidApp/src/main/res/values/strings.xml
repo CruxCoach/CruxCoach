@@ -3064,6 +3064,11 @@
         <item quantity="one">%d entry from an Aurora export is not uploaded automatically: Kilter usually has it already.</item>
         <item quantity="other">%d entries from an Aurora export are not uploaded automatically: Kilter usually has them already.</item>
     </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d entry has a date Kilter cannot accept and stays local.</item>
+        <item quantity="other">%d entries have a date Kilter cannot accept and stay local.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbook synced, except:</string>
     <string name="kilter_upload_imported_action">Upload imported entries</string>
     <string name="kilter_upload_imported_title">Upload imported entries?</string>
     <string name="kilter_upload_imported_message">These entries come from an Aurora export. If the export is from this Kilter account, Kilter already has most of them. CruxCoach skips every entry Kilter already has for the same climb, angle and day, and uploads the rest.</string>
