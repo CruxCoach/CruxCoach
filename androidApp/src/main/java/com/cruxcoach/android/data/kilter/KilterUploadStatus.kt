@@ -25,14 +25,25 @@ data class KilterUploadStatus(
     val durationMs: Long = 0,
     val appVersion: String = "${com.cruxcoach.android.BuildConfig.VERSION_NAME} (${com.cruxcoach.android.BuildConfig.VERSION_CODE})",
     val trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL,
+    /** Rows Kilter refused one by one; held back so they no longer block the rest. */
+    val rejectedByKilter: Int = 0,
+    /** Rows whose uuid Kilter already holds with different content. */
+    val rejectedConflict: Int = 0,
+    /** Rows that cannot be expressed for Kilter (timestamp). */
+    val rejectedInvalid: Int = 0,
+    /** Aurora-imported rows that stay local until the user opts in. */
+    val heldImported: Int = 0,
+    /** Rows Kilter already had (same uuid or the same ascent), marked synced without a request. */
+    val alreadyOnKilter: Int = 0,
+    /** Bulk requests sent in this run. */
+    val requests: Int = 0,
 ) {
     val failed: Boolean get() = reason != KilterUploadReason.NONE && reason != KilterUploadReason.DISABLED
+    val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid
 }
 
 @Serializable
 enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START }
-
-class KilterLogConflictException : Exception("Existing Kilter log differs from local entry")
 
 class KilterUploadException(val status: Int) : Exception("Kilter upload HTTP $status")
 
@@ -71,6 +82,8 @@ class KilterUploadDiagnostics @Inject constructor(@ApplicationContext context: C
         private const val MAX_AGE = 7L * 24 * 60 * 60 * 1000
         fun diagnosticLine(s: KilterUploadStatus): String =
             "app=${s.appVersion} operation=logs.bulk trigger=${s.trigger} time=${s.timestampMs} durationMs=${s.durationMs} " +
-                "attempted=${s.attempted} uploaded=${s.uploaded} pending=${s.pending} reason=${s.reason} http=${s.httpStatus ?: "none"}"
+                "attempted=${s.attempted} uploaded=${s.uploaded} pending=${s.pending} reason=${s.reason} http=${s.httpStatus ?: "none"} " +
+                "requests=${s.requests} rejectedKilter=${s.rejectedByKilter} rejectedConflict=${s.rejectedConflict} " +
+                "rejectedInvalid=${s.rejectedInvalid} heldImported=${s.heldImported} alreadyOnKilter=${s.alreadyOnKilter}"
     }
 }

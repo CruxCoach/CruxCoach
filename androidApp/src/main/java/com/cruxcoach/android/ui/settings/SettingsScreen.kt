@@ -299,6 +299,7 @@ internal fun SettingsScreen(
                         onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
                         onRetryUpload = { viewModel.retryKilterUpload() },
                         onReportUpload = onReportKilterUpload,
+                        onUploadImported = { viewModel.uploadImportedKilterLogs() },
                     )
                 }
                 SettingsSectionCard {

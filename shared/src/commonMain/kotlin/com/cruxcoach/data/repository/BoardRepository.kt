@@ -509,6 +509,10 @@ interface BoardClimbQueries {
      * climb. Defaults to none so fakes keep the plain upload behaviour.
      */
     fun communityOnlyClimbUuids(uuids: Collection<String>): Set<String> = emptySet()
+    /** Climbs authored in CruxCoach among [uuids] (exact spellings), accepted by Kilter or not. */
+    fun cruxcoachClimbUuids(uuids: Collection<String>): Set<String> = emptySet()
+    /** The spellings among [uuids] that exist as catalogue rows (exact match). */
+    fun existingClimbUuids(uuids: Collection<String>): Set<String> = emptySet()
     /** Format-blind existence/identity resolution: returns the CANONICAL
      *  stored uuid of the climb matching [uuid] across the DB's mixed uuid
      *  spellings (legacy nodash-UPPERCASE curated rows vs new-world
@@ -794,7 +798,9 @@ data class RawAscent(
     val productLayoutUuid: String? = null,
     /** Optimistic-locking token snapshot at read time. Pass to
      *  [PersonalBoardRepository.markAscentSyncedIfUnchanged]. */
-    val rowVersion: Long = 0L
+    val rowVersion: Long = 0L,
+    /** FEAT-005 import marker ("aurora-json:…"), null for every other row. */
+    val externalId: String? = null,
 )
 
 data class RawBid(
@@ -816,6 +822,8 @@ data class RawBid(
     /** Board family + layout (7.sqm) — carried for backup round-trip. */
     val boardBrand: String = "kilter",
     val layoutId: Long? = null,
+    /** See [RawAscent.externalId]. */
+    val externalId: String? = null,
 )
 
 data class RawClimbListEntry(

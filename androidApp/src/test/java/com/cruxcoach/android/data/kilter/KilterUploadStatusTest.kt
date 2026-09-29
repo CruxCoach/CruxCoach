@@ -73,19 +73,24 @@ class KilterUploadStatusTest {
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged(any(), any()) }
     }
 
-    @Test fun second_batch_failure_preserves_progress_and_reports_failure() = runTest {
+    @Test fun a_row_refused_after_an_accepted_batch_is_held_back_instead_of_blocking() = runTest {
         every { personal.getUnsyncedAscents() } returns (0..200).map(::ascent)
         coEvery { api.uploadLogs(any()) } returnsMany listOf(
             Result.success(Unit), Result.failure(KilterUploadException(500)),
         )
         val report = engine.syncBidirectional().getOrThrow()
         assertEquals(200, report.uploaded)
-        assertTrue(report.uploadFailed)
-        assertEquals(1, report.uploadStatus?.pending)
-        assertEquals(500, report.uploadStatus?.httpStatus)
+        assertFalse(report.uploadFailed)
+        assertEquals(0, report.uploadStatus?.pending)
+        assertEquals(1, report.uploadStatus?.rejectedByKilter)
         coVerify(exactly = 2) { api.uploadLogs(any()) }
         verify(exactly = 200) { personal.markAscentSyncedIfUnchanged(any(), any()) }
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-200", any()) }
+        // Held back: the next run does not send it again.
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(200))
+        val next = engine.uploadPendingLogs()
+        assertEquals(1, next.rejectedByKilter)
+        coVerify(exactly = 2) { api.uploadLogs(any()) }
     }
 
     @Test fun community_climb_logs_stay_local_and_do_not_block_the_rest() = runTest {
@@ -209,4 +214,156 @@ class KilterUploadStatusTest {
         verify(exactly = 1) { personal.markAscentSyncedIfUnchanged("test-log-0", 0) }
     }
 
+
+    // ── Isolation, identity and duplicate protection (0.2.4) ─────────────
+
+    /** Kilter refuses a request as a whole when any row names a climb it does not know (live 2026-09-29). */
+    private fun kilterRefuses(vararg badClimbIds: String) {
+        val bad = badClimbIds.toSet()
+        coEvery { api.uploadLogs(any()) } answers {
+            if (firstArg<List<KilterLog>>().any { it.climbUuid in bad }) Result.failure(KilterUploadException(500))
+            else Result.success(Unit)
+        }
+    }
+
+    @Test fun one_unknown_climb_among_many_is_isolated_and_everything_else_uploads() = runTest {
+        every { personal.getUnsyncedAscents() } returns (0..399).map(::ascent)
+        kilterRefuses("test-climb-137")
+        val result = engine.uploadPendingLogs()
+        assertEquals(399, result.uploaded)
+        assertEquals(1, result.rejectedByKilter)
+        assertEquals(0, result.pending)
+        assertEquals(KilterUploadReason.NONE, result.reason)
+        verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-137", any()) }
+        // 2 chunks + about two requests per halving of the refused one.
+        assertTrue(result.requests <= 2 + 2 * 8, "requests=${result.requests}")
+    }
+
+    @Test fun the_other_case_of_a_compact_id_is_tried_once_when_the_index_misses_a_climb() = runTest {
+        val lower = "0123456789abcdef0123456789abcdef"
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0).copy(climbUuid = lower))
+        kilterRefuses(lower.uppercase())
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.uploaded)
+        assertEquals(2, result.requests)
+        coVerify(exactly = 1) { api.uploadLogs(match { it.single().climbUuid == lower }) }
+    }
+
+    @Test fun cruxcoach_climbs_keep_their_lowercase_id_on_the_wire() = runTest {
+        val own = "0123456789abcdef0123456789abcdef"
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0).copy(climbUuid = own))
+        every { board.cruxcoachClimbUuids(any()) } answers { firstArg<Collection<String>>().filterTo(HashSet()) { it == own } }
+        every { board.existingClimbUuids(any()) } returns emptySet()
+        engine.uploadPendingLogs()
+        coVerify(exactly = 1) { api.uploadLogs(match { it.single().climbUuid == own }) }
+    }
+
+    @Test fun an_outage_does_not_park_the_queue_a_row_failing_alone_twice_an_hour_apart_is_held() = runTest {
+        var now = 1_000_000L
+        engine.clock = { now }
+        coEvery { api.uploadLogs(any()) } returns Result.failure(KilterUploadException(500))
+        val first = engine.uploadPendingLogs()
+        assertEquals(KilterUploadReason.HTTP, first.reason)
+        assertEquals(1, first.pending)
+        assertEquals(0, first.rejectedByKilter)
+
+        now += 5 * 60 * 1000L // still the same outage: retried, not held
+        assertEquals(1, engine.uploadPendingLogs().pending)
+
+        now += 61 * 60 * 1000L
+        val third = engine.uploadPendingLogs()
+        assertEquals(1, third.rejectedByKilter)
+        assertEquals(0, third.pending)
+        assertEquals(KilterUploadReason.NONE, third.reason)
+        coVerify(exactly = 3) { api.uploadLogs(any()) }
+        engine.uploadPendingLogs()
+        coVerify(exactly = 3) { api.uploadLogs(any()) }
+    }
+
+    @Test fun transient_statuses_stop_the_run_without_splitting() = runTest {
+        every { personal.getUnsyncedAscents() } returns (0..9).map(::ascent)
+        coEvery { api.uploadLogs(any()) } returns Result.failure(KilterUploadException(503))
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.requests)
+        assertEquals(10, result.pending)
+        assertEquals(503, result.httpStatus)
+        assertEquals(0, result.rejectedByKilter)
+    }
+
+    @Test fun requests_per_run_are_bounded() = runTest {
+        every { personal.getUnsyncedAscents() } returns (0..199).map(::ascent)
+        coEvery { api.uploadLogs(any()) } returns Result.failure(KilterUploadException(500))
+        val result = engine.uploadPendingLogs()
+        assertEquals(40, result.requests)
+        assertEquals(200, result.pending)
+        assertEquals(KilterUploadReason.HTTP, result.reason)
+    }
+
+    @Test fun a_log_kilter_already_has_is_marked_without_posting_it_again() = runTest {
+        // e.g. the response to an earlier upload was lost after Kilter stored it
+        coEvery { api.fetchLogs() } returns Result.success(listOf(KilterLog(
+            logUuid = "test-log-0", userUuid = "test-user", climbUuid = "test-climb-0", angle = 40,
+            flashed = false, topped = true, attempts = 2, createdAt = "2026-09-01T12:00:00.000000Z")))
+        val report = engine.syncBidirectional().getOrThrow()
+        assertEquals(1, report.uploadStatus?.alreadyOnKilter)
+        assertEquals(0, report.uploadStatus?.pending)
+        coVerify(exactly = 0) { api.uploadLogs(any()) }
+        verify(exactly = 1) { personal.markAscentSyncedIfUnchanged("test-log-0", 0) }
+    }
+
+    @Test fun an_edit_kilter_cannot_take_is_held_as_conflict_and_the_rest_uploads() = runTest {
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(1))
+        coEvery { api.fetchLogs() } returns Result.success(listOf(KilterLog(
+            logUuid = "test-log-0", climbUuid = "test-climb-0", angle = 40, topped = true,
+            attempts = 5, createdAt = "2026-09-01T12:00:00Z")))
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.rejectedConflict)
+        assertEquals(1, result.uploaded)
+        assertEquals(0, result.pending)
+        assertFalse(result.failed)
+        coVerify(exactly = 1) { api.uploadLogs(match { logs -> logs.map { it.logUuid } == listOf("test-log-1") }) }
+    }
+
+    @Test fun the_same_ascent_under_another_uuid_is_not_uploaded_twice() = runTest {
+        coEvery { api.fetchLogs() } returns Result.success(listOf(KilterLog(
+            logUuid = "kilter-own-uuid", climbUuid = "test-climb-0", angle = 40, topped = true,
+            attempts = 1, createdAt = "2026-09-01T12:00:00Z")))
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.alreadyOnKilter)
+        coVerify(exactly = 0) { api.uploadLogs(any()) }
+    }
+
+    @Test fun aurora_imported_entries_stay_local_until_the_user_opts_in() = runTest {
+        val imported = ascent(1).copy(externalId = "aurora-json:ascent:0123", climbedAt = "2026-03-02T01:00:00Z")
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), imported)
+        val held = engine.uploadPendingLogs()
+        assertEquals(1, held.heldImported)
+        assertEquals(0, held.pending)
+        coVerify(exactly = 1) { api.uploadLogs(match { logs -> logs.map { it.logUuid } == listOf("test-log-0") }) }
+
+        // Opted in: an entry Kilter has for the same climb, angle and day is linked, not uploaded.
+        every { personal.getUnsyncedAscents() } returns listOf(imported)
+        coEvery { api.fetchLogs() } returns Result.success(listOf(KilterLog(
+            logUuid = "migrated", climbUuid = "TEST-CLIMB-1", angle = 40, topped = true,
+            createdAt = "2026-03-01T23:15:00Z")))
+        engine.setImportedUploadEnabled(true)
+        val linked = engine.uploadPendingLogs()
+        assertEquals(1, linked.alreadyOnKilter)
+        assertEquals(0, linked.heldImported)
+        coVerify(exactly = 1) { api.uploadLogs(any()) }
+    }
+
+    @Test fun an_unparseable_timestamp_is_held_without_a_request() = runTest {
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0).copy(climbedAt = "2026-09-01Z"))
+        val result = engine.uploadPendingLogs()
+        assertEquals(1, result.rejectedInvalid)
+        assertEquals(0, result.pending)
+        coVerify(exactly = 0) { api.uploadLogs(any()) }
+    }
+
+    @Test fun diagnostics_line_carries_counts_but_no_identifiers() {
+        val line = KilterUploadDiagnostics.diagnosticLine(KilterUploadStatus(
+            uploaded = 3, pending = 1, rejectedByKilter = 2, heldImported = 5, alreadyOnKilter = 4, requests = 7))
+        assertTrue(line.contains("requests=7 rejectedKilter=2 rejectedConflict=0 rejectedInvalid=0 heldImported=5 alreadyOnKilter=4"))
+    }
 }
