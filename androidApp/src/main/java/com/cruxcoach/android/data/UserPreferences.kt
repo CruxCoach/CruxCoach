@@ -79,6 +79,10 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+    // Kilter log upload: rows held back per row version (JSON, bounded) and the
+    // opt-in for entries imported from an Aurora export. See KilterUploadLedger.
+    val KILTER_UPLOAD_REJECTIONS = stringPreferencesKey("kilter_upload_rejections")
+    val KILTER_UPLOAD_IMPORTED = booleanPreferencesKey("kilter_upload_imported")
 
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
@@ -981,6 +985,25 @@ class UserPreferences(
 
     suspend fun setKilterClimbPublishEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] = enabled }
+    }
+
+    val kilterUploadRejections: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_REJECTIONS]
+    }
+
+    suspend fun setKilterUploadRejections(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_REJECTIONS)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_REJECTIONS] = json
+        }
+    }
+
+    val kilterUploadImportedEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] ?: false
+    }
+
+    suspend fun setKilterUploadImportedEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] = enabled }
     }
 
     /**

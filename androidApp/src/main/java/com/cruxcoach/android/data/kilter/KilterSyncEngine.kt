@@ -4,6 +4,8 @@ import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.data.repository.RawAscent
+import com.cruxcoach.data.repository.RawBid
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.ClimbUuid
 import com.cruxcoach.util.DateTimeUtil
@@ -56,18 +58,6 @@ private data class LogInsertCounts(val newAscents: Int, val newBids: Int, val du
     val totalNew: Int get() = newAscents + newBids
 }
 
-/**
- * One queued upload paired with the row-version snapshot needed to mark it
- * synced without clobbering a concurrent local edit. Lets the upload be
- * chunked while keeping the optimistic per-row mark correct.
- */
-private data class PendingUpload(
-    val log: KilterLog,
-    val uuid: String,
-    val rowVersion: Long,
-    val isAscent: Boolean,
-)
-
 data class KilterSyncReport(
     val downloaded: Int,
     val uploaded: Int,
@@ -89,7 +79,12 @@ class KilterSyncEngine @Inject constructor(
     private val uploadDiagnostics: KilterUploadDiagnostics,
     /** Defers the own-climb backfill while the Kilter catalogue loads. */
     private val pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>,
+    private val uploadLedger: KilterUploadLedger = InMemoryKilterUploadLedger(),
+    private val lowercaseIndexSource: KilterLowercaseClimbIndexSource = KilterLowercaseClimbIndexSource.EMPTY,
 ) {
+    /** Wall clock of the upload ledger; replaced in tests. */
+    internal var clock: () -> Long = System::currentTimeMillis
+
     private companion object {
         const val TAG = "KilterSyncEngine"
 
@@ -106,6 +101,22 @@ class KilterSyncEngine @Inject constructor(
          * upload, and each batch that succeeds is marked synced independently.
          */
         const val UPLOAD_CHUNK = 200
+
+        /**
+         * Bulk requests per upload run. A clean queue needs one per
+         * [UPLOAD_CHUNK] rows; isolating a refused row costs about two per
+         * halving. Whatever is left over waits for the next run.
+         */
+        const val MAX_REQUESTS_PER_RUN = 40
+
+        /** Statuses that say nothing about the rows: stop and retry later. */
+        val TRANSIENT_HTTP = setOf(408, 425, 429, 502, 503, 504)
+
+        /** A row that failed alone without proof is held back once it fails alone again this much later. */
+        const val SUSPECT_CONFIRM_AFTER_MS = 60L * 60 * 1000
+
+        /** external_id prefix of entries imported from an Aurora export (FEAT-005). */
+        const val AURORA_IMPORT_PREFIX = "aurora-json:"
 
         /**
          * Normalize a climb uuid to a spelling-agnostic key — see [ClimbUuid],
@@ -589,24 +600,6 @@ class KilterSyncEngine @Inject constructor(
     }
 
     /**
-     * Spelling-agnostic keys of the CruxCoach community climbs among
-     * [climbUuids] that Kilter never accepted. Looks up every stored spelling
-     * in chunks, like [insertLogs]: a community climb missed here is uploaded
-     * to Kilter, which rejects the whole batch.
-     */
-    private fun communityOnlyClimbKeys(climbUuids: List<String>): Set<String> {
-        if (climbUuids.isEmpty()) return emptySet()
-        val lookup = climbUuids.asSequence()
-            .distinct()
-            .flatMap { ClimbUuid.spellings(it).asSequence() }
-            .distinct()
-            .toList()
-        return lookup.chunked(CLIMB_LOOKUP_CHUNK)
-            .flatMap { boardRepository.communityOnlyClimbUuids(it) }
-            .mapTo(HashSet()) { normUuidKey(it) }
-    }
-
-    /**
      * Holt beim Nutzer geloeschte Eintraege auch bei Kilter nach.
      *
      * Ohne das war Loeschen bei Dauersync wirkungslos in beide Richtungen:
@@ -645,137 +638,382 @@ class KilterSyncEngine @Inject constructor(
         return done
     }
 
-    /** Serialized across manual and automatic triggers; only successful batches are stamped. */
+    /**
+     * Upload the local logbook entries Kilter does not have yet.
+     *
+     * Serialized across manual and automatic triggers. One run reads Kilter's
+     * copy of the logbook once and settles everything it can locally: entries
+     * Kilter already holds are marked synced without a request, entries that
+     * differ from Kilter's copy of their uuid are held as conflicts, and
+     * climb ids are sent in the spelling Kilter stores ([KilterClimbWireIds]).
+     *
+     * Kilter fails a bulk request as a whole when it refuses one row, so a
+     * refused request is split until the row is alone. The rest goes through;
+     * the row gets one retry with the other case of its compact id, and is
+     * then held back ([KilterUploadLedger]) — but only once the run has proof
+     * that Kilter accepts uploads at all, or it failed alone in an earlier run
+     * too. An outage must not park the whole queue. Requests per run are
+     * bounded; what is left waits for the next run.
+     */
     suspend fun uploadPendingLogs(
         trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL,
         prefetchedLogs: List<KilterLog>? = null,
     ): KilterUploadStatus =
-        withContext(Dispatchers.IO) { uploadMutex.withLock {
-            val start = System.currentTimeMillis()
-            var uploaded = 0
-            var attempted = 0
-            var pendingCount = 0
-            fun finish(reason: KilterUploadReason = KilterUploadReason.NONE, http: Int? = null): KilterUploadStatus {
-                val status = KilterUploadStatus(uploaded, pendingCount, attempted, reason, http,
-                    durationMs = System.currentTimeMillis() - start, trigger = trigger)
-                uploadDiagnostics.record(status)
-                if (reason == KilterUploadReason.AUTHENTICATION) _sessionExpired.value = true
-                return status
+        withContext(Dispatchers.IO) { uploadMutex.withLock { UploadRun(trigger).run(prefetchedLogs) } }
+
+    /** Upload opt-in for Aurora-imported entries; see [KilterUploadLedger.importedUploadEnabled]. */
+    val importedUploadEnabled get() = uploadLedger.importedUploadEnabled
+
+    suspend fun setImportedUploadEnabled(enabled: Boolean) = uploadLedger.setImportedUploadEnabled(enabled)
+
+    /** Forget held-back rows and the imported opt-in, e.g. when the Kilter account is disconnected. */
+    suspend fun clearUploadLedger() = uploadMutex.withLock { uploadLedger.clear() }
+
+    private inner class UploadRun(private val trigger: KilterUploadTrigger) {
+        private val start = clock()
+        private var uploaded = 0
+        private val attempted = HashSet<String>()
+        private var pending = 0
+        private var requests = 0
+        private var heldImported = 0
+        private var alreadyOnKilter = 0
+        private var rejectedByKilter = 0
+        private var rejectedConflict = 0
+        private var rejectedInvalid = 0
+
+        private fun finish(reason: KilterUploadReason = KilterUploadReason.NONE, http: Int? = null): KilterUploadStatus {
+            val status = KilterUploadStatus(
+                uploaded = uploaded, pending = pending, attempted = attempted.size,
+                reason = reason, httpStatus = http,
+                durationMs = clock() - start, trigger = trigger,
+                rejectedByKilter = rejectedByKilter, rejectedConflict = rejectedConflict,
+                rejectedInvalid = rejectedInvalid, heldImported = heldImported,
+                alreadyOnKilter = alreadyOnKilter, requests = requests,
+            )
+            uploadDiagnostics.record(status)
+            if (reason == KilterUploadReason.AUTHENTICATION) _sessionExpired.value = true
+            return status
+        }
+
+        suspend fun run(prefetchedLogs: List<KilterLog>?): KilterUploadStatus = try {
+            upload(prefetchedLogs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            when (e) {
+                is KilterUploadException -> finish(
+                    if (e.status == 401 || e.status == 403) KilterUploadReason.AUTHENTICATION else KilterUploadReason.HTTP,
+                    e.status)
+                is KilterApiException -> finish(
+                    if (e.reason == KilterAuthResult.Error.Reason.NotAuthenticated) KilterUploadReason.AUTHENTICATION
+                    else KilterUploadReason.INTERNAL)
+                is java.io.IOException -> finish(KilterUploadReason.NETWORK)
+                else -> {
+                    Log.w(TAG, "Kilter upload failed (${e.javaClass.simpleName})")
+                    finish(KilterUploadReason.INTERNAL)
+                }
             }
-            try {
-                // Logs of CruxCoach community climbs that Kilter never accepted
-                // stay local. Kilter does not know their uuid: a batch holding
-                // one could fail as a whole on every sync and hold back every
-                // log behind it, or leave a log of an unknown climb in the
-                // account. They are not pending, just not Kilter's.
-                val allAscents = personalBoardRepo.getUnsyncedAscents()
-                val allBids = personalBoardRepo.getUnsyncedBids()
-                val localOnly = communityOnlyClimbKeys(
-                    allAscents.map { it.climbUuid } + allBids.map { it.climbUuid },
+        }
+
+        private suspend fun upload(prefetchedLogs: List<KilterLog>?): KilterUploadStatus {
+            // Logs of CruxCoach community climbs that Kilter never accepted
+            // stay local: Kilter does not know their uuid. They are not
+            // pending, just not Kilter's.
+            val allAscents = personalBoardRepo.getUnsyncedAscents()
+            val allBids = personalBoardRepo.getUnsyncedBids()
+            val localClimbs = (allAscents.map { it.climbUuid } + allBids.map { it.climbUuid }).distinct()
+            val catalogue = catalogueFacts(localClimbs)
+            val rows = allAscents.filter { normUuidKey(it.climbUuid) !in catalogue.communityOnly }.map { it.toRow() } +
+                allBids.filter { normUuidKey(it.climbUuid) !in catalogue.communityOnly }.map { it.toRow() }
+
+            val importedEnabled = uploadLedger.importedUploadEnabled.first()
+            val candidates = if (importedEnabled) rows else rows.filterNot { it.imported }
+            heldImported = rows.size - candidates.size
+            pending = candidates.size
+            if (!userPreferences.kilterPushEnabled.first()) return finish(KilterUploadReason.DISABLED)
+            if (candidates.isEmpty()) return finish()
+            val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+                ?: return finish(KilterUploadReason.AUTHENTICATION)
+            if (!tokenStore.hasCredentials()) return finish(KilterUploadReason.AUTHENTICATION)
+            if (!tokenStore.hasWallContext()) resolveAndStoreWallContext(prefetchedLogs)
+            val wall = WallContext(
+                gymUuid = tokenStore.getGymUuid()?.takeIf { it.isNotBlank() } ?: return finish(KilterUploadReason.WALL_CONTEXT),
+                wallUuid = tokenStore.getWallUuid()?.takeIf { it.isNotBlank() } ?: return finish(KilterUploadReason.WALL_CONTEXT),
+                productLayoutUuid = tokenStore.getProductLayoutUuid()?.takeIf { it.isNotBlank() }
+                    ?: return finish(KilterUploadReason.WALL_CONTEXT),
+            )
+
+            // Kilter's copy of the logbook, read once per run: retries after a
+            // lost response, entries restored under a new uuid and edits of
+            // already-uploaded rows are all settled against it without a request.
+            val remote = prefetchedLogs ?: apiClient.fetchLogs().getOrThrow()
+            val remoteByUuid = remote.associateBy { it.logUuid }
+            val twins = KilterTwinIndex(remote)
+            val wireIds = KilterClimbWireIds(
+                lowercaseIndex = lowercaseIndexSource.load(),
+                cruxcoachKeys = catalogue.cruxcoach,
+                accountSpellings = KilterClimbWireIds.accountSpellings(remote),
+                legacyKeys = catalogue.legacy,
+            )
+
+            val now = clock()
+            val versionCode = com.cruxcoach.android.BuildConfig.VERSION_CODE
+            val previous = uploadLedger.rejections()
+                .filter { it.appVersionCode == versionCode && now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
+                .associateBy { it.logUuid }
+            val ledger = HashMap<String, KilterUploadRejection>()
+            val settled = ArrayList<KilterUploadItem>()
+            val toSend = ArrayList<KilterUploadItem>()
+
+            // Regular entries claim Kilter's twins before imported ones may.
+            for (row in candidates.sortedWith(compareBy<CandidateRow> { it.imported }.thenByDescending { it.sortMillis })) {
+                val held = previous[row.uuid]?.takeIf { it.rowVersion == row.rowVersion && it.confirmed }
+                if (held != null) {
+                    ledger[row.uuid] = held
+                    count(held.kind)
+                    continue
+                }
+                val createdAt = KilterLogUploadPlan.kilterTimestamp(row.climbedAt)
+                if (createdAt == null) {
+                    reject(ledger, row, KilterRejectionKind.INVALID, null, now)
+                    continue
+                }
+                val item = KilterUploadItem(
+                    uuid = row.uuid, rowVersion = row.rowVersion,
+                    isAscent = row.isAscent, imported = row.imported,
+                    log = KilterLog(
+                        logUuid = row.uuid, userUuid = userUuid,
+                        climbUuid = wireIds.wireId(row.climbUuid),
+                        gymUuid = row.gymUuid ?: wall.gymUuid, wallUuid = row.wallUuid ?: wall.wallUuid,
+                        productLayoutUuid = row.productLayoutUuid ?: wall.productLayoutUuid,
+                        angle = row.angle, flashed = row.isAscent && row.bidCount <= 1L, topped = row.isAscent,
+                        attempts = row.bidCount.toInt().coerceAtLeast(1), createdAt = createdAt, comment = row.comment,
+                    ),
                 )
-                val unsyncedAscents = allAscents.filter { normUuidKey(it.climbUuid) !in localOnly }
-                val unsyncedBids = allBids.filter { normUuidKey(it.climbUuid) !in localOnly }
-                pendingCount = unsyncedAscents.size + unsyncedBids.size
-                if (!userPreferences.kilterPushEnabled.first()) return@withLock finish(KilterUploadReason.DISABLED)
-                if (pendingCount == 0) return@withLock finish()
-                val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
-                    ?: return@withLock finish(KilterUploadReason.AUTHENTICATION)
-                if (!tokenStore.hasCredentials()) return@withLock finish(KilterUploadReason.AUTHENTICATION)
-                if (!tokenStore.hasWallContext()) resolveAndStoreWallContext(prefetchedLogs)
-                val gymUuid = tokenStore.getGymUuid()?.takeIf { it.isNotBlank() }
-                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
-                val wallUuid = tokenStore.getWallUuid()?.takeIf { it.isNotBlank() }
-                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
-                val layoutUuid = tokenStore.getProductLayoutUuid()?.takeIf { it.isNotBlank() }
-                    ?: return@withLock finish(KilterUploadReason.WALL_CONTEXT)
-
-                val pending = ArrayList<PendingUpload>(unsyncedAscents.size + unsyncedBids.size)
-
-                for (ascent in unsyncedAscents) {
-                    pending.add(PendingUpload(
-                        log = KilterLog(
-                            logUuid = ascent.uuid,
-                            userUuid = userUuid,
-                            climbUuid = ascent.climbUuid,
-                            gymUuid = ascent.gymUuid ?: gymUuid,
-                            wallUuid = ascent.wallUuid ?: wallUuid,
-                            productLayoutUuid = ascent.productLayoutUuid ?: layoutUuid,
-                            angle = ascent.angle.toInt(),
-                            flashed = ascent.bidCount <= 1L,
-                            topped = true,
-                            attempts = ascent.bidCount.toInt().coerceAtLeast(1),
-                            createdAt = ensureUtcSuffix(ascent.climbedAt),
-                            comment = ascent.comment
-                        ),
-                        uuid = ascent.uuid,
-                        rowVersion = ascent.rowVersion,
-                        isAscent = true,
-                    ))
+                val known = remoteByUuid[row.uuid]
+                when {
+                    known != null && KilterLogUploadPlan.sameContent(item.log, known) -> settled += item
+                    // Bulk cannot update a log, and deleting to re-create it
+                    // would be a silent rewrite: the edit stays local.
+                    known != null -> reject(ledger, row, KilterRejectionKind.CONFLICT, null, now)
+                    twins.claim(item.log, item.imported) -> settled += item
+                    else -> toSend += item
                 }
+            }
+            if (settled.isNotEmpty()) {
+                val marked = markSynced(settled)
+                alreadyOnKilter += marked
+                pending -= marked
+            }
 
-                for (bid in unsyncedBids) {
-                    pending.add(PendingUpload(
-                        log = KilterLog(
-                            logUuid = bid.uuid,
-                            userUuid = userUuid,
-                            climbUuid = bid.climbUuid,
-                            gymUuid = bid.gymUuid ?: gymUuid,
-                            wallUuid = bid.wallUuid ?: wallUuid,
-                            productLayoutUuid = bid.productLayoutUuid ?: layoutUuid,
-                            angle = bid.angle.toInt(),
-                            flashed = false,
-                            topped = false,
-                            attempts = bid.bidCount.toInt().coerceAtLeast(1),
-                            createdAt = ensureUtcSuffix(bid.climbedAt),
-                            comment = bid.comment
-                        ),
-                        uuid = bid.uuid,
-                        rowVersion = bid.rowVersion,
-                        isAscent = false,
-                    ))
+            val outcome = send(toSend)
+            // A row that failed alone is held back when the run proved Kilter
+            // accepts uploads, or when it already failed alone in an earlier run.
+            var unconfirmedHttp: Int? = null
+            for ((item, http) in outcome.refused) {
+                val earlier = previous[item.uuid]?.takeIf { it.rowVersion == item.rowVersion && !it.confirmed }
+                val confirmed = outcome.anyAccepted || (earlier != null && now - earlier.atMs >= SUSPECT_CONFIRM_AFTER_MS)
+                ledger[item.uuid] = KilterUploadRejection(
+                    logUuid = item.uuid, rowVersion = item.rowVersion, appVersionCode = versionCode,
+                    kind = KilterRejectionKind.KILTER, httpStatus = http,
+                    atMs = if (confirmed) now else earlier?.atMs ?: now, confirmed = confirmed,
+                )
+                if (confirmed) {
+                    rejectedByKilter++
+                    pending--
+                } else {
+                    unconfirmedHttp = http
                 }
+            }
+            uploadLedger.saveRejections(ledger.values.sortedBy { it.atMs })
 
-                for (batch in pending.chunked(UPLOAD_CHUNK)) {
-                    // An opt-out while waiting/in flight takes effect before the next request.
-                    if (!userPreferences.kilterPushEnabled.first()) return@withLock finish(KilterUploadReason.DISABLED)
-                    attempted += batch.size
-                    apiClient.uploadLogs(batch.map { it.log }).getOrThrow()
-                    // Optimistic mark — stamp synced=1 only when row_version still
-                    // matches the snapshot captured at read time. Any user edit
-                    // during the HTTP upload window bumps row_version and the stamp
-                    // is skipped, so the next sync re-uploads the newer data
-                    // instead of silently losing it to a stale write.
-                    var skipped = 0
-                    personalBoardRepo.runInTransaction {
-                        for (item in batch) {
-                            val applied = if (item.isAscent) {
-                                personalBoardRepo.markAscentSyncedIfUnchanged(item.uuid, item.rowVersion)
-                            } else {
-                                personalBoardRepo.markBidSyncedIfUnchanged(item.uuid, item.rowVersion)
-                            }
-                            if (!applied) skipped++
+            val stop = outcome.stop
+            return when {
+                stop != null -> finish(stop.reason, stop.http)
+                // Refused without proof that Kilter takes uploads at all: shown
+                // as a failure and retried, not held back yet.
+                unconfirmedHttp != null -> finish(KilterUploadReason.HTTP, unconfirmedHttp)
+                else -> finish()
+            }
+        }
+
+        private fun count(kind: KilterRejectionKind) {
+            when (kind) {
+                KilterRejectionKind.KILTER -> rejectedByKilter++
+                KilterRejectionKind.CONFLICT -> rejectedConflict++
+                KilterRejectionKind.INVALID -> rejectedInvalid++
+            }
+            pending--
+        }
+
+        private fun reject(
+            ledger: MutableMap<String, KilterUploadRejection>, row: CandidateRow,
+            kind: KilterRejectionKind, http: Int?, now: Long,
+        ) {
+            ledger[row.uuid] = KilterUploadRejection(
+                logUuid = row.uuid, rowVersion = row.rowVersion, appVersionCode = com.cruxcoach.android.BuildConfig.VERSION_CODE,
+                kind = kind, httpStatus = http, atMs = now, confirmed = true,
+            )
+            count(kind)
+        }
+
+        /** Stamps synced=1 per row where its version is unchanged; returns how many were stamped. */
+        private fun markSynced(items: List<KilterUploadItem>): Int {
+            var marked = 0
+            personalBoardRepo.runInTransaction {
+                for (item in items) {
+                    val applied = if (item.isAscent) personalBoardRepo.markAscentSyncedIfUnchanged(item.uuid, item.rowVersion)
+                    else personalBoardRepo.markBidSyncedIfUnchanged(item.uuid, item.rowVersion)
+                    if (applied) marked++
+                }
+            }
+            if (marked < items.size) {
+                Log.i(TAG, "Sync: ${items.size - marked} log(s) edited during upload — will re-upload next sync")
+            }
+            return marked
+        }
+
+        private suspend fun send(items: List<KilterUploadItem>): SendOutcome {
+            val queue = ArrayDeque(items.chunked(UPLOAD_CHUNK))
+            val refused = ArrayList<Pair<KilterUploadItem, Int>>()
+            var anyAccepted = false
+            while (queue.isNotEmpty()) {
+                // An opt-out while waiting/in flight takes effect before the next request.
+                if (!userPreferences.kilterPushEnabled.first()) {
+                    return SendOutcome(anyAccepted, refused, Stop(KilterUploadReason.DISABLED))
+                }
+                if (requests >= MAX_REQUESTS_PER_RUN) break
+                val batch = queue.removeFirst()
+                requests++
+                batch.forEach { attempted += it.uuid }
+                val result = apiClient.uploadLogs(batch.map { it.log })
+                if (result.isSuccess) {
+                    anyAccepted = true
+                    val marked = markSynced(batch)
+                    uploaded += batch.size
+                    pending -= marked
+                    continue
+                }
+                val error = result.exceptionOrNull()
+                if (error is CancellationException) throw error
+                val http = (error as? KilterUploadException)?.status
+                if (http == null || http == 401 || http == 403 || http in TRANSIENT_HTTP) {
+                    // Unauthenticated, offline, overloaded or a lost response
+                    // (the rows may have been written; the next run's read of
+                    // the logbook settles them): stop, keep everything pending.
+                    return SendOutcome(anyAccepted, refused, stopFor(error, http))
+                }
+                when {
+                    batch.size > 1 -> {
+                        val half = batch.size / 2
+                        queue.addFirst(batch.subList(half, batch.size))
+                        queue.addFirst(batch.subList(0, half))
+                    }
+                    else -> {
+                        val item = batch.single()
+                        val otherCase = if (item.caseRetried) null else KilterClimbWireIds.otherCase(item.log.climbUuid)
+                        if (otherCase != null) {
+                            queue.addFirst(listOf(item.copy(log = item.log.copy(climbUuid = otherCase), caseRetried = true)))
+                        } else {
+                            refused += item to http
                         }
                     }
-                    if (skipped > 0) {
-                        Log.i(TAG, "Sync: $skipped log(s) edited during upload — will re-upload next sync")
-                    }
-                    uploaded += batch.size
-                    pendingCount -= batch.size - skipped
-                }
-                finish()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                when (e) {
-                    is KilterLogConflictException -> finish(KilterUploadReason.CONFLICT)
-                    is KilterUploadException -> finish(
-                        if (e.status == 401 || e.status == 403) KilterUploadReason.AUTHENTICATION else KilterUploadReason.HTTP,
-                        e.status)
-                    is KilterApiException -> finish(
-                        if (e.reason == KilterAuthResult.Error.Reason.NotAuthenticated) KilterUploadReason.AUTHENTICATION else KilterUploadReason.INTERNAL)
-                    is java.io.IOException -> finish(KilterUploadReason.NETWORK)
-                    else -> finish(KilterUploadReason.INTERNAL)
                 }
             }
-        } }
+            return SendOutcome(anyAccepted, refused, null)
+        }
+    }
+
+    private class Stop(val reason: KilterUploadReason, val http: Int? = null)
+
+    private fun stopFor(error: Throwable?, http: Int?): Stop = when {
+        http == 401 || http == 403 -> Stop(KilterUploadReason.AUTHENTICATION, http)
+        http != null -> Stop(KilterUploadReason.HTTP, http)
+        error is KilterApiException && error.reason == KilterAuthResult.Error.Reason.NotAuthenticated ->
+            Stop(KilterUploadReason.AUTHENTICATION)
+        error is java.io.IOException -> Stop(KilterUploadReason.NETWORK)
+        else -> {
+            Log.w(TAG, "Kilter upload failed (${error?.javaClass?.simpleName})")
+            Stop(KilterUploadReason.INTERNAL)
+        }
+    }
+
+    private class SendOutcome(
+        val anyAccepted: Boolean,
+        val refused: List<Pair<KilterUploadItem, Int>>,
+        val stop: Stop?,
+    )
+
+    /** One unsynced ascent or bid, flattened for the upload plan. */
+    private class CandidateRow(
+        val uuid: String,
+        val climbUuid: String,
+        val angle: Int,
+        val bidCount: Long,
+        val comment: String?,
+        val climbedAt: String,
+        val gymUuid: String?,
+        val wallUuid: String?,
+        val productLayoutUuid: String?,
+        val rowVersion: Long,
+        val isAscent: Boolean,
+        val imported: Boolean,
+    ) {
+        val sortMillis: Long = KilterLogUploadPlan.kilterTimestamp(climbedAt)
+            ?.let(KilterLogUploadPlan::epochMillis) ?: Long.MIN_VALUE
+    }
+
+    private fun RawAscent.toRow() = CandidateRow(
+        uuid = uuid, climbUuid = climbUuid, angle = angle.toInt(), bidCount = bidCount, comment = comment,
+        climbedAt = climbedAt, gymUuid = gymUuid, wallUuid = wallUuid, productLayoutUuid = productLayoutUuid,
+        rowVersion = rowVersion, isAscent = true, imported = externalId.isAuroraImport(),
+    )
+
+    private fun RawBid.toRow() = CandidateRow(
+        uuid = uuid, climbUuid = climbUuid, angle = angle.toInt(), bidCount = bidCount, comment = comment,
+        climbedAt = climbedAt, gymUuid = gymUuid, wallUuid = wallUuid, productLayoutUuid = productLayoutUuid,
+        rowVersion = rowVersion, isAscent = false, imported = externalId.isAuroraImport(),
+    )
+
+    private fun String?.isAuroraImport() = this?.startsWith(AURORA_IMPORT_PREFIX) == true
+
+    /** What the board catalogue knows about the logbook's climbs, by normKey. */
+    private class CatalogueFacts(
+        /** CruxCoach climbs Kilter never accepted. */
+        val communityOnly: Set<String>,
+        /** Every CruxCoach-authored climb. */
+        val cruxcoach: Set<String>,
+        /** Dashed-spelled logbook climbs whose catalogue row is compact (legacy). */
+        val legacy: Set<String>,
+    )
+
+    /**
+     * Looks up every stored spelling in chunks, like [insertLogs]. The board
+     * DB can be busy right after a catalogue import; a failed lookup only
+     * costs precision (the per-row retry still finds the right case), except
+     * for the community-only filter, whose failure fails the run.
+     */
+    private fun catalogueFacts(climbUuids: List<String>): CatalogueFacts {
+        if (climbUuids.isEmpty()) return CatalogueFacts(emptySet(), emptySet(), emptySet())
+        val lookup = climbUuids.asSequence()
+            .flatMap { ClimbUuid.spellings(it).asSequence() }
+            .distinct()
+            .toList()
+        val chunks = lookup.chunked(CLIMB_LOOKUP_CHUNK)
+        val communityOnly = chunks.flatMap { boardRepository.communityOnlyClimbUuids(it) }.mapTo(HashSet()) { normUuidKey(it) }
+        val cruxcoach = runCatching {
+            chunks.flatMap { boardRepository.cruxcoachClimbUuids(it) }.mapTo(HashSet()) { normUuidKey(it) }
+        }.getOrElse { emptySet() }
+        val dashedCompact = climbUuids.asSequence()
+            .filter { it.length == 36 && it[8] == '-' }
+            .map { normUuidKey(it) }
+            .distinct()
+            .toList()
+        val legacy = runCatching {
+            dashedCompact.chunked(CLIMB_LOOKUP_CHUNK)
+                .flatMap { boardRepository.existingClimbUuids(it) }
+                .mapTo(HashSet()) { normUuidKey(it) }
+        }.getOrElse { emptySet() }
+        return CatalogueFacts(communityOnly, cruxcoach, legacy)
+    }
 }
