@@ -441,6 +441,14 @@ class BoardRepositoryImpl(
         if (uuids.isEmpty()) emptySet()
         else q.communityOnlyClimbUuids(uuids).executeAsList().toSet()
 
+    override fun cruxcoachClimbUuids(uuids: Collection<String>): Set<String> =
+        if (uuids.isEmpty()) emptySet()
+        else q.cruxcoachClimbUuids(uuids).executeAsList().toSet()
+
+    override fun existingClimbUuids(uuids: Collection<String>): Set<String> =
+        if (uuids.isEmpty()) emptySet()
+        else q.existingClimbUuids(uuids).executeAsList().toSet()
+
     override fun getClimbDifficultiesForAngle(
         uuids: Collection<String>,
         angle: Int,

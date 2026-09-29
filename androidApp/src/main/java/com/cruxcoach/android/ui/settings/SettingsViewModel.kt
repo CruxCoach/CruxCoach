@@ -1189,6 +1189,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Opt in to uploading Aurora-imported entries (they are matched against Kilter first), then upload. */
+    fun uploadImportedKilterLogs() {
+        viewModelScope.launch {
+            kilterSyncEngine.setImportedUploadEnabled(true)
+            retryKilterUpload()
+        }
+    }
+
     fun kilterDisconnect() {
         viewModelScope.launch {
             // Audit-trail: log the disconnect with a timestamp so post-hoc
@@ -1199,6 +1207,7 @@ class SettingsViewModel @Inject constructor(
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
             kilterSyncEngine.clearUploadDiagnostics()
+            kilterSyncEngine.clearUploadLedger()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
             Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")

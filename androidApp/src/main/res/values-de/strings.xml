@@ -3037,6 +3037,22 @@
     <string name="kilter_upload_syncing">Logbuch wird synchronisiert…</string>
     <string name="kilter_upload_unchecked">Synchronisierung noch nicht geprüft</string>
     <string name="kilter_upload_conflict">Dieser Eintrag weicht von Kilter ab. Bitte in der Kilter-App prüfen.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter hat %d Eintrag abgelehnt. Er bleibt in deinem Logbuch und wird nach einer Änderung oder einem App-Update erneut versucht.</item>
+        <item quantity="other">Kilter hat %d Einträge abgelehnt. Sie bleiben in deinem Logbuch und werden nach einer Änderung oder einem App-Update erneut versucht.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d Eintrag weicht von seiner Kopie bei Kilter ab und bleibt lokal. Bitte in der Kilter-App prüfen.</item>
+        <item quantity="other">%d Einträge weichen von ihren Kopien bei Kilter ab und bleiben lokal. Bitte in der Kilter-App prüfen.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d Eintrag aus einem Aurora-Export wird nicht automatisch übertragen: Kilter hat ihn meist schon.</item>
+        <item quantity="other">%d Einträge aus einem Aurora-Export werden nicht automatisch übertragen: Kilter hat sie meist schon.</item>
+    </plurals>
+    <string name="kilter_upload_imported_action">Importierte übertragen</string>
+    <string name="kilter_upload_imported_title">Importierte Einträge übertragen?</string>
+    <string name="kilter_upload_imported_message">Diese Einträge stammen aus einem Aurora-Export. Stammt er aus diesem Kilter-Konto, hat Kilter die meisten schon. CruxCoach überspringt jeden Eintrag, den Kilter für denselben Boulder, Winkel und Tag bereits hat, und überträgt den Rest.</string>
+    <string name="kilter_upload_imported_confirm">Übertragen</string>
     <string name="board_angle_change">Winkel ändern, %1$d Grad</string>
     <string name="board_angle_physical_hint">Stelle den Winkel wie am Board ein. Das Board wird dadurch nicht verstellt.</string>
     <string name="board_angle_unavailable">Wähle zuerst ein Board mit verfügbaren Winkelangaben.</string>

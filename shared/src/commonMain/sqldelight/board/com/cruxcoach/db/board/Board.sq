@@ -1025,6 +1025,21 @@ WHERE uuid IN ?
   AND origin = 'cruxcoach'
   AND (kilter_status IS NULL OR kilter_status != 'synced');
 
+-- Climbs authored in CruxCoach among the given uuids. The editor has always
+-- generated their ids in lowercase, and that is the spelling Kilter stores
+-- for the ones it accepted — a log upload must not re-case them.
+cruxcoachClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?
+  AND origin = 'cruxcoach';
+
+-- Which of the given spellings exist as catalogue rows (exact match, uuid
+-- index). Lets the Kilter upload tell a legacy climb (compact row) from a
+-- new-world one (dashed row) when a logbook entry spells it with hyphens.
+existingClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?;
+
 -- ═══ Board-scoped list / setter resolution (active-board scoping) ═══
 --
 -- The plain getClimbsByUuids*/getClimbsByPubkey queries above resolve a

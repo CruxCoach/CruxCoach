@@ -3038,6 +3038,22 @@
     <string name="kilter_upload_syncing">Syncing logbook…</string>
     <string name="kilter_upload_unchecked">Sync not checked yet</string>
     <string name="kilter_upload_conflict">This entry differs from Kilter. Please check it in the Kilter app.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter refused %d entry. It stays in your logbook and is tried again after you edit it or update the app.</item>
+        <item quantity="other">Kilter refused %d entries. They stay in your logbook and are tried again after you edit them or update the app.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d entry differs from its copy in Kilter and stays local. Please check it in the Kilter app.</item>
+        <item quantity="other">%d entries differ from their copies in Kilter and stay local. Please check them in the Kilter app.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d entry from an Aurora export is not uploaded automatically: Kilter usually has it already.</item>
+        <item quantity="other">%d entries from an Aurora export are not uploaded automatically: Kilter usually has them already.</item>
+    </plurals>
+    <string name="kilter_upload_imported_action">Upload imported entries</string>
+    <string name="kilter_upload_imported_title">Upload imported entries?</string>
+    <string name="kilter_upload_imported_message">These entries come from an Aurora export. If the export is from this Kilter account, Kilter already has most of them. CruxCoach skips every entry Kilter already has for the same climb, angle and day, and uploads the rest.</string>
+    <string name="kilter_upload_imported_confirm">Upload</string>
     <string name="board_angle_change">Change angle, %1$d degrees</string>
     <string name="board_angle_physical_hint">Match the angle of your physical board. This does not move the board.</string>
     <string name="board_angle_unavailable">Choose a board with available angle information first.</string>

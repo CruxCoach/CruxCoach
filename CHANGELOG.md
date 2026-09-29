@@ -4,7 +4,31 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.3] - 2026-09-26
+## [Unreleased]
+
+### Fixed
+- Uploading the logbook to Kilter no longer stalls on one entry. Kilter refuses
+  a bulk upload as a whole when a single row names a climb it does not know, and
+  0.2.3 retried the same first 200 entries forever ("Kilter rejected the
+  upload"). A refused request is now split until the row is alone; everything
+  else uploads, and the row is held back until it is edited or the app is
+  updated, instead of blocking the queue. An outage does not hold anything back.
+- Climbs keep the id Kilter stores for them. About a quarter of the legacy
+  Kilter climbs have a lowercase id, and Kilter compares ids case-sensitively;
+  0.2.3 uppercased every compact id, so every log of such a climb was refused.
+  A bundled index of these ids, CruxCoach's own climbs and the spellings in the
+  account's own logbook now decide the case; a dashed spelling of a legacy climb
+  is sent compact, so it counts towards the climb's own statistics.
+- Entries Kilter already has are not uploaded twice: an entry restored under a
+  new uuid, or re-sent after a lost response, is recognised in Kilter's copy of
+  the logbook, which is now read once per upload instead of once per 200 entries.
+- Entries imported from an Aurora export stay local by default. Kilter usually
+  has them already, and uploading them duplicated the logbook there. They can be
+  uploaded on request; entries Kilter has for the same climb, angle and day are
+  skipped.
+- An edited entry whose original Kilter already holds is kept local as a
+  conflict and no longer stops the upload of every other entry.
+
 
 ### Changed
 - MoonBoard hold sets can be adjusted under “Missing some holds?” in the board

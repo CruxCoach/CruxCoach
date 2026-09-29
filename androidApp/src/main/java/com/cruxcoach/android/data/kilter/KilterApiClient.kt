@@ -369,7 +369,6 @@ class KilterApiClient @Inject constructor(
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
-        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
         // `kilter_error` column / Android backup blob). 5xx renders can
@@ -874,17 +873,19 @@ class KilterApiClient @Inject constructor(
         }
     }
 
-    private fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
-        local.climbUuid == remote.climbUuid && local.angle == remote.angle &&
-            local.topped == remote.topped && local.flashed == remote.flashed &&
-            local.attempts == remote.attempts && local.userUuid == remote.userUuid &&
-            local.gymUuid == remote.gymUuid && local.wallUuid == remote.wallUuid &&
-            local.productLayoutUuid == remote.productLayoutUuid &&
-            runCatching { java.time.Instant.parse(local.createdAt) == java.time.Instant.parse(remote.createdAt) }
-                .getOrDefault(local.createdAt == remote.createdAt)
-
     /**
-     * Upload local ascents to Kilter in bulk.
+     * Post [logs] to Kilter's bulk endpoint exactly as given.
+     *
+     * The caller owns everything around it: climb ids already in the spelling
+     * Kilter stores ([KilterClimbWireIds]), and no log uuid Kilter already
+     * holds — bulk is an insert, not an upsert, and a known uuid fails the
+     * request. Kilter treats the request as a unit: one row it refuses fails
+     * all of them and writes nothing (verified live on 2026-09-29), so a
+     * failed request can be split and retried without duplicating anything.
+     *
+     * Failures: [KilterUploadException] with the HTTP status; IOException when
+     * the response was lost (the rows may have been written); KilterApiException
+     * without a usable session.
      */
     suspend fun uploadLogs(logs: List<KilterLog>): Result<Unit> = withContext(Dispatchers.IO) {
         if (logs.isEmpty()) return@withContext Result.success(Unit)
@@ -893,31 +894,10 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            // Legacy catalogue keys are case-sensitive upstream: compact uppercase.
-            // Lowercase compact IDs fail; adding UUID hyphens creates a different
-            // statistics identity even when the server resolves the climb's name.
-            // Keep native hyphenated IDs and all local/log identities unchanged.
-            val wireLogs = logs.map { log ->
-                if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
-                    log.copy(climbUuid = log.climbUuid.uppercase())
-                } else log
-            }
-            // Kilter bulk inserts are not upserts: duplicate log UUIDs return 500.
-            // Reconcile before posting, including retries after a lost response.
-            val existing = fetchLogs().getOrThrow().associateBy { it.logUuid }
-            val missing = wireLogs.filter { log ->
-                val remote = existing[log.logUuid]
-                if (remote != null && !sameUploadedLog(log, remote)) throw KilterLogConflictException()
-                remote == null
-            }
-            if (missing.isEmpty()) return@withContext Result.success(Unit)
-            val payload = json.encodeToString(missing)
-            val requestBody = payload.toRequestBody("application/json".toMediaType())
-
             val request = Request.Builder()
                 .url("$apiBase/logs/bulk")
                 .addHeader("Authorization", "Bearer $token")
-                .post(requestBody)
+                .post(json.encodeToString(logs).toRequestBody("application/json".toMediaType()))
                 .build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
