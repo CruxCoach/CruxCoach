@@ -22,6 +22,26 @@ account was touched.
 | Same log uuid again after `DELETE` | 200 | yes — no soft-delete block |
 | 200 valid rows in one request | 200 | 200/200 |
 
+### `GET /logs` is not the whole logbook
+
+A 10-row request of 5 lowercase-index and 5 other random legacy climbs, spelled
+as the new resolver does, returned 200, but only 6 rows were listed by
+`GET /logs` afterwards. The other 4 were stored: the account's PowerSync stream
+held them (own user, the probe's timestamps), and they were deleted by uuid.
+A follow-up on one of those climbs showed the rule: a log is listed only at an
+angle for which the climb has statistics. The same climb was listed at 0 and
+40 degrees (40 had gained statistics from the earlier probe log) and hidden at
+20 degrees. Consequences:
+
+- Duplicates under the same uuid remain impossible (bulk is insert-only), but
+  a row whose response was lost at a statistics-less angle is refused alone on
+  retry and shown as refused although Kilter has it (rare: lost response ×
+  unusual angle).
+- Twin matching (entries restored under a new uuid, the Aurora opt-in) sees
+  only listed logs.
+- The download (`insertLogs`) never imports a hidden log — a pre-existing gap
+  for the backlog; the PowerSync stream would be the complete source.
+
 ## Upstream id spellings
 
 An archived `/api/climbs/all/<productLayoutUuid>` snapshot (2026-07-26, all
