@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An edited entry whose original Kilter already holds is kept local as a
   conflict and no longer stops the upload of every other entry.
 
+## [0.2.3] - 2026-09-26
 
 ### Changed
 - MoonBoard hold sets can be adjusted under “Missing some holds?” in the board
