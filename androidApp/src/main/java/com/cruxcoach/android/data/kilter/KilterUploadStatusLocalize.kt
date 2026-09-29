@@ -4,8 +4,13 @@ import android.content.Context
 import com.cruxcoach.android.R
 
 fun KilterUploadStatus.localized(context: Context): String {
+    val kept = rejected + heldImported
     val reasonText = when (reason) {
-        KilterUploadReason.NONE -> if (pending > 0) R.string.kilter_upload_pending else R.string.kilter_upload_done
+        KilterUploadReason.NONE -> when {
+            pending > 0 -> R.string.kilter_upload_pending
+            kept > 0 -> R.string.kilter_upload_done_except
+            else -> R.string.kilter_upload_done
+        }
         KilterUploadReason.DISABLED -> R.string.kilter_upload_disabled
         KilterUploadReason.AUTHENTICATION -> R.string.kilter_upload_auth
         KilterUploadReason.WALL_CONTEXT -> R.string.kilter_upload_wall
@@ -15,10 +20,10 @@ fun KilterUploadStatus.localized(context: Context): String {
         KilterUploadReason.INTERNAL -> R.string.kilter_upload_internal
     }
     val res = context.resources
-    val refused = rejectedByKilter + rejectedInvalid
     return buildList {
         add(context.getString(reasonText))
-        if (refused > 0) add(res.getQuantityString(R.plurals.kilter_upload_rejected, refused, refused))
+        if (rejectedByKilter > 0) add(res.getQuantityString(R.plurals.kilter_upload_rejected, rejectedByKilter, rejectedByKilter))
+        if (rejectedInvalid > 0) add(res.getQuantityString(R.plurals.kilter_upload_invalid, rejectedInvalid, rejectedInvalid))
         if (rejectedConflict > 0) add(res.getQuantityString(R.plurals.kilter_upload_conflicts, rejectedConflict, rejectedConflict))
         if (heldImported > 0) add(res.getQuantityString(R.plurals.kilter_upload_held_imported, heldImported, heldImported))
     }.joinToString("\n")
