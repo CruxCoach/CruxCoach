@@ -3049,6 +3049,11 @@
         <item quantity="one">%d Eintrag aus einem Aurora-Export wird nicht automatisch übertragen: Kilter hat ihn meist schon.</item>
         <item quantity="other">%d Einträge aus einem Aurora-Export werden nicht automatisch übertragen: Kilter hat sie meist schon.</item>
     </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d Eintrag hat ein Datum, das Kilter nicht annimmt, und bleibt lokal.</item>
+        <item quantity="other">%d Einträge haben ein Datum, das Kilter nicht annimmt, und bleiben lokal.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbuch synchronisiert, bis auf:</string>
     <string name="kilter_upload_imported_action">Importierte übertragen</string>
     <string name="kilter_upload_imported_title">Importierte Einträge übertragen?</string>
     <string name="kilter_upload_imported_message">Diese Einträge stammen aus einem Aurora-Export. Stammt er aus diesem Kilter-Konto, hat Kilter die meisten schon. CruxCoach überspringt jeden Eintrag, den Kilter für denselben Boulder, Winkel und Tag bereits hat, und überträgt den Rest.</string>

@@ -16,7 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -217,7 +217,7 @@ internal fun KilterLogbookSyncStatus(
     onUploadImported: () -> Unit = {},
 ) {
     val upload = state.uploadStatus
-    var confirmImported by remember { mutableStateOf(false) }
+    var confirmImported by rememberSaveable { mutableStateOf(false) }
     val needsLogin = state.sessionExpired || upload?.reason ==
         com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
     val active = state.pushEnabled && !state.isSyncing

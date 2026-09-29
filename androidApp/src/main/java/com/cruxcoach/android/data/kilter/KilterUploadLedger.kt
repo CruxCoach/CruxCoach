@@ -8,34 +8,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** Why a single log is held back instead of blocking the queue. */
-@Serializable
-enum class KilterRejectionKind {
-    /** Kilter refused the row on its own (a request with only this row failed). */
-    KILTER,
-    /** Kilter already holds this log uuid with different content; bulk cannot update it. */
-    CONFLICT,
-    /** The row cannot be expressed for Kilter (unparseable timestamp). */
-    INVALID,
-}
-
 /**
- * One held-back log. Applies only to the exact row version and app build it
- * was decided for: an edit or an app update retries the row by itself, and so
- * does a manual retry or the passing of [KilterUploadLedger.MAX_AGE_MS].
+ * One log Kilter refused on its own (a request with only this row failed).
+ * It applies only to the exact content it was decided for
+ * ([KilterUploadItem.fingerprint]) and app build: an edit or an app update
+ * retries the row by itself, and so does the passing of
+ * [KilterUploadLedger.MAX_AGE_MS]. Conflicts and unreadable timestamps are not
+ * stored — they cost no request and are recomputed every run.
  */
 @Serializable
 data class KilterUploadRejection(
     val logUuid: String,
-    val rowVersion: Long,
+    val fingerprint: Int,
     val appVersionCode: Int,
-    val kind: KilterRejectionKind,
     val httpStatus: Int? = null,
     val atMs: Long,
     /**
-     * False while a row that failed alone has no proof against it yet (no
-     * upload of the same run succeeded): it is still retried, and held back
-     * only when it fails alone again at least an hour later.
+     * False while there is no proof against the row yet: Kilter answers its
+     * own failures with HTTP 500 too, so a lone failure only counts once some
+     * other upload was accepted after it. Until then the row is retried.
      */
     val confirmed: Boolean = true,
 )
@@ -45,11 +36,17 @@ interface KilterUploadLedger {
     suspend fun rejections(): List<KilterUploadRejection>
     suspend fun saveRejections(rejections: List<KilterUploadRejection>)
 
+    /** When Kilter last accepted an upload request — the proof a lone failure needs. */
+    suspend fun lastAcceptedAtMs(): Long?
+    suspend fun setLastAcceptedAtMs(atMs: Long)
+
     /**
      * Entries imported from an Aurora export stay local unless the user opts
      * in: an export of the same account is usually already on Kilter, and the
      * import gave every entry a fresh uuid, so uploading it would duplicate
-     * the logbook there.
+     * the logbook there. The opt-in covers the entries present when it is
+     * given; it is withdrawn once a run has worked through them, so a later
+     * import asks again.
      */
     val importedUploadEnabled: Flow<Boolean>
     suspend fun setImportedUploadEnabled(enabled: Boolean)
@@ -64,14 +61,18 @@ interface KilterUploadLedger {
 
 class InMemoryKilterUploadLedger : KilterUploadLedger {
     private var held = emptyList<KilterUploadRejection>()
+    private var lastAccepted: Long? = null
     override val importedUploadEnabled = MutableStateFlow(false)
     override suspend fun rejections() = held
     override suspend fun saveRejections(rejections: List<KilterUploadRejection>) {
         held = rejections.takeLast(KilterUploadLedger.MAX_REJECTIONS)
     }
+    override suspend fun lastAcceptedAtMs() = lastAccepted
+    override suspend fun setLastAcceptedAtMs(atMs: Long) { lastAccepted = atMs }
     override suspend fun setImportedUploadEnabled(enabled: Boolean) { importedUploadEnabled.value = enabled }
     override suspend fun clear() {
         held = emptyList()
+        lastAccepted = null
         importedUploadEnabled.value = false
     }
 }
@@ -89,11 +90,15 @@ class PreferencesKilterUploadLedger(private val prefs: UserPreferences) : Kilter
         prefs.setKilterUploadRejections(if (bounded.isEmpty()) null else json.encodeToString(bounded))
     }
 
+    override suspend fun lastAcceptedAtMs(): Long? = prefs.kilterUploadLastAccepted.first()
+    override suspend fun setLastAcceptedAtMs(atMs: Long) = prefs.setKilterUploadLastAccepted(atMs)
+
     override val importedUploadEnabled: Flow<Boolean> = prefs.kilterUploadImportedEnabled
     override suspend fun setImportedUploadEnabled(enabled: Boolean) = prefs.setKilterUploadImportedEnabled(enabled)
 
     override suspend fun clear() {
         prefs.setKilterUploadRejections(null)
+        prefs.setKilterUploadLastAccepted(null)
         prefs.setKilterUploadImportedEnabled(false)
     }
 }
