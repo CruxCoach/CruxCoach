@@ -21,6 +21,13 @@ internal data class KilterUploadItem(
     val log: KilterLog,
     /** Set once the other case of a compact id has been tried for this row. */
     val caseRetried: Boolean = false,
+    /**
+     * What a held-back decision is tied to: everything this row would send,
+     * taken before any retry re-cases the id (copy() keeps it). Any change —
+     * an edit, a quick-log bid promoted to a send, a new wall context — makes
+     * it a different request and retries it.
+     */
+    val fingerprint: Int = log.hashCode(),
 )
 
 internal object KilterLogUploadPlan {
@@ -38,7 +45,9 @@ internal object KilterLogUploadPlan {
         return null
     }
 
-    fun epochMillis(timestamp: String): Long? = runCatching { Instant.parse(timestamp).toEpochMilli() }.getOrNull()
+    fun epochMillis(timestamp: String): Long? =
+        runCatching { Instant.parse(timestamp).toEpochMilli() }.getOrNull()
+            ?: kilterTimestamp(timestamp)?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
 
     /**
      * Whether Kilter's copy of a log uuid says what the local row says. Only
@@ -61,57 +70,48 @@ internal object KilterLogUploadPlan {
 
 /**
  * The logs Kilter already holds under a different uuid, to keep the same
- * ascent from being uploaded twice — the account's own logs, matched one to
- * one. A regular entry matches only an exact twin (same climb, angle, send
- * state and second). An Aurora-imported entry also matches a log of the same
- * climb, angle and send state within a day either side: the export and
- * Kilter's migrated copy need not agree on the zone of the time.
+ * ascent from being uploaded twice — the account's own logs, each backing at
+ * most one local entry. Every entry may match an exact twin (same climb,
+ * angle, send state and second). Aurora-imported entries may afterwards match
+ * a log of the same climb, angle and send state on the same day, then a day
+ * either side: the export and Kilter's migrated copy need not agree on the
+ * zone of the time. Callers claim in that order across all entries, so an
+ * exact twin is never taken by a looser match first.
  */
 internal class KilterTwinIndex(remote: Collection<KilterLog>) {
-    private val exact = HashMap<String, Int>()
-    private val byDay = HashMap<String, Int>()
+    private class Remote(val second: Long, val day: Long) { var claimed = false }
+
+    private val buckets = HashMap<String, MutableList<Remote>>()
 
     init {
         for (log in remote) {
             val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: continue
-            exact.merge(exactKey(log, millis), 1, Int::plus)
-            byDay.merge(dayKey(log, day(millis)), 1, Int::plus)
+            buckets.getOrPut(bucket(log)) { ArrayList(1) } += Remote(Math.floorDiv(millis, 1000L), day(millis))
         }
     }
 
-    /** Claims one matching remote log for [log]; true when one was left. */
-    fun claim(log: KilterLog, imported: Boolean): Boolean {
+    /** Claims an unclaimed remote log of the same second; true when one was left. */
+    fun claimExact(log: KilterLog): Boolean {
         val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: return false
-        if (take(exact, exactKey(log, millis))) {
-            take(byDay, dayKey(log, day(millis)))
-            return true
-        }
-        if (!imported) return false
-        val d = day(millis)
-        for (candidate in longArrayOf(d, d - 1, d + 1)) {
-            if (take(byDay, dayKey(log, candidate))) {
-                // The exact key of the claimed log is unknown here, so it stays
-                // claimable by an exact twin. Callers claim regular entries
-                // first; the remaining overlap can only keep an imported entry
-                // local, never upload one twice.
-                return true
-            }
-        }
-        return false
+        val second = Math.floorDiv(millis, 1000L)
+        return claim(log) { it.second == second }
     }
 
-    private fun take(map: HashMap<String, Int>, key: String): Boolean {
-        val n = map[key] ?: return false
-        if (n <= 1) map.remove(key) else map[key] = n - 1
+    /** Claims an unclaimed remote log [dayOffset] days from the entry's UTC day. */
+    fun claimDay(log: KilterLog, dayOffset: Long): Boolean {
+        val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: return false
+        val day = day(millis) + dayOffset
+        return claim(log) { it.day == day }
+    }
+
+    private inline fun claim(log: KilterLog, match: (Remote) -> Boolean): Boolean {
+        val hit = buckets[bucket(log)]?.firstOrNull { !it.claimed && match(it) } ?: return false
+        hit.claimed = true
         return true
     }
 
     private fun day(millis: Long): Long =
         Instant.ofEpochMilli(millis).atOffset(ZoneOffset.UTC).toLocalDate().toEpochDay()
 
-    private fun exactKey(log: KilterLog, millis: Long) =
-        "${ClimbUuid.normKey(log.climbUuid)}|${log.angle}|${log.topped}|${millis / 1000}"
-
-    private fun dayKey(log: KilterLog, day: Long) =
-        "${ClimbUuid.normKey(log.climbUuid)}|${log.angle}|${log.topped}|$day"
+    private fun bucket(log: KilterLog) = "${ClimbUuid.normKey(log.climbUuid)}|${log.angle}|${log.topped}"
 }
