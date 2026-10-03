@@ -3,7 +3,9 @@ package com.cruxcoach.android.data.kilter
 import com.cruxcoach.android.data.kilter.FakeKilterServer.Fault
 import com.cruxcoach.android.data.kilter.FakeKilterServer.Op
 import com.cruxcoach.domain.board.ClimbUuid
+import io.mockk.clearAllMocks
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Test
 import java.time.Instant
 import kotlin.test.assertContains
@@ -32,6 +34,9 @@ import kotlin.time.Duration.Companion.seconds
  */
 class KilterUploadContractSimulationTest {
     private val climbs = KilterUploadFixture.climbs
+
+    /** MockK keeps every mock and recorded call until cleared; the random runs record thousands. */
+    @After fun releaseMocks() = clearAllMocks()
 
     private fun newSim(index: KilterLowercaseClimbIndex = KilterUploadFixture.bundledIndex) =
         UploadSimulation(FakeKilterServer(climbs), index)
@@ -538,6 +543,8 @@ class KilterUploadContractSimulationTest {
             return SeedOutcome(seed, size, faultRuns, -1, requests, "not delivered within 30 fault-free runs: ${line(sim.statuses.last())}")
         } catch (e: AssertionError) {
             return SeedOutcome(seed, size, faultRuns, -1, requests, e.message)
+        } finally {
+            clearAllMocks()
         }
     }
 
