@@ -712,8 +712,11 @@ class KilterSyncEngine @Inject constructor(
         uploadMutex.withLock {
             val now = clock()
             val versionCode = com.cruxcoach.android.BuildConfig.VERSION_CODE
+            // Entries of an earlier build stay listed until a run of this one has decided them anew.
             val rejections = uploadLedger.rejections()
-                .filter { it.appVersionCode == versionCode && now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
+                .filter { now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
+                .sortedBy { it.appVersionCode == versionCode }
+                .associateBy { it.logUuid }.values
             val outcome = uploadLedger.lastOutcome()
             val rows = (personalBoardRepo.getUnsyncedAscents().map { it.toRow() } +
                 personalBoardRepo.getUnsyncedBids().map { it.toRow() }).associateBy { it.uuid }
@@ -800,12 +803,14 @@ class KilterSyncEngine @Inject constructor(
 
             val now = clock()
             val versionCode = com.cruxcoach.android.BuildConfig.VERSION_CODE
-            val previous = uploadLedger.rejections()
-                .filter { it.appVersionCode == versionCode && now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
-                .associateBy { it.logUuid }
+            // Decisions hold for this build only (an update may know the id Kilter
+            // takes); entries of earlier builds keep a row queued and prove its climb.
+            val recent = uploadLedger.rejections().filter { now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
+            val previous = recent.filter { it.appVersionCode == versionCode }.associateBy { it.logUuid }
+            val earlier = recent.filter { it.appVersionCode != versionCode }.associateBy { it.logUuid }
             val importedEnabled = uploadLedger.importedUploadEnabled.first()
-            // An imported entry tried under the opt-in stays queued until Kilter settled it.
-            val candidates = rows.filter { !it.imported || importedEnabled || it.uuid in previous }
+            // An imported entry tried under the opt-in stays queued until Kilter settled it, across updates too.
+            val candidates = rows.filter { !it.imported || importedEnabled || it.uuid in previous || it.uuid in earlier }
             heldImported = rows.size - candidates.size
             // Until Kilter's logbook is read, rows held back with proof count as
             // refused, not pending (a run that stops early reports them so).
@@ -904,14 +909,17 @@ class KilterSyncEngine @Inject constructor(
 
             // Entries of rows this run does not reach (request budget) keep
             // their state; settled and accepted rows drop theirs below.
-            val ledger = LinkedHashMap(previous)
+            val ledger = LinkedHashMap(earlier).apply { putAll(previous) }
             settled.forEach { ledger.remove(it.uuid) }
             // A climb Kilter refused under every id, with proof, is not on Kilter:
             // its other rows go one by one and their lone refusal counts as proven.
             // Rows of a climb refused without proof wait like the refused row.
             val provenClimbs = previous.values.filter { it.confirmed }.mapNotNullTo(HashSet()) { it.climbKey }
+            // Proven under an earlier build: retried one by one with every id, the proof still holds.
+            val provenEarlier = earlier.values.filter { it.confirmed }.mapNotNullTo(HashSet()) { it.climbKey } - provenClimbs
             val suspectClimbs = previous.values.filterNot { it.confirmed }.associate { (it.climbKey ?: it.logUuid) to it.retryAtMs }
             val waiting = ArrayList<KilterUploadItem>()
+            val retryAfterUpdate = ArrayList<KilterUploadItem>()
             val notOnKilter = ArrayList<KilterUploadItem>()
             val chunked = ArrayList<KilterUploadItem>()
             for (item in unmatched) {
@@ -923,6 +931,7 @@ class KilterSyncEngine @Inject constructor(
                     }
                     held != null || item.climbKey in suspectClimbs -> waiting += item
                     item.climbKey in provenClimbs -> notOnKilter += item.copy(candidates = listOf(item.log.climbUuid))
+                    item.climbKey in provenEarlier -> retryAfterUpdate += item
                     else -> chunked += item
                 }
             }
@@ -934,7 +943,7 @@ class KilterSyncEngine @Inject constructor(
             }
             unconfirmed += resting.size
 
-            val outcome = send(notOnKilter, retried = due, chunked = chunked)
+            val outcome = send(retryAfterUpdate + notOnKilter, retried = due, chunked = chunked)
             accepted.forEach { ledger.remove(it) }
             learned.putAll(outcome.learned)
             var unprovenHttp: Int? = null
@@ -946,7 +955,7 @@ class KilterSyncEngine @Inject constructor(
                 val onSchedule = earlier == null || now >= earlier.retryAtMs
                 val strikes = (earlier?.unproven ?: 0) + if (onSchedule) 1 else 0
                 val proven = outcome.lastAcceptedRequest > r.request ||
-                    r.item.climbKey in provenClimbs || r.item.climbKey in provenNow
+                    r.item.climbKey in provenClimbs || r.item.climbKey in provenEarlier || r.item.climbKey in provenNow
                 ledger[r.item.uuid] = KilterUploadRejection(
                     logUuid = r.item.uuid, fingerprint = r.item.fingerprint, appVersionCode = versionCode,
                     httpStatus = r.http, atMs = now, confirmed = proven,
