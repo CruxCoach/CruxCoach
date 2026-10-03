@@ -353,6 +353,7 @@ class KilterUploadStatusTest {
         val offline = engine.uploadPendingLogs()
         assertEquals(KilterUploadReason.NETWORK, offline.reason)
         assertEquals(1, offline.pending)
+        assertEquals(1, offline.rejectedByKilter)
     }
 
     @Test fun an_edit_releases_a_held_row() = runTest {

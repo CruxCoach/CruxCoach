@@ -807,8 +807,10 @@ class KilterSyncEngine @Inject constructor(
             // An imported entry tried under the opt-in stays queued until Kilter settled it.
             val candidates = rows.filter { !it.imported || importedEnabled || it.uuid in previous }
             heldImported = rows.size - candidates.size
-            // Until Kilter's logbook is read, rows held back with proof are not pending.
-            pending = candidates.count { previous[it.uuid]?.confirmed != true }
+            // Until Kilter's logbook is read, rows held back with proof count as
+            // refused, not pending (a run that stops early reports them so).
+            rejectedByKilter = candidates.count { previous[it.uuid]?.confirmed == true }
+            pending = candidates.size - rejectedByKilter
             if (!userPreferences.kilterPushEnabled.first()) return finish(KilterUploadReason.DISABLED)
             if (candidates.isEmpty()) return finish()
             val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
@@ -846,6 +848,7 @@ class KilterSyncEngine @Inject constructor(
             val conflicts = ArrayList<String>()
             val invalid = ArrayList<String>()
             pending = candidates.size
+            rejectedByKilter = 0
             for (row in candidates.sortedByDescending { it.sortMillis }) {
                 val createdAt = KilterLogUploadPlan.kilterTimestamp(row.climbedAt)
                 if (createdAt == null) {
