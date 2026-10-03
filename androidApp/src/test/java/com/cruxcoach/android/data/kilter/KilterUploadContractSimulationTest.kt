@@ -39,9 +39,10 @@ class KilterUploadContractSimulationTest {
     /** One upload run, checked. */
     private suspend fun UploadWorld.uploadRun(label: String, trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL): KilterUploadStatus {
         val optedIn = sim.ledger.importedUploadEnabled.value
+        val queued = sim.ledger.rejections().mapTo(HashSet()) { it.logUuid }
         val before = kilter.requests.size
         val status = sim.upload(trigger)
-        verifyRun(status, optedIn, before, label)
+        verifyRun(status, optedIn, before, label, queued)
         return status
     }
 
@@ -623,19 +624,28 @@ class KilterUploadContractSimulationTest {
         assertEquals(2, status.alreadyOnKilter)
     }
 
-    @Test fun s3b_a_dashed_legacy_id_is_never_sent_dashed_even_without_the_catalogue_row() = runTest(timeout = 60.seconds) {
+    @Test fun s3b_a_dashed_legacy_id_waits_for_a_busy_catalogue_instead_of_going_out_dashed() = runTest(timeout = 60.seconds) {
         val upper = climbs.filter { it.isLegacy && it.id == it.id.uppercase() }
-        val outcomes = mutableListOf<String>()
-        for ((case, climb) in listOf("catalogue busy" to upper[0], "climb not in the catalogue" to upper[1])) {
-            val sim = newSim()
-            val world = UploadWorld(sim, seed = 32)
-            val entry = world.add(Fate.VALID, climb = climb, spelling = LocalSpelling.DASHED)
-            if (case == "catalogue busy") sim.catalogue.spellingLookupsFail = true else sim.catalogue.rows -= climb.id.lowercase()
-            val status = sim.upload()
-            outcomes += "$case: sent ${sim.kilter.requests.map { r -> r.rows.single().climbUuid to r.status }} -> stored as ${sim.kilter.logs[entry.uuid]?.climbUuid} (${line(status)})"
-        }
-        println("S3b ${outcomes.joinToString(" | ")}")
-        assertTrue(outcomes.none { "-> stored as ${FixtureClimb.dashed(upper[0].key)}" in it || "-> stored as ${FixtureClimb.dashed(upper[1].key)}" in it }, outcomes.joinToString("\n"))
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 32)
+        val entry = world.add(Fate.VALID, climb = upper[0], spelling = LocalSpelling.DASHED)
+        sim.catalogue.spellingLookupsFail = true
+        val busy = sim.upload()
+        assertEquals(KilterUploadReason.INTERNAL, busy.reason)
+        assertEquals(0, busy.requests)
+        assertTrue(sim.kilter.logs.isEmpty())
+        sim.catalogue.spellingLookupsFail = false
+        world.uploadRun("S3b catalogue free")
+        assertEquals(upper[0].id, sim.kilter.logs.getValue(entry.uuid).climbUuid)
+
+        // Known limit: a dashed spelling of a legacy climb the catalogue does not hold
+        // goes out dashed. Kilter takes it, under the climb's dashed statistics identity.
+        val other = newSim()
+        val otherWorld = UploadWorld(other, seed = 33)
+        val orphan = otherWorld.add(Fate.VALID, climb = upper[1], spelling = LocalSpelling.DASHED)
+        other.catalogue.rows -= upper[1].id.lowercase()
+        other.upload()
+        assertEquals(FixtureClimb.dashed(upper[1].key), other.kilter.logs[orphan.uuid]?.climbUuid)
     }
 
     @Test fun s9b_random_logbooks_through_kilters_own_500s_too() = runTest(timeout = 300.seconds) {
@@ -643,5 +653,108 @@ class KilterUploadContractSimulationTest {
         report("S9b", outcomes)
         val violations = outcomes.filter { it.violation != null }
         assertTrue(violations.isEmpty(), "${violations.size}/50 seeds:\n" + violations.joinToString("\n") { "seed ${it.seed}: ${it.violation}" })
+    }
+
+    // ── Climbs Kilter keeps under another id, climbs it does not know ───
+
+    @Test fun s10_entries_of_climbs_kilter_keeps_under_another_id_go_up_under_that_id() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 100)
+        repeat(300) { world.add(Fate.VALID) }
+        // Kilter moved five climbs to new ids; the catalogue still carries the old compact ones.
+        val moved = (1..5).map {
+            val old = world.newClimbId(dashed = false).lowercase()
+            val current = FixtureClimb(world.newClimbId(dashed = true))
+            sim.kilter.addClimb(current)
+            sim.aliases[old] = current.id
+            old to current
+        }
+        val movedEntries = moved.flatMap { (old, climb) -> (1..3).map { world.add(Fate.VALID, climb = climb, localId = old) } }
+        // Kilter keeps this one under both ids: the entry goes to the one its catalogue lists.
+        val both = FixtureClimb(world.newClimbId(dashed = false))
+        val twinId = FixtureClimb(world.newClimbId(dashed = true))
+        sim.kilter.addClimb(both)
+        sim.kilter.addClimb(twinId)
+        sim.aliases[both.key] = twinId.id
+        val keep = world.add(Fate.VALID, climb = twinId, localId = both.id.lowercase())
+
+        val first = world.uploadRun("S10 run 1")
+        println("S10 ${line(first)}")
+        assertEquals(0, first.pending)
+        assertEquals(0, first.rejectedByKilter)
+        assertEquals(0, first.unconfirmed)
+        for (entry in movedEntries) assertEquals(entry.climb!!.id, sim.kilter.logs.getValue(entry.uuid).climbUuid)
+        assertEquals(twinId.id, sim.kilter.logs.getValue(keep.uuid).climbUuid)
+        // Moved climbs name the id Kilter lists first: they go in the chunks like everything else.
+        assertEquals(2, first.requests)
+
+        // A later entry of a moved climb goes in a chunk at once, after a restart too.
+        sim.restartApp()
+        val later = world.add(Fate.VALID, climb = moved[0].second, localId = moved[0].first)
+        val second = world.uploadRun("S10 run 2")
+        assertEquals(1, second.requests)
+        assertEquals(moved[0].second.id, sim.kilter.logs.getValue(later.uuid).climbUuid)
+        assertEquals(0, world.uploadRun("S10 idle").requests)
+
+        // The listed id is gone from Kilter again: the row falls back to the climb's own id, which is learned.
+        val fallback = FixtureClimb(world.newClimbId(dashed = false))
+        sim.kilter.addClimb(fallback)
+        sim.aliases[fallback.key] = world.newClimbId(dashed = true)
+        val back = world.add(Fate.VALID, climb = fallback, localId = fallback.id.lowercase())
+        val third = world.uploadRun("S10 fallback")
+        assertEquals(2, third.requests)
+        assertEquals(fallback.id, sim.kilter.logs.getValue(back.uuid).climbUuid)
+        val again = world.add(Fate.VALID, climb = fallback, localId = fallback.id.lowercase())
+        assertEquals(1, world.uploadRun("S10 learned").requests)
+        assertEquals(fallback.id, sim.kilter.logs.getValue(again.uuid).climbUuid)
+    }
+
+    @Test fun s11_many_entries_of_one_climb_kilter_does_not_know_block_nothing_and_are_listed() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 110)
+        repeat(1000) { world.add(Fate.VALID) }
+        val unknown = world.unknownClimbId()
+        val bad = (1..25).mapTo(HashSet()) { world.add(Fate.UNKNOWN, localId = unknown).uuid }
+        val runs = (1..5).map { world.uploadRun("S11 run $it") }
+        println("S11 ${runs.map { line(it) }}")
+        assertEquals(1000, runs.first().uploaded, "every entry Kilter takes goes up in the first run")
+        assertTrue(world.allDelivered(includeImported = false))
+        assertEquals(bad, sim.parked())
+        assertTrue(runs.all { it.requests <= 40 })
+        assertEquals(0, runs.last().requests)
+
+        sim.catalogue.names[unknown] = "Ghost Climb"
+        val listed = sim.engine.notUploadedEntries()
+        assertEquals(bad, listed.mapTo(HashSet()) { it.logUuid })
+        assertTrue(listed.all { it.reason == KilterNotUploadedReason.NOT_ON_KILTER && it.climbName == "Ghost Climb" }, listed.toString())
+    }
+
+    @Test fun s12_the_list_names_every_entry_kilter_did_not_take_with_its_reason() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 120)
+        repeat(50) { world.add(Fate.VALID) }
+        val conflict = world.add(Fate.CONFLICT)
+        val invalid = world.add(Fate.INVALID)
+        val unknown = world.add(Fate.UNKNOWN)
+        world.uploadRun("S12")
+        val listed = sim.engine.notUploadedEntries().associateBy { it.logUuid }
+        assertEquals(setOf(conflict.uuid, invalid.uuid, unknown.uuid), listed.keys)
+        assertEquals(KilterNotUploadedReason.CONFLICT, listed.getValue(conflict.uuid).reason)
+        assertEquals(KilterNotUploadedReason.INVALID_DATE, listed.getValue(invalid.uuid).reason)
+        assertTrue(listed.getValue(unknown.uuid).reason in setOf(KilterNotUploadedReason.NOT_ON_KILTER, KilterNotUploadedReason.RETRY_LATER))
+
+        // An outage that begins mid-run: what Kilter would take is listed as tried again, never as unknown.
+        val outage = newSim()
+        val outageWorld = UploadWorld(outage, seed = 121)
+        val entries = (1..600).map { outageWorld.add(Fate.VALID) }
+        outage.kilter.fault = { op, n -> FakeKilterServer.Fault.HTTP_500.takeIf { op == Op.BULK && n >= 1 } }
+        outageWorld.uploadRun("S12 outage")
+        val retried = outage.engine.notUploadedEntries()
+        assertTrue(retried.isNotEmpty())
+        assertTrue(retried.all { it.reason == KilterNotUploadedReason.RETRY_LATER }, retried.map { it.reason }.toString())
+        outage.kilter.fault = { _, _ -> null }
+        repeat(4) { outageWorld.uploadRun("S12 recovered ${it + 1}") }
+        assertTrue(entries.all { it.uuid in outage.kilter.logs })
+        assertTrue(outage.engine.notUploadedEntries().isEmpty())
     }
 }

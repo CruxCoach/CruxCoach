@@ -54,6 +54,8 @@ fun BugReportScreen(
     onNavigateBack: () -> Unit,
     initialTitle: String = "",
     initialDescription: String = "",
+    /** Pre-ticks the Kilter upload diagnostics, e.g. when reporting entries Kilter did not take. */
+    initialAttachDiagnostics: Boolean = false,
     viewModel: DevContactViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -64,7 +66,7 @@ fun BugReportScreen(
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var description by rememberSaveable { mutableStateOf(initialDescription) }
     var steps by rememberSaveable { mutableStateOf("") }
-    var attachDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var attachDiagnostics by rememberSaveable { mutableStateOf(initialAttachDiagnostics) }
     // Freeze the preview when the form opens; background attempts cannot replace it.
     val diagnostics = rememberSaveable { viewModel.uploadDiagnosticSnapshot() }
 

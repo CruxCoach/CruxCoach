@@ -19,16 +19,24 @@ internal data class KilterUploadItem(
     /** Entry from an Aurora export (FEAT-005): uploaded only on opt-in. */
     val imported: Boolean,
     val log: KilterLog,
-    /** Set once the other case of a compact id has been tried for this row. */
-    val caseRetried: Boolean = false,
+    /** [ClimbUuid.normKey] of the local climb: rows of one climb share their fate on Kilter. */
+    val climbKey: String = ClimbUuid.normKey(log.climbUuid),
+    /** Ids to try for the climb, in order ([KilterClimbWireIds.candidates]); [log] carries [candidates]`[tried]`. */
+    val candidates: List<String> = listOf(log.climbUuid),
+    val tried: Int = 0,
     /**
      * What a held-back decision is tied to: everything this row would send,
-     * taken before any retry re-cases the id (copy() keeps it). Any change —
-     * an edit, a quick-log bid promoted to a send, a new wall context — makes
-     * it a different request and retries it.
+     * taken before any retry swaps the id (copy() keeps it). Any change — an
+     * edit, a quick-log bid promoted to a send, a new wall context — makes it
+     * a different request and retries it.
      */
     val fingerprint: Int = log.hashCode(),
-)
+) {
+    /** The same row with the next candidate id, or null once Kilter refused every one. */
+    fun nextCandidate(): KilterUploadItem? = candidates.getOrNull(tried + 1)?.let {
+        copy(log = log.copy(climbUuid = it), tried = tried + 1)
+    }
+}
 
 internal object KilterLogUploadPlan {
     /**
@@ -73,20 +81,20 @@ internal object KilterLogUploadPlan {
  * ascent from being uploaded twice — the account's own logs, each backing at
  * most one local entry. Every entry may match an exact twin (same climb,
  * angle, send state and second). Aurora-imported entries may afterwards match
- * a log of the same climb, angle and send state on the same day, then a day
- * either side: the export and Kilter's migrated copy need not agree on the
- * zone of the time. Callers claim in that order across all entries, so an
- * exact twin is never taken by a looser match first.
+ * a log of the same climb, angle and send state up to a day away, nearest in
+ * time first ([claimNearest]): the export and Kilter's migrated copy need not
+ * agree on the zone of the time. Callers claim exact twins for all entries
+ * first, so an exact twin is never taken by a looser match.
  */
 internal class KilterTwinIndex(remote: Collection<KilterLog>) {
-    private class Remote(val second: Long, val day: Long) { var claimed = false }
+    private class Remote(val millis: Long, val second: Long, val day: Long) { var claimed = false }
 
     private val buckets = HashMap<String, MutableList<Remote>>()
 
     init {
         for (log in remote) {
             val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: continue
-            buckets.getOrPut(bucket(log)) { ArrayList(1) } += Remote(Math.floorDiv(millis, 1000L), day(millis))
+            buckets.getOrPut(bucket(log)) { ArrayList(1) } += Remote(millis, Math.floorDiv(millis, 1000L), day(millis))
         }
     }
 
@@ -102,6 +110,35 @@ internal class KilterTwinIndex(remote: Collection<KilterLog>) {
         val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: return false
         val day = day(millis) + dayOffset
         return claim(log) { it.day == day }
+    }
+
+    /**
+     * Pairs each of [entries] with an unclaimed remote log of the same climb,
+     * angle and send state no more than [maxDays] UTC days away, nearest in
+     * time first across all entries: an export whose times are off by the
+     * user's zone must not hand one ascent's log to the entry of the day
+     * before. Returns the keys of the entries that found one.
+     */
+    fun <K> claimNearest(entries: List<Pair<K, KilterLog>>, maxDays: Long = 1): Set<K> {
+        class Pairing(val key: K, val remote: Remote, val distance: Long)
+        val pairings = ArrayList<Pairing>()
+        for ((key, log) in entries) {
+            val millis = KilterLogUploadPlan.epochMillis(log.createdAt) ?: continue
+            val day = day(millis)
+            for (remote in buckets[bucket(log)].orEmpty()) {
+                if (!remote.claimed && kotlin.math.abs(remote.day - day) <= maxDays) {
+                    pairings += Pairing(key, remote, kotlin.math.abs(remote.millis - millis))
+                }
+            }
+        }
+        pairings.sortBy { it.distance }
+        val matched = LinkedHashSet<K>()
+        for (p in pairings) {
+            if (p.key in matched || p.remote.claimed) continue
+            p.remote.claimed = true
+            matched += p.key
+        }
+        return matched
     }
 
     private inline fun claim(log: KilterLog, match: (Remote) -> Boolean): Boolean {

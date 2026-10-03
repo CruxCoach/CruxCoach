@@ -173,7 +173,7 @@ object Routes {
     const val LICENSES = "licenses"
     const val ASSESSMENT = "assessment"
     const val DEV_CHAT = "dev_chat"
-    const val BUG_REPORT = "bug_report?title={title}&description={description}"
+    const val BUG_REPORT = "bug_report?title={title}&description={description}&kilterDiagnostics={kilterDiagnostics}"
     const val BUG_REPORT_LIST = "bug_report_list"
     const val FEATURE_REQUEST = "feature_request"
     const val FEATURE_REQUEST_LIST = "feature_request_list"
@@ -198,10 +198,10 @@ object Routes {
     fun boardListDetail(listId: Long) = "board_list_detail/$listId"
     fun playlistDetail(listId: Long) = "playlist_detail/$listId"
     fun messageThread(eventId: String) = "message_thread/$eventId"
-    fun bugReport(title: String = "", description: String = ""): String {
+    fun bugReport(title: String = "", description: String = "", attachKilterDiagnostics: Boolean = false): String {
         val t = android.net.Uri.encode(title)
         val d = android.net.Uri.encode(description)
-        return "bug_report?title=$t&description=$d"
+        return "bug_report?title=$t&description=$d&kilterDiagnostics=${if (attachKilterDiagnostics) 1 else 0}"
     }
 }
 
@@ -951,7 +951,15 @@ fun CruxCoachNavHost(
                         onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                         onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                         onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
-                        onReportKilterUpload = { navController.navigate(Routes.bugReport(context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title), "")) },
+                        onReportKilterUpload = { description ->
+                            navController.navigate(
+                                Routes.bugReport(
+                                    context.getString(com.cruxcoach.android.R.string.kilter_upload_report_title),
+                                    description,
+                                    attachKilterDiagnostics = description.isNotEmpty(),
+                                ),
+                            )
+                        },
                         onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
                         onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
@@ -1012,7 +1020,8 @@ fun CruxCoachNavHost(
                 BugReportScreen(
                     onNavigateBack = { navController.popBackStack() },
                     initialTitle = initialTitle,
-                    initialDescription = initialDescription
+                    initialDescription = initialDescription,
+                    initialAttachDiagnostics = backStackEntry.arguments?.getString("kilterDiagnostics") == "1",
                 )
             }
 
