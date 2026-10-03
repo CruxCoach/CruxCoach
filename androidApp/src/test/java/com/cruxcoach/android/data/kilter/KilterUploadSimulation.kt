@@ -349,7 +349,12 @@ internal class FakeCatalogue(
         return uuids.filterTo(HashSet()) { it in rows }
     }
 
-    override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> = emptyList()
+    /** Climb names by catalogue uuid, for the list of entries Kilter did not take. */
+    val names = HashMap<String, String>()
+
+    override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> = uuids.mapNotNull { uuid ->
+        names[uuid]?.let { ClimbWithStats(uuid, 1, null, it, "", 1, null, null, null) }
+    }
     override fun getClimbDifficultiesForAngle(uuids: Collection<String>, angle: Int): Map<String, Double> = emptyMap()
 }
 
@@ -364,6 +369,8 @@ internal class UploadSimulation(
     val logbook = FakeLogbook()
     val catalogue = FakeCatalogue()
     val ledger = InMemoryKilterUploadLedger()
+    /** The bundled alias table: old catalogue key → the id Kilter keeps the climb under. */
+    val aliases = HashMap<String, String>()
     val push = MutableStateFlow(true)
     val statuses = ArrayList<KilterUploadStatus>()
     var now: Long = Instant.parse("2026-10-01T08:00:00Z").toEpochMilli()
@@ -399,6 +406,7 @@ internal class UploadSimulation(
     private fun newEngine() = KilterSyncEngine(
         api, tokens, catalogue, logbook, mockk(relaxed = true), prefs, diagnostics,
         dagger.Lazy { pendingImports }, ledger, KilterLowercaseClimbIndexSource { index },
+        KilterClimbAliasSource { KilterClimbAliases(HashMap(aliases)) },
     ).also { it.clock = { now } }
 
     /** The app is restarted: a fresh engine, the same stores. */
@@ -494,6 +502,9 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
 
     private fun hex32() = "%016X%016X".format(rng.nextLong(), rng.nextLong())
 
+    /** A climb id no fixture climb has: compact (as given) or dashed lowercase. */
+    fun newClimbId(dashed: Boolean): String = hex32().let { if (dashed) FixtureClimb.dashed(it.lowercase()) else it }
+
     /** A climb id Kilter does not know, in one of the shapes the probes used. */
     fun unknownClimbId(): String {
         while (true) {
@@ -551,13 +562,15 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         at: Instant? = null,
         twinAt: Instant? = null,
         angle: Int = ANGLES[rng.nextInt(ANGLES.size)],
+        /** The climb id the logbook row carries, when it differs from the climb's id on Kilter. */
+        localId: String? = null,
     ): UploadEntry {
         val uuid = uuid()
         val target = when (kind) {
             Fate.UNKNOWN, Fate.COMMUNITY -> null
             else -> climb ?: if (imported) reservedClimb() else sharedClimb()
         }
-        val local = when (kind) {
+        val local = localId ?: when (kind) {
             Fate.UNKNOWN -> unknownClimbId()
             Fate.COMMUNITY -> communityClimbId()
             else -> target!!.spelled(spelling)
@@ -643,7 +656,14 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
      * [optedIn]: the imported opt-in as it stood when the run started;
      * [firstRequest]: Kilter's request count before the run.
      */
-    suspend fun verifyRun(status: KilterUploadStatus, optedIn: Boolean, firstRequest: Int, label: String) {
+    suspend fun verifyRun(
+        status: KilterUploadStatus,
+        optedIn: Boolean,
+        firstRequest: Int,
+        label: String,
+        /** Imported entries tried under an earlier opt-in: they stay queued until Kilter settled them. */
+        queued: Set<String> = emptySet(),
+    ) {
         fun fail(message: String): Nothing =
             throw AssertionError("$label: $message\n  ${KilterUploadDiagnostics.diagnosticLine(status)}")
 
@@ -657,7 +677,7 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         for (request in sent) for (row in request.rows) {
             val entry = entries[row.logUuid] ?: fail("sent a log that is no logbook entry: ${row.logUuid}")
             if (entry.fate in NEVER_SENT) fail("sent a ${entry.fate} entry (${entry.uuid})")
-            if (entry.imported && !optedIn) fail("sent an imported entry without the opt-in (${entry.uuid})")
+            if (entry.imported && !optedIn && entry.uuid !in queued) fail("sent an imported entry without the opt-in (${entry.uuid})")
             if (row.userUuid != UploadSimulation.USER) fail("sent a log for another user")
         }
 
@@ -694,12 +714,13 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         if (parked.isNotEmpty()) fail("${parked.size} entries Kilter would take are held back, e.g. ${parked.first()}")
 
         val unsynced = entries.values.filter { logbook.isSynced(it.uuid) == false && it.fate != Fate.COMMUNITY }
-        val eligible = unsynced.count { !it.imported || optedIn }
+        val eligible = unsynced.count { !it.imported || optedIn || it.uuid in queued }
         if (status.pending + status.rejected != eligible) {
             fail("pending=${status.pending} + rejected=${status.rejected} != $eligible unsynced entries the run covered")
         }
-        if (!optedIn && status.heldImported != unsynced.count { it.imported }) {
-            fail("heldImported=${status.heldImported}, logbook has ${unsynced.count { it.imported }} unsynced imported entries")
+        if (status.unconfirmed > status.pending) fail("unconfirmed=${status.unconfirmed} exceeds pending=${status.pending}")
+        if (!optedIn && status.heldImported != unsynced.count { it.imported && it.uuid !in queued }) {
+            fail("heldImported=${status.heldImported}, logbook has ${unsynced.count { it.imported && it.uuid !in queued }} unsynced imported entries not queued")
         }
         if (status.uploaded > status.attempted) fail("uploaded > attempted")
     }

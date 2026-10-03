@@ -33,6 +33,8 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
 
 data class KilterAccountState(
     val uploadStatus: KilterUploadStatus? = null,
+    /** Loaded when the user opens the list of entries Kilter did not take. */
+    val notUploaded: List<com.cruxcoach.android.data.kilter.KilterNotUploadedEntry>? = null,
     val isConnected: Boolean = false,
     val username: String = "",
     val lastSync: String? = null,
@@ -95,8 +97,9 @@ internal fun KilterAccountSection(
     onDismissResult: () -> Unit,
     onRetryPublishQueueNow: () -> Unit,
     onRetryUpload: () -> Unit = {},
-    onReportUpload: () -> Unit = {},
+    onReportUpload: (description: String) -> Unit = {},
     onUploadImported: () -> Unit = {},
+    onLoadNotUploaded: () -> Unit = {},
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -135,7 +138,7 @@ internal fun KilterAccountSection(
     }
 
     if (state.isConnected) {
-        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload, onUploadImported)
+        KilterLogbookSyncStatus(state, onShowLogin, onRetryUpload, onReportUpload, onUploadImported, onLoadNotUploaded)
     }
 
     // Result message (success/error)
@@ -213,11 +216,13 @@ internal fun KilterLogbookSyncStatus(
     state: KilterAccountState,
     onLogin: () -> Unit,
     onRetry: () -> Unit,
-    onReport: () -> Unit,
+    onReport: (description: String) -> Unit,
     onUploadImported: () -> Unit = {},
+    onLoadNotUploaded: () -> Unit = {},
 ) {
     val upload = state.uploadStatus
     var confirmImported by rememberSaveable { mutableStateOf(false) }
+    var showNotUploaded by rememberSaveable { mutableStateOf(false) }
     val needsLogin = state.sessionExpired || upload?.reason ==
         com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
     val active = state.pushEnabled && !state.isSyncing
@@ -240,15 +245,31 @@ internal fun KilterLogbookSyncStatus(
                         else R.string.kilter_sync_now))
                 }
                 if (problem) {
-                    TextButton(onClick = onReport) { Text(stringResource(R.string.devcontact_report_bug)) }
+                    TextButton(onClick = { onReport("") }) { Text(stringResource(R.string.devcontact_report_bug)) }
                 }
             }
+        }
+        if (!state.isSyncing && (upload?.notUploaded ?: 0) > 0) {
+            TextButton(onClick = {
+                onLoadNotUploaded()
+                showNotUploaded = true
+            }) { Text(stringResource(R.string.kilter_upload_show_entries)) }
         }
         if (active && !needsLogin && (upload?.heldImported ?: 0) > 0) {
             TextButton(onClick = { confirmImported = true }) {
                 Text(stringResource(R.string.kilter_upload_imported_action))
             }
         }
+    }
+    if (showNotUploaded) {
+        KilterNotUploadedDialog(
+            entries = state.notUploaded,
+            onDismiss = { showNotUploaded = false },
+            onReport = { report ->
+                showNotUploaded = false
+                onReport(report)
+            },
+        )
     }
     if (confirmImported) {
         AlertDialog(
@@ -691,3 +712,77 @@ private fun DisconnectedClimbPublishHint(onConnect: () -> Unit) {
         }
     }
 }
+
+/** The entries the upload could not hand to Kilter, with the reason, and a way to report them. */
+@Composable
+internal fun KilterNotUploadedDialog(
+    entries: List<com.cruxcoach.android.data.kilter.KilterNotUploadedEntry>?,
+    onDismiss: () -> Unit,
+    onReport: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.kilter_upload_list_title)) },
+        text = {
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(stringResource(R.string.kilter_upload_list_intro), style = MaterialTheme.typography.bodySmall)
+                when {
+                    entries == null -> CircularProgressIndicator(Modifier.padding(8.dp))
+                    entries.isEmpty() -> Text(stringResource(R.string.kilter_upload_list_empty))
+                    else -> entries.forEach { entry ->
+                        Column {
+                            Text(entry.headline(context), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(entry.details(context), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!entries.isNullOrEmpty()) {
+                TextButton(onClick = { onReport(kilterNotUploadedReport(context, entries)) }) {
+                    Text(stringResource(R.string.kilter_upload_list_report))
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
+}
+
+private fun com.cruxcoach.android.data.kilter.KilterNotUploadedEntry.headline(context: android.content.Context): String =
+    climbName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.kilter_upload_unknown_climb)
+
+private fun com.cruxcoach.android.data.kilter.KilterNotUploadedEntry.details(context: android.content.Context): String {
+    val date = climbedAt.take(10).split('-').takeIf { it.size == 3 }?.let { (y, m, d) -> "$d.$m.$y" } ?: climbedAt.take(10)
+    val parts = mutableListOf("$angle°", date)
+    if (!isAscent) parts += context.getString(R.string.kilter_upload_entry_bid)
+    parts += context.getString(
+        when (reason) {
+            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.NOT_ON_KILTER -> R.string.kilter_upload_reason_not_on_kilter
+            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.RETRY_LATER -> R.string.kilter_upload_reason_retry_later
+            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.CONFLICT -> R.string.kilter_upload_reason_conflict
+            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.INVALID_DATE -> R.string.kilter_upload_reason_invalid_date
+        },
+    )
+    return parts.joinToString(" · ")
+}
+
+/** Plain text for the bug report: what the user saw, plus the climb ids needed to look the climbs up. */
+internal fun kilterNotUploadedReport(
+    context: android.content.Context,
+    entries: List<com.cruxcoach.android.data.kilter.KilterNotUploadedEntry>,
+    limit: Int = 60,
+): String = buildString {
+    val version = "${com.cruxcoach.android.BuildConfig.VERSION_NAME} (${com.cruxcoach.android.BuildConfig.VERSION_CODE})"
+    appendLine(context.getString(R.string.kilter_upload_report_list_header, version))
+    for (entry in entries.take(limit)) {
+        append("- ").append(entry.headline(context)).append(" · ").append(entry.details(context))
+        append(" · id ").appendLine(entry.wireId ?: entry.climbUuid)
+    }
+    if (entries.size > limit) appendLine(context.getString(R.string.kilter_upload_report_list_more, entries.size - limit))
+}.trimEnd()
+

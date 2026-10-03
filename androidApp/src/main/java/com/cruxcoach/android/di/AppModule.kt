@@ -809,12 +809,14 @@ object AppModule {
         uploadDiagnostics: com.cruxcoach.android.data.kilter.KilterUploadDiagnostics,
         pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>,
         lowercaseClimbIndex: com.cruxcoach.android.data.kilter.KilterLowercaseClimbIndexSource,
+        climbAliases: com.cruxcoach.android.data.kilter.KilterClimbAliasSource,
     ): KilterSyncEngine {
         return KilterSyncEngine(
             apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences,
             uploadDiagnostics, pendingImports,
             uploadLedger = com.cruxcoach.android.data.kilter.PreferencesKilterUploadLedger(userPreferences),
             lowercaseIndexSource = lowercaseClimbIndex,
+            aliasSource = climbAliases,
         )
     }
 

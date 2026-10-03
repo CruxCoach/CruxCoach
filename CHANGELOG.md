@@ -12,7 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0.2.3 retried the same first 200 entries forever ("Kilter rejected the
   upload"). A refused request is now split until the row is alone; everything
   else uploads, and the row is held back until it is edited or the app is
-  updated, instead of blocking the queue. An outage does not hold anything back.
+  updated, instead of blocking the queue. A row is held back only with proof
+  that Kilter takes uploads: another request accepted after it in the same run,
+  the same climb refused with proof before, or three refusals hours apart. An
+  outage, also one that begins halfway through an upload, holds nothing back.
+- Logs of climbs Kilter keeps under a new id now reach Kilter. CruxCoach's
+  catalogue still carries the old id of 455 Kilter climbs (most of them moved to
+  a new id in Kilter's migration of March 2026); Kilter refuses a log naming the
+  old id. A bundled table of these climbs, matched by identical holds and name,
+  sends such a log under the id Kilter lists, and falls back to the old one if
+  Kilter refuses the new.
 - Climbs keep the id Kilter stores for them. About a quarter of the legacy
   Kilter climbs have a lowercase id, and Kilter compares ids case-sensitively;
   0.2.3 uppercased every compact id, so every log of such a climb was refused.
@@ -28,6 +37,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   skipped.
 - An edited entry whose original Kilter already holds is kept local as a
   conflict and no longer stops the upload of every other entry.
+- An entry imported from an Aurora export is no longer uploaded twice when the
+  same climb was sent on two consecutive late evenings: it is matched to the
+  nearest of Kilter's logs in time, not to the first one of the day.
+
+### Added
+- Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
+  climb, angle, date and reason, and sends the list as a bug report in one tap.
 
 ## [0.2.3] - 2026-09-26
 
