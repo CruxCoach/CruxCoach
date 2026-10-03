@@ -60,3 +60,37 @@ such row blocked the whole logbook.
   user opts in; the opt-in covers the entries present and is withdrawn once a
   run worked through them. Opted-in entries are matched to Kilter's logs by
   exact second first, then climb, angle and day, then a day either side.
+
+## Follow-up (2026-10-03): climbs Kilter keeps under another id, proof
+
+Device test with the 0.2.4 feature build (vc 1000013) on the owner's test
+account; every probe log was deleted again and the account verified back in
+its earlier state.
+
+- Two in-app logs were held back as "unknown to Kilter" although Kilter has the
+  climb: CruxCoach's catalogue carries 496 compact ids that `/climbs/all` does
+  not list. Matched by identical holds (placement → hole, roles 42–45 → 12–15;
+  validated on 8 000 climbs present on both sides: 7 991 identical) and name,
+  455 of them exist on Kilter under another id, mostly a dashed one from the
+  March migration. A bulk request naming all 455 new ids was accepted
+  (3 × HTTP 200); of 80 sampled old ids, 77 were refused in both cases and 3 are
+  still accepted in uppercase. 35 + 6 have no counterpart; samples of those and
+  three Boardsesh-origin climbs were refused in both cases.
+- `/climbs/all` is not complete: two old dashed ids it omits are accepted.
+- `DELETE /logs/{uuid}` answers 204 for a uuid Kilter does not hold.
+
+Consequences in the upload:
+
+- `assets/kilter/climb_aliases.tsv` (scripts/kilter/build_climb_alias_index.py)
+  maps the 455 old ids to the id Kilter lists. A row names that id first and
+  falls back to its own id in both cases; the id that worked is remembered.
+- A lone refusal holds a row back only with proof: a request accepted after it
+  in the same run, a proven refusal of the same climb, or three refusals on a
+  1 h / 4 h schedule. The former rule (any acceptance in the run, or any later
+  acceptance) parked rows Kilter would take when an outage began mid-run.
+- Unproven refusals are retried first in the next run that sends anything,
+  otherwise after a growing pause; rows of a climb refused with proof go one by
+  one, one request each.
+- Imported entries are matched to Kilter's logs nearest in time, so two sends of
+  one climb on consecutive late evenings no longer leave one of them unmatched.
+- A busy catalogue stops the run instead of sending a dashed legacy id.

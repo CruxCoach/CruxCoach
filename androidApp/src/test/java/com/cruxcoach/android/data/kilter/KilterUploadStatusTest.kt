@@ -74,7 +74,9 @@ class KilterUploadStatusTest {
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged(any(), any()) }
     }
 
-    @Test fun a_row_refused_after_an_accepted_batch_is_held_back_instead_of_blocking() = runTest {
+    @Test fun a_row_refused_after_an_accepted_batch_does_not_block_and_is_held_once_proven() = runTest {
+        var now = 1_000_000L
+        engine.clock = { now }
         every { personal.getUnsyncedAscents() } returns (0..200).map(::ascent)
         coEvery { api.uploadLogs(any()) } returnsMany listOf(
             Result.success(Unit), Result.failure(KilterUploadException(500)),
@@ -82,16 +84,25 @@ class KilterUploadStatusTest {
         val report = engine.syncBidirectional().getOrThrow()
         assertEquals(200, report.uploaded)
         assertFalse(report.uploadFailed)
-        assertEquals(0, report.uploadStatus?.pending)
-        assertEquals(1, report.uploadStatus?.rejectedByKilter)
+        // Refused last: nothing was accepted after it, so it is retried rather than held.
+        assertEquals(1, report.uploadStatus?.pending)
+        assertEquals(1, report.uploadStatus?.unconfirmed)
+        assertEquals(0, report.uploadStatus?.rejectedByKilter)
         coVerify(exactly = 2) { api.uploadLogs(any()) }
         verify(exactly = 200) { personal.markAscentSyncedIfUnchanged(any(), any()) }
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-200", any()) }
-        // Held back: the next run does not send it again.
+        // Alone in the queue it waits for its retry instead of costing every trigger a request.
         every { personal.getUnsyncedAscents() } returns listOf(ascent(200))
-        val next = engine.uploadPendingLogs()
-        assertEquals(1, next.rejectedByKilter)
+        assertEquals(1, engine.uploadPendingLogs().unconfirmed)
         coVerify(exactly = 2) { api.uploadLogs(any()) }
+        // With a new entry it goes first; Kilter accepts the new one after it: proven, held.
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(200), ascent(201))
+        kilterRefuses("test-climb-200")
+        val proven = engine.uploadPendingLogs()
+        assertEquals(1, proven.rejectedByKilter)
+        assertEquals(1, proven.uploaded)
+        assertEquals(0, proven.pending)
+        coVerify(exactly = 4) { api.uploadLogs(any()) }
     }
 
     @Test fun community_climb_logs_stay_local_and_do_not_block_the_rest() = runTest {
@@ -263,14 +274,17 @@ class KilterUploadStatusTest {
         var now = 1_000_000L
         engine.clock = { now }
         coEvery { api.uploadLogs(any()) } returns Result.failure(KilterUploadException(500))
+        val first = engine.uploadPendingLogs()
+        assertEquals(KilterUploadReason.HTTP, first.reason)
         repeat(3) {
+            now += 25 * 60 * 60 * 1000L
+            // Only the unproven row is left: retried after its pause, reported, never held.
             val run = engine.uploadPendingLogs()
-            assertEquals(KilterUploadReason.HTTP, run.reason)
             assertEquals(1, run.pending)
+            assertEquals(1, run.unconfirmed)
             assertEquals(0, run.rejectedByKilter)
-            now += 2 * 60 * 60 * 1000L
         }
-        // Kilter is back: another entry goes through, the bad one fails alone.
+        // Kilter is back: the suspect goes first and fails alone, another entry goes through after it.
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(1))
         kilterRefuses("test-climb-0")
         val recovered = engine.uploadPendingLogs()
@@ -279,23 +293,27 @@ class KilterUploadStatusTest {
         assertEquals(KilterUploadReason.NONE, recovered.reason)
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0))
         engine.uploadPendingLogs()
-        // 3 outage runs + 3 requests to isolate the bad row; the held row costs the fifth run nothing.
-        coVerify(exactly = 3 + 3) { api.uploadLogs(any()) }
+        // 4 outage runs + the suspect and the new entry; the held row costs the last run nothing.
+        coVerify(exactly = 4 + 2) { api.uploadLogs(any()) }
     }
 
-    @Test fun a_lone_failure_is_confirmed_by_an_upload_accepted_in_a_later_run() = runTest {
+    @Test fun a_lone_failure_is_proven_only_by_an_upload_accepted_after_it_in_the_same_run() = runTest {
         var now = 1_000_000L
         engine.clock = { now }
         kilterRefuses("test-climb-0")
         assertEquals(0, engine.uploadPendingLogs().rejectedByKilter) // alone, no proof yet
         now += 60_000
         every { personal.getUnsyncedAscents() } returns listOf(ascent(1))
-        assertEquals(1, engine.uploadPendingLogs().uploaded) // Kilter accepts uploads
+        assertEquals(1, engine.uploadPendingLogs().uploaded) // Kilter accepts uploads, but not after the refusal
         now += 60_000
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0))
         val third = engine.uploadPendingLogs()
-        assertEquals(1, third.rejectedByKilter)
-        assertEquals(0, third.pending)
+        assertEquals(0, third.rejectedByKilter, "an upload accepted in another run proves nothing about this row")
+        assertEquals(1, third.unconfirmed)
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(2))
+        val fourth = engine.uploadPendingLogs()
+        assertEquals(1, fourth.rejectedByKilter)
+        assertEquals(0, fourth.pending)
     }
 
     @Test fun an_edit_releases_a_held_row() = runTest {

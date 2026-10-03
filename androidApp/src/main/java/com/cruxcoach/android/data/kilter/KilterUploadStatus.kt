@@ -37,10 +37,39 @@ data class KilterUploadStatus(
     val alreadyOnKilter: Int = 0,
     /** Bulk requests sent in this run. */
     val requests: Int = 0,
+    /** Pending rows Kilter refused alone without proof yet (no upload accepted after them); retried, not held. */
+    val unconfirmed: Int = 0,
 ) {
     val failed: Boolean get() = reason != KilterUploadReason.NONE && reason != KilterUploadReason.DISABLED
     val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid
+    /** Rows not on Kilter after this run that the user can list ([KilterSyncEngine.notUploadedEntries]). */
+    val notUploaded: Int get() = rejected + unconfirmed
 }
+
+enum class KilterNotUploadedReason {
+    /** Kilter refused the climb under every id it may have there, with proof. */
+    NOT_ON_KILTER,
+    /** Kilter refused it alone, but nothing was accepted after; tried again later. */
+    RETRY_LATER,
+    /** Kilter holds this entry's uuid with different content. */
+    CONFLICT,
+    /** The entry's date cannot be expressed for Kilter. */
+    INVALID_DATE,
+}
+
+/** One logbook entry the upload could not hand to Kilter, for the list the user can report. */
+data class KilterNotUploadedEntry(
+    val logUuid: String,
+    val climbUuid: String,
+    val climbName: String?,
+    val angle: Int,
+    val climbedAt: String,
+    val isAscent: Boolean,
+    val reason: KilterNotUploadedReason,
+    /** The last id Kilter refused for the climb. */
+    val wireId: String? = null,
+    val httpStatus: Int? = null,
+)
 
 @Serializable
 enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START }
@@ -84,6 +113,7 @@ class KilterUploadDiagnostics @Inject constructor(@ApplicationContext context: C
             "app=${s.appVersion} operation=logs.bulk trigger=${s.trigger} time=${s.timestampMs} durationMs=${s.durationMs} " +
                 "attempted=${s.attempted} uploaded=${s.uploaded} pending=${s.pending} reason=${s.reason} http=${s.httpStatus ?: "none"} " +
                 "requests=${s.requests} rejectedKilter=${s.rejectedByKilter} rejectedConflict=${s.rejectedConflict} " +
-                "rejectedInvalid=${s.rejectedInvalid} heldImported=${s.heldImported} alreadyOnKilter=${s.alreadyOnKilter}"
+                "rejectedInvalid=${s.rejectedInvalid} heldImported=${s.heldImported} alreadyOnKilter=${s.alreadyOnKilter} " +
+                "retryLater=${s.unconfirmed}"
     }
 }

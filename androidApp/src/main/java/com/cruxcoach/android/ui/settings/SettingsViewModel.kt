@@ -1189,6 +1189,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Loads the entries Kilter did not take, for the list the user opened. */
+    fun loadKilterNotUploaded() {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = null)) }
+        viewModelScope.launch {
+            val entries = try {
+                kilterSyncEngine.notUploadedEntries()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = entries)) }
+        }
+    }
+
     /** Opt in to uploading Aurora-imported entries (they are matched against Kilter first), then upload. */
     fun uploadImportedKilterLogs() {
         viewModelScope.launch {

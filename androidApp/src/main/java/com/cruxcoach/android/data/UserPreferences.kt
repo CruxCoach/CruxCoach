@@ -79,11 +79,14 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
-    // Kilter log upload: rows held back per row version (JSON, bounded) and the
-    // opt-in for entries imported from an Aurora export. See KilterUploadLedger.
+    // Kilter log upload: rows held back per content (JSON, bounded), the ids
+    // Kilter took for moved climbs, the last run's conflicts and unreadable
+    // dates, and the opt-in for entries imported from an Aurora export. See
+    // KilterUploadLedger.
     val KILTER_UPLOAD_REJECTIONS = stringPreferencesKey("kilter_upload_rejections")
+    val KILTER_UPLOAD_LEARNED = stringPreferencesKey("kilter_upload_learned_ids")
+    val KILTER_UPLOAD_LAST_OUTCOME = stringPreferencesKey("kilter_upload_last_outcome")
     val KILTER_UPLOAD_IMPORTED = booleanPreferencesKey("kilter_upload_imported")
-    val KILTER_UPLOAD_LAST_ACCEPTED = longPreferencesKey("kilter_upload_last_accepted")
 
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
@@ -1007,14 +1010,25 @@ class UserPreferences(
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] = enabled }
     }
 
-    val kilterUploadLastAccepted: Flow<Long?> = keyScoped.data.map { prefs ->
-        prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED]
+    val kilterUploadLearned: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_LEARNED]
     }
 
-    suspend fun setKilterUploadLastAccepted(atMs: Long?) {
+    suspend fun setKilterUploadLearned(json: String?) {
         keyScoped.edit { prefs ->
-            if (atMs == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED)
-            else prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_ACCEPTED] = atMs
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LEARNED)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_LEARNED] = json
+        }
+    }
+
+    val kilterUploadLastOutcome: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME]
+    }
+
+    suspend fun setKilterUploadLastOutcome(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME] = json
         }
     }
 
