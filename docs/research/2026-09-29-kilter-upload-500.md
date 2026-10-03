@@ -94,3 +94,32 @@ Consequences in the upload:
 - Imported entries are matched to Kilter's logs nearest in time, so two sends of
   one climb on consecutive late evenings no longer leave one of them unmatched.
 - A busy catalogue stops the run instead of sending a dashed legacy id.
+
+## Device rounds (2026-10-03/04, feature builds 1000014–1000016)
+
+Nokia 6.1 (Android 15), owner's test account; every check read back through
+`GET /logs`, the account restored afterwards.
+
+- Update in place 1000013 → 1000014: the two entries 1000013 held back went up
+  under the ids Kilter lists ("A Bigger Squeeze" → 0D9A1ED7…, "Babylone" →
+  c4ec8274-…) in one request on app start.
+- Aurora import of 341 synthetic entries (all spellings, 20 moved climbs, 5
+  climbs without counterpart, 3 Boardsesh climbs, 3 twins of account logs):
+  kept local without opt-in (0 requests); with opt-in one run of 36 requests
+  uploaded 330, settled the 3 twins, held back the 8 unknown ones with proof.
+  Every log on Kilter carries the stored spelling; the moved climbs carry the
+  new id; no ascent is on Kilter twice.
+- Kilter acknowledges attempt-only logs (`topped=false`) with HTTP 200 and
+  keeps them (re-sending the uuid is refused with 500), but 27 of 39 did not
+  appear in `GET /logs` within 45 minutes; for one climb they appeared after a
+  send on it was logged. Ascents always appeared at once. This is Kilter's
+  listing, not the upload: the entries are on Kilter.
+- Offline: the run stops before Kilter's logbook is read (reason NETWORK, no
+  request, nothing held); online again, the sync uploads the entry.
+- A deletion reaches Kilter with the next sync and is not downloaded again; an
+  edit of an uploaded entry is kept local as a conflict without a request and
+  listed with its reason; a cold start with held rows costs no request; with
+  upload off nothing is sent, turning it on uploads what was logged meanwhile.
+- 1000015 showed that entries refused before an update fell back to "imports
+  waiting for consent"; since 1000016 they stay queued and proven across
+  updates and are retried once, one by one with every id.
