@@ -334,6 +334,27 @@ class KilterUploadStatusTest {
         assertEquals(1, run.unconfirmed)
     }
 
+    @Test fun a_failed_logbook_read_reports_login_or_kilters_status_not_an_internal_error() = runTest {
+        coEvery { api.fetchLogs() } returns Result.failure(KilterHttpException(401, "unauthorized"))
+        assertEquals(KilterUploadReason.AUTHENTICATION, engine.uploadPendingLogs().reason)
+        coEvery { api.fetchLogs() } returns Result.failure(KilterHttpException(500, ""))
+        val down = engine.uploadPendingLogs()
+        assertEquals(KilterUploadReason.HTTP, down.reason)
+        assertEquals(500, down.httpStatus)
+        coVerify(exactly = 0) { api.uploadLogs(any()) }
+    }
+
+    @Test fun an_offline_run_does_not_count_rows_held_with_proof_as_pending() = runTest {
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(1))
+        kilterRefuses("test-climb-0")
+        assertEquals(1, engine.uploadPendingLogs().rejectedByKilter)
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(2))
+        coEvery { api.fetchLogs() } returns Result.failure(java.io.IOException("offline"))
+        val offline = engine.uploadPendingLogs()
+        assertEquals(KilterUploadReason.NETWORK, offline.reason)
+        assertEquals(1, offline.pending)
+    }
+
     @Test fun an_edit_releases_a_held_row() = runTest {
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(1))
         kilterRefuses("test-climb-0")

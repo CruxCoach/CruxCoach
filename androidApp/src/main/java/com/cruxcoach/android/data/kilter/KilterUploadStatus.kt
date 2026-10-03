@@ -76,6 +76,9 @@ enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START }
 
 class KilterUploadException(val status: Int) : Exception("Kilter upload HTTP $status")
 
+/** A Kilter read answered with an HTTP error; the message keeps the former "HTTP <code>: <body>" shape. */
+class KilterHttpException(val status: Int, body: String) : Exception("HTTP $status: $body")
+
 /** Bounded, expiring, secret-free upload history; no raw exceptions or API bodies. */
 @Singleton
 class KilterUploadDiagnostics @Inject constructor(@ApplicationContext context: Context) {
