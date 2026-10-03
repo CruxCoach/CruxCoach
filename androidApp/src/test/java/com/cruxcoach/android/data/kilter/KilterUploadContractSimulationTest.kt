@@ -523,9 +523,13 @@ class KilterUploadContractSimulationTest {
                 sim.kilter.fault = if (fault == null) noFaults else faultPlan(fault, rng, sim.kilter)
                 val trigger = KilterUploadTrigger.values()[rng.nextInt(KilterUploadTrigger.values().size)]
                 val status = world.uploadRun("seed=$seed run=$run fault=$fault", trigger)
+                sim.kilter.forgetRowsBefore(sim.kilter.requests.size)
                 requests += status.requests
                 lastHeldImported = status.heldImported
-                if (!faulty && status.pending == 0 && status.reason == KilterUploadReason.NONE && world.allDelivered(includeImported = false)) {
+                // Done once everything Kilter takes is there; entries of unknown climbs may wait for proof.
+                val parked = sim.parked()
+                val waiting = world.entries.values.count { it.fate == Fate.UNKNOWN && sim.logbook.isSynced(it.uuid) == false && it.uuid !in parked }
+                if (!faulty && status.pending <= waiting && status.reason == KilterUploadReason.NONE && world.allDelivered(includeImported = false)) {
                     val idle = world.uploadRun("seed=$seed idle", trigger)
                     if (idle.requests != 0) return SeedOutcome(seed, size, faultRuns, run - faultRuns, requests, "idle run sent ${idle.requests} requests")
                     return SeedOutcome(seed, size, faultRuns, run - faultRuns, requests, null)

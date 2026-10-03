@@ -125,11 +125,11 @@ class KilterSyncEngine @Inject constructor(
         val UNPROVEN_RETRY_MS = longArrayOf(1, 4, 12, 24).map { it * 60 * 60 * 1000 }
 
         /**
-         * Lone refusals on schedule (at least 1 h, then 4 h apart) that prove
-         * a row on their own when nothing was accepted after them. Every run
-         * reads Kilter's logbook before it uploads, so an outage stops it
-         * before any refusal; only one of the upload endpoint alone, lasting
-         * five hours, could be mistaken for a climb Kilter does not know.
+         * Lone refusals on schedule (at least 1 h, then 4 h apart) after which
+         * the list tells the user Kilter does not know the climb. They never
+         * hold a row back: a failing upload endpoint while Kilter's logbook
+         * still reads (e.g. a changed upload contract) looks the same, and the
+         * row keeps being retried, at most daily, until one upload proves it.
          */
         const val UNPROVEN_STRIKES = 3
 
@@ -727,7 +727,8 @@ class KilterSyncEngine @Inject constructor(
             buildList {
                 for (r in rejections) {
                     val row = rows[r.logUuid] ?: continue
-                    val reason = if (r.confirmed) KilterNotUploadedReason.NOT_ON_KILTER else KilterNotUploadedReason.RETRY_LATER
+                    val reason = if (r.confirmed || r.unproven >= UNPROVEN_STRIKES) KilterNotUploadedReason.NOT_ON_KILTER
+                        else KilterNotUploadedReason.RETRY_LATER
                     add(entry(row, reason, r.wireId, r.httpStatus))
                 }
                 outcome.conflicts.mapNotNull(rows::get).forEach { add(entry(it, KilterNotUploadedReason.CONFLICT)) }
@@ -938,8 +939,7 @@ class KilterSyncEngine @Inject constructor(
                 val onSchedule = earlier == null || now >= earlier.retryAtMs
                 val strikes = (earlier?.unproven ?: 0) + if (onSchedule) 1 else 0
                 val proven = outcome.lastAcceptedRequest > r.request ||
-                    r.item.climbKey in provenClimbs || r.item.climbKey in provenNow ||
-                    strikes >= UNPROVEN_STRIKES
+                    r.item.climbKey in provenClimbs || r.item.climbKey in provenNow
                 ledger[r.item.uuid] = KilterUploadRejection(
                     logUuid = r.item.uuid, fingerprint = r.item.fingerprint, appVersionCode = versionCode,
                     httpStatus = r.http, atMs = now, confirmed = proven,

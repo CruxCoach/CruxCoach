@@ -316,6 +316,24 @@ class KilterUploadStatusTest {
         assertEquals(0, fourth.pending)
     }
 
+    @Test fun an_entry_refused_alone_on_schedule_three_times_is_listed_as_unknown_and_still_tried() = runTest {
+        var now = 1_000_000L
+        engine.clock = { now }
+        kilterRefuses("test-climb-0")
+        engine.uploadPendingLogs()
+        assertEquals(KilterNotUploadedReason.RETRY_LATER, engine.notUploadedEntries().single().reason)
+        repeat(2) {
+            now += 25 * 60 * 60 * 1000L
+            engine.uploadPendingLogs()
+        }
+        assertEquals(KilterNotUploadedReason.NOT_ON_KILTER, engine.notUploadedEntries().single().reason)
+        now += 25 * 60 * 60 * 1000L
+        val run = engine.uploadPendingLogs()
+        assertEquals(1, run.requests, "never held without proof: still tried")
+        assertEquals(0, run.rejectedByKilter)
+        assertEquals(1, run.unconfirmed)
+    }
+
     @Test fun an_edit_releases_a_held_row() = runTest {
         every { personal.getUnsyncedAscents() } returns listOf(ascent(0), ascent(1))
         kilterRefuses("test-climb-0")
