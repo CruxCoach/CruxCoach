@@ -781,7 +781,9 @@ class KilterSyncEngine @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val stop = stopFor(e, (e as? KilterUploadException)?.status)
+            // A failed read of Kilter's logbook counts like a failed upload:
+            // 401/403 asks for a new login, other statuses are Kilter's.
+            val stop = stopFor(e, (e as? KilterUploadException)?.status ?: (e as? KilterHttpException)?.status)
             finish(stop.reason, stop.http)
         }
 
@@ -805,7 +807,8 @@ class KilterSyncEngine @Inject constructor(
             // An imported entry tried under the opt-in stays queued until Kilter settled it.
             val candidates = rows.filter { !it.imported || importedEnabled || it.uuid in previous }
             heldImported = rows.size - candidates.size
-            pending = candidates.size
+            // Until Kilter's logbook is read, rows held back with proof are not pending.
+            pending = candidates.count { previous[it.uuid]?.confirmed != true }
             if (!userPreferences.kilterPushEnabled.first()) return finish(KilterUploadReason.DISABLED)
             if (candidates.isEmpty()) return finish()
             val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
@@ -842,6 +845,7 @@ class KilterSyncEngine @Inject constructor(
             var unmatched = ArrayList<KilterUploadItem>()
             val conflicts = ArrayList<String>()
             val invalid = ArrayList<String>()
+            pending = candidates.size
             for (row in candidates.sortedByDescending { it.sortMillis }) {
                 val createdAt = KilterLogUploadPlan.kilterTimestamp(row.climbedAt)
                 if (createdAt == null) {
