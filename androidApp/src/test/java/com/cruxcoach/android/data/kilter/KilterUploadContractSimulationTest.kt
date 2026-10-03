@@ -768,4 +768,30 @@ class KilterUploadContractSimulationTest {
         assertTrue(entries.all { it.uuid in outage.kilter.logs })
         assertTrue(outage.engine.notUploadedEntries().isEmpty())
     }
+
+    @Test fun s13_after_an_app_update_refused_imports_stay_queued_and_keep_their_proof() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 130)
+        repeat(30) { world.add(Fate.VALID, imported = true) }
+        val unknown = world.unknownClimbId()
+        val bad = (1..4).mapTo(HashSet()) { world.add(Fate.UNKNOWN, imported = true, localId = unknown).uuid }
+        sim.engine.setImportedUploadEnabled(true)
+        var run = 0
+        do { val status = world.uploadRun("S13 opt-in run ${++run}") } while (status.pending > 0 && run < 5)
+        assertEquals(bad, sim.parked())
+        assertFalse(sim.ledger.importedUploadEnabled.value, "the opt-in ends with the run that worked through the entries")
+
+        // An app update: the decisions belong to the build before.
+        sim.ledger.saveRejections(sim.ledger.rejections().map { it.copy(appVersionCode = it.appVersionCode - 1) })
+        assertEquals(bad, sim.engine.notUploadedEntries().mapTo(HashSet()) { it.logUuid }, "listed until decided anew")
+        val after = world.uploadRun("S13 after the update")
+        println("S13 ${line(after)}")
+        assertEquals(0, after.heldImported, "entries the user opted in for are no imports waiting for consent")
+        assertEquals(4, after.rejectedByKilter, "retried with every id, still unknown: the earlier proof holds")
+        assertEquals(0, after.unconfirmed)
+        assertTrue(after.requests <= 4 * 3)
+        assertTrue(sim.engine.notUploadedEntries().all { it.reason == KilterNotUploadedReason.NOT_ON_KILTER })
+        assertEquals(0, world.uploadRun("S13 idle").requests)
+    }
 }
+
