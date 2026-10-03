@@ -548,12 +548,100 @@ class KilterUploadContractSimulationTest {
         outcomes.filter { it.violation != null }.forEach { println("$label VIOLATION seed=${it.seed}: ${it.violation}") }
     }
 
-    /** Kilter's own 500s (content-blind) are left out here; they can park entries (see the follow-up probes). */
+    /** Kilter's own 500s (content-blind) are left out here; they are probed separately below. */
     @Test fun s9_random_logbooks_through_transient_faults_lost_answers_and_failed_reads() = runTest(timeout = 300.seconds) {
         val faults = RunFault.values().filterNot { it.contentBlind500 }
         val outcomes = (1..50).map { simulate(it, faults) }
         report("S9", outcomes)
         val violations = outcomes.filter { it.violation != null }
         assertTrue(violations.isEmpty(), violations.joinToString("\n") { "seed ${it.seed}: ${it.violation}" })
+    }
+
+    // ── Probes beyond the documented guarantees ─────────────────────────
+    // Each asserts what the fix promises; a failure is a finding (see the report).
+
+    @Test fun s4e_an_outage_that_begins_mid_run_parks_no_entry_kilter_would_take() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 46)
+        repeat(1000) { world.add(Fate.VALID) }
+        // Kilter takes the first request of the run, then answers everything with 500 (its own failure).
+        sim.kilter.fault = { op, n -> Fault.HTTP_500.takeIf { op == Op.BULK && n >= 1 } }
+        val during = sim.upload()
+        val parked = sim.parked()
+        sim.kilter.fault = { _, _ -> null }
+        val after = (1..3).map { sim.upload() }
+        val missing = world.entries.values.count { it.uuid !in sim.kilter.logs }
+        println("S4e during: ${line(during)} parked=${parked.size}")
+        println("S4e after: ${after.map { line(it) }} missing on Kilter=$missing")
+        assertTrue(
+            parked.isEmpty(),
+            "Kilter failed every request after the first (outage), yet ${parked.size} entries it would take are " +
+                "held back for 7 days; $missing entries are still missing three runs after Kilter recovered",
+        )
+    }
+
+    @Test fun s4f_two_outages_with_an_interrupted_run_between_them_park_no_entry_kilter_would_take() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 47)
+        repeat(2000) { world.add(Fate.VALID) }
+        // Run 1: Kilter answers every upload with 500; lone entries fail without proof.
+        sim.kilter.fault = { op, _ -> Fault.HTTP_500.takeIf { op == Op.BULK } }
+        val first = sim.upload()
+        val unproven = sim.ledger.rejections().filterNot { it.confirmed }.mapTo(HashSet()) { it.logUuid }
+        // Run 2: Kilter is back and takes the first request, then a 503 ends the run before those entries come up.
+        val start = sim.kilter.requests.size
+        sim.kilter.fault = { op, n -> Fault.HTTP_503.takeIf { op == Op.BULK && n == start + 1 } }
+        val second = sim.upload()
+        // Run 3: the next outage.
+        sim.kilter.fault = { op, _ -> Fault.HTTP_500.takeIf { op == Op.BULK } }
+        val third = sim.upload()
+        val parked = sim.parked()
+        println("S4f ${line(first)} | ${line(second)} | ${line(third)} unproven after run 1=${unproven.size} parked=${parked.size}")
+        assertTrue(unproven.isNotEmpty())
+        assertTrue(
+            parked.isEmpty(),
+            "${parked.size} entries were held back although every lone failure happened during an outage: " +
+                "the upload accepted in run 2 counted as proof against entries it never tried",
+        )
+    }
+
+    @Test fun s6b_two_imported_sends_of_one_climb_on_consecutive_late_evenings_are_not_uploaded_again() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 61)
+        val climb = world.reservedClimb()
+        // Kilter has sends at 23:30 UTC on two consecutive days; the export recorded both two hours later.
+        for (day in listOf("2026-03-01", "2026-03-02")) {
+            val remote = Instant.parse("${day}T23:30:00Z")
+            world.add(
+                Fate.TWIN, imported = true, isAscent = true, climb = climb, angle = 40, localTime = false,
+                at = remote.plusSeconds(2 * 3600), twinAt = remote,
+            )
+        }
+        sim.engine.setImportedUploadEnabled(true)
+        val status = world.uploadRun("S6b")
+        println("S6b ${line(status)}")
+        assertEquals(2, status.alreadyOnKilter)
+    }
+
+    @Test fun s3b_a_dashed_legacy_id_is_never_sent_dashed_even_without_the_catalogue_row() = runTest(timeout = 60.seconds) {
+        val upper = climbs.filter { it.isLegacy && it.id == it.id.uppercase() }
+        val outcomes = mutableListOf<String>()
+        for ((case, climb) in listOf("catalogue busy" to upper[0], "climb not in the catalogue" to upper[1])) {
+            val sim = newSim()
+            val world = UploadWorld(sim, seed = 32)
+            val entry = world.add(Fate.VALID, climb = climb, spelling = LocalSpelling.DASHED)
+            if (case == "catalogue busy") sim.catalogue.spellingLookupsFail = true else sim.catalogue.rows -= climb.id.lowercase()
+            val status = sim.upload()
+            outcomes += "$case: sent ${sim.kilter.requests.map { r -> r.rows.single().climbUuid to r.status }} -> stored as ${sim.kilter.logs[entry.uuid]?.climbUuid} (${line(status)})"
+        }
+        println("S3b ${outcomes.joinToString(" | ")}")
+        assertTrue(outcomes.none { "-> stored as ${FixtureClimb.dashed(upper[0].key)}" in it || "-> stored as ${FixtureClimb.dashed(upper[1].key)}" in it }, outcomes.joinToString("\n"))
+    }
+
+    @Test fun s9b_random_logbooks_through_kilters_own_500s_too() = runTest(timeout = 300.seconds) {
+        val outcomes = (1..50).map { simulate(it, RunFault.values().toList()) }
+        report("S9b", outcomes)
+        val violations = outcomes.filter { it.violation != null }
+        assertTrue(violations.isEmpty(), "${violations.size}/50 seeds:\n" + violations.joinToString("\n") { "seed ${it.seed}: ${it.violation}" })
     }
 }
