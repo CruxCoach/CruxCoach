@@ -680,9 +680,9 @@ class KilterApiClient @Inject constructor(
                 val bodyText = response.body?.string().orEmpty().take(MAX_ERR_BODY)
                 response.close()
                 if (response.code !in 500..599) {
-                    return@withContext Result.failure(Exception("HTTP ${response.code}: $bodyText"))
+                    return@withContext Result.failure(KilterHttpException(response.code, bodyText))
                 }
-                lastError = Exception("HTTP ${response.code}: $bodyText")
+                lastError = KilterHttpException(response.code, bodyText)
                 Log.w(TAG, "fetchLogs HTTP ${response.code} (attempt ${attempt + 1})")
             } catch (e: CancellationException) {
                 throw e
