@@ -9,12 +9,12 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * One log Kilter refused on its own (a request with only this row failed).
- * It applies only to the exact content it was decided for
- * ([KilterUploadItem.fingerprint]) and app build: an edit or an app update
- * retries the row by itself, and so does the passing of
+ * One log Kilter refused on its own (a request with only this row failed, for
+ * every id the row could name). It applies only to the exact content it was
+ * decided for ([KilterUploadItem.fingerprint]) and app build: an edit or an
+ * app update retries the row by itself, and so does the passing of
  * [KilterUploadLedger.MAX_AGE_MS]. Conflicts and unreadable timestamps are not
- * stored — they cost no request and are recomputed every run.
+ * held — they cost no request and are recomputed every run.
  */
 @Serializable
 data class KilterUploadRejection(
@@ -24,11 +24,27 @@ data class KilterUploadRejection(
     val httpStatus: Int? = null,
     val atMs: Long,
     /**
-     * False while there is no proof against the row yet: Kilter answers its
-     * own failures with HTTP 500 too, so a lone failure only counts once some
-     * other upload was accepted after it. Until then the row is retried.
+     * False while there is no proof against the row: Kilter answers its own
+     * failures with HTTP 500 too, so a lone failure only counts once Kilter
+     * accepted another request after it in the same run. Until then the row is
+     * retried — first thing in the next run that sends anything, otherwise not
+     * before [retryAtMs].
      */
     val confirmed: Boolean = true,
+    val retryAtMs: Long = 0,
+    /** Lone failures on schedule without other proof; spaces the retries out and, at three, proves the row. */
+    val unproven: Int = 0,
+    /** [ClimbUuid.normKey] of the row's climb: its other rows are sent one by one. */
+    val climbKey: String? = null,
+    /** The last id Kilter refused for the climb, for the list the user can report. */
+    val wireId: String? = null,
+)
+
+/** Rows of the last run Kilter could not take for reasons other than a refusal. */
+@Serializable
+data class KilterUploadOutcome(
+    val conflicts: List<String> = emptyList(),
+    val invalid: List<String> = emptyList(),
 )
 
 /** Per-identity upload decisions that must survive a restart. */
@@ -36,9 +52,12 @@ interface KilterUploadLedger {
     suspend fun rejections(): List<KilterUploadRejection>
     suspend fun saveRejections(rejections: List<KilterUploadRejection>)
 
-    /** When Kilter last accepted an upload request — the proof a lone failure needs. */
-    suspend fun lastAcceptedAtMs(): Long?
-    suspend fun setLastAcceptedAtMs(atMs: Long)
+    /** normKey → the id Kilter took for a climb whose own id it refused, or which it keeps under two. */
+    suspend fun learnedWireIds(): Map<String, String>
+    suspend fun saveLearnedWireIds(learned: Map<String, String>)
+
+    suspend fun lastOutcome(): KilterUploadOutcome
+    suspend fun saveLastOutcome(outcome: KilterUploadOutcome)
 
     /**
      * Entries imported from an Aurora export stay local unless the user opts
@@ -56,23 +75,33 @@ interface KilterUploadLedger {
     companion object {
         const val MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000
         const val MAX_REJECTIONS = 1000
+        const val MAX_LEARNED = 2000
+        const val MAX_OUTCOME = 500
     }
 }
 
 class InMemoryKilterUploadLedger : KilterUploadLedger {
     private var held = emptyList<KilterUploadRejection>()
-    private var lastAccepted: Long? = null
+    private var learned = emptyMap<String, String>()
+    private var outcome = KilterUploadOutcome()
     override val importedUploadEnabled = MutableStateFlow(false)
     override suspend fun rejections() = held
     override suspend fun saveRejections(rejections: List<KilterUploadRejection>) {
         held = rejections.takeLast(KilterUploadLedger.MAX_REJECTIONS)
     }
-    override suspend fun lastAcceptedAtMs() = lastAccepted
-    override suspend fun setLastAcceptedAtMs(atMs: Long) { lastAccepted = atMs }
+    override suspend fun learnedWireIds() = learned
+    override suspend fun saveLearnedWireIds(learned: Map<String, String>) {
+        this.learned = learned.entries.toList().takeLast(KilterUploadLedger.MAX_LEARNED).associate { it.toPair() }
+    }
+    override suspend fun lastOutcome() = outcome
+    override suspend fun saveLastOutcome(outcome: KilterUploadOutcome) {
+        this.outcome = outcome.bounded()
+    }
     override suspend fun setImportedUploadEnabled(enabled: Boolean) { importedUploadEnabled.value = enabled }
     override suspend fun clear() {
         held = emptyList()
-        lastAccepted = null
+        learned = emptyMap()
+        outcome = KilterUploadOutcome()
         importedUploadEnabled.value = false
     }
 }
@@ -90,15 +119,38 @@ class PreferencesKilterUploadLedger(private val prefs: UserPreferences) : Kilter
         prefs.setKilterUploadRejections(if (bounded.isEmpty()) null else json.encodeToString(bounded))
     }
 
-    override suspend fun lastAcceptedAtMs(): Long? = prefs.kilterUploadLastAccepted.first()
-    override suspend fun setLastAcceptedAtMs(atMs: Long) = prefs.setKilterUploadLastAccepted(atMs)
+    override suspend fun learnedWireIds(): Map<String, String> = runCatching {
+        prefs.kilterUploadLearned.first()?.let { json.decodeFromString<Map<String, String>>(it) }
+    }.getOrNull().orEmpty()
+
+    override suspend fun saveLearnedWireIds(learned: Map<String, String>) {
+        val bounded = learned.entries.toList().takeLast(KilterUploadLedger.MAX_LEARNED).associate { it.toPair() }
+        prefs.setKilterUploadLearned(if (bounded.isEmpty()) null else json.encodeToString(bounded))
+    }
+
+    override suspend fun lastOutcome(): KilterUploadOutcome = runCatching {
+        prefs.kilterUploadLastOutcome.first()?.let { json.decodeFromString<KilterUploadOutcome>(it) }
+    }.getOrNull() ?: KilterUploadOutcome()
+
+    override suspend fun saveLastOutcome(outcome: KilterUploadOutcome) {
+        val bounded = outcome.bounded()
+        prefs.setKilterUploadLastOutcome(
+            if (bounded.conflicts.isEmpty() && bounded.invalid.isEmpty()) null else json.encodeToString(bounded),
+        )
+    }
 
     override val importedUploadEnabled: Flow<Boolean> = prefs.kilterUploadImportedEnabled
     override suspend fun setImportedUploadEnabled(enabled: Boolean) = prefs.setKilterUploadImportedEnabled(enabled)
 
     override suspend fun clear() {
         prefs.setKilterUploadRejections(null)
-        prefs.setKilterUploadLastAccepted(null)
+        prefs.setKilterUploadLearned(null)
+        prefs.setKilterUploadLastOutcome(null)
         prefs.setKilterUploadImportedEnabled(false)
     }
 }
+
+private fun KilterUploadOutcome.bounded() = KilterUploadOutcome(
+    conflicts = conflicts.take(KilterUploadLedger.MAX_OUTCOME),
+    invalid = invalid.take(KilterUploadLedger.MAX_OUTCOME),
+)

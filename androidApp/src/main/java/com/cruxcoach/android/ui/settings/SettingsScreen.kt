@@ -52,7 +52,7 @@ internal fun SettingsScreen(
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
-    onReportKilterUpload: () -> Unit = {},
+    onReportKilterUpload: (description: String) -> Unit = {},
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
@@ -295,6 +295,7 @@ internal fun SettingsScreen(
                         onRetryUpload = { viewModel.retryKilterUpload() },
                         onReportUpload = onReportKilterUpload,
                         onUploadImported = { viewModel.uploadImportedKilterLogs() },
+                        onLoadNotUploaded = { viewModel.loadKilterNotUploaded() },
                     )
                 }
                 SettingsSectionCard {
