@@ -163,6 +163,14 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
 
     fun knows(id: String): Boolean = ClimbUuid.normKey(id) in canonical
 
+    /** Drops the rows of requests before [ordinal] (long random runs keep only statuses). */
+    fun forgetRowsBefore(ordinal: Int) {
+        for (i in 0 until minOf(ordinal, requests.size)) {
+            val r = requests[i]
+            if (r.rows.isNotEmpty()) requests[i] = BulkRequest(r.ordinal, emptyList(), r.status, r.written, r.fault)
+        }
+    }
+
     /** The climb a log names: its stored id, or the dashed spelling of a legacy climb. Null: Kilter refuses it. */
     fun resolve(id: String): String? {
         val key = ClimbUuid.normKey(id)

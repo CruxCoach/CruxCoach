@@ -32,7 +32,7 @@ data class KilterUploadRejection(
      */
     val confirmed: Boolean = true,
     val retryAtMs: Long = 0,
-    /** Lone failures on schedule without other proof; spaces the retries out and, at three, proves the row. */
+    /** Lone failures on schedule without other proof; spaces the retries out (never holds the row on its own). */
     val unproven: Int = 0,
     /** [ClimbUuid.normKey] of the row's climb: its other rows are sent one by one. */
     val climbKey: String? = null,
