@@ -216,18 +216,26 @@ private fun builtinRoutineText(key: String?): Pair<Int, Int>? = when (key) {
 
 // ── Formatting ───────────────────────────────────────────────────────
 
-/** "12.5", "-10", "7" — trims trailing zeros, one decimal max. */
+/** "12.5", "-10", "7" — at most [decimals] decimals, trailing zeros trimmed. */
 fun formatNumber(value: Double, decimals: Int = 1): String {
     val factor = if (decimals <= 0) 1.0 else Math.pow(10.0, decimals.toDouble())
     val rounded = (value * factor).roundToInt() / factor
-    return if (abs(rounded - rounded.roundToInt()) < 1e-9) rounded.roundToInt().toString()
-    else String.format(Locale.getDefault(), "%.${decimals}f", rounded)
+    if (abs(rounded - rounded.roundToInt()) < 1e-9) return rounded.roundToInt().toString()
+    val sep = java.text.DecimalFormatSymbols.getInstance(Locale.getDefault()).decimalSeparator
+    return String.format(Locale.getDefault(), "%.${decimals}f", rounded).trimEnd('0').trimEnd(sep)
+}
+
+/** Plate steps like 1.25 kg need two decimals; body weights and loads read best with one. */
+private fun massDecimals(v: Double): Int {
+    val quarter = abs(v * 4 - Math.round(v * 4)) < 1e-6
+    val tenth = abs(v * 10 - Math.round(v * 10)) < 1e-6
+    return if (quarter && !tenth) 2 else 1
 }
 
 @Composable
 fun formatMass(kg: Double, units: UnitSystem, signed: Boolean = false): String {
     val v = Units.massToDisplay(kg, units)
-    val text = (if (signed && v > 0) "+" else "") + formatNumber(v)
+    val text = (if (signed && v > 0) "+" else "") + formatNumber(v, massDecimals(v))
     return stringResource(if (units == UnitSystem.IMPERIAL) R.string.tr_format_lb else R.string.tr_format_kg, text)
 }
 
@@ -257,6 +265,8 @@ fun TrainingScaffold(
     actions: @Composable RowScope.() -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
     snackbarHost: @Composable () -> Unit = {},
+    /** The guided player shows its own rest screen; the global banner would repeat it. */
+    showRestBanner: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -274,7 +284,7 @@ fun TrainingScaffold(
                     },
                     actions = actions,
                 )
-                RestTimerBannerSlot()
+                if (showRestBanner) RestTimerBannerSlot()
             }
         },
         floatingActionButton = floatingActionButton,
