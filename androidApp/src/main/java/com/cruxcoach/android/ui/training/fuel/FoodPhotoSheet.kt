@@ -262,6 +262,9 @@ private fun ReadyPane(context: Context, state: FoodPhotoState, ready: VisionMode
             }
         } else if (ready.probe == null) {
             TextButton(onClick = viewModel::probe, modifier = Modifier.testTag("fuel_photo_probe")) { Text(stringResource(R.string.fvp_run_probe)) }
+        } else if (state.tooSlow) {
+            Text(stringResource(R.string.fvp_unavailable_slow, (ready.probe.estimatedMs / 1000).toInt()),
+                modifier = Modifier.testTag("fuel_photo_too_slow"))
         }
         TextButton(onClick = viewModel::removeModel, modifier = Modifier.testTag("fuel_photo_remove")) {
             Text(stringResource(R.string.fvp_remove_model, Formatter.formatShortFileSize(context, ready.model.downloadBytes)))
