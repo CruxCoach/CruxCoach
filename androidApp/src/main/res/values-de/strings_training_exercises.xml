@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Übungsbibliothek, Detailseite und eigene Übungen (FEAT-066). -->
+<resources>
+    <string name="trx_title_pick">Übung hinzufügen</string>
+    <string name="trx_search_hint">Übungen suchen</string>
+    <string name="trx_search_clear">Suche leeren</string>
+    <string name="trx_filter_mine">Meine Ausrüstung</string>
+    <string name="trx_filter_mine_hint">Lege zuerst in den Trainingseinstellungen fest, was du hast.</string>
+    <string name="trx_filter_no_climbing">Ohne Klettern</string>
+    <string name="trx_filter_finger_free">Fingerschonend</string>
+    <string name="trx_filter_favorites">Favoriten</string>
+    <string name="trx_filter_all_categories">Alle</string>
+    <string name="trx_filters_injury_note">Filter an deine Verletzung angepasst – du kannst sie ausschalten.</string>
+    <plurals name="trx_count">
+        <item quantity="one">%d Übung</item>
+        <item quantity="other">%d Übungen</item>
+    </plurals>
+    <string name="trx_no_results">Keine Übung passt zu diesen Filtern.</string>
+    <string name="trx_create_custom">Eigene Übung</string>
+    <string name="trx_open_detail">Details zu %1$s anzeigen</string>
+    <string name="trx_favorite_add">Zu Favoriten hinzufügen</string>
+    <string name="trx_favorite_remove">Aus Favoriten entfernen</string>
+    <string name="trx_difficulty">Schwierigkeit %1$d von 5</string>
+    <string name="trx_badge_avoid">meiden</string>
+    <string name="trx_badge_caution">vorsichtig</string>
+    <string name="trx_badge_only_left">nur links</string>
+    <string name="trx_badge_only_right">nur rechts</string>
+    <string name="trx_pick_rejected">Deine aktuelle Verletzung schließt diese Übung aus.</string>
+    <string name="trx_custom_badge">eigene</string>
+
+    <string name="trx_why">Warum für Kletterer</string>
+    <string name="trx_steps">So geht\'s</string>
+    <string name="trx_cues">Hinweise</string>
+    <string name="trx_mistakes">Typische Fehler</string>
+    <string name="trx_equipment">Ausrüstung</string>
+    <string name="trx_loads">Belastet</string>
+    <string name="trx_unilateral">Eine Seite nach der anderen</string>
+    <string name="trx_contraindications">Vorsicht bei: %1$s</string>
+    <string name="trx_safety_title">Sicherheit</string>
+    <string name="trx_progression">Progression</string>
+    <string name="trx_progression_hint">Links leichter, rechts schwerer.</string>
+    <string name="trx_current">aktuell</string>
+    <string name="trx_history">Deine Historie</string>
+    <string name="trx_history_empty">Du hast diese Übung noch nicht geloggt.</string>
+    <string name="trx_bests">Bestwerte</string>
+    <string name="trx_best_any">Beliebige Leiste</string>
+    <string name="trx_e1rm">geschätztes Max. %1$s</string>
+    <plurals name="trx_reps">
+        <item quantity="one">%d Wiederholung</item>
+        <item quantity="other">%d Wiederholungen</item>
+    </plurals>
+    <string name="trx_reps_short">%d×</string>
+    <string name="trx_add_to_running">Zum laufenden Training hinzufügen</string>
+    <string name="trx_start_with">Training mit dieser Übung starten</string>
+    <string name="trx_injury_avoid">Deine Verletzung (%1$s) schließt diese Übung im Moment aus.</string>
+    <string name="trx_injury_caution">Deine Verletzung (%1$s): nur schmerzfrei und mit weniger Last.</string>
+    <string name="trx_injury_one_side">Deine Verletzung (%1$s): trainiere nur die %2$s Seite.</string>
+    <string name="trx_not_found">Diese Übung gibt es nicht mehr.</string>
+    <string name="trx_region_finger">Finger</string>
+    <string name="trx_region_pulley">Ringbänder</string>
+    <string name="trx_side_left_lower">linke</string>
+    <string name="trx_side_right_lower">rechte</string>
+
+    <string name="trx_custom_title">Eigene Übung</string>
+    <string name="trx_custom_name">Name</string>
+    <string name="trx_custom_name_required">Bitte gib einen Namen ein.</string>
+    <string name="trx_custom_category">Kategorie</string>
+    <string name="trx_custom_kind">So wird geloggt</string>
+    <string name="trx_custom_load">Last</string>
+    <string name="trx_custom_unilateral">Pro Seite loggen (links / rechts)</string>
+    <string name="trx_custom_equipment">Benötigte Ausrüstung</string>
+    <string name="trx_custom_domains">Was wird belastet</string>
+    <string name="trx_custom_note">Notiz (optional)</string>
+    <string name="trx_kind_reps">Wiederholungen</string>
+    <string name="trx_kind_load_reps">Wiederholungen mit Gewicht</string>
+    <string name="trx_kind_time">Halten auf Zeit</string>
+    <string name="trx_kind_hang">Hängen / Blockheben</string>
+    <string name="trx_kind_interval">Intervalle (an/aus)</string>
+    <string name="trx_kind_climb">An der Wand</string>
+    <string name="trx_load_none">Ohne Last</string>
+    <string name="trx_load_bodyweight">Körpergewicht</string>
+    <string name="trx_load_bodyweight_plus">Körpergewicht ± kg</string>
+    <string name="trx_load_external">Gehobenes Gewicht</string>
+</resources>

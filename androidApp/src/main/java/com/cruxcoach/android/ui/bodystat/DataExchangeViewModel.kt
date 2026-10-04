@@ -32,9 +32,10 @@ enum class DataExchangeFormat { JSON, CSV_ZIP, EXCEL }
 /** Categories available in the manual JSON/CSV export/import UI.
  *
  * Keep this list aligned with data users can actually create or inspect in the
- * released app. The training surface is still intentionally hidden, so showing
- * profile, assessment, body-stat, workout, generic climb-log, or training-plan
- * rows here promises controls the rest of the app does not offer. Board-session
+ * released app. 0.2.4 opened training (logger, check-ins, injuries), body
+ * measurements and fueling, so those three are listed; the older 0.1.x
+ * profile, assessment, workout, generic climb-log and training-plan rows stay
+ * hidden because nothing in the app shows them. Board-session
  * history is also internal-only for now; playlists themselves are included in
  * [Category.CLIMB_LISTS]. Private climb notes travel with
  * [Category.BOARD_LOGBOOK] instead of occupying a separate UI category.
@@ -48,6 +49,9 @@ val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.BOARD_LOGBOOK,
     Category.CLIMB_LISTS,
     Category.OWN_CLIMBS,
+    Category.TRAINING,
+    Category.BODY_STATS,
+    Category.FUEL,
 )
 
 /** Translate the compact manual selection into the more granular wire format. */
@@ -126,6 +130,8 @@ class DataExchangeViewModel @Inject constructor(
     /** Own climbs need the board DB, which a catalogue import holds: they are
      *  written now or staged, the logbook itself never waits. */
     private val pendingImports: com.cruxcoach.android.data.PendingImports,
+    /** Training, body and fueling (athlete database, FEAT-066..068). */
+    private val athleteRepository: dagger.Lazy<com.cruxcoach.athlete.data.AthleteRepository>,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -235,6 +241,7 @@ class DataExchangeViewModel @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = DateTimeUtil.nowIso(),
             nostrPubkey = nostrSigner.getPublicKeyHex(),
+            athleteSnapshot = { athleteRepository.get().snapshot() },
         )
         return when (state.exportFormat) {
             DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
@@ -386,6 +393,7 @@ class DataExchangeViewModel @Inject constructor(
                         expectedNostrPubkey = expectedPubkey,
                         adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
                         restoreOwnClimbsNow = false,
+                        athleteRestore = { snapshot, withProfile -> athleteRepository.get().restore(snapshot, withProfile) },
                     )
                 }
                 // The logbook is in; own climbs follow now or after the catalogue import.

@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -65,6 +67,7 @@ import com.cruxcoach.android.ui.dashboard.DashboardScreen
 import com.cruxcoach.android.ui.plan.SessionDetailScreen
 import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
+import com.cruxcoach.android.ui.training.trainingGraph
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
 import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
@@ -541,6 +544,9 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
+
+            // Training, body and fueling (FEAT-066..068)
+            trainingGraph(navController)
 
             composable(
                 Routes.BOARD_BROWSER,
@@ -1134,10 +1140,19 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
             val entries = listOf(
                 Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_today, "menu_today"),
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.exercises(), com.cruxcoach.android.R.string.tr_nav_exercises, "menu_exercises"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
-                    icon = { Icon(if (route == Routes.BOARD_MAP) Icons.Default.Map else Icons.Default.DeveloperBoard, null) },
+                    icon = {
+                        Icon(when (route) {
+                            Routes.BOARD_MAP -> Icons.Default.Map
+                            com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.Today
+                            Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
+                            else -> Icons.Default.FitnessCenter
+                        }, null)
+                    },
                     label = { Text(stringResource(label)) }, selected = route == Routes.BOARD_BROWSER,
                     onClick = { onSelect(route) },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding).testTag(tag),

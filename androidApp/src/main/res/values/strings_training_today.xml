@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="trt_week_progress">
+        <item quantity="one">%1$d of %2$d training day this week</item>
+        <item quantity="other">%1$d of %2$d training days this week</item>
+    </plurals>
+    <plurals name="trt_streak_weeks">
+        <item quantity="one">On plan for %d week</item>
+        <item quantity="other">On plan for %d weeks in a row</item>
+    </plurals>
+    <plurals name="trt_jokers">
+        <item quantity="one">%d joker</item>
+        <item quantity="other">%d jokers</item>
+    </plurals>
+    <plurals name="trt_board_minutes">
+        <item quantity="one">Board: %d minute logged automatically</item>
+        <item quantity="other">Board: %d minutes logged automatically</item>
+    </plurals>
+    <plurals name="trt_board_efforts">
+        <item quantity="one">Board: %d attempt logged automatically</item>
+        <item quantity="other">Board: %d attempts logged automatically</item>
+    </plurals>
+    <plurals name="trt_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="trt_streak_start">Reach your weekly goal to start a streak.</string>
+    <string name="trt_streak_paused">Pause active – your streak is frozen.</string>
+    <string name="trt_streak_info_title">Weekly consistency</string>
+    <string name="trt_streak_info_text">Climbers rest on purpose, so CruxCoach counts weeks, not days. A week counts when you reach your weekly goal of training days – board sessions count automatically. Weeks you are ill, injured or on holiday freeze the streak. Every four good weeks earn a joker (max. two) that quietly protects one missed week.</string>
+    <string name="trt_day_both">climbed and trained</string>
+    <string name="trt_day_climbed">climbed</string>
+    <string name="trt_day_trained">trained</string>
+    <string name="trt_day_paused">pause</string>
+    <string name="trt_day_rest">rest</string>
+    <string name="trt_continue_workout">Training in progress – continue</string>
+    <string name="trt_pause_active">Pause active (illness, injury or holiday)</string>
+    <string name="trt_pause_end">End pause</string>
+    <string name="trt_checkin_title">How are you today?</string>
+    <string name="trt_checkin_hint">Optional, four taps. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
+    <string name="trt_q_sleep">Sleep</string>
+    <string name="trt_q_energy">Energy</string>
+    <string name="trt_q_skin">Skin</string>
+    <string name="trt_q_fingers">Fingers</string>
+    <string name="trt_q_sick">I feel ill</string>
+    <string name="trt_checkin_change">Change</string>
+    <string name="trt_checkin_reset">Reset</string>
+    <string name="trt_ready_go">Good to go</string>
+    <string name="trt_ready_adapt">Adapt today</string>
+    <string name="trt_ready_rest">Rest today</string>
+    <string name="trt_ready_info_title">Why this recommendation?</string>
+    <string name="trt_ready_info_text">CruxCoach combines your check-in with open injuries. The first reason shown is the one that decided. Bad skin or tired fingers do not cancel training – they move the load: a hangboard or strength day instead of the board. Illness means rest.</string>
+    <string name="trt_reason_sick">You feel ill – rest and recover. Your streak is paused.</string>
+    <string name="trt_reason_injury_paused">Injury mode: climbing is paused. Off-wall training that spares the injured area is fine.</string>
+    <string name="trt_reason_injury">An injury is open – exercises that load it are marked.</string>
+    <string name="trt_reason_fingers">Tired fingers – no max finger load today. Pull, core, legs or mobility are fine.</string>
+    <string name="trt_reason_skin">Skin needs a break – skip the board. Hangboard on bigger edges or strength work instead.</string>
+    <string name="trt_reason_sleep">Short on sleep – keep volume low, technique and mobility work well.</string>
+    <string name="trt_reason_energy">Low energy – an easy session or a rest day.</string>
+    <string name="trt_reason_motivation">Low motivation – something short and fun counts too.</string>
+    <string name="trt_reason_all_good">Everything looks good.</string>
+    <string name="trt_short_sick">ill</string>
+    <string name="trt_short_injury">injury</string>
+    <string name="trt_short_motivation">motivation</string>
+    <string name="trt_injury_mode">Injury noted</string>
+    <string name="trt_injury_mode_paused">Injury mode – climbing paused</string>
+    <string name="trt_injury_mode_hint">Exercises that load the injured area are hidden or marked; one-sided work stays available for the healthy side.</string>
+    <string name="trt_injury_start">Start injury routine</string>
+    <string name="trt_injury_manage">Manage</string>
+    <string name="trt_today_training">Today\'s training</string>
+    <string name="trt_workout_untitled">Training</string>
+    <string name="trt_nothing_yet">Nothing logged yet – board sessions appear here by themselves.</string>
+    <string name="trt_start_training">Training</string>
+    <string name="trt_routines">Routines</string>
+    <string name="trt_history">History</string>
+    <string name="trt_weekly_review">Weekly review</string>
+    <string name="trt_report_injury">Report injury</string>
+    <string name="trt_sugg_equipment_title">What do you have?</string>
+    <string name="trt_sugg_equipment_text">Tell CruxCoach your equipment and it only suggests exercises you can do.</string>
+    <string name="trt_sugg_equipment_action">Set up</string>
+    <string name="trt_sugg_antagonist_title">Board done – 15 min antagonist?</string>
+    <string name="trt_sugg_antagonist_text">Shoulders, wrists and finger extensors balance the pulling.</string>
+    <string name="trt_sugg_injury_title">Train around the injury</string>
+    <string name="trt_sugg_injury_text">One-arm pick-ups on the healthy hand, pull-ups, rows, shoulders and core – no wall.</string>
+    <string name="trt_sugg_test_title">Time for a baseline test</string>
+    <string name="trt_sugg_test_text">Max hang, pull-ups and hollow hold show your progress in strength to weight.</string>
+    <string name="trt_sugg_weight_title">Log your body weight</string>
+    <string name="trt_sugg_weight_text">Needed for percent of body weight on the hangboard and for fueling targets.</string>
+    <string name="trt_sugg_weight_action">Log</string>
+    <string name="trt_reds_title">Look after your energy</string>
+    <string name="trt_reds_info">Climbing rewards strength to weight, and that can tempt people into eating too little. Too little energy for the training you do (relative energy deficiency in sport, RED-S) costs strength, recovery and health – bones, hormones, immune system. CruxCoach only notices patterns and never diagnoses. If several signs fit you – lasting tiredness, frequent illness, missed periods, dizziness, stalling despite training – talk to a doctor or a sports dietitian.</string>
+    <string name="trt_reds_low_bmi">Your body weight is below the range climbing federations use for health checks.</string>
+    <string name="trt_reds_rapid_loss">Your weight trend has been falling quickly.</string>
+    <string name="trt_reds_low_carbs">On several training days you logged far less carbohydrate than the training needs.</string>
+    <string name="trt_reds_goal_paused">Your weight-loss goal is paused while these signs are present.</string>
+    <string name="trt_spike_title">Load jump: %1$s</string>
+    <string name="trt_spike_text">More loading days than in the three weeks before. Not a ban – just worth knowing.</string>
+    <string name="trt_trend_direction">Trend direction</string>
+    <string name="trt_trend_weight">Trend: %1$s</string>
+    <string name="trt_trend_rate">%1$s per week</string>
+    <string name="trt_numbers_hidden">Numbers hidden – the arrow shows the trend.</string>
+    <string name="trt_weight_today">Weight today (%1$s)</string>
+    <string name="trt_fuel_needs_weight">Log your body weight to see protein and carbohydrate targets.</string>
+    <string name="trt_protein">Protein</string>
+    <string name="trt_carbs_for">Carbs for: %1$s</string>
+    <string name="trt_water">Water</string>
+    <string name="trt_water_add">+250 ml</string>
+</resources>

@@ -1,5 +1,6 @@
 package com.cruxcoach.athlete.catalog
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -149,10 +150,18 @@ enum class EquipmentV2 {
 @Serializable
 enum class LoadDomain { FINGER, WRIST, ELBOW, SHOULDER, SKIN, LOWER_BODY, BACK, SYSTEMIC }
 
-/** Body regions for contraindications and injuries. */
+/** Body regions for contraindications; lower-case on the wire like the catalogue file. */
 @Serializable
 enum class BodyRegion {
-    FINGER, PULLEY, WRIST, ELBOW, SHOULDER, BACK, HIP, KNEE, ANKLE;
+    @SerialName("finger") FINGER,
+    @SerialName("pulley") PULLEY,
+    @SerialName("wrist") WRIST,
+    @SerialName("elbow") ELBOW,
+    @SerialName("shoulder") SHOULDER,
+    @SerialName("back") BACK,
+    @SerialName("hip") HIP,
+    @SerialName("knee") KNEE,
+    @SerialName("ankle") ANKLE;
 
     companion object {
         fun fromKey(key: String): BodyRegion? = entries.firstOrNull { it.name.equals(key, ignoreCase = true) }

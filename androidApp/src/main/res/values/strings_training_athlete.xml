@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Injuries and pauses -->
+    <string name="tra_injuries_title">Injuries &amp; pauses</string>
+    <string name="tra_injuries_info_title">How injury mode works</string>
+    <string name="tra_injuries_info_text">Note an injury and CruxCoach adapts: exercises that load the injured area are hidden or marked, one-sided exercises stay available for the healthy side (for example one-arm pick-ups on the right hand while a left finger heals), and wall climbing can be paused. This is a filter, not a treatment plan. Return to load step by step and with professional advice.</string>
+    <string name="tra_injury_add">Report injury</string>
+    <string name="tra_injuries_none">No open injury. Good.</string>
+    <string name="tra_injury_train_around">Train without the wall</string>
+    <string name="tra_pauses_title">Pauses</string>
+    <string name="tra_pause_holiday">Start holiday pause</string>
+    <string name="tra_pause_open">%1$s since %2$s</string>
+    <string name="tra_injuries_past">Healed</string>
+    <string name="tra_pause_illness">Illness</string>
+    <string name="tra_pause_injury">Injury</string>
+    <string name="tra_pause_holiday_label">Holiday</string>
+    <string name="tra_injury_since">Since %1$s</string>
+    <string name="tra_injury_pain">Pain: %1$d of 9</string>
+    <string name="tra_injury_pause_climbing">Pause climbing</string>
+    <string name="tra_injury_resolve">Healed</string>
+    <string name="tra_injury_where">Where?</string>
+    <string name="tra_injury_side">Side</string>
+    <string name="tra_injury_detail">Details (e.g. ring finger A2)</string>
+    <string name="tra_injury_pause_streak">Pause my streak</string>
+    <string name="tra_red_flags">See a doctor promptly with a pop and swelling, numbness, a visibly bowing tendon, or strong pain at rest.</string>
+
+    <!-- Training settings -->
+    <string name="tra_equipment_title">What do you have?</string>
+    <string name="tra_equipment_info">Your equipment profile filters the exercise library and suggestions. Similar gear counts: a kettlebell loads a pick-up block like plates do, bands replace a cable, rings work as dip bars.</string>
+    <string name="tra_preset_home">Home</string>
+    <string name="tra_preset_gym">Climbing gym</string>
+    <string name="tra_preset_travel">Travel</string>
+    <string name="tra_increment">Smallest weight step</string>
+    <string name="tra_plan_title">Plan</string>
+    <string name="tra_weekly_goal">Weekly goal: %1$d training days</string>
+    <string name="tra_goal">Goal</string>
+    <string name="tra_goal_loss_blocked">A weight-loss goal is not available right now because your weight or trend argues against it. Strength progress shows on the hangboard, not on the scale.</string>
+    <string name="tra_modules_title">Modules</string>
+    <string name="tra_module_checkin">Morning check-in</string>
+    <string name="tra_module_body">Body tracking</string>
+    <string name="tra_hide_numbers">Hide body numbers (trend only)</string>
+    <string name="tra_module_fuel">Fueling</string>
+    <string name="tra_show_calories">Show calories</string>
+    <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
+    <string name="tra_units_title">Units</string>
+    <string name="tra_units_metric">kg / cm</string>
+    <string name="tra_units_imperial">lb / in</string>
+    <string name="tra_personal_title">About you (optional)</string>
+    <string name="tra_personal_info">Only used for the health thresholds of the energy check (they differ by sex) and to compute your ape index. Nothing leaves your device.</string>
+    <string name="tra_height">Height (%1$s)</string>
+    <string name="tra_timer_title">Timer</string>
+    <string name="tra_auto_rest">Start rest timer after each set</string>
+    <string name="tra_timer_sound">Sound</string>
+    <string name="tra_timer_vibration">Vibration</string>
+    <string name="tra_timer_voice">Voice cues</string>
+    <string name="tra_privacy_note">Training, body and fueling data stay encrypted on this device and are only included in your own backups.</string>
+    <string name="tra_goal_perform">Perform</string>
+    <string name="tra_goal_maintain">Maintain</string>
+    <string name="tra_goal_strength">Build strength</string>
+    <string name="tra_goal_lose">Lose weight</string>
+    <string name="tra_sex_female">Female</string>
+    <string name="tra_sex_male">Male</string>
+    <string name="tra_sex_other">Diverse</string>
+
+    <!-- Weekly review -->
+    <string name="tra_review_prev">Previous week</string>
+    <string name="tra_review_next">Next week</string>
+    <string name="tra_review_week_of">Week of %1$s</string>
+    <string name="tra_review_goal_reached">Weekly goal reached: %1$d of %2$d training days.</string>
+    <string name="tra_review_goal_open">%1$d of %2$d training days – rest is training too.</string>
+    <plurals name="tra_review_paused">
+        <item quantity="one">%d day paused</item>
+        <item quantity="other">%d days paused</item>
+    </plurals>
+    <string name="tra_review_climb_days">Climbing days</string>
+    <string name="tra_review_workout_days">Training days</string>
+    <string name="tra_review_sets">Sets</string>
+    <string name="tra_review_records">New personal bests</string>
+    <string name="tra_review_no_records">No new bests this week – consistency is what builds them.</string>
+    <string name="tra_review_load">Load per structure</string>
+    <plurals name="tra_review_domain_days">
+        <item quantity="one">%1$s: %2$d day</item>
+        <item quantity="other">%1$s: %2$d days</item>
+    </plurals>
+    <string name="tra_review_categories">Sets by area</string>
+    <string name="tra_review_weight_up">Weight trend slightly up</string>
+    <string name="tra_review_weight_down">Weight trend slightly down</string>
+    <string name="tra_review_weight_stable">Weight trend stable</string>
+    <string name="tra_review_weight_change">Trend weight: %1$s this week</string>
+    <string name="tra_review_protein">Protein on logged days: %1$d g (target about %2$d g)</string>
+    <string name="tra_review_checkins">Check-in averages</string>
+    <string name="tra_review_e1rm">estimated 1RM %1$s</string>
+    <plurals name="tra_reps">
+        <item quantity="one">%d rep</item>
+        <item quantity="other">%d reps</item>
+    </plurals>
+</resources>

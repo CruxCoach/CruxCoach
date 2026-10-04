@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Training logger, timer, summary, routines and history (FEAT-066). -->
+<resources>
+    <!-- Logger -->
+    <string name="trw_title_workout">Training</string>
+    <string name="trw_no_open">No training is running right now.</string>
+    <string name="trw_empty_workout">Add your first exercise.</string>
+    <string name="trw_add_exercise">Add exercise</string>
+    <string name="trw_finish">Finish training</string>
+    <string name="trw_add_set">+ Set</string>
+    <string name="trw_menu_more">More actions</string>
+    <string name="trw_easier">Easier: %1$s</string>
+    <string name="trw_harder">Harder: %1$s</string>
+    <string name="trw_add_warmup">Add warm-up sets</string>
+    <string name="trw_remove_exercise">Remove exercise</string>
+    <string name="trw_remove_exercise_confirm">Remove %1$s and all its sets from this training?</string>
+    <string name="trw_target_reps">Target %1$d</string>
+    <string name="trw_target_seconds">Target %1$d s</string>
+    <string name="trw_reps_label">Reps</string>
+    <string name="trw_seconds_label">Sec</string>
+    <string name="trw_rounds_label">Rounds</string>
+    <string name="trw_edge_label">Edge</string>
+    <string name="trw_grip_none">Choose grip</string>
+    <string name="trw_load_label">Load</string>
+    <string name="trw_load_assisted">%1$s assisted</string>
+    <string name="trw_load_input">Load in %1$s</string>
+    <string name="trw_load_input_hint">Negative = assistance (e.g. −10 with a pulley), 0 = bodyweight.</string>
+    <string name="trw_minus">Decrease %1$s</string>
+    <string name="trw_plus">Increase %1$s</string>
+    <string name="trw_done_set">Mark set as done</string>
+    <string name="trw_reopen_set">Reopen set</string>
+    <string name="trw_rir_label">Reps in reserve</string>
+    <string name="trw_rir_3plus">3+</string>
+    <string name="trw_rir_short">RIR %1$d</string>
+    <string name="trw_rest_start">Start rest</string>
+    <string name="trw_timer_open">Open timer</string>
+    <string name="trw_interval_format">%1$d s on / %2$d s off × %3$d</string>
+    <string name="trw_note">Note</string>
+    <string name="trw_note_hint">e.g. which boulder</string>
+    <string name="trw_elapsed_cd">Training time %1$s</string>
+    <string name="trw_side_short_left">L</string>
+    <string name="trw_side_short_right">R</string>
+    <string name="trw_warmup_short">W</string>
+    <string name="trw_test_short">T</string>
+    <string name="trw_set_cd">Set %1$d</string>
+    <string name="trw_record_snack">New best – %1$s: %2$s</string>
+    <string name="trw_record_total">%1$s total</string>
+    <string name="trw_record_e1rm">e1RM %1$s</string>
+    <plurals name="trw_reps">
+        <item quantity="one">%d rep</item>
+        <item quantity="other">%d reps</item>
+    </plurals>
+
+    <!-- Finish dialog -->
+    <string name="trw_finish_title">Finish training</string>
+    <string name="trw_rpe_label">How hard was it? (1–10)</string>
+    <string name="trw_rpe_info_title">Session RPE</string>
+    <string name="trw_rpe_info_text">1 = very easy, 10 = maximal. Together with the duration this gives the training load, which CruxCoach uses for example for your carbohydrate target. It is optional.</string>
+    <string name="trw_notes_label">Notes (optional)</string>
+    <string name="trw_finish_confirm">Finish</string>
+    <string name="trw_discard">Discard</string>
+    <string name="trw_discard_title">Discard training?</string>
+    <string name="trw_discard_text">All sets of this training will be deleted.</string>
+    <string name="trw_unfinished_hint">Sets you did not tick off are not saved.</string>
+
+    <!-- Hang / interval timer -->
+    <string name="trw_phase_prepare">Get ready</string>
+    <string name="trw_phase_work">Work</string>
+    <string name="trw_phase_rest">Rest</string>
+    <string name="trw_phase_set_rest">Rest between sets</string>
+    <string name="trw_phase_done">Done</string>
+    <string name="trw_timer_rep">Rep %1$d/%2$d</string>
+    <string name="trw_timer_set">Set %1$d/%2$d</string>
+    <string name="trw_timer_pause">Pause</string>
+    <string name="trw_timer_resume">Resume</string>
+    <string name="trw_timer_skip">Skip</string>
+    <string name="trw_timer_close">Close timer</string>
+    <string name="trw_voice_go">Go</string>
+    <string name="trw_voice_rest">Rest</string>
+    <string name="trw_voice_done">Set done</string>
+
+    <!-- Summary -->
+    <string name="trw_summary_title">Summary</string>
+    <string name="trw_summary_saved">Training saved</string>
+    <string name="trw_summary_sets">Sets</string>
+    <string name="trw_summary_exercises">Exercises</string>
+    <string name="trw_summary_duration">Duration</string>
+    <plurals name="trw_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="trw_records_title">New personal bests</string>
+    <string name="trw_suggestions_title">For next time</string>
+    <string name="trw_too_easy">That went well – time for the next small step.</string>
+    <string name="trw_too_hard">That was very hard – take a little off.</string>
+    <string name="trw_sugg_more_load">Next time: %1$s</string>
+    <string name="trw_sugg_less_load">A bit lighter: %1$s</string>
+    <string name="trw_sugg_try">Try: %1$s</string>
+    <string name="trw_sugg_easier_variant">Easier variant: %1$s</string>
+    <string name="trw_side_title">Left vs. right</string>
+    <string name="trw_side_values">Left %1$d %% · Right %2$d %%</string>
+    <string name="trw_side_diff">%1$s is %2$d %% weaker</string>
+    <string name="trw_sets_title">Sets</string>
+    <string name="trw_no_sets">No sets ticked off.</string>
+    <string name="trw_save_routine">Save as routine</string>
+    <string name="trw_routine_name">Routine name</string>
+    <string name="trw_routine_saved">Routine saved</string>
+
+    <!-- Routines -->
+    <string name="trw_routines_title">Routines</string>
+    <string name="trw_builtin_section">Starter routines</string>
+    <string name="trw_own_section">Your routines</string>
+    <string name="trw_own_empty">No routines of your own yet. Save a training as a routine from its summary.</string>
+    <plurals name="trw_exercise_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="trw_est_minutes">approx. %1$d min</string>
+    <string name="trw_delete_routine_title">Delete routine?</string>
+    <string name="trw_delete_routine_text">“%1$s” will be deleted.</string>
+    <string name="trw_open_running">A training is already running. You go straight back to it.</string>
+    <string name="trw_go_to_workout">Go to training</string>
+    <string name="trw_item_reps">%1$d × %2$s</string>
+    <string name="trw_item_seconds">%1$d × %2$d s</string>
+    <string name="trw_item_interval">%1$d × (%2$d/%3$d s × %4$d)</string>
+    <plurals name="trw_sets_count">
+        <item quantity="one">%d set</item>
+        <item quantity="other">%d sets</item>
+    </plurals>
+
+    <!-- History -->
+    <string name="trw_history_title">Training history</string>
+    <string name="trw_history_empty">No finished trainings yet.</string>
+    <string name="trw_workout_default">Training</string>
+    <plurals name="trw_sets_done">
+        <item quantity="one">%d set</item>
+        <item quantity="other">%d sets</item>
+    </plurals>
+</resources>

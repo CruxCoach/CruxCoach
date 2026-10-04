@@ -342,3 +342,39 @@ class AthleteLogicTest {
         assertNull(Units.apeIndex(null, 175.0))
     }
 }
+
+class AthleteBackupEnvelopeTest {
+
+    private fun backupJson(athlete: String) = """
+        {"version":3,"app":"CruxCoach","exportedAt":"2026-10-04T10:00:00",
+         "athlete":$athlete}
+    """.trimIndent()
+
+    @Test
+    fun previewCountsAthleteRowsPerCategory() {
+        val json = backupJson("""{"workouts":[{"id":"w","startedAt":1,"day":"2026-10-04","updatedAt":1}],
+            "measurements":[{"day":"2026-10-04","metric":"weight","value":70.0,"unit":"kg","measuredAt":1}],
+            "hydration":[{"id":"h","day":"2026-10-04","loggedAt":1,"ml":250}]}""")
+        val preview = com.cruxcoach.data.CruxCoachBackup.preview(json)
+        assertEquals(1, preview.trainingRows)
+        assertEquals(1, preview.athleteBodyRows)
+        assertEquals(1, preview.fuelRows)
+        val cats = preview.detectedCategories()
+        assertTrue(com.cruxcoach.data.CruxCoachBackup.Category.TRAINING in cats)
+        assertTrue(com.cruxcoach.data.CruxCoachBackup.Category.BODY_STATS in cats)
+        assertTrue(com.cruxcoach.data.CruxCoachBackup.Category.FUEL in cats)
+    }
+
+    @Test
+    fun backupWithoutAthletePartStillParses() {
+        val preview = com.cruxcoach.data.CruxCoachBackup.preview(
+            """{"version":3,"app":"CruxCoach","exportedAt":"2026-10-04T10:00:00"}""")
+        assertEquals(0, preview.trainingRows)
+    }
+
+    @Test
+    fun athletePayloadWithAbsurdValuesIsRejected() {
+        val json = backupJson("""{"injuries":[{"id":"i","region":"FINGER","severity":42,"startedOn":"2026-10-01"}]}""")
+        assertTrue(runCatching { com.cruxcoach.data.CruxCoachBackup.preview(json) }.isFailure)
+    }
+}

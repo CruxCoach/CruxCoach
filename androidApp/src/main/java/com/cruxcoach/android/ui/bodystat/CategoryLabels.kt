@@ -29,4 +29,6 @@ fun Category.localizedLabel(): String = when (this) {
     Category.CLIMB_LISTS    -> stringResource(R.string.export_category_climb_lists)
     Category.OWN_CLIMBS     -> stringResource(R.string.export_category_own_climbs)
     Category.CLIMB_NOTES    -> stringResource(R.string.export_category_climb_notes)
+    Category.TRAINING       -> stringResource(R.string.export_category_training)
+    Category.FUEL           -> stringResource(R.string.export_category_fuel)
 }

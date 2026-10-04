@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tra_injuries_title">Verletzungen &amp; Pausen</string>
+    <string name="tra_injuries_info_title">So funktioniert der Verletzungsmodus</string>
+    <string name="tra_injuries_info_text">Trag eine Verletzung ein, dann passt sich CruxCoach an: Übungen, die die verletzte Stelle belasten, werden ausgeblendet oder markiert, einseitige Übungen bleiben für die gesunde Seite verfügbar (zum Beispiel einarmiges Blockheben rechts, während ein Finger links heilt), und das Klettern an der Wand kann pausieren. Das ist ein Filter, kein Behandlungsplan. Steig schrittweise und mit fachlichem Rat wieder ein.</string>
+    <string name="tra_injury_add">Verletzung eintragen</string>
+    <string name="tra_injuries_none">Keine offene Verletzung. Gut so.</string>
+    <string name="tra_injury_train_around">Ohne Wand trainieren</string>
+    <string name="tra_pauses_title">Pausen</string>
+    <string name="tra_pause_holiday">Urlaubspause starten</string>
+    <string name="tra_pause_open">%1$s seit %2$s</string>
+    <string name="tra_injuries_past">Verheilt</string>
+    <string name="tra_pause_illness">Krankheit</string>
+    <string name="tra_pause_injury">Verletzung</string>
+    <string name="tra_pause_holiday_label">Urlaub</string>
+    <string name="tra_injury_since">Seit %1$s</string>
+    <string name="tra_injury_pain">Schmerz: %1$d von 9</string>
+    <string name="tra_injury_pause_climbing">Klettern pausieren</string>
+    <string name="tra_injury_resolve">Verheilt</string>
+    <string name="tra_injury_where">Wo?</string>
+    <string name="tra_injury_side">Seite</string>
+    <string name="tra_injury_detail">Details (z. B. Ringfinger A2)</string>
+    <string name="tra_injury_pause_streak">Meine Serie pausieren</string>
+    <string name="tra_red_flags">Geh zeitnah zum Arzt bei Knall mit Schwellung, Taubheit, sichtbar abstehender Sehne oder starkem Ruheschmerz.</string>
+
+    <string name="tra_equipment_title">Was hast du?</string>
+    <string name="tra_equipment_info">Dein Ausrüstungsprofil filtert die Übungsbibliothek und die Vorschläge. Ähnliches zählt mit: Eine Kettlebell belädt den Pick-up-Block wie Scheiben, Bänder ersetzen den Kabelzug, Ringe gehen als Dip-Barren.</string>
+    <string name="tra_preset_home">Zuhause</string>
+    <string name="tra_preset_gym">Kletterhalle</string>
+    <string name="tra_preset_travel">Unterwegs</string>
+    <string name="tra_increment">Kleinster Gewichtsschritt</string>
+    <string name="tra_plan_title">Plan</string>
+    <string name="tra_weekly_goal">Wochenziel: %1$d Trainingstage</string>
+    <string name="tra_goal">Ziel</string>
+    <string name="tra_goal_loss_blocked">Ein Abnehmziel ist gerade nicht verfügbar, weil dein Gewicht oder Trend dagegen spricht. Kraftfortschritt zeigt sich am Hangboard, nicht auf der Waage.</string>
+    <string name="tra_modules_title">Module</string>
+    <string name="tra_module_checkin">Morgendlicher Check-in</string>
+    <string name="tra_module_body">Körper-Tracking</string>
+    <string name="tra_hide_numbers">Körperzahlen ausblenden (nur Trend)</string>
+    <string name="tra_module_fuel">Fueling</string>
+    <string name="tra_show_calories">Kalorien anzeigen</string>
+    <string name="tra_protein_per_kg">Protein: %1$s g pro kg Körpergewicht</string>
+    <string name="tra_units_title">Einheiten</string>
+    <string name="tra_units_metric">kg / cm</string>
+    <string name="tra_units_imperial">lb / in</string>
+    <string name="tra_personal_title">Über dich (freiwillig)</string>
+    <string name="tra_personal_info">Wird nur für die Gesundheits-Schwellen des Energie-Checks (sie unterscheiden sich nach Geschlecht) und für deinen Ape-Index genutzt. Nichts verlässt dein Gerät.</string>
+    <string name="tra_height">Größe (%1$s)</string>
+    <string name="tra_timer_title">Timer</string>
+    <string name="tra_auto_rest">Pausentimer nach jedem Satz starten</string>
+    <string name="tra_timer_sound">Ton</string>
+    <string name="tra_timer_vibration">Vibration</string>
+    <string name="tra_timer_voice">Sprachansagen</string>
+    <string name="tra_privacy_note">Trainings-, Körper- und Fueling-Daten bleiben verschlüsselt auf diesem Gerät und landen nur in deinen eigenen Backups.</string>
+    <string name="tra_goal_perform">Leistung</string>
+    <string name="tra_goal_maintain">Halten</string>
+    <string name="tra_goal_strength">Kraft aufbauen</string>
+    <string name="tra_goal_lose">Abnehmen</string>
+    <string name="tra_sex_female">Weiblich</string>
+    <string name="tra_sex_male">Männlich</string>
+    <string name="tra_sex_other">Divers</string>
+
+    <string name="tra_review_prev">Vorherige Woche</string>
+    <string name="tra_review_next">Nächste Woche</string>
+    <string name="tra_review_week_of">Woche ab %1$s</string>
+    <string name="tra_review_goal_reached">Wochenziel erreicht: %1$d von %2$d Trainingstagen.</string>
+    <string name="tra_review_goal_open">%1$d von %2$d Trainingstagen – Pause ist auch Training.</string>
+    <plurals name="tra_review_paused">
+        <item quantity="one">%d Tag pausiert</item>
+        <item quantity="other">%d Tage pausiert</item>
+    </plurals>
+    <string name="tra_review_climb_days">Klettertage</string>
+    <string name="tra_review_workout_days">Trainingstage</string>
+    <string name="tra_review_sets">Sätze</string>
+    <string name="tra_review_records">Neue Bestwerte</string>
+    <string name="tra_review_no_records">Diese Woche keine neuen Bestwerte – Konstanz baut sie auf.</string>
+    <string name="tra_review_load">Belastung pro Struktur</string>
+    <plurals name="tra_review_domain_days">
+        <item quantity="one">%1$s: %2$d Tag</item>
+        <item quantity="other">%1$s: %2$d Tage</item>
+    </plurals>
+    <string name="tra_review_categories">Sätze nach Bereich</string>
+    <string name="tra_review_weight_up">Gewichtstrend leicht steigend</string>
+    <string name="tra_review_weight_down">Gewichtstrend leicht fallend</string>
+    <string name="tra_review_weight_stable">Gewichtstrend stabil</string>
+    <string name="tra_review_weight_change">Trendgewicht: %1$s diese Woche</string>
+    <string name="tra_review_protein">Protein an erfassten Tagen: %1$d g (Ziel etwa %2$d g)</string>
+    <string name="tra_review_checkins">Check-in-Durchschnitt</string>
+    <string name="tra_review_e1rm">geschätztes 1RM %1$s</string>
+    <plurals name="tra_reps">
+        <item quantity="one">%d Wiederholung</item>
+        <item quantity="other">%d Wiederholungen</item>
+    </plurals>
+</resources>

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Training, Körper und Fueling (FEAT-066..068): gemeinsame Bezeichnungen. -->
+<resources>
+    <string name="tr_nav_today">Heute</string>
+    <string name="tr_nav_exercises">Übungen</string>
+    <string name="tr_nav_body">Körper</string>
+    <string name="tr_nav_fuel">Fueling</string>
+
+    <string name="tr_cat_finger">Finger</string>
+    <string name="tr_cat_pull">Zug</string>
+    <string name="tr_cat_push">Druck</string>
+    <string name="tr_cat_antagonist">Antagonist &amp; Prävention</string>
+    <string name="tr_cat_core">Rumpf</string>
+    <string name="tr_cat_legs">Beine &amp; Hüfte</string>
+    <string name="tr_cat_mobility">Mobilität</string>
+    <string name="tr_cat_warmup">Aufwärmen</string>
+    <string name="tr_cat_power">Power</string>
+    <string name="tr_cat_endurance">Ausdauer</string>
+    <string name="tr_cat_technique">Technik</string>
+
+    <string name="tr_eq_none">Ohne Geräte</string>
+    <string name="tr_eq_mat">Matte</string>
+    <string name="tr_eq_hangboard">Hangboard</string>
+    <string name="tr_eq_pickup_block">Pick-up-Block</string>
+    <string name="tr_eq_pull_up_bar">Klimmzugstange</string>
+    <string name="tr_eq_rings">Ringe</string>
+    <string name="tr_eq_dumbbell">Kurzhanteln</string>
+    <string name="tr_eq_kettlebell">Kettlebell</string>
+    <string name="tr_eq_barbell">Langhantel</string>
+    <string name="tr_eq_plates">Hantelscheiben</string>
+    <string name="tr_eq_bands">Widerstandsbänder</string>
+    <string name="tr_eq_bench">Bank</string>
+    <string name="tr_eq_box">Box / Stufe</string>
+    <string name="tr_eq_cable">Kabelzug</string>
+    <string name="tr_eq_wall">Kletterwand</string>
+    <string name="tr_eq_board">Board (Kilter, Moon …)</string>
+    <string name="tr_eq_campus_board">Campusboard</string>
+    <string name="tr_eq_foam_roller">Faszienrolle</string>
+    <string name="tr_eq_pulley">Umlenkrolle für Entlastung</string>
+    <string name="tr_eq_dip_bars">Dip-Barren</string>
+
+    <string name="tr_dom_finger">Finger</string>
+    <string name="tr_dom_wrist">Handgelenke</string>
+    <string name="tr_dom_elbow">Ellbogen</string>
+    <string name="tr_dom_shoulder">Schultern</string>
+    <string name="tr_dom_skin">Haut</string>
+    <string name="tr_dom_lower_body">Beine</string>
+    <string name="tr_dom_back">Rücken</string>
+    <string name="tr_dom_systemic">Ganzer Körper</string>
+
+    <string name="tr_grip_half_crimp">Halb aufgestellt</string>
+    <string name="tr_grip_open_hand">Offene Hand</string>
+    <string name="tr_grip_full_crimp">Voll aufgestellt</string>
+    <string name="tr_grip_three_finger_drag">Dreifinger hängend</string>
+    <string name="tr_grip_front_two">Vordere zwei</string>
+    <string name="tr_grip_middle_two">Mittlere zwei</string>
+    <string name="tr_grip_pinch">Zange</string>
+    <string name="tr_grip_sloper">Aufleger</string>
+    <string name="tr_grip_jug">Henkel</string>
+
+    <string name="tr_region_finger">Finger / Ringband</string>
+    <string name="tr_region_wrist">Handgelenk</string>
+    <string name="tr_region_elbow">Ellbogen</string>
+    <string name="tr_region_shoulder">Schulter</string>
+    <string name="tr_region_back">Rücken</string>
+    <string name="tr_region_hip">Hüfte</string>
+    <string name="tr_region_knee">Knie</string>
+    <string name="tr_region_ankle">Sprunggelenk</string>
+    <string name="tr_region_skin">Haut</string>
+    <string name="tr_region_other">Anderes</string>
+    <string name="tr_side_left">Links</string>
+    <string name="tr_side_right">Rechts</string>
+    <string name="tr_side_both">Beide</string>
+
+    <string name="tr_metric_weight">Körpergewicht</string>
+    <string name="tr_metric_body_fat">Körperfett</string>
+    <string name="tr_metric_height">Größe</string>
+    <string name="tr_metric_arm_span">Spannweite</string>
+    <string name="tr_metric_forearm">Unterarm</string>
+    <string name="tr_metric_upper_arm">Oberarm</string>
+    <string name="tr_metric_chest">Brust</string>
+    <string name="tr_metric_waist">Taille</string>
+    <string name="tr_metric_hips">Hüfte</string>
+    <string name="tr_metric_thigh">Oberschenkel</string>
+    <string name="tr_metric_calf">Wade</string>
+    <string name="tr_metric_neck">Hals</string>
+
+    <string name="tr_meal_breakfast">Frühstück</string>
+    <string name="tr_meal_lunch">Mittagessen</string>
+    <string name="tr_meal_dinner">Abendessen</string>
+    <string name="tr_meal_snack">Snack</string>
+    <string name="tr_meal_pre_training">Vor dem Training</string>
+    <string name="tr_meal_post_training">Nach dem Training</string>
+
+    <string name="tr_dayload_rest">Ruhetag</string>
+    <string name="tr_dayload_light">Lockerer Tag</string>
+    <string name="tr_dayload_moderate">Trainingstag</string>
+    <string name="tr_dayload_hard">Harter Trainingstag</string>
+    <string name="tr_dayload_very_hard">Sehr harter Tag</string>
+
+    <string name="tr_settype_warmup">Aufwärmen</string>
+    <string name="tr_settype_work">Arbeitssatz</string>
+    <string name="tr_settype_test">Test</string>
+
+    <string name="tr_routine_warmup_board">Board-Aufwärmen</string>
+    <string name="tr_routine_warmup_board_desc">12 Minuten vom Puls bis zu den Fingern – vor jeder Board-Session.</string>
+    <string name="tr_routine_finger_basics">Fingerkraft-Basis</string>
+    <string name="tr_routine_finger_basics_desc">Aufwärmrampe, Max Hangs, Klimmzüge und etwas Antagonist.</string>
+    <string name="tr_routine_injury_one_arm">Verletzungsmodus: einarmig + Zug</string>
+    <string name="tr_routine_injury_one_arm_desc">Ohne Wand: einarmiges Blockheben mit der gesunden Hand, Klimmzüge, Rudern, Schulter und Rumpf.</string>
+    <string name="tr_routine_pull_antagonist">Zug &amp; Antagonist (ohne Klettern)</string>
+    <string name="tr_routine_pull_antagonist_desc">Ausgewogen ziehen und drücken für Tage ohne Wand.</string>
+    <string name="tr_routine_antagonist_15">Antagonist 15 min</string>
+    <string name="tr_routine_antagonist_15_desc">Die kurze Ergänzung nach dem Board: Schultern, Handgelenke, Fingerstrecker.</string>
+    <string name="tr_routine_legs_basics">Bein-Basis</string>
+    <string name="tr_routine_legs_basics_desc">Kniebeuge, Hüftbeuge, einbeinig, hintere Kette und Adduktoren.</string>
+    <string name="tr_routine_core_climber">Rumpf für Kletterer</string>
+    <string name="tr_routine_core_climber_desc">Körperspannung vom Dead Bug bis zum L-Sit.</string>
+    <string name="tr_routine_mobility_10">Mobility 10 min</string>
+    <string name="tr_routine_mobility_10_desc">Hüfte für hohe Tritte und Eindrehen, Schultern und Handgelenke.</string>
+    <string name="tr_routine_baseline_tests">Leistungstest</string>
+    <string name="tr_routine_baseline_tests_desc">Max Hang an 20 mm, maximale Klimmzüge, Hollow Hold – alle 6–8 Wochen wiederholen.</string>
+
+    <string name="tr_format_kg">%1$s kg</string>
+    <string name="tr_format_lb">%1$s lb</string>
+    <string name="tr_format_cm">%1$s cm</string>
+    <string name="tr_format_in">%1$s in</string>
+    <string name="tr_format_seconds">%1$d s</string>
+    <string name="tr_format_mm">%1$s mm</string>
+    <string name="tr_format_percent_bw">%1$d %% KG</string>
+    <string name="tr_bodyweight">Körpergewicht</string>
+    <string name="tr_assisted">entlastet</string>
+
+    <string name="tr_action_start">Starten</string>
+    <string name="tr_action_save">Speichern</string>
+    <string name="tr_action_cancel">Abbrechen</string>
+    <string name="tr_action_delete">Löschen</string>
+    <string name="tr_action_done">Fertig</string>
+    <string name="tr_action_add">Hinzufügen</string>
+    <string name="tr_action_edit">Bearbeiten</string>
+    <string name="tr_action_settings">Trainingseinstellungen</string>
+    <string name="tr_not_medical_advice">CruxCoach stellt keine Diagnosen und behandelt keine Verletzungen. Bei stechendem Schmerz, Schwellung oder anhaltenden Beschwerden: ärztlich oder physiotherapeutisch abklären lassen.</string>
+
+    <string name="export_category_training">Training, Check-ins &amp; Verletzungen</string>
+    <string name="export_category_fuel">Fueling</string>
+    <plurals name="import_result_training">
+        <item quantity="one">%d Trainingseintrag</item>
+        <item quantity="other">%d Trainingseinträge</item>
+    </plurals>
+    <plurals name="import_result_fuel">
+        <item quantity="one">%d Fueling-Eintrag</item>
+        <item quantity="other">%d Fueling-Einträge</item>
+    </plurals>
+</resources>

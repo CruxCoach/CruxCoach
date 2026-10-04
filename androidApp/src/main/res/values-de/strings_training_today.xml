@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="trt_week_progress">
+        <item quantity="one">%1$d von %2$d Trainingstag diese Woche</item>
+        <item quantity="other">%1$d von %2$d Trainingstagen diese Woche</item>
+    </plurals>
+    <plurals name="trt_streak_weeks">
+        <item quantity="one">Seit %d Woche im Plan</item>
+        <item quantity="other">Seit %d Wochen im Plan</item>
+    </plurals>
+    <plurals name="trt_jokers">
+        <item quantity="one">%d Joker</item>
+        <item quantity="other">%d Joker</item>
+    </plurals>
+    <plurals name="trt_board_minutes">
+        <item quantity="one">Board: %d Minute automatisch erfasst</item>
+        <item quantity="other">Board: %d Minuten automatisch erfasst</item>
+    </plurals>
+    <plurals name="trt_board_efforts">
+        <item quantity="one">Board: %d Versuch automatisch erfasst</item>
+        <item quantity="other">Board: %d Versuche automatisch erfasst</item>
+    </plurals>
+    <plurals name="trt_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="trt_streak_start">Erreich dein Wochenziel, dann beginnt eine Serie.</string>
+    <string name="trt_streak_paused">Pause aktiv – deine Serie ist eingefroren.</string>
+    <string name="trt_streak_info_title">Wöchentliche Konstanz</string>
+    <string name="trt_streak_info_text">Kletterer pausieren absichtlich, darum zählt CruxCoach Wochen statt Tage. Eine Woche zählt, wenn du dein Wochenziel an Trainingstagen erreichst – Board-Sessions zählen automatisch. Wochen mit Krankheit, Verletzung oder Urlaub frieren die Serie ein. Alle vier guten Wochen gibt es einen Joker (max. zwei), der still eine verpasste Woche schützt.</string>
+    <string name="trt_day_both">geklettert und trainiert</string>
+    <string name="trt_day_climbed">geklettert</string>
+    <string name="trt_day_trained">trainiert</string>
+    <string name="trt_day_paused">Pause</string>
+    <string name="trt_day_rest">Ruhetag</string>
+    <string name="trt_continue_workout">Training läuft – weitermachen</string>
+    <string name="trt_pause_active">Pause aktiv (Krankheit, Verletzung oder Urlaub)</string>
+    <string name="trt_pause_end">Pause beenden</string>
+    <string name="trt_checkin_title">Wie geht\'s dir heute?</string>
+    <string name="trt_checkin_hint">Freiwillig, vier Tipps. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
+    <string name="trt_q_sleep">Schlaf</string>
+    <string name="trt_q_energy">Energie</string>
+    <string name="trt_q_skin">Haut</string>
+    <string name="trt_q_fingers">Finger</string>
+    <string name="trt_q_sick">Ich fühle mich krank</string>
+    <string name="trt_checkin_change">Ändern</string>
+    <string name="trt_checkin_reset">Zurücksetzen</string>
+    <string name="trt_ready_go">Startklar</string>
+    <string name="trt_ready_adapt">Heute anpassen</string>
+    <string name="trt_ready_rest">Heute erholen</string>
+    <string name="trt_ready_info_title">Warum diese Empfehlung?</string>
+    <string name="trt_ready_info_text">CruxCoach verbindet deinen Check-in mit offenen Verletzungen. Der zuerst genannte Grund hat entschieden. Schlechte Haut oder müde Finger streichen das Training nicht – sie verschieben die Last: Hangboard- oder Krafttag statt Board. Krankheit heißt Pause.</string>
+    <string name="trt_reason_sick">Du fühlst dich krank – erhol dich. Deine Serie ist pausiert.</string>
+    <string name="trt_reason_injury_paused">Verletzungsmodus: Klettern pausiert. Training ohne Wand, das die verletzte Stelle schont, ist okay.</string>
+    <string name="trt_reason_injury">Eine Verletzung ist offen – Übungen, die sie belasten, sind markiert.</string>
+    <string name="trt_reason_fingers">Müde Finger – heute keine maximale Fingerlast. Zug, Rumpf, Beine oder Mobilität passen.</string>
+    <string name="trt_reason_skin">Die Haut braucht Pause – lass das Board weg. Hangboard an größeren Leisten oder Kraft stattdessen.</string>
+    <string name="trt_reason_sleep">Wenig Schlaf – Umfang niedrig halten, Technik und Mobilität passen gut.</string>
+    <string name="trt_reason_energy">Wenig Energie – eine lockere Einheit oder ein Ruhetag.</string>
+    <string name="trt_reason_motivation">Wenig Lust – auch etwas Kurzes, das Spaß macht, zählt.</string>
+    <string name="trt_reason_all_good">Alles sieht gut aus.</string>
+    <string name="trt_short_sick">krank</string>
+    <string name="trt_short_injury">Verletzung</string>
+    <string name="trt_short_motivation">Motivation</string>
+    <string name="trt_injury_mode">Verletzung eingetragen</string>
+    <string name="trt_injury_mode_paused">Verletzungsmodus – Klettern pausiert</string>
+    <string name="trt_injury_mode_hint">Übungen, die die verletzte Stelle belasten, sind ausgeblendet oder markiert; einseitige Übungen bleiben für die gesunde Seite verfügbar.</string>
+    <string name="trt_injury_start">Verletzungs-Routine starten</string>
+    <string name="trt_injury_manage">Verwalten</string>
+    <string name="trt_today_training">Training heute</string>
+    <string name="trt_workout_untitled">Training</string>
+    <string name="trt_nothing_yet">Noch nichts erfasst – Board-Sessions erscheinen hier von selbst.</string>
+    <string name="trt_start_training">Training</string>
+    <string name="trt_routines">Routinen</string>
+    <string name="trt_history">Verlauf</string>
+    <string name="trt_weekly_review">Wochenrückblick</string>
+    <string name="trt_report_injury">Verletzung eintragen</string>
+    <string name="trt_sugg_equipment_title">Was hast du?</string>
+    <string name="trt_sugg_equipment_text">Sag CruxCoach, welche Ausrüstung du hast, dann schlägt es nur Machbares vor.</string>
+    <string name="trt_sugg_equipment_action">Einrichten</string>
+    <string name="trt_sugg_antagonist_title">Board erledigt – 15 min Antagonist?</string>
+    <string name="trt_sugg_antagonist_text">Schultern, Handgelenke und Fingerstrecker gleichen das Ziehen aus.</string>
+    <string name="trt_sugg_injury_title">Um die Verletzung herum trainieren</string>
+    <string name="trt_sugg_injury_text">Einarmiges Blockheben mit der gesunden Hand, Klimmzüge, Rudern, Schulter und Rumpf – ohne Wand.</string>
+    <string name="trt_sugg_test_title">Zeit für einen Leistungstest</string>
+    <string name="trt_sugg_test_text">Max Hang, Klimmzüge und Hollow Hold zeigen deinen Fortschritt bei Kraft zu Gewicht.</string>
+    <string name="trt_sugg_weight_title">Körpergewicht eintragen</string>
+    <string name="trt_sugg_weight_text">Nötig für Prozent des Körpergewichts am Hangboard und für die Fueling-Ziele.</string>
+    <string name="trt_sugg_weight_action">Eintragen</string>
+    <string name="trt_reds_title">Achte auf deine Energie</string>
+    <string name="trt_reds_info">Klettern belohnt Kraft zu Gewicht, und das verleitet manche dazu, zu wenig zu essen. Zu wenig Energie für das Training, das du machst (relatives Energiedefizit im Sport, RED-S), kostet Kraft, Erholung und Gesundheit – Knochen, Hormone, Immunsystem. CruxCoach bemerkt nur Muster und stellt keine Diagnosen. Wenn mehrere Zeichen auf dich passen – anhaltende Müdigkeit, häufig krank, ausbleibende Periode, Schwindel, Stillstand trotz Training –, sprich mit einer Ärztin oder einem Arzt oder mit einer Sport-Ernährungsberatung.</string>
+    <string name="trt_reds_low_bmi">Dein Körpergewicht liegt unter dem Bereich, den Kletterverbände für Gesundheitschecks nutzen.</string>
+    <string name="trt_reds_rapid_loss">Dein Gewichtstrend fällt schnell.</string>
+    <string name="trt_reds_low_carbs">An mehreren Trainingstagen hast du deutlich weniger Kohlenhydrate eingetragen, als das Training braucht.</string>
+    <string name="trt_reds_goal_paused">Dein Abnehmziel ist pausiert, solange diese Zeichen bestehen.</string>
+    <string name="trt_spike_title">Belastungssprung: %1$s</string>
+    <string name="trt_spike_text">Mehr Belastungstage als in den drei Wochen davor. Kein Verbot – nur gut zu wissen.</string>
+    <string name="trt_trend_direction">Trendrichtung</string>
+    <string name="trt_trend_weight">Trend: %1$s</string>
+    <string name="trt_trend_rate">%1$s pro Woche</string>
+    <string name="trt_numbers_hidden">Zahlen ausgeblendet – der Pfeil zeigt den Trend.</string>
+    <string name="trt_weight_today">Gewicht heute (%1$s)</string>
+    <string name="trt_fuel_needs_weight">Trag dein Körpergewicht ein, dann siehst du Protein- und Kohlenhydrat-Ziele.</string>
+    <string name="trt_protein">Protein</string>
+    <string name="trt_carbs_for">Kohlenhydrate für: %1$s</string>
+    <string name="trt_water">Wasser</string>
+    <string name="trt_water_add">+250 ml</string>
+</resources>
