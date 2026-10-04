@@ -41,6 +41,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   same climb was sent on two consecutive late evenings: it is matched to the
   nearest of Kilter's logs in time, not to the first one of the day.
 
+- The climb detail no longer clips holds at the board's edge. A climb set on a
+  larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board
+  was drawn on your board anyway; it is now shown on the size it was set on, as
+  the climb list already treated it.
+
 ### Added
 - Settings → Kilter: "Show entries" lists every entry Kilter did not take, with
   climb, angle, date and reason, and sends the list as a bug report in one tap.
