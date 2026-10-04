@@ -33,6 +33,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   target, % body weight and an inline hang/repeater timer, and a separate rest
   screen with a countdown ring, ±15 s, a side-switch pause, the next set and a
   reps-in-reserve question. The list view stays available as the overview.
+- A clearer training area: one "Training" entry in the main menu and a tab bar
+  inside – Today, Workouts, Exercises, Stats, Body.
+- Stats: training days and minutes per week (board and off-board), a calendar
+  heatmap, load per structure, personal bests, body weight and strength to
+  weight; per exercise a chart of the estimated maximum over time (left and
+  right separately), volume per session, all sessions and bests.
+- Own standard workouts: create and edit them (exercises from a picker with
+  favourites first), copy and adapt starter routines, and a standard week that
+  assigns workouts, board sessions or rest to weekdays. Favourites sit at the
+  top of the library; "add to workout" works from every exercise.
+- A suggestion for today, MCI-style but for climbers: built from the week
+  plan, the check-in, injuries, finger load of the last two days, equipment,
+  favourites, performance values and the preferred duration, with the reasons
+  shown; start it, ask for another one, adapt it or save it as a workout.
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right

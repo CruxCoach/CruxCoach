@@ -1141,15 +1141,15 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
             val entries = listOf(
                 Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
-                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_today, "menu_today"),
-                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.exercises(), com.cruxcoach.android.R.string.tr_nav_exercises, "menu_exercises"),
+                // One entry for the whole training area; its own tab bar organises the rest.
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training, "menu_today"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
                     icon = {
                         Icon(when (route) {
                             Routes.BOARD_MAP -> Icons.Default.Map
-                            com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.Today
+                            com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.FitnessCenter
                             Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
                             else -> Icons.Default.FitnessCenter
                         }, null)

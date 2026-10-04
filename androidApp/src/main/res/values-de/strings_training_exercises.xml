@@ -81,4 +81,8 @@
     <string name="trx_load_bodyweight">Körpergewicht</string>
     <string name="trx_load_bodyweight_plus">Körpergewicht ± kg</string>
     <string name="trx_load_external">Gehobenes Gewicht</string>
+    <string name="trx_section_favorites">Favoriten</string>
+    <string name="trx_section_all">Alle Übungen</string>
+    <string name="trx_add_to_workout">%1$s zu Training oder Workout hinzufügen</string>
+    <string name="trx_to_workout">Zu Workout</string>
 </resources>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
@@ -168,8 +169,11 @@ fun ExerciseDetailScreen(
     onOpenExercise: (String) -> Unit,
     onOpenWorkout: () -> Unit,
     viewModel: ExerciseDetailViewModel = hiltViewModel(),
+    onOpenStats: (String) -> Unit = {},
+    onCreateRoutine: (from: String) -> Unit = {},
 ) {
     LaunchedEffect(slug) { viewModel.load(slug) }
+    var addSheet by remember { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val language = catalogLanguage()
     val snackbar = remember { SnackbarHostState() }
@@ -215,19 +219,41 @@ fun ExerciseDetailScreen(
                     item { Facts(def) }
                     if (state.chain.size > 1) item { ChainStepper(state.chain, def.slug, language, onOpenExercise) }
                     item { com.cruxcoach.android.ui.training.benchmarks.BenchmarkCard(def.slug, onTestStarted = onOpenWorkout) }
+                    item {
+                        Spacer(Modifier.height(8.dp))
+                        com.cruxcoach.android.ui.training.stats.ExerciseProgressCard(def.slug, onOpenStats = { onOpenStats(def.slug) })
+                    }
                     if (state.bests.isNotEmpty()) item { Bests(def, state.bests, state.profile) }
                     item { History(def, state.sessions, state.profile) }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
                 val title = def.name(language)
-                Button(
-                    onClick = { viewModel.addToTraining(title) },
-                    enabled = state.advice.verdict != InjuryVerdict.AVOID,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 48.dp).testTag("exercise_detail_add"),
-                ) {
-                    Icon(if (state.openWorkout != null) Icons.Default.Add else Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(if (state.openWorkout != null) R.string.trx_add_to_running else R.string.trx_start_with))
+                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { addSheet = true },
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("exercise_detail_add_workout"),
+                    ) {
+                        Icon(Icons.Default.PlaylistAdd, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trx_to_workout))
+                    }
+                    Button(
+                        onClick = { viewModel.addToTraining(title) },
+                        enabled = state.advice.verdict != InjuryVerdict.AVOID,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("exercise_detail_add"),
+                    ) {
+                        Icon(if (state.openWorkout != null) Icons.Default.Add else Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(if (state.openWorkout != null) R.string.trx_add_to_running else R.string.trx_start_with), maxLines = 1)
+                    }
+                }
+                if (addSheet) {
+                    com.cruxcoach.android.ui.training.workouts.AddToWorkoutSheet(
+                        slug = def.slug,
+                        onDismiss = { addSheet = false },
+                        onTrainingStarted = { addSheet = false; onOpenWorkout() },
+                        onCreateRoutine = { from -> addSheet = false; onCreateRoutine(from) },
+                    )
                 }
             }
         }

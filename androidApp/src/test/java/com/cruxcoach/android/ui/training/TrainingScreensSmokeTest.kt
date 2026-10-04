@@ -254,4 +254,55 @@ class TrainingScreensSmokeTest {
         val pickups = repo.setsFor(id).filter { it.exerciseSlug == "finger.one_arm_pickup" }
         assert(pickups.isNotEmpty() && pickups.all { it.loadKg == 29.0 && it.targetLoadKg == 29.0 }) { pickups.map { it.loadKg } }
     }
+
+    @Test
+    fun `today shows a suggestion for the injured climber`() {
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = TodayViewModel(service)) }
+        scrollTo("today_list", hasTestTag("today_suggestion_card"))
+    }
+
+    @Test
+    fun `workouts tab, editor and week plan render`() {
+        render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)) }
+        waitForTag("workouts_list")
+        scrollTo("workouts_list", hasTestTag("workouts_week_plan"))
+        scrollTo("workouts_list", hasTestTag("routine_start_builtin_warmup_board"))
+    }
+
+    @Test
+    fun `routine editor prefills a starter routine`() {
+        render { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, "builtin:${BuiltinRoutines.LEGS_BASICS}", {}, {},
+            viewModel = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service)) }
+        compose.waitUntil(15_000) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun `week plan renders seven days`() {
+        render { com.cruxcoach.android.ui.training.workouts.WeekPlanScreen({},
+            viewModel = com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service)) }
+        waitForTag("week_plan_day_1")
+    }
+
+    @Test
+    fun `stats hub and exercise stats render with history`() {
+        val id = service.startWorkout(null, null)
+        service.addExercise(id, "pull.pull_up")
+        repo.setsFor(id).forEach { service.completeSet(it.copy(reps = 6), startRest = false) }
+        service.finishWorkout(id, 6, null)
+        render { com.cruxcoach.android.ui.training.stats.StatsHubScreen({}, {}, {}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.stats.StatsHubViewModel(service)) }
+        waitForTag("stats_list")
+    }
+
+    @Test
+    fun `exercise stats chart renders`() {
+        val id = service.startWorkout(null, null)
+        service.addExercise(id, "pull.pull_up")
+        repo.setsFor(id).forEach { service.completeSet(it.copy(reps = 7), startRest = false) }
+        service.finishWorkout(id, 6, null)
+        render { com.cruxcoach.android.ui.training.stats.ExerciseStatsScreen("pull.pull_up", {}, {},
+            viewModel = com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service)) }
+        scrollTo("exercise_stats_list", hasTestTag("exercise_stats_chart"))
+    }
 }

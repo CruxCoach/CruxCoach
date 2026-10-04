@@ -83,4 +83,8 @@
     <string name="trx_load_bodyweight">Bodyweight</string>
     <string name="trx_load_bodyweight_plus">Bodyweight ± kg</string>
     <string name="trx_load_external">Lifted weight</string>
+    <string name="trx_section_favorites">Favourites</string>
+    <string name="trx_section_all">All exercises</string>
+    <string name="trx_add_to_workout">Add %1$s to a training or workout</string>
+    <string name="trx_to_workout">To workout</string>
 </resources>

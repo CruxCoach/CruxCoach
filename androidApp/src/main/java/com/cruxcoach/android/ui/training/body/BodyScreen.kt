@@ -59,6 +59,7 @@ fun BodyScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: BodyViewModel = hiltViewModel(),
+    tabBar: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -111,6 +112,7 @@ fun BodyScreen(
     TrainingScaffold(
         title = stringResource(R.string.tr_nav_body),
         onBack = onBack,
+        bottomBar = tabBar,
         actions = {
             IconButton(
                 onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Daily training suggestion (MCI-style, climber version). -->
+<resources>
+    <string name="trsg_card_label">Suggestion for today</string>
+    <string name="trsg_why_title">Why this suggestion?</string>
+    <string name="trsg_planned_today">Planned for today in your week plan</string>
+    <plurals name="trsg_meta">
+        <item quantity="one">%1$d exercise · about %2$d min</item>
+        <item quantity="other">%1$d exercises · about %2$d min</item>
+    </plurals>
+    <string name="trsg_start">Start</string>
+    <string name="trsg_next">Another suggestion</string>
+    <string name="trsg_edit">Adjust</string>
+    <string name="trsg_save">Save as workout</string>
+    <string name="trsg_saved">Saved as a workout – you find it under Workouts.</string>
+
+    <string name="trsg_focus_planned">Your planned workout</string>
+    <string name="trsg_focus_board">Board day with warm-up</string>
+    <string name="trsg_focus_finger">Finger strength</string>
+    <string name="trsg_focus_pull_push">Pull &amp; push</string>
+    <string name="trsg_focus_legs_core">Legs &amp; core</string>
+    <string name="trsg_focus_mobility">Mobility &amp; recovery</string>
+    <string name="trsg_focus_injury">Training around the injury</string>
+    <string name="trsg_focus_rest">Rest day – light mobility</string>
+
+    <string name="trsg_reason_sick">You feel ill – only light mobility, if anything.</string>
+    <string name="trsg_reason_rest_readiness">Sleep and energy are both very low – today is for recovery.</string>
+    <string name="trsg_reason_week_plan">This is what your week plan has for today.</string>
+    <string name="trsg_reason_week_plan_board">Week plan: board day – warm up properly, a short antagonist block afterwards.</string>
+    <string name="trsg_reason_week_plan_rest">Week plan: rest day. Light mobility is optional.</string>
+    <string name="trsg_reason_plan_filtered">Exercises that load your injury were taken out of the planned workout.</string>
+    <string name="trsg_reason_plan_replaced">The planned training would load your injury too much – here is an alternative.</string>
+    <string name="trsg_reason_board_skipped">The board is not a good idea today – an off-wall session instead.</string>
+    <string name="trsg_reason_injury">Climbing is paused: only exercises that spare the injury, one-sided work on the healthy side.</string>
+    <string name="trsg_reason_fingers_loaded">Your fingers were loaded in the last 48 hours – today pull, push, legs or core.</string>
+    <string name="trsg_reason_fingers_tired">Your fingers feel tired – no max finger load today.</string>
+    <string name="trsg_reason_skin">Your skin needs a break – no finger session today.</string>
+    <string name="trsg_reason_fingers_rested">Your fingers had two days off – good day for finger strength.</string>
+    <string name="trsg_reason_pull_longer_ago">You trained legs and core more recently than pulling and pushing.</string>
+    <string name="trsg_reason_legs_longer_ago">You trained pulling and pushing more recently than legs and core.</string>
+    <string name="trsg_reason_low_energy">Little sleep or energy – the session is shorter today.</string>
+    <string name="trsg_reason_goal_strength">Your goal is strength, so strength exercises come first.</string>
+    <string name="trsg_reason_favorites">Your favourite exercises are preferred.</string>
+    <string name="trsg_reason_shortened">Shortened to fit your preferred session length.</string>
+</resources>

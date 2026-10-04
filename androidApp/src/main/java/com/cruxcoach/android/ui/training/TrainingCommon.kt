@@ -3,6 +3,11 @@ package com.cruxcoach.android.ui.training
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -53,6 +58,50 @@ object TrainingRoutes {
     const val CUSTOM_EXERCISE = "custom_exercise"
     const val WORKOUT_PLAYER = "workout_player"
     const val BENCHMARKS = "benchmarks"
+    const val WORKOUTS = "workouts"
+    const val STATS = "training_stats"
+    const val EXERCISE_STATS = "exercise_stats/{slug}"
+    fun exerciseStats(slug: String) = "exercise_stats/$slug"
+    /** routineId = own routine to edit; from = "builtin:<key>" or a slug list "ex:<slug>,<slug>" to start a new one from. */
+    const val ROUTINE_EDITOR = "routine_editor?routineId={routineId}&from={from}"
+    fun routineEditor(routineId: String? = null, from: String? = null): String = buildString {
+        append("routine_editor")
+        val q = listOfNotNull(routineId?.let { "routineId=" + android.net.Uri.encode(it) }, from?.let { "from=" + android.net.Uri.encode(it) })
+        if (q.isNotEmpty()) append("?" + q.joinToString("&"))
+    }
+    const val WEEK_PLAN = "training_week_plan"
+}
+
+/** The five tabs of the training area. */
+enum class TrainingTab(val route: String) {
+    TODAY(TrainingRoutes.TODAY),
+    WORKOUTS(TrainingRoutes.WORKOUTS),
+    EXERCISES("exercises"),
+    STATS(TrainingRoutes.STATS),
+    BODY(TrainingRoutes.BODY),
+}
+
+/** Bottom bar of the training area; the board app keeps its own drawer navigation. */
+@Composable
+fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
+    NavigationBar {
+        TrainingTab.entries.forEach { tab ->
+            val (icon, label) = when (tab) {
+                TrainingTab.TODAY -> androidx.compose.material.icons.Icons.Default.Today to R.string.tr_tab_today
+                TrainingTab.WORKOUTS -> androidx.compose.material.icons.Icons.Default.FitnessCenter to R.string.tr_tab_workouts
+                TrainingTab.EXERCISES -> androidx.compose.material.icons.Icons.AutoMirrored.Filled.List to R.string.tr_tab_exercises
+                TrainingTab.STATS -> androidx.compose.material.icons.Icons.Default.Insights to R.string.tr_tab_stats
+                TrainingTab.BODY -> androidx.compose.material.icons.Icons.Default.MonitorWeight to R.string.tr_tab_body
+            }
+            NavigationBarItem(
+                selected = tab == selected,
+                onClick = { if (tab != selected) onSelect(tab) },
+                icon = { Icon(icon, contentDescription = null) },
+                label = { Text(stringResource(label), maxLines = 1) },
+                modifier = Modifier.testTag("training_tab_${tab.name.lowercase()}"),
+            )
+        }
+    }
 }
 
 /** Language for catalogue texts: German UI → German texts, everything else English. */
@@ -267,6 +316,7 @@ fun TrainingScaffold(
     snackbarHost: @Composable () -> Unit = {},
     /** The guided player shows its own rest screen; the global banner would repeat it. */
     showRestBanner: Boolean = true,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -289,6 +339,7 @@ fun TrainingScaffold(
         },
         floatingActionButton = floatingActionButton,
         snackbarHost = snackbarHost,
+        bottomBar = bottomBar,
         content = content,
     )
 }

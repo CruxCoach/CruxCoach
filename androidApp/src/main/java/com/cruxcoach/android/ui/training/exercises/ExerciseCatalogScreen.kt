@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
@@ -172,7 +173,11 @@ fun ExerciseCatalogScreen(
     onExercisePicked: () -> Unit,
     onCreateCustom: () -> Unit,
     viewModel: ExerciseCatalogViewModel = hiltViewModel(),
+    tabBar: @Composable () -> Unit = {},
+    onTrainingStarted: () -> Unit = {},
+    onCreateRoutine: (from: String) -> Unit = {},
 ) {
+    var addSlug by remember { mutableStateOf<String?>(null) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val language = catalogLanguage()
     val snackbar = remember { SnackbarHostState() }
@@ -194,6 +199,7 @@ fun ExerciseCatalogScreen(
     TrainingScaffold(
         title = stringResource(if (pickForWorkout != null) R.string.trx_title_pick else R.string.tr_nav_exercises),
         onBack = onBack,
+        bottomBar = { if (pickForWorkout == null) tabBar() },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (pickForWorkout == null) {
@@ -302,22 +308,40 @@ fun ExerciseCatalogScreen(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(results, key = { it.slug }) { def ->
-                    ExerciseRow(
-                        def = def,
-                        language = language,
-                        advice = InjuryAdvisor.assess(def, state.injuries),
-                        favorite = def.slug in state.favorites,
-                        pickMode = pickForWorkout != null,
-                        onClick = {
-                            if (pickForWorkout != null) viewModel.pick(pickForWorkout, def.slug) else onOpenExercise(def.slug)
-                        },
-                        onOpenDetail = { onOpenExercise(def.slug) },
-                        onToggleFavorite = { viewModel.toggleFavorite(def.slug) },
-                    )
+                // Favourites first: the exercises the athlete actually uses are one tap away.
+                val showSections = state.query.isBlank() && !state.favoritesOnly && results.any { it.slug in state.favorites }
+                val favs = if (showSections) results.filter { it.slug in state.favorites } else emptyList()
+                val rest = if (showSections) results.filterNot { it.slug in state.favorites } else results
+                @Composable
+                fun row(def: ExerciseDefinition) = ExerciseRow(
+                    def = def,
+                    language = language,
+                    advice = InjuryAdvisor.assess(def, state.injuries),
+                    favorite = def.slug in state.favorites,
+                    pickMode = pickForWorkout != null,
+                    onClick = {
+                        if (pickForWorkout != null) viewModel.pick(pickForWorkout, def.slug) else onOpenExercise(def.slug)
+                    },
+                    onOpenDetail = { onOpenExercise(def.slug) },
+                    onToggleFavorite = { viewModel.toggleFavorite(def.slug) },
+                    onAddToWorkout = if (pickForWorkout == null) ({ addSlug = def.slug }) else null,
+                )
+                if (showSections) {
+                    item(key = "h-fav") { SectionTitle(stringResource(R.string.trx_section_favorites)) }
+                    items(favs, key = { "fav-" + it.slug }) { row(it) }
+                    item(key = "h-all") { SectionTitle(stringResource(R.string.trx_section_all)) }
                 }
+                items(rest, key = { it.slug }) { row(it) }
             }
         }
+    }
+    addSlug?.let { slug ->
+        com.cruxcoach.android.ui.training.workouts.AddToWorkoutSheet(
+            slug = slug,
+            onDismiss = { addSlug = null },
+            onTrainingStarted = { addSlug = null; onTrainingStarted() },
+            onCreateRoutine = { from -> addSlug = null; onCreateRoutine(from) },
+        )
     }
 }
 
@@ -332,6 +356,7 @@ private fun ExerciseRow(
     onClick: () -> Unit,
     onOpenDetail: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onAddToWorkout: (() -> Unit)? = null,
 ) {
     val name = def.name(language)
     Card(
@@ -377,6 +402,11 @@ private fun ExerciseRow(
             if (pickMode) {
                 IconButton(onClick = onOpenDetail, modifier = Modifier.testTag("exercise_info_${def.slug}")) {
                     Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.trx_open_detail, name))
+                }
+            }
+            if (onAddToWorkout != null) {
+                IconButton(onClick = onAddToWorkout, modifier = Modifier.testTag("exercise_add_${def.slug}")) {
+                    Icon(Icons.Default.PlaylistAdd, contentDescription = stringResource(R.string.trx_add_to_workout, name))
                 }
             }
             IconButton(onClick = onToggleFavorite, modifier = Modifier.testTag("exercise_fav_${def.slug}")) {

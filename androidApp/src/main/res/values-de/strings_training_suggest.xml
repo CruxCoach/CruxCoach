@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tagesvorschlag fürs Training (wie bei MCI, für Kletterer). -->
+<resources>
+    <string name="trsg_card_label">Vorschlag für heute</string>
+    <string name="trsg_why_title">Warum dieser Vorschlag?</string>
+    <string name="trsg_planned_today">Heute laut deinem Wochenplan</string>
+    <plurals name="trsg_meta">
+        <item quantity="one">%1$d Übung · ca. %2$d min</item>
+        <item quantity="other">%1$d Übungen · ca. %2$d min</item>
+    </plurals>
+    <string name="trsg_start">Starten</string>
+    <string name="trsg_next">Anderer Vorschlag</string>
+    <string name="trsg_edit">Anpassen</string>
+    <string name="trsg_save">Als Workout speichern</string>
+    <string name="trsg_saved">Als Workout gespeichert – du findest es unter Workouts.</string>
+
+    <string name="trsg_focus_planned">Dein geplantes Workout</string>
+    <string name="trsg_focus_board">Board-Tag mit Aufwärmen</string>
+    <string name="trsg_focus_finger">Fingerkraft</string>
+    <string name="trsg_focus_pull_push">Zug &amp; Druck</string>
+    <string name="trsg_focus_legs_core">Beine &amp; Rumpf</string>
+    <string name="trsg_focus_mobility">Mobility &amp; Erholung</string>
+    <string name="trsg_focus_injury">Training um die Verletzung</string>
+    <string name="trsg_focus_rest">Ruhetag – leichte Mobility</string>
+
+    <string name="trsg_reason_sick">Du fühlst dich krank – höchstens leichte Mobility.</string>
+    <string name="trsg_reason_rest_readiness">Schlaf und Energie sind beide sehr niedrig – heute ist Erholung dran.</string>
+    <string name="trsg_reason_week_plan">Das steht heute in deinem Wochenplan.</string>
+    <string name="trsg_reason_week_plan_board">Wochenplan: Board-Tag – gut aufwärmen, danach ein kurzer Antagonist-Block.</string>
+    <string name="trsg_reason_week_plan_rest">Wochenplan: Ruhetag. Leichte Mobility ist freiwillig.</string>
+    <string name="trsg_reason_plan_filtered">Übungen, die deine Verletzung belasten, wurden aus dem geplanten Workout genommen.</string>
+    <string name="trsg_reason_plan_replaced">Das geplante Training würde deine Verletzung zu stark belasten – hier eine Alternative.</string>
+    <string name="trsg_reason_board_skipped">Das Board passt heute nicht – stattdessen eine Einheit ohne Wand.</string>
+    <string name="trsg_reason_injury">Klettern ist pausiert: nur Übungen, die die Verletzung schonen, einseitige Übungen mit der gesunden Seite.</string>
+    <string name="trsg_reason_fingers_loaded">Die Finger hatten in den letzten 48 Stunden Last – heute Zug, Druck, Beine oder Rumpf.</string>
+    <string name="trsg_reason_fingers_tired">Deine Finger sind müde – heute keine maximale Fingerlast.</string>
+    <string name="trsg_reason_skin">Deine Haut braucht Pause – heute keine Finger-Einheit.</string>
+    <string name="trsg_reason_fingers_rested">Deine Finger hatten zwei Tage Pause – ein guter Tag für Fingerkraft.</string>
+    <string name="trsg_reason_pull_longer_ago">Beine und Rumpf hast du zuletzt trainiert, Zug und Druck ist länger her.</string>
+    <string name="trsg_reason_legs_longer_ago">Zug und Druck hast du zuletzt trainiert, Beine und Rumpf ist länger her.</string>
+    <string name="trsg_reason_low_energy">Wenig Schlaf oder Energie – die Einheit ist heute kürzer.</string>
+    <string name="trsg_reason_goal_strength">Dein Ziel ist Kraft, darum kommen Kraftübungen zuerst.</string>
+    <string name="trsg_reason_favorites">Deine Lieblingsübungen werden bevorzugt.</string>
+    <string name="trsg_reason_shortened">Gekürzt, damit es zu deiner bevorzugten Trainingsdauer passt.</string>
+</resources>
