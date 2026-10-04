@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trainings-Logger, Timer, Zusammenfassung, Routinen und Verlauf (FEAT-066). -->
+<resources>
+    <string name="trw_title_workout">Training</string>
+    <string name="trw_no_open">Gerade läuft kein Training.</string>
+    <string name="trw_empty_workout">Füge deine erste Übung hinzu.</string>
+    <string name="trw_add_exercise">Übung hinzufügen</string>
+    <string name="trw_finish">Training beenden</string>
+    <string name="trw_add_set">+ Satz</string>
+    <string name="trw_menu_more">Weitere Aktionen</string>
+    <string name="trw_easier">Leichter: %1$s</string>
+    <string name="trw_harder">Schwerer: %1$s</string>
+    <string name="trw_add_warmup">Aufwärmsätze hinzufügen</string>
+    <string name="trw_remove_exercise">Übung entfernen</string>
+    <string name="trw_remove_exercise_confirm">%1$s mit allen Sätzen aus diesem Training entfernen?</string>
+    <string name="trw_target_reps">Ziel %1$d</string>
+    <string name="trw_target_seconds">Ziel %1$d s</string>
+    <string name="trw_reps_label">Wdh.</string>
+    <string name="trw_seconds_label">Sek.</string>
+    <string name="trw_rounds_label">Runden</string>
+    <string name="trw_edge_label">Leiste</string>
+    <string name="trw_grip_none">Griff wählen</string>
+    <string name="trw_load_label">Last</string>
+    <string name="trw_load_assisted">%1$s entlastet</string>
+    <string name="trw_load_input">Last in %1$s</string>
+    <string name="trw_load_input_hint">Negativ = Entlastung (z. B. −10 mit Umlenkrolle), 0 = Körpergewicht.</string>
+    <string name="trw_minus">%1$s verringern</string>
+    <string name="trw_plus">%1$s erhöhen</string>
+    <string name="trw_done_set">Satz abhaken</string>
+    <string name="trw_reopen_set">Satz wieder öffnen</string>
+    <string name="trw_rir_label">Wdh. in Reserve</string>
+    <string name="trw_rir_3plus">3+</string>
+    <string name="trw_rir_short">RIR %1$d</string>
+    <string name="trw_rest_start">Pause starten</string>
+    <string name="trw_timer_open">Timer öffnen</string>
+    <string name="trw_interval_format">%1$d s an / %2$d s Pause × %3$d</string>
+    <string name="trw_note">Notiz</string>
+    <string name="trw_note_hint">z. B. welcher Boulder</string>
+    <string name="trw_elapsed_cd">Trainingszeit %1$s</string>
+    <string name="trw_side_short_left">L</string>
+    <string name="trw_side_short_right">R</string>
+    <string name="trw_warmup_short">A</string>
+    <string name="trw_test_short">T</string>
+    <string name="trw_set_cd">Satz %1$d</string>
+    <string name="trw_record_snack">Neuer Bestwert – %1$s: %2$s</string>
+    <string name="trw_record_total">%1$s gesamt</string>
+    <string name="trw_record_e1rm">e1RM %1$s</string>
+    <plurals name="trw_reps">
+        <item quantity="one">%d Wdh.</item>
+        <item quantity="other">%d Wdh.</item>
+    </plurals>
+
+    <string name="trw_finish_title">Training beenden</string>
+    <string name="trw_rpe_label">Wie anstrengend war es? (1–10)</string>
+    <string name="trw_rpe_info_title">Session-RPE</string>
+    <string name="trw_rpe_info_text">1 = sehr locker, 10 = maximal. Zusammen mit der Dauer ergibt das die Trainingslast, aus der CruxCoach zum Beispiel dein Kohlenhydrat-Ziel ableitet. Die Angabe ist freiwillig.</string>
+    <string name="trw_notes_label">Notizen (optional)</string>
+    <string name="trw_finish_confirm">Beenden</string>
+    <string name="trw_discard">Verwerfen</string>
+    <string name="trw_discard_title">Training verwerfen?</string>
+    <string name="trw_discard_text">Alle Sätze dieses Trainings werden gelöscht.</string>
+    <string name="trw_unfinished_hint">Nicht abgehakte Sätze werden nicht gespeichert.</string>
+
+    <string name="trw_phase_prepare">Bereit machen</string>
+    <string name="trw_phase_work">Belastung</string>
+    <string name="trw_phase_rest">Pause</string>
+    <string name="trw_phase_set_rest">Satzpause</string>
+    <string name="trw_phase_done">Geschafft</string>
+    <string name="trw_timer_rep">Wiederholung %1$d/%2$d</string>
+    <string name="trw_timer_set">Satz %1$d/%2$d</string>
+    <string name="trw_timer_pause">Pause</string>
+    <string name="trw_timer_resume">Weiter</string>
+    <string name="trw_timer_skip">Überspringen</string>
+    <string name="trw_timer_close">Timer schließen</string>
+    <string name="trw_voice_go">Los</string>
+    <string name="trw_voice_rest">Pause</string>
+    <string name="trw_voice_done">Satz fertig</string>
+
+    <string name="trw_summary_title">Zusammenfassung</string>
+    <string name="trw_summary_saved">Training gespeichert</string>
+    <string name="trw_summary_sets">Sätze</string>
+    <string name="trw_summary_exercises">Übungen</string>
+    <string name="trw_summary_duration">Dauer</string>
+    <plurals name="trw_minutes">
+        <item quantity="one">%d Min.</item>
+        <item quantity="other">%d Min.</item>
+    </plurals>
+    <string name="trw_records_title">Neue Bestwerte</string>
+    <string name="trw_suggestions_title">Für das nächste Mal</string>
+    <string name="trw_too_easy">Lief gut – Zeit für den nächsten kleinen Schritt.</string>
+    <string name="trw_too_hard">War sehr schwer – nimm etwas raus.</string>
+    <string name="trw_sugg_more_load">Nächstes Mal: %1$s</string>
+    <string name="trw_sugg_less_load">Etwas leichter: %1$s</string>
+    <string name="trw_sugg_try">Probier: %1$s</string>
+    <string name="trw_sugg_easier_variant">Leichtere Variante: %1$s</string>
+    <string name="trw_side_title">Seitenvergleich</string>
+    <string name="trw_side_values">Links %1$d %% · Rechts %2$d %%</string>
+    <string name="trw_side_diff">%1$s ist %2$d %% schwächer</string>
+    <string name="trw_sets_title">Sätze</string>
+    <string name="trw_no_sets">Keine Sätze abgehakt.</string>
+    <string name="trw_save_routine">Als Routine speichern</string>
+    <string name="trw_routine_name">Name der Routine</string>
+    <string name="trw_routine_saved">Routine gespeichert</string>
+
+    <string name="trw_routines_title">Routinen</string>
+    <string name="trw_builtin_section">Startvorlagen</string>
+    <string name="trw_own_section">Deine Routinen</string>
+    <string name="trw_own_empty">Noch keine eigenen Routinen. Speichere ein Training in seiner Zusammenfassung als Routine.</string>
+    <plurals name="trw_exercise_count">
+        <item quantity="one">%d Übung</item>
+        <item quantity="other">%d Übungen</item>
+    </plurals>
+    <string name="trw_est_minutes">ca. %1$d Min.</string>
+    <string name="trw_delete_routine_title">Routine löschen?</string>
+    <string name="trw_delete_routine_text">„%1$s“ wird gelöscht.</string>
+    <string name="trw_open_running">Es läuft schon ein Training. Du kommst direkt dorthin zurück.</string>
+    <string name="trw_go_to_workout">Zum Training</string>
+    <string name="trw_item_reps">%1$d × %2$s</string>
+    <string name="trw_item_seconds">%1$d × %2$d s</string>
+    <string name="trw_item_interval">%1$d × (%2$d/%3$d s × %4$d)</string>
+    <plurals name="trw_sets_count">
+        <item quantity="one">%d Satz</item>
+        <item quantity="other">%d Sätze</item>
+    </plurals>
+
+    <string name="trw_history_title">Trainingsverlauf</string>
+    <string name="trw_history_empty">Noch keine abgeschlossenen Trainings.</string>
+    <string name="trw_workout_default">Training</string>
+    <plurals name="trw_sets_done">
+        <item quantity="one">%d Satz</item>
+        <item quantity="other">%d Sätze</item>
+    </plurals>
+</resources>

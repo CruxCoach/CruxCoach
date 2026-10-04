@@ -13,6 +13,10 @@ class DataExchangeCategoriesTest {
                 Category.BOARD_LOGBOOK,
                 Category.CLIMB_LISTS,
                 Category.OWN_CLIMBS,
+                // 0.2.4: training, body measurements and fueling have real screens.
+                Category.TRAINING,
+                Category.BODY_STATS,
+                Category.FUEL,
             ),
             VISIBLE_CATEGORIES,
         )

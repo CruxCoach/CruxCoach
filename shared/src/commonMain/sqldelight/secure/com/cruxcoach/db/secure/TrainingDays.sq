@@ -1,0 +1,22 @@
+-- Read-only day aggregates over the board logbook for the training views
+-- (FEAT-066): which days were climbing days and how much happened there.
+-- Queries only — no table, so the secure schema version is unchanged.
+
+boardSessionMinutesSince:
+SELECT substr(started_at, 1, 10) AS day,
+       SUM(max(total_duration_seconds - pause_duration_seconds, 0)) AS active_seconds
+FROM board_sessions
+WHERE started_at >= ? AND coalesce(ended_at, '') != ''
+GROUP BY day;
+
+ascentCountsSince:
+SELECT substr(climbed_at, 1, 10) AS day, COUNT(*) AS sends, SUM(coalesce(bid_count, 0)) AS tries
+FROM ascents
+WHERE climbed_at >= ?
+GROUP BY day;
+
+bidCountsSince:
+SELECT substr(climbed_at, 1, 10) AS day, SUM(max(coalesce(bid_count, 0), 1)) AS tries
+FROM bids
+WHERE climbed_at >= ?
+GROUP BY day;

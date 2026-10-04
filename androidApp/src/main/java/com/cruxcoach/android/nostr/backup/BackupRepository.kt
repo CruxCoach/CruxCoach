@@ -90,6 +90,9 @@ class BackupRepository @Inject constructor(
      *  restores right away). They are written now or staged; the logbook
      *  never waits for the catalogue. */
     private val pendingImports: com.cruxcoach.android.data.PendingImports,
+    /** Training, body and fueling live in the separate athlete database;
+     *  Lazy so a backup run opens it only when it actually serialises. */
+    private val athleteRepository: dagger.Lazy<com.cruxcoach.athlete.data.AthleteRepository>? = null,
 ) {
 
     /**
@@ -131,6 +134,7 @@ class BackupRepository @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = Instant.now().toString(),
             nostrPubkey = pubkey,
+            athleteSnapshot = athleteRepository?.let { repo -> { repo.get().snapshot() } },
         )
         val plaintext = json.toByteArray(Charsets.UTF_8)
         val compressed = BackupCompression.compress(plaintext)
@@ -455,6 +459,7 @@ class BackupRepository @Inject constructor(
                     transactionRunner = transactionRunner,
                     expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
                     restoreOwnClimbsNow = false,
+                    athleteRestore = athleteRepository?.let { repo -> { snapshot, withProfile -> repo.get().restore(snapshot, withProfile) } },
                 )
             }
         }

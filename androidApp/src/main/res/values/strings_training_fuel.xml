@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fueling (FEAT-068): opt-in, "fuel, not diet". -->
+<resources>
+    <string name="trf_intro_title">Fueling: energy for training</string>
+    <string name="trf_intro_p1">Enough energy is the base for strength, skin and recovery. CruxCoach helps you eat to match your training – not less.</string>
+    <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0 g per kg).</string>
+    <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
+    <string name="trf_intro_no_budget">No calorie budget, no “too much”, no good or bad foods.</string>
+    <string name="trf_intro_hidden">Calories are hidden by default; you can show them in the settings.</string>
+    <string name="trf_intro_private">Everything stays encrypted on your device.</string>
+    <string name="trf_intro_enable">Turn on fueling</string>
+    <string name="trf_intro_later">Not now</string>
+
+    <string name="trf_today">Today</string>
+    <string name="trf_prev_day">Previous day</string>
+    <string name="trf_next_day">Next day</string>
+    <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates and water.</string>
+    <string name="trf_protein">Protein</string>
+    <string name="trf_protein_info">For climbers 1.4–2.0 g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d g. You can change the target per kg in the settings.</string>
+    <string name="trf_carbs">Carbohydrates – matched to training</string>
+    <string name="trf_carbs_info_title">Why more on training days?</string>
+    <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
+    <string name="trf_carbs_per_kg">%1$s g/kg</string>
+    <string name="trf_water">Water</string>
+    <string name="trf_water_250">+250 ml</string>
+    <string name="trf_water_500">+500 ml</string>
+    <string name="trf_water_entry_desc">%1$d ml, tap to remove</string>
+    <string name="trf_kcal_total">Energy: %1$d kcal</string>
+    <string name="trf_progress_g">%1$d / %2$d g</string>
+    <string name="trf_progress_ml">%1$d / %2$d ml</string>
+    <string name="trf_quick_add">Quick entry</string>
+    <string name="trf_my_foods">My foods</string>
+    <string name="trf_copy_previous">Same as yesterday</string>
+    <string name="trf_copy_confirm_title">Copy the previous day\'s entries?</string>
+    <plurals name="trf_copy_confirm_text">
+        <item quantity="one">%d entry will be copied.</item>
+        <item quantity="other">%d entries will be copied.</item>
+    </plurals>
+    <string name="trf_copy_confirm">Copy</string>
+    <string name="trf_empty_day">Nothing logged yet. A rough entry is enough – you don\'t have to count precisely.</string>
+    <string name="trf_entry_macros">P %1$s · C %2$s · F %3$s</string>
+    <string name="trf_entry_portions">%1$s × portion</string>
+    <string name="trf_entry_grams">%1$s g</string>
+    <string name="trf_entry_menu">Options for %1$s</string>
+    <string name="trf_deleted">Entry deleted</string>
+    <string name="trf_water_removed">Water removed</string>
+    <string name="trf_undo">Undo</string>
+
+    <string name="trf_qa_title">Quick entry</string>
+    <string name="trf_qa_name">What did you eat?</string>
+    <string name="trf_qa_default_name">Meal</string>
+    <string name="trf_qa_meal">Meal</string>
+    <string name="trf_qa_protein">Protein (g)</string>
+    <string name="trf_qa_carbs">Carbohydrates (g)</string>
+    <string name="trf_qa_fat">Fat (g)</string>
+    <string name="trf_qa_kcal">Energy (kcal)</string>
+    <string name="trf_qa_optional">All values are optional – estimating is perfectly fine.</string>
+    <string name="trf_qa_remember">Also save as a food</string>
+
+    <string name="trf_foods_search">Search</string>
+    <string name="trf_foods_empty">No saved foods yet. Create one or save a quick entry.</string>
+    <string name="trf_foods_new">New food</string>
+    <string name="trf_food_per_portion">per portion</string>
+    <string name="trf_food_per_100">per 100 g</string>
+    <string name="trf_food_favorite">Mark as favourite</string>
+    <string name="trf_food_unfavorite">Remove from favourites</string>
+    <string name="trf_food_delete">Delete food</string>
+
+    <string name="trf_amount_title">How much?</string>
+    <string name="trf_amount_portions">Portions</string>
+    <string name="trf_amount_grams">Grams</string>
+    <string name="trf_amount_add">Log</string>
+    <string name="trf_amount_serving">1 portion = %1$s g</string>
+
+    <string name="trf_create_title">New food</string>
+    <string name="trf_create_name">Name</string>
+    <string name="trf_create_brand">Brand (optional)</string>
+    <string name="trf_create_per100">Nutrition per 100 g (optional)</string>
+    <string name="trf_create_serving_g">Portion size in g (optional)</string>
+    <string name="trf_create_serving_label">Portion name (optional, e.g. bar)</string>
+
+    <string name="trf_reds_title">Enough energy?</string>
+    <string name="trf_reds_low_carbs">On several training days your carbohydrates were clearly below what your training needs.</string>
+    <string name="trf_reds_other">Your history shows something that can point to too little energy.</string>
+    <string name="trf_reds_info">Too little energy over a longer time (RED-S) can affect performance, bones, hormones and mood. CruxCoach does not diagnose anything and logging is never a duty. If you often feel tired, are often ill, your period becomes irregular or performance stalls, talk to a doctor or a sports nutrition professional.</string>
+</resources>

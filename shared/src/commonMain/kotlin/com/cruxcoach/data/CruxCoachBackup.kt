@@ -1,5 +1,6 @@
 package com.cruxcoach.data
 
+import com.cruxcoach.athlete.data.AthleteSnapshot
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.domain.board.QuantumBoardModel
 import com.cruxcoach.domain.model.*
@@ -29,6 +30,8 @@ object CruxCoachBackup {
     // ── Input validation guards (backup is user-supplied input) ─────
 
     private const val MAX_COLLECTION_SIZE = 50_000
+    /** Logged sets grow fastest (≈ 30 per training); room for decades of them. */
+    private const val MAX_SET_COLLECTION_SIZE = 1_000_000
     private const val MAX_COMMENT_LEN = 2_000
     private const val MAX_NOTES_LEN = 4_000
     private const val MAX_NAME_LEN = 200
@@ -378,7 +381,57 @@ object CruxCoachBackup {
             requireLen("climbNote.updatedAt", n.updatedAt, MAX_DATE_LEN)
         }
 
+        athlete?.let { validateAthlete(it) }
+
         return this
+    }
+
+    /** Athlete payload: bounded sizes, bounded strings, finite numbers. */
+    private fun validateAthlete(a: AthleteSnapshot) {
+        requireSize("athlete.workouts", a.workouts.size)
+        require(a.sets.size <= MAX_SET_COLLECTION_SIZE) { "invalid backup: athlete.sets too large (${a.sets.size})" }
+        requireSize("athlete.routines", a.routines.size)
+        requireSize("athlete.customExercises", a.customExercises.size)
+        requireSize("athlete.favorites", a.favorites.size)
+        requireSize("athlete.measurements", a.measurements.size)
+        requireSize("athlete.foodItems", a.foodItems.size)
+        require(a.foodLog.size <= MAX_SET_COLLECTION_SIZE) { "invalid backup: athlete.foodLog too large (${a.foodLog.size})" }
+        requireSize("athlete.hydration", a.hydration.size)
+        requireSize("athlete.checkins", a.checkins.size)
+        requireSize("athlete.injuries", a.injuries.size)
+        requireSize("athlete.pauses", a.pauses.size)
+        for (w in a.workouts) {
+            requireLen("workout.id", w.id, MAX_EXTERNAL_ID_LEN); requireLen("workout.day", w.day, MAX_DATE_LEN)
+            requireLen("workout.title", w.title, MAX_NAME_LEN); requireLen("workout.notes", w.notes, MAX_NOTES_LEN)
+            requireIntRange("workout.sessionRpe", w.sessionRpe, 1..10)
+        }
+        for (x in a.sets) {
+            requireLen("set.id", x.id, MAX_EXTERNAL_ID_LEN); requireLen("set.slug", x.exerciseSlug, MAX_NAME_LEN)
+            requireLen("set.note", x.note, MAX_COMMENT_LEN)
+            listOf(x.targetDurationS, x.targetLoadKg, x.durationS, x.loadKg, x.edgeMm, x.workS, x.restBetweenS, x.bodyweightKg)
+                .forEach { requireFinite("set.value", it) }
+            requireIntRange("set.reps", x.reps, 0..10_000)
+        }
+        for (r in a.routines) { requireLen("routine.name", r.name, MAX_NAME_LEN); requireSize("routine.items", r.items.size) }
+        for (m in a.measurements) {
+            requireLen("measurement.day", m.day, MAX_DATE_LEN); requireLen("measurement.metric", m.metric, MAX_STAT_NAME_LEN)
+            requireLen("measurement.unit", m.unit, MAX_UNIT_LEN); requireFinite("measurement.value", m.value)
+        }
+        for (f in a.foodItems) {
+            requireLen("food.name", f.name, MAX_NAME_LEN); requireLen("food.brand", f.brand, MAX_NAME_LEN)
+            listOf(f.kcalPer100, f.proteinPer100, f.carbsPer100, f.fatPer100, f.servingG).forEach { requireFinite("food.value", it) }
+        }
+        for (e in a.foodLog) {
+            requireLen("foodLog.name", e.name, MAX_NAME_LEN); requireLen("foodLog.day", e.day, MAX_DATE_LEN)
+            listOf(e.amountG, e.portions, e.kcal, e.proteinG, e.carbsG, e.fatG).forEach { requireFinite("foodLog.value", it) }
+        }
+        for (h in a.hydration) requireIntRange("hydration.ml", h.ml, 0..10_000)
+        for (c in a.checkins) { requireLen("checkin.day", c.day, MAX_DATE_LEN); requireLen("checkin.note", c.note, MAX_COMMENT_LEN) }
+        for (i in a.injuries) {
+            requireLen("injury.detail", i.detail, MAX_NAME_LEN); requireLen("injury.note", i.note, MAX_NOTES_LEN)
+            requireIntRange("injury.severity", i.severity, 0..9)
+        }
+        for (pp in a.pauses) requireLen("pause.note", pp.note, MAX_COMMENT_LEN)
     }
 
     // ── Export categories ────────────────────────────────────────
@@ -398,7 +451,13 @@ object CruxCoachBackup {
          *  CLIMB_LISTS: the catalogue can be re-downloaded and the logbook
          *  re-derived, but nothing anywhere can reconstruct what the user
          *  wrote, so it must be selectable — and visible — on its own. */
-        CLIMB_NOTES("Private Climb-Notizen")
+        CLIMB_NOTES("Private Climb-Notizen"),
+        /** Off-board training log, routines, own exercises, check-ins,
+         *  injuries and pauses (athlete database, FEAT-066). Body
+         *  measurements of the athlete database travel with [BODY_STATS]. */
+        TRAINING("Training & Wohlbefinden"),
+        /** Opt-in fueling log (FEAT-068). */
+        FUEL("Fueling"),
     }
 
     // ── Serializable backup envelope ────────────────────────────
@@ -445,6 +504,11 @@ object CruxCoachBackup {
         // file at `require(version in 1..3)` — strictly less compatible for
         // the sake of a field they can safely ignore.
         val climbNotes: List<ClimbNoteExport> = emptyList(),
+        // ── Additive, still version 3 (0.2.4, FEAT-066..068) ───────────
+        // The athlete database (training, body measurements, fueling,
+        // wellbeing). Same reasoning as climbNotes: unknown to older
+        // clients, which ignore it and still restore everything else.
+        val athlete: AthleteSnapshot? = null,
     )
 
     @Serializable
@@ -649,13 +713,16 @@ object CruxCoachBackup {
         val climbLists: Int = 0,
         val ownClimbs: Int = 0,
         val climbNotes: Int = 0,
+        val trainingRows: Int = 0,
+        val athleteBodyRows: Int = 0,
+        val fuelRows: Int = 0,
     ) {
         /** Which categories have data in this backup? */
         fun detectedCategories(): Set<Category> {
             val cats = mutableSetOf<Category>()
             if (hasProfile) cats.add(Category.PROFILE)
             if (assessments > 0) cats.add(Category.ASSESSMENTS)
-            if (bodyStats > 0) cats.add(Category.BODY_STATS)
+            if (bodyStats > 0 || athleteBodyRows > 0) cats.add(Category.BODY_STATS)
             if (workoutLogs > 0) cats.add(Category.WORKOUT_LOGS)
             if (climbLogs > 0) cats.add(Category.CLIMB_LOGS)
             if (trainingPlans > 0) cats.add(Category.TRAINING_PLANS)
@@ -664,13 +731,15 @@ object CruxCoachBackup {
             if (climbLists > 0) cats.add(Category.CLIMB_LISTS)
             if (ownClimbs > 0) cats.add(Category.OWN_CLIMBS)
             if (climbNotes > 0) cats.add(Category.CLIMB_NOTES)
+            if (trainingRows > 0) cats.add(Category.TRAINING)
+            if (fuelRows > 0) cats.add(Category.FUEL)
             return cats
         }
 
         fun summaryLine(category: Category): String = when (category) {
             Category.PROFILE -> "Profil"
             Category.ASSESSMENTS -> "$assessments Assessments"
-            Category.BODY_STATS -> "$bodyStats Körperdaten"
+            Category.BODY_STATS -> "${bodyStats + athleteBodyRows} Körperdaten"
             Category.WORKOUT_LOGS -> "$workoutLogs Workouts"
             Category.CLIMB_LOGS -> "$climbLogs Boulder"
             Category.TRAINING_PLANS -> "$trainingPlans Trainingspläne"
@@ -679,6 +748,8 @@ object CruxCoachBackup {
             Category.CLIMB_LISTS -> "$climbLists Listen"
             Category.OWN_CLIMBS -> "$ownClimbs eigene Climbs"
             Category.CLIMB_NOTES -> "$climbNotes Notizen"
+            Category.TRAINING -> "$trainingRows Trainingseinträge"
+            Category.FUEL -> "$fuelRows Fueling-Einträge"
         }
     }
 
@@ -699,6 +770,9 @@ object CruxCoachBackup {
             climbLists = backup.climbLists.size,
             ownClimbs = backup.boardClimbs.size,
             climbNotes = backup.climbNotes.size,
+            trainingRows = backup.athlete?.let { it.trainingRows + it.wellbeingRows } ?: 0,
+            athleteBodyRows = backup.athlete?.bodyRows ?: 0,
+            fuelRows = backup.athlete?.fuelRows ?: 0,
         )
     }
 
@@ -722,7 +796,10 @@ object CruxCoachBackup {
          *  invariant the codebase otherwise upholds. */
         boardRepository: BoardRepository,
         exportedAt: String,
-        nostrPubkey: String? = null
+        nostrPubkey: String? = null,
+        /** Reads the athlete database (separate encrypted file). Null = not
+         *  available on this caller; the backup then carries no athlete part. */
+        athleteSnapshot: (() -> AthleteSnapshot)? = null,
     ): String {
         val profile = if (Category.PROFILE in categories) userRepository.getActiveProfile() else null
         val userId = profile?.id ?: (userRepository.getActiveProfile()?.id ?: 0L)
@@ -904,9 +981,19 @@ object CruxCoachBackup {
             boardBids = bids, boardSessions = boardSessions, climbLists = climbLists,
             boardClimbs = ownClimbs, boardClimbStats = ownClimbStats,
             climbNotes = climbNotes,
+            athlete = athleteSnapshot?.let { read -> selectAthlete(read(), categories) },
         )
 
         return json.encodeToString(backup)
+    }
+
+    /** The parts of the athlete database the selected categories cover; null if none. */
+    private fun selectAthlete(full: AthleteSnapshot, categories: Set<Category>): AthleteSnapshot? {
+        var out = AthleteSnapshot()
+        if (Category.TRAINING in categories) out += full.onlyTraining()
+        if (Category.BODY_STATS in categories) out += full.onlyBody()
+        if (Category.FUEL in categories) out += full.onlyFuel()
+        return out.takeUnless { it.isEmpty }
     }
 
     // ── Import ──────────────────────────────────────────────────
@@ -936,6 +1023,8 @@ object CruxCoachBackup {
          *  catalogue import: the caller stages them ([ownClimbsPayload]) and
          *  applies them later with [restoreOwnClimbs]. */
         val pendingOwnClimbs: Int = 0,
+        /** Rows merged into the athlete database (training, body, fueling). */
+        val athleteRows: Int = 0,
     )
 
     fun import(
@@ -977,6 +1066,10 @@ object CruxCoachBackup {
          *  (secure DB) is written now, own climbs are only counted in
          *  [ImportResult.pendingOwnClimbs] for the caller to stage. */
         restoreOwnClimbsNow: Boolean = true,
+        /** Merges an athlete snapshot into the athlete database; the Boolean
+         *  says whether the athlete profile/settings may be overwritten.
+         *  Null = this caller cannot write the athlete database. */
+        athleteRestore: ((AthleteSnapshot, Boolean) -> Int)? = null,
     ): ImportResult {
         require(adoptLocalDraftsForPubkey == null || HEX64_REGEX.matches(adoptLocalDraftsForPubkey)) {
             "invalid import: adoptLocalDraftsForPubkey"
@@ -1343,16 +1436,24 @@ object CruxCoachBackup {
             result.copy(skippedDuplicates = skipped)
         }
 
-        // 11. Own climbs + per-angle stats — see [restoreOwnClimbRows].
-        if (Category.OWN_CLIMBS !in selectedCategories) return secureResult
+        // 11. Athlete database (separate file, own transaction). A merge by
+        // id, so a re-run changes nothing. Legacy `bodyStats` rows were
+        // written above; the athlete DB copies them on its next start.
+        val athletePart = backup.athlete?.let { selectAthlete(it, selectedCategories) }
+        val athleteRows = if (athletePart != null && athleteRestore != null)
+            athleteRestore(athletePart, Category.TRAINING in selectedCategories) else 0
+        val withAthlete = secureResult.copy(athleteRows = athleteRows)
+
+        // 12. Own climbs + per-angle stats — see [restoreOwnClimbRows].
+        if (Category.OWN_CLIMBS !in selectedCategories) return withAthlete
         if (!restoreOwnClimbsNow) {
-            return secureResult.copy(pendingOwnClimbs = backup.boardClimbs.size)
+            return withAthlete.copy(pendingOwnClimbs = backup.boardClimbs.size)
         }
         val own = restoreOwnClimbRows(backup, boardRepository, adoptLocalDraftsForPubkey)
-        return secureResult.copy(
+        return withAthlete.copy(
             ownClimbs = own.climbs,
             ownClimbStats = own.stats,
-            skippedDuplicates = secureResult.skippedDuplicates + own.skipped,
+            skippedDuplicates = withAthlete.skippedDuplicates + own.skipped,
         )
     }
 

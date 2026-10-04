@@ -354,7 +354,7 @@ private fun com.cruxcoach.data.CruxCoachBackup.ImportPreview.countLine(category:
     when (category) {
         Category.PROFILE -> stringResource(R.string.import_result_profile)
         Category.ASSESSMENTS -> pluralStringResource(R.plurals.import_result_assessments, assessments, assessments)
-        Category.BODY_STATS -> pluralStringResource(R.plurals.import_result_body_stats, bodyStats, bodyStats)
+        Category.BODY_STATS -> (bodyStats + athleteBodyRows).let { pluralStringResource(R.plurals.import_result_body_stats, it, it) }
         Category.WORKOUT_LOGS -> pluralStringResource(R.plurals.import_result_workouts, workoutLogs, workoutLogs)
         Category.CLIMB_LOGS -> pluralStringResource(R.plurals.import_result_climbs, climbLogs, climbLogs)
         Category.TRAINING_PLANS -> pluralStringResource(R.plurals.import_result_plans, trainingPlans, trainingPlans)
@@ -366,4 +366,6 @@ private fun com.cruxcoach.data.CruxCoachBackup.ImportPreview.countLine(category:
         Category.CLIMB_LISTS -> pluralStringResource(R.plurals.import_result_lists, climbLists, climbLists)
         Category.OWN_CLIMBS -> pluralStringResource(R.plurals.import_result_own_climbs, ownClimbs, ownClimbs)
         Category.CLIMB_NOTES -> pluralStringResource(R.plurals.import_result_notes, climbNotes, climbNotes)
+        Category.TRAINING -> pluralStringResource(R.plurals.import_result_training, trainingRows, trainingRows)
+        Category.FUEL -> pluralStringResource(R.plurals.import_result_fuel, fuelRows, fuelRows)
     }
