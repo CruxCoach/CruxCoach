@@ -52,6 +52,7 @@ class BoardSizeFitFilterTest {
     private val brand = "tension"
     private val layoutId = 10
     private val sizeId = 9
+    private val tallSizeId = 12
 
     // size-9 mounting frame edges (board-local grid units).
     private val frameLeft = -44L
@@ -76,6 +77,13 @@ class BoardSizeFitFilterTest {
         )
         // board_images so the size is a real render target for the layout.
         repo.upsertBoardImage(1L, sizeId.toLong(), layoutId.toLong(), 8L, "s9-8.png")
+        // A taller size of the same layout, the one a top-boundary climb belongs to.
+        repo.upsertProductSize(
+            id = tallSizeId.toLong(), productId = 1L, name = "TB2 tall",
+            edgeLeft = frameLeft, edgeRight = frameRight, edgeBottom = frameBottom, edgeTop = frameTop + 24L,
+            imageFilename = null, boardBrand = brand,
+        )
+        repo.upsertBoardImage(2L, tallSizeId.toLong(), layoutId.toLong(), 8L, "tall-8.png")
 
         // Strictly inside the frame in every direction.
         climb("c-inside", edgeLeft = -40L, edgeRight = 40L, edgeBottom = 4L, edgeTop = 116L)
@@ -158,4 +166,17 @@ class BoardSizeFitFilterTest {
             "a boundary climb must not resurface via name search under strict fit",
         )
     }
+
+    @Test
+    fun theDetailRenderUsesTheSameStrictFit_soBoundaryHoldsAreNeverClipped() {
+        assertTrue(repo.canRenderClimbOnSize("c-inside", sizeId, brand))
+        assertTrue(repo.canRenderClimbOnSize("c-community", sizeId, brand))
+        assertTrue(
+            !repo.canRenderClimbOnSize("c-top-boundary", sizeId, brand),
+            "a hold on the frame edge is only mounted on a larger size: rendering it here clips it",
+        )
+        assertEquals(sizeId, repo.getProductSizeForClimbRender("c-inside", brand), "tightest strict fit")
+        assertEquals(tallSizeId, repo.getProductSizeForClimbRender("c-top-boundary", brand))
+    }
 }
+

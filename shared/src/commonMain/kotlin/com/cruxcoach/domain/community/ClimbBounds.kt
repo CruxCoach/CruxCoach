@@ -9,13 +9,14 @@ package com.cruxcoach.domain.community
  *
  * Coordinate space matches `placements.x` / `placements.y` (the same
  * integer grid that `product_sizes.edge_*` defines as physical board
- * extents). A climb fits a board size iff:
- *   product_sizes.edge_left  <= climb.edge_left  AND
- *   product_sizes.edge_right >= climb.edge_right AND
- *   product_sizes.edge_bottom<= climb.edge_bottom AND
- *   product_sizes.edge_top   >= climb.edge_top
+ * extents). A climb fits a board size iff (strictly — the frame edges sit
+ * one grid unit beyond the outermost mounted holes):
+ *   product_sizes.edge_left  < climb.edge_left  AND
+ *   product_sizes.edge_right > climb.edge_right AND
+ *   product_sizes.edge_bottom< climb.edge_bottom AND
+ *   product_sizes.edge_top   > climb.edge_top
  *
- * (Browse code does the comparison; this type is just data.)
+ * (Browse and render code do the comparison; this type is just data.)
  */
 data class ClimbBounds(
     val left: Int,
