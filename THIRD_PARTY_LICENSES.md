@@ -29,6 +29,20 @@ or APK.
 
 Used to decompress board manifests downloaded from Blossom relays.
 
+### llama.cpp / ggml (b11396) — The ggml authors
+
+- **Location:** not stored in the repository. CMake fetches the pinned release
+  archive (SHA-256 `fce45a07…6c1f72`) at build time, see
+  [`androidApp/src/main/cpp/vision/CMakeLists.txt`](androidApp/src/main/cpp/vision/CMakeLists.txt),
+  and links it statically into `libcruxcoach-vision.so`.
+- **Upstream:** https://github.com/ggml-org/llama.cpp
+- **License:** MIT. Included third-party code: stb_image (public domain),
+  miniaudio (public domain or MIT-0), xxHash (BSD-2-Clause), SHA-1 and
+  SHA-256 (public domain), subprocess.h (Unlicense), rotate-bits (MIT).
+
+Runs the on-device food photo model (FEAT-069) in the app's `:vision`
+process.
+
 ### MoonBoard hold-set cell map — BoardSesh
 
 - **Location:** [`MoonBoardHoldSets.kt`](shared/src/commonMain/kotlin/com/cruxcoach/domain/board/MoonBoardHoldSets.kt)
@@ -104,6 +118,23 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 ---
 
 ## Bundled Datasets
+
+### BLS 4.0 — Max Rubner-Institut
+
+- **Used in:** food photo recognition and food search (FEAT-069),
+  [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/bls_4_0_macros.tsv`](androidApp/src/main/assets/fuel/bls_4_0_macros.tsv)
+- **Source:** Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS),
+  Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe.
+  DOI: [10.25826/Data20251217-134202-0](https://doi.org/10.25826/Data20251217-134202-0),
+  download at https://www.blsdb.de
+- **License:** CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);
+  attribution is shown in the review screen and the licence list.
+- **Modifications:** only energy (kcal), protein, fat and available
+  carbohydrate per 100 g of the 7,140 foods; traces and values below the
+  detection limit are stored as zero; source and reference columns dropped.
+  [`scripts/build_bls_asset.py`](scripts/build_bls_asset.py) rebuilds the
+  file from the official archive (its SHA-256 is recorded in the file).
 
 ### dontkillmyapp.com — OEM background-killer taxonomy
 
@@ -184,6 +215,19 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 - **Takedown:** any rights holder may request removal at any time via the
   contacts in [`SECURITY.md`](SECURITY.md); a board can be dropped from the
   bundle without affecting its catalogue download.
+
+---
+
+## Downloaded on Request (not in the APK)
+
+### Qwen3.5 2B / 4B vision-language models — Qwen Team, Alibaba Cloud
+
+- **Used in:** food photo recognition (FEAT-069), only after the user starts
+  the download in the fueling screen.
+- **Files:** 4-bit GGUF and F16 vision projector converted by Unsloth,
+  pinned to exact Hugging Face revisions and SHA-256 in
+  [`VisionModels.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/VisionModels.kt).
+- **License:** Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
 
 ---
 

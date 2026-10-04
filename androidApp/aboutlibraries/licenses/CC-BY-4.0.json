@@ -1,0 +1,7 @@
+{
+  "hash": "CC-BY-4.0",
+  "name": "Creative Commons Attribution 4.0",
+  "url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+  "spdxId": "CC-BY-4.0",
+  "content": "The nutrient values come from: Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe. DOI: 10.25826/Data20251217-134202-0, licensed under the Creative Commons Attribution 4.0 International licence (https://creativecommons.org/licenses/by/4.0/). CruxCoach changed the data: it keeps only energy, protein, fat and available carbohydrate per 100 g, treats values below the detection limit and traces as zero, and does not include the source and reference columns."
+}
