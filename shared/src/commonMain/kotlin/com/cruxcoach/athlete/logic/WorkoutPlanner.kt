@@ -1,0 +1,155 @@
+package com.cruxcoach.athlete.logic
+
+import com.cruxcoach.athlete.catalog.ExerciseCatalog
+import com.cruxcoach.athlete.catalog.ExerciseDefinition
+import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.model.ExerciseSet
+import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.RoutineItem
+import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.Side
+import com.cruxcoach.athlete.model.SideMode
+
+/**
+ * Turns a routine item (or a bare exercise) into planned set rows: the
+ * prescription goes into the target columns, the athlete's last values into
+ * the actual columns as ghost values, so ticking a set off is one tap.
+ *
+ * One-sided exercises get one row per side; an open one-sided limb injury
+ * drops the injured side (and the item's own side restriction is honoured).
+ */
+object WorkoutPlanner {
+
+    data class PlannedBlock(val definition: ExerciseDefinition, val sets: List<ExerciseSet>, val skippedForInjury: Boolean)
+
+    fun itemFor(def: ExerciseDefinition): RoutineItem = RoutineItem(
+        slug = def.slug,
+        sets = def.defaults.sets ?: 3,
+        repsMin = def.defaults.repsMin,
+        repsMax = def.defaults.repsMax,
+        durationS = def.defaults.durationS,
+        restS = def.defaults.restS,
+        edgeMm = def.defaults.edgeMm,
+        workS = def.defaults.workS,
+        restBetweenS = def.defaults.restBetweenS,
+        repsPerSet = def.defaults.repsPerSet ?: def.defaults.rounds,
+    )
+
+    fun plan(
+        workoutId: String,
+        blockIndex: Int,
+        item: RoutineItem,
+        catalog: ExerciseCatalog,
+        history: List<ExerciseSet>,
+        injuries: List<Injury>,
+        bodyweightKg: Double?,
+        newId: () -> String,
+    ): PlannedBlock {
+        val def = catalog.fallbackFor(item.slug)
+        val advice = InjuryAdvisor.assess(def, injuries)
+        val sides: List<Side?> = when {
+            !def.unilateral -> listOf(null)
+            advice.verdict == InjuryVerdict.ONE_SIDE_ONLY -> listOf(advice.allowedSide)
+            item.sides == SideMode.LEFT_ONLY -> listOf(Side.LEFT)
+            item.sides == SideMode.RIGHT_ONLY -> listOf(Side.RIGHT)
+            else -> listOf(Side.LEFT, Side.RIGHT)
+        }
+        val ghosts = GhostValues.lastSession(history)
+        val setType = when {
+            item.test -> SetType.TEST
+            item.warmup -> SetType.WARMUP
+            else -> SetType.WORK
+        }
+        val targetReps = item.repsMax ?: item.repsMin
+        val rows = (0 until item.sets.coerceIn(1, 20)).flatMap { setIndex ->
+            sides.map { side ->
+                val ghost = GhostValues.forSet(ghosts, setIndex, side)
+                ExerciseSet(
+                    id = newId(),
+                    workoutId = workoutId,
+                    exerciseSlug = def.slug,
+                    blockIndex = blockIndex,
+                    setIndex = setIndex,
+                    setType = setType,
+                    side = side,
+                    targetReps = targetReps.takeIf { def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS },
+                    targetDurationS = item.durationS?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
+                    targetLoadKg = item.loadKg,
+                    reps = when (def.kind) {
+                        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> ghost?.reps ?: targetReps
+                        ExerciseKind.CLIMB -> ghost?.reps ?: item.repsPerSet
+                        else -> null
+                    },
+                    durationS = when (def.kind) {
+                        ExerciseKind.TIME, ExerciseKind.HANG -> ghost?.durationS ?: item.durationS?.toDouble()
+                        else -> null
+                    },
+                    loadKg = if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL)
+                        ghost?.loadKg ?: item.loadKg else null,
+                    edgeMm = (ghost?.edgeMm ?: item.edgeMm?.toDouble())
+                        .takeIf { def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL },
+                    grip = ghost?.grip ?: item.grip,
+                    workS = item.workS?.toDouble().takeIf { def.kind == ExerciseKind.INTERVAL },
+                    restBetweenS = item.restBetweenS?.toDouble().takeIf { def.kind == ExerciseKind.INTERVAL },
+                    repsPerSet = item.repsPerSet.takeIf { def.kind == ExerciseKind.INTERVAL },
+                    restS = item.restS,
+                    bodyweightKg = bodyweightKg,
+                )
+            }
+        }
+        return PlannedBlock(def, if (advice.verdict == InjuryVerdict.AVOID) emptyList() else rows,
+            skippedForInjury = advice.verdict == InjuryVerdict.AVOID)
+    }
+
+    /** A further set copying the last one of the block (the "+ Satz" button). */
+    fun extraSet(block: List<ExerciseSet>, newId: () -> String): List<ExerciseSet> {
+        val last = block.maxByOrNull { it.setIndex } ?: return emptyList()
+        val sides = block.filter { it.setIndex == last.setIndex }.map { it.side }
+        return sides.map { side ->
+            val template = block.last { it.setIndex == last.setIndex && it.side == side }
+            template.copy(id = newId(), setIndex = last.setIndex + 1, completedAt = null, rir = null, note = null)
+        }
+    }
+}
+
+/** End-of-training summary (MCI's reward screen, without confetti). */
+data class WorkoutSummary(
+    val completedSets: Int,
+    val exercises: Int,
+    val durationMinutes: Int?,
+    val records: List<Pair<String, PersonalRecord>>,
+    val suggestions: List<Pair<String, ProgressionSuggestion>>,
+    /** Hold time per side for one-sided finger work, to spot imbalances. */
+    val sideLoad: Map<Side, Double>,
+)
+
+object WorkoutSummarizer {
+
+    fun summarize(
+        sets: List<ExerciseSet>,
+        durationMinutes: Int?,
+        catalog: ExerciseCatalog,
+        historyBefore: (String) -> List<ExerciseSet>,
+        smallestIncrementKg: Double,
+    ): WorkoutSummary {
+        val done = sets.filter { it.isCompleted }
+        val bySlug = done.groupBy { it.exerciseSlug }
+        val records = mutableListOf<Pair<String, PersonalRecord>>()
+        val suggestions = mutableListOf<Pair<String, ProgressionSuggestion>>()
+        bySlug.forEach { (slug, slugSets) ->
+            val def = catalog.fallbackFor(slug)
+            val earlier = historyBefore(slug).filter { h -> slugSets.none { it.id == h.id } }
+            slugSets.mapNotNull { PersonalRecords.detect(def, it, earlier) }
+                .maxByOrNull { it.value - it.previous }
+                ?.let { records += slug to it }
+            ProgressionAdvisor.evaluate(def, slugSets, smallestIncrementKg)
+                ?.takeIf { it.verdict != ProgressionVerdict.ON_TRACK }
+                ?.let { suggestions += slug to it }
+        }
+        val sideLoad = done.filter { it.side != null && catalog.fallbackFor(it.exerciseSlug).kind == ExerciseKind.HANG }
+            .groupBy { it.side!! }
+            .mapValues { (_, list) -> list.sumOf { (it.durationS ?: 0.0) * (it.loadKg ?: 1.0).coerceAtLeast(1.0) } }
+        return WorkoutSummary(done.size, bySlug.size, durationMinutes, records, suggestions, sideLoad)
+    }
+}

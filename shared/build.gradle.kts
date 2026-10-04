@@ -70,5 +70,12 @@ sqldelight {
             packageName.set("com.cruxcoach.db.secure")
             srcDirs.setFrom("src/commonMain/sqldelight/secure")
         }
+        // Training, body and fueling data (FEAT-066..068). Its own encrypted
+        // file and schema line, so it never competes with SecureDatabase
+        // migration numbers and an older app simply ignores the file.
+        create("AthleteDatabase") {
+            packageName.set("com.cruxcoach.db.athlete")
+            srcDirs.setFrom("src/commonMain/sqldelight/athlete")
+        }
     }
 }

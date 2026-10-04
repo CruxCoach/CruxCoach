@@ -1,0 +1,56 @@
+-- Body tracking (FEAT-067). One value per metric and day; values are stored in
+-- canonical metric units (kg, cm, %, mm) and converted only for display.
+
+CREATE TABLE body_measurement (
+    day TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    value REAL NOT NULL,
+    unit TEXT NOT NULL,
+    measured_at INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    PRIMARY KEY (day, metric)
+);
+
+CREATE INDEX body_measurement_metric ON body_measurement(metric, day);
+
+CREATE TABLE athlete_setting (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+upsertMeasurement:
+INSERT OR REPLACE INTO body_measurement(day, metric, value, unit, measured_at, source) VALUES (?, ?, ?, ?, ?, ?);
+
+insertMeasurementIfAbsent:
+INSERT OR IGNORE INTO body_measurement(day, metric, value, unit, measured_at, source) VALUES (?, ?, ?, ?, ?, ?);
+
+deleteMeasurement:
+DELETE FROM body_measurement WHERE day = ? AND metric = ?;
+
+getSeries:
+SELECT * FROM body_measurement WHERE metric = ? ORDER BY day;
+
+getSeriesSince:
+SELECT * FROM body_measurement WHERE metric = ? AND day >= ? ORDER BY day;
+
+getLatest:
+SELECT * FROM body_measurement WHERE metric = ? ORDER BY day DESC LIMIT 1;
+
+getRecentEntries:
+SELECT * FROM body_measurement ORDER BY day DESC, metric LIMIT ?;
+
+getAllMeasurements:
+SELECT * FROM body_measurement ORDER BY day, metric;
+
+countMeasurements:
+SELECT COUNT(*) FROM body_measurement;
+
+putSetting:
+INSERT OR REPLACE INTO athlete_setting(key, value, updated_at) VALUES (?, ?, ?);
+
+getSetting:
+SELECT value FROM athlete_setting WHERE key = ?;
+
+getAllSettings:
+SELECT * FROM athlete_setting;
