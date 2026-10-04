@@ -4,6 +4,50 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Training beyond the board (FEAT-066). A new "Today" hub and an "Exercises"
+  library are in the main menu. The library has 199 exercises written for
+  climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
+  mobility, warm-up, power, endurance and technique – in German and English,
+  with "why it matters", steps, cues, typical mistakes, progression chains
+  ("easier / harder"), load areas and an equipment filter ("what do you have?").
+  Own exercises can be added.
+- A training logger: start from nine starter routines (board warm-up, finger
+  basics, antagonist 15 min, legs, core, mobility, a baseline test and an
+  injury routine) or an empty training. Every set is prefilled with last
+  time's values, one tap logs it, the rest timer starts by itself (the same
+  timer as the board player), and a full-screen hang/repeater timer counts
+  7:3 intervals with sound, vibration and optional voice. One-sided exercises
+  are logged per side; hangs show the load as % of body weight. Personal bests
+  are spotted calmly, a warm-up ramp can be inserted before heavy sets, and the
+  summary suggests the next step ("+1 kg", "try the harder variant").
+- Injury mode: note an injury with region, side and pain, and exercises that
+  load it are hidden or marked, wall climbing can be paused, and one-sided work
+  stays available for the healthy side – e.g. one-arm pick-ups on the right
+  hand plus bar pull-ups while a left finger heals.
+- Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
+  makes the day gentler and names the deciding reason; illness, injury and
+  holiday pauses; a weekly consistency streak in which rest days never count
+  against you; a weekly review with bests, load per structure and trends.
+- Body tracking (FEAT-067): back-dated entries, one value per day, a smoothed
+  trend weight instead of noisy daily numbers, circumferences, ape index,
+  strength-to-weight progress, and a "hide numbers" mode. Body stats from older
+  versions are taken over automatically.
+- Fueling (FEAT-068), off by default: protein by body weight and carbohydrate
+  targets that follow the training day – board sessions count automatically –
+  plus water, quick entries, own foods, favourites and "same as yesterday". No
+  calorie budget, no red "over" states, no good or bad foods. A RED-S guard
+  watches for low weight, fast loss and very low carbohydrate on training days
+  and then pauses any weight-loss goal and points to professional help.
+- Training, body and fueling data live in a separate encrypted database per
+  account and are included in the cloud backup and the manual export.
+
+### Fixed
+- A board session no longer stays "paused" after a rest timer runs out
+  (M-097, since 0.2.2); the time after the rest is counted as training again.
+
 ## [0.2.3] - 2026-09-26
 
 ### Changed

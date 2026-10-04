@@ -88,6 +88,9 @@ spec file so other branches see the reservation.
 | FEAT-063 | Nostr Background Privacy Control | v0.2.3 | planned | `0.2.3/FEAT-063-nostr-background-privacy-control.md` |
 | FEAT-064 | Quantum multi-layer Nearby banner | backlog | backlog | `backlog/FEAT-064-quantum-nearby-layer-banner.md` |
 | FEAT-065 | Database Process Performance | v0.2.4 | skeleton | `0.2.4/FEAT-065-database-process-performance.md` |
+| FEAT-066 | Off-board training, exercise catalogue v2, injury mode | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-066-training-logger-exercise-catalogue.md` |
+| FEAT-067 | Body tracking v2 | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-067-body-tracking-v2.md` |
+| FEAT-068 | Fueling, not dieting | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-068-fueling.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -163,7 +166,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-066** is the next unallocated ID. FEAT-060 and FEAT-061 are reserved in
+**FEAT-069** is the next unallocated ID (FEAT-066–068 allocated 2026-10-04 on `feat/0.2.4-training-body`). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
