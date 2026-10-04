@@ -1,0 +1,7 @@
+{
+  "hash": "qwen-Apache-2.0",
+  "name": "Apache License 2.0 (Qwen3.5)",
+  "url": "https://www.apache.org/licenses/LICENSE-2.0",
+  "spdxId": "Apache-2.0",
+  "content": "Qwen3.5 model weights © Alibaba Cloud (Qwen Team), licensed under the Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). The weights are not distributed with CruxCoach; the app downloads the GGUF conversion published by Unsloth on Hugging Face when the user sets up photo recognition."
+}

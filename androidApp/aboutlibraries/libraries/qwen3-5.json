@@ -1,0 +1,15 @@
+{
+  "uniqueId": "com.qwen:qwen3.5-gguf",
+  "artifactVersion": "3.5",
+  "name": "Qwen3.5 2B / 4B (downloaded on request)",
+  "description": "Vision-language model for food photo recognition. Not part of the app: downloaded only when you set up the feature, as GGUF files converted by Unsloth (huggingface.co/unsloth/Qwen3.5-2B-GGUF, Qwen3.5-4B-GGUF).",
+  "website": "https://huggingface.co/Qwen/Qwen3.5-2B",
+  "developers": [
+    {
+      "name": "Qwen Team, Alibaba Cloud"
+    }
+  ],
+  "licenses": [
+    "qwen-Apache-2.0"
+  ]
+}
