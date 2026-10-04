@@ -1,0 +1,10 @@
+# Output contract for the food photo prompt (FEAT-069). The app parses
+# exactly this shape; keep FoodVisionLogic.parseDetections in step.
+# Whitespace stays allowed: forbidding the model's natural line breaks makes
+# greedy decoding close the list early.
+root  ::= "{" ws "\"items\"" ws ":" ws "[" ws ( item ( ws "," ws item ){0,7} )? ws "]" ws "}"
+item  ::= "{" ws "\"name_de\"" ws ":" ws str ws "," ws "\"name_en\"" ws ":" ws str ws "," ws "\"grams\"" ws ":" ws grams ws "}"
+str   ::= "\"" char{1,48} "\""
+char  ::= [^"\\\x00-\x1F]
+grams ::= [1-9] [0-9]{0,3}
+ws    ::= [ \t\n]{0,24}
