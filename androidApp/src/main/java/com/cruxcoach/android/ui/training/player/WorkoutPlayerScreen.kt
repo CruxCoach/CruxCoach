@@ -92,6 +92,7 @@ fun WorkoutPlayerScreen(
     TrainingScaffold(
         title = title,
         onBack = onBack,
+        showRestBanner = false,
         actions = {
             if (state.workout != null) {
                 IconButton(onClick = onOverview, modifier = Modifier.testTag("player_overview")) {
@@ -187,7 +188,8 @@ private fun SetView(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(categoryLabel(def.category), style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (set.setType != SetType.WORK) {
+            val redundant = set.setType == SetType.WARMUP && def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP
+            if (set.setType != SetType.WORK && !redundant) {
                 AssistChip(onClick = {}, label = { Text(setTypeLabel(set.setType)) }, modifier = Modifier.testTag("player_badge"))
             }
         }
@@ -249,6 +251,11 @@ private fun SetView(
                     tag = "player_load",
                     onMinus = { onUpdate(set.copy(loadKg = (snap(load - step, step)).coerceAtLeast(minLoad))) },
                     onPlus = { onUpdate(set.copy(loadKg = (snap(load + step, step)).coerceAtMost(500.0))) },
+                    edit = StepperEdit(
+                        title = stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units)),
+                        initial = formatNumber(com.cruxcoach.athlete.logic.Units.massToDisplay(load, units), 2),
+                        decimal = true, allowNegative = def.load == LoadMode.BODYWEIGHT_PLUS,
+                    ) { v -> onUpdate(set.copy(loadKg = com.cruxcoach.athlete.logic.Units.massFromDisplay(v, units).coerceIn(minLoad, 500.0))) },
                 )
             }
             when (def.kind) {
@@ -256,14 +263,20 @@ private fun SetView(
                     val reps = set.reps ?: 0
                     PlayerStepper(stringResource(R.string.trw_reps_label), reps.toString(), "player_reps",
                         onMinus = { onUpdate(set.copy(reps = (reps - 1).coerceAtLeast(0))) },
-                        onPlus = { onUpdate(set.copy(reps = (reps + 1).coerceAtMost(999))) })
+                        onPlus = { onUpdate(set.copy(reps = (reps + 1).coerceAtMost(999))) },
+                        edit = StepperEdit(stringResource(R.string.trw_reps_label), reps.toString()) { v ->
+                            onUpdate(set.copy(reps = v.roundToInt().coerceIn(0, 999)))
+                        })
                 }
                 ExerciseKind.TIME, ExerciseKind.HANG -> {
                     val seconds = (set.durationS ?: set.targetDurationS ?: def.defaults.durationS?.toDouble() ?: 10.0).roundToInt()
                     val step = if (seconds >= 30) 5 else 1
                     PlayerStepper(stringResource(R.string.trw_seconds_label), stringResource(R.string.tr_format_seconds, seconds), "player_seconds",
                         onMinus = { onUpdate(set.copy(durationS = (seconds - step).coerceAtLeast(1).toDouble())) },
-                        onPlus = { onUpdate(set.copy(durationS = (seconds + step).coerceAtMost(3600).toDouble())) })
+                        onPlus = { onUpdate(set.copy(durationS = (seconds + step).coerceAtMost(3600).toDouble())) },
+                        edit = StepperEdit(stringResource(R.string.trw_seconds_label), seconds.toString()) { v ->
+                            onUpdate(set.copy(durationS = v.roundToInt().coerceIn(1, 3600).toDouble()))
+                        })
                 }
                 ExerciseKind.CLIMB -> {
                     val rounds = set.reps ?: 0
@@ -337,18 +350,50 @@ private fun SetView(
     }
 }
 
+/** Tap on a stepper value to type it (big jumps like 0 → 30 kg without 30 taps). */
+internal class StepperEdit(
+    val title: String,
+    val initial: String,
+    val decimal: Boolean = false,
+    val allowNegative: Boolean = false,
+    val onValue: (Double) -> Unit,
+)
+
 @Composable
-private fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+private fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit, edit: StepperEdit? = null) {
+    var editing by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         FilledTonalIconButton(onClick = onMinus, modifier = Modifier.size(56.dp).testTag("${tag}_minus")) {
             Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trw_minus, label))
         }
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(min = 120.dp).padding(horizontal = 8.dp).testTag("${tag}_value"))
+            modifier = Modifier.widthIn(min = 120.dp).padding(horizontal = 8.dp)
+                .then(if (edit != null) Modifier.clickable(role = Role.Button, onClickLabel = edit.title) { editing = true } else Modifier)
+                .testTag("${tag}_value"))
         FilledTonalIconButton(onClick = onPlus, modifier = Modifier.size(56.dp).testTag("${tag}_plus")) {
             Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trw_plus, label))
         }
+    }
+    if (editing && edit != null) {
+        var text by remember { mutableStateOf(edit.initial) }
+        val parsed = parseDecimal(text)?.takeIf { edit.allowNegative || it >= 0 }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(edit.title) },
+            text = {
+                OutlinedTextField(value = text, onValueChange = { text = it.take(8) }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = if (edit.decimal) androidx.compose.ui.text.input.KeyboardType.Decimal
+                            else androidx.compose.ui.text.input.KeyboardType.Number),
+                    modifier = Modifier.testTag("${tag}_input"))
+            },
+            confirmButton = {
+                TextButton(onClick = { parsed?.let(edit.onValue); editing = false }, enabled = parsed != null,
+                    modifier = Modifier.testTag("${tag}_input_ok")) { Text(stringResource(R.string.tr_action_save)) }
+            },
+            dismissButton = { TextButton(onClick = { editing = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 }
 
@@ -498,7 +543,8 @@ internal fun loadText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSyst
             load < 0 -> stringResource(R.string.trw_load_assisted, formatMass(-load, units))
             else -> formatMass(load, units, signed = true)
         }
-        LoadMode.EXTERNAL -> load?.let { formatMass(it, units) }
+        // Always a line for loaded work, so the layout never jumps under the finger.
+        LoadMode.EXTERNAL -> formatMass(load ?: 0.0, units)
         else -> null
     }
 }
@@ -508,7 +554,7 @@ internal fun loadText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSyst
 internal fun percentText(set: ExerciseSet, def: ExerciseDefinition, bodyweight: Double?): String? {
     if (def.load != LoadMode.BODYWEIGHT_PLUS && def.load != LoadMode.EXTERNAL) return null
     if (def.kind != ExerciseKind.HANG && def.kind != ExerciseKind.INTERVAL && def.kind != ExerciseKind.LOAD_REPS) return null
-    val pct = StrengthMath.percentBodyweight(def.load, set.loadKg, set.bodyweightKg ?: bodyweight) ?: return null
+    val pct = StrengthMath.percentBodyweight(def.load, set.loadKg ?: 0.0, set.bodyweightKg ?: bodyweight) ?: return null
     return stringResource(R.string.tr_format_percent_bw, pct.roundToInt())
 }
 
