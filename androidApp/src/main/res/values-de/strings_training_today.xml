@@ -78,10 +78,6 @@
     <string name="trt_sugg_equipment_title">Was hast du?</string>
     <string name="trt_sugg_equipment_text">Sag CruxCoach, welche Ausrüstung du hast, dann schlägt es nur Machbares vor.</string>
     <string name="trt_sugg_equipment_action">Einrichten</string>
-    <string name="trt_sugg_antagonist_title">Board erledigt – 15 min Antagonist?</string>
-    <string name="trt_sugg_antagonist_text">Schultern, Handgelenke und Fingerstrecker gleichen das Ziehen aus.</string>
-    <string name="trt_sugg_injury_title">Um die Verletzung herum trainieren</string>
-    <string name="trt_sugg_injury_text">Einarmiges Blockheben mit der gesunden Hand, Klimmzüge, Rudern, Schulter und Rumpf – ohne Wand.</string>
     <string name="trt_sugg_test_title">Zeit für einen Leistungstest</string>
     <string name="trt_sugg_test_text">Max Hang, Klimmzüge und Hollow Hold zeigen deinen Fortschritt bei Kraft zu Gewicht.</string>
     <string name="trt_sugg_weight_title">Körpergewicht eintragen</string>

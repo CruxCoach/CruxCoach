@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Training stats (FEAT-066): stats tab, per-exercise statistics, progress card. -->
+<resources>
+    <string name="trs_range_4w">4 weeks</string>
+    <string name="trs_range_12w">12 weeks</string>
+    <string name="trs_range_6m">6 months</string>
+    <string name="trs_range_1y">1 year</string>
+    <string name="trs_kind_e1rm">Est. 1RM</string>
+    <string name="trs_kind_ten_second">10-s max</string>
+    <string name="trs_kind_reps">Max reps</string>
+    <string name="trs_kind_seconds">Longest hold</string>
+    <string name="trs_kind_volume">Volume</string>
+    <plurals name="trs_reps">
+        <item quantity="one">%d rep</item>
+        <item quantity="other">%d reps</item>
+    </plurals>
+    <plurals name="trs_sets">
+        <item quantity="one">%d set</item>
+        <item quantity="other">%d sets</item>
+    </plurals>
+
+    <string name="trs_tile_this_week">This week</string>
+    <string name="trs_tile_training_days">training days / goal</string>
+    <string name="trs_tile_range_days">Training days</string>
+    <string name="trs_tile_records">New bests</string>
+    <string name="trs_empty">No data yet. Board sessions count automatically, logged trainings and body weight appear here as soon as you enter them.</string>
+    <string name="trs_days_per_week">Training days per week</string>
+    <string name="trs_days_chart_cd">Training days per week over %1$d weeks, %2$d days in total.</string>
+    <string name="trs_legend_climbing">Climbing</string>
+    <string name="trs_legend_off_board">Off the wall</string>
+    <string name="trs_minutes_per_week">Minutes per week</string>
+    <string name="trs_minutes_chart_cd">Training minutes per week, %1$d minutes in total.</string>
+    <string name="trs_calendar">Calendar</string>
+    <string name="trs_calendar_cd">Training calendar of the last 16 weeks with %1$d training days.</string>
+    <string name="trs_calendar_hint">One column per week, Monday on top. Darker = harder day.</string>
+    <string name="trs_load_title">Load per structure</string>
+    <string name="trs_load_cd">%1$s: loading days per week, %2$d this week.</string>
+    <string name="trs_open_body">Open body</string>
+    <string name="trs_body_empty">Log your body weight to see the trend here.</string>
+    <string name="trs_weight_cd">Body weight trend in the chosen period.</string>
+    <string name="trs_strength_title">Strength to weight</string>
+    <string name="trs_strength_cd">Strength in percent of body weight over time.</string>
+    <string name="trs_strength_hint">Progress through strength, not through the scale: 10-s max or est. 1RM in % of body weight.</string>
+    <string name="trs_exercises_empty">Exercises you log appear here with their progress.</string>
+    <string name="trs_change_28">%1$s in 4 weeks</string>
+    <string name="trs_no_value">no comparable value yet</string>
+
+    <string name="trs_capacity_meaning">Charted value: %1$s – derived from your logged sets, reps in reserve included.</string>
+    <string name="trs_exercise_empty">No logged sets yet. Log this exercise in a training and its progress appears here.</string>
+    <string name="trs_tile_best">Best</string>
+    <string name="trs_tile_last">Latest</string>
+    <string name="trs_tile_change">4 weeks</string>
+    <string name="trs_tile_sessions">Sessions</string>
+    <string name="trs_tile_percent_bw">% body weight</string>
+    <string name="trs_capacity_chart">%1$s over time</string>
+    <string name="trs_capacity_cd">Progress of %1$s across %2$d sessions.</string>
+    <string name="trs_current_value">Current performance value: %1$s</string>
+    <string name="trs_volume_chart">Volume per session</string>
+    <string name="trs_volume_cd">Volume across %1$d sessions.</string>
+    <string name="trs_volume_hint_load">Load × reps of all work sets.</string>
+    <string name="trs_volume_hint_reps">Reps (or rounds) of all work sets.</string>
+    <string name="trs_volume_hint_time">Seconds held in all work sets.</string>
+    <string name="trs_volume_hint_hang">Seconds × load of all work sets.</string>
+    <string name="trs_bests">Personal bests</string>
+    <string name="trs_best_load">Total load %1$s</string>
+    <string name="trs_best_e1rm">Est. 1RM %1$s (total)</string>
+    <string name="trs_sessions">Sessions</string>
+
+    <string name="trs_progress_title">Progress</string>
+    <string name="trs_progress_empty">No logged sets yet – your progress chart appears after the first training.</string>
+    <string name="trs_open_stats">Open statistics</string>
+</resources>

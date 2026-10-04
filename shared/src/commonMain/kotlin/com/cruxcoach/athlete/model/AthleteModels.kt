@@ -278,6 +278,9 @@ data class PausePeriod(
 
 // ── Profile / settings ───────────────────────────────────────────────
 
+const val PLAN_BOARD = "board"
+const val PLAN_REST = "rest"
+
 @Serializable
 enum class UnitSystem { METRIC, IMPERIAL }
 
@@ -313,6 +316,14 @@ data class AthleteProfile(
     val autoRestTimer: Boolean = true,
     val checkinEnabled: Boolean = true,
     val legacyBodyStatsImported: Boolean = false,
+    /**
+     * Standard week: ISO weekday (1 = Monday … 7 = Sunday) → what is planned:
+     * a routine id ("builtin:<key>" for starter routines), [PLAN_BOARD] for a
+     * board session or [PLAN_REST]. Days without an entry are free.
+     */
+    val weekPlan: Map<Int, String> = emptyMap(),
+    /** Preferred length of a suggested training in minutes. */
+    val sessionMinutes: Int = 45,
     /** Optional weigh-in reminder: ISO weekdays (1 = Monday … 7 = Sunday) at a time of day. */
     val weighReminderEnabled: Boolean = false,
     val weighReminderDays: Set<Int> = setOf(1),

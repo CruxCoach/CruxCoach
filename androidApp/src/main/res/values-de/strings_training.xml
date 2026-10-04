@@ -152,4 +152,10 @@
         <item quantity="other">%d Fueling-Einträge</item>
     </plurals>
     <string name="export_json_only_hint">Training, Körper und Fueling sind nur im JSON-Backup enthalten.</string>
+    <string name="tr_tab_today">Heute</string>
+    <string name="tr_tab_workouts">Workouts</string>
+    <string name="tr_tab_exercises">Übungen</string>
+    <string name="tr_tab_stats">Statistik</string>
+    <string name="tr_tab_body">Körper</string>
+    <string name="tr_nav_training">Training</string>
 </resources>

@@ -36,6 +36,8 @@ import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.ReadinessLevel
 import com.cruxcoach.athlete.logic.ReadinessReason
 import com.cruxcoach.athlete.logic.RedsSignal
+import com.cruxcoach.athlete.logic.SuggestionFocus
+import com.cruxcoach.athlete.logic.SuggestionReason
 import com.cruxcoach.athlete.logic.Units
 import java.time.format.TextStyle
 import java.util.Locale
@@ -57,8 +59,16 @@ fun TodayScreen(
     viewModel: TodayViewModel = hiltViewModel(),
     onOpenPlayer: () -> Unit = onOpenWorkout,
     onOpenBenchmarks: () -> Unit = {},
+    tabBar: @Composable () -> Unit = {},
+    /** Opens the workout editor: an own routine id, or `from` = "ex:<slug>,<slug>" to start a new one. */
+    onOpenEditor: (routineId: String?, from: String?) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val savedText = stringResource(R.string.trsg_saved)
+    LaunchedEffect(state.suggestionSaved) {
+        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); snackbar.showSnackbar(savedText) }
+    }
     LaunchedEffect(state.startedWorkout) {
         if (state.startedWorkout) {
             val guided = state.startedGuided
@@ -69,6 +79,8 @@ fun TodayScreen(
     TrainingScaffold(
         title = stringResource(R.string.tr_nav_today),
         onBack = onBack,
+        bottomBar = tabBar,
+        snackbarHost = { SnackbarHost(snackbar) },
         actions = {
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("today_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
@@ -90,6 +102,17 @@ fun TodayScreen(
                 ReadinessCard(state, onSave = viewModel::saveCheckin, onClear = viewModel::clearCheckin,
                     onEndPause = viewModel::endPause)
             }
+            state.suggestion?.let { suggestion ->
+                item(key = "daily_suggestion") {
+                    DailySuggestionCard(
+                        state = state,
+                        onStart = viewModel::startSuggestion,
+                        onNext = viewModel::nextSuggestion,
+                        onEdit = { onOpenEditor(null, "ex:" + suggestion.routine.items.joinToString(",") { it.slug }) },
+                        onSave = viewModel::saveSuggestion,
+                    )
+                }
+            }
             if (state.injuries.isNotEmpty()) item { InjuryCard(state, onOpenInjuries, onStart = { viewModel.startRoutine(BuiltinRoutines.INJURY_ONE_ARM) }) }
             item {
                 TrainCard(state, onStartEmpty = viewModel::startEmptyWorkout, onOpenRoutines = onOpenRoutines,
@@ -101,8 +124,6 @@ fun TodayScreen(
                         when (s) {
                             TodaySuggestion.CONFIGURE_EQUIPMENT -> onOpenSettings()
                             TodaySuggestion.SET_BENCHMARKS -> onOpenBenchmarks()
-                            TodaySuggestion.ANTAGONIST_AFTER_BOARD -> viewModel.startRoutine(BuiltinRoutines.ANTAGONIST_15)
-                            TodaySuggestion.INJURY_ROUTINE -> viewModel.startRoutine(BuiltinRoutines.INJURY_ONE_ARM)
                             TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
                             TodaySuggestion.LOG_WEIGHT -> onOpenBody()
                         }
@@ -438,8 +459,6 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit) {
     val (title, text, action) = when (s) {
         TodaySuggestion.CONFIGURE_EQUIPMENT -> Triple(R.string.trt_sugg_equipment_title, R.string.trt_sugg_equipment_text, R.string.trt_sugg_equipment_action)
         TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.trt_sugg_benchmarks_action)
-        TodaySuggestion.ANTAGONIST_AFTER_BOARD -> Triple(R.string.trt_sugg_antagonist_title, R.string.trt_sugg_antagonist_text, R.string.tr_action_start)
-        TodaySuggestion.INJURY_ROUTINE -> Triple(R.string.trt_sugg_injury_title, R.string.trt_sugg_injury_text, R.string.tr_action_start)
         TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)
         TodaySuggestion.LOG_WEIGHT -> Triple(R.string.trt_sugg_weight_title, R.string.trt_sugg_weight_text, R.string.trt_sugg_weight_action)
     }
@@ -450,6 +469,117 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit) {
                 Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = onAction) { Text(stringResource(action)) }
+        }
+    }
+}
+
+// ── Daily suggestion (MCI-style, climber version) ───────────────────
+
+@Composable
+private fun suggestionTitle(state: TodayState): String {
+    val s = state.suggestion ?: return ""
+    if (s.focus == SuggestionFocus.PLANNED) {
+        state.plannedName?.let { return it }
+        s.plannedEntry?.takeIf { it.startsWith("builtin:") }
+            ?.let { BuiltinRoutines.byKey(it.removePrefix("builtin:")) }
+            ?.let { return routineName(it) }
+    }
+    return stringResource(when (s.focus) {
+        SuggestionFocus.PLANNED -> R.string.trsg_focus_planned
+        SuggestionFocus.BOARD_DAY -> R.string.trsg_focus_board
+        SuggestionFocus.FINGER_STRENGTH -> R.string.trsg_focus_finger
+        SuggestionFocus.PULL_PUSH -> R.string.trsg_focus_pull_push
+        SuggestionFocus.LEGS_CORE -> R.string.trsg_focus_legs_core
+        SuggestionFocus.MOBILITY_RECOVERY -> R.string.trsg_focus_mobility
+        SuggestionFocus.INJURY_SAFE -> R.string.trsg_focus_injury
+        SuggestionFocus.REST -> R.string.trsg_focus_rest
+    })
+}
+
+@Composable
+private fun suggestionReasonText(reason: SuggestionReason): String = stringResource(when (reason) {
+    SuggestionReason.SICK -> R.string.trsg_reason_sick
+    SuggestionReason.REST_READINESS -> R.string.trsg_reason_rest_readiness
+    SuggestionReason.WEEK_PLAN -> R.string.trsg_reason_week_plan
+    SuggestionReason.WEEK_PLAN_BOARD -> R.string.trsg_reason_week_plan_board
+    SuggestionReason.WEEK_PLAN_REST -> R.string.trsg_reason_week_plan_rest
+    SuggestionReason.PLAN_FILTERED_FOR_INJURY -> R.string.trsg_reason_plan_filtered
+    SuggestionReason.PLAN_REPLACED_FOR_INJURY -> R.string.trsg_reason_plan_replaced
+    SuggestionReason.BOARD_SKIPPED_TODAY -> R.string.trsg_reason_board_skipped
+    SuggestionReason.INJURY_CLIMBING_PAUSED -> R.string.trsg_reason_injury
+    SuggestionReason.FINGERS_LOADED_RECENTLY -> R.string.trsg_reason_fingers_loaded
+    SuggestionReason.FINGERS_TIRED -> R.string.trsg_reason_fingers_tired
+    SuggestionReason.SKIN_LOW -> R.string.trsg_reason_skin
+    SuggestionReason.FINGERS_RESTED -> R.string.trsg_reason_fingers_rested
+    SuggestionReason.PULL_LONGER_AGO -> R.string.trsg_reason_pull_longer_ago
+    SuggestionReason.LEGS_LONGER_AGO -> R.string.trsg_reason_legs_longer_ago
+    SuggestionReason.LOW_ENERGY -> R.string.trsg_reason_low_energy
+    SuggestionReason.GOAL_STRENGTH -> R.string.trsg_reason_goal_strength
+    SuggestionReason.FAVORITES_USED -> R.string.trsg_reason_favorites
+    SuggestionReason.SHORTENED_TO_TIME -> R.string.trsg_reason_shortened
+})
+
+@Composable
+private fun DailySuggestionCard(
+    state: TodayState,
+    onStart: (String) -> Unit,
+    onNext: () -> Unit,
+    onEdit: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    val s = state.suggestion ?: return
+    val language = catalogLanguage()
+    val title = suggestionTitle(state)
+    val reasons = s.reasons.map { suggestionReasonText(it) }
+    val main = s.routine.items.filter { !it.warmup }
+    val names = main.take(5).map { item -> state.catalog.fallbackFor(item.slug).name(language) }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+        modifier = Modifier.fillMaxWidth().testTag("today_suggestion_card"),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trsg_card_label), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trsg_why_title), reasons.joinToString("\n\n"))
+            }
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("today_suggestion_title"))
+            if (s.plannedEntry != null && (s.focus == SuggestionFocus.PLANNED || s.focus == SuggestionFocus.BOARD_DAY)) {
+                Text(stringResource(R.string.trsg_planned_today), style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                pluralStringResource(R.plurals.trsg_meta, s.routine.items.size, s.routine.items.size, s.estimatedMinutes),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
+            )
+            if (names.isNotEmpty()) {
+                Text(names.joinToString(" · ") + if (main.size > names.size) " …" else "",
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+            }
+            reasons.firstOrNull()?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)
+                    .testTag("today_suggestion_reason"))
+            }
+            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
+                    modifier = Modifier.testTag("today_suggestion_start")) {
+                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.trsg_start))
+                }
+                OutlinedButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) {
+                    Text(stringResource(R.string.trsg_next))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onEdit, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
+                    Text(stringResource(R.string.trsg_edit))
+                }
+                TextButton(onClick = { onSave(title) }, enabled = s.routine.items.isNotEmpty(),
+                    modifier = Modifier.testTag("today_suggestion_save")) {
+                    Text(stringResource(R.string.trsg_save))
+                }
+            }
         }
     }
 }

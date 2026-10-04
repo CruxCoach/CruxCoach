@@ -27,8 +27,11 @@ import javax.inject.Inject
 /** One day in the week strip. */
 data class WeekDay(val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean)
 
-/** Gentle nudges on the hub, each with one action. */
-enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, ANTAGONIST_AFTER_BOARD, INJURY_ROUTINE, BASELINE_TEST, LOG_WEIGHT }
+/**
+ * Gentle nudges on the hub, each with one action. What to train today is the
+ * daily suggestion's job ([SessionSuggester]); these only cover setup.
+ */
+enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, BASELINE_TEST, LOG_WEIGHT }
 
 data class TodayState(
     val loading: Boolean = true,
@@ -57,6 +60,13 @@ data class TodayState(
     val startedWorkout: Boolean = false,
     /** The started training should open in the guided player (routines), not the list. */
     val startedGuided: Boolean = false,
+    /** Today's suggested training (MCI-style), null while a training is open. */
+    val suggestion: SessionSuggestion? = null,
+    /** Name of the athlete's own routine when the week plan picked it. */
+    val plannedName: String? = null,
+    val suggestionSaved: Boolean = false,
+    /** For exercise names on the suggestion card. */
+    val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -96,8 +106,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val food: List<FoodLogEntry>, val water: List<HydrationEntry>, val pauses: List<PausePeriod>,
     )
 
+    private var lastInputs: Inputs? = null
+    /** "Another suggestion" counter; resets with the day. */
+    private var variant = 0
+    private var variantDay: LocalDate? = null
+
     private fun refresh(i: Inputs) {
+        lastInputs = i
         val today = service.today()
+        if (variantDay != today) { variant = 0; variantDay = today }
         val activities = service.activities(days = 7 * 26)
         val activity = activities[today.toString()]
         val readiness = ReadinessEvaluator.evaluate(i.checkin, i.injuries)
@@ -128,9 +145,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
         val suggestions = buildList {
             if (!i.profile.equipmentConfigured) add(TodaySuggestion.CONFIGURE_EQUIPMENT)
-            if (i.injuries.any { it.climbingPaused } || readiness.avoidClimbing && i.injuries.isNotEmpty()) add(TodaySuggestion.INJURY_ROUTINE)
-            val boardToday = activity != null && (activity.climbingMinutes > 0 || activity.climbingEfforts > 0)
-            if (boardToday && (activity?.workoutMinutes ?: 0) == 0 && i.injuries.isEmpty()) add(TodaySuggestion.ANTAGONIST_AFTER_BOARD)
             val benchmarks = repo.allBenchmarks()
             if (benchmarks.isEmpty()) add(TodaySuggestion.SET_BENCHMARKS)
             val lastTest = benchmarks.maxOfOrNull { it.measuredAt } ?: 0L
@@ -139,9 +153,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
         }
 
+        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities)
+
         _state.update {
             it.copy(
                 loading = false,
+                suggestion = daily,
+                plannedName = plannedName,
+                catalog = service.catalog,
                 profile = i.profile,
                 today = today,
                 activity = activity,
@@ -167,6 +186,65 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             )
         }
     }
+
+    /** Builds the engine input from the last two weeks; a failure only hides the card. */
+    private fun suggest(i: Inputs, readiness: Readiness, activities: Map<String, DayActivity>): Pair<SessionSuggestion?, String?> =
+        runCatching {
+            val repo = service.repo
+            val today = service.today()
+            val zone = java.time.ZoneId.systemDefault()
+            val workoutDays = repo.workoutsBetween(today.minus(DatePeriod(days = 8)).toString(), today.toString())
+                .associate { it.id to LocalDate.parse(it.day) }
+            val recentSets = repo.completedSetsSince(System.currentTimeMillis() - 9L * 24 * 3600 * 1000)
+                .mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
+            val lastTrained = repo.trainedExercises().mapNotNull { t ->
+                t.lastAt?.let { ms -> t.slug to LocalDate.parse(java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().toString()) }
+            }.toMap()
+            val routines = repo.routines()
+            val input = SuggestionInput(
+                catalog = service.catalog,
+                profile = i.profile,
+                today = today,
+                readiness = readiness,
+                injuries = i.injuries,
+                activities = activities.mapNotNull { (day, a) -> runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a } }.toMap(),
+                recentSets = recentSets,
+                favorites = repo.favorites(),
+                benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet(),
+                lastTrained = lastTrained,
+                routines = routines,
+                variant = variant,
+            )
+            val suggestion = SessionSuggester.suggest(input)
+            val plannedName = suggestion.plannedEntry
+                ?.takeIf { !it.startsWith("builtin:") && it != PLAN_BOARD && it != PLAN_REST }
+                ?.let { id -> routines.firstOrNull { it.id == id }?.name }
+            suggestion to plannedName
+        }.getOrElse { null to null }
+
+    /** "Another suggestion": same rules, different picks. */
+    fun nextSuggestion() = io {
+        variant++
+        lastInputs?.let { refresh(it) }
+    }
+
+    /** Starts today's suggestion in the guided player; [title] is the localized focus title. */
+    fun startSuggestion(title: String) = io {
+        val suggestion = _state.value.suggestion ?: return@io
+        service.startWorkout(suggestion.routine.copy(id = "suggestion:${service.today()}", name = title), title)
+        _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+    }
+
+    /** Keeps the suggestion as one of the athlete's own workouts. */
+    fun saveSuggestion(title: String) = io {
+        val suggestion = _state.value.suggestion ?: return@io
+        val now = System.currentTimeMillis()
+        service.repo.saveRoutine(suggestion.routine.copy(id = service.repo.newId(), name = title, builtinKey = null,
+            createdAt = now, updatedAt = now))
+        _state.update { it.copy(suggestionSaved = true) }
+    }
+
+    fun consumeSuggestionSaved() = _state.update { it.copy(suggestionSaved = false) }
 
     private fun covers(p: PausePeriod, day: LocalDate, today: LocalDate): Boolean {
         val start = runCatching { LocalDate.parse(p.startDay) }.getOrNull() ?: return false

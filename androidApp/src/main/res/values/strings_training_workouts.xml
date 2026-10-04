@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trwo_new">New workout</string>
+    <string name="trwo_continue">Training in progress – continue</string>
+    <string name="trwo_mine">My workouts</string>
+    <string name="trwo_mine_empty">No workouts of your own yet. Create one with “New workout”, copy a template below, or save a finished training as a workout from its summary.</string>
+    <string name="trwo_week_plan">Week plan</string>
+    <string name="trwo_week_plan_empty">No standard week yet. Plan which workout belongs to which day – Today then suggests it.</string>
+    <string name="trwo_week_plan_edit">Edit week plan</string>
+    <string name="trwo_week_plan_intro">Your standard week: what belongs to which day. Today\'s suggestion follows this plan; your weekly goal of training days stays separate.</string>
+    <string name="trwo_templates">Starter templates</string>
+    <string name="trwo_history">History</string>
+    <string name="trwo_delete_title">Delete workout?</string>
+    <string name="trwo_delete_text">“%1$s” will be deleted. Trainings you already did with it stay in your history.</string>
+    <plurals name="trwo_exercise_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="trwo_minutes">%1$d min</string>
+    <string name="trwo_more">More actions</string>
+    <string name="trwo_duplicate">Duplicate</string>
+    <string name="trwo_copy_suffix"> (copy)</string>
+    <string name="trwo_copy_adjust">Copy &amp; adjust</string>
+    <string name="trwo_plan_free">free</string>
+    <string name="trwo_plan_rest">Rest day</string>
+    <string name="trwo_plan_board">Board session</string>
+    <string name="trwo_plan_unknown">deleted workout</string>
+    <string name="trwo_session_minutes">Length of suggestions</string>
+    <string name="trwo_session_minutes_hint">How long a suggested training on a free day should take.</string>
+
+    <string name="trwo_editor_title_new">New workout</string>
+    <string name="trwo_editor_title_edit">Edit workout</string>
+    <string name="trwo_editor_name">Name</string>
+    <string name="trwo_editor_notes">Notes (optional)</string>
+    <string name="trwo_editor_empty">No exercises yet – add some from the library.</string>
+    <string name="trwo_editor_add">Add exercises</string>
+    <string name="trwo_editor_unsaved_title">Discard changes?</string>
+    <string name="trwo_editor_unsaved_text">Your changes to this workout are not saved yet.</string>
+    <string name="trwo_editor_discard">Discard</string>
+    <string name="trwo_move_up">Move up</string>
+    <string name="trwo_move_down">Move down</string>
+    <string name="trwo_remove">Remove</string>
+    <string name="trwo_field_sets">Sets</string>
+    <string name="trwo_field_reps_min">Reps from</string>
+    <string name="trwo_field_reps_max">Reps to</string>
+    <string name="trwo_field_seconds">Seconds</string>
+    <string name="trwo_field_work">Work (s)</string>
+    <string name="trwo_field_rest_between">Rest between reps (s)</string>
+    <string name="trwo_field_reps_per_set">Reps per set</string>
+    <string name="trwo_field_rounds">Rounds</string>
+    <string name="trwo_field_rest">Rest after set</string>
+    <string name="trwo_field_edge">Edge (mm)</string>
+    <string name="trwo_field_warmup">Warm-up sets</string>
+    <string name="trwo_side_both">Both sides</string>
+    <string name="trwo_side_left">Left only</string>
+    <string name="trwo_side_right">Right only</string>
+    <string name="trwo_minus">%1$s less</string>
+    <string name="trwo_plus">%1$s more</string>
+    <string name="trwo_range">%1$d–%2$d</string>
+    <string name="trwo_picker_search">Search exercises</string>
+    <string name="trwo_picker_all">All</string>
+    <string name="trwo_picker_favorites">Favourites</string>
+    <plurals name="trwo_picker_add_n">
+        <item quantity="one">Add %d exercise</item>
+        <item quantity="other">Add %d exercises</item>
+    </plurals>
+    <string name="trwo_fav_add">Save as favourite</string>
+    <string name="trwo_fav_remove">Remove from favourites</string>
+
+    <string name="trwo_add_to_open">Add to the running training</string>
+    <string name="trwo_add_start_new">Start a training with it</string>
+    <string name="trwo_add_to_routine">Add to a workout</string>
+    <string name="trwo_add_new_routine">New workout with this exercise</string>
+    <string name="trwo_add_rejected">Not added: it loads the injured area. Check the injury mode or choose another exercise.</string>
+    <string name="trwo_add_added_to">Added to “%1$s”.</string>
+</resources>
