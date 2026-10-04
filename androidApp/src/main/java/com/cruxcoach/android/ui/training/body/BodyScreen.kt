@@ -289,7 +289,8 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
         } else {
             StatTile(stringResource(R.string.trb_tile_trend), formatMass(trend, units), Modifier.weight(1f), supporting = direction)
             StatTile(stringResource(R.string.trb_tile_rate),
-                rate?.let { stringResource(R.string.trb_rate_value, formatMass(it, units, signed = true)) } ?: "–",
+                // The tile label already says "per week"; the value stays short enough not to wrap.
+                rate?.let { formatMass(it, units, signed = true) } ?: "–",
                 Modifier.weight(1f))
         }
         StatTile(stringResource(R.string.trb_tile_entries), state.weight.size.toString(), Modifier.weight(0.7f))
@@ -669,9 +670,13 @@ private fun MeasurementRoundSheet(
                     value = text,
                     onValueChange = { texts[m.key] = it },
                     label = { Text("${metricLabel(m)} (${displayUnit(m.unit, units)})") },
-                    placeholder = if (lastText != null) { { Text(lastText) } } else null,
                     isError = error,
-                    supportingText = if (error) { { Text(stringResource(R.string.trb_value_invalid)) } } else null,
+                    // The last value is shown all the time, not only while the field has focus.
+                    supportingText = when {
+                        error -> { { Text(stringResource(R.string.trb_value_invalid)) } }
+                        lastText != null -> { { Text(lastText) } }
+                        else -> null
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth().testTag("body_round_${m.key}"),

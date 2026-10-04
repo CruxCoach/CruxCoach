@@ -470,8 +470,11 @@ fun BenchmarkCard(slug: String, onTestStarted: () -> Unit, viewModel: BenchmarkC
                 val prefix = side?.let { sideLabel(it) + ": " } ?: ""
                 Text(prefix + (s.values[side]?.let { benchmarkSummary(def, it, s.profile, s.bodyweight) } ?: stringResource(R.string.trbm_none)),
                     style = MaterialTheme.typography.bodyMedium)
-                s.target[side]?.let { Text(prescriptionText(def, it, s.profile.units), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                s.target[side]?.let { t ->
+                    val text = prescriptionText(def, t, s.profile.units) +
+                        if (t.basis.fromOtherSide) " " + stringResource(R.string.trbm_from_other_side) else ""
+                    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { entering = true }, modifier = Modifier.testTag("exercise_benchmark_enter")) {
