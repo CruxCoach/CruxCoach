@@ -327,8 +327,10 @@ class BoardSessionManager(
                 // Notify user (notification + vibration) — also handled by AlarmReceiver as backup
                 notificationService.notifyRestTimerFinished()
                 alarmScheduler.cleanup()
-                // Resume session when rest timer finishes
-                resumeSession()
+                // The rest paused the session as PLANNED_REST; only that reason
+                // resumes it (M-097: a MANUAL resume was ignored, so the session
+                // stayed "paused" after every rest and booked training as pause).
+                resumeSession(PauseReason.PLANNED_REST)
             } else {
                 _restTimer.update { it.copy(
                     secondsRemaining = ((remainingMs + 999) / 1000).toInt() // ceil
