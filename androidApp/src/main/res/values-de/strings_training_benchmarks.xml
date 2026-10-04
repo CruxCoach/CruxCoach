@@ -32,4 +32,5 @@
     <string name="trbm_seconds">Sekunden</string>
     <string name="trbm_edge">Leiste (mm)</string>
     <string name="trbm_planned">Geplant: %1$s</string>
+    <string name="trbm_from_other_side">(von der anderen Hand geschätzt, −5 %)</string>
 </resources>

@@ -245,4 +245,13 @@ class TrainingScreensSmokeTest {
         waitForTag("benchmarks_list")
         scrollTo("benchmarks_list", hasTestTag("benchmark_row_finger.one_arm_pickup"))
     }
+
+    @Test
+    fun `an entered value updates untouched planned sets of the open training`() {
+        val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.INJURY_ONE_ARM), null)
+        service.saveBenchmark(Benchmark("b1", "finger.one_arm_pickup", Side.RIGHT, 20.0, null, 32.0, null, 10.0, 68.0,
+            BenchmarkSource.MANUAL, System.currentTimeMillis()))
+        val pickups = repo.setsFor(id).filter { it.exerciseSlug == "finger.one_arm_pickup" }
+        assert(pickups.isNotEmpty() && pickups.all { it.loadKg == 29.0 && it.targetLoadKg == 29.0 }) { pickups.map { it.loadKg } }
+    }
 }

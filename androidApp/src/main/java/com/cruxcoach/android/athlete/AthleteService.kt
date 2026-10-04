@@ -217,12 +217,42 @@ class AthleteService @Inject constructor(
         for (slug in benchmarkSourceSlugs(def)) {
             val source = catalog[slug] ?: continue
             val chosen = BenchmarkMath.select(repo.benchmarks(slug), side, edgeMm, grip) ?: continue
-            return BenchmarkMath.capacity(source, chosen, bodyweightKg)
+            val capacity = BenchmarkMath.capacity(source, chosen, bodyweightKg) ?: continue
+            // The other hand is a reasonable first guess for one-sided work, but a cautious one.
+            return if (side != null && chosen.side != null && chosen.side != side)
+                capacity.copy(value = capacity.value * OTHER_SIDE_FACTOR, fromOtherSide = true) else capacity
         }
         return null
     }
 
-    fun saveBenchmark(b: Benchmark) = repo.saveBenchmark(b.copy(bodyweightKg = b.bodyweightKg ?: currentBodyweight()))
+    /**
+     * Saves a value the athlete entered and applies it at once to the open
+     * training: planned work sets of that exercise the athlete has not touched
+     * yet (load still equals the plan) get the new prescription.
+     */
+    fun saveBenchmark(b: Benchmark) {
+        repo.saveBenchmark(b.copy(bodyweightKg = b.bodyweightKg ?: currentBodyweight()))
+        replanOpenSets(b.exerciseSlug)
+    }
+
+    private fun replanOpenSets(slug: String) {
+        val workout = repo.openWorkout() ?: return
+        val def = catalog[slug] ?: return
+        val bodyweight = currentBodyweight()
+        val increment = repo.profile().smallestIncrementKg
+        repo.setsFor(workout.id)
+            .filter { it.exerciseSlug == slug && !it.isCompleted && it.setType == SetType.WORK && (it.loadKg ?: 0.0) == (it.targetLoadKg ?: 0.0) }
+            .forEach { set ->
+                val item = RoutineItem(slug, sets = 1, repsMin = set.targetReps, repsMax = set.targetReps,
+                    durationS = set.targetDurationS?.toInt(), workS = set.workS?.toInt(), edgeMm = set.edgeMm?.toInt(), grip = set.grip)
+                val target = LoadPrescriber.prescribe(def, item, capacityFor(def, set.side, set.edgeMm, set.grip, bodyweight), bodyweight, increment)
+                    ?: return@forEach
+                repo.saveSet(set.copy(
+                    loadKg = target.loadKg ?: set.loadKg, targetLoadKg = target.loadKg ?: set.targetLoadKg,
+                    reps = target.reps ?: set.reps, targetReps = target.reps ?: set.targetReps,
+                ))
+            }
+    }
 
     /**
      * A short test for one exercise (MCI's strength test, climber version):
@@ -365,6 +395,7 @@ class AthleteService @Inject constructor(
 
     companion object {
         const val MAX_HANG_SLUG = "finger.max_hang"
+        const val OTHER_SIDE_FACTOR = 0.95
 
         /** Enough history for every exercise's best values; far above a lifetime of sets per slug and side. */
         const val HISTORY_LIMIT = 20_000

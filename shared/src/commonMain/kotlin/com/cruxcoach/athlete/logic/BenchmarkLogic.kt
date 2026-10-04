@@ -23,7 +23,13 @@ enum class CapacityKind {
     MAX_SECONDS,
 }
 
-data class Capacity(val kind: CapacityKind, val value: Double, val bodyweightKg: Double?)
+data class Capacity(
+    val kind: CapacityKind,
+    val value: Double,
+    val bodyweightKg: Double?,
+    /** Estimated from the other hand's value (one-sided work without an own value yet). */
+    val fromOtherSide: Boolean = false,
+)
 
 /**
  * Hold time ↔ intensity for isometric finger and hang work, relative to the
