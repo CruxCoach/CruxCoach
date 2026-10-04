@@ -51,6 +51,15 @@ class BoardLayerBackupExclusionTest {
         assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
     }
 
+    @Test
+    fun `food photo model and its device state stay out of backups`() {
+        // FEAT-069: 2–4 GB of weights would make Auto Backup give up (25 MB limit).
+        listOf("external" to "foodvision", "sharedpref" to "foodvision.xml").forEach { target ->
+            assertEquals(1, exclusions(R.xml.backup_rules).count { it == target })
+            assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
+        }
+    }
+
     private fun exclusions(@XmlRes resourceId: Int): List<Pair<String, String>> {
         val parser = context.resources.getXml(resourceId)
         return try {

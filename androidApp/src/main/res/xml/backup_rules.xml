@@ -55,4 +55,8 @@
          so a filename rule cannot cover every identity or its journal files.
          The public board catalogue is re-downloadable and already excluded. -->
     <exclude domain="database" path="."/>
+    <!-- FEAT-069: the 2–4 GB photo model (re-downloadable; Auto Backup gives
+         up entirely above 25 MB) and its device-specific download/probe state. -->
+    <exclude domain="external" path="foodvision"/>
+    <exclude domain="sharedpref" path="foodvision.xml"/>
 </full-backup-content>

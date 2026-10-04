@@ -22,6 +22,9 @@
         <exclude domain="file" path="crash_log_prev.txt"/>
         <!-- All databases, including dynamic identity-scoped SQLCipher DBs. -->
         <exclude domain="database" path="."/>
+        <!-- FEAT-069 photo model (2–4 GB, re-downloadable) and its device-specific state. -->
+        <exclude domain="external" path="foodvision"/>
+        <exclude domain="sharedpref" path="foodvision.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
@@ -39,5 +42,7 @@
         <exclude domain="file" path="crash_log.txt"/>
         <exclude domain="file" path="crash_log_prev.txt"/>
         <exclude domain="database" path="."/>
+        <exclude domain="external" path="foodvision"/>
+        <exclude domain="sharedpref" path="foodvision.xml"/>
     </device-transfer>
 </data-extraction-rules>
