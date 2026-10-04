@@ -1,0 +1,7 @@
+List each food and drink visible in this photo, at most 8 items.
+For every item give:
+- name_de: a short generic German food name as used in German food composition tables, including how it is prepared when that is visible (for example "Kartoffeln gekocht", "Hähnchenbrust gebraten", "Apfel roh", "Vollkornbrot", "Haferflocken").
+- name_en: the same food in English.
+- grams: the estimated weight of the visible edible portion in grams.
+Keep clearly separate components separate (for example rice and curry sauce), but do not list garnish, herbs or spices. If there is no food in the photo, return an empty list.
+Answer with JSON only.

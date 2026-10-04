@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(cruxcoach-zstd C)
+project(cruxcoach-native C CXX)
 
 # Collect zstd decompression source files (no compression needed)
 file(GLOB ZSTD_COMMON_SOURCES "zstd/common/*.c")
@@ -19,3 +19,6 @@ target_compile_definitions(cruxcoach-zstd PRIVATE
 )
 
 target_link_libraries(cruxcoach-zstd log)
+
+# On-device food photo recognition (FEAT-069)
+add_subdirectory(vision)
