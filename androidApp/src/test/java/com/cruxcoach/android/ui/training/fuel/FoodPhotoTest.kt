@@ -13,7 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasTestTag
 import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.athlete.ClimbingDaysReader
 import com.cruxcoach.android.athlete.ExerciseCatalogStore
@@ -55,10 +55,12 @@ class FoodPhotoTest {
 
     @get:Rule val compose = createComposeRule()
 
-    private val context: Application = ApplicationProvider.getApplicationContext()
-    private val athleteDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
-    private val secureDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { SecureDatabase.Schema.create(it) }
-    private val repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
+    // Android's own SQLite (Robolectric), like TrainingScreensSmokeTest: a JDBC
+    // driver registered inside the sandbox breaks later JDBC tests in the JVM.
+    private val context: Application get() = ApplicationProvider.getApplicationContext()
+    private lateinit var athleteDriver: AndroidSqliteDriver
+    private lateinit var secureDriver: AndroidSqliteDriver
+    private lateinit var repo: AthleteRepository
     private lateinit var service: AthleteService
     private lateinit var sessionManager: BoardSessionManager
 
@@ -77,6 +79,9 @@ class FoodPhotoTest {
 
     @Before
     fun setUp() {
+        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
+        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
+        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
         val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
         every { boardRepo.getActiveSession() } returns null
         sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
