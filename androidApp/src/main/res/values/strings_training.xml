@@ -114,7 +114,7 @@
 
     <!-- Built-in routines -->
     <string name="tr_routine_warmup_board">Board warm-up</string>
-    <string name="tr_routine_warmup_board_desc">12 minutes from pulse to fingers – before every board session.</string>
+    <string name="tr_routine_warmup_board_desc">From pulse to fingers – before every board session.</string>
     <string name="tr_routine_finger_basics">Finger strength basics</string>
     <string name="tr_routine_finger_basics_desc">Ramp-up, max hangs, pull-ups and a little antagonist work.</string>
     <string name="tr_routine_injury_one_arm">Injury mode: one arm + pull</string>

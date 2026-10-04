@@ -103,7 +103,7 @@
     <string name="tr_settype_test">Test</string>
 
     <string name="tr_routine_warmup_board">Board-Aufwärmen</string>
-    <string name="tr_routine_warmup_board_desc">12 Minuten vom Puls bis zu den Fingern – vor jeder Board-Session.</string>
+    <string name="tr_routine_warmup_board_desc">Vom Puls bis zu den Fingern – vor jeder Board-Session.</string>
     <string name="tr_routine_finger_basics">Fingerkraft-Basis</string>
     <string name="tr_routine_finger_basics_desc">Aufwärmrampe, Max Hangs, Klimmzüge und etwas Antagonist.</string>
     <string name="tr_routine_injury_one_arm">Verletzungsmodus: einarmig + Zug</string>

@@ -32,7 +32,7 @@
     <string name="trs_minutes_chart_cd">Trainingsminuten pro Woche, insgesamt %1$d Minuten.</string>
     <string name="trs_calendar">Kalender</string>
     <string name="trs_calendar_cd">Trainingskalender der letzten 16 Wochen mit %1$d Trainingstagen.</string>
-    <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Dunkler = härterer Tag.</string>
+    <string name="trs_calendar_hint">Eine Spalte pro Woche, Montag oben. Kräftigere Farbe = härterer Tag.</string>
     <string name="trs_load_title">Belastung pro Struktur</string>
     <string name="trs_load_cd">%1$s: Belastungstage pro Woche, diese Woche %2$d.</string>
     <string name="trs_open_body">Körper öffnen</string>
@@ -49,7 +49,7 @@
     <string name="trs_exercise_empty">Noch keine geloggten Sätze. Logge die Übung in einem Training, dann erscheint hier ihr Fortschritt.</string>
     <string name="trs_tile_best">Bestwert</string>
     <string name="trs_tile_last">Zuletzt</string>
-    <string name="trs_tile_change">4 Wochen</string>
+    <string name="trs_tile_change">Änderung 4 Wo.</string>
     <string name="trs_tile_sessions">Einheiten</string>
     <string name="trs_tile_percent_bw">% Körpergewicht</string>
     <string name="trs_capacity_chart">%1$s im Verlauf</string>
@@ -69,4 +69,6 @@
     <string name="trs_progress_title">Fortschritt</string>
     <string name="trs_progress_empty">Noch keine geloggten Sätze – dein Fortschrittsdiagramm erscheint nach dem ersten Training.</string>
     <string name="trs_open_stats">Statistik öffnen</string>
+    <string name="trs_load_hint">Tage pro Woche, an denen die Struktur belastet wurde – aus Board-Sessions und Training.</string>
+    <string name="trs_open_exercise">Übung öffnen</string>
 </resources>

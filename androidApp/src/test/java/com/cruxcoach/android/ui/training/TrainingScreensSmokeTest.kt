@@ -137,6 +137,18 @@ class TrainingScreensSmokeTest {
     }
 
     @Test
+    fun `one-hand finger injury keeps one-arm pick-up visible and favourites on top`() {
+        repo.setFavorite("finger.one_arm_pickup", true)
+        val vm = ExerciseCatalogViewModel(service)
+        render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = vm) }
+        compose.waitUntil(15_000) { !vm.state.value.loading }
+        // Left hand hurt: climbing is paused, but finger work stays listed for the healthy hand.
+        assert(vm.state.value.withoutClimbing)
+        assert(!vm.state.value.fingerFree)
+        waitForTag("exercise_fav_finger.one_arm_pickup")
+    }
+
+    @Test
     fun `exercise detail of the one-arm pick-up renders`() {
         render { ExerciseDetailScreen("finger.one_arm_pickup", {}, {}, {}, viewModel = ExerciseDetailViewModel(service)) }
         waitForText("One-Arm Edge Pick-Up")
