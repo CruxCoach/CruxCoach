@@ -165,4 +165,5 @@
         <item quantity="one">%d fueling entry</item>
         <item quantity="other">%d fueling entries</item>
     </plurals>
+    <string name="export_json_only_hint">Training, body and fueling data are only included in the JSON backup.</string>
 </resources>

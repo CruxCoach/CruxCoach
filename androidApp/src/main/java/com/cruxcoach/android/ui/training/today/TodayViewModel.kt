@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
@@ -53,6 +57,7 @@ data class TodayState(
     val startedWorkout: Boolean = false,
 )
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TodayViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
 
@@ -63,9 +68,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
-            val today = service.today().toString()
+            // The day the hub shows follows the clock, so a screen left open
+            // over midnight switches to the new day's check-in, food and water.
+            val days = flow { while (true) { emit(service.today().toString()); delay(60_000) } }.distinctUntilChanged()
             // Any change in these tables re-derives the whole hub; it is cheap.
-            combine(
+            days.flatMapLatest { today -> combine(
                 repo.observeProfile(),
                 repo.observeCheckin(today),
                 repo.observeActiveInjuries(),
@@ -77,7 +84,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                     repo.observeHydration(today),
                     repo.observePauses(),
                 ) { _, _, food, water, pauses -> Triple(food, water, pauses) },
-            ) { profile, checkin, injuries, open, extra -> Inputs(profile, checkin, injuries, open, extra.first, extra.second, extra.third) }
+            ) { profile, checkin, injuries, open, extra -> Inputs(profile, checkin, injuries, open, extra.first, extra.second, extra.third) } }
                 .collect { refresh(it) }
         }
     }

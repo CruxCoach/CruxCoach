@@ -277,23 +277,55 @@ class AthleteRepository(
     /**
      * Merges a snapshot into the database. Rows are keyed by their ids (or
      * day+metric / day), so importing the same backup twice changes nothing,
-     * and a restore never deletes data the device already has.
+     * a restore never deletes data the device already has, and a row the
+     * device changed later than the backup wins: an older backup cannot
+     * reopen a finished training or revive a healed injury.
      */
     fun restore(snapshot: AthleteSnapshot, includeProfile: Boolean): Int = transaction {
         var rows = 0
-        if (includeProfile && snapshot.profile != null) { saveProfile(snapshot.profile); rows++ }
-        snapshot.workouts.forEach { saveWorkout(it); rows++ }
-        snapshot.sets.forEach { saveSet(it); rows++ }
-        snapshot.routines.forEach { saveRoutine(it); rows++ }
+        val incomingProfile = snapshot.profile
+        val local = profile()
+        // Settings come back only onto a device that has none of its own yet
+        // (bookkeeping flags aside); this device's migration flag is kept.
+        val untouched = local.copy(legacyBodyStatsImported = false) == AthleteProfile()
+        if (includeProfile && incomingProfile != null && untouched) {
+            saveProfile(incomingProfile.copy(legacyBodyStatsImported = local.legacyBodyStatsImported)); rows++
+        }
+        val keptLocal = mutableSetOf<String>()
+        snapshot.workouts.forEach { w ->
+            val local = workout(w.id)
+            if (local != null && local.updatedAt > w.updatedAt) keptLocal += w.id else { saveWorkout(w); rows++ }
+        }
+        snapshot.sets.filter { it.workoutId !in keptLocal }.forEach { saveSet(it); rows++ }
+        snapshot.routines.forEach { r ->
+            val local = training.getRoutine(r.id).executeAsOneOrNull()
+            if (local == null || local.updated_at <= r.updatedAt) { saveRoutine(r); rows++ }
+        }
         snapshot.customExercises.forEach { saveCustomExercise(it); rows++ }
         snapshot.favorites.forEach { training.addFavorite(it, clock()); rows++ }
-        snapshot.measurements.forEach { saveMeasurement(it); rows++ }
-        snapshot.foodItems.forEach { saveFoodItem(it); rows++ }
+        snapshot.measurements.forEach { m ->
+            val local = body.getMeasurement(m.day, m.metric).executeAsOneOrNull()
+            if (local == null || local.measured_at <= m.measuredAt) { saveMeasurement(m); rows++ }
+        }
+        snapshot.foodItems.forEach { f ->
+            val local = fuel.getFoodItem(f.id).executeAsOneOrNull()
+            if (local == null || local.updated_at <= f.updatedAt) { saveFoodItem(f); rows++ }
+        }
         snapshot.foodLog.forEach { saveFoodLog(it); rows++ }
         snapshot.hydration.forEach { fuel.insertHydration(it.id, it.day, it.loggedAt, it.ml.toLong()); rows++ }
-        snapshot.checkins.forEach { saveCheckin(it); rows++ }
-        snapshot.injuries.forEach { saveInjury(it); rows++ }
-        snapshot.pauses.forEach { savePause(it); rows++ }
+        snapshot.checkins.forEach { c ->
+            val local = wellbeing.getCheckin(c.day).executeAsOneOrNull()
+            if (local == null || local.created_at <= c.createdAt) { saveCheckin(c); rows++ }
+        }
+        snapshot.injuries.forEach { i ->
+            val local = wellbeing.getInjury(i.id).executeAsOneOrNull()
+            if (local == null || local.updated_at <= i.updatedAt) { saveInjury(i); rows++ }
+        }
+        snapshot.pauses.forEach { p ->
+            val local = wellbeing.getPauses().executeAsList().firstOrNull { it.id == p.id }
+            // An ended pause never becomes open again.
+            if (local == null || local.end_day == null || p.endDay != null) { savePause(p); rows++ }
+        }
         rows
     }
 

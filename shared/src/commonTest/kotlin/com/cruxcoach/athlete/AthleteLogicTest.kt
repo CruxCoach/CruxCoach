@@ -143,6 +143,27 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun prefilledHoldsWithoutReserveAnswerAreNotTooEasy() {
+        val session = (0..4).map { set(maxHang.slug, index = it, duration = 10.0, load = 5.0, bw = 70.0) }
+        assertEquals(ProgressionVerdict.ON_TRACK, ProgressionAdvisor.evaluate(maxHang, session, 1.0)?.verdict)
+        val easy = session.map { it.copy(rir = 3) }
+        assertEquals(ProgressionVerdict.TOO_EASY, ProgressionAdvisor.evaluate(maxHang, easy, 1.0)?.verdict)
+    }
+
+    @Test
+    fun sideBalanceUsesTotalLoad() {
+        val catalog = ExerciseCatalog(1, listOf(maxHang.copy(unilateral = true)))
+        val sets = listOf(
+            set(maxHang.slug, index = 0, side = Side.LEFT, duration = 10.0, load = 0.0, bw = 70.0),
+            set(maxHang.slug, index = 0, side = Side.RIGHT, duration = 10.0, load = 2.0, bw = 70.0),
+        )
+        val summary = WorkoutSummarizer.summarize(sets, 30, catalog, { emptyList() }, 1.0)
+        val left = summary.sideLoad.getValue(Side.LEFT)
+        val right = summary.sideLoad.getValue(Side.RIGHT)
+        assertTrue(right / left < 1.05)
+    }
+
+    @Test
     fun warmupForAddedWeightHangStartsAssisted() {
         val steps = WarmupRamp.build(maxHang, workingLoadKg = 10.0, bodyweightKg = 70.0, incrementKg = 1.0)
         assertEquals(listOf(50, 70, 85), steps.map { it.percent })

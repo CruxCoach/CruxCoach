@@ -54,6 +54,13 @@ val VISIBLE_CATEGORIES: Set<Category> = setOf(
     Category.FUEL,
 )
 
+/** Athlete data (training, body, fueling) is nested; only the JSON backup carries it. */
+val JSON_ONLY_CATEGORIES: Set<Category> = setOf(Category.TRAINING, Category.BODY_STATS, Category.FUEL)
+
+/** Categories a manual export in [format] can actually write. */
+fun categoriesFor(format: DataExchangeFormat): Set<Category> =
+    if (format == DataExchangeFormat.JSON) VISIBLE_CATEGORIES else VISIBLE_CATEGORIES - JSON_ONLY_CATEGORIES
+
 /** Translate the compact manual selection into the more granular wire format. */
 internal fun Set<Category>.withBundledClimbNotes(): Set<Category> =
     if (Category.BOARD_LOGBOOK in this) this + Category.CLIMB_NOTES else this
@@ -131,7 +138,7 @@ class DataExchangeViewModel @Inject constructor(
      *  written now or staged, the logbook itself never waits. */
     private val pendingImports: com.cruxcoach.android.data.PendingImports,
     /** Training, body and fueling (athlete database, FEAT-066..068). */
-    private val athleteRepository: dagger.Lazy<com.cruxcoach.athlete.data.AthleteRepository>,
+    private val athleteService: dagger.Lazy<com.cruxcoach.android.athlete.AthleteService>,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -161,7 +168,7 @@ class DataExchangeViewModel @Inject constructor(
     }
 
     fun selectAllExportCategories() {
-        _state.update { it.copy(exportCategories = VISIBLE_CATEGORIES) }
+        _state.update { it.copy(exportCategories = categoriesFor(it.exportFormat)) }
     }
 
     fun deselectAllExportCategories() {
@@ -231,7 +238,7 @@ class DataExchangeViewModel @Inject constructor(
 
     private fun buildExport(state: DataExchangeState): ByteArray {
         val json = CruxCoachBackup.export(
-            categories = state.exportCategories.withBundledClimbNotes(),
+            categories = state.exportCategories.intersect(categoriesFor(state.exportFormat)).withBundledClimbNotes(),
             userRepository = userRepository,
             bodyStatRepository = bodyStatRepository,
             workoutRepository = workoutRepository,
@@ -241,7 +248,7 @@ class DataExchangeViewModel @Inject constructor(
             boardRepository = boardRepository,
             exportedAt = DateTimeUtil.nowIso(),
             nostrPubkey = nostrSigner.getPublicKeyHex(),
-            athleteSnapshot = { athleteRepository.get().snapshot() },
+            athleteSnapshot = { athleteService.get().backupSnapshot() },
         )
         return when (state.exportFormat) {
             DataExchangeFormat.JSON -> json.toByteArray(Charsets.UTF_8)
@@ -393,7 +400,8 @@ class DataExchangeViewModel @Inject constructor(
                         expectedNostrPubkey = expectedPubkey,
                         adoptLocalDraftsForPubkey = if (s.importMismatchAccepted) currentPubkey else null,
                         restoreOwnClimbsNow = false,
-                        athleteRestore = { snapshot, withProfile -> athleteRepository.get().restore(snapshot, withProfile) },
+                        athleteRestore = { snapshot, withProfile -> athleteService.get().restoreBackup(snapshot, withProfile) },
+                        athleteLegacyBodyStats = { rows -> athleteService.get().importBackupBodyStats(rows) },
                     )
                 }
                 // The logbook is in; own climbs follow now or after the catalogue import.
