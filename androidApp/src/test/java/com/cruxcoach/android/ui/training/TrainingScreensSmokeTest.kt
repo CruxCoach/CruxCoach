@@ -102,14 +102,23 @@ class TrainingScreensSmokeTest {
         athleteDriver.close(); secureDriver.close()
     }
 
+    private companion object {
+        /**
+         * Generous on purpose: the first Robolectric/Compose test of the class pays a
+         * cold start of ~20 s (more on CI runners), and whichever test runs first
+         * pays it inside its wait. Passing waits return as soon as the node exists.
+         */
+        const val WAIT_MS = 60_000L
+    }
+
     private fun render(content: @androidx.compose.runtime.Composable () -> Unit) {
         compose.setContent {
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) { MaterialTheme { content() } }
         }
     }
 
-    private fun waitForTag(tag: String) = compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-    private fun waitForText(text: String) = compose.waitUntil(15_000) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForTag(tag: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(text: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
     /** Lazy lists compose only what is on screen; scroll the target into view first. */
     private fun scrollTo(listTag: String, target: SemanticsMatcher) {
@@ -133,7 +142,7 @@ class TrainingScreensSmokeTest {
     @Test
     fun `exercise library lists exercises with injury filters on`() {
         render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = ExerciseCatalogViewModel(service)) }
-        compose.waitUntil(15_000) { compose.onAllNodes(tagPrefix("exercise_row_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(tagPrefix("exercise_row_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
@@ -141,7 +150,7 @@ class TrainingScreensSmokeTest {
         repo.setFavorite("finger.one_arm_pickup", true)
         val vm = ExerciseCatalogViewModel(service)
         render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = vm) }
-        compose.waitUntil(15_000) { !vm.state.value.loading }
+        compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
         // Left hand hurt: climbing is paused, but finger work stays listed for the healthy hand.
         assert(vm.state.value.withoutClimbing)
         assert(!vm.state.value.fingerFree)
@@ -286,7 +295,7 @@ class TrainingScreensSmokeTest {
     fun `routine editor prefills a starter routine`() {
         render { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, "builtin:${BuiltinRoutines.LEGS_BASICS}", {}, {},
             viewModel = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service)) }
-        compose.waitUntil(15_000) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
