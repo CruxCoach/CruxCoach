@@ -76,14 +76,14 @@ class BoardSizeFitFilterTest {
             imageFilename = null, boardBrand = brand,
         )
         // board_images so the size is a real render target for the layout.
-        repo.upsertBoardImage(1L, sizeId.toLong(), layoutId.toLong(), 8L, "s9-8.png")
+        repo.upsertBoardImage(1L, sizeId.toLong(), layoutId.toLong(), 8L, "s9-8.png", boardBrand = brand)
         // A taller size of the same layout, the one a top-boundary climb belongs to.
         repo.upsertProductSize(
             id = tallSizeId.toLong(), productId = 1L, name = "TB2 tall",
             edgeLeft = frameLeft, edgeRight = frameRight, edgeBottom = frameBottom, edgeTop = frameTop + 24L,
             imageFilename = null, boardBrand = brand,
         )
-        repo.upsertBoardImage(2L, tallSizeId.toLong(), layoutId.toLong(), 8L, "tall-8.png")
+        repo.upsertBoardImage(2L, tallSizeId.toLong(), layoutId.toLong(), 8L, "tall-8.png", boardBrand = brand)
 
         // Strictly inside the frame in every direction.
         climb("c-inside", edgeLeft = -40L, edgeRight = 40L, edgeBottom = 4L, edgeTop = 116L)
