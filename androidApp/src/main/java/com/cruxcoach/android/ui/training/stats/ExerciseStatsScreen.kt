@@ -125,10 +125,13 @@ fun ExerciseStatsScreen(
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("exercise_stats_list"),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
-                Text(def.name(lang), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(role = Role.Button) { onOpenExercise(def.slug) }.testTag("exercise_stats_name"))
+                // The top bar carries the name; here only what the number means and a way to the exercise.
                 Text(stringResource(R.string.trs_capacity_meaning, capacityLabel(kind)), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { onOpenExercise(def.slug) }, contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.testTag("exercise_stats_name")) {
+                    Text(stringResource(R.string.trs_open_exercise))
+                }
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

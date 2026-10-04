@@ -116,6 +116,8 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
             val rows = trained.mapNotNull { t ->
                 val def = catalog[t.slug] ?: catalog.fallbackFor(t.slug)
                 val history = repo.history(t.slug, AthleteService.HISTORY_LIMIT)
+                // Warm-up-only exercises (arm circles before every session) are not progress.
+                if (history.none { it.setType != SetType.WARMUP }) return@mapNotNull null
                 // Personal bests set inside the range, each judged against what came before it.
                 val chronological = history.sortedBy { it.completedAt ?: 0L }
                 chronological.forEachIndexed { i, set ->
@@ -251,12 +253,18 @@ fun StatsHubScreen(
 
             // ── Load per structure ──────────────────────────────────
             item { SectionTitle(stringResource(R.string.trs_load_title)) }
-            items(listOf(LoadDomain.FINGER, LoadDomain.SHOULDER, LoadDomain.ELBOW, LoadDomain.SKIN), key = { "dom-" + it.name }) { domain ->
+            item {
+                Text(stringResource(R.string.trs_load_hint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            val domains = listOf(LoadDomain.FINGER, LoadDomain.SHOULDER, LoadDomain.ELBOW, LoadDomain.SKIN)
+            items(domains, key = { "dom-" + it.name }) { domain ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(domainLabel(domain), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(110.dp))
                     val bars = s.domainWeeks.map { WeekBar(it.weekStart, listOf(climbColor to (it.days[domain] ?: 0).toDouble())) }
                     WeeklyBarChart(bars, stringResource(R.string.trs_load_cd, domainLabel(domain),
-                        s.domainWeeks.lastOrNull()?.days?.get(domain) ?: 0), Modifier.weight(1f), height = 48.dp)
+                        s.domainWeeks.lastOrNull()?.days?.get(domain) ?: 0), Modifier.weight(1f), height = 48.dp,
+                        showDates = domain == domains.last())
                 }
             }
 

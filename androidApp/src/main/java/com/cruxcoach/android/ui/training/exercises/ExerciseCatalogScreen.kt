@@ -46,6 +46,7 @@ import com.cruxcoach.athlete.logic.InjuryVerdict
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.Injury
 import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.Side
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -106,7 +107,12 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
                     _state.update { s ->
                         // An injury adapts the filters once (MCI-style), until the athlete changes them.
                         val pauseClimbing = injuries.any { it.climbingPaused }
-                        val fingerInjury = injuries.any { it.region == InjuryRegion.FINGER }
+                        // Only a finger injury on both hands hides finger work: with one hand
+                        // hurt, one-arm work on the healthy hand stays visible and the row
+                        // says "healthy side only".
+                        val fingerInjury = injuries.any {
+                            it.region == InjuryRegion.FINGER && (it.side == null || it.side == InjurySide.BOTH)
+                        }
                         val applyDefaults = !userTouchedSafetyFilters && (pauseClimbing || fingerInjury)
                         s.copy(
                             loading = false,
@@ -309,8 +315,13 @@ fun ExerciseCatalogScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // Favourites first: the exercises the athlete actually uses are one tap away.
-                val showSections = state.query.isBlank() && !state.favoritesOnly && results.any { it.slug in state.favorites }
-                val favs = if (showSections) results.filter { it.slug in state.favorites } else emptyList()
+                // Safety and equipment filters do not hide the athlete's own picks; the row
+                // still shows the injury advice. Category chips do apply.
+                val favs = if (state.query.isBlank() && !state.favoritesOnly) {
+                    state.catalog.search("", language, CatalogFilter(categories = state.categories))
+                        .filter { it.slug in state.favorites }
+                } else emptyList()
+                val showSections = favs.isNotEmpty()
                 val rest = if (showSections) results.filterNot { it.slug in state.favorites } else results
                 @Composable
                 fun row(def: ExerciseDefinition) = ExerciseRow(

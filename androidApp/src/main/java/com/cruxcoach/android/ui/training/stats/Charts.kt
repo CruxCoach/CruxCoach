@@ -151,6 +151,8 @@ fun WeeklyBarChart(
     modifier: Modifier = Modifier,
     height: Dp = 140.dp,
     valueFormatter: @Composable (Double) -> String = { it.toInt().toString() },
+    /** Stacked small multiples share one date axis: only the last one shows it. */
+    showDates: Boolean = true,
 ) {
     if (weeks.isEmpty()) return
     val gridColor = MaterialTheme.colorScheme.outlineVariant
@@ -180,7 +182,7 @@ fun WeeklyBarChart(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 32.dp, top = 4.dp)) {
+        if (showDates) Row(Modifier.fillMaxWidth().padding(start = 32.dp, top = 4.dp)) {
             Text(weeks.first().start.shortLabel(), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Text(weeks.last().start.shortLabel(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

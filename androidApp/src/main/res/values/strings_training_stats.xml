@@ -32,7 +32,7 @@
     <string name="trs_minutes_chart_cd">Training minutes per week, %1$d minutes in total.</string>
     <string name="trs_calendar">Calendar</string>
     <string name="trs_calendar_cd">Training calendar of the last 16 weeks with %1$d training days.</string>
-    <string name="trs_calendar_hint">One column per week, Monday on top. Darker = harder day.</string>
+    <string name="trs_calendar_hint">One column per week, Monday on top. Stronger colour = harder day.</string>
     <string name="trs_load_title">Load per structure</string>
     <string name="trs_load_cd">%1$s: loading days per week, %2$d this week.</string>
     <string name="trs_open_body">Open body</string>
@@ -49,7 +49,7 @@
     <string name="trs_exercise_empty">No logged sets yet. Log this exercise in a training and its progress appears here.</string>
     <string name="trs_tile_best">Best</string>
     <string name="trs_tile_last">Latest</string>
-    <string name="trs_tile_change">4 weeks</string>
+    <string name="trs_tile_change">Change 4 wk</string>
     <string name="trs_tile_sessions">Sessions</string>
     <string name="trs_tile_percent_bw">% body weight</string>
     <string name="trs_capacity_chart">%1$s over time</string>
@@ -69,4 +69,6 @@
     <string name="trs_progress_title">Progress</string>
     <string name="trs_progress_empty">No logged sets yet – your progress chart appears after the first training.</string>
     <string name="trs_open_stats">Open statistics</string>
+    <string name="trs_load_hint">Days per week with load on each structure, from board sessions and training.</string>
+    <string name="trs_open_exercise">Open exercise</string>
 </resources>
