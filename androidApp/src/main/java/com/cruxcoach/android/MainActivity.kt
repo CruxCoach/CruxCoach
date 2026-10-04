@@ -369,6 +369,8 @@ class MainActivity : AppCompatActivity() {
             raw == "backup_settings" -> raw // UI only; never starts restore or upload.
             raw == "support_settings" -> raw // UI only: the reply-notification summary.
             raw == "app_share" -> raw
+            // Body-data reminder (athlete BodyReminders): opens the body screen, no parameters.
+            raw == "body" -> raw
             // Carries no parameters and reaches no import sink of its own: the
             // MoonBoard screen only offers a file picker and the opt-in
             // accessibility transfer, both of which need a further user tap.

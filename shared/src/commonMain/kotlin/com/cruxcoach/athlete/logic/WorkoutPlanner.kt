@@ -44,6 +44,9 @@ object WorkoutPlanner {
         history: List<ExerciseSet>,
         injuries: List<Injury>,
         bodyweightKg: Double?,
+        /** Performance value per side (null = two-handed / not one-sided); null when none is known. */
+        capacityFor: (Side?) -> Capacity? = { null },
+        incrementKg: Double = 1.0,
         newId: () -> String,
     ): PlannedBlock {
         val def = catalog.fallbackFor(item.slug)
@@ -61,10 +64,16 @@ object WorkoutPlanner {
             item.warmup -> SetType.WARMUP
             else -> SetType.WORK
         }
-        val targetReps = item.repsMax ?: item.repsMin
+        val itemReps = item.repsMax ?: item.repsMin
+        // With a performance value the prescription wins over last time's
+        // numbers: that is what makes loads progress instead of repeating.
+        val targets = sides.associateWith { side -> LoadPrescriber.prescribe(def, item, capacityFor(side), bodyweightKg, incrementKg) }
         val rows = (0 until item.sets.coerceIn(1, 20)).flatMap { setIndex ->
             sides.map { side ->
                 val ghost = GhostValues.forSet(ghosts, setIndex, side)
+                val target = targets[side]
+                val targetReps = target?.reps ?: itemReps
+                val targetDuration = target?.durationS ?: item.durationS
                 ExerciseSet(
                     id = newId(),
                     workoutId = workoutId,
@@ -74,19 +83,19 @@ object WorkoutPlanner {
                     setType = setType,
                     side = side,
                     targetReps = targetReps.takeIf { def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS },
-                    targetDurationS = item.durationS?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
-                    targetLoadKg = item.loadKg,
+                    targetDurationS = targetDuration?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
+                    targetLoadKg = target?.loadKg ?: item.loadKg,
                     reps = when (def.kind) {
-                        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> ghost?.reps ?: targetReps
+                        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> target?.reps ?: ghost?.reps ?: targetReps
                         ExerciseKind.CLIMB -> ghost?.reps ?: item.repsPerSet
                         else -> null
                     },
                     durationS = when (def.kind) {
-                        ExerciseKind.TIME, ExerciseKind.HANG -> ghost?.durationS ?: item.durationS?.toDouble()
+                        ExerciseKind.TIME, ExerciseKind.HANG -> target?.durationS?.toDouble() ?: ghost?.durationS ?: item.durationS?.toDouble()
                         else -> null
                     },
                     loadKg = if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL)
-                        ghost?.loadKg ?: item.loadKg else null,
+                        target?.loadKg ?: ghost?.loadKg ?: item.loadKg else null,
                     edgeMm = (ghost?.edgeMm ?: item.edgeMm?.toDouble())
                         .takeIf { def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL },
                     grip = ghost?.grip ?: item.grip,

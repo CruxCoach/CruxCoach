@@ -20,3 +20,10 @@ created: 2026-10-04
 - 0.1–0.2.3 `body_stats` rows are copied once (never overwriting) on first use.
 - No BMI categories, no target weight, no body-fat goals. A weight-loss goal is
   blocked by the RED-S guard (FEAT-068) when signals are present.
+- Measurement round: one date, all metrics optional, last value as hint.
+- Reminders (optional, off by default): weigh-in on chosen weekdays/time and a
+  monthly measurement round; WorkManager one-shot jobs, no notification when
+  today's value already exists; tap opens the body screen.
+- Waistline import: JSON database backup (`diary[].stats`, units from
+  `settings.bodyStats.units`) and CSV diary export (localized headers, dates
+  and decimals, display units); preview, keep/overwrite, day/month switch.

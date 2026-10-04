@@ -399,3 +399,104 @@ class AthleteBackupEnvelopeTest {
         assertTrue(runCatching { com.cruxcoach.data.CruxCoachBackup.preview(json) }.isFailure)
     }
 }
+
+class BenchmarkLogicTest {
+
+    private fun def(slug: String, kind: ExerciseKind, load: LoadMode, unilateral: Boolean = false, defaults: Prescription = Prescription()) =
+        ExerciseDefinition(slug, ExerciseCategoryV2.PULL, kind, load, unilateral, defaults = defaults,
+            i18n = mapOf("en" to ExerciseText(slug)))
+
+    private val weightedPullUp = def("pull.weighted_pull_up", ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
+        defaults = Prescription(sets = 5, repsMin = 3, repsMax = 5, restS = 180))
+    private val pickup = def("finger.one_arm_pickup", ExerciseKind.HANG, LoadMode.EXTERNAL, unilateral = true,
+        defaults = Prescription(sets = 5, durationS = 10, restS = 120, edgeMm = 20))
+    private val repeaters = def("finger.repeaters", ExerciseKind.INTERVAL, LoadMode.BODYWEIGHT_PLUS,
+        defaults = Prescription(sets = 4, workS = 7, restBetweenS = 3, repsPerSet = 6, restS = 180, edgeMm = 20))
+    private val pullUp = def("pull.pull_up", ExerciseKind.REPS, LoadMode.BODYWEIGHT, defaults = Prescription(sets = 4, repsMin = 4, repsMax = 8))
+
+    private fun bench(slug: String, load: Double? = null, reps: Int? = null, duration: Double? = null, side: Side? = null,
+                      edge: Double? = null, bw: Double? = 70.0, at: Long = 1) =
+        Benchmark("b$at$slug$side", slug, side, edge, null, load, reps, duration, bw, BenchmarkSource.MANUAL, at)
+
+    @Test
+    fun holdCurveIsMonotoneAndAnchoredAtTenSeconds() {
+        assertEquals(1.0, HoldCurve.relative(10.0), 1e-9)
+        val values = listOf(3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0, 60.0).map { HoldCurve.relative(it) }
+        assertTrue(values.zipWithNext().all { (a, b) -> a > b })
+    }
+
+    @Test
+    fun weightedPullUpPrescriptionComesFromTheE1rmAtTwoInReserve() {
+        val cap = assertNotNull(BenchmarkMath.capacity(weightedPullUp, bench(weightedPullUp.slug, load = 20.0, reps = 5), null))
+        assertEquals(105.0, cap.value, 1e-9)                    // (70 + 20) × (1 + 5/30)
+        val t = assertNotNull(LoadPrescriber.prescribe(weightedPullUp, WorkoutPlanner.itemFor(weightedPullUp), cap, 70.0, 1.0))
+        assertEquals(5, t.reps)
+        assertEquals(15.0, t.loadKg)                            // 105 / (1 + 7/30) − 70 ≈ 15.1
+    }
+
+    @Test
+    fun pickupMaxHangPlansNinetyPercentAndRepeatersBorrowSixtyFive() {
+        val cap = assertNotNull(BenchmarkMath.capacity(pickup, bench(pickup.slug, load = 32.0, duration = 10.0, side = Side.RIGHT), 70.0))
+        assertEquals(32.0, cap.value, 1e-9)
+        assertEquals(29.0, LoadPrescriber.prescribe(pickup, WorkoutPlanner.itemFor(pickup), cap, 70.0, 1.0)?.loadKg)
+        val hangCap = Capacity(CapacityKind.TEN_SECOND_MAX, 100.0, 70.0)  // body weight + 30 kg for 10 s
+        val r = assertNotNull(LoadPrescriber.prescribe(repeaters, WorkoutPlanner.itemFor(repeaters), hangCap, 70.0, 1.0))
+        assertEquals(-5.0, r.loadKg)                            // 65 kg total → 5 kg assistance
+        assertEquals(7, r.durationS)
+    }
+
+    @Test
+    fun longerHoldIsConvertedToTheTenSecondMaximum() {
+        val cap = assertNotNull(BenchmarkMath.capacity(pickup, bench(pickup.slug, load = 28.2, duration = 20.0), 70.0))
+        assertTrue(cap.value > 31.0 && cap.value < 32.5, "was ${cap.value}")
+    }
+
+    @Test
+    fun bodyweightRepsAreSeventyPercentOfTheMaximumAndTestsGetNoTarget() {
+        val cap = assertNotNull(BenchmarkMath.capacity(pullUp, bench(pullUp.slug, reps = 12), 70.0))
+        assertEquals(8, LoadPrescriber.prescribe(pullUp, WorkoutPlanner.itemFor(pullUp), cap, 70.0, 1.0)?.reps)
+        assertNull(LoadPrescriber.prescribe(pullUp, WorkoutPlanner.itemFor(pullUp).copy(test = true), cap, 70.0, 1.0))
+    }
+
+    @Test
+    fun impliedCapacityCountsRepsInReserve() {
+        val set = ExerciseSet("s", "w", weightedPullUp.slug, 0, 0, reps = 5, rir = 2, loadKg = 20.0, bodyweightKg = 70.0, completedAt = 1)
+        assertEquals(90.0 * (1 + 7 / 30.0), BenchmarkMath.implied(weightedPullUp, set)!!.value, 1e-9)
+        assertNull(BenchmarkMath.implied(weightedPullUp, set.copy(setType = SetType.WARMUP)))
+    }
+
+    @Test
+    fun selectPrefersTheSameSideAndEdge() {
+        val list = listOf(
+            bench(pickup.slug, load = 30.0, duration = 10.0, side = Side.LEFT, edge = 20.0, at = 5),
+            bench(pickup.slug, load = 34.0, duration = 10.0, side = Side.RIGHT, edge = 30.0, at = 4),
+            bench(pickup.slug, load = 32.0, duration = 10.0, side = Side.RIGHT, edge = 20.0, at = 3),
+        )
+        assertEquals(32.0, BenchmarkMath.select(list, Side.RIGHT, 20.0, null)?.loadKg)
+        assertEquals(30.0, BenchmarkMath.select(list, Side.LEFT, 20.0, null)?.loadKg)
+    }
+
+    @Test
+    fun plannerUsesThePrescriptionInsteadOfLastTimesLoad() {
+        val catalog = ExerciseCatalog(1, listOf(weightedPullUp))
+        val history = listOf(ExerciseSet("old", "o", weightedPullUp.slug, 0, 0, reps = 5, loadKg = 10.0, completedAt = 2))
+        val cap = Capacity(CapacityKind.E1RM_TOTAL, 105.0, 70.0)
+        var n = 0
+        val block = WorkoutPlanner.plan("w", 0, WorkoutPlanner.itemFor(weightedPullUp), catalog, history, emptyList(), 70.0,
+            capacityFor = { cap }, incrementKg = 1.0, newId = { "id${n++}" })
+        assertTrue(block.sets.all { it.loadKg == 15.0 && it.targetLoadKg == 15.0 && it.reps == 5 })
+    }
+
+    @Test
+    fun playerOrdersSidesAndUsesAShortSideSwitch() {
+        val left = ExerciseSet("l", "w", pickup.slug, 0, 0, side = Side.LEFT, restS = 120)
+        val right = ExerciseSet("r", "w", pickup.slug, 0, 0, side = Side.RIGHT, restS = 120)
+        val next = ExerciseSet("n", "w", pickup.slug, 0, 1, side = Side.LEFT, restS = 120)
+        val sets = listOf(next, right, left)
+        assertEquals("l", PlayerQueue.current(sets)?.id)
+        assertEquals(30, PlayerQueue.restAfter(left, right, pickup))
+        assertEquals(120, PlayerQueue.restAfter(right, next, pickup))
+        assertEquals(0, PlayerQueue.restAfter(next, null, pickup))
+        assertEquals(PlayerQueue.Position(2, 3, 1, 2), PlayerQueue.position(sets, right))
+    }
+}

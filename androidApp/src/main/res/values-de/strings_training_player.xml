@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Geführter Trainingsmodus (FEAT-066): Satzansicht und Pausen-Screen. -->
+<resources>
+    <string name="trp_title">Geführtes Training</string>
+    <string name="trp_overview">Übersicht</string>
+    <string name="trp_progress">%1$d von %2$d Sätzen erledigt</string>
+    <string name="trp_set_of">Satz %1$d von %2$d</string>
+    <string name="trp_start_timer">Start</string>
+    <string name="trp_done_without_timer">Ohne Timer erledigt</string>
+    <string name="trp_done_set">Satz erledigt</string>
+    <string name="trp_skip">Überspringen</string>
+    <string name="trp_next_after">Danach: %1$s</string>
+    <plurals name="trp_reps_big">
+        <item quantity="one">%d Wdh.</item>
+        <item quantity="other">%d Wdh.</item>
+    </plurals>
+    <plurals name="trp_rounds">
+        <item quantity="one">%d Runde</item>
+        <item quantity="other">%d Runden</item>
+    </plurals>
+    <string name="trp_complete_title">Alle Sätze erledigt</string>
+    <plurals name="trp_complete_text">
+        <item quantity="one">%d Satz geschafft – stark.</item>
+        <item quantity="other">%d Sätze geschafft – stark.</item>
+    </plurals>
+    <string name="trp_finish_training">Training beenden</string>
+
+    <string name="trp_rest_title">Pause</string>
+    <string name="trp_rest_go">Los geht\'s!</string>
+    <string name="trp_side_switch">Seitenwechsel</string>
+    <string name="trp_side_switch_to">Jetzt: %1$s</string>
+    <string name="trp_rest_remaining_cd">Noch %1$s Pause</string>
+    <string name="trp_rest_minus">−15 s</string>
+    <string name="trp_rest_plus">+15 s</string>
+    <string name="trp_rest_skip">Pause beenden</string>
+    <string name="trp_next_up">Als Nächstes</string>
+    <string name="trp_rir_question_reps">Wie viele Wiederholungen wären noch gegangen?</string>
+    <string name="trp_rir_question_seconds">Wie viele Sekunden wären noch gegangen?</string>
+    <string name="trp_record">Neuer Bestwert: %1$s</string>
+    <string name="trp_benchmark_raised">Leistungswert angehoben: %1$s</string>
+    <string name="trp_capacity_e1rm">e1RM %1$s</string>
+    <string name="trp_capacity_ten">10-s-Max %1$s</string>
+    <string name="trp_capacity_ten_pct">10-s-Max %1$s (%2$s)</string>
+    <plurals name="trp_capacity_reps">
+        <item quantity="one">max. %d Wdh.</item>
+        <item quantity="other">max. %d Wdh.</item>
+    </plurals>
+    <string name="trp_capacity_seconds">max. %1$d s</string>
+</resources>

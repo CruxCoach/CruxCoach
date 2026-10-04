@@ -1,0 +1,19 @@
+-- Migration 1 → 2: performance values per exercise (exercise_benchmark).
+-- Feature builds of 0.2.4 shipped schema 1 without this table.
+
+CREATE TABLE IF NOT EXISTS exercise_benchmark (
+    id TEXT NOT NULL PRIMARY KEY,
+    exercise_slug TEXT NOT NULL,
+    side TEXT,
+    edge_mm REAL,
+    grip TEXT,
+    load_kg REAL,
+    reps INTEGER,
+    duration_s REAL,
+    bodyweight_kg REAL,
+    source TEXT NOT NULL,
+    measured_at INTEGER NOT NULL,
+    note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS exercise_benchmark_slug ON exercise_benchmark(exercise_slug, measured_at);

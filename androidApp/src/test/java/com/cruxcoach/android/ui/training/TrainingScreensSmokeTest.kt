@@ -14,7 +14,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.athlete.ClimbingDaysReader
 import com.cruxcoach.android.athlete.ExerciseCatalogStore
@@ -61,15 +61,21 @@ class TrainingScreensSmokeTest {
 
     @get:Rule val compose = createComposeRule()
 
-    private val athleteDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
-    private val secureDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { SecureDatabase.Schema.create(it) }
-    private val repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
+    // Android's own SQLite (Robolectric) rather than JDBC: registering the
+    // JDBC driver inside the sandbox class loader breaks plain JDBC tests that
+    // run later in the same JVM.
+    private val context: Application get() = ApplicationProvider.getApplicationContext()
+    private lateinit var athleteDriver: AndroidSqliteDriver
+    private lateinit var secureDriver: AndroidSqliteDriver
+    private lateinit var repo: AthleteRepository
     private lateinit var service: AthleteService
     private lateinit var sessionManager: BoardSessionManager
 
     @Before
     fun setUp() {
-        val context = ApplicationProvider.getApplicationContext<Application>()
+        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
+        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
+        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
         val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
         every { boardRepo.getActiveSession() } returns null
         sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
@@ -202,5 +208,41 @@ class TrainingScreensSmokeTest {
     fun `weekly review renders`() {
         render { WeeklyReviewScreen({}, viewModel = WeeklyReviewViewModel(service)) }
         waitForTag("review_prev")
+    }
+
+    @Test
+    fun `first session learns a value, a better set raises it, a test may lower it`() {
+        val id = service.startWorkout(null, null)
+        service.addExercise(id, "pull.weighted_pull_up")
+        val sets = repo.setsFor(id)
+        val first = sets.first().copy(loadKg = 10.0, reps = 5)
+        assert(service.completeSetDetailed(first, startRest = false).raisedBenchmark != null)
+        val stronger = sets[1].copy(loadKg = 15.0, reps = 5, rir = 1)
+        assert(service.completeSetDetailed(stronger, startRest = false).raisedBenchmark != null)
+        val weaker = sets[2].copy(loadKg = 5.0, reps = 5)
+        assert(service.completeSetDetailed(weaker, startRest = false).raisedBenchmark == null)
+        assert(repo.benchmarks("pull.weighted_pull_up").first().loadKg == 15.0)
+        // The next training plans from the raised value instead of repeating the last load.
+        service.finishWorkout(id, 7, null)
+        val next = service.startWorkout(null, null)
+        service.addExercise(next, "pull.weighted_pull_up")
+        val planned = repo.setsFor(next).first()
+        assert((planned.targetLoadKg ?: 0.0) > 10.0) { "planned ${planned.targetLoadKg}" }
+    }
+
+    @Test
+    fun `guided player shows the current set`() {
+        service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.PULL_ANTAGONIST), null)
+        render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service)) }
+        waitForTag("player_set_view")
+    }
+
+    @Test
+    fun `performance values screen lists the key exercises`() {
+        render { com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen({}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service)) }
+        waitForTag("benchmarks_list")
+        scrollTo("benchmarks_list", hasTestTag("benchmark_row_finger.one_arm_pickup"))
     }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Optionale Erinnerungen für Körperdaten und der Einstieg zu den Leistungswerten (FEAT-067). -->
+<resources>
+    <string name="trr_title">Erinnerungen</string>
+    <string name="trr_info_text">Freiwillige Anstupser, damit du Körperdaten regelmäßig einträgst: Wiegen an den Tagen, die du wählst, und eine monatliche Messrunde für Umfänge. Ist der Wert von heute schon eingetragen, kommt nichts, und eine ausgelassene Erinnerung zählt nie gegen dich.</string>
+    <string name="trr_weigh">Erinnerung zum Wiegen</string>
+    <string name="trr_weigh_days">An diesen Tagen</string>
+    <string name="trr_measure">Monatliche Messrunde</string>
+    <string name="trr_measure_day">Am %1$d. des Monats</string>
+    <string name="trr_measure_same_time">Gleiche Uhrzeit wie die Erinnerung zum Wiegen.</string>
+    <string name="trr_time">Uhrzeit: %1$s</string>
+    <string name="trr_time_pick">Uhrzeit wählen</string>
+    <string name="trr_permission_denied">Benachrichtigungen sind für CruxCoach aus. Die Erinnerungen bleiben gespeichert, können aber nicht erscheinen – du kannst Benachrichtigungen in den Android-Einstellungen erlauben.</string>
+    <string name="trr_notify_weigh_title">Zeit fürs Wiegen</string>
+    <string name="trr_notify_weigh_text">Der Trend zählt, nicht der einzelne Wert. Tippe zum Eintragen.</string>
+    <string name="trr_notify_measure_title">Monatliche Messrunde</string>
+    <string name="trr_notify_measure_text">Umfänge eintragen? Dauert zwei Minuten – lass es aus, wann immer du willst.</string>
+    <string name="trr_benchmarks">Leistungswerte</string>
+    <string name="trr_benchmarks_hint">Was du pro Übung schaffst – die Grundlage für geplante Lasten.</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Optional body-data reminders and the performance-values entry (FEAT-067). -->
+<resources>
+    <string name="trr_title">Reminders</string>
+    <string name="trr_info_text">Optional nudges to log body data regularly: a weigh-in on the days you choose and a monthly measuring round for circumferences. Nothing is sent when today\'s value is already logged, and a reminder never counts against you when you skip it.</string>
+    <string name="trr_weigh">Weigh-in reminder</string>
+    <string name="trr_weigh_days">On these days</string>
+    <string name="trr_measure">Monthly measuring round</string>
+    <string name="trr_measure_day">On day %1$d of the month</string>
+    <string name="trr_measure_same_time">Same time as the weigh-in reminder.</string>
+    <string name="trr_time">Time: %1$s</string>
+    <string name="trr_time_pick">Choose time</string>
+    <string name="trr_permission_denied">Notifications are off for CruxCoach. The reminders stay saved but cannot appear – you can allow notifications in the Android settings.</string>
+    <string name="trr_notify_weigh_title">Time to weigh in</string>
+    <string name="trr_notify_weigh_text">The trend counts, not the single value. Tap to log it.</string>
+    <string name="trr_notify_measure_title">Monthly measuring round</string>
+    <string name="trr_notify_measure_text">Log your circumferences? Takes two minutes – skip it whenever you like.</string>
+    <string name="trr_benchmarks">Performance values</string>
+    <string name="trr_benchmarks_hint">What you can do per exercise – the basis for planned loads.</string>
+</resources>

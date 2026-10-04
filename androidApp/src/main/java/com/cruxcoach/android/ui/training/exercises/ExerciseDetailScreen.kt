@@ -214,6 +214,7 @@ fun ExerciseDetailScreen(
                     item { TextSections(def, language) }
                     item { Facts(def) }
                     if (state.chain.size > 1) item { ChainStepper(state.chain, def.slug, language, onOpenExercise) }
+                    item { com.cruxcoach.android.ui.training.benchmarks.BenchmarkCard(def.slug, onTestStarted = onOpenWorkout) }
                     if (state.bests.isNotEmpty()) item { Bests(def, state.bests, state.profile) }
                     item { History(def, state.sessions, state.profile) }
                     item { Spacer(Modifier.height(16.dp)) }

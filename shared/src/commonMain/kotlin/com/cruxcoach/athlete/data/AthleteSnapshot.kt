@@ -24,15 +24,17 @@ data class AthleteSnapshot(
     val checkins: List<Checkin> = emptyList(),
     val injuries: List<Injury> = emptyList(),
     val pauses: List<PausePeriod> = emptyList(),
+    val benchmarks: List<Benchmark> = emptyList(),
 ) {
-    val trainingRows: Int get() = workouts.size + sets.size + routines.size + customExercises.size
+    val trainingRows: Int get() = workouts.size + sets.size + routines.size + customExercises.size + benchmarks.size
     val bodyRows: Int get() = measurements.size
     val fuelRows: Int get() = foodItems.size + foodLog.size + hydration.size
     val wellbeingRows: Int get() = checkins.size + injuries.size + pauses.size
     val isEmpty: Boolean get() = profile == null && trainingRows + bodyRows + fuelRows + wellbeingRows + favorites.size == 0
 
     fun onlyTraining() = AthleteSnapshot(profile = profile, workouts = workouts, sets = sets, routines = routines,
-        customExercises = customExercises, favorites = favorites, checkins = checkins, injuries = injuries, pauses = pauses)
+        customExercises = customExercises, favorites = favorites, checkins = checkins, injuries = injuries, pauses = pauses,
+        benchmarks = benchmarks)
     fun onlyBody() = AthleteSnapshot(measurements = measurements)
     fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration)
 
@@ -43,5 +45,6 @@ data class AthleteSnapshot(
         measurements = measurements + other.measurements, foodItems = foodItems + other.foodItems,
         foodLog = foodLog + other.foodLog, hydration = hydration + other.hydration, checkins = checkins + other.checkins,
         injuries = injuries + other.injuries, pauses = pauses + other.pauses,
+        benchmarks = benchmarks + other.benchmarks,
     )
 }

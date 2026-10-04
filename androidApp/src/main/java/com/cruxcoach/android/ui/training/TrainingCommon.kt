@@ -51,6 +51,8 @@ object TrainingRoutes {
     const val WEEKLY_REVIEW = "weekly_review"
     const val ATHLETE_SETTINGS = "athlete_settings"
     const val CUSTOM_EXERCISE = "custom_exercise"
+    const val WORKOUT_PLAYER = "workout_player"
+    const val BENCHMARKS = "benchmarks"
 }
 
 /** Language for catalogue texts: German UI → German texts, everything else English. */

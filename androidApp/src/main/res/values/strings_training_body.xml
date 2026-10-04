@@ -48,4 +48,49 @@
     <string name="trb_reds_text">Your history shows something that can point to too little energy. Eating enough is part of training – strength is built during recovery.</string>
     <string name="trb_reds_info">Too little energy over a longer time (RED-S) can affect performance, bones, hormones and mood. CruxCoach does not diagnose anything. If this sounds familiar – often tired, often ill, irregular periods, performance stalling – talk to a doctor or a sports nutrition professional.</string>
     <string name="trb_settings_hint">Units and hiding numbers are in the training settings.</string>
+
+    <!-- Waistline import -->
+    <string name="trb_import_action">Import from Waistline</string>
+    <string name="trb_import_title">Import from Waistline</string>
+    <string name="trb_import_format_json">Waistline database backup (JSON)</string>
+    <string name="trb_import_format_csv">Waistline diary export (CSV)</string>
+    <string name="trb_import_range">%1$s – %2$s</string>
+    <string name="trb_import_found">Values found</string>
+    <plurals name="trb_import_skipped">
+        <item quantity="one">%d value skipped (unreadable or implausible)</item>
+        <item quantity="other">%d values skipped (unreadable or implausible)</item>
+    </plurals>
+    <string name="trb_import_date_order">Date order</string>
+    <string name="trb_import_date_order_hint">The dates in this file could be day/month or month/day. Check that the date range above looks right.</string>
+    <string name="trb_import_day_month">Day/Month</string>
+    <string name="trb_import_month_day">Month/Day</string>
+    <plurals name="trb_import_conflicts">
+        <item quantity="one">%d value falls on a day that already has an entry here.</item>
+        <item quantity="other">%d values fall on days that already have an entry here.</item>
+    </plurals>
+    <string name="trb_import_overwrite">Overwrite existing values</string>
+    <string name="trb_import_confirm">Import</string>
+    <plurals name="trb_import_done">
+        <item quantity="one">%d value imported</item>
+        <item quantity="other">%d values imported</item>
+    </plurals>
+    <plurals name="trb_import_kept">
+        <item quantity="one">%d existing value kept</item>
+        <item quantity="other">%d existing values kept</item>
+    </plurals>
+    <string name="trb_import_empty">No body data found in this file. In Waistline, export under Settings → Import/Export: "Export database" (JSON) or "Export diary" (CSV).</string>
+    <string name="trb_import_failed">The file could not be read.</string>
+    <string name="trb_import_too_large">The file is too large (max. 20 MB).</string>
+    <string name="trb_waistline_badge">Waistline</string>
+
+    <!-- Measurement round -->
+    <string name="trb_round_title">Measurement round</string>
+    <string name="trb_round_card_text">Weight, waist, arms … enter several values at once.</string>
+    <string name="trb_round_text">Every field is optional – fill in what you measured today.</string>
+    <string name="trb_round_action">Start</string>
+    <string name="trb_round_last">last %1$s</string>
+    <plurals name="trb_round_saved">
+        <item quantity="one">%d value saved</item>
+        <item quantity="other">%d values saved</item>
+    </plurals>
 </resources>

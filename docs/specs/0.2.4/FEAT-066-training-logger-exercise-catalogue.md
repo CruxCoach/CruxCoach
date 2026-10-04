@@ -74,7 +74,23 @@ the UI. Load-jump information per structure is shown as information, not a ban.
 `AthleteLogicTest` (shared), `ExerciseCatalogAssetTest`, `AthleteRepositoryTest`,
 `BoardSessionRestTimerTest` (M-097), backup preview/validation tests.
 
-## 7. Open
+## 7. Performance values and guided mode (owner request 2026-10-04)
+
+- `exercise_benchmark` (athlete migration 1→2): per exercise, side, edge and
+  grip; sources MANUAL, TEST, AUTO. Capacity = e1RM of the total load (loaded
+  reps), 10-s maximum (hangs/pick-ups; other hold times converted with a
+  monotone hold curve), max reps, max seconds.
+- Prescription: loaded reps at RIR 2 from the e1RM, max hangs 90 % (density
+  ≥ 20 s: 85 %) of what can be held for the planned time, repeaters 65 % of the
+  10-s maximum (borrowed from the two-arm max hang on the same edge when they
+  have no value), bodyweight reps and holds 70 % of the maximum; snapped to the
+  smallest weight step. The prescription replaces last time's load.
+- Learning: the first completed work set sets a value; a set implying > 2 %
+  more raises it; a test may set it lower (a fresh test is the truth).
+- Guided player (default for routines): set view with inline timers, own rest
+  screen (ring, ±15 s, side switch, next set, RIR question), ordered writes.
+
+## 8. Open
 
 Plan engine (FEAT-040) on top of target/result; Tindeq/WH-C06 live force and
 a critical-force test (0.3); routines over Nostr; iOS UI.

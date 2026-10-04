@@ -1,0 +1,37 @@
+-- Performance values per exercise (FEAT-066 §8): what the athlete can do,
+-- entered by hand, measured in a test, or raised automatically when a logged
+-- set proves more. Prescriptions in the logger are derived from the newest
+-- value per exercise, side, edge and grip.
+
+CREATE TABLE exercise_benchmark (
+    id TEXT NOT NULL PRIMARY KEY,
+    exercise_slug TEXT NOT NULL,
+    side TEXT,
+    edge_mm REAL,
+    grip TEXT,
+    load_kg REAL,
+    reps INTEGER,
+    duration_s REAL,
+    bodyweight_kg REAL,
+    source TEXT NOT NULL,
+    measured_at INTEGER NOT NULL,
+    note TEXT
+);
+
+CREATE INDEX exercise_benchmark_slug ON exercise_benchmark(exercise_slug, measured_at);
+
+upsertBenchmark:
+INSERT OR REPLACE INTO exercise_benchmark(id, exercise_slug, side, edge_mm, grip, load_kg, reps, duration_s, bodyweight_kg, source, measured_at, note)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getBenchmarksForExercise:
+SELECT * FROM exercise_benchmark WHERE exercise_slug = ? ORDER BY measured_at DESC;
+
+getAllBenchmarks:
+SELECT * FROM exercise_benchmark ORDER BY measured_at DESC;
+
+getBenchmark:
+SELECT * FROM exercise_benchmark WHERE id = ?;
+
+deleteBenchmark:
+DELETE FROM exercise_benchmark WHERE id = ?;

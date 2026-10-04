@@ -56,6 +56,7 @@ fun WorkoutScreen(
     onOpenExercise: (String) -> Unit,
     onFinished: (workoutId: String) -> Unit,
     viewModel: WorkoutViewModel = hiltViewModel(),
+    onOpenPlayer: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -87,6 +88,12 @@ fun WorkoutScreen(
         onBack = onBack,
         snackbarHost = { SnackbarHost(snackbar) },
         actions = {
+            if (workout != null && state.blocks.isNotEmpty()) {
+                IconButton(onClick = onOpenPlayer, modifier = Modifier.testTag("workout_open_player")) {
+                    Icon(androidx.compose.material.icons.Icons.Default.PlayArrow,
+                        contentDescription = stringResource(R.string.trw_open_player))
+                }
+            }
             if (workout != null) {
                 var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(workout.id) {

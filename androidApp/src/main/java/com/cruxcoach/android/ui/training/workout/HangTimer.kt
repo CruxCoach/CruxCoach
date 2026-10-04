@@ -86,6 +86,41 @@ fun HangTimerDialog(
     onDismiss: () -> Unit,
     onSetFinished: (setIndex: Int) -> Unit,
 ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
+    ) {
+        HangTimerContent(
+            workS = workS, restBetweenS = restBetweenS, reps = reps, sets = sets, restBetweenSetsS = restBetweenSetsS,
+            sound = sound, vibration = vibration, voice = voice, sideLabels = sideLabels,
+            onClose = onDismiss, onSetFinished = onSetFinished, onDone = onDismiss,
+        )
+    }
+}
+
+/**
+ * The timer itself, without a window: [HangTimerDialog] wraps it in a dialog,
+ * the guided training mode embeds it full-screen. [onDone] fires from the
+ * "Done" button after the last phase; [onClose] (if given) shows a close icon.
+ */
+@Composable
+fun HangTimerContent(
+    workS: Int,
+    restBetweenS: Int,
+    reps: Int,
+    sets: Int,
+    restBetweenSetsS: Int,
+    sound: Boolean,
+    vibration: Boolean,
+    voice: Boolean,
+    sideLabels: List<String>?,
+    onClose: (() -> Unit)?,
+    onSetFinished: (setIndex: Int) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Calls [onDone] by itself when the last phase ends (guided mode); otherwise a "Done" button waits. */
+    finishAutomatically: Boolean = false,
+) {
     val repCount = reps.coerceAtLeast(1)
     val setCount = sets.coerceAtLeast(1)
     val segments = remember(workS, restBetweenS, repCount, setCount, restBetweenSetsS) {
@@ -93,6 +128,8 @@ fun HangTimerDialog(
     }
     val totalMs = segments.last().endMs
     val context = LocalContext.current
+    val currentOnDone by rememberUpdatedState(onDone)
+    val currentOnSetFinished by rememberUpdatedState(onSetFinished)
 
     val goText = stringResource(R.string.trw_voice_go)
     val restText = stringResource(R.string.trw_voice_rest)
@@ -162,7 +199,7 @@ fun HangTimerDialog(
     fun crossed(from: Int, toExclusive: Int) {
         for (k in from until toExclusive.coerceAtMost(segments.size)) {
             val seg = segments[k]
-            if (seg.phase == TimerPhase.WORK && seg.rep == repCount - 1 && finishedSets.add(seg.set)) onSetFinished(seg.set)
+            if (seg.phase == TimerPhase.WORK && seg.rep == repCount - 1 && finishedSets.add(seg.set)) currentOnSetFinished(seg.set)
         }
     }
 
@@ -177,6 +214,7 @@ fun HangTimerDialog(
                 segmentIndex = segments.size
                 beep(long = true); buzz(500); say(doneText)
                 running = false
+                if (finishAutomatically) currentOnDone()
                 break
             }
             val idx = segments.indexOfLast { it.startMs <= e }.coerceAtLeast(0)
@@ -232,13 +270,12 @@ fun HangTimerDialog(
         TimerPhase.DONE -> R.string.trw_phase_done
     })
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
-    ) {
-        Box(Modifier.fillMaxSize().background(bg).testTag("hang_timer")) {
-            IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).testTag("hang_timer_close")) {
-                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.trw_timer_close), tint = fg)
+    run {
+        Box(modifier.fillMaxSize().background(bg).testTag("hang_timer")) {
+            if (onClose != null) {
+                IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).testTag("hang_timer_close")) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.trw_timer_close), tint = fg)
+                }
             }
             Column(
                 Modifier.align(Alignment.Center).padding(24.dp),
@@ -275,7 +312,7 @@ fun HangTimerDialog(
                 Spacer(Modifier.height(32.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (done) {
-                        Button(onClick = onDismiss, modifier = Modifier.testTag("hang_timer_done")) {
+                        Button(onClick = onDone, modifier = Modifier.testTag("hang_timer_done")) {
                             Text(stringResource(R.string.tr_action_done))
                         }
                     } else {

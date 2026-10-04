@@ -1,5 +1,10 @@
 package com.cruxcoach.android.ui.training.athlete
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -9,7 +14,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -19,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.athlete.BodyReminders
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.EquipmentV2
@@ -70,7 +78,11 @@ private val PRESET_TRAVEL = setOf(EquipmentV2.BANDS)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewModel = hiltViewModel()) {
+fun AthleteSettingsScreen(
+    onBack: () -> Unit,
+    viewModel: AthleteSettingsViewModel = hiltViewModel(),
+    onOpenBenchmarks: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
     TrainingScaffold(title = stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
@@ -122,6 +134,13 @@ fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewMode
                 OutlinedButton(onClick = { viewModel.update { it.copy(weeklyGoal = (it.weeklyGoal + 1).coerceAtMost(7)) } },
                     modifier = Modifier.testTag("weekly_goal_plus")) { Text("+") }
             }
+            OutlinedCard(onClick = onOpenBenchmarks, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("open_benchmarks")) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(stringResource(R.string.trr_benchmarks), style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.trr_benchmarks_hint), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Text(stringResource(R.string.tra_goal), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AthleteGoal.entries.forEach { g ->
@@ -168,6 +187,9 @@ fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewMode
             }
             HeightField(state.heightCm, p.units, viewModel::setHeight)
 
+            // Reminders
+            ReminderSection(p) { transform -> viewModel.update(transform) }
+
             // Timer
             SectionTitle(stringResource(R.string.tra_timer_title))
             SwitchRow(stringResource(R.string.tra_auto_rest), p.autoRestTimer, "auto_rest") { v -> viewModel.update { it.copy(autoRestTimer = v) } }
@@ -177,6 +199,111 @@ fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewMode
             Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
         }
+    }
+}
+
+/**
+ * Optional weigh-in and measuring reminders. Every change is stored in the
+ * profile and rescheduled at once; enabling one asks for the notification
+ * permission on Android 13+, and a denial keeps the setting but says why
+ * nothing will appear.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> AthleteProfile) -> Unit) {
+    val context = LocalContext.current
+    fun applyChange(transform: (AthleteProfile) -> AthleteProfile) {
+        update(transform)
+        BodyReminders.reschedule(context, transform(p))
+    }
+    fun notificationsAllowed(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    var allowed by remember { mutableStateOf(notificationsAllowed()) }
+    var pending by remember { mutableStateOf<((AthleteProfile) -> AthleteProfile)?>(null) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        allowed = granted
+        pending?.let { applyChange(it) }
+        pending = null
+    }
+    fun enable(transform: (AthleteProfile) -> AthleteProfile) {
+        if (notificationsAllowed()) { allowed = true; applyChange(transform) }
+        else { pending = transform; launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    }
+    var picking by rememberSaveable { mutableStateOf(false) }
+    val timeText = String.format(java.util.Locale.ROOT, "%02d:%02d", p.weighReminderMinutes / 60, p.weighReminderMinutes % 60)
+
+    SectionTitle(stringResource(R.string.trr_title)) {
+        InfoButton(stringResource(R.string.trr_title), stringResource(R.string.trr_info_text))
+    }
+    SwitchRow(stringResource(R.string.trr_weigh), p.weighReminderEnabled, "weigh_reminder") { on ->
+        if (on) enable { it.copy(weighReminderEnabled = true) } else applyChange { it.copy(weighReminderEnabled = false) }
+    }
+    if (p.weighReminderEnabled) {
+        Text(stringResource(R.string.trr_weigh_days), style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            java.time.DayOfWeek.entries.forEach { day ->
+                val selected = day.value in p.weighReminderDays
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        applyChange {
+                            val days = if (selected) it.weighReminderDays - day.value else it.weighReminderDays + day.value
+                            it.copy(weighReminderDays = days.ifEmpty { setOf(day.value) })
+                        }
+                    },
+                    label = { Text(day.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())) },
+                    modifier = Modifier.testTag("weigh_day_${day.value}"),
+                )
+            }
+        }
+    }
+    SwitchRow(stringResource(R.string.trr_measure), p.measureReminderEnabled, "measure_reminder") { on ->
+        if (on) enable { it.copy(measureReminderEnabled = true) } else applyChange { it.copy(measureReminderEnabled = false) }
+    }
+    if (p.measureReminderEnabled) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.trr_measure_day, p.measureReminderDayOfMonth), modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { applyChange { it.copy(measureReminderDayOfMonth = (it.measureReminderDayOfMonth - 1).coerceAtLeast(1)) } },
+                modifier = Modifier.testTag("measure_day_minus")) { Text("−") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = { applyChange { it.copy(measureReminderDayOfMonth = (it.measureReminderDayOfMonth + 1).coerceAtMost(28)) } },
+                modifier = Modifier.testTag("measure_day_plus")) { Text("+") }
+        }
+    }
+    if (p.weighReminderEnabled || p.measureReminderEnabled) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.trr_time, timeText), modifier = Modifier.weight(1f))
+            TextButton(onClick = { picking = true }, modifier = Modifier.testTag("reminder_time")) {
+                Text(stringResource(R.string.trr_time_pick))
+            }
+        }
+        if (p.weighReminderEnabled && p.measureReminderEnabled) {
+            Text(stringResource(R.string.trr_measure_same_time), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (!allowed) {
+            Text(stringResource(R.string.trr_permission_denied), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("reminder_permission_hint"))
+        }
+    }
+    if (picking) {
+        val state = rememberTimePickerState(
+            initialHour = p.weighReminderMinutes / 60,
+            initialMinute = p.weighReminderMinutes % 60,
+            is24Hour = android.text.format.DateFormat.is24HourFormat(context),
+        )
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text(stringResource(R.string.trr_time_pick)) },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    applyChange { it.copy(weighReminderMinutes = state.hour * 60 + state.minute) }
+                    picking = false
+                }, modifier = Modifier.testTag("reminder_time_save")) { Text(stringResource(R.string.tr_action_save)) }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 }
 

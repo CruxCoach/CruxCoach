@@ -105,4 +105,7 @@
     <string name="trt_carbs_for">Carbs for: %1$s</string>
     <string name="trt_water">Water</string>
     <string name="trt_water_add">+250 ml</string>
+    <string name="trt_sugg_benchmarks_title">Enter your starting values</string>
+    <string name="trt_sugg_benchmarks_text">Max hang, pick-up, weighted pull-up: from what you can do, CruxCoach plans your loads.</string>
+    <string name="trt_sugg_benchmarks_action">Enter</string>
 </resources>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trbm_title">Performance values</string>
+    <string name="trbm_card_title">Your performance value</string>
+    <string name="trbm_info" formatted="false">Enter what you can do – e.g. a pull-up with +20 kg for 5 reps, or a 32 kg pick-up on 20 mm for 10 s with the right hand – or run a short test. CruxCoach turns it into today\'s loads: loaded reps with two in reserve, max hangs at about 90 %, repeaters at about 65 % of your 10-second maximum, bodyweight reps and holds at about 70 % of your maximum. When a logged set shows you are stronger, the value rises by itself and the next session plans more. Your first session with an exercise also sets a starting value.</string>
+    <string name="trbm_intro">What can you do? Enter it or test it – CruxCoach plans your loads from these values and raises them when your logs show progress.</string>
+    <string name="trbm_needs_weight" formatted="false">Log your body weight first: added-weight values and % body weight need it.</string>
+    <string name="trbm_key_title">Key starting values</string>
+    <string name="trbm_other_title">Other exercises</string>
+    <string name="trbm_more_hint">Every exercise with load, reps or a hold has this card on its detail page.</string>
+    <string name="trbm_none">not set yet</string>
+    <string name="trbm_meta">%1$s · %2$s</string>
+    <string name="trbm_source_manual">entered</string>
+    <string name="trbm_source_test">test</string>
+    <string name="trbm_source_auto">from your logs</string>
+    <string name="trbm_paused_injury">Paused while the injury heals.</string>
+    <string name="trbm_enter">Enter</string>
+    <string name="trbm_test">Test</string>
+    <string name="trbm_e1rm">est. 1RM %1$s</string>
+    <string name="trbm_ten_second_max">10-s max %1$s (%2$d %% BW)</string>
+    <string name="trbm_max_reps">max. %1$d reps</string>
+    <string name="trbm_max_seconds">max. %1$d s</string>
+    <string name="trbm_assisted">assisted %1$s</string>
+    <string name="trbm_hint_e1rm">The heaviest set you can do cleanly: load and reps (1–30). From that CruxCoach estimates your one-rep max.</string>
+    <string name="trbm_hint_hang">The most you can hold: load, hold time and edge. 10 s is the reference; other times are converted.</string>
+    <string name="trbm_hint_reps">Your maximum number of clean reps in one set.</string>
+    <string name="trbm_hint_seconds">Your longest clean hold.</string>
+    <string name="trbm_load_added">Added weight (%1$s)</string>
+    <string name="trbm_load_total">Load (%1$s)</string>
+    <string name="trbm_load_added_hint">0 = body weight, negative = assisted (pulley, band)</string>
+    <string name="trbm_reps">Reps</string>
+    <string name="trbm_seconds">Seconds</string>
+    <string name="trbm_edge">Edge (mm)</string>
+    <string name="trbm_planned">Planned: %1$s</string>
+</resources>
