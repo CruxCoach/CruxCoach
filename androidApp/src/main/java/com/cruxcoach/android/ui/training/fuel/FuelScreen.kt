@@ -35,13 +35,18 @@ import com.cruxcoach.athlete.model.Meal
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FuelScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: FuelViewModel = hiltViewModel(),
+    photoViewModel: FoodPhotoViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val photoState by photoViewModel.state.collectAsStateWithLifecycle()
+    var photoOpen by remember { mutableStateOf(false) }
+    var photoExplain by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var quickAdd by remember { mutableStateOf(false) }
@@ -95,7 +100,7 @@ fun FuelScreen(
                 if (state.redsSignals.isNotEmpty()) item { FuelSupportCard(state.redsSignals) }
                 item { TargetsCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { quickAdd = true }, modifier = Modifier.testTag("fuel_quick_add")) {
                             Icon(Icons.Default.Add, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
@@ -106,6 +111,8 @@ fun FuelScreen(
                             Spacer(Modifier.width(4.dp))
                             Text(stringResource(R.string.trf_my_foods))
                         }
+                        FoodPhotoButton(photoState.support, photoState.tooSlow,
+                            onOpen = { photoOpen = true }, onExplain = { photoExplain = true })
                     }
                 }
                 if (state.previousDayCount > 0) {
@@ -165,6 +172,18 @@ fun FuelScreen(
                 foodsOpen = true
             },
         )
+    }
+    if (photoOpen) {
+        FoodPhotoSheet(
+            day = (state.day ?: state.today)?.toString().orEmpty(),
+            initialMeal = defaultMeal,
+            onDismiss = { photoOpen = false },
+            onSaved = { photoOpen = false },
+            viewModel = photoViewModel,
+        )
+    }
+    if (photoExplain) {
+        FoodPhotoUnavailableDialog(photoState, onRemoveModel = photoViewModel::removeModel, onDismiss = { photoExplain = false })
     }
     if (copyConfirm) {
         AlertDialog(

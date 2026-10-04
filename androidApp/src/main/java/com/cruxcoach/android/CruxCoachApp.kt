@@ -95,6 +95,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
     }
 
     override fun onCreate() {
+        if (Application.getProcessName().endsWith(":vision")) {
+            // FEAT-069: the food photo process only runs FoodVisionService. It
+            // must not open databases, connect to relays or schedule work.
+            super.onCreate()
+            return
+        }
         PerfLogger.milestone("CruxCoachApp.onCreate START")
         PerfLogger.logMemory("app-create-start")
 

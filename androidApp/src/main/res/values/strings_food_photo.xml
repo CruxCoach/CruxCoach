@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Food photo recognition (FEAT-069): on-device model, BLS 4.0 nutrients. -->
+<resources>
+    <string name="fvp_button">Photo</string>
+    <string name="fvp_title">Log a meal from a photo</string>
+    <string name="fvp_ok">OK</string>
+
+    <string name="fvp_unavailable_title">Photo recognition not available</string>
+    <string name="fvp_unavailable_short">Not available on this device</string>
+    <string name="fvp_unavailable_ram">Photo recognition runs entirely on your phone and needs at least %1$d GB of memory. This device has %2$s GB.</string>
+    <string name="fvp_unavailable_cpu">This device\'s processor is too old for the recognition model (it needs ARMv8.2 with dot-product instructions).</string>
+    <string name="fvp_unavailable_abi">Photo recognition needs a 64-bit ARM device.</string>
+    <string name="fvp_unavailable_slow">The test run showed that one photo would take about %d s here. That is too slow, so the feature stays off. You can remove the model to free the space.</string>
+    <string name="fvp_unavailable_alternatives">Quick entries and your own foods work as before.</string>
+
+    <string name="fvp_setup_text">Recognition runs only on your device; your photo never leaves the phone. For that, CruxCoach downloads an AI model once (%1$s, %2$s).</string>
+    <string name="fvp_setup_estimate">It recognises foods and estimates grams. Nutrients come from the German food composition database BLS 4.0. Check the suggestions before you log them.</string>
+    <string name="fvp_setup_source">Source: Hugging Face (Qwen3.5, Apache-2.0). During the download the server only learns that this model is being fetched.</string>
+    <string name="fvp_allow_mobile">Also download over mobile data</string>
+    <string name="fvp_download">Download (%s)</string>
+    <string name="fvp_download_title">CruxCoach photo recognition (%1$d/%2$d)</string>
+    <string name="fvp_downloading">Downloading model… %1$s of %2$s</string>
+    <string name="fvp_download_waiting">Waiting for Wi-Fi or for the download to resume…</string>
+    <string name="fvp_verifying">Checking the files…</string>
+    <string name="fvp_probing">Test run: how fast is this device? (can take up to two minutes)</string>
+    <string name="fvp_run_probe">Run the test again</string>
+    <string name="fvp_probe_estimate">One photo takes about %d s on this device.</string>
+    <string name="fvp_remove_model">Remove model (%s)</string>
+
+    <string name="fvp_take_photo">Take a photo</string>
+    <string name="fvp_pick_photo">Choose from gallery</string>
+    <string name="fvp_on_device">Everything happens on this device.</string>
+    <string name="fvp_analyzing">Recognising foods…</string>
+    <string name="fvp_elapsed">%d s</string>
+    <string name="fvp_photo_description">Your meal photo</string>
+
+    <string name="fvp_review_hint">Recognised in %d s. Amounts are estimates – tap a food to change it.</string>
+    <string name="fvp_review_empty">No food was recognised in this photo.</string>
+    <string name="fvp_uncertain">unsure</string>
+    <string name="fvp_no_match">No nutrients – tap to choose a food</string>
+    <string name="fvp_detected_as">Recognised as: %s</string>
+    <string name="fvp_water_item">Water · counts as drinking</string>
+    <string name="fvp_grams">g</string>
+    <string name="fvp_ml">ml</string>
+    <string name="fvp_add_item">Add a food</string>
+    <plurals name="fvp_save">
+        <item quantity="one">Log %d entry</item>
+        <item quantity="other">Log %d entries</item>
+    </plurals>
+    <string name="fvp_attribution">Nutrients: Max Rubner-Institut, BLS 4.0 (CC BY 4.0)</string>
+
+    <string name="fvp_choose_title">Choose a food</string>
+    <string name="fvp_choose_search">Search the food database</string>
+    <string name="fvp_choose_none">Without nutrients</string>
+    <string name="fvp_per_100">per 100 g: %1$s kcal · P %2$s · C %3$s · F %4$s</string>
+
+    <string name="fvp_error_memory">The phone ran out of memory during recognition. Close other apps and try again.</string>
+    <string name="fvp_error_image">The photo could not be read.</string>
+    <string name="fvp_error_download">The download failed. Please try again.</string>
+    <string name="fvp_error_corrupt">The downloaded files were damaged and have been deleted. Please download again.</string>
+    <string name="fvp_error_no_storage">No storage is available for the model.</string>
+    <string name="fvp_error_space">Not enough free space: %1$s needed, %2$s free.</string>
+    <string name="fvp_error_engine">Recognition failed (%s).</string>
+    <string name="fvp_retry">Back</string>
+</resources>

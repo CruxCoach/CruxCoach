@@ -187,7 +187,11 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `fuel screen renders targets for an enabled module`() {
-        render { FuelScreen({}, {}, viewModel = FuelViewModel(service)) }
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val photo = com.cruxcoach.android.ui.training.fuel.FoodPhotoViewModel(context, service,
+            com.cruxcoach.android.foodvision.VisionModelStore(context), com.cruxcoach.android.foodvision.BlsRepository(context),
+            com.cruxcoach.android.foodvision.DeviceFactsReader(context))
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service), photoViewModel = photo) }
         waitForTag("fuel_day_label")
         scrollTo("fuel_list", hasText("Rice bowl", substring = true))
     }

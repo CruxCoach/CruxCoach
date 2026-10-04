@@ -169,6 +169,13 @@
                 android:resource="@xml/moonboard_accessibility_service" />
         </service>
 
+        <!-- FEAT-069: the food photo model runs in its own process so that
+             Android can reclaim its 2–4 GB without killing the app. -->
+        <service
+            android:name=".foodvision.FoodVisionService"
+            android:exported="false"
+            android:process=":vision" />
+
         <!-- FileProvider for APK sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
