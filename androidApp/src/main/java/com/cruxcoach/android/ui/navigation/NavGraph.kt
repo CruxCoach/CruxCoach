@@ -292,10 +292,20 @@ fun CruxCoachNavHost(
             route == Routes.SUPPORT_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
-            route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY ||
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
+            route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY -> {
+                // Body reminder: open the Body tab the way the drawer would, with Today
+                // underneath, so the tab bar's pop-to-Today works and back leaves the area.
+                val today = com.cruxcoach.android.ui.training.TrainingRoutes.TODAY
+                if (runCatching { navController.getBackStackEntry(today) }.isFailure) navController.navigate(today)
+                navController.navigate(route) {
+                    popUpTo(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
                 val localDbUrl = android.net.Uri.parse("nav://$route")

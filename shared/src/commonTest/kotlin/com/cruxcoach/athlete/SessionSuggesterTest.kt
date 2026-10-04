@@ -113,6 +113,46 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun plannedRoutineFollowsTheInjuryRulesWhileClimbingIsPaused() {
+        val injury = Injury("i", InjuryRegion.FINGER, InjurySide.LEFT, severity = 3, climbingPaused = true, startedOn = "2026-10-01")
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("finger.max_hang"), RoutineItem("pull.pull_up"),
+            RoutineItem("core.dead_bug"), RoutineItem("legs.air_squat")))
+        val s = SessionSuggester.suggest(input(profile = profile.copy(weekPlan = mapOf(1 to "r1")), injuries = listOf(injury),
+            routines = listOf(mine)))
+        assertEquals(SuggestionFocus.PLANNED, s.focus)
+        assertTrue("finger.max_hang" !in slugs(s), "${slugs(s)}")
+        assertTrue(SuggestionReason.PLAN_FILTERED_FOR_INJURY in s.reasons)
+    }
+
+    @Test
+    fun plannedFingerWorkIsDroppedWhenFingersAreTired() {
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("finger.max_hang"), RoutineItem("pull.pull_up"),
+            RoutineItem("core.dead_bug"), RoutineItem("legs.air_squat")))
+        val s = SessionSuggester.suggest(input(profile = profile.copy(weekPlan = mapOf(1 to "r1")), routines = listOf(mine),
+            checkin = Checkin(monday.toString(), 0, fingers = 1)))
+        assertEquals(SuggestionFocus.PLANNED, s.focus)
+        assertTrue("finger.max_hang" !in slugs(s), "${slugs(s)}")
+        assertTrue(SuggestionReason.FINGERS_TIRED in s.reasons)
+    }
+
+    @Test
+    fun injurySessionLeavesOutFingerWorkWhenFingersAreTired() {
+        val injury = Injury("i", InjuryRegion.FINGER, InjurySide.LEFT, severity = 3, climbingPaused = true, startedOn = "2026-10-01")
+        val s = SessionSuggester.suggest(input(injuries = listOf(injury), checkin = Checkin(monday.toString(), 0, fingers = 1)))
+        assertEquals(SuggestionFocus.INJURY_SAFE, s.focus)
+        assertTrue(s.routine.items.none { !it.warmup && catalog[it.slug]!!.category == ExerciseCategoryV2.FINGER }, "${slugs(s)}")
+        assertTrue(SuggestionReason.FINGERS_TIRED in s.reasons)
+    }
+
+    @Test
+    fun withoutFingerEquipmentTheReasonSaysSo() {
+        val noBoard = profile.copy(equipment = home - EquipmentV2.HANGBOARD - EquipmentV2.PICKUP_BLOCK)
+        val s = SessionSuggester.suggest(input(profile = noBoard))
+        assertEquals(SuggestionFocus.PULL_PUSH, s.focus)
+        assertTrue(SuggestionReason.NO_FINGER_EQUIPMENT in s.reasons && SuggestionReason.FINGERS_RESTED !in s.reasons, "${s.reasons}")
+    }
+
+    @Test
     fun fingerFocusAfterTwoFingerFreeDays() {
         val s = SessionSuggester.suggest(input())
         assertEquals(SuggestionFocus.FINGER_STRENGTH, s.focus)

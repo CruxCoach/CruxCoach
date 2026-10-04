@@ -382,6 +382,11 @@ class AthleteService @Inject constructor(
 
     fun discardWorkout(id: String) = repo.deleteWorkout(id)
 
+    /** A routine handed to the editor (today's suggestion), taken once; in memory only. */
+    @Volatile private var editorDraft: Routine? = null
+    fun offerEditorDraft(routine: Routine) { editorDraft = routine }
+    fun takeEditorDraft(): Routine? = editorDraft.also { editorDraft = null }
+
     // ── Backup ───────────────────────────────────────────────────────
 
     fun backupSnapshot(): com.cruxcoach.athlete.data.AthleteSnapshot = repo.snapshot()

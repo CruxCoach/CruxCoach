@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.today
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -66,8 +67,10 @@ fun TodayScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
+    val snackScope = rememberCoroutineScope()
     LaunchedEffect(state.suggestionSaved) {
-        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); snackbar.showSnackbar(savedText) }
+        // Shown outside this effect: consuming the flag restarts the effect and would cancel it.
+        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); snackScope.launch { snackbar.showSnackbar(savedText) } }
     }
     LaunchedEffect(state.startedWorkout) {
         if (state.startedWorkout) {
@@ -108,7 +111,7 @@ fun TodayScreen(
                         state = state,
                         onStart = viewModel::startSuggestion,
                         onNext = viewModel::nextSuggestion,
-                        onEdit = { onOpenEditor(null, "ex:" + suggestion.routine.items.joinToString(",") { it.slug }) },
+                        onEdit = { title -> viewModel.editTarget(title).let { (id, from) -> onOpenEditor(id, from) } },
                         onSave = viewModel::saveSuggestion,
                     )
                 }
@@ -511,6 +514,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.FINGERS_TIRED -> R.string.trsg_reason_fingers_tired
     SuggestionReason.SKIN_LOW -> R.string.trsg_reason_skin
     SuggestionReason.FINGERS_RESTED -> R.string.trsg_reason_fingers_rested
+    SuggestionReason.NO_FINGER_EQUIPMENT -> R.string.trsg_reason_no_finger_equipment
     SuggestionReason.PULL_LONGER_AGO -> R.string.trsg_reason_pull_longer_ago
     SuggestionReason.LEGS_LONGER_AGO -> R.string.trsg_reason_legs_longer_ago
     SuggestionReason.LOW_ENERGY -> R.string.trsg_reason_low_energy
@@ -524,7 +528,7 @@ private fun DailySuggestionCard(
     state: TodayState,
     onStart: (String) -> Unit,
     onNext: () -> Unit,
-    onEdit: () -> Unit,
+    onEdit: (String) -> Unit,
     onSave: (String) -> Unit,
 ) {
     val s = state.suggestion ?: return
@@ -572,7 +576,7 @@ private fun DailySuggestionCard(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onEdit, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
+                TextButton(onClick = { onEdit(title) }, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
                     Text(stringResource(R.string.trsg_edit))
                 }
                 TextButton(onClick = { onSave(title) }, enabled = s.routine.items.isNotEmpty(),
