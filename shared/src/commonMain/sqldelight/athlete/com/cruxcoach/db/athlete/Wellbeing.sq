@@ -1,0 +1,76 @@
+-- Readiness check-ins, injuries and pauses. A check-in is optional and at most
+-- one per day; an open injury (resolved_on IS NULL) drives the injury mode.
+
+CREATE TABLE checkin (
+    day TEXT NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    sleep INTEGER,
+    energy INTEGER,
+    skin INTEGER,
+    fingers INTEGER,
+    motivation INTEGER,
+    sick INTEGER NOT NULL DEFAULT 0,
+    note TEXT
+);
+
+CREATE TABLE injury (
+    id TEXT NOT NULL PRIMARY KEY,
+    region TEXT NOT NULL,
+    side TEXT,
+    detail TEXT,
+    severity INTEGER NOT NULL,
+    climbing_paused INTEGER NOT NULL DEFAULT 1,
+    started_on TEXT NOT NULL,
+    resolved_on TEXT,
+    note TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE pause_period (
+    id TEXT NOT NULL PRIMARY KEY,
+    reason TEXT NOT NULL,
+    start_day TEXT NOT NULL,
+    end_day TEXT,
+    note TEXT
+);
+
+upsertCheckin:
+INSERT OR REPLACE INTO checkin(day, created_at, sleep, energy, skin, fingers, motivation, sick, note)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getCheckin:
+SELECT * FROM checkin WHERE day = ?;
+
+getCheckinsBetween:
+SELECT * FROM checkin WHERE day >= ? AND day <= ? ORDER BY day;
+
+deleteCheckin:
+DELETE FROM checkin WHERE day = ?;
+
+getAllCheckins:
+SELECT * FROM checkin ORDER BY day;
+
+upsertInjury:
+INSERT OR REPLACE INTO injury(id, region, side, detail, severity, climbing_paused, started_on, resolved_on, note, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getActiveInjuries:
+SELECT * FROM injury WHERE resolved_on IS NULL ORDER BY started_on DESC;
+
+getAllInjuries:
+SELECT * FROM injury ORDER BY started_on DESC;
+
+deleteInjury:
+DELETE FROM injury WHERE id = ?;
+
+upsertPause:
+INSERT OR REPLACE INTO pause_period(id, reason, start_day, end_day, note) VALUES (?, ?, ?, ?, ?);
+
+getPauses:
+SELECT * FROM pause_period ORDER BY start_day DESC;
+
+getOpenPause:
+SELECT * FROM pause_period WHERE end_day IS NULL ORDER BY start_day DESC LIMIT 1;
+
+deletePause:
+DELETE FROM pause_period WHERE id = ?;

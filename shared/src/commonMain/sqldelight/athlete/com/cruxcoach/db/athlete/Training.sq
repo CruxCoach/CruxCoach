@@ -1,0 +1,167 @@
+-- Off-board training log (FEAT-066). One row per training, one row per set.
+-- A set row exists from the moment it is planned: target_* hold the
+-- prescription, the plain columns what was actually done, and completed_at
+-- turns the plan into a result. An unfinished training survives process death.
+
+CREATE TABLE workout (
+    id TEXT NOT NULL PRIMARY KEY,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER,
+    day TEXT NOT NULL,
+    title TEXT,
+    routine_id TEXT,
+    session_rpe INTEGER,
+    notes TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX workout_day ON workout(day);
+
+CREATE TABLE exercise_set (
+    id TEXT NOT NULL PRIMARY KEY,
+    workout_id TEXT NOT NULL,
+    exercise_slug TEXT NOT NULL,
+    block_index INTEGER NOT NULL,
+    set_index INTEGER NOT NULL,
+    set_type TEXT NOT NULL DEFAULT 'WORK',
+    side TEXT,
+    target_reps INTEGER,
+    target_duration_s REAL,
+    target_load_kg REAL,
+    reps INTEGER,
+    duration_s REAL,
+    load_kg REAL,
+    edge_mm REAL,
+    grip TEXT,
+    rir INTEGER,
+    work_s REAL,
+    rest_between_s REAL,
+    reps_per_set INTEGER,
+    rest_s INTEGER,
+    bodyweight_kg REAL,
+    completed_at INTEGER,
+    note TEXT
+);
+
+CREATE INDEX exercise_set_workout ON exercise_set(workout_id, block_index, set_index);
+CREATE INDEX exercise_set_slug ON exercise_set(exercise_slug, completed_at);
+
+CREATE TABLE routine (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    notes TEXT,
+    items_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE custom_exercise (
+    slug TEXT NOT NULL PRIMARY KEY,
+    definition_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE exercise_favorite (
+    slug TEXT NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);
+
+-- ═══ Workouts ═══
+
+upsertWorkout:
+INSERT OR REPLACE INTO workout(id, started_at, ended_at, day, title, routine_id, session_rpe, notes, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getWorkout:
+SELECT * FROM workout WHERE id = ?;
+
+getOpenWorkout:
+SELECT * FROM workout WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1;
+
+getWorkoutsBetween:
+SELECT * FROM workout WHERE day >= ? AND day <= ? ORDER BY started_at DESC;
+
+getRecentWorkouts:
+SELECT * FROM workout WHERE coalesce(ended_at, 0) > 0 ORDER BY started_at DESC LIMIT ?;
+
+getAllWorkouts:
+SELECT * FROM workout ORDER BY started_at;
+
+finishWorkout:
+UPDATE workout SET ended_at = ?, session_rpe = ?, notes = ?, updated_at = ? WHERE id = ?;
+
+deleteWorkout:
+DELETE FROM workout WHERE id = ?;
+
+-- ═══ Sets ═══
+
+upsertSet:
+INSERT OR REPLACE INTO exercise_set(
+    id, workout_id, exercise_slug, block_index, set_index, set_type, side,
+    target_reps, target_duration_s, target_load_kg,
+    reps, duration_s, load_kg, edge_mm, grip, rir,
+    work_s, rest_between_s, reps_per_set, rest_s, bodyweight_kg, completed_at, note
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getSetsForWorkout:
+SELECT * FROM exercise_set WHERE workout_id = ? ORDER BY block_index, set_index;
+
+deleteSet:
+DELETE FROM exercise_set WHERE id = ?;
+
+deleteSetsForWorkout:
+DELETE FROM exercise_set WHERE workout_id = ?;
+
+deleteSetsForBlock:
+DELETE FROM exercise_set WHERE workout_id = ? AND block_index = ?;
+
+getCompletedSetsForExercise:
+SELECT * FROM exercise_set
+WHERE exercise_slug = ? AND coalesce(completed_at, 0) > 0
+ORDER BY completed_at DESC
+LIMIT ?;
+
+getCompletedSetsSince:
+SELECT * FROM exercise_set WHERE coalesce(completed_at, 0) >= ? AND coalesce(completed_at, 0) > 0 ORDER BY completed_at;
+
+getAllSets:
+SELECT * FROM exercise_set ORDER BY workout_id, block_index, set_index;
+
+getTrainedExerciseSlugs:
+SELECT exercise_slug, COUNT(*) AS cnt, MAX(completed_at) AS last_at
+FROM exercise_set WHERE coalesce(completed_at, 0) > 0
+GROUP BY exercise_slug;
+
+-- ═══ Routines ═══
+
+upsertRoutine:
+INSERT OR REPLACE INTO routine(id, name, notes, items_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?);
+
+getRoutines:
+SELECT * FROM routine ORDER BY updated_at DESC;
+
+getRoutine:
+SELECT * FROM routine WHERE id = ?;
+
+deleteRoutine:
+DELETE FROM routine WHERE id = ?;
+
+-- ═══ Custom exercises & favourites ═══
+
+upsertCustomExercise:
+INSERT OR REPLACE INTO custom_exercise(slug, definition_json, updated_at) VALUES (?, ?, ?);
+
+getCustomExercises:
+SELECT * FROM custom_exercise ORDER BY slug;
+
+deleteCustomExercise:
+DELETE FROM custom_exercise WHERE slug = ?;
+
+addFavorite:
+INSERT OR REPLACE INTO exercise_favorite(slug, created_at) VALUES (?, ?);
+
+removeFavorite:
+DELETE FROM exercise_favorite WHERE slug = ?;
+
+getFavorites:
+SELECT * FROM exercise_favorite ORDER BY created_at;

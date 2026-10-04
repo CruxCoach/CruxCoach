@@ -178,3 +178,27 @@ actual class SecureDriverFactory(
         return driver
     }
 }
+
+actual class AthleteDriverFactory(
+    private val context: Context,
+    private val dbKey: ByteArray
+) {
+    init { require(dbKey.isNotEmpty()) { "Encryption key required" } }
+
+    actual fun createDriver(dbName: String): SqlDriver {
+        val factory = net.zetetic.database.sqlcipher.SupportOpenHelperFactory(dbKey)
+        val driver = AndroidSqliteDriver(
+            schema = com.cruxcoach.db.athlete.AthleteDatabase.Schema,
+            context = context,
+            name = dbName,
+            factory = factory
+        )
+        fun SqlDriver.pragma(stmt: String) {
+            executeQuery(null, stmt, { cursor -> cursor.next(); QueryResult.Value(Unit) }, 0)
+        }
+        driver.pragma("PRAGMA journal_mode = WAL")
+        driver.pragma("PRAGMA cipher_memory_security = OFF")
+        driver.pragma("PRAGMA busy_timeout = 5000")
+        return driver
+    }
+}
