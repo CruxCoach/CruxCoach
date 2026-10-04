@@ -123,3 +123,22 @@ Nokia 6.1 (Android 15), owner's test account; every check read back through
 - 1000015 showed that entries refused before an update fell back to "imports
   waiting for consent"; since 1000016 they stay queued and proven across
   updates and are retried once, one by one with every id.
+
+## Whole-catalogue check (2026-10-04)
+
+- Kilter's `/climbs/all` fetched fresh for every layout (473 976 climbs, July:
+  445 445): no climb changed its spelling; 1 924 are gone, 30 455 new (nearly
+  all dashed); layouts 34–36 are empty. The alias table rebuilt from it is
+  byte-identical to the bundled one.
+- The real `KilterClimbWireIds.candidates()` (bundled index and aliases) for
+  all 239 866 Kilter climbs of the device catalogue: for 239 818 the first id
+  is exactly the id Kilter stores today (455 of them the id a moved climb has
+  now), no mismatch; 48 are not in today's catalogue.
+- Live on the test account: a stratified sample of 2 305 of the 239 818
+  (lowercase, uppercase, dashed, dashed newer than July, layouts 1 and 8, all
+  455 moved climbs) went up in 12 bulk requests with the first id, none
+  refused, every log stored under exactly that id. Of the 48, Kilter takes 8
+  with the first id (5 dashed, among them a draft; 3 compact uppercase) and
+  refuses 40 in both cases, as it refuses all 19 Boardsesh-origin climbs:
+  those are the climbs the upload lists as not on Kilter. All probe logs were
+  deleted again and the account verified back in its initial state.
