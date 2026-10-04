@@ -71,6 +71,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   calorie budget, no red "over" states, no good or bad foods. A RED-S guard
   watches for low weight, fast loss and very low carbohydrate on training days
   and then pauses any weight-loss goal and points to professional help.
+- Food photos (FEAT-069): photograph a meal, and a model running only on the
+  phone lists the foods with estimated grams. Nutrients come from the German
+  food database BLS 4.0 (Max Rubner-Institut, CC BY 4.0, bundled offline);
+  every line can be checked, changed, searched or dropped before it is
+  logged, and water counts as drinking. The model (Qwen3.5 2B, or 4B on
+  phones with 8 GB) is downloaded once on request and checked against its
+  hash; the photo never leaves the device. On phones with too little memory
+  or an older processor the button stays greyed out and says why.
 - Training, body and fueling data live in a separate encrypted database per
   account and are included in the cloud backup and the manual export.
 
