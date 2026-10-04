@@ -42,4 +42,5 @@
     <string name="trsg_reason_goal_strength">Dein Ziel ist Kraft, darum kommen Kraftübungen zuerst.</string>
     <string name="trsg_reason_favorites">Deine Lieblingsübungen werden bevorzugt.</string>
     <string name="trsg_reason_shortened">Gekürzt, damit es zu deiner bevorzugten Trainingsdauer passt.</string>
+    <string name="trsg_reason_no_finger_equipment">Kein Hangboard oder Block in deiner Ausrüstung – heute Zug und Druck statt Finger.</string>
 </resources>

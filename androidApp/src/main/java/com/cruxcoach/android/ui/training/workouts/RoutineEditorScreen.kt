@@ -86,14 +86,17 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
             val repo = service.repo
             val catalog = service.catalogStore.catalog.value
             val existing = routineId?.let { id -> repo.routines().firstOrNull { it.id == id } }
+            val draft = if (from != null && from.startsWith("draft:")) service.takeEditorDraft() else null
             val (name, notes, items) = when {
                 existing != null -> Triple(existing.name, existing.notes.orEmpty(), existing.items)
                 from != null && from.startsWith("builtin:") -> {
                     val builtin = BuiltinRoutines.byKey(from.removePrefix("builtin:"))
                     Triple(defaultName.orEmpty(), "", builtin?.items.orEmpty())
                 }
-                from != null && from.startsWith("ex:") -> {
-                    val slugs = from.removePrefix("ex:").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                draft != null -> Triple(draft.name, draft.notes.orEmpty(), draft.items)
+                from != null && (from.startsWith("ex:") || from.startsWith("draft:")) -> {
+                    // Also the fallback when the draft is gone (process restart): catalogue defaults.
+                    val slugs = from.substringAfter(':').split(',').map { it.trim() }.filter { it.isNotEmpty() }
                     Triple("", "", slugs.mapNotNull { slug -> catalog[slug]?.let { WorkoutPlanner.itemFor(it) } })
                 }
                 else -> Triple("", "", emptyList())

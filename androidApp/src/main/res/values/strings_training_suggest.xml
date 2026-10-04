@@ -42,4 +42,5 @@
     <string name="trsg_reason_goal_strength">Your goal is strength, so strength exercises come first.</string>
     <string name="trsg_reason_favorites">Your favourite exercises are preferred.</string>
     <string name="trsg_reason_shortened">Shortened to fit your preferred session length.</string>
+    <string name="trsg_reason_no_finger_equipment">No hangboard or pick-up block in your equipment – pull and push today instead of fingers.</string>
 </resources>

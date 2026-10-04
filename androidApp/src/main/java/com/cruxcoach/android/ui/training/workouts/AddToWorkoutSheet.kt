@@ -77,9 +77,20 @@ class AddToWorkoutViewModel @Inject constructor(private val service: AthleteServ
     }
 
     fun startNew(title: String) = io { slug ->
+        // Check first: a rejected exercise must not leave an empty training behind.
+        val def = service.catalog[slug] ?: return@io
+        if (com.cruxcoach.athlete.logic.InjuryAdvisor.assess(def, service.repo.activeInjuries()).verdict ==
+            com.cruxcoach.athlete.logic.InjuryVerdict.AVOID) {
+            _events.send(AddToWorkoutEvent.Rejected)
+            return@io
+        }
+        val hadOpen = service.repo.openWorkout() != null
         val id = service.startWorkout(null, title)
         if (service.addExercise(id, slug)) _events.send(AddToWorkoutEvent.TrainingStarted)
-        else _events.send(AddToWorkoutEvent.Rejected)
+        else {
+            if (!hadOpen) service.discardWorkout(id)
+            _events.send(AddToWorkoutEvent.Rejected)
+        }
     }
 
     fun addToRoutine(routine: Routine) = io { slug ->

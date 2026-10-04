@@ -111,7 +111,12 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var variant = 0
     private var variantDay: LocalDate? = null
 
-    private fun refresh(i: Inputs) {
+    private val refreshLock = Any()
+
+    /** One refresh at a time, so "another suggestion" and the data collector never overwrite each other with older inputs. */
+    private fun refresh(i: Inputs) = synchronized(refreshLock) { refreshUnlocked(i) }
+
+    private fun refreshUnlocked(i: Inputs) {
         lastInputs = i
         val today = service.today()
         if (variantDay != today) { variant = 0; variantDay = today }
@@ -224,8 +229,27 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     /** "Another suggestion": same rules, different picks. */
     fun nextSuggestion() = io {
-        variant++
-        lastInputs?.let { refresh(it) }
+        synchronized(refreshLock) {
+            variant++
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * Where "adapt" opens the editor: the planned own workout itself when the
+     * suggestion is that workout unchanged, otherwise a draft that keeps every
+     * item detail (warm-up flags, sides, sets cut to the time budget).
+     */
+    fun editTarget(title: String): Pair<String?, String?> {
+        val s = _state.value.suggestion ?: return null to null
+        val planned = s.plannedEntry
+        val changed = setOf(SuggestionReason.PLAN_FILTERED_FOR_INJURY, SuggestionReason.FINGERS_LOADED_RECENTLY,
+            SuggestionReason.FINGERS_TIRED, SuggestionReason.SHORTENED_TO_TIME)
+        if (s.focus == SuggestionFocus.PLANNED && planned != null && !planned.startsWith("builtin:") && s.reasons.none { it in changed }) {
+            return planned to null
+        }
+        service.offerEditorDraft(s.routine.copy(name = title, builtinKey = null))
+        return null to "draft:" + s.routine.items.joinToString(",") { it.slug }
     }
 
     /** Starts today's suggestion in the guided player; [title] is the localized focus title. */

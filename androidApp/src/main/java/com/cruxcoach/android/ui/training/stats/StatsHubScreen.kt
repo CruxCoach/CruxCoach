@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.training.stats
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.ensureActive
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -91,6 +93,9 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
         if (range != _state.value.range) load(range)
     }
 
+    /** The tab keeps this ViewModel; a return to it recomputes, so a just-finished training shows up. */
+    fun reload() = load(_state.value.range)
+
     private fun load(range: StatsRange) {
         _state.value = _state.value.copy(range = range)
         job?.cancel()
@@ -146,6 +151,9 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
                 if (points.isEmpty()) null else slug to points
             }.toMap()
 
+            // A cancelled load keeps running its blocking queries; it must not overwrite a newer range.
+            ensureActive()
+            if (_state.value.range != range) return@launch
             _state.value = StatsHubState(
                 loading = false,
                 range = range,
@@ -180,6 +188,8 @@ fun StatsHubScreen(
     tabBar: @Composable () -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
+    var entered by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (entered) viewModel.reload() else entered = true }
     val lang = catalogLanguage()
     val colors = seriesColors()
     val climbColor = colors[0]

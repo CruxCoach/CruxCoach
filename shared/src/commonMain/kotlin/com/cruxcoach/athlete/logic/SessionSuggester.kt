@@ -42,6 +42,7 @@ enum class SuggestionReason {
     FINGERS_TIRED,
     SKIN_LOW,
     FINGERS_RESTED,
+    NO_FINGER_EQUIPMENT,
     PULL_LONGER_AGO,
     LEGS_LONGER_AGO,
     LOW_ENERGY,
@@ -105,11 +106,20 @@ object SessionSuggester {
             reasons += if (ReadinessReason.SICK in readiness.reasons) SuggestionReason.SICK else SuggestionReason.REST_READINESS
             return build(input, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, reasons, planned)
         }
-        if (ReadinessReason.LOW_ENERGY in readiness.reasons || ReadinessReason.LOW_SLEEP in readiness.reasons) {
+        val lowEnergy = ReadinessReason.LOW_ENERGY in readiness.reasons || ReadinessReason.LOW_SLEEP in readiness.reasons
+        if (lowEnergy) {
             budget = max(15, (budget * 0.6).roundToInt())
             reasons += SuggestionReason.LOW_ENERGY
         }
         val climbingPaused = input.injuries.any { it.isActive && it.climbingPaused }
+        // Finger rules hold for planned and generated sessions alike.
+        val fingersLoaded = fingerLoadedRecently(input)
+        val fingersTired = readiness.avoidMaxFingerLoad
+        val fingerBlock = when {
+            fingersLoaded -> SuggestionReason.FINGERS_LOADED_RECENTLY
+            fingersTired -> SuggestionReason.FINGERS_TIRED
+            else -> null
+        }
 
         // 2. The week plan wins unless readiness or an injury rules it out.
         when {
@@ -118,7 +128,7 @@ object SessionSuggester {
                 return build(input, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, reasons, planned)
             }
             planned == PLAN_BOARD -> {
-                if (climbingPaused || readiness.avoidClimbing) {
+                if (climbingPaused || readiness.avoidClimbing || fingersTired) {
                     reasons += if (climbingPaused) SuggestionReason.PLAN_REPLACED_FOR_INJURY else SuggestionReason.BOARD_SKIPPED_TODAY
                 } else {
                     reasons.add(0, SuggestionReason.WEEK_PLAN_BOARD)
@@ -128,19 +138,36 @@ object SessionSuggester {
             planned != null -> {
                 val routine = resolve(planned, input.routines)
                 if (routine != null) {
+                    // The same safety rules as a generated session: around a paused injury only what
+                    // spares it (or the healthy side), no wall while climbing is paused, no finger
+                    // work after recent finger load or with tired fingers.
+                    var injuryRemoved = 0
+                    var fingerRemoved = 0
                     val kept = routine.items.filter { item ->
                         val def = input.catalog.fallbackFor(item.slug)
-                        InjuryAdvisor.assess(def, input.injuries).verdict != InjuryVerdict.AVOID &&
-                            !(climbingPaused && def.needsClimbingWall)
+                        val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
+                        val injuryOk = if (climbingPaused) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
+                            else verdict != InjuryVerdict.AVOID
+                        val fingerOk = item.warmup || fingerBlock == null || LoadDomain.FINGER !in def.domains
+                        when {
+                            !injuryOk || (climbingPaused && def.needsClimbingWall) -> { injuryRemoved++; false }
+                            !fingerOk -> { fingerRemoved++; false }
+                            else -> true
+                        }
                     }
-                    val removed = routine.items.size - kept.size
-                    if (kept.isNotEmpty() && removed * 2 <= routine.items.size) {
+                    val removed = injuryRemoved + fingerRemoved
+                    if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
                         reasons.add(0, SuggestionReason.WEEK_PLAN)
-                        if (removed > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
-                        val r = routine.copy(id = "suggestion", items = kept, builtinKey = "suggestion")
-                        return SessionSuggestion(SuggestionFocus.PLANNED, r, reasons.distinct(), estimateMinutes(kept, input.catalog), planned)
+                        if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
+                        if (fingerRemoved > 0) reasons += fingerBlock!!
+                        // The preferred duration is for free days; a planned workout is only cut when tired.
+                        val items = if (lowEnergy) fitToBudget(kept, budget, input.catalog) else kept
+                        if (items != kept) reasons += SuggestionReason.SHORTENED_TO_TIME
+                        val r = routine.copy(id = "suggestion", items = items, builtinKey = "suggestion")
+                        return SessionSuggestion(SuggestionFocus.PLANNED, r, reasons.distinct(), estimateMinutes(items, input.catalog), planned)
                     }
-                    reasons += SuggestionReason.PLAN_REPLACED_FOR_INJURY
+                    reasons += if (injuryRemoved >= fingerRemoved) SuggestionReason.PLAN_REPLACED_FOR_INJURY
+                        else fingerBlock ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
                 }
             }
         }
@@ -148,16 +175,17 @@ object SessionSuggester {
         // 3. Injury with climbing paused: train around it.
         if (climbingPaused) {
             reasons.add(0, SuggestionReason.INJURY_CLIMBING_PAUSED)
-            val slots = listOf(Slot.WARMUP, Slot.FINGER_MAIN, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS)
+            // The healthy hand's finger work also needs its 48 hours.
+            val slots = if (fingerBlock == null) listOf(Slot.WARMUP, Slot.FINGER_MAIN, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS)
+                else listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS).also { reasons += fingerBlock }
             return build(input, SuggestionFocus.INJURY_SAFE, slots, budget, reasons, planned)
         }
 
         // 4. Finger load in the last 48 hours decides between finger work and the rest.
-        val fingersLoaded = fingerLoadedRecently(input)
         val skinLow = ReadinessReason.SKIN_LOW in readiness.reasons
         val focus = when {
             fingersLoaded -> { reasons += SuggestionReason.FINGERS_LOADED_RECENTLY; null }
-            readiness.avoidMaxFingerLoad -> { reasons += SuggestionReason.FINGERS_TIRED; null }
+            fingersTired -> { reasons += SuggestionReason.FINGERS_TIRED; null }
             skinLow -> { reasons += SuggestionReason.SKIN_LOW; null }
             else -> { reasons += SuggestionReason.FINGERS_RESTED; SuggestionFocus.FINGER_STRENGTH }
         } ?: run {
@@ -177,7 +205,8 @@ object SessionSuggester {
         // Without a hangboard or block there is no finger session to suggest.
         val hasFingerMain = result.routine.items.any { !it.warmup && input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
         if (focus == SuggestionFocus.FINGER_STRENGTH && !hasFingerMain) {
-            return build(input, SuggestionFocus.PULL_PUSH, slotsFor(SuggestionFocus.PULL_PUSH), budget, reasons, planned)
+            val fallback = reasons.map { if (it == SuggestionReason.FINGERS_RESTED) SuggestionReason.NO_FINGER_EQUIPMENT else it }.toMutableList()
+            return build(input, SuggestionFocus.PULL_PUSH, slotsFor(SuggestionFocus.PULL_PUSH), budget, fallback, planned)
         }
         return result
     }
