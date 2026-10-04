@@ -48,4 +48,49 @@
     <string name="trb_reds_text">Dein Verlauf zeigt etwas, das auf zu wenig Energie hindeuten kann. Genug essen gehört zum Training – Kraft entsteht in der Erholung.</string>
     <string name="trb_reds_info">Zu wenig Energie über längere Zeit (RED-S) kann Leistung, Knochen, Hormone und Stimmung beeinträchtigen. CruxCoach stellt keine Diagnose. Wenn dir das bekannt vorkommt – oft müde, oft krank, unregelmäßiger Zyklus, stagnierende Leistung –, sprich mit einer Ärztin, einem Arzt oder einer Fachkraft für Sporternährung.</string>
     <string name="trb_settings_hint">Einheiten und das Ausblenden von Zahlen findest du in den Trainingseinstellungen.</string>
+
+    <!-- Waistline-Import -->
+    <string name="trb_import_action">Aus Waistline importieren</string>
+    <string name="trb_import_title">Aus Waistline importieren</string>
+    <string name="trb_import_format_json">Waistline-Datenbank-Backup (JSON)</string>
+    <string name="trb_import_format_csv">Waistline-Tagebuch-Export (CSV)</string>
+    <string name="trb_import_range">%1$s – %2$s</string>
+    <string name="trb_import_found">Gefundene Werte</string>
+    <plurals name="trb_import_skipped">
+        <item quantity="one">%d Wert übersprungen (unlesbar oder unplausibel)</item>
+        <item quantity="other">%d Werte übersprungen (unlesbar oder unplausibel)</item>
+    </plurals>
+    <string name="trb_import_date_order">Datumsreihenfolge</string>
+    <string name="trb_import_date_order_hint">Die Daten in dieser Datei können Tag/Monat oder Monat/Tag sein. Prüf, ob der Zeitraum oben stimmt.</string>
+    <string name="trb_import_day_month">Tag/Monat</string>
+    <string name="trb_import_month_day">Monat/Tag</string>
+    <plurals name="trb_import_conflicts">
+        <item quantity="one">%d Wert fällt auf einen Tag, an dem hier schon ein Eintrag steht.</item>
+        <item quantity="other">%d Werte fallen auf Tage, an denen hier schon ein Eintrag steht.</item>
+    </plurals>
+    <string name="trb_import_overwrite">Vorhandene Werte überschreiben</string>
+    <string name="trb_import_confirm">Importieren</string>
+    <plurals name="trb_import_done">
+        <item quantity="one">%d Wert importiert</item>
+        <item quantity="other">%d Werte importiert</item>
+    </plurals>
+    <plurals name="trb_import_kept">
+        <item quantity="one">%d vorhandener Wert behalten</item>
+        <item quantity="other">%d vorhandene Werte behalten</item>
+    </plurals>
+    <string name="trb_import_empty">In dieser Datei wurden keine Körperdaten gefunden. Exportiere in Waistline unter Einstellungen → Import/Export: „Datenbank exportieren“ (JSON) oder „Tagebuch exportieren“ (CSV).</string>
+    <string name="trb_import_failed">Die Datei konnte nicht gelesen werden.</string>
+    <string name="trb_import_too_large">Die Datei ist zu groß (max. 20 MB).</string>
+    <string name="trb_waistline_badge">Waistline</string>
+
+    <!-- Messrunde -->
+    <string name="trb_round_title">Messrunde</string>
+    <string name="trb_round_card_text">Gewicht, Taille, Arme … mehrere Werte auf einmal eintragen.</string>
+    <string name="trb_round_text">Jedes Feld ist freiwillig – trag ein, was du heute gemessen hast.</string>
+    <string name="trb_round_action">Starten</string>
+    <string name="trb_round_last">zuletzt %1$s</string>
+    <plurals name="trb_round_saved">
+        <item quantity="one">%d Wert gespeichert</item>
+        <item quantity="other">%d Werte gespeichert</item>
+    </plurals>
 </resources>

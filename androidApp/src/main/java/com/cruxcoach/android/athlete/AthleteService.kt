@@ -187,12 +187,96 @@ class AthleteService @Inject constructor(
     }
 
     private fun addItem(workoutId: String, blockIndex: Int, item: RoutineItem): Boolean {
+        val def = catalog.fallbackFor(item.slug)
+        val bodyweight = currentBodyweight()
         val planned = WorkoutPlanner.plan(
             workoutId, blockIndex, item, catalog, repo.history(item.slug, 60), repo.activeInjuries(),
-            currentBodyweight(), repo::newId,
+            bodyweight,
+            capacityFor = { side -> capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight) },
+            incrementKg = repo.profile().smallestIncrementKg,
+            newId = repo::newId,
         )
         planned.sets.forEach(repo::saveSet)
         return !planned.skippedForInjury
+    }
+
+    // ── Performance values ───────────────────────────────────────────
+
+    /** Repeaters without a value of their own borrow the two-arm max hang on the same edge. */
+    private fun benchmarkSourceSlugs(def: com.cruxcoach.athlete.catalog.ExerciseDefinition): List<String> =
+        if (def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.INTERVAL && def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS)
+            listOf(def.slug, MAX_HANG_SLUG) else listOf(def.slug)
+
+    fun capacityFor(
+        def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
+        side: Side?,
+        edgeMm: Double?,
+        grip: Grip?,
+        bodyweightKg: Double? = currentBodyweight(),
+    ): Capacity? {
+        for (slug in benchmarkSourceSlugs(def)) {
+            val source = catalog[slug] ?: continue
+            val chosen = BenchmarkMath.select(repo.benchmarks(slug), side, edgeMm, grip) ?: continue
+            return BenchmarkMath.capacity(source, chosen, bodyweightKg)
+        }
+        return null
+    }
+
+    fun saveBenchmark(b: Benchmark) = repo.saveBenchmark(b.copy(bodyweightKg = b.bodyweightKg ?: currentBodyweight()))
+
+    /**
+     * A short test for one exercise (MCI's strength test, climber version):
+     * finger ramp first for finger work, then test sets logged as TEST; the
+     * best one becomes the new performance value.
+     */
+    fun startTest(slug: String): String? {
+        val def = catalog[slug] ?: return null
+        val d = def.defaults
+        val test = when (def.kind) {
+            com.cruxcoach.athlete.catalog.ExerciseKind.HANG, com.cruxcoach.athlete.catalog.ExerciseKind.INTERVAL ->
+                RoutineItem(slug, sets = 3, durationS = 10, restS = 180, edgeMm = d.edgeMm, test = true)
+            com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS -> RoutineItem(slug, sets = 3, repsMin = 3, repsMax = 5, restS = 180, test = true)
+            com.cruxcoach.athlete.catalog.ExerciseKind.REPS -> RoutineItem(slug, sets = 1, repsMin = 1, repsMax = 30, restS = 180, test = true)
+            com.cruxcoach.athlete.catalog.ExerciseKind.TIME -> RoutineItem(slug, sets = 1, durationS = (d.durationS ?: 30) * 2, restS = 120, test = true)
+            com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB -> return null
+        }
+        val items = buildList {
+            if (com.cruxcoach.athlete.catalog.LoadDomain.FINGER in def.domains) {
+                add(RoutineItem("warmup.finger_ramp", sets = 4, durationS = 8, restS = 20, edgeMm = 30, warmup = true))
+            }
+            add(test)
+        }
+        val routine = Routine(id = "test:$slug", name = def.name("en"), items = items)
+        return startWorkout(routine, null)
+    }
+
+    /** What a completed set changed besides the log. */
+    data class SetOutcome(val record: PersonalRecord?, val raisedBenchmark: Benchmark?, val capacity: Capacity?)
+
+    private fun updateBenchmark(set: ExerciseSet): Pair<Benchmark, Capacity>? {
+        if (set.setType == SetType.WARMUP) return null
+        val def = catalog[set.exerciseSlug] ?: return null
+        val implied = BenchmarkMath.implied(def, set) ?: return null
+        val existing = BenchmarkMath.select(repo.benchmarks(def.slug), set.side, set.edgeMm, set.grip)
+            ?.takeIf { it.side == set.side }
+        val current = existing?.let { BenchmarkMath.capacity(def, it, set.bodyweightKg) }
+        val raise = when {
+            set.setType == SetType.TEST -> {
+                // A fresh test is the truth, also when lower; within one test the best set counts.
+                val sameTest = repo.setsFor(set.workoutId).filter {
+                    it.id != set.id && it.isCompleted && it.setType == SetType.TEST && it.exerciseSlug == set.exerciseSlug && it.side == set.side
+                }.mapNotNull { BenchmarkMath.implied(def, it)?.value }
+                sameTest.all { implied.value > it }
+            }
+            current == null -> true                          // the first session learns the starting value
+            current.kind != implied.kind -> false
+            else -> implied.value > current.value * 1.02     // only a clear improvement moves the value up
+        }
+        if (!raise) return null
+        val source = if (set.setType == SetType.TEST) BenchmarkSource.TEST else BenchmarkSource.AUTO
+        val b = BenchmarkMath.benchmarkFromSet(def, set, repo.newId(), source, System.currentTimeMillis())
+        repo.saveBenchmark(b)
+        return b to implied
     }
 
     /**
@@ -200,12 +284,15 @@ class AthleteService @Inject constructor(
      * timer (the same one the board player uses: banner on every screen,
      * Doze-safe alarm, survives process death). Returns a record if one fell.
      */
-    fun completeSet(set: ExerciseSet, startRest: Boolean): PersonalRecord? {
+    fun completeSet(set: ExerciseSet, startRest: Boolean): PersonalRecord? = completeSetDetailed(set, startRest).record
+
+    fun completeSetDetailed(set: ExerciseSet, startRest: Boolean, restSeconds: Int? = null): SetOutcome {
         val done = set.copy(completedAt = System.currentTimeMillis(), bodyweightKg = set.bodyweightKg ?: currentBodyweight())
         val history = repo.history(set.exerciseSlug, HISTORY_LIMIT).filter { it.id != set.id }
         repo.saveSet(done)
-        if (startRest) (done.restS ?: catalog[set.exerciseSlug]?.defaults?.restS)?.takeIf { it > 0 }?.let(::startRest)
-        return PersonalRecords.detect(catalog.fallbackFor(set.exerciseSlug), done, history)
+        if (startRest) (restSeconds ?: done.restS ?: catalog[set.exerciseSlug]?.defaults?.restS)?.takeIf { it > 0 }?.let(::startRest)
+        val raised = runCatching { updateBenchmark(done) }.getOrNull()
+        return SetOutcome(PersonalRecords.detect(catalog.fallbackFor(set.exerciseSlug), done, history), raised?.first, raised?.second)
     }
 
     fun reopenSet(set: ExerciseSet) = repo.saveSet(set.copy(completedAt = null))
@@ -227,6 +314,20 @@ class AthleteService @Inject constructor(
     }
 
     fun startRest(seconds: Int) = sessionManager.startRestTimer(seconds)
+
+    /** The shared rest timer (same as the board player): banner, Doze-safe alarm, notification. */
+    val restTimer: kotlinx.coroutines.flow.StateFlow<com.cruxcoach.android.data.RestTimerState> get() = sessionManager.restTimer
+
+    fun cancelRest() = sessionManager.cancelRestTimer()
+
+    /** +15 s / −15 s in the rest screen: restarts the timer with the adjusted remainder (min. 5 s). */
+    fun adjustRest(deltaSeconds: Int) {
+        val state = sessionManager.restTimer.value
+        if (!state.isRunning) return
+        sessionManager.startRestTimer((state.secondsRemaining + deltaSeconds).coerceAtLeast(5))
+    }
+
+    fun dismissRestFinished() = sessionManager.dismissRestTimerFinished()
 
     fun finishWorkout(id: String, sessionRpe: Int?, notes: String?): WorkoutSummary {
         val workout = repo.workout(id)
@@ -263,6 +364,8 @@ class AthleteService @Inject constructor(
         repo.importLegacyBodyStats(rows.map { AthleteRepository.LegacyBodyStat(it.date, it.statName, it.value, it.unit) })
 
     companion object {
+        const val MAX_HANG_SLUG = "finger.max_hang"
+
         /** Enough history for every exercise's best values; far above a lifetime of sets per slug and side. */
         const val HISTORY_LIMIT = 20_000
     }

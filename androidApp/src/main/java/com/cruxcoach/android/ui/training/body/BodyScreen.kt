@@ -1,17 +1,25 @@
 package com.cruxcoach.android.ui.training.body
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,7 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -32,11 +42,14 @@ import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.logic.Units
+import com.cruxcoach.athlete.logic.WaistlineImport
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.MetricGroup
 import com.cruxcoach.athlete.model.UnitSystem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -54,6 +67,37 @@ fun BodyScreen(
     var dialog by remember { mutableStateOf<Pair<BodyMeasurement?, BodyMetric>?>(null) }
     val deletedText = stringResource(R.string.trb_deleted)
     val undoText = stringResource(R.string.trb_undo)
+    var roundOpen by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    val tooLargeText = stringResource(R.string.trb_import_too_large)
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            when (val read = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
+                is ImportFile.Text -> viewModel.previewImport(read.value)
+                ImportFile.TooLarge -> snackbar.showSnackbar(tooLargeText)
+                ImportFile.Failed -> viewModel.previewImport(null)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            val text = when (event) {
+                is BodyEvent.Imported -> buildList {
+                    add(resources.getQuantityString(R.plurals.trb_import_done, event.written, event.written))
+                    if (event.keptExisting > 0) add(resources.getQuantityString(R.plurals.trb_import_kept, event.keptExisting, event.keptExisting))
+                    if (event.skipped > 0) add(resources.getQuantityString(R.plurals.trb_import_skipped, event.skipped, event.skipped))
+                }.joinToString(" · ")
+                BodyEvent.ImportEmpty -> resources.getString(R.string.trb_import_empty)
+                BodyEvent.ImportFailed -> resources.getString(R.string.trb_import_failed)
+                is BodyEvent.RoundSaved -> resources.getQuantityString(R.plurals.trb_round_saved, event.count, event.count)
+            }
+            snackbar.showSnackbar(text, duration = SnackbarDuration.Long)
+        }
+    }
 
     fun deleteWithUndo(entry: BodyMeasurement) {
         viewModel.delete(entry)
@@ -68,6 +112,13 @@ fun BodyScreen(
         title = stringResource(R.string.tr_nav_body),
         onBack = onBack,
         actions = {
+            IconButton(
+                onClick = { importLauncher.launch(IMPORT_MIME_TYPES) },
+                enabled = !state.importBusy,
+                modifier = Modifier.testTag("body_import"),
+            ) {
+                Icon(Icons.Default.FileOpen, contentDescription = stringResource(R.string.trb_import_action))
+            }
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("body_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
             }
@@ -90,6 +141,7 @@ fun BodyScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         ) {
             if (state.redsSignals.isNotEmpty()) item { SupportCard() }
+            item { RoundCard(onOpen = { roundOpen = true }) }
             item { Column { WeightSection(state, onRange = viewModel::setRange) } }
             item {
                 SectionTitle(stringResource(R.string.trb_measurements)) {
@@ -138,7 +190,57 @@ fun BodyScreen(
             onDismiss = { dialog = null },
         )
     }
+
+    state.importPreview?.let { preview ->
+        ImportPreviewDialog(
+            preview = preview,
+            busy = state.importBusy,
+            onDayFirst = viewModel::setImportDayFirst,
+            onConfirm = viewModel::confirmImport,
+            onDismiss = viewModel::cancelImport,
+        )
+    }
+
+    if (roundOpen) {
+        MeasurementRoundSheet(
+            units = state.profile.units,
+            hideNumbers = state.profile.hideBodyNumbers,
+            latest = state.summaries.associate { it.metricKey to it.latest },
+            today = state.today ?: LocalDate.parse(java.time.LocalDate.now().toString()),
+            onSave = { day, values -> viewModel.saveRound(day, values); roundOpen = false },
+            onDismiss = { roundOpen = false },
+        )
+    }
 }
+
+private val IMPORT_MIME_TYPES = arrayOf(
+    "application/json", "text/csv", "text/comma-separated-values", "text/plain", "application/octet-stream",
+)
+
+private const val MAX_IMPORT_BYTES = 20 * 1024 * 1024
+
+private sealed interface ImportFile {
+    data class Text(val value: String) : ImportFile
+    data object TooLarge : ImportFile
+    data object Failed : ImportFile
+}
+
+/** Reads a picked file as UTF-8, refusing anything above 20 MB. */
+private fun readImportFile(context: Context, uri: Uri): ImportFile = runCatching {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        val buffer = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(64 * 1024)
+        var total = 0
+        while (true) {
+            val n = input.read(chunk)
+            if (n < 0) break
+            total += n
+            if (total > MAX_IMPORT_BYTES) return ImportFile.TooLarge
+            buffer.write(chunk, 0, n)
+        }
+        ImportFile.Text(buffer.toString(Charsets.UTF_8.name()))
+    } ?: ImportFile.Failed
+}.getOrDefault(ImportFile.Failed)
 
 /** With "hide numbers" on, everything body-image related stays hidden; build data (height, span) does not. */
 private fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
@@ -146,7 +248,8 @@ private fun isHidden(metricKey: String, hideNumbers: Boolean): Boolean {
     return BodyMetric.fromKey(metricKey)?.group != MetricGroup.ANTHROPOMETRY
 }
 
-private fun humanize(key: String) = key.replace('_', ' ').replaceFirstChar { it.uppercase() }
+private fun humanize(key: String) =
+    key.removePrefix(WaistlineImport.CUSTOM_PREFIX).replace('_', ' ').replaceFirstChar { it.uppercase() }
 
 @Composable
 private fun labelFor(metricKey: String): String = BodyMetric.fromKey(metricKey)?.let { metricLabel(it) } ?: humanize(metricKey)
@@ -270,10 +373,15 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
         supportingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(LocalDate.parse(entry.day).shortLabel())
-                if (entry.source == BodyMeasurement.SOURCE_LEGACY) {
+                val badge = when (entry.source) {
+                    BodyMeasurement.SOURCE_LEGACY -> R.string.trb_legacy_badge
+                    WaistlineImport.SOURCE -> R.string.trb_waistline_badge
+                    else -> null
+                }
+                if (badge != null) {
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        stringResource(R.string.trb_legacy_badge),
+                        stringResource(badge),
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -454,27 +562,206 @@ private fun MeasurementDialog(
     )
 
     if (picking) {
-        val todayMillis = today.utcMillis()
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = LocalDate.parse(day).utcMillis(),
-            selectableDates = object : SelectableDates {
-                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayMillis
-                override fun isSelectableYear(year: Int) = year <= java.time.LocalDate.now().year
-            },
-        )
-        DatePickerDialog(
-            onDismissRequest = { picking = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { ms ->
-                        day = java.time.LocalDate.ofEpochDay(ms / 86_400_000L).toString()
-                    }
-                    picking = false
-                }) { Text(stringResource(R.string.action_ok)) }
-            },
-            dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.action_cancel)) } },
-        ) {
-            DatePicker(state = pickerState)
+        PastDatePickerDialog(day = LocalDate.parse(day), today = today, onPick = { day = it.toString(); picking = false },
+            onDismiss = { picking = false })
+    }
+}
+
+/** Date picker that offers today and earlier days only (readings can be back-dated, never pre-dated). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PastDatePickerDialog(day: LocalDate, today: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
+    val todayMillis = today.utcMillis()
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = day.utcMillis(),
+        selectableDates = object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis <= todayMillis
+            override fun isSelectableYear(year: Int) = year <= java.time.LocalDate.now().year
+        },
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                val picked = pickerState.selectedDateMillis?.let { ms ->
+                    LocalDate.parse(java.time.LocalDate.ofEpochDay(ms / 86_400_000L).toString())
+                } ?: day
+                onPick(picked)
+            }) { Text(stringResource(R.string.action_ok)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    ) {
+        DatePicker(state = pickerState)
+    }
+}
+
+// ── Measurement round ────────────────────────────────────────────────
+
+private val ROUND_METRICS = listOf(
+    BodyMetric.WEIGHT, BodyMetric.BODY_FAT, BodyMetric.WAIST, BodyMetric.HIPS, BodyMetric.CHEST,
+    BodyMetric.UPPER_ARM, BodyMetric.FOREARM, BodyMetric.THIGH, BodyMetric.CALF, BodyMetric.NECK,
+)
+
+@Composable
+private fun RoundCard(onOpen: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Straighten, null)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.trb_round_title), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.trb_round_card_text), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("body_round")) {
+                Text(stringResource(R.string.trb_round_action))
+            }
         }
     }
+}
+
+/**
+ * Several readings of one day in one go — weight plus whatever else the
+ * athlete measures. Every field is optional; the last value is the hint.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MeasurementRoundSheet(
+    units: UnitSystem,
+    hideNumbers: Boolean,
+    latest: Map<String, BodyMeasurement>,
+    today: LocalDate,
+    onSave: (LocalDate, Map<BodyMetric, Double>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var day by rememberSaveable { mutableStateOf(today.toString()) }
+    var picking by remember { mutableStateOf(false) }
+    val texts = remember { mutableStateMapOf<String, String>() }
+
+    fun canonicalOf(metric: BodyMetric): Double? =
+        parseDecimal(texts[metric.key].orEmpty())?.let { toCanonical(it, metric.unit, units) }?.takeIf { plausible(metric.key, it) }
+
+    val filled = ROUND_METRICS.filter { texts[it.key].orEmpty().isNotBlank() }
+    val values = filled.mapNotNull { m -> canonicalOf(m)?.let { m to it } }.toMap()
+    val invalid = filled.size != values.size
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = Modifier.testTag("body_round_sheet")) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(stringResource(R.string.trb_round_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.trb_round_text), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { picking = true }, modifier = Modifier.fillMaxWidth().testTag("body_round_date")) {
+                Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trb_field_date, LocalDate.parse(day).shortLabel()))
+            }
+            ROUND_METRICS.forEach { m ->
+                val text = texts[m.key].orEmpty()
+                val error = text.isNotBlank() && canonicalOf(m) == null
+                val last = latest[m.key]?.takeIf { !isHidden(m.key, hideNumbers) }
+                val lastText = last?.let { stringResource(R.string.trb_round_last, formatValue(it.value, it.unit, units)) }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { texts[m.key] = it },
+                    label = { Text("${metricLabel(m)} (${displayUnit(m.unit, units)})") },
+                    placeholder = if (lastText != null) { { Text(lastText) } } else null,
+                    isError = error,
+                    supportingText = if (error) { { Text(stringResource(R.string.trb_value_invalid)) } } else null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().testTag("body_round_${m.key}"),
+                )
+            }
+            Button(
+                onClick = { onSave(LocalDate.parse(day), values) },
+                enabled = values.isNotEmpty() && !invalid,
+                modifier = Modifier.fillMaxWidth().testTag("body_round_save"),
+            ) { Text(stringResource(R.string.tr_action_save)) }
+        }
+    }
+
+    if (picking) {
+        PastDatePickerDialog(day = LocalDate.parse(day), today = today, onPick = { day = it.toString(); picking = false },
+            onDismiss = { picking = false })
+    }
+}
+
+// ── Waistline import ─────────────────────────────────────────────────
+
+@Composable
+private fun ImportPreviewDialog(
+    preview: WaistlineImportPreview,
+    busy: Boolean,
+    onDayFirst: (Boolean) -> Unit,
+    onConfirm: (overwrite: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var overwrite by rememberSaveable { mutableStateOf(false) }
+    val r = preview.result
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        modifier = Modifier.testTag("body_import_dialog"),
+        title = { Text(stringResource(R.string.trb_import_title)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(if (r.format == WaistlineImport.Format.JSON) R.string.trb_import_format_json else R.string.trb_import_format_csv),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val first = r.firstDay
+                val last = r.lastDay
+                if (first != null && last != null) {
+                    Text(stringResource(R.string.trb_import_range, LocalDate.parse(first).shortLabel(), LocalDate.parse(last).shortLabel()))
+                }
+                Text(stringResource(R.string.trb_import_found), style = MaterialTheme.typography.labelLarge)
+                r.countsByMetric().entries
+                    .sortedBy { BodyMetric.fromKey(it.key)?.ordinal ?: Int.MAX_VALUE }
+                    .forEach { (key, n) ->
+                        Row(Modifier.fillMaxWidth().testTag("body_import_count_$key")) {
+                            Text(r.customNames[key] ?: labelFor(key), modifier = Modifier.weight(1f))
+                            Text(n.toString(), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                if (r.skipped > 0) {
+                    Text(pluralStringResource(R.plurals.trb_import_skipped, r.skipped, r.skipped),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (preview.askDateOrder) {
+                    Text(stringResource(R.string.trb_import_date_order), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.trb_import_date_order_hint), style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = r.dayFirst != false, onClick = { onDayFirst(true) }, enabled = !busy,
+                            label = { Text(stringResource(R.string.trb_import_day_month)) },
+                            modifier = Modifier.testTag("body_import_day_first"))
+                        FilterChip(selected = r.dayFirst == false, onClick = { onDayFirst(false) }, enabled = !busy,
+                            label = { Text(stringResource(R.string.trb_import_month_day)) },
+                            modifier = Modifier.testTag("body_import_month_first"))
+                    }
+                }
+                if (preview.conflicts > 0) {
+                    Text(pluralStringResource(R.plurals.trb_import_conflicts, preview.conflicts, preview.conflicts),
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.trb_import_overwrite), modifier = Modifier.weight(1f))
+                        Switch(checked = overwrite, onCheckedChange = { overwrite = it }, enabled = !busy,
+                            modifier = Modifier.testTag("body_import_overwrite"))
+                    }
+                }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(overwrite) }, enabled = !busy, modifier = Modifier.testTag("body_import_confirm")) {
+                Text(stringResource(R.string.trb_import_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.tr_action_cancel)) }
+        },
+    )
 }

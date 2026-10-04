@@ -136,4 +136,5 @@
         <item quantity="one">%d set</item>
         <item quantity="other">%d sets</item>
     </plurals>
+    <string name="trw_open_player">Guided mode</string>
 </resources>

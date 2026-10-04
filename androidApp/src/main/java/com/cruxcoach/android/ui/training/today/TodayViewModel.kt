@@ -28,7 +28,7 @@ import javax.inject.Inject
 data class WeekDay(val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean)
 
 /** Gentle nudges on the hub, each with one action. */
-enum class TodaySuggestion { CONFIGURE_EQUIPMENT, ANTAGONIST_AFTER_BOARD, INJURY_ROUTINE, BASELINE_TEST, LOG_WEIGHT }
+enum class TodaySuggestion { CONFIGURE_EQUIPMENT, SET_BENCHMARKS, ANTAGONIST_AFTER_BOARD, INJURY_ROUTINE, BASELINE_TEST, LOG_WEIGHT }
 
 data class TodayState(
     val loading: Boolean = true,
@@ -55,6 +55,8 @@ data class TodayState(
     val loadSpikes: List<LoadDomain> = emptyList(),
     val suggestions: List<TodaySuggestion> = emptyList(),
     val startedWorkout: Boolean = false,
+    /** The started training should open in the guided player (routines), not the list. */
+    val startedGuided: Boolean = false,
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -129,9 +131,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (i.injuries.any { it.climbingPaused } || readiness.avoidClimbing && i.injuries.isNotEmpty()) add(TodaySuggestion.INJURY_ROUTINE)
             val boardToday = activity != null && (activity.climbingMinutes > 0 || activity.climbingEfforts > 0)
             if (boardToday && (activity?.workoutMinutes ?: 0) == 0 && i.injuries.isEmpty()) add(TodaySuggestion.ANTAGONIST_AFTER_BOARD)
-            val lastTest = repo.trainedExercises().filter { it.slug == "finger.max_hang" }.maxOfOrNull { it.lastAt ?: 0L } ?: 0L
+            val benchmarks = repo.allBenchmarks()
+            if (benchmarks.isEmpty()) add(TodaySuggestion.SET_BENCHMARKS)
+            val lastTest = benchmarks.maxOfOrNull { it.measuredAt } ?: 0L
             val eightWeeks = 56L * 24 * 3600 * 1000
-            if (i.injuries.isEmpty() && System.currentTimeMillis() - lastTest > eightWeeks) add(TodaySuggestion.BASELINE_TEST)
+            if (benchmarks.isNotEmpty() && i.injuries.isEmpty() && System.currentTimeMillis() - lastTest > eightWeeks) add(TodaySuggestion.BASELINE_TEST)
             if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
         }
 
@@ -188,15 +192,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     fun startRoutine(key: String) = io {
         val routine = BuiltinRoutines.byKey(key) ?: return@io
         service.startWorkout(routine, null)
-        _state.update { it.copy(startedWorkout = true) }
+        _state.update { it.copy(startedWorkout = true, startedGuided = true) }
     }
 
     fun startEmptyWorkout() = io {
         service.startWorkout(null, null)
-        _state.update { it.copy(startedWorkout = true) }
+        _state.update { it.copy(startedWorkout = true, startedGuided = false) }
     }
 
-    fun consumeStartedWorkout() = _state.update { it.copy(startedWorkout = false) }
+    fun consumeStartedWorkout() = _state.update { it.copy(startedWorkout = false, startedGuided = false) }
 
     fun addWater(ml: Int) = io { service.repo.addHydration(service.today().toString(), ml) }
 

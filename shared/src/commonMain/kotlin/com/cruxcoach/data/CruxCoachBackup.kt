@@ -400,6 +400,12 @@ object CruxCoachBackup {
         requireSize("athlete.checkins", a.checkins.size)
         requireSize("athlete.injuries", a.injuries.size)
         requireSize("athlete.pauses", a.pauses.size)
+        requireSize("athlete.benchmarks", a.benchmarks.size)
+        for (b in a.benchmarks) {
+            requireLen("benchmark.id", b.id, MAX_EXTERNAL_ID_LEN); requireLen("benchmark.slug", b.exerciseSlug, MAX_NAME_LEN)
+            listOf(b.edgeMm, b.loadKg, b.durationS, b.bodyweightKg).forEach { requireFinite("benchmark.value", it) }
+            requireIntRange("benchmark.reps", b.reps, 0..10_000); requireLen("benchmark.note", b.note, MAX_COMMENT_LEN)
+        }
         for (w in a.workouts) {
             requireLen("workout.id", w.id, MAX_EXTERNAL_ID_LEN); requireLen("workout.day", w.day, MAX_DATE_LEN)
             requireLen("workout.title", w.title, MAX_NAME_LEN); requireLen("workout.notes", w.notes, MAX_NOTES_LEN)

@@ -9,13 +9,17 @@ import com.cruxcoach.athlete.logic.RedsSignal
 import com.cruxcoach.athlete.logic.StrengthMath
 import com.cruxcoach.athlete.logic.TrendWeight
 import com.cruxcoach.athlete.logic.Units
+import com.cruxcoach.athlete.logic.WaistlineImport
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.SetType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -31,6 +35,24 @@ enum class BodyRange(val days: Int?) { M1(30), M3(90), M6(182), Y1(365), ALL(nul
 
 /** Latest value of one metric and the change since the reading before it. */
 data class MetricSummary(val metricKey: String, val latest: BodyMeasurement, val delta: Double?)
+
+/**
+ * A parsed Waistline file waiting for confirmation. [conflicts] counts the
+ * values whose day already has an entry for that metric here.
+ */
+data class WaistlineImportPreview(
+    val result: WaistlineImport.Result,
+    val conflicts: Int,
+    /** Day/month order could not be detected (or was chosen by hand): keep offering the switch. */
+    val askDateOrder: Boolean,
+)
+
+sealed interface BodyEvent {
+    data class Imported(val written: Int, val keptExisting: Int, val skipped: Int) : BodyEvent
+    data object ImportEmpty : BodyEvent
+    data object ImportFailed : BodyEvent
+    data class RoundSaved(val count: Int) : BodyEvent
+}
 
 /** Best strength-to-weight value of one exercise on one day. */
 data class StrengthPoint(val day: LocalDate, val slug: String, val percentBodyweight: Double)
@@ -49,6 +71,8 @@ data class BodyState(
     /** Catalogue entries of the strength-to-weight exercises, for names. */
     val strengthDefs: Map<String, ExerciseDefinition> = emptyMap(),
     val redsSignals: List<RedsSignal> = emptyList(),
+    val importPreview: WaistlineImportPreview? = null,
+    val importBusy: Boolean = false,
 ) {
     /** Points inside the selected window (all points for ALL). */
     val visibleWeight: List<TrendWeight.Point>
@@ -65,6 +89,12 @@ class BodyViewModel @Inject constructor(private val service: AthleteService) : V
 
     private val _state = MutableStateFlow(BodyState())
     val state: StateFlow<BodyState> = _state.asStateFlow()
+
+    private val _events = MutableSharedFlow<BodyEvent>(extraBufferCapacity = 4)
+    val events: SharedFlow<BodyEvent> = _events.asSharedFlow()
+
+    /** Raw text of the file being previewed, kept for re-parsing with another date order. */
+    private var importText: String? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -138,6 +168,94 @@ class BodyViewModel @Inject constructor(private val service: AthleteService) : V
     }
 
     fun setRange(range: BodyRange) = _state.update { it.copy(range = range) }
+
+    // ── Waistline import ─────────────────────────────────────────────
+
+    /** Parses a Waistline JSON backup or diary CSV; [text] null = the file could not be read. */
+    fun previewImport(text: String?, dayFirst: Boolean? = null) {
+        if (text == null) { _events.tryEmit(BodyEvent.ImportFailed); return }
+        _state.update { it.copy(importBusy = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val result = runCatching { WaistlineImport.parse(text, dayFirst) }.getOrNull()
+            if (result == null || result.isEmpty) {
+                importText = null
+                _state.update { it.copy(importBusy = false, importPreview = null) }
+                _events.tryEmit(if (result == null) BodyEvent.ImportFailed else BodyEvent.ImportEmpty)
+                return@launch
+            }
+            importText = text
+            val existing = existingDays(result.measurements.map { it.metric }.toSet())
+            val conflicts = result.measurements.count { it.day in existing[it.metric].orEmpty() }
+            val askDateOrder = result.ambiguousDates || dayFirst != null
+            _state.update { it.copy(importBusy = false, importPreview = WaistlineImportPreview(result, conflicts, askDateOrder)) }
+        }
+    }
+
+    /** Re-reads the same file with the other day/month order (ambiguous CSV dates). */
+    fun setImportDayFirst(dayFirst: Boolean) {
+        val text = importText ?: return
+        previewImport(text, dayFirst)
+    }
+
+    fun cancelImport() {
+        importText = null
+        _state.update { it.copy(importPreview = null, importBusy = false) }
+    }
+
+    /**
+     * Writes the previewed values. Without [overwrite] a day that already has
+     * a value for that metric keeps it — CruxCoach's own entry wins.
+     */
+    fun confirmImport(overwrite: Boolean) {
+        val preview = _state.value.importPreview ?: return
+        _state.update { it.copy(importBusy = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val outcome = runCatching {
+                repo.transaction {
+                    val existing = existingDays(preview.result.measurements.map { it.metric }.toSet())
+                    val now = System.currentTimeMillis()
+                    var written = 0
+                    var kept = 0
+                    preview.result.measurements.forEach { m ->
+                        if (!overwrite && m.day in existing[m.metric].orEmpty()) { kept++; return@forEach }
+                        repo.saveMeasurement(BodyMeasurement(m.day, m.metric, m.value, m.unit, now, WaistlineImport.SOURCE))
+                        written++
+                    }
+                    written to kept
+                }
+            }.getOrNull()
+            importText = null
+            _state.update { it.copy(importBusy = false, importPreview = null) }
+            _events.tryEmit(
+                if (outcome == null) BodyEvent.ImportFailed
+                else BodyEvent.Imported(outcome.first, outcome.second, preview.result.skipped),
+            )
+        }
+    }
+
+    private fun existingDays(metrics: Set<String>): Map<String, Set<String>> =
+        metrics.associateWith { metric -> service.repo.series(metric).map { it.day }.toSet() }
+
+    // ── Measurement round ────────────────────────────────────────────
+
+    /** Saves several readings of one day at once (canonical values, upsert per day and metric). */
+    fun saveRound(day: LocalDate, values: Map<BodyMetric, Double>) {
+        if (values.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val now = System.currentTimeMillis()
+            repo.transaction {
+                values.forEach { (metric, value) ->
+                    repo.saveMeasurement(BodyMeasurement(day.toString(), metric.key, value, metric.unit, now, BodyMeasurement.SOURCE_MANUAL))
+                }
+            }
+            _events.tryEmit(BodyEvent.RoundSaved(values.size))
+        }
+    }
 
     /**
      * Saves a reading in canonical units. [original] is the entry being

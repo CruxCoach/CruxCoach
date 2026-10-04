@@ -23,6 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are logged per side; hangs show the load as % of body weight. Personal bests
   are spotted calmly, a warm-up ramp can be inserted before heavy sets, and the
   summary suggests the next step ("+1 kg", "try the harder variant").
+- Performance values: enter what you can do per exercise ("+20 kg × 5",
+  "32 kg for 10 s on 20 mm, right hand", "12 pull-ups", "45 s hollow hold") or
+  run a short test. Loads are then planned from them – loaded reps with two in
+  reserve, max hangs at about 90 %, repeaters at about 65 % of the 10-second
+  maximum – and a logged set that proves more raises the value automatically;
+  the first session with an exercise sets a starting value.
+- Guided training mode, the default for routines: one big set view with the
+  target, % body weight and an inline hang/repeater timer, and a separate rest
+  screen with a countdown ring, ±15 s, a side-switch pause, the next set and a
+  reps-in-reserve question. The list view stays available as the overview.
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
@@ -34,7 +44,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Body tracking (FEAT-067): back-dated entries, one value per day, a smoothed
   trend weight instead of noisy daily numbers, circumferences, ape index,
   strength-to-weight progress, and a "hide numbers" mode. Body stats from older
-  versions are taken over automatically.
+  versions are taken over automatically. A "measurement round" enters weight,
+  body fat and circumferences for one date in one go; optional, calm reminders
+  for weighing (chosen weekdays and time) and a monthly measurement round.
+- Import from Waistline: its JSON database backup and its CSV diary export
+  (any language, comma or dot decimals, kg/lb/st, cm/in), with a preview,
+  keep-or-overwrite for existing days and a day/month choice when dates are
+  ambiguous.
 - Fueling (FEAT-068), off by default: protein by body weight and carbohydrate
   targets that follow the training day – board sessions count automatically –
   plus water, quick entries, own foods, favourites and "same as yesterday". No

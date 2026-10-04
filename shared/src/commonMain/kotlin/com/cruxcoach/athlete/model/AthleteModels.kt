@@ -100,6 +100,30 @@ data class Routine(
     val builtinKey: String? = null,
 )
 
+@Serializable
+enum class BenchmarkSource { MANUAL, TEST, AUTO }
+
+/**
+ * What the athlete can do in one exercise: "+20 kg × 5", "32 kg for 10 s on
+ * 20 mm, right hand", "12 reps", "45 s". Prescriptions are derived from the
+ * newest value per side, edge and grip.
+ */
+@Serializable
+data class Benchmark(
+    val id: String,
+    val exerciseSlug: String,
+    val side: Side? = null,
+    val edgeMm: Double? = null,
+    val grip: Grip? = null,
+    val loadKg: Double? = null,
+    val reps: Int? = null,
+    val durationS: Double? = null,
+    val bodyweightKg: Double? = null,
+    val source: BenchmarkSource = BenchmarkSource.MANUAL,
+    val measuredAt: Long,
+    val note: String? = null,
+)
+
 // ── Body ─────────────────────────────────────────────────────────────
 
 @Serializable
@@ -289,4 +313,11 @@ data class AthleteProfile(
     val autoRestTimer: Boolean = true,
     val checkinEnabled: Boolean = true,
     val legacyBodyStatsImported: Boolean = false,
+    /** Optional weigh-in reminder: ISO weekdays (1 = Monday … 7 = Sunday) at a time of day. */
+    val weighReminderEnabled: Boolean = false,
+    val weighReminderDays: Set<Int> = setOf(1),
+    val weighReminderMinutes: Int = 7 * 60 + 30,
+    /** Optional monthly measuring round (circumferences) on a day of the month, same time of day. */
+    val measureReminderEnabled: Boolean = false,
+    val measureReminderDayOfMonth: Int = 1,
 )

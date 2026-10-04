@@ -55,10 +55,16 @@ fun TodayScreen(
     onOpenWeeklyReview: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel(),
+    onOpenPlayer: () -> Unit = onOpenWorkout,
+    onOpenBenchmarks: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.startedWorkout) {
-        if (state.startedWorkout) { viewModel.consumeStartedWorkout(); onOpenWorkout() }
+        if (state.startedWorkout) {
+            val guided = state.startedGuided
+            viewModel.consumeStartedWorkout()
+            if (guided) onOpenPlayer() else onOpenWorkout()
+        }
     }
     TrainingScaffold(
         title = stringResource(R.string.tr_nav_today),
@@ -79,7 +85,7 @@ fun TodayScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { WeekHeader(state) }
-            state.openWorkout?.let { item { OpenWorkoutCard(onOpenWorkout) } }
+            state.openWorkout?.let { item { OpenWorkoutCard(onOpenPlayer) } }
             item {
                 ReadinessCard(state, onSave = viewModel::saveCheckin, onClear = viewModel::clearCheckin,
                     onEndPause = viewModel::endPause)
@@ -94,6 +100,7 @@ fun TodayScreen(
                     SuggestionCard(s, onAction = {
                         when (s) {
                             TodaySuggestion.CONFIGURE_EQUIPMENT -> onOpenSettings()
+                            TodaySuggestion.SET_BENCHMARKS -> onOpenBenchmarks()
                             TodaySuggestion.ANTAGONIST_AFTER_BOARD -> viewModel.startRoutine(BuiltinRoutines.ANTAGONIST_15)
                             TodaySuggestion.INJURY_ROUTINE -> viewModel.startRoutine(BuiltinRoutines.INJURY_ONE_ARM)
                             TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
@@ -430,6 +437,7 @@ private fun TrainCard(
 private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit) {
     val (title, text, action) = when (s) {
         TodaySuggestion.CONFIGURE_EQUIPMENT -> Triple(R.string.trt_sugg_equipment_title, R.string.trt_sugg_equipment_text, R.string.trt_sugg_equipment_action)
+        TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.trt_sugg_benchmarks_action)
         TodaySuggestion.ANTAGONIST_AFTER_BOARD -> Triple(R.string.trt_sugg_antagonist_title, R.string.trt_sugg_antagonist_text, R.string.tr_action_start)
         TodaySuggestion.INJURY_ROUTINE -> Triple(R.string.trt_sugg_injury_title, R.string.trt_sugg_injury_text, R.string.tr_action_start)
         TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)

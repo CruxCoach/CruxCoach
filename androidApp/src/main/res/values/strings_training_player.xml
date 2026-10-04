@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Guided training mode (FEAT-066): set view and rest screen. -->
+<resources>
+    <string name="trp_title">Guided training</string>
+    <string name="trp_overview">Overview</string>
+    <string name="trp_progress">%1$d of %2$d sets done</string>
+    <string name="trp_set_of">Set %1$d of %2$d</string>
+    <string name="trp_start_timer">Start</string>
+    <string name="trp_done_without_timer">Done without timer</string>
+    <string name="trp_done_set">Set done</string>
+    <string name="trp_skip">Skip</string>
+    <string name="trp_next_after">After this: %1$s</string>
+    <plurals name="trp_reps_big">
+        <item quantity="one">%d rep</item>
+        <item quantity="other">%d reps</item>
+    </plurals>
+    <plurals name="trp_rounds">
+        <item quantity="one">%d round</item>
+        <item quantity="other">%d rounds</item>
+    </plurals>
+    <string name="trp_complete_title">All sets done</string>
+    <plurals name="trp_complete_text">
+        <item quantity="one">%d set logged – nicely done.</item>
+        <item quantity="other">%d sets logged – nicely done.</item>
+    </plurals>
+    <string name="trp_finish_training">Finish training</string>
+
+    <!-- Rest screen -->
+    <string name="trp_rest_title">Rest</string>
+    <string name="trp_rest_go">Let\'s go!</string>
+    <string name="trp_side_switch">Switch sides</string>
+    <string name="trp_side_switch_to">Next: %1$s</string>
+    <string name="trp_rest_remaining_cd">%1$s of rest left</string>
+    <string name="trp_rest_minus">−15 s</string>
+    <string name="trp_rest_plus">+15 s</string>
+    <string name="trp_rest_skip">End rest</string>
+    <string name="trp_next_up">Up next</string>
+    <string name="trp_rir_question_reps">How many more reps would have been possible?</string>
+    <string name="trp_rir_question_seconds">How many more seconds would have been possible?</string>
+    <string name="trp_record">New best: %1$s</string>
+    <string name="trp_benchmark_raised">Performance value raised: %1$s</string>
+    <string name="trp_capacity_e1rm">e1RM %1$s</string>
+    <string name="trp_capacity_ten">10-s max %1$s</string>
+    <string name="trp_capacity_ten_pct">10-s max %1$s (%2$s)</string>
+    <plurals name="trp_capacity_reps">
+        <item quantity="one">max. %d rep</item>
+        <item quantity="other">max. %d reps</item>
+    </plurals>
+    <string name="trp_capacity_seconds">max. %1$d s</string>
+</resources>

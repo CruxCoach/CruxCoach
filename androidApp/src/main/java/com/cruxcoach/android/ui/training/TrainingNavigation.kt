@@ -42,6 +42,8 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenInjuries = { go(TrainingRoutes.INJURIES) },
             onOpenWeeklyReview = { go(TrainingRoutes.WEEKLY_REVIEW) },
             onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) },
+            onOpenPlayer = { go(TrainingRoutes.WORKOUT_PLAYER) },
+            onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
         )
     }
     composable(
@@ -64,7 +66,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 slug = entry.arguments?.getString("slug").orEmpty(),
                 onBack = back,
                 onOpenExercise = { nav.navigate(TrainingRoutes.exerciseDetail(it)) },
-                onOpenWorkout = { go(TrainingRoutes.WORKOUT) },
+                onOpenWorkout = { go(TrainingRoutes.WORKOUT_PLAYER) },
             )
         }
     }
@@ -84,6 +86,37 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                     popUpTo(TrainingRoutes.WORKOUT) { inclusive = true }
                 }
             },
+            onOpenPlayer = {
+                nav.navigate(TrainingRoutes.WORKOUT_PLAYER) {
+                    popUpTo(TrainingRoutes.WORKOUT) { inclusive = true }
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+    // Guided mode (default for routines): own set and rest screens.
+    screen(TrainingRoutes.WORKOUT_PLAYER, "WorkoutPlayer", back) {
+        com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen(
+            onBack = back,
+            onOverview = {
+                nav.navigate(TrainingRoutes.WORKOUT) {
+                    popUpTo(TrainingRoutes.WORKOUT_PLAYER) { inclusive = true }
+                    launchSingleTop = true
+                }
+            },
+            onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
+            onFinished = { workoutId ->
+                nav.navigate(TrainingRoutes.workoutSummary(workoutId)) {
+                    popUpTo(TrainingRoutes.WORKOUT_PLAYER) { inclusive = true }
+                }
+            },
+        )
+    }
+    screen(TrainingRoutes.BENCHMARKS, "Benchmarks", back) {
+        com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen(
+            onBack = back,
+            onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
+            onTestStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
         )
     }
     composable(TrainingRoutes.WORKOUT_SUMMARY) { entry ->
@@ -97,7 +130,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     }
     screen(TrainingRoutes.ROUTINES, "Routines", back) {
         RoutinesScreen(onBack = back, onWorkoutStarted = {
-            nav.navigate(TrainingRoutes.WORKOUT) {
+            nav.navigate(TrainingRoutes.WORKOUT_PLAYER) {
                 popUpTo(TrainingRoutes.ROUTINES) { inclusive = true }
                 launchSingleTop = true
             }
@@ -116,7 +149,9 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         InjuriesScreen(onBack = back, onOpenRoutines = { go(TrainingRoutes.ROUTINES) })
     }
     screen(TrainingRoutes.WEEKLY_REVIEW, "WeeklyReview", back) { WeeklyReviewScreen(onBack = back) }
-    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) { AthleteSettingsScreen(onBack = back) }
+    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) {
+        AthleteSettingsScreen(onBack = back, onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) })
+    }
 }
 
 private fun NavGraphBuilder.screen(route: String, name: String, back: () -> Unit, content: @Composable () -> Unit) {

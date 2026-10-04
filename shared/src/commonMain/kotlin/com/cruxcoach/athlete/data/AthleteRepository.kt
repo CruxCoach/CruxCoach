@@ -158,6 +158,24 @@ class AthleteRepository(
         if (favorite) training.addFavorite(slug, clock()) else training.removeFavorite(slug)
     }
 
+    // ── Performance values ───────────────────────────────────────────
+
+    private val benchmarkQueries get() = db.benchmarksQueries
+
+    fun saveBenchmark(b: Benchmark) = benchmarkQueries.upsertBenchmark(
+        b.id, b.exerciseSlug, b.side?.name, b.edgeMm, b.grip?.name, b.loadKg, b.reps?.toLong(), b.durationS,
+        b.bodyweightKg, b.source.name, b.measuredAt, b.note,
+    )
+
+    /** Newest first. */
+    fun benchmarks(slug: String): List<Benchmark> = benchmarkQueries.getBenchmarksForExercise(slug).executeAsList().map { it.toModel() }
+    fun observeBenchmarks(slug: String): Flow<List<Benchmark>> =
+        benchmarkQueries.getBenchmarksForExercise(slug).asFlow().mapToList(dispatcher).map { rows -> rows.map { it.toModel() } }
+    fun allBenchmarks(): List<Benchmark> = benchmarkQueries.getAllBenchmarks().executeAsList().map { it.toModel() }
+    fun observeAllBenchmarks(): Flow<List<Benchmark>> =
+        benchmarkQueries.getAllBenchmarks().asFlow().mapToList(dispatcher).map { rows -> rows.map { it.toModel() } }
+    fun deleteBenchmark(id: String) = benchmarkQueries.deleteBenchmark(id)
+
     // ── Body ─────────────────────────────────────────────────────────
 
     fun saveMeasurement(m: BodyMeasurement) =
@@ -272,6 +290,7 @@ class AthleteRepository(
         checkins = wellbeing.getAllCheckins().executeAsList().map { it.toModel() },
         injuries = allInjuries(),
         pauses = pauses(),
+        benchmarks = allBenchmarks(),
     )
 
     /**
@@ -320,6 +339,9 @@ class AthleteRepository(
         snapshot.injuries.forEach { i ->
             val local = wellbeing.getInjury(i.id).executeAsOneOrNull()
             if (local == null || local.updated_at <= i.updatedAt) { saveInjury(i); rows++ }
+        }
+        snapshot.benchmarks.forEach { b ->
+            if (benchmarkQueries.getBenchmark(b.id).executeAsOneOrNull() == null) { saveBenchmark(b); rows++ }
         }
         snapshot.pauses.forEach { p ->
             val local = wellbeing.getPauses().executeAsList().firstOrNull { it.id == p.id }
@@ -372,6 +394,12 @@ private fun InjuryRow.toModel(): Injury? {
     return Injury(id, region, enumOrNull<InjurySide>(side), detail, severity.toInt(), climbing_paused != 0L,
         started_on, resolved_on, note, updated_at)
 }
+
+private fun com.cruxcoach.db.athlete.Exercise_benchmark.toModel() = Benchmark(
+    id = id, exerciseSlug = exercise_slug, side = enumOrNull<Side>(side), edgeMm = edge_mm, grip = enumOrNull<Grip>(grip),
+    loadKg = load_kg, reps = reps?.toInt(), durationS = duration_s, bodyweightKg = bodyweight_kg,
+    source = enumOrNull<BenchmarkSource>(source) ?: BenchmarkSource.MANUAL, measuredAt = measured_at, note = note,
+)
 
 private fun Pause_period.toModel(): PausePeriod? {
     val reason = enumOrNull<PauseReason>(reason) ?: return null

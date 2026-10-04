@@ -292,6 +292,7 @@ fun CruxCoachNavHost(
             route == Routes.SUPPORT_SETTINGS ||
             route == Routes.APP_SHARE ||
             route == Routes.MOONBOARD_CSV_IMPORT ||
+            route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY ||
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }

@@ -130,4 +130,5 @@
         <item quantity="one">%d Satz</item>
         <item quantity="other">%d Sätze</item>
     </plurals>
+    <string name="trw_open_player">Geführter Modus</string>
 </resources>

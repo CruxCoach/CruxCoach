@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trbm_title">Leistungswerte</string>
+    <string name="trbm_card_title">Dein Leistungswert</string>
+    <string name="trbm_info" formatted="false">Trag ein, was du schaffst – zum Beispiel Klimmzug mit +20 kg für 5 Wiederholungen oder Blockheben mit 32 kg an 20 mm für 10 s rechts – oder mach einen kurzen Test. CruxCoach macht daraus die Lasten von heute: Wiederholungen mit Zusatzlast mit zwei in Reserve, Max Hangs bei etwa 90 %, Repeater bei etwa 65 % deines 10-Sekunden-Maximums, Körpergewichtsübungen und Halteübungen bei etwa 70 % deines Maximums. Zeigt ein geloggter Satz, dass du stärker bist, steigt der Wert von selbst und die nächste Einheit plant mehr. Auch dein erstes Training mit einer Übung legt einen Startwert fest.</string>
+    <string name="trbm_intro">Was schaffst du? Trag es ein oder teste es – CruxCoach plant deine Lasten aus diesen Werten und hebt sie an, wenn deine Logs Fortschritt zeigen.</string>
+    <string name="trbm_needs_weight" formatted="false">Trag zuerst dein Körpergewicht ein: Werte mit Zusatzgewicht und % Körpergewicht brauchen es.</string>
+    <string name="trbm_key_title">Wichtige Startwerte</string>
+    <string name="trbm_other_title">Weitere Übungen</string>
+    <string name="trbm_more_hint">Jede Übung mit Last, Wiederholungen oder Haltezeit hat diese Karte auf ihrer Detailseite.</string>
+    <string name="trbm_none">noch nicht eingetragen</string>
+    <string name="trbm_meta">%1$s · %2$s</string>
+    <string name="trbm_source_manual">eingetragen</string>
+    <string name="trbm_source_test">Test</string>
+    <string name="trbm_source_auto">aus deinen Logs</string>
+    <string name="trbm_paused_injury">Pausiert, solange die Verletzung heilt.</string>
+    <string name="trbm_enter">Eintragen</string>
+    <string name="trbm_test">Testen</string>
+    <string name="trbm_e1rm">geschätztes 1RM %1$s</string>
+    <string name="trbm_ten_second_max">10-s-Max %1$s (%2$d %% KG)</string>
+    <string name="trbm_max_reps">max. %1$d Wdh.</string>
+    <string name="trbm_max_seconds">max. %1$d s</string>
+    <string name="trbm_assisted">entlastet %1$s</string>
+    <string name="trbm_hint_e1rm">Der schwerste Satz, den du sauber schaffst: Last und Wiederholungen (1–30). Daraus schätzt CruxCoach dein 1RM.</string>
+    <string name="trbm_hint_hang">Das Maximum, das du halten kannst: Last, Haltezeit und Leiste. 10 s ist der Bezug, andere Zeiten werden umgerechnet.</string>
+    <string name="trbm_hint_reps">Deine maximale Anzahl sauberer Wiederholungen in einem Satz.</string>
+    <string name="trbm_hint_seconds">Deine längste saubere Haltezeit.</string>
+    <string name="trbm_load_added">Zusatzgewicht (%1$s)</string>
+    <string name="trbm_load_total">Last (%1$s)</string>
+    <string name="trbm_load_added_hint">0 = Körpergewicht, negativ = entlastet (Umlenkrolle, Band)</string>
+    <string name="trbm_reps">Wiederholungen</string>
+    <string name="trbm_seconds">Sekunden</string>
+    <string name="trbm_edge">Leiste (mm)</string>
+    <string name="trbm_planned">Geplant: %1$s</string>
+</resources>
