@@ -209,7 +209,7 @@ fun DataExportScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(modifier = Modifier.padding(4.dp)) {
-                        VISIBLE_CATEGORIES.forEach { category ->
+                        categoriesFor(state.exportFormat).forEach { category ->
                             CategoryCheckboxRow(
                                 label = category.localizedLabel(),
                                 checked = category in state.exportCategories,
@@ -220,7 +220,17 @@ fun DataExportScreen(
                 }
             }
 
-            val exportEnabled = !state.isExporting && state.exportCategories.isNotEmpty()
+            if (state.exportFormat != DataExchangeFormat.JSON) {
+                Text(
+                    stringResource(R.string.export_json_only_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("export_json_only_hint"),
+                )
+            }
+
+            val exportEnabled = !state.isExporting &&
+                state.exportCategories.intersect(categoriesFor(state.exportFormat)).isNotEmpty()
 
             Button(
                 onClick = {

@@ -15,6 +15,7 @@ import com.cruxcoach.athlete.model.Workout
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -206,12 +207,21 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
     }
 
     /**
-     * Writes run one at a time and in tap order: an edit followed by a quick
-     * ✓ must not land after the completion and reopen the set.
+     * Writes run strictly one after another in tap order (one consumer of an
+     * unbounded queue): an edit followed by a quick ✓ must never land after
+     * the completion and reopen — and later drop — the set.
      */
-    private val writes = Dispatchers.IO.limitedParallelism(1)
+    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            for (write in writes) runCatching { write() }
+                .onFailure { android.util.Log.e("WorkoutViewModel", "write failed", it) }
+        }
+    }
 
     private fun io(block: suspend () -> Unit) {
-        viewModelScope.launch(writes) { service.ensureReady(); block() }
+        writes.trySend(block)
     }
 }

@@ -54,6 +54,9 @@ upsertInjury:
 INSERT OR REPLACE INTO injury(id, region, side, detail, severity, climbing_paused, started_on, resolved_on, note, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+getInjury:
+SELECT * FROM injury WHERE id = ?;
+
 getActiveInjuries:
 SELECT * FROM injury WHERE resolved_on IS NULL ORDER BY started_on DESC;
 

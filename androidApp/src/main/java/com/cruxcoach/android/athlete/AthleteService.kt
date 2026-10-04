@@ -34,13 +34,17 @@ class ExerciseCatalogStore @Inject constructor(
     private val _catalog = MutableStateFlow(ExerciseCatalog.EMPTY)
     val catalog: StateFlow<ExerciseCatalog> = _catalog.asStateFlow()
     @Volatile private var packaged: ExerciseCatalog? = null
+    @Volatile private var dirty = true
     private val mutex = Mutex()
 
     suspend fun ensureLoaded(): ExerciseCatalog = withContext(Dispatchers.IO) {
         mutex.withLock {
-            _catalog.value.takeIf { packaged != null } ?: reload()
+            if (!dirty) _catalog.value else reload()
         }
     }
+
+    /** Custom exercises changed outside the app's own screens (a restore). */
+    fun invalidate() { dirty = true }
 
     /** Call after custom exercises changed. */
     suspend fun refresh(): ExerciseCatalog = withContext(Dispatchers.IO) { mutex.withLock { reload() } }
@@ -48,7 +52,7 @@ class ExerciseCatalogStore @Inject constructor(
     private fun reload(): ExerciseCatalog {
         val base = packaged ?: context.assets.open(ASSET).bufferedReader().use { ExerciseCatalog.parse(it.readText()) }
             .also { packaged = it }
-        return base.withCustom(repository.get().customExercises()).also { _catalog.value = it }
+        return base.withCustom(repository.get().customExercises()).also { _catalog.value = it; dirty = false }
     }
 
     companion object {
@@ -102,9 +106,9 @@ class AthleteService @Inject constructor(
 
     /** Opens the database, loads the catalogue and imports 0.2.3 body stats once. */
     suspend fun ensureReady() = withContext(Dispatchers.IO) {
+        catalogStore.ensureLoaded()
         readyMutex.withLock {
             if (ready) return@withLock
-            catalogStore.ensureLoaded()
             importLegacyBodyStats()
             ready = true
         }
@@ -161,7 +165,10 @@ class AthleteService @Inject constructor(
 
     // ── Workouts ─────────────────────────────────────────────────────
 
-    fun startWorkout(routine: Routine?, title: String?): String {
+    /** Serialises structural edits so a double tap cannot open two trainings or reuse a block number. */
+    private val structureLock = Any()
+
+    fun startWorkout(routine: Routine?, title: String?): String = synchronized(structureLock) {
         repo.openWorkout()?.let { return it.id }
         val now = System.currentTimeMillis()
         val id = repo.newId()
@@ -169,14 +176,14 @@ class AthleteService @Inject constructor(
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
             routine?.items?.forEachIndexed { index, item -> addItem(id, index, item) }
         }
-        return id
+        id
     }
 
     /** Appends an exercise; returns false when the open injury rules it out. */
-    fun addExercise(workoutId: String, slug: String): Boolean {
+    fun addExercise(workoutId: String, slug: String): Boolean = synchronized(structureLock) {
         val def = catalog[slug] ?: return false
         val nextBlock = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
-        return addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def))
+        addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def))
     }
 
     private fun addItem(workoutId: String, blockIndex: Int, item: RoutineItem): Boolean {
@@ -195,7 +202,7 @@ class AthleteService @Inject constructor(
      */
     fun completeSet(set: ExerciseSet, startRest: Boolean): PersonalRecord? {
         val done = set.copy(completedAt = System.currentTimeMillis(), bodyweightKg = set.bodyweightKg ?: currentBodyweight())
-        val history = repo.history(set.exerciseSlug, 300)
+        val history = repo.history(set.exerciseSlug, HISTORY_LIMIT).filter { it.id != set.id }
         repo.saveSet(done)
         if (startRest) (done.restS ?: catalog[set.exerciseSlug]?.defaults?.restS)?.takeIf { it > 0 }?.let(::startRest)
         return PersonalRecords.detect(catalog.fallbackFor(set.exerciseSlug), done, history)
@@ -232,18 +239,41 @@ class AthleteService @Inject constructor(
         return summarize(id, workout?.let { ((end - it.startedAt) / 60_000L).toInt() })
     }
 
-    fun summarize(id: String, durationMinutes: Int? = repo.workout(id)?.durationMinutes): WorkoutSummary =
-        WorkoutSummarizer.summarize(repo.setsFor(id), durationMinutes, catalog,
-            historyBefore = { slug -> repo.history(slug, 300).filter { it.workoutId != id } },
+    /** Records are judged against what came before this training — also when an old one is reopened. */
+    fun summarize(id: String, durationMinutes: Int? = repo.workout(id)?.durationMinutes): WorkoutSummary {
+        val startedAt = repo.workout(id)?.startedAt ?: Long.MAX_VALUE
+        return WorkoutSummarizer.summarize(repo.setsFor(id), durationMinutes, catalog,
+            historyBefore = { slug ->
+                repo.history(slug, HISTORY_LIMIT).filter { it.workoutId != id && (it.completedAt ?: 0L) < startedAt }
+            },
             smallestIncrementKg = repo.profile().smallestIncrementKg)
+    }
 
     fun discardWorkout(id: String) = repo.deleteWorkout(id)
+
+    // ── Backup ───────────────────────────────────────────────────────
+
+    fun backupSnapshot(): com.cruxcoach.athlete.data.AthleteSnapshot = repo.snapshot()
+
+    /** Restores a backup part and makes restored custom exercises visible without a restart. */
+    fun restoreBackup(snapshot: com.cruxcoach.athlete.data.AthleteSnapshot, includeProfile: Boolean): Int =
+        repo.restore(snapshot, includeProfile).also { catalogStore.invalidate() }
+
+    fun importBackupBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int =
+        repo.importLegacyBodyStats(rows.map { AthleteRepository.LegacyBodyStat(it.date, it.statName, it.value, it.unit) })
+
+    companion object {
+        /** Enough history for every exercise's best values; far above a lifetime of sets per slug and side. */
+        const val HISTORY_LIMIT = 20_000
+    }
 
     fun saveRoutineFromWorkout(workoutId: String, name: String): Routine {
         val sets = repo.setsFor(workoutId)
         val items = sets.groupBy { it.blockIndex }.toSortedMap().values.map { block ->
-            val first = block.first()
-            val rows = block.map { it.setIndex }.distinct().size
+            // Inserted warm-up rows sort first; the routine describes the work sets.
+            val work = block.filter { it.setType != SetType.WARMUP }.ifEmpty { block }
+            val first = work.first()
+            val rows = work.map { it.setIndex }.distinct().size
             RoutineItem(
                 slug = first.exerciseSlug, sets = rows,
                 repsMin = first.targetReps ?: first.reps, repsMax = first.targetReps ?: first.reps,

@@ -28,6 +28,9 @@ INSERT OR IGNORE INTO body_measurement(day, metric, value, unit, measured_at, so
 deleteMeasurement:
 DELETE FROM body_measurement WHERE day = ? AND metric = ?;
 
+getMeasurement:
+SELECT * FROM body_measurement WHERE day = ? AND metric = ?;
+
 getSeries:
 SELECT * FROM body_measurement WHERE metric = ? ORDER BY day;
 

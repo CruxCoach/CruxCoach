@@ -1070,6 +1070,10 @@ object CruxCoachBackup {
          *  says whether the athlete profile/settings may be overwritten.
          *  Null = this caller cannot write the athlete database. */
         athleteRestore: ((AthleteSnapshot, Boolean) -> Int)? = null,
+        /** Copies the legacy `bodyStats` rows of this backup into the athlete
+         *  database (insert-if-absent), so a 0.2.3 backup restored at any time
+         *  shows up in the 0.2.4 body screen. Null = not available. */
+        athleteLegacyBodyStats: ((List<BodyStat>) -> Int)? = null,
     ): ImportResult {
         require(adoptLocalDraftsForPubkey == null || HEX64_REGEX.matches(adoptLocalDraftsForPubkey)) {
             "invalid import: adoptLocalDraftsForPubkey"
@@ -1437,12 +1441,14 @@ object CruxCoachBackup {
         }
 
         // 11. Athlete database (separate file, own transaction). A merge by
-        // id, so a re-run changes nothing. Legacy `bodyStats` rows were
-        // written above; the athlete DB copies them on its next start.
+        // id, so a re-run changes nothing. Legacy `bodyStats` rows written
+        // above are copied into it as well (never overwriting newer values).
         val athletePart = backup.athlete?.let { selectAthlete(it, selectedCategories) }
         val athleteRows = if (athletePart != null && athleteRestore != null)
             athleteRestore(athletePart, Category.TRAINING in selectedCategories) else 0
-        val withAthlete = secureResult.copy(athleteRows = athleteRows)
+        val legacyBodyRows = if (Category.BODY_STATS in selectedCategories && backup.bodyStats.isNotEmpty())
+            athleteLegacyBodyStats?.invoke(backup.bodyStats) ?: 0 else 0
+        val withAthlete = secureResult.copy(athleteRows = athleteRows + legacyBodyRows)
 
         // 12. Own climbs + per-angle stats — see [restoreOwnClimbRows].
         if (Category.OWN_CLIMBS !in selectedCategories) return withAthlete

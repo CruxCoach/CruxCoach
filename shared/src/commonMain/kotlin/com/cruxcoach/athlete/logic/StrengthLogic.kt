@@ -155,7 +155,13 @@ object ProgressionAdvisor {
         val work = lastSession.filter { it.isCompleted && it.setType == SetType.WORK }
         if (work.isEmpty() || def.kind == ExerciseKind.CLIMB) return null
 
-        val easyEnough = work.all { (it.rir ?: 2) >= 2 }
+        // Reps are measured, so reaching the top of the range counts unless the
+        // athlete said it was hard. Holds and repeaters are prefilled with the
+        // planned time, so "all done" only means "too easy" with an explicit
+        // reps-in-reserve answer — otherwise every logged hang would ask for more load.
+        val measuredByReps = def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS
+        val easyEnough = if (measuredByReps) work.all { (it.rir ?: 2) >= 2 }
+            else work.all { it.rir != null && it.rir >= 2 }
         val (hitTop, missedBottom) = when (def.kind) {
             ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
                 val top = def.defaults.repsMax ?: work.firstNotNullOfOrNull { it.targetReps } ?: return null

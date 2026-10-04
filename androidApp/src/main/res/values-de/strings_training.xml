@@ -151,4 +151,5 @@
         <item quantity="one">%d Fueling-Eintrag</item>
         <item quantity="other">%d Fueling-Einträge</item>
     </plurals>
+    <string name="export_json_only_hint">Training, Körper und Fueling sind nur im JSON-Backup enthalten.</string>
 </resources>

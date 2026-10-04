@@ -101,8 +101,13 @@ fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewMode
             }
             Text(stringResource(R.string.tra_increment), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(0.5, 1.0, 1.25, 2.5).forEach { inc ->
-                    FilterChip(selected = p.smallestIncrementKg == inc, onClick = { viewModel.update { it.copy(smallestIncrementKg = inc) } },
+                // Steps are offered in the athlete's own plates: lb plates for imperial,
+                // stored in kg so the logger's kg grid lands exactly on them.
+                val steps = if (p.units == UnitSystem.IMPERIAL) listOf(1.0, 2.5, 5.0).map { it / Units.LB_PER_KG }
+                    else listOf(0.5, 1.0, 1.25, 2.5)
+                steps.forEach { inc ->
+                    FilterChip(selected = kotlin.math.abs(p.smallestIncrementKg - inc) < 1e-6,
+                        onClick = { viewModel.update { it.copy(smallestIncrementKg = inc) } },
                         label = { Text(formatMass(inc, p.units)) })
                 }
             }
@@ -147,9 +152,9 @@ fun AthleteSettingsScreen(onBack: () -> Unit, viewModel: AthleteSettingsViewMode
             // Units and personal data
             SectionTitle(stringResource(R.string.tra_units_title))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { it.copy(units = UnitSystem.METRIC) } },
+                FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { it.copy(units = UnitSystem.METRIC, smallestIncrementKg = 1.0) } },
                     label = { Text(stringResource(R.string.tra_units_metric)) })
-                FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { it.copy(units = UnitSystem.IMPERIAL) } },
+                FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { it.copy(units = UnitSystem.IMPERIAL, smallestIncrementKg = 2.5 / Units.LB_PER_KG) } },
                     label = { Text(stringResource(R.string.tra_units_imperial)) })
             }
             SectionTitle(stringResource(R.string.tra_personal_title)) {
