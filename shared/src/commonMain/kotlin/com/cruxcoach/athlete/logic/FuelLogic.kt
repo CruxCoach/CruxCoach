@@ -2,6 +2,8 @@ package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.AthleteProfile
+import com.cruxcoach.athlete.model.FoodLogEntry
+import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.Sex
 import kotlin.math.roundToInt
 
@@ -90,6 +92,37 @@ object FuelTargets {
             carbsG = (weightKg * cpk).roundToInt(),
             waterMl = (water / 50).roundToInt() * 50,
         )
+    }
+}
+
+/**
+ * Sums of logged nutrients for a day or a meal. Missing values count as zero:
+ * a quick entry may carry only protein.
+ */
+data class MacroTotals(val kcal: Double, val protein: Double, val carbs: Double, val fat: Double, val entries: Int) {
+    /** Share of energy from fat, from the macros (4/4/9 kcal per g); null without any macros. */
+    val fatEnergyShare: Double?
+        get() {
+            val energy = protein * 4 + carbs * 4 + fat * 9
+            return if (energy > 0) fat * 9 / energy else null
+        }
+
+    companion object {
+        /** Fat guideline for athletes: 20–35 % of energy (ACSM/AND/DC position stand 2016). */
+        const val FAT_SHARE_MIN = 0.20
+        const val FAT_SHARE_MAX = 0.35
+
+        fun of(entries: List<FoodLogEntry>) = MacroTotals(
+            kcal = entries.sumOf { it.kcal ?: 0.0 },
+            protein = entries.sumOf { it.proteinG ?: 0.0 },
+            carbs = entries.sumOf { it.carbsG ?: 0.0 },
+            fat = entries.sumOf { it.fatG ?: 0.0 },
+            entries = entries.size,
+        )
+
+        /** Per meal, in the order of [Meal]; meals without entries are left out. */
+        fun byMeal(entries: List<FoodLogEntry>): List<Pair<Meal, MacroTotals>> =
+            Meal.entries.mapNotNull { meal -> entries.filter { it.meal == meal }.takeIf { it.isNotEmpty() }?.let { meal to of(it) } }
     }
 }
 

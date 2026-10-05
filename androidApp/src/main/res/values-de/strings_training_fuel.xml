@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fueling (FEAT-068): freiwillig, „Energie statt Diät“. -->
+<!-- Ernährung / Fueling (FEAT-068): immer aktiv, „Energie statt Diät“. -->
 <resources>
-    <string name="trf_intro_title">Fueling: Energie fürs Training</string>
+    <string name="trf_intro_title">Ernährung: Energie fürs Training</string>
     <string name="trf_intro_p1">Genug Energie ist die Grundlage für Kraft, Haut und Erholung. CruxCoach hilft dir, passend zu deinem Training zu essen – nicht weniger.</string>
     <string name="trf_intro_protein">Protein richtet sich nach deinem Körpergewicht (etwa 1,4–2,0 g pro kg).</string>
     <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Sessions.</string>
     <string name="trf_intro_no_budget">Kein Kalorienbudget, kein „zu viel“, keine guten oder schlechten Lebensmittel.</string>
     <string name="trf_intro_hidden">Kalorien sind standardmäßig ausgeblendet; du kannst sie in den Einstellungen anzeigen.</string>
     <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät.</string>
-    <string name="trf_intro_enable">Fueling aktivieren</string>
-    <string name="trf_intro_later">Nicht jetzt</string>
+    <string name="trf_intro_got_it">Verstanden</string>
 
     <string name="trf_today">Heute</string>
     <string name="trf_prev_day">Vorheriger Tag</string>
@@ -25,7 +24,14 @@
     <string name="trf_water_250">+250 ml</string>
     <string name="trf_water_500">+500 ml</string>
     <string name="trf_water_entry_desc">%1$d ml, tippen zum Entfernen</string>
-    <string name="trf_kcal_total">Energie: %1$d kcal</string>
+    <string name="trf_day_total">Tagessumme</string>
+    <string name="trf_kcal_value">%1$d kcal</string>
+    <string name="trf_value_g">%1$d g</string>
+    <string name="trf_to_go">noch %1$d g</string>
+    <string name="trf_reached">Ziel erreicht</string>
+    <string name="trf_fat">Fett</string>
+    <string name="trf_fat_share">%1$d %% der Energie · Richtwert %2$d–%3$d %%</string>
+    <string name="trf_fat_info">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35 %% der Energie aus Fett; weniger als 20 %% wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_progress_ml">%1$d / %2$d ml</string>
     <string name="trf_quick_add">Schnell eintragen</string>
@@ -39,6 +45,7 @@
     <string name="trf_copy_confirm">Übernehmen</string>
     <string name="trf_empty_day">Noch nichts eingetragen. Ein grober Eintrag reicht – genau zählen musst du nicht.</string>
     <string name="trf_entry_macros">P %1$s · K %2$s · F %3$s</string>
+    <string name="trf_entry_macros_g">P %1$s · K %2$s · F %3$s g</string>
     <string name="trf_entry_portions">%1$s × Portion</string>
     <string name="trf_entry_grams">%1$s g</string>
     <string name="trf_entry_menu">Optionen für %1$s</string>

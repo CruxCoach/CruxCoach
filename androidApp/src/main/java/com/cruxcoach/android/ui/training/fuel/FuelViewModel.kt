@@ -102,7 +102,7 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 water = s.water,
                 foods = s.foods,
                 previousDayCount = previous,
-                redsSignals = if (s.profile.fuelEnabled) service.redsSignals(s.profile, activities) else emptyList(),
+                redsSignals = service.redsSignals(s.profile, activities),
             )
         }
     }
@@ -121,9 +121,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
 
     private fun currentDay(): String = (selectedDay.value ?: service.today()).toString()
 
-    // ── Module switch ────────────────────────────────────────────────
+    // ── Intro ────────────────────────────────────────────────────────
 
-    fun enableFuel() = io { service.repo.updateProfile { it.copy(fuelEnabled = true, fuelIntroAccepted = true) } }
+    fun acceptIntro() = io { service.repo.updateProfile { it.copy(fuelIntroAccepted = true) } }
 
     // ── Logging ──────────────────────────────────────────────────────
 
