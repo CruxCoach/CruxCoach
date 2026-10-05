@@ -159,6 +159,12 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.repo.setFavorite(slug, favorite) }
     }
 
+    /** "Nie vorschlagen" — the exercise stays findable here. */
+    fun toggleExcluded(slug: String) {
+        val excluded = slug !in _state.value.profile.excludedExercises
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.setExcluded(slug, excluded) }
+    }
+
     fun pick(workoutId: String, slug: String) {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
@@ -336,6 +342,8 @@ fun ExerciseCatalogScreen(
                     onOpenDetail = { onOpenExercise(def.slug) },
                     onToggleFavorite = { viewModel.toggleFavorite(def.slug) },
                     onAddToWorkout = if (pickForWorkout == null) ({ addSlug = def.slug }) else null,
+                    excluded = def.slug in state.profile.excludedExercises,
+                    onToggleExcluded = { viewModel.toggleExcluded(def.slug) },
                 )
                 if (showSections) {
                     item(key = "h-fav") { SectionTitle(stringResource(R.string.trx_section_favorites)) }
@@ -368,13 +376,27 @@ private fun ExerciseRow(
     onOpenDetail: () -> Unit,
     onToggleFavorite: () -> Unit,
     onAddToWorkout: (() -> Unit)? = null,
+    excluded: Boolean = false,
+    onToggleExcluded: (() -> Unit)? = null,
 ) {
     val name = def.name(language)
+    // Long press: details or "Nie vorschlagen" (without the toggle it opens the details as before).
+    var menu by remember { mutableStateOf(false) }
     Card(
         Modifier.fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onOpenDetail)
+            .combinedClickable(onClick = onClick, onLongClick = { if (onToggleExcluded != null) menu = true else onOpenDetail() })
             .testTag("exercise_row_${def.slug}"),
     ) {
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.tre_menu_details)) }, onClick = { menu = false; onOpenDetail() })
+            onToggleExcluded?.let { toggle ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (excluded) R.string.tre_include else R.string.tre_exclude)) },
+                    onClick = { menu = false; toggle() },
+                    modifier = Modifier.testTag("exercise_exclude_${def.slug}"),
+                )
+            }
+        }
         Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -409,6 +431,12 @@ private fun ExerciseRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 InjuryBadge(advice)
+                if (excluded) {
+                    Badge(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp).testTag("exercise_excluded_${def.slug}")) {
+                        Text(stringResource(R.string.tre_excluded_badge))
+                    }
+                }
             }
             if (pickMode) {
                 IconButton(onClick = onOpenDetail, modifier = Modifier.testTag("exercise_info_${def.slug}")) {

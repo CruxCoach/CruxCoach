@@ -91,7 +91,9 @@ spec file so other branches see the reservation.
 | FEAT-066 | Off-board training, exercise catalogue v2, injury mode | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-066-training-logger-exercise-catalogue.md` |
 | FEAT-067 | Body tracking v2 | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-067-body-tracking-v2.md` |
 | FEAT-068 | Fueling, not dieting | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-068-fueling.md` |
-| FEAT-069 | Training organisation, stats, own workouts, daily suggestion | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-069-training-organisation-stats-suggestions.md` |
+| FEAT-069 | Food photo recognition (allocated on `feat/0.2.4-food-photo`) | v0.2.4 | other branch | `0.2.4/FEAT-069-food-photo-recognition.md` (on that branch) |
+| FEAT-070 | Training organisation, stats, own workouts, daily suggestion | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-070-training-organisation-stats-suggestions.md` |
+| FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.4 | in-progress | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
@@ -167,7 +169,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-070** is the next unallocated ID (FEAT-066–069 allocated 2026-10-04 on `feat/0.2.4-training-body`). FEAT-060 and FEAT-061 are reserved in
+**FEAT-072** is the next unallocated ID (FEAT-066–068 and FEAT-070–071 on `feat/0.2.4-training-body`, FEAT-069 on `feat/0.2.4-food-photo`). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.

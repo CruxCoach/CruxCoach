@@ -31,6 +31,13 @@ import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.ProgressionSuggestion
+import kotlinx.datetime.minus
+import com.cruxcoach.athlete.model.SuggestionEventKind
+import com.cruxcoach.athlete.logic.WorkoutPlanner
+import com.cruxcoach.athlete.logic.TrainingBlocks
+import com.cruxcoach.athlete.logic.TrendKind
+import com.cruxcoach.athlete.logic.ProgressionTrend
+import com.cruxcoach.athlete.logic.ProgressionAdvisor
 import com.cruxcoach.athlete.logic.ProgressionVerdict
 import com.cruxcoach.athlete.logic.WorkoutSummary
 import com.cruxcoach.athlete.model.ExerciseSet
@@ -59,6 +66,12 @@ data class SummaryState(
     val units: UnitSystem = UnitSystem.METRIC,
     val catalog: ExerciseCatalog = ExerciseCatalog.EMPTY,
     val routineSaved: Boolean = false,
+    /** Patterns across sessions per exercise (FEAT-071): stall, decline, twice too easy/hard. */
+    val trends: List<Pair<String, ProgressionTrend>> = emptyList(),
+    /** Own workouts containing each exercise, for the swap prompt. */
+    val routineCounts: Map<String, Int> = emptyMap(),
+    /** One-shot message: swapped in n workouts (≥ 0), deload started (-1). */
+    val message: Int? = null,
 )
 
 @HiltViewModel
@@ -78,15 +91,80 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             val blocks = sets.groupBy { it.blockIndex }.toSortedMap().values.map { rows ->
                 catalog.fallbackFor(rows.first().exerciseSlug) to rows.sortedWith(compareBy({ it.setIndex }, { it.side?.ordinal ?: -1 }))
             }
+            val profile = repo.profile()
+            val routines = repo.routines()
+            val slugs = blocks.map { it.first.slug }.distinct()
+            val trends = slugs.mapNotNull { slug ->
+                val def = catalog[slug] ?: return@mapNotNull null
+                // History is newest first; one list per training.
+                val sessions = repo.history(slug, 200).filter { it.isCompleted }
+                    .groupBy { it.workoutId }.values.take(6).map { it.toList() }
+                val trend = ProgressionAdvisor.trend(def, sessions, profile.smallestIncrementKg)
+                trend.takeIf { it.kind != TrendKind.NONE && it.kind != TrendKind.PROGRESSING }?.let { slug to it }
+            }
             _state.update {
                 it.copy(
                     loading = false, workout = workout, blocks = blocks, catalog = catalog,
                     summary = if (workout != null) service.summarize(workoutId) else null,
-                    units = repo.profile().units,
+                    units = profile.units,
+                    trends = trends,
+                    routineCounts = slugs.associateWith { s -> routines.count { r -> r.items.any { i -> i.slug == s } } },
                 )
             }
+            if (workout != null) logCompletion(workout, sets)
         }
     }
+
+    /**
+     * A training started from today's suggestion tells the coach how much of
+     * it was done (the player logs this on finish; this covers the list view).
+     */
+    private fun logCompletion(workout: Workout, completed: List<ExerciseSet>) {
+        if (workout.routineId?.startsWith("suggestion") != true) return
+        val events = service.repo.suggestionEventsForDay(workout.day)
+        if (events.any { it.kind == SuggestionEventKind.COMPLETED && it.workoutId == workout.id }) return
+        val started = events.firstOrNull { it.kind == SuggestionEventKind.STARTED && it.workoutId == workout.id }
+        val done = completed.count { it.setType == SetType.WORK }
+        val planned = started?.value?.takeIf { it > 0 } ?: done.toDouble()
+        val share = if (planned > 0) (done / planned).coerceIn(0.0, 1.0) else 0.0
+        service.logSuggestion(SuggestionEventKind.COMPLETED, started?.focus, completed.map { it.exerciseSlug }.distinct(),
+            workoutId = workout.id, value = share)
+        workout.sessionRpe?.let { rpe ->
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, "session_rpe", emptyList(), workoutId = workout.id, value = rpe.toDouble())
+        }
+    }
+
+    /** Replaces [from] with [to] in every own workout that contains it, keeping sets, rest and sides. */
+    fun swapInRoutines(from: String, to: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val target = service.catalog[to] ?: return@launch
+            var count = 0
+            repo.routines().filter { r -> r.items.any { it.slug == from } }.forEach { r ->
+                val items = r.items.map { item ->
+                    if (item.slug != from) item
+                    else WorkoutPlanner.itemFor(target).copy(sets = item.sets, restS = item.restS, sides = item.sides, warmup = item.warmup)
+                }
+                repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+                count++
+            }
+            service.logSuggestion(SuggestionEventKind.SWAPPED, null, listOf(from, to))
+            _state.update { s -> s.copy(message = count, routineCounts = s.routineCounts - from) }
+        }
+    }
+
+    /** Starts a lighter week now: the training block jumps to its deload week. */
+    fun startDeload() {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val start = service.today().minus(kotlinx.datetime.DatePeriod(days = 7 * (TrainingBlocks.INTRO_WEEKS + TrainingBlocks.BUILD_WEEKS)))
+            service.repo.updateProfile { p -> p.copy(coach = p.coach.copy(blockStartDay = start.toString())) }
+            _state.update { it.copy(message = -1) }
+        }
+    }
+
+    fun consumeMessage() = _state.update { it.copy(message = null) }
 
     fun saveRoutine(name: String) {
         val id = _state.value.workout?.id ?: return
@@ -113,6 +191,16 @@ fun WorkoutSummaryScreen(
     var askName by rememberSaveable { mutableStateOf(false) }
     val savedText = stringResource(R.string.trw_routine_saved)
     LaunchedEffect(state.routineSaved) { if (state.routineSaved) snackbar.showSnackbar(savedText) }
+    val swapText = stringResource(R.string.tre_swap_done, state.message ?: 0)
+    val deloadText = stringResource(R.string.tre_deload_started)
+    val snackScope = rememberCoroutineScope()
+    LaunchedEffect(state.message) {
+        val m = state.message ?: return@LaunchedEffect
+        viewModel.consumeMessage()
+        // Shown outside the effect so consuming the message does not cancel it.
+        snackScope.launch { snackbar.showSnackbar(if (m < 0) deloadText else swapText) }
+    }
+    var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     TrainingScaffold(
         title = stringResource(R.string.trw_summary_title),
@@ -181,6 +269,15 @@ fun WorkoutSummaryScreen(
                     }
                 }
             }
+            if (state.trends.isNotEmpty()) {
+                item { SectionTitle(stringResource(R.string.tre_trend_title)) }
+                state.trends.forEach { (slug, trend) ->
+                    item(key = "trend_$slug") {
+                        TrendRow(state.catalog.fallbackFor(slug), trend, state, language, onOpenExercise,
+                            onSwap = { to -> confirmSwap = slug to to }, onDeload = viewModel::startDeload)
+                    }
+                }
+            }
             sideBalance(summary)?.let { (left, right) ->
                 item {
                     Column(Modifier.testTag("summary_side_balance")) {
@@ -216,6 +313,24 @@ fun WorkoutSummaryScreen(
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    confirmSwap?.let { (from, to) ->
+        val count = state.routineCounts[from] ?: 0
+        AlertDialog(
+            onDismissRequest = { confirmSwap = null },
+            title = { Text(stringResource(R.string.tre_swap_confirm_title)) },
+            text = {
+                Text(if (count > 0) stringResource(R.string.tre_swap_confirm_text, state.catalog.fallbackFor(to).name(language),
+                    state.catalog.fallbackFor(from).name(language), count) else stringResource(R.string.tre_swap_none))
+            },
+            confirmButton = {
+                if (count > 0) TextButton(onClick = { confirmSwap = null; viewModel.swapInRoutines(from, to) },
+                    modifier = Modifier.testTag("summary_swap_confirm")) { Text(stringResource(R.string.tre_swap_action)) }
+                else TextButton(onClick = { confirmSwap = null; onOpenExercise(to) }) { Text(stringResource(R.string.tre_menu_details)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmSwap = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 
     if (askName) {
@@ -266,6 +381,58 @@ private fun SuggestionRow(
                     Text(stringResource(if (s.verdict == ProgressionVerdict.TOO_EASY) R.string.trw_sugg_try else R.string.trw_sugg_easier_variant,
                         other.name(language)))
                 }
+            }
+        }
+    }
+}
+
+/** Patterns across sessions: stall → variation, decline → lighter week, twice too easy/hard → chain partner. */
+@Composable
+private fun TrendRow(
+    def: ExerciseDefinition,
+    t: ProgressionTrend,
+    state: SummaryState,
+    language: String,
+    onOpenExercise: (String) -> Unit,
+    onSwap: (String) -> Unit,
+    onDeload: () -> Unit,
+) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("summary_trend_${def.slug}")) {
+        Column(Modifier.padding(12.dp)) {
+            Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            when (t.kind) {
+                TrendKind.STALL -> {
+                    Text(stringResource(R.string.tre_trend_stall, t.sessions.coerceAtMost(6)), style = MaterialTheme.typography.bodySmall)
+                    val variation = t.variationSlug
+                    if (variation != null) {
+                        TextButton(onClick = { onOpenExercise(variation) }) {
+                            Text(stringResource(R.string.tre_trend_stall_try, state.catalog.fallbackFor(variation).name(language)))
+                        }
+                    } else {
+                        Text(stringResource(R.string.tre_trend_stall_generic), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                TrendKind.DECLINE -> {
+                    Text(stringResource(R.string.tre_trend_decline), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onDeload, modifier = Modifier.testTag("summary_deload")) { Text(stringResource(R.string.tre_deload_action)) }
+                }
+                TrendKind.TOO_EASY_TWICE -> {
+                    Text(stringResource(R.string.tre_trend_easy), style = MaterialTheme.typography.bodySmall)
+                    t.harderSlug?.let { to ->
+                        TextButton(onClick = { onSwap(to) }, modifier = Modifier.testTag("summary_swap_${def.slug}")) {
+                            Text(stringResource(R.string.tre_swap_harder, state.catalog.fallbackFor(to).name(language)))
+                        }
+                    }
+                }
+                TrendKind.TOO_HARD_TWICE -> {
+                    Text(stringResource(R.string.tre_trend_hard), style = MaterialTheme.typography.bodySmall)
+                    t.easierSlug?.let { to ->
+                        TextButton(onClick = { onSwap(to) }, modifier = Modifier.testTag("summary_swap_${def.slug}")) {
+                            Text(stringResource(R.string.tre_swap_easier, state.catalog.fallbackFor(to).name(language)))
+                        }
+                    }
+                }
+                TrendKind.NONE, TrendKind.PROGRESSING -> Unit
             }
         }
     }

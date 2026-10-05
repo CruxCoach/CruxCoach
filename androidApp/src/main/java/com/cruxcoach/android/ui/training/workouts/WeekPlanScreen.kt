@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -36,6 +37,8 @@ data class WeekPlanState(
     val loading: Boolean = true,
     val profile: AthleteProfile = AthleteProfile(),
     val routines: List<Routine> = emptyList(),
+    /** Standard week proposed from the coach answers and the logbook's rhythm (FEAT-071). */
+    val proposal: Map<Int, String> = emptyMap(),
 )
 
 @HiltViewModel
@@ -46,8 +49,10 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            combine(service.repo.observeProfile(), service.repo.observeRoutines()) { profile, routines ->
-                WeekPlanState(false, profile, routines)
+            val logbook = runCatching { service.logbookSummary() }.getOrDefault(com.cruxcoach.athlete.logic.LogbookSummary())
+            combine(service.repo.observeProfile(), service.repo.observeRoutines(), service.repo.observeActiveInjuries()) { profile, routines, injuries ->
+                val proposal = com.cruxcoach.athlete.logic.WeekPlanSuggester.suggest(profile.coach, logbook, routines, profile.equipment, injuries)
+                WeekPlanState(false, profile, routines, proposal)
             }.collect { _state.value = it }
         }
     }
@@ -62,6 +67,11 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
     }
 
     fun setMinutes(minutes: Int) = io { service.repo.updateProfile { it.copy(sessionMinutes = minutes) } }
+
+    fun applyProposal() {
+        val plan = _state.value.proposal
+        if (plan.isNotEmpty()) io { service.repo.updateProfile { it.copy(weekPlan = plan) } }
+    }
 
     private fun io(block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
@@ -88,6 +98,9 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
             item {
                 Text(stringResource(R.string.trwo_week_plan_intro), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (state.proposal.isNotEmpty()) {
+                item(key = "proposal") { ProposalCard(state, onApply = viewModel::applyProposal) }
             }
             items((1..7).toList(), key = { it }) { day ->
                 val entry = state.profile.weekPlan[day]
@@ -131,6 +144,41 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
             onDismiss = { choosing = null },
             onChoose = { entry -> viewModel.set(day, entry); choosing = null },
         )
+    }
+}
+
+/** "Vorschlag aus deinem Rhythmus": the coach's standard week, previewed, applied only on a tap. */
+@Composable
+private fun ProposalCard(state: WeekPlanState, onApply: () -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val same = state.proposal == state.profile.weekPlan
+    OutlinedCard(Modifier.fillMaxWidth().testTag("week_plan_proposal")) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.trc_week_proposal_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(if (same) R.string.trc_week_proposal_same else R.string.trc_week_proposal_text),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (open) {
+                Column(Modifier.padding(top = 8.dp)) {
+                    (1..7).forEach { day ->
+                        Row(Modifier.padding(vertical = 2.dp)) {
+                            Text(weekdayName(day), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.width(112.dp))
+                            Text(planEntryLabel(state.proposal[day], state.routines), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+            if (!same) {
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { open = !open }, modifier = Modifier.testTag("week_plan_proposal_preview")) {
+                        Text(stringResource(if (open) R.string.trc_week_proposal_hide else R.string.trc_week_proposal_show))
+                    }
+                    FilledTonalButton(onClick = onApply, modifier = Modifier.testTag("week_plan_proposal_apply")) {
+                        Text(stringResource(R.string.trc_plan_apply))
+                    }
+                }
+            }
+        }
     }
 }
 

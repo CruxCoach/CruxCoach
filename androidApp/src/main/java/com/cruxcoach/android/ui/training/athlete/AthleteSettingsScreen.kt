@@ -44,6 +44,10 @@ data class AthleteSettingsState(
     val heightCm: Double? = null,
     val lossGoalAllowed: Boolean = true,
     val loaded: Boolean = false,
+    /** How personal the coach can be (FEAT-071). */
+    val completeness: com.cruxcoach.athlete.logic.Completeness? = null,
+    /** "Nie vorschlagen" exercises with their definitions (unknown slugs fall back to a stub). */
+    val excluded: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
 )
 
 @HiltViewModel
@@ -54,14 +58,26 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            combine(service.repo.observeProfile(), service.repo.observeSeries(BodyMetric.HEIGHT.key)) { profile, heights ->
+            val logbook = runCatching { service.logbookSummary() }.getOrDefault(com.cruxcoach.athlete.logic.LogbookSummary())
+            combine(
+                service.repo.observeProfile(),
+                service.repo.observeSeries(BodyMetric.HEIGHT.key),
+                service.repo.observeAllBenchmarks(),
+            ) { profile, heights, benchmarks ->
                 val height = heights.lastOrNull()?.value
-                AthleteSettingsState(profile, height, RedsGuard.lossGoalAllowed(profile, height, service.weightTrend()), loaded = true)
+                AthleteSettingsState(
+                    profile, height, RedsGuard.lossGoalAllowed(profile, height, service.weightTrend()), loaded = true,
+                    completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
+                    excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
+                )
             }.collect { _state.value = it }
         }
     }
 
     fun update(transform: (AthleteProfile) -> AthleteProfile) = io { service.repo.updateProfile(transform) }
+
+    /** Lets an excluded exercise be suggested again. */
+    fun allow(slug: String) = update { it.copy(excludedExercises = it.excludedExercises - slug) }
 
     fun setHeight(cm: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", System.currentTimeMillis()))
@@ -82,12 +98,18 @@ fun AthleteSettingsScreen(
     onBack: () -> Unit,
     viewModel: AthleteSettingsViewModel = hiltViewModel(),
     onOpenBenchmarks: () -> Unit = {},
+    onOpenCoachSetup: () -> Unit = {},
+    /** Room for device cards (Health Connect, force gauge) added by the integration. */
+    extraSections: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
     TrainingScaffold(title = stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
         if (!state.loaded) return@TrainingScaffold
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            // Coach profile (FEAT-071)
+            CoachProfileSection(p, state.completeness, onOpenCoachSetup)
+
             // Equipment profile
             SectionTitle(stringResource(R.string.tra_equipment_title)) {
                 InfoButton(stringResource(R.string.tra_equipment_title), stringResource(R.string.tra_equipment_info))
@@ -196,6 +218,26 @@ fun AthleteSettingsScreen(
             SwitchRow(stringResource(R.string.tra_timer_sound), p.timerSound, "timer_sound") { v -> viewModel.update { it.copy(timerSound = v) } }
             SwitchRow(stringResource(R.string.tra_timer_vibration), p.timerVibration, "timer_vibration") { v -> viewModel.update { it.copy(timerVibration = v) } }
             SwitchRow(stringResource(R.string.tra_timer_voice), p.timerVoice, "timer_voice") { v -> viewModel.update { it.copy(timerVoice = v) } }
+
+            // Exercises the athlete never wants suggested
+            SectionTitle(stringResource(R.string.trc_excluded_title))
+            if (state.excluded.isEmpty()) {
+                Text(stringResource(R.string.trc_excluded_none), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                val lang = catalogLanguage()
+                state.excluded.forEach { def ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Text(def.name(lang), modifier = Modifier.weight(1f))
+                        TextButton(onClick = { viewModel.allow(def.slug) }, modifier = Modifier.testTag("excluded_allow_${def.slug}")) {
+                            Text(stringResource(R.string.trc_excluded_allow))
+                        }
+                    }
+                }
+            }
+
+            extraSections()
+
             Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
         }
@@ -304,6 +346,31 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
+    }
+}
+
+@Composable
+private fun CoachProfileSection(p: AthleteProfile, completeness: com.cruxcoach.athlete.logic.Completeness?, onOpen: () -> Unit) {
+    SectionTitle(stringResource(R.string.trc_settings_title)) {
+        InfoButton(stringResource(R.string.trc_settings_title), stringResource(R.string.trc_settings_info))
+    }
+    OutlinedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("open_coach_setup")) {
+        Column(Modifier.padding(12.dp)) {
+            val c = p.coach
+            Text(c.goal?.let { com.cruxcoach.android.ui.training.coach.coachGoalLabel(it) } ?: stringResource(R.string.trc_settings_no_goal),
+                style = MaterialTheme.typography.titleSmall)
+            if (completeness != null) {
+                Text(stringResource(R.string.trc_card_level, com.cruxcoach.android.ui.training.coach.levelLabel(completeness.level)) +
+                    " · " + stringResource(R.string.trc_settings_score, completeness.score),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                completeness.next?.let {
+                    Text(com.cruxcoach.android.ui.training.coach.stepText(it), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Text(stringResource(R.string.trc_settings_local), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }
 

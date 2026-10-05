@@ -152,6 +152,12 @@ object Routes {
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
     const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
     const val PLAYLIST_GENERATOR = "playlist_generator"
+    /** The generator with an optional preset (FEAT-071: the coach's board session); the bare route still works. */
+    const val PLAYLIST_GENERATOR_PATTERN = "playlist_generator?type={type}&minutes={minutes}"
+    fun playlistGenerator(type: String? = null, minutes: Int? = null): String {
+        val q = listOfNotNull(type?.let { "type=$it" }, minutes?.let { "minutes=$it" })
+        return if (q.isEmpty()) PLAYLIST_GENERATOR else PLAYLIST_GENERATOR + "?" + q.joinToString("&")
+    }
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val PLAYLIST_PLAYER = "playlist_player"
     const val BOARD_MAP = "board_map"
@@ -894,7 +900,13 @@ fun CruxCoachNavHost(
                 }
             }
 
-            composable(Routes.PLAYLIST_GENERATOR) {
+            composable(
+                Routes.PLAYLIST_GENERATOR_PATTERN,
+                arguments = listOf(
+                    navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    navArgument("minutes") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) {
                 com.cruxcoach.android.ui.common.ScreenErrorBoundary(
                     screenName = "PlaylistGenerator",
                     onNavigateBack = { navController.popBackStack() },

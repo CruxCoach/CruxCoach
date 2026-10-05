@@ -1,21 +1,34 @@
 package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.catalog.CatalogFilter
+import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
+import com.cruxcoach.athlete.model.AgeBand
 import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.AthleteProfile
+import com.cruxcoach.athlete.model.Benchmark
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.CoachGoal
+import com.cruxcoach.athlete.model.CoachProfile
 import com.cruxcoach.athlete.model.ExerciseSet
+import com.cruxcoach.athlete.model.ExperienceBand
+import com.cruxcoach.athlete.model.FingerPreference
+import com.cruxcoach.athlete.model.FocusArea
 import com.cruxcoach.athlete.model.Injury
+import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.PLAN_BOARD
 import com.cruxcoach.athlete.model.PLAN_REST
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
+import com.cruxcoach.athlete.model.SetupState
+import com.cruxcoach.domain.playlist.GeneratorType
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
@@ -49,7 +62,57 @@ enum class SuggestionReason {
     GOAL_STRENGTH,
     FAVORITES_USED,
     SHORTENED_TO_TIME,
+    // FEAT-071: load model, coach profile, blocks, learning
+    RECOVERY_AFTER_LIMIT,
+    RECOVERY_AFTER_HARD,
+    RECOVERY_AFTER_VOLUME,
+    FINGER_LOAD_RISING,
+    SKIN_LOAD_RISING,
+    GUARDRAIL_YOUTH,
+    GUARDRAIL_NOVICE,
+    GUARDRAIL_MASTERS,
+    FINGER_PREFERENCE_NONE,
+    FOCUS_AREAS,
+    GOAL_PROJECT,
+    GOAL_HEALTHY,
+    GOAL_COMEBACK,
+    CLIMBING_DAY,
+    CLIMBING_DAY_ADDON,
+    BLOCK_INTRO,
+    BLOCK_DELOAD,
+    BLOCK_TAPER,
+    BLOCK_EVENT,
+    PREFERENCES_LEARNED,
+    NO_TIME_TODAY,
+    LEVEL_EASIER,
+    LEVEL_HARDER,
 }
+
+/** How much the suggestion knows about the athlete. */
+enum class Confidence { LOW, MEDIUM, HIGH }
+
+enum class GuardrailKind { YOUTH, NOVICE, MASTERS }
+
+/** The data a suggestion was built from, for the "Basierend auf …" line. */
+sealed interface Evidence {
+    /** Climbing [daysAgo] days ago (0 = today); [intensity] null when the logbook had no grades for it. */
+    data class Climbing(val daysAgo: Int, val intensity: ClimbIntensity?, val efforts: Int, val minutes: Int) : Evidence
+    data class WeekPlan(val entry: String) : Evidence
+    data class CheckIn(val reason: ReadinessReason) : Evidence
+    data class InjuryActive(val region: InjuryRegion, val side: InjurySide?) : Evidence
+    data class LoadTrendNote(val structure: LoadStructure, val trend: LoadTrend) : Evidence
+    data class PerformanceValue(val benchmark: Benchmark) : Evidence
+    data class BlockNote(val state: BlockState) : Evidence
+    data class Favorites(val count: Int) : Evidence
+    data class Affinity(val slugs: List<String>) : Evidence
+    data class GoalNote(val goal: CoachGoal) : Evidence
+    data class FocusNote(val areas: Set<FocusArea>) : Evidence
+    data class Guardrail(val kind: GuardrailKind) : Evidence
+    data class History(val weeks: Int, val logbookSends: Int) : Evidence
+}
+
+/** A board session to fill with the playlist generator. */
+data class BoardPlan(val type: GeneratorType, val minutes: Int)
 
 data class SuggestionInput(
     val catalog: ExerciseCatalog,
@@ -69,6 +132,29 @@ data class SuggestionInput(
     val routines: List<Routine> = emptyList(),
     /** "Another suggestion": changes the picks, never the safety rules. */
     val variant: Int = 0,
+    // ── FEAT-071 ──
+    /** Coach-setup answers; unanswered fields keep today's defaults. */
+    val coach: CoachProfile = profile.coach,
+    /** Acute vs chronic load per structure; null without a load model. */
+    val loadStatus: LoadStatus? = null,
+    /** Learned likes/dislikes (see [PreferenceLearning]); today's "keine Lust" can push far below. */
+    val affinity: Map<String, Double> = emptyMap(),
+    /** Never suggested ("nie vorschlagen"). */
+    val excluded: Set<String> = profile.excludedExercises,
+    /** Training cycle position (see [TrainingBlocks]). */
+    val block: BlockState? = null,
+    /** The athlete climbs today (already logged, a usual climbing weekday or a planned board day). */
+    val climbingToday: Boolean = false,
+    /** Newest performance values, for the evidence line. */
+    val benchmarks: List<Benchmark> = emptyList(),
+    /** "zu leicht" (+1) / "zu schwer" (−1) for today. */
+    val levelShift: Int = 0,
+    /** "keine Zeit" shortens today's budget. */
+    val budgetFactor: Double = 1.0,
+    /** Sends behind the logbook anchors, for the confidence badge. */
+    val logbookSends: Int = 0,
+    /** Weeks with any logged training or climbing. */
+    val historyWeeks: Int = 0,
 )
 
 data class SessionSuggestion(
@@ -78,115 +164,132 @@ data class SessionSuggestion(
     val estimatedMinutes: Int,
     /** The week-plan value that shaped the suggestion, if any. */
     val plannedEntry: String? = null,
+    /** The data behind it, most relevant first. */
+    val basedOn: List<Evidence> = emptyList(),
+    val confidence: Confidence = Confidence.LOW,
+    /** On a board day: the session the playlist generator should build. */
+    val boardPlan: BoardPlan? = null,
+    /** The items are the short block after climbing, not a full session. */
+    val addOn: Boolean = false,
 )
 
 /**
  * Today's training, MCI-style but for climbers: deterministic rules decide the
- * focus (week plan, readiness, injuries, finger load of the last 48 h), slot
- * templates decide the structure, and a transparent score picks exercises
- * (favourites, known performance values, variety, a small seeded jitter for
- * "another suggestion"). Every decision leaves a [SuggestionReason], so the
- * athlete can see why — and nothing here can override the injury filter.
+ * focus (week plan, readiness, injuries, how hard and how recent the climbing
+ * was, load trends, the training block), slot templates shaped by the coach
+ * profile decide the structure, and a transparent score picks exercises
+ * (favourites, learned preferences, known performance values, variety, goal,
+ * a small seeded jitter for "another suggestion"). Every decision leaves a
+ * [SuggestionReason] and the data behind it an [Evidence] — and nothing here
+ * can override the injury filter or the guardrails.
  */
 object SessionSuggester {
 
-    private enum class Slot { WARMUP, FINGER_MAIN, PULL, PUSH, ANTAGONIST, CORE, LEGS, MOBILITY }
+    private enum class Slot { WARMUP, FINGER_MAIN, PULL, PUSH, POWER, ANTAGONIST, CORE, LEGS, MOBILITY }
 
     private const val REST_MINUTES = 10
+    private const val ADDON_MINUTES = 15
     private const val SETUP_SECONDS_PER_EXERCISE = 60
 
-    fun suggest(input: SuggestionInput): SessionSuggestion {
+    /** Mutable working state of one suggestion. */
+    private class Ctx(val input: SuggestionInput) {
         val reasons = mutableListOf<SuggestionReason>()
+        val evidence = mutableListOf<Evidence>()
+        val coach get() = input.coach
+    }
+
+    fun suggest(input: SuggestionInput): SessionSuggestion {
+        val ctx = Ctx(input)
+        val reasons = ctx.reasons
         val readiness = input.readiness
+        val coach = input.coach
         val planned = input.profile.weekPlan[input.today.dayOfWeek.isoDayNumber]
-        var budget = input.profile.sessionMinutes.coerceIn(10, 180)
+        var budget = (input.profile.sessionMinutes * input.budgetFactor.coerceIn(0.3, 1.0)).roundToInt().coerceIn(10, 180)
+        if (input.budgetFactor < 1.0) reasons += SuggestionReason.NO_TIME_TODAY
+        collectContextEvidence(ctx, planned)
 
         // 1. Rest comes first: illness or a rest-level check-in.
         if (readiness.level == ReadinessLevel.REST) {
             reasons += if (ReadinessReason.SICK in readiness.reasons) SuggestionReason.SICK else SuggestionReason.REST_READINESS
-            return build(input, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, reasons, planned)
+            return build(ctx, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned)
+        }
+        // The trip or competition itself: arrive fresh.
+        if (input.block?.phase == BlockPhase.EVENT) {
+            reasons += SuggestionReason.BLOCK_EVENT
+            return build(ctx, SuggestionFocus.MOBILITY_RECOVERY, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned)
         }
         val lowEnergy = ReadinessReason.LOW_ENERGY in readiness.reasons || ReadinessReason.LOW_SLEEP in readiness.reasons
         if (lowEnergy) {
             budget = max(15, (budget * 0.6).roundToInt())
             reasons += SuggestionReason.LOW_ENERGY
         }
+        when (input.levelShift.coerceIn(-1, 1)) {
+            1 -> reasons += SuggestionReason.LEVEL_HARDER
+            -1 -> reasons += SuggestionReason.LEVEL_EASIER
+        }
         val climbingPaused = input.injuries.any { it.isActive && it.climbingPaused }
-        // Finger rules hold for planned and generated sessions alike.
-        val fingersLoaded = fingerLoadedRecently(input)
+        val guard = guardrails(input)
+        guard.reason?.let { reasons += it; ctx.evidence += Evidence.Guardrail(guard.kind!!) }
+
+        // Finger rules hold for planned and generated sessions alike: how hard and how
+        // recent the climbing was, off-wall finger sets, tired fingers, a rising load trend.
+        val recovery = recovery(input, coach.ageBand)
+        recovery.evidence?.let { ctx.evidence.add(0, it) }
+        if (recovery.reason != null && recovery(input, null).reason == null) {
+            reasons += SuggestionReason.GUARDRAIL_MASTERS
+            ctx.evidence += Evidence.Guardrail(GuardrailKind.MASTERS)
+        }
         val fingersTired = readiness.avoidMaxFingerLoad
-        val fingerBlock = when {
-            fingersLoaded -> SuggestionReason.FINGERS_LOADED_RECENTLY
-            fingersTired -> SuggestionReason.FINGERS_TIRED
-            else -> null
+        val trend = trendBlock(input)
+        trend.evidence.forEach { ctx.evidence += it }
+        val fingerBlock = recovery.reason ?: (if (fingersTired) SuggestionReason.FINGERS_TIRED else null) ?: trend.fingerReason
+
+        // Climbing already done today on a climbing day: a short block after it instead of a
+        // second session — unless the athlete said no to add-ons.
+        val today = input.activities[input.today]
+        val climbedToday = today != null && (today.climbingMinutes > 0 || today.climbingEfforts > 0)
+        val climbingDayPlan = planned == null || planned == PLAN_BOARD
+        if (climbedToday && climbingDayPlan && coach.addOnAfterClimbing != false && !climbingPaused &&
+            (planned == PLAN_BOARD || input.climbingToday || coach.addOnAfterClimbing == true)) {
+            reasons.add(0, SuggestionReason.CLIMBING_DAY_ADDON)
+            return addOn(ctx, planned)
         }
 
         // 2. The week plan wins unless readiness or an injury rules it out.
+        val usualClimbingDay = planned == null && input.climbingToday && !climbedToday
         when {
             planned == PLAN_REST -> {
                 reasons.add(0, SuggestionReason.WEEK_PLAN_REST)
-                return build(input, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, reasons, planned)
+                return build(ctx, SuggestionFocus.REST, listOf(Slot.MOBILITY, Slot.MOBILITY, Slot.MOBILITY), REST_MINUTES, planned)
             }
-            planned == PLAN_BOARD -> {
-                if (climbingPaused || readiness.avoidClimbing || fingersTired) {
+            planned == PLAN_BOARD || usualClimbingDay -> {
+                if (climbingPaused || readiness.avoidClimbing || fingersTired || trend.skinSpike) {
                     reasons += if (climbingPaused) SuggestionReason.PLAN_REPLACED_FOR_INJURY else SuggestionReason.BOARD_SKIPPED_TODAY
+                    if (trend.skinSpike && !climbingPaused) reasons += SuggestionReason.SKIN_LOAD_RISING
                 } else {
-                    reasons.add(0, SuggestionReason.WEEK_PLAN_BOARD)
-                    return boardDay(input, budget, reasons, planned)
+                    reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
+                    return boardDay(ctx, planned, fresh = fingerBlock == null && readiness.level == ReadinessLevel.GO)
                 }
             }
-            planned != null -> {
-                val routine = resolve(planned, input.routines)
-                if (routine != null) {
-                    // The same safety rules as a generated session: around a paused injury only what
-                    // spares it (or the healthy side), no wall while climbing is paused, no finger
-                    // work after recent finger load or with tired fingers.
-                    var injuryRemoved = 0
-                    var fingerRemoved = 0
-                    val kept = routine.items.filter { item ->
-                        val def = input.catalog.fallbackFor(item.slug)
-                        val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
-                        val injuryOk = if (climbingPaused) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
-                            else verdict != InjuryVerdict.AVOID
-                        val fingerOk = item.warmup || fingerBlock == null || LoadDomain.FINGER !in def.domains
-                        when {
-                            !injuryOk || (climbingPaused && def.needsClimbingWall) -> { injuryRemoved++; false }
-                            !fingerOk -> { fingerRemoved++; false }
-                            else -> true
-                        }
-                    }
-                    val removed = injuryRemoved + fingerRemoved
-                    if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
-                        reasons.add(0, SuggestionReason.WEEK_PLAN)
-                        if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
-                        if (fingerRemoved > 0) reasons += fingerBlock!!
-                        // The preferred duration is for free days; a planned workout is only cut when tired.
-                        val items = if (lowEnergy) fitToBudget(kept, budget, input.catalog) else kept
-                        if (items != kept) reasons += SuggestionReason.SHORTENED_TO_TIME
-                        val r = routine.copy(id = "suggestion", items = items, builtinKey = "suggestion")
-                        return SessionSuggestion(SuggestionFocus.PLANNED, r, reasons.distinct(), estimateMinutes(items, input.catalog), planned)
-                    }
-                    reasons += if (injuryRemoved >= fingerRemoved) SuggestionReason.PLAN_REPLACED_FOR_INJURY
-                        else fingerBlock ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
-                }
-            }
+            planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
         }
 
         // 3. Injury with climbing paused: train around it.
         if (climbingPaused) {
             reasons.add(0, SuggestionReason.INJURY_CLIMBING_PAUSED)
-            // The healthy hand's finger work also needs its 48 hours.
-            val slots = if (fingerBlock == null) listOf(Slot.WARMUP, Slot.FINGER_MAIN, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS)
+            // The healthy hand's finger work also needs its recovery.
+            val base = if (fingerBlock == null) listOf(Slot.WARMUP, Slot.FINGER_MAIN, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS)
                 else listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS).also { reasons += fingerBlock }
-            return build(input, SuggestionFocus.INJURY_SAFE, slots, budget, reasons, planned)
+            if (fingerBlock == null && coach.fingerPreference == FingerPreference.NONE) reasons += SuggestionReason.FINGER_PREFERENCE_NONE
+            return build(ctx, SuggestionFocus.INJURY_SAFE, withFocusAreas(base, SuggestionFocus.INJURY_SAFE, coach.focus, ctx), budget, planned)
         }
 
-        // 4. Finger load in the last 48 hours decides between finger work and the rest.
+        // 4. Recovery state decides between finger work and the rest.
         val skinLow = ReadinessReason.SKIN_LOW in readiness.reasons
         val focus = when {
-            fingersLoaded -> { reasons += SuggestionReason.FINGERS_LOADED_RECENTLY; null }
-            fingersTired -> { reasons += SuggestionReason.FINGERS_TIRED; null }
+            fingerBlock != null -> { reasons += fingerBlock; null }
             skinLow -> { reasons += SuggestionReason.SKIN_LOW; null }
+            coach.fingerPreference == FingerPreference.NONE -> { reasons += SuggestionReason.FINGER_PREFERENCE_NONE; null }
             else -> { reasons += SuggestionReason.FINGERS_RESTED; SuggestionFocus.FINGER_STRENGTH }
         } ?: run {
             val pullLast = lastDay(input, setOf(ExerciseCategoryV2.PULL, ExerciseCategoryV2.PUSH))
@@ -200,13 +303,21 @@ object SessionSuggester {
             if (legsFirst) { reasons += SuggestionReason.LEGS_LONGER_AGO; SuggestionFocus.LEGS_CORE }
             else { reasons += SuggestionReason.PULL_LONGER_AGO; SuggestionFocus.PULL_PUSH }
         }
-        if (input.profile.goal == AthleteGoal.BUILD_STRENGTH) reasons += SuggestionReason.GOAL_STRENGTH
-        val result = build(input, focus, slotsFor(focus), budget, reasons.toMutableList(), planned)
-        // Without a hangboard or block there is no finger session to suggest.
+        goalReasons(ctx)
+        val result = build(ctx, focus, withFocusAreas(slotsFor(focus), focus, coach.focus, ctx), budget, planned)
+        // Without a hangboard or block (or a guardrail keeping only light work) there is no finger session to suggest.
         val hasFingerMain = result.routine.items.any { !it.warmup && input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
         if (focus == SuggestionFocus.FINGER_STRENGTH && !hasFingerMain) {
-            val fallback = reasons.map { if (it == SuggestionReason.FINGERS_RESTED) SuggestionReason.NO_FINGER_EQUIPMENT else it }.toMutableList()
-            return build(input, SuggestionFocus.PULL_PUSH, slotsFor(SuggestionFocus.PULL_PUSH), budget, fallback, planned)
+            val replacement = when {
+                guard.restrictFinger && guard.reason != null -> guard.reason
+                else -> SuggestionReason.NO_FINGER_EQUIPMENT
+            }
+            val kept = reasons.filter { it != SuggestionReason.FINGERS_RESTED }
+            reasons.clear()
+            reasons += kept
+            if (replacement !in reasons) reasons.add(0, replacement)
+            return build(ctx, SuggestionFocus.PULL_PUSH, withFocusAreas(slotsFor(SuggestionFocus.PULL_PUSH), SuggestionFocus.PULL_PUSH, coach.focus, ctx),
+                budget, planned)
         }
         return result
     }
@@ -217,97 +328,382 @@ object SessionSuggester {
         else -> listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.PUSH, Slot.ANTAGONIST, Slot.ANTAGONIST, Slot.CORE)
     }
 
+    /**
+     * The athlete's focus areas add slots right after the main block, so the
+     * time budget trims generic slots before the ones they asked for.
+     */
+    private fun withFocusAreas(slots: List<Slot>, focus: SuggestionFocus, areas: Set<FocusArea>, ctx: Ctx): List<Slot> {
+        if (areas.isEmpty()) return slots
+        val extra = buildList {
+            if (FocusArea.PULL_STRENGTH in areas && focus != SuggestionFocus.LEGS_CORE) add(Slot.PULL)
+            if (FocusArea.POWER in areas && focus == SuggestionFocus.PULL_PUSH) add(Slot.POWER)
+            if (FocusArea.CORE in areas) add(Slot.CORE)
+            if (FocusArea.MOBILITY in areas) add(Slot.MOBILITY)
+            if (FocusArea.PREVENTION in areas) add(Slot.ANTAGONIST)
+        }
+        if (extra.isNotEmpty() || FocusArea.FINGER_STRENGTH in areas || FocusArea.POWER_ENDURANCE in areas) {
+            ctx.reasons += SuggestionReason.FOCUS_AREAS
+            ctx.evidence += Evidence.FocusNote(areas)
+        }
+        val at = min(2, slots.size)
+        return slots.take(at) + extra + slots.drop(at)
+    }
+
+    // ── Context, recovery and guardrails ─────────────────────────────
+
+    private fun collectContextEvidence(ctx: Ctx, planned: String?) {
+        val input = ctx.input
+        planned?.let { ctx.evidence += Evidence.WeekPlan(it) }
+        input.readiness.reasons.firstOrNull {
+            it != ReadinessReason.ALL_GOOD && it != ReadinessReason.INJURY_ACTIVE && it != ReadinessReason.INJURY_CLIMBING_PAUSED
+        }?.let { ctx.evidence += Evidence.CheckIn(it) }
+        input.injuries.filter { it.isActive }.forEach { ctx.evidence += Evidence.InjuryActive(it.region, it.side) }
+        input.block?.let { ctx.evidence += Evidence.BlockNote(it) }
+        input.coach.goal?.let { ctx.evidence += Evidence.GoalNote(it) }
+        if (input.historyWeeks > 0 || input.logbookSends > 0) ctx.evidence += Evidence.History(input.historyWeeks, input.logbookSends)
+    }
+
+    private class Recovery(val reason: SuggestionReason?, val evidence: Evidence?)
+
+    /**
+     * Recovery from climbing scales with how hard it was relative to the
+     * athlete's own level ([ClimbingLoad.recoveryHours]): after a limit
+     * session no max finger work for 48–72 h, after volume the next day is
+     * fine for pulling and core, light climbing does not block fingers.
+     * Climbing without grades counts as before (48 h), and off-wall finger
+     * sets block the same day and the next (one more day from 40 on).
+     */
+    private fun recovery(input: SuggestionInput, ageBand: AgeBand?): Recovery {
+        var latest: Evidence? = null
+        var blocking: SuggestionReason? = null
+        for (daysAgo in 0..3) {
+            val day = input.today.minus(DatePeriod(days = daysAgo))
+            val a = input.activities[day] ?: continue
+            if (a.climbingMinutes <= 0 && a.climbingEfforts <= 0) continue
+            if (latest == null) latest = Evidence.Climbing(daysAgo, a.climbIntensity, a.climbingEfforts, a.climbingMinutes)
+            val intensity = a.climbIntensity
+            val blocked = if (intensity == null) daysAgo <= 1
+                else daysAgo * 24 < ClimbingLoad.recoveryHours(intensity, ageBand)
+            if (blocked && blocking == null) blocking = when (intensity) {
+                null -> SuggestionReason.FINGERS_LOADED_RECENTLY
+                ClimbIntensity.LIMIT -> SuggestionReason.RECOVERY_AFTER_LIMIT
+                ClimbIntensity.HARD -> SuggestionReason.RECOVERY_AFTER_HARD
+                ClimbIntensity.VOLUME, ClimbIntensity.LIGHT -> SuggestionReason.RECOVERY_AFTER_VOLUME
+            }
+        }
+        if (blocking == null) {
+            val masters = ageBand == AgeBand.Y40_54 || ageBand == AgeBand.Y55_PLUS
+            val window = (0..(if (masters) 2 else 1)).map { input.today.minus(DatePeriod(days = it)) }.toSet()
+            val fingerSets = input.recentSets.any { (day, set) ->
+                day in window && set.isCompleted && set.setType != SetType.WARMUP &&
+                    LoadDomain.FINGER in input.catalog.fallbackFor(set.exerciseSlug).domains
+            }
+            if (fingerSets) blocking = SuggestionReason.FINGERS_LOADED_RECENTLY
+        }
+        return Recovery(blocking, latest)
+    }
+
+    private class TrendBlock(val fingerReason: SuggestionReason?, val skinSpike: Boolean, val evidence: List<Evidence>)
+
+    private fun trendBlock(input: SuggestionInput): TrendBlock {
+        val structures = input.loadStatus?.structures ?: return TrendBlock(null, false, emptyList())
+        val evidence = mutableListOf<Evidence>()
+        val finger = structures[LoadStructure.FINGER]?.trend
+        val skin = structures[LoadStructure.SKIN]?.trend
+        val fingerRising = finger == LoadTrend.RISING || finger == LoadTrend.SPIKE
+        val skinRising = skin == LoadTrend.RISING || skin == LoadTrend.SPIKE
+        if (fingerRising && finger != null) evidence += Evidence.LoadTrendNote(LoadStructure.FINGER, finger)
+        if (skinRising && skin != null) evidence += Evidence.LoadTrendNote(LoadStructure.SKIN, skin)
+        val reason = when {
+            fingerRising -> SuggestionReason.FINGER_LOAD_RISING
+            skinRising -> SuggestionReason.SKIN_LOAD_RISING
+            else -> null
+        }
+        return TrendBlock(reason, skin == LoadTrend.SPIKE, evidence)
+    }
+
+    private class Guard(val restrictFinger: Boolean, val reason: SuggestionReason?, val kind: GuardrailKind?)
+
+    /**
+     * Young climbers (still growing) and climbers in their first year get no
+     * max hangs, one-arm finger work or campus — only light finger work. A
+     * second-year climber without any performance value is treated the same
+     * until a value exists.
+     */
+    private fun guardrails(input: SuggestionInput): Guard {
+        val coach = input.coach
+        val youth = coach.ageBand == AgeBand.UNDER_16 || coach.ageBand == AgeBand.Y16_17
+        val novice = coach.experience == ExperienceBand.UNDER_1 ||
+            (coach.experience == ExperienceBand.Y1_2 && input.benchmarkSlugs.isEmpty() && input.benchmarks.isEmpty())
+        return when {
+            youth -> Guard(true, SuggestionReason.GUARDRAIL_YOUTH, GuardrailKind.YOUTH)
+            novice -> Guard(true, SuggestionReason.GUARDRAIL_NOVICE, GuardrailKind.NOVICE)
+            else -> Guard(false, null, null)
+        }
+    }
+
+    /** Finger work a guardrail keeps away: one-arm, hard hangs, campus. */
+    private fun restrictedByGuard(def: ExerciseDefinition): Boolean =
+        EquipmentV2.CAMPUS_BOARD in def.equipment ||
+            (LoadDomain.FINGER in def.domains && def.category != ExerciseCategoryV2.WARMUP && (def.unilateral || def.difficulty >= 2))
+
+    private fun goalReasons(ctx: Ctx) {
+        val input = ctx.input
+        when (input.coach.goal) {
+            CoachGoal.BUILD_STRENGTH -> ctx.reasons += SuggestionReason.GOAL_STRENGTH
+            CoachGoal.PROJECT, CoachGoal.CLIMB_HARDER -> ctx.reasons += SuggestionReason.GOAL_PROJECT
+            CoachGoal.STAY_HEALTHY -> ctx.reasons += SuggestionReason.GOAL_HEALTHY
+            CoachGoal.COMEBACK -> ctx.reasons += SuggestionReason.GOAL_COMEBACK
+            CoachGoal.EVENT, null -> if (input.profile.goal == AthleteGoal.BUILD_STRENGTH) ctx.reasons += SuggestionReason.GOAL_STRENGTH
+        }
+    }
+
     // ── Focus helpers ────────────────────────────────────────────────
 
     private fun resolve(entry: String, routines: List<Routine>): Routine? =
         if (entry.startsWith("builtin:")) BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
         else routines.firstOrNull { it.id == entry }
 
-    private fun fingerLoadedRecently(input: SuggestionInput): Boolean {
-        val yesterday = input.today.minus(DatePeriod(days = 1))
-        val window = setOf(input.today, yesterday)
-        val climbed = window.any { d -> input.activities[d]?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true }
-        val fingerSets = input.recentSets.any { (day, set) ->
-            day in window && set.isCompleted && set.setType != SetType.WARMUP &&
-                LoadDomain.FINGER in input.catalog.fallbackFor(set.exerciseSlug).domains
-        }
-        return climbed || fingerSets
-    }
-
     private fun lastDay(input: SuggestionInput, categories: Set<ExerciseCategoryV2>): LocalDate? =
         input.lastTrained.filterKeys { slug -> input.catalog[slug]?.category in categories }.values.maxOrNull()
 
-    private fun boardDay(input: SuggestionInput, budget: Int, reasons: MutableList<SuggestionReason>, planned: String?): SessionSuggestion {
-        val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty()
-        val picked = pickSlots(input, listOf(Slot.ANTAGONIST, Slot.ANTAGONIST), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
-            taken = warmup.map { it.slug }.toMutableSet())
+    private fun plannedRoutine(
+        ctx: Ctx,
+        planned: String,
+        climbingPaused: Boolean,
+        fingerBlock: SuggestionReason?,
+        guard: Guard,
+        lowEnergy: Boolean,
+        budget: Int,
+    ): SessionSuggestion? {
+        val input = ctx.input
+        val reasons = ctx.reasons
+        val routine = resolve(planned, input.routines) ?: return null
+        // The same safety rules as a generated session: around a paused injury only what
+        // spares it (or the healthy side), no wall while climbing is paused, no finger
+        // work while the fingers recover; young climbers keep their guardrail.
+        var injuryRemoved = 0
+        var fingerRemoved = 0
+        var guardRemoved = 0
+        val youth = guard.kind == GuardrailKind.YOUTH
+        val kept = routine.items.filter { item ->
+            val def = input.catalog.fallbackFor(item.slug)
+            val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
+            val injuryOk = if (climbingPaused) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
+                else verdict != InjuryVerdict.AVOID
+            val fingerOk = item.warmup || fingerBlock == null || LoadDomain.FINGER !in def.domains
+            when {
+                !injuryOk || (climbingPaused && def.needsClimbingWall) -> { injuryRemoved++; false }
+                !fingerOk -> { fingerRemoved++; false }
+                youth && !item.warmup && restrictedByGuard(def) -> { guardRemoved++; false }
+                else -> true
+            }
+        }
+        val removed = injuryRemoved + fingerRemoved + guardRemoved
+        if (kept.any { !it.warmup } && removed * 2 <= routine.items.size) {
+            reasons.add(0, SuggestionReason.WEEK_PLAN)
+            if (injuryRemoved > 0) reasons += SuggestionReason.PLAN_FILTERED_FOR_INJURY
+            if (fingerRemoved > 0) reasons += fingerBlock!!
+            var items = applyBlock(ctx, kept)
+            // The preferred duration is for free days; a planned workout is only cut when tired or short of time.
+            if (lowEnergy || input.budgetFactor < 1.0) {
+                val fitted = fitToBudget(items, budget, input.catalog)
+                if (fitted != items) reasons += SuggestionReason.SHORTENED_TO_TIME
+                items = fitted
+            }
+            val r = routine.copy(id = "suggestion", items = items, builtinKey = "suggestion")
+            return finish(ctx, SuggestionFocus.PLANNED, r, planned)
+        }
+        reasons += when {
+            injuryRemoved >= fingerRemoved && injuryRemoved >= guardRemoved -> SuggestionReason.PLAN_REPLACED_FOR_INJURY
+            fingerRemoved >= guardRemoved -> fingerBlock ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
+            else -> guard.reason ?: SuggestionReason.PLAN_REPLACED_FOR_INJURY
+        }
+        return null
+    }
+
+    private fun boardDay(ctx: Ctx, planned: String?, fresh: Boolean): SessionSuggestion {
+        val input = ctx.input
+        val addOn = input.coach.addOnAfterClimbing
+        val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded }
+        val after = when (addOn) {
+            false -> emptyList()
+            true -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
+                taken = warmup.map { it.slug }.toMutableSet())
+            null -> pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.ANTAGONIST), allowWall = true, focus = SuggestionFocus.BOARD_DAY,
+                taken = warmup.map { it.slug }.toMutableSet())
+        }.map { it.copy(sets = min(it.sets, 2)) }
+        if (addOn == true) ctx.reasons += SuggestionReason.CLIMBING_DAY_ADDON
+        val items = warmup + after
+        return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, items), planned,
+            boardPlan = boardPlan(input, fresh))
+    }
+
+    /** 10–15 minutes of antagonists and core after the climbing session. */
+    private fun addOn(ctx: Ctx, planned: String?): SessionSuggestion {
+        val picked = pickSlots(ctx, listOf(Slot.ANTAGONIST, Slot.CORE, Slot.ANTAGONIST), allowWall = false,
+            focus = SuggestionFocus.BOARD_DAY, taken = mutableSetOf())
             .map { it.copy(sets = min(it.sets, 2)) }
-        val items = warmup + picked
-        return SessionSuggestion(SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, items), reasons.distinct(),
-            estimateMinutes(items, input.catalog), planned)
+        val fitted = fitToBudget(picked, ADDON_MINUTES, ctx.input.catalog)
+        return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, fitted), planned, addOn = true)
+    }
+
+    /**
+     * The board session for the generator: limit bouldering when fresh in a
+     * build week (projects when that is the goal), volume in intro and
+     * deload weeks, short and sharp in the taper, 4×4-style for a
+     * power-endurance focus, a pyramid otherwise.
+     */
+    private fun boardPlan(input: SuggestionInput, fresh: Boolean): BoardPlan {
+        val phase = input.block?.phase
+        val coach = input.coach
+        val type = when {
+            phase == BlockPhase.DELOAD || phase == BlockPhase.INTRO -> GeneratorType.VOLUME
+            phase == BlockPhase.TAPER -> GeneratorType.LIMIT
+            FocusArea.POWER_ENDURANCE in coach.focus -> GeneratorType.POWER_ENDURANCE
+            fresh && coach.goal == CoachGoal.PROJECT && coach.targetClimbUuid != null -> GeneratorType.PROJECTING
+            fresh && (phase == null || phase == BlockPhase.BUILD) -> GeneratorType.LIMIT
+            else -> GeneratorType.PYRAMID
+        }
+        val minutes = when (phase) {
+            BlockPhase.DELOAD -> 45
+            BlockPhase.TAPER -> 40
+            BlockPhase.INTRO -> 50
+            else -> 60
+        }
+        return BoardPlan(type, minutes)
     }
 
     // ── Building ─────────────────────────────────────────────────────
 
     private fun build(
-        input: SuggestionInput,
+        ctx: Ctx,
         focus: SuggestionFocus,
         slots: List<Slot>,
         budgetMinutes: Int,
-        reasons: MutableList<SuggestionReason>,
         planned: String?,
     ): SessionSuggestion {
-        var items = pickSlots(input, slots, allowWall = false, focus = focus, taken = mutableSetOf())
-        if (items.any { it.slug in input.favorites && it.warmup.not() }) reasons += SuggestionReason.FAVORITES_USED
+        val input = ctx.input
+        var items = pickSlots(ctx, slots, allowWall = false, focus = focus, taken = mutableSetOf())
+        if (focus != SuggestionFocus.REST && focus != SuggestionFocus.MOBILITY_RECOVERY) {
+            items = applyStyle(items, input.coach.intensityStyle, input.catalog)
+            items = applyBlock(ctx, items)
+        }
         val fitted = fitToBudget(items, budgetMinutes, input.catalog)
-        if (fitted != items) reasons += SuggestionReason.SHORTENED_TO_TIME
-        items = fitted
-        return SessionSuggestion(focus, routineOf(focus, items), reasons.distinct(), estimateMinutes(items, input.catalog), planned)
+        if (fitted != items) ctx.reasons += SuggestionReason.SHORTENED_TO_TIME
+        return finish(ctx, focus, routineOf(focus, fitted), planned)
+    }
+
+    /** Adds the item-dependent evidence and reasons and the confidence. */
+    private fun finish(
+        ctx: Ctx,
+        focus: SuggestionFocus,
+        routine: Routine,
+        planned: String?,
+        boardPlan: BoardPlan? = null,
+        addOn: Boolean = false,
+    ): SessionSuggestion {
+        val input = ctx.input
+        val main = routine.items.filter { !it.warmup }
+        val favs = main.count { it.slug in input.favorites }
+        if (favs > 0) {
+            ctx.reasons += SuggestionReason.FAVORITES_USED
+            ctx.evidence += Evidence.Favorites(favs)
+        }
+        val liked = main.filter { (input.affinity[it.slug] ?: 0.0) >= 1.0 }.map { it.slug }
+        if (liked.isNotEmpty()) {
+            ctx.reasons += SuggestionReason.PREFERENCES_LEARNED
+            ctx.evidence += Evidence.Affinity(liked)
+        }
+        main.mapNotNull { item -> input.benchmarks.filter { it.exerciseSlug == item.slug }.maxByOrNull { it.measuredAt } }
+            .distinctBy { it.exerciseSlug }.take(2)
+            .forEach { ctx.evidence += Evidence.PerformanceValue(it) }
+        return SessionSuggestion(
+            focus = focus,
+            routine = routine,
+            reasons = ctx.reasons.distinct(),
+            estimatedMinutes = estimateMinutes(routine.items, input.catalog),
+            plannedEntry = planned,
+            basedOn = ctx.evidence.distinct(),
+            confidence = confidence(input),
+            boardPlan = boardPlan,
+            addOn = addOn,
+        )
     }
 
     private fun routineOf(focus: SuggestionFocus, items: List<RoutineItem>) =
         Routine(id = "suggestion", name = focus.name, items = items, builtinKey = "suggestion")
+
+    /** Logbook, performance values, history and the coach setup: what the coach can lean on. */
+    private fun confidence(input: SuggestionInput): Confidence {
+        var points = 0
+        if (input.logbookSends >= 20) points++
+        if ((input.benchmarkSlugs + input.benchmarks.map { it.exerciseSlug }).size >= 2) points++
+        if (input.historyWeeks >= 4) points++
+        if (input.coach.setupState == SetupState.DONE) points++
+        return when {
+            points >= 3 -> Confidence.HIGH
+            points == 2 -> Confidence.MEDIUM
+            else -> Confidence.LOW
+        }
+    }
 
     /** Athlete level from what is known about them; keeps beginners away from one-arm and campus work. */
     private fun level(input: SuggestionInput): Int {
         var level = 2
         if (input.benchmarkSlugs.size >= 3) level++
         if ("pull.weighted_pull_up" in input.benchmarkSlugs && "finger.max_hang" in input.benchmarkSlugs) level++
-        return level
+        if (input.coach.goal == CoachGoal.COMEBACK) level--
+        return (level + input.levelShift.coerceIn(-1, 1)).coerceAtLeast(1)
     }
 
     private fun pickSlots(
-        input: SuggestionInput,
+        ctx: Ctx,
         slots: List<Slot>,
         allowWall: Boolean,
         focus: SuggestionFocus,
         taken: MutableSet<String>,
     ): List<RoutineItem> {
+        val input = ctx.input
         val profile = input.profile
         val filter = CatalogFilter(
             ownedEquipment = if (profile.equipmentConfigured) profile.equipment else null,
             withoutClimbing = !allowWall,
         )
         val level = level(input)
+        val guard = guardrails(input)
         val fingerFocus = focus == SuggestionFocus.FINGER_STRENGTH || focus == SuggestionFocus.INJURY_SAFE
         val result = mutableListOf<RoutineItem>()
         for (slot in slots) {
+            // "Lieber gar nicht": finger strength comes from the board, not from here.
+            if (slot == Slot.FINGER_MAIN && input.coach.fingerPreference == FingerPreference.NONE) continue
             val base = input.catalog.all.filter { def ->
                 val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
                 // Around an injury only what does not load it at all, or the healthy side.
                 val allowed = if (focus == SuggestionFocus.INJURY_SAFE) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
                     else verdict != InjuryVerdict.AVOID
-                def.slug !in taken && fits(slot, def, fingerFocus) && filter.matches(def) && allowed &&
+                def.slug !in taken && def.slug !in input.excluded && fits(slot, def, fingerFocus) && filter.matches(def) && allowed &&
+                    !(guard.restrictFinger && slot != Slot.WARMUP && restrictedByGuard(def)) &&
                     // One progression chain per session: no easier/harder neighbour of a pick.
                     taken.none { t -> def.easier == t || def.harder == t }
             }
-            val withinLevel = base.filter { it.difficulty <= level }.ifEmpty { base }
+            // The preferred finger-training family, when the equipment allows it.
+            val preferred = if (slot == Slot.FINGER_MAIN) base.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { base } else base
+            val withinLevel = preferred.filter { it.difficulty <= level }.ifEmpty { preferred }
             val choice = withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
             result += WorkoutPlanner.itemFor(choice).let { if (slot == Slot.WARMUP) it.copy(warmup = true, sets = min(it.sets, 4)) else it }
         }
         return result
+    }
+
+    private fun fitsPreference(def: ExerciseDefinition, pref: FingerPreference?): Boolean = when (pref) {
+        null -> true
+        FingerPreference.HANGBOARD -> EquipmentV2.HANGBOARD in def.equipment && !def.unilateral
+        FingerPreference.PICKUP -> EquipmentV2.PICKUP_BLOCK in def.equipment
+        FingerPreference.ONE_ARM -> def.unilateral
+        FingerPreference.NONE -> false
     }
 
     private fun fits(slot: Slot, def: ExerciseDefinition, fingerFocus: Boolean): Boolean {
@@ -319,6 +715,7 @@ object SessionSuggester {
                 (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && "strength" in def.tags
             Slot.PULL -> def.category == ExerciseCategoryV2.PULL && !loadsFingers
             Slot.PUSH -> def.category == ExerciseCategoryV2.PUSH && !loadsFingers
+            Slot.POWER -> "power" in def.tags && def.kind != ExerciseKind.CLIMB && !loadsFingers
             Slot.ANTAGONIST -> def.category == ExerciseCategoryV2.ANTAGONIST && !loadsFingers
             Slot.CORE -> def.category == ExerciseCategoryV2.CORE && !loadsFingers
             Slot.LEGS -> def.category == ExerciseCategoryV2.LEGS
@@ -327,16 +724,37 @@ object SessionSuggester {
     }
 
     private fun score(input: SuggestionInput, def: ExerciseDefinition, slot: Slot, focus: SuggestionFocus): Double {
+        val coach = input.coach
+        val variety = (coach.variety ?: 50).coerceIn(0, 100)
         var s = 0.0
         if (def.slug in input.favorites) s += 3.0
         if (def.slug in input.benchmarkSlugs) s += 2.0
+        s += input.affinity[def.slug] ?: 0.0
         val last = input.lastTrained[def.slug]
-        s += if (last == null) 2.0 else min(14L, (input.today.toEpochDays() - last.toEpochDays()).toLong().coerceAtLeast(0L)) / 3.5
-        if (input.profile.goal == AthleteGoal.BUILD_STRENGTH && "strength" in def.tags) s += 1.5
+        // Variety 50 keeps the classic novelty bonus; lower favours the familiar routine, higher the new.
+        val novelty = if (last == null) 2.0 else min(14L, (input.today.toEpochDays() - last.toEpochDays()).toLong().coerceAtLeast(0L)) / 3.5
+        s += novelty * (0.5 + variety / 100.0)
+        if (variety < 50 && last != null && (input.today.toEpochDays() - last.toEpochDays()).toLong() <= 14) s += (50 - variety) / 50.0 * 1.5
+        if ((input.profile.goal == AthleteGoal.BUILD_STRENGTH || coach.goal == CoachGoal.BUILD_STRENGTH) && "strength" in def.tags) s += 1.5
         if (input.profile.goal == AthleteGoal.PERFORM && def.category in setOf(ExerciseCategoryV2.FINGER, ExerciseCategoryV2.PULL, ExerciseCategoryV2.ANTAGONIST)) s += 0.5
+        when (coach.goal) {
+            CoachGoal.CLIMB_HARDER, CoachGoal.PROJECT ->
+                if (def.category in setOf(ExerciseCategoryV2.FINGER, ExerciseCategoryV2.PULL, ExerciseCategoryV2.POWER)) s += 0.75
+            CoachGoal.STAY_HEALTHY -> {
+                if (def.tags.any { it == "prehab" || it == "antagonist" || it == "mobility" }) s += 1.0
+                if ("beginner_friendly" in def.tags) s += 0.5
+            }
+            CoachGoal.COMEBACK -> if ("beginner_friendly" in def.tags) s += 1.0
+            else -> Unit
+        }
+        if (slot == Slot.FINGER_MAIN) {
+            if (FocusArea.FINGER_STRENGTH in coach.focus && "strength" in def.tags) s += 1.0
+            if (FocusArea.POWER_ENDURANCE in coach.focus && "endurance" in def.tags) s += 2.0
+        }
+        if (slot == Slot.PULL && FocusArea.POWER in coach.focus && "power" in def.tags) s += 1.5
         if ("beginner_friendly" in def.tags && level(input) <= 2) s += 0.5
         if (slot == Slot.WARMUP && focus == SuggestionFocus.FINGER_STRENGTH && def.slug == "warmup.finger_ramp") s += 10.0
-        return s + jitter(def.slug, input.today, input.variant)
+        return s + jitter(def.slug, input.today, input.variant) * (0.4 + 1.2 * variety / 100.0)
     }
 
     /** Deterministic noise in [0, 2.5) so "another suggestion" reshuffles close calls only. */
@@ -344,6 +762,53 @@ object SessionSuggester {
         var h = 1469598103934665603L
         for (c in "$slug|${day.toEpochDays()}|$variant") { h = (h xor c.code.toLong()) * 1099511628211L }
         return ((h ushr 11) % 1000L).toDouble() / 1000.0 * 2.5
+    }
+
+    /**
+     * Short and intense: fewer exercises, heavier rep ranges, longer rests.
+     * Longer and calmer: one more set on main work, shorter rests.
+     */
+    private fun applyStyle(items: List<RoutineItem>, style: Int?, catalog: ExerciseCatalog): List<RoutineItem> {
+        style ?: return items
+        return when {
+            style <= 33 -> {
+                val main = items.count { !it.warmup }
+                val trimmed = if (main > 3) items.toMutableList().also { list ->
+                    list.indices.lastOrNull { !list[it].warmup }?.let { list.removeAt(it) }
+                } else items
+                trimmed.map { item ->
+                    if (item.warmup) item else {
+                        val def = catalog.fallbackFor(item.slug)
+                        val rest = (item.restS ?: def.defaults.restS ?: 90) + 30
+                        if (def.kind == ExerciseKind.LOAD_REPS) item.copy(repsMin = item.repsMin?.let { min(it, 4) },
+                            repsMax = min(item.repsMax ?: def.defaults.repsMax ?: 6, 6), restS = rest)
+                        else item.copy(restS = rest)
+                    }
+                }
+            }
+            style >= 67 -> items.map { item ->
+                if (item.warmup) item else {
+                    val def = catalog.fallbackFor(item.slug)
+                    val rest = ((item.restS ?: def.defaults.restS ?: 90) * 0.8).roundToInt().coerceAtLeast(30)
+                    item.copy(sets = min(item.sets + 1, 5), restS = rest)
+                }
+            }
+            else -> items
+        }
+    }
+
+    /** Intro, deload and taper weeks scale the volume of main work; intensity stays. */
+    private fun applyBlock(ctx: Ctx, items: List<RoutineItem>): List<RoutineItem> {
+        val phase = ctx.input.block?.phase ?: return items
+        val factor = TrainingBlocks.setsFactor(phase)
+        when (phase) {
+            BlockPhase.INTRO -> ctx.reasons += SuggestionReason.BLOCK_INTRO
+            BlockPhase.DELOAD -> ctx.reasons += SuggestionReason.BLOCK_DELOAD
+            BlockPhase.TAPER -> ctx.reasons += SuggestionReason.BLOCK_TAPER
+            else -> Unit
+        }
+        if (factor == 1.0) return items
+        return items.map { if (it.warmup || it.test) it else it.copy(sets = max(1, (it.sets * factor).roundToInt())) }
     }
 
     // ── Time budget ──────────────────────────────────────────────────

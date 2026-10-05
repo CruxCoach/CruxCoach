@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.minus
+import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.plus
 import javax.inject.Inject
 
@@ -67,6 +68,12 @@ data class TodayState(
     val suggestionSaved: Boolean = false,
     /** For exercise names on the suggestion card. */
     val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
+    /** Position in the training cycle (FEAT-071), null without a block. */
+    val block: BlockState? = null,
+    /** The athlete's real training length when it differs clearly from the preferred one. */
+    val durationHint: Int? = null,
+    /** Body weight for the performance values in the evidence line. */
+    val bodyweightKg: Double? = null,
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -111,6 +118,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var variant = 0
     private var variantDay: LocalDate? = null
 
+    /** Today's answers from the "another suggestion" sheet; reset with the day. */
+    private var budgetFactor = 1.0
+    private var levelShift = 0
+    private val dislikedToday = mutableSetOf<String>()
+    /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
+    private val shownToday = mutableSetOf<String>()
+
     private val refreshLock = Any()
 
     /** One refresh at a time, so "another suggestion" and the data collector never overwrite each other with older inputs. */
@@ -119,7 +133,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private fun refreshUnlocked(i: Inputs) {
         lastInputs = i
         val today = service.today()
-        if (variantDay != today) { variant = 0; variantDay = today }
+        if (variantDay != today) {
+            variant = 0; variantDay = today
+            budgetFactor = 1.0; levelShift = 0; dislikedToday.clear(); shownToday.clear()
+            runCatching {
+                service.repo.suggestionEventsForDay(today.toString())
+                    .filter { it.kind == SuggestionEventKind.SHOWN }
+                    .forEach { shownToday += signature(it.focus, it.slugs) }
+            }
+        }
         val activities = service.activities(days = 7 * 26)
         val activity = activities[today.toString()]
         val readiness = ReadinessEvaluator.evaluate(i.checkin, i.injuries)
@@ -158,13 +180,26 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (i.profile.bodyEnabled && trend.isEmpty()) add(TodaySuggestion.LOG_WEIGHT)
         }
 
-        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities)
+        val loadStatus = runCatching { service.loadStatus() }.getOrNull()
+        val block = blockState(i, loadStatus, today)
+        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities, block, loadStatus)
+        daily?.let { s ->
+            val sig = signature(s.focus.name, s.routine.items.map { it.slug })
+            if (shownToday.add(sig)) service.logSuggestion(SuggestionEventKind.SHOWN, s.focus.name, s.routine.items.map { it.slug })
+        }
+        val durationHint = runCatching {
+            PreferenceLearning.suggestedSessionMinutes(repo.workoutsBetween(today.minus(DatePeriod(days = 42)).toString(), today.toString()),
+                i.profile.sessionMinutes, today)
+        }.getOrNull()
 
         _state.update {
             it.copy(
                 loading = false,
                 suggestion = daily,
                 plannedName = plannedName,
+                block = block,
+                durationHint = durationHint,
+                bodyweightKg = service.currentBodyweight(),
                 catalog = service.catalog,
                 profile = i.profile,
                 today = today,
@@ -192,8 +227,35 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         }
     }
 
-    /** Builds the engine input from the last two weeks; a failure only hides the card. */
-    private fun suggest(i: Inputs, readiness: Readiness, activities: Map<String, DayActivity>): Pair<SessionSuggestion?, String?> =
+    private fun signature(focus: String?, slugs: List<String>) = (focus ?: "") + "|" + slugs.joinToString(",")
+
+    /**
+     * The training cycle: starts on the first day the coach runs (so every
+     * athlete gets intro → build → deload), a trip or competition date adds the
+     * taper; tired check-ins and a finger-load spike can bring the deload forward.
+     */
+    private fun blockState(i: Inputs, loadStatus: LoadStatus?, today: LocalDate): BlockState? =
+        runCatching {
+            val coach = i.profile.coach
+            val start = coach.blockStartDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: run {
+                service.repo.updateProfile { p -> if (p.coach.blockStartDay != null) p else p.copy(coach = p.coach.copy(blockStartDay = today.toString())) }
+                today
+            }
+            val target = coach.targetDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            val checkins = service.repo.checkinsBetween(today.minus(DatePeriod(days = 6)).toString(), today.toString())
+            var fatigue = checkins.count { c -> (c.sleep ?: 5) <= 2 || (c.energy ?: 5) <= 2 || (c.fingers ?: 5) <= 2 }
+            fatigue += when (loadStatus?.structures?.get(LoadStructure.FINGER)?.trend) {
+                LoadTrend.SPIKE -> 2
+                LoadTrend.RISING -> 1
+                else -> 0
+            }
+            TrainingBlocks.state(start, target, today, fatigue)
+        }.getOrNull()
+
+    /** Builds the engine input from all the coach knows; a failure only hides the card. */
+    private fun suggest(
+        i: Inputs, readiness: Readiness, activities: Map<String, DayActivity>, block: BlockState?, loadStatus: LoadStatus?,
+    ): Pair<SessionSuggestion?, String?> =
         runCatching {
             val repo = service.repo
             val today = service.today()
@@ -206,19 +268,39 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 t.lastAt?.let { ms -> t.slug to LocalDate.parse(java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().toString()) }
             }.toMap()
             val routines = repo.routines()
+            val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+            val learned = PreferenceLearning.affinity(repo.suggestionEventsSince(sinceMs), repo.completedSetsSince(sinceMs), today)
+            val affinity = learned + dislikedToday.associateWith { -10.0 }
+            val parsedActivities = activities.mapNotNull { (day, a) -> runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a } }.toMap()
+            val todayActivity = parsedActivities[today]
+            val climbingToday = (todayActivity != null && (todayActivity.climbingMinutes > 0 || todayActivity.climbingEfforts > 0)) ||
+                today.dayOfWeek.isoDayNumber in i.profile.coach.climbingDays
+            val benchmarks = repo.allBenchmarks().groupBy { it.exerciseSlug }.mapNotNull { (_, list) -> list.maxByOrNull { it.measuredAt } }
+            val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
             val input = SuggestionInput(
                 catalog = service.catalog,
                 profile = i.profile,
                 today = today,
                 readiness = readiness,
                 injuries = i.injuries,
-                activities = activities.mapNotNull { (day, a) -> runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a } }.toMap(),
+                activities = parsedActivities,
                 recentSets = recentSets,
                 favorites = repo.favorites(),
                 benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet(),
                 lastTrained = lastTrained,
                 routines = routines,
                 variant = variant,
+                coach = i.profile.coach,
+                loadStatus = loadStatus,
+                affinity = affinity,
+                excluded = i.profile.excludedExercises,
+                block = block,
+                climbingToday = climbingToday,
+                benchmarks = benchmarks,
+                levelShift = levelShift,
+                budgetFactor = budgetFactor,
+                logbookSends = runCatching { service.logbookSummary().sampleSize }.getOrDefault(0),
+                historyWeeks = historyWeeks,
             )
             val suggestion = SessionSuggester.suggest(input)
             val plannedName = suggestion.plannedEntry
@@ -228,11 +310,36 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         }.getOrElse { null to null }
 
     /** "Another suggestion": same rules, different picks. */
-    fun nextSuggestion() = io {
+    fun nextSuggestion() = nextSuggestion(null, null)
+
+    /**
+     * "Another suggestion" with an optional reason that works at once: less
+     * time shortens today's budget, a disliked exercise stays out today (and
+     * counts against it later), too easy / too hard shifts today's level.
+     * Equipment and pain are fixed where they live (the screen navigates).
+     */
+    fun nextSuggestion(feedback: SuggestionFeedback?, slug: String?) = io {
         synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            val slugs = if (feedback == SuggestionFeedback.DISLIKE_EXERCISE && slug != null) listOf(slug)
+                else s?.routine?.items?.map { it.slug }.orEmpty()
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, slugs, feedback)
+            when (feedback) {
+                SuggestionFeedback.NO_TIME -> budgetFactor = (budgetFactor * 0.7).coerceAtLeast(0.3)
+                SuggestionFeedback.DISLIKE_EXERCISE -> slug?.let { dislikedToday += it }
+                SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
+                SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
+                else -> Unit
+            }
             variant++
             lastInputs?.let { refreshUnlocked(it) }
         }
+    }
+
+    /** Takes over the real training length as the preferred duration. */
+    fun applyDurationHint() = io {
+        val minutes = _state.value.durationHint ?: return@io
+        service.repo.updateProfile { it.copy(sessionMinutes = minutes) }
     }
 
     /**
@@ -244,7 +351,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val s = _state.value.suggestion ?: return null to null
         val planned = s.plannedEntry
         val changed = setOf(SuggestionReason.PLAN_FILTERED_FOR_INJURY, SuggestionReason.FINGERS_LOADED_RECENTLY,
-            SuggestionReason.FINGERS_TIRED, SuggestionReason.SHORTENED_TO_TIME)
+            SuggestionReason.FINGERS_TIRED, SuggestionReason.SHORTENED_TO_TIME, SuggestionReason.RECOVERY_AFTER_LIMIT,
+            SuggestionReason.RECOVERY_AFTER_HARD, SuggestionReason.RECOVERY_AFTER_VOLUME, SuggestionReason.FINGER_LOAD_RISING,
+            SuggestionReason.SKIN_LOAD_RISING, SuggestionReason.GUARDRAIL_YOUTH, SuggestionReason.BLOCK_INTRO,
+            SuggestionReason.BLOCK_DELOAD, SuggestionReason.BLOCK_TAPER)
+        viewModelScope.launch(Dispatchers.IO) { service.logSuggestion(SuggestionEventKind.EDITED, s.focus.name, s.routine.items.map { it.slug }) }
         if (s.focus == SuggestionFocus.PLANNED && planned != null && !planned.startsWith("builtin:") && s.reasons.none { it in changed }) {
             return planned to null
         }
@@ -255,7 +366,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** Starts today's suggestion in the guided player; [title] is the localized focus title. */
     fun startSuggestion(title: String) = io {
         val suggestion = _state.value.suggestion ?: return@io
-        service.startWorkout(suggestion.routine.copy(id = "suggestion:${service.today()}", name = title), title)
+        val id = service.startWorkout(suggestion.routine.copy(id = "suggestion:${service.today()}", name = title), title)
+        // Planned work sets, so the summary can tell how much of the suggestion was done.
+        val catalog = service.catalog
+        val plannedSets = suggestion.routine.items.filter { !it.warmup }.sumOf { item ->
+            item.sets * (if (catalog.fallbackFor(item.slug).unilateral && item.sides == SideMode.BOTH) 2 else 1)
+        }
+        service.logSuggestion(SuggestionEventKind.STARTED, suggestion.focus.name, suggestion.routine.items.map { it.slug },
+            workoutId = id, value = plannedSets.toDouble())
         _state.update { it.copy(startedWorkout = true, startedGuided = true) }
     }
 
@@ -265,6 +383,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val now = System.currentTimeMillis()
         service.repo.saveRoutine(suggestion.routine.copy(id = service.repo.newId(), name = title, builtinKey = null,
             createdAt = now, updatedAt = now))
+        service.logSuggestion(SuggestionEventKind.SAVED, suggestion.focus.name, suggestion.routine.items.map { it.slug })
         _state.update { it.copy(suggestionSaved = true) }
     }
 

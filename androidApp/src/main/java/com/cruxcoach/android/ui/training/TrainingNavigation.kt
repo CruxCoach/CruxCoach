@@ -1,6 +1,10 @@
 package com.cruxcoach.android.ui.training
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.height
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -41,6 +45,13 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     fun openEditor(routineId: String?, from: String?) = go(TrainingRoutes.routineEditor(routineId, from))
 
     screen(TrainingRoutes.TODAY, "Today", back) {
+        var showEstimate by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+        var showClimbingDay by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        // Health Connect climbing sessions become climbing days; a no-op unless the athlete switched it on.
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            runCatching { com.cruxcoach.android.athlete.health.healthConnectSourceOrNull(context)?.syncClimbing() }
+        }
         TodayScreen(
             onBack = leave,
             onOpenExercises = { goTab(TrainingTab.EXERCISES) },
@@ -56,7 +67,21 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
             tabBar = tabBar(TrainingTab.TODAY),
             onOpenEditor = ::openEditor,
+            onOpenEquipment = { go(TrainingRoutes.ATHLETE_SETTINGS) },
+            onOpenPlaylistGenerator = { type, minutes ->
+                nav.navigate(com.cruxcoach.android.ui.navigation.Routes.playlistGenerator(type, minutes)) { launchSingleTop = true }
+            },
+            coachCard = {
+                com.cruxcoach.android.ui.training.coach.CoachProgressCard(
+                    onOpenSetup = { go(TrainingRoutes.COACH_SETUP) },
+                    onOpenEstimate = { showEstimate = true },
+                    onAutoOpenSetup = { go(TrainingRoutes.COACH_SETUP) },
+                )
+            },
+            onLogClimbing = { showClimbingDay = true },
         )
+        if (showEstimate) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { showEstimate = false })
+        if (showClimbingDay) com.cruxcoach.android.ui.training.today.ClimbingDaySheet(onDismiss = { showClimbingDay = false })
     }
     screen(TrainingRoutes.WORKOUTS, "Workouts", back) {
         com.cruxcoach.android.ui.training.workouts.WorkoutsScreen(
@@ -76,7 +101,35 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenWeeklyReview = { go(TrainingRoutes.WEEKLY_REVIEW) },
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
             tabBar = tabBar(TrainingTab.STATS),
+            onOpenClimberProfile = { go(TrainingRoutes.CLIMBER_PROFILE) },
         )
+    }
+    screen(TrainingRoutes.CLIMBER_PROFILE, "ClimberProfile", back) {
+        com.cruxcoach.android.ui.training.stats.ClimberProfileScreen(
+            onBack = back,
+            onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
+            onLogClimbing = { go(TrainingRoutes.CLIMBING_DAYS) },
+        )
+    }
+    screen(TrainingRoutes.CLIMBING_DAYS, "ClimbingDays", back) {
+        com.cruxcoach.android.ui.training.today.ClimbingDaysScreen(onBack = back)
+    }
+    screen(TrainingRoutes.COACH_SETUP, "CoachSetup", back) {
+        com.cruxcoach.android.ui.training.coach.CoachSetupScreen(
+            onBack = back,
+            onFinished = back,
+            onOpenEquipment = { go(TrainingRoutes.ATHLETE_SETTINGS) },
+            onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
+            onStartTest = {
+                nav.navigate(TrainingRoutes.WORKOUT_PLAYER) {
+                    popUpTo(TrainingRoutes.COACH_SETUP) { inclusive = true }
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+    screen(TrainingRoutes.FORCE_GAUGE, "ForceGauge", back) {
+        com.cruxcoach.android.athlete.force.ForceGaugeScreen(onBack = back)
     }
     composable(TrainingRoutes.EXERCISE_STATS) { entry ->
         ScreenErrorBoundary(screenName = "ExerciseStats", onNavigateBack = back) {
@@ -133,6 +186,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 onOpenWorkout = { go(TrainingRoutes.WORKOUT_PLAYER) },
                 onOpenStats = { go(TrainingRoutes.exerciseStats(it)) },
                 onCreateRoutine = { from -> openEditor(null, from) },
+                onOpenForceGauge = { go(TrainingRoutes.FORCE_GAUGE) },
             )
         }
     }
@@ -183,6 +237,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onBack = back,
             onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
             onTestStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
+            onOpenForceGauge = { go(TrainingRoutes.FORCE_GAUGE) },
         )
     }
     composable(TrainingRoutes.WORKOUT_SUMMARY) { entry ->
@@ -217,7 +272,20 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     }
     screen(TrainingRoutes.WEEKLY_REVIEW, "WeeklyReview", back) { WeeklyReviewScreen(onBack = back) }
     screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) {
-        AthleteSettingsScreen(onBack = back, onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) })
+        AthleteSettingsScreen(
+            onBack = back,
+            onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
+            onOpenCoachSetup = { go(TrainingRoutes.COACH_SETUP) },
+            extraSections = {
+                com.cruxcoach.android.athlete.health.HealthConnectSettingsCard()
+                androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.height(12.dp))
+                com.cruxcoach.android.athlete.force.ForceGaugeSettingsCard(onOpenForceGauge = { go(TrainingRoutes.FORCE_GAUGE) })
+                androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.height(12.dp))
+                androidx.compose.material3.OutlinedButton(onClick = { go(TrainingRoutes.CLIMBING_DAYS) }) {
+                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.cruxcoach.android.R.string.trl_days_title))
+                }
+            },
+        )
     }
 }
 

@@ -1,4 +1,4 @@
--- Coach data (FEAT-070): climbing outside the board app and the
+-- Coach data (FEAT-071): climbing outside the board app and the
 -- recommendation ledger the coach learns preferences from. Local only.
 
 CREATE TABLE climbing_day (

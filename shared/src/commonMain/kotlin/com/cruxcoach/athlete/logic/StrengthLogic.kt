@@ -205,7 +205,64 @@ object ProgressionAdvisor {
         val base = smallestIncrementKg.coerceAtLeast(0.5)
         return if (EquipmentV2.BARBELL in def.equipment) base * 2 else base
     }
+
+    /** Progress counts from this relative gain in the session's best capacity. */
+    private const val PROGRESS_EPSILON = 0.01
+    /** A drop of this much against the two sessions before is a decline. */
+    private const val DECLINE_SHARE = 0.05
+
+    /**
+     * Looks across sessions instead of only the last one. [sessions] are the
+     * completed sets of one exercise per training, newest first.
+     *
+     * - two sessions in a row too easy / too hard → offer the chain partner
+     *   (a swap prompt, the athlete decides)
+     * - the newest session clearly below the two before, with missed targets
+     *   → suggest a lighter week instead of pushing on
+     * - three sessions without progress → suggest a variation (the chain
+     *   partner, otherwise another grip or edge)
+     */
+    fun trend(def: ExerciseDefinition, sessions: List<List<ExerciseSet>>, smallestIncrementKg: Double = 1.0): ProgressionTrend {
+        val usable = sessions.map { s -> s.filter { it.isCompleted && it.setType == SetType.WORK } }.filter { it.isNotEmpty() }
+        if (usable.size < 2 || def.kind == ExerciseKind.CLIMB) return ProgressionTrend(TrendKind.NONE, usable.size)
+        val verdicts = usable.take(2).map { evaluate(def, it, smallestIncrementKg)?.verdict }
+        val best = usable.map { s -> s.mapNotNull { BenchmarkMath.implied(def, it)?.value }.maxOrNull() }
+
+        val newest = best[0]
+        val before = best.drop(1).take(2).filterNotNull().maxOrNull()
+        if (newest != null && before != null && newest < before * (1 - DECLINE_SHARE) &&
+            verdicts[0] == ProgressionVerdict.TOO_HARD) {
+            return ProgressionTrend(TrendKind.DECLINE, usable.size, easierSlug = def.easier)
+        }
+        if (verdicts.all { it == ProgressionVerdict.TOO_HARD }) {
+            return ProgressionTrend(TrendKind.TOO_HARD_TWICE, usable.size, easierSlug = def.easier)
+        }
+        if (verdicts.all { it == ProgressionVerdict.TOO_EASY } && def.harder != null) {
+            return ProgressionTrend(TrendKind.TOO_EASY_TWICE, usable.size, harderSlug = def.harder)
+        }
+        if (usable.size >= 3) {
+            val window = best.take(3)
+            val oldest = window[2]
+            val recentBest = window.take(2).filterNotNull().maxOrNull()
+            if (oldest != null && recentBest != null && recentBest <= oldest * (1 + PROGRESS_EPSILON)) {
+                return ProgressionTrend(TrendKind.STALL, usable.size, variationSlug = def.harder ?: def.easier)
+            }
+        }
+        return if (newest != null && before != null && newest > before * (1 + PROGRESS_EPSILON))
+            ProgressionTrend(TrendKind.PROGRESSING, usable.size) else ProgressionTrend(TrendKind.NONE, usable.size)
+    }
 }
+
+enum class TrendKind { NONE, PROGRESSING, STALL, DECLINE, TOO_EASY_TWICE, TOO_HARD_TWICE }
+
+/** Result of [ProgressionAdvisor.trend]; slugs name the chain partner to offer. */
+data class ProgressionTrend(
+    val kind: TrendKind,
+    val sessions: Int,
+    val harderSlug: String? = null,
+    val easierSlug: String? = null,
+    val variationSlug: String? = null,
+)
 
 /**
  * Warm-up ramp before heavy loaded sets — the finger-board version of

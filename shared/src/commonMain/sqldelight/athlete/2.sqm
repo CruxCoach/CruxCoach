@@ -1,4 +1,4 @@
--- Migration 2 → 3 (FEAT-070): climbing outside the board app and the
+-- Migration 2 → 3 (FEAT-071): climbing outside the board app and the
 -- recommendation ledger. Feature builds up to 1000020 shipped schema 2.
 
 CREATE TABLE IF NOT EXISTS climbing_day (

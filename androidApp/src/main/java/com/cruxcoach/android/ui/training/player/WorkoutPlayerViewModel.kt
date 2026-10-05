@@ -11,6 +11,8 @@ import com.cruxcoach.athlete.logic.PlayerQueue
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Workout
+import com.cruxcoach.athlete.model.SuggestionEventKind
+import com.cruxcoach.athlete.model.SetType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -191,6 +193,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val current = st.current ?: return
         val next = PlayerQueue.nextAfter(st.sets, current.set)?.takeIf { it.id != current.set.id } ?: return
         focusId = next.id
+        // A skipped set tells the coach something about the exercise (FEAT-071 ledger).
+        val skipped = current.set
+        if (skipped.setType == SetType.WORK) enqueue {
+            service.logSuggestion(SuggestionEventKind.SKIPPED_SET, null, listOf(skipped.exerciseSlug), workoutId = skipped.workoutId)
+        }
         _state.update { s ->
             val upcoming = PlayerQueue.nextAfter(s.sets, next)?.takeIf { it.id != next.id }
             s.copy(current = item(s.sets, next), upcoming = upcoming?.let { item(s.sets, it) })
@@ -287,10 +294,20 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     // ── Finish ───────────────────────────────────────────────────────
 
     fun finish(sessionRpe: Int?, notes: String?) {
-        val id = _state.value.workout?.id ?: return
+        val workout = _state.value.workout ?: return
+        val id = workout.id
+        val sets = _state.value.sets
         _state.update { it.copy(closing = true) }
         enqueue {
             if (service.restTimer.value.isRunning || service.restTimer.value.isFinished) service.cancelRest()
+            // A training started from today's suggestion: how much of it was done, and how hard it felt.
+            if (workout.routineId?.startsWith("suggestion") == true) {
+                val work = sets.filter { it.setType == SetType.WORK }
+                val done = work.filter { it.isCompleted }
+                if (work.isNotEmpty()) service.logSuggestion(SuggestionEventKind.COMPLETED, null,
+                    done.map { it.exerciseSlug }.distinct(), workoutId = id, value = done.size.toDouble() / work.size)
+                sessionRpe?.let { service.logSuggestion(SuggestionEventKind.FEEDBACK, "session_rpe", emptyList(), workoutId = id, value = it.toDouble()) }
+            }
             service.finishWorkout(id, sessionRpe, notes)
             _events.emit(PlayerEvent.Finished(id))
         }
