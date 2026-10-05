@@ -46,6 +46,11 @@ object BlsTable {
  * wrong German word ("Brühlchen") is rescued by the English one while an
  * English-only coincidence ("Banana nectar") does not win.
  *
+ * The BLS calls noodles "Teigwaren"/"pasta" and writes British English
+ * ("aubergine", "courgette", "mince"), so query words are widened with
+ * synonyms first; otherwise "Nudeln" lands on "Schupfnudeln" (finger-shaped
+ * pasta) and "eggplant" finds nothing.
+ *
  * Raw and processed forms lose unless the name asks for them, but raw only
  * where it changes the numbers per 100 g a lot and is rarely eaten: grains,
  * potatoes, eggs and pasta, meat and fish. Fruit stays raw; for vegetables
@@ -61,6 +66,8 @@ class FoodMatcher(foods: List<BlsFood>) {
         val pairs: List<String> = tokens.zipWithNext { a, b -> a + b }
         val joined: String = tokens.joinToString("")
         val content: List<String> = tokens.filter { it !in STOP_WORDS }
+        /** Each content word plus its BLS synonyms; only read for queries. */
+        val alternatives: List<List<String>> by lazy { content.map { listOf(it) + synonymsOf(it) } }
     }
 
     private val index = foods.map { Indexed(it, Words(normalize(it.nameDe)), Words(normalize(it.nameEn))) }
@@ -96,17 +103,19 @@ class FoodMatcher(foods: List<BlsFood>) {
         if (q.isEmpty() || candidate.content.isEmpty()) return 0.0
         val used = mutableSetOf<String>()
         var sum = 0.0
-        q.forEachIndexed { i, word ->
+        query.alternatives.forEachIndexed { i, words ->
             var best = 0.0
             var bestToken: String? = null
-            for (token in candidate.content) {
-                val s = wordSimilarity(word, token)
-                if (s > best) { best = s; bestToken = token }
+            for (word in words) {
+                for (token in candidate.content) {
+                    val s = wordSimilarity(word, token)
+                    if (s > best) { best = s; bestToken = token }
+                }
+                for (pair in candidate.pairs) {
+                    if (pair == word && 0.95 > best) { best = 0.95; bestToken = null }
+                }
+                if (best < 0.5 && word.length >= 5 && candidate.joined.contains(word)) best = 0.5
             }
-            for (pair in candidate.pairs) {
-                if (pair == word && 0.95 > best) { best = 0.95; bestToken = null }
-            }
-            if (best < 0.5 && word.length >= 5 && candidate.joined.contains(word)) best = 0.5
             if (bestToken != null && best >= 0.6) used += bestToken
             // The head noun matters most: weight the first query word double.
             sum += if (i == 0) best * 2 else best
@@ -115,8 +124,9 @@ class FoodMatcher(foods: List<BlsFood>) {
 
         val extra = candidate.content.count { it !in used && it !in PREPARATION_WORDS }
         score -= min(0.4, 0.08 * extra)
-        val first = q.first()
-        if (wordSimilarity(first, candidate.content.first()) >= 0.9 || candidate.pairs.firstOrNull() == first) score += 0.1
+        if (query.alternatives.first().any { first ->
+                wordSimilarity(first, candidate.content.first()) >= 0.9 || candidate.pairs.firstOrNull() == first
+            }) score += 0.1
 
         val group = code.firstOrNull()
         val queryAsksRaw = q.any { it in RAW_WORDS || it in PROCESSED_WORDS }
@@ -156,12 +166,58 @@ class FoodMatcher(foods: List<BlsFood>) {
             "fett", "fat", "salz", "salt", "konserve", "canned", "abgetropft", "drained",
         )
 
-        fun normalize(text: String): List<String> = text.lowercase()
-            .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
-            .split(' ')
-            .filter { it.isNotEmpty() }
+        /** US English and two-word names the BLS spells differently (applied to whole names). */
+        private val PHRASES = listOf(
+            "bell pepper" to "sweet pepper", "ground beef" to "beef mince", "ground pork" to "pork mince",
+            "ground meat" to "mince", "minced meat" to "mince", "green onion" to "spring onion",
+            "scallion" to "spring onion", "garbanzo bean" to "chickpea", "garbanzo" to "chickpea",
+        )
+
+        /** Query word → the words the BLS uses for it (normalised spelling). */
+        private val SYNONYMS: Map<String, List<String>> = buildMap {
+            val pasta = listOf("teigwaren", "pasta")
+            listOf(
+                "nudeln", "nudel", "pasta", "spaghetti", "penne", "fusilli", "makkaroni", "maccheroni", "macaroni",
+                "tagliatelle", "farfalle", "rigatoni", "linguine", "spirelli", "bandnudeln", "hoernchennudeln",
+                "noodles", "noodle",
+            ).forEach { put(it, pasta) }
+            put("eggplant", listOf("aubergine"))
+            put("melanzani", listOf("aubergine"))
+            put("eierfrucht", listOf("aubergine"))
+            put("zucchini", listOf("courgette"))
+            put("cilantro", listOf("coriander", "koriander"))
+            put("arugula", listOf("rocket", "rucola"))
+            put("yoghurt", listOf("yogurt"))
+            put("jogurt", listOf("joghurt"))
+            put("paradeiser", listOf("tomate"))
+            put("erdaepfel", listOf("kartoffel"))
+            put("erdapfel", listOf("kartoffel"))
+            put("semmel", listOf("broetchen"))
+            put("topfen", listOf("quark"))
+            put("schlagobers", listOf("sahne"))
+            put("obers", listOf("sahne"))
+            put("karfiol", listOf("blumenkohl"))
+            put("kohlsprossen", listOf("rosenkohl"))
+            put("fisolen", listOf("bohnen"))
+            put("faschiertes", listOf("hackfleisch"))
+            put("porree", listOf("lauch"))
+            put("huhn", listOf("haehnchen"))
+            put("truthahn", listOf("pute"))
+        }
+
+        private fun synonymsOf(word: String): List<String> = SYNONYMS[word] ?: SYNONYMS[stem(word)] ?: emptyList()
+
+        fun normalize(text: String): List<String> {
+            var t = text.lowercase()
+                .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+                .replace(Regex("[^a-z0-9]+"), " ")
+            PHRASES.forEach { (from, to) -> t = t.replace(Regex("\\b$from"), to) }
+            return t.trim()
+                .split(' ')
+                .filter { it.isNotEmpty() }
+                // The BLS writes both "Soße" and "Sauce"; treat them as one word.
+                .map { it.replace("sosse", "sauce") }
+        }
 
         private fun stem(word: String): String {
             for (suffix in listOf("en", "es", "n", "e", "s")) {

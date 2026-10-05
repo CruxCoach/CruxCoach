@@ -32,7 +32,21 @@ class BlsAssetMatchingTest {
         Triple("Lachs gebraten", "Fried salmon", setOf("T410082", "T410062", "Y640312")),
         Triple("Käsespätzle", "Cheese spaetzle", setOf("X711412")),
         Triple("Rührei", "Scrambled eggs", setOf("Y720143", "Y720163")),
+        // Owner's device test 2026-10-05: pasta with aubergine-tomato sauce.
+        // "Nudeln" had landed on Schupfnudeln, "eggplant" found nothing.
+        Triple("Nudeln", "Pasta", COOKED_PASTA),
+        Triple("Nudeln", "Noodles", COOKED_PASTA),
+        Triple("Spaghetti", "Spaghetti", COOKED_PASTA),
+        Triple("Eggplant", "Eggplant", AUBERGINE),
+        Triple("Aubergine", "Eggplant", AUBERGINE),
+        Triple("Tomatensoße", "Tomato sauce", setOf("X321163", "X321263", "X331353", "X321813", "X321153")),
+        Triple("Zucchini", "Zucchini", setOf("G582132", "G582152", "G582172", "G582142", "G582162", "G582182", "G582100")),
     )
+
+    private companion object {
+        val COOKED_PASTA = setOf("E401032", "X432142")
+        val AUBERGINE = setOf("G510132", "G510152", "G510172", "G510142", "G510162", "G510182", "G510100", "X573012")
+    }
 
     @Test
     fun tableHasEveryFood() {
