@@ -154,6 +154,22 @@ class FoodVisionTest {
     }
 
     @Test
+    fun synonymsBridgeBlsWordingAndBritishEnglish() {
+        val m = FoodMatcher(BlsTable.parse("""
+            E605232	Schupfnudeln schwäbisch, gekocht	Finger-shaped pasta Swabian style, boiled	150	4	1	30
+            E401032	Teigwaren eifrei, gekocht	Pasta egg-free, boiled	140	5	1	28
+            G510132	Aubergine gekocht	Aubergine boiled	20	1.2	0.2	2.5
+            X321263	Tomatensauce aus frischen Tomaten	Tomato sauce of fresh tomatoes	60	1.5	3	6
+        """.trimIndent()))
+        fun top(de: String, en: String) = m.match(DetectedFood(de, en, 100.0)).firstOrNull()?.food?.code
+        assertEquals("E401032", top("Nudeln", "Noodles"))
+        assertEquals("E401032", top("Penne", "Pasta"))
+        assertEquals("G510132", top("Eggplant", "Eggplant"))
+        assertEquals("G510132", top("Melanzani", "Eggplant"))
+        assertEquals("X321263", top("Tomatensoße", "Tomato sauce"))
+    }
+
+    @Test
     fun searchFindsBothLanguagesAndIgnoresStopWords() {
         assertEquals("C133000", matcher.search("oat flakes").first().food.code)
         assertEquals("G332152", matcher.search("rosenkohl").first().food.code)
