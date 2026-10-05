@@ -4,7 +4,7 @@
     <string name="tr_nav_today">Heute</string>
     <string name="tr_nav_exercises">Übungen</string>
     <string name="tr_nav_body">Körper</string>
-    <string name="tr_nav_fuel">Fueling</string>
+    <string name="tr_nav_fuel">Ernährung</string>
 
     <string name="tr_cat_finger">Finger</string>
     <string name="tr_cat_pull">Zug</string>
@@ -142,16 +142,16 @@
     <string name="tr_not_medical_advice">CruxCoach stellt keine Diagnosen und behandelt keine Verletzungen. Bei stechendem Schmerz, Schwellung oder anhaltenden Beschwerden: ärztlich oder physiotherapeutisch abklären lassen.</string>
 
     <string name="export_category_training">Training, Check-ins &amp; Verletzungen</string>
-    <string name="export_category_fuel">Fueling</string>
+    <string name="export_category_fuel">Ernährung</string>
     <plurals name="import_result_training">
         <item quantity="one">%d Trainingseintrag</item>
         <item quantity="other">%d Trainingseinträge</item>
     </plurals>
     <plurals name="import_result_fuel">
-        <item quantity="one">%d Fueling-Eintrag</item>
-        <item quantity="other">%d Fueling-Einträge</item>
+        <item quantity="one">%d Ernährungseintrag</item>
+        <item quantity="other">%d Ernährungseinträge</item>
     </plurals>
-    <string name="export_json_only_hint">Training, Körper und Fueling sind nur im JSON-Backup enthalten.</string>
+    <string name="export_json_only_hint">Training, Körper und Ernährung sind nur im JSON-Backup enthalten.</string>
     <string name="tr_tab_today">Heute</string>
     <string name="tr_tab_workouts">Workouts</string>
     <string name="tr_tab_exercises">Übungen</string>

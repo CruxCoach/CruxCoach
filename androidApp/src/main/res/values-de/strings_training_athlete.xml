@@ -37,7 +37,7 @@
     <string name="tra_module_checkin">Morgendlicher Check-in</string>
     <string name="tra_module_body">Körper-Tracking</string>
     <string name="tra_hide_numbers">Körperzahlen ausblenden (nur Trend)</string>
-    <string name="tra_module_fuel">Fueling</string>
+    <string name="tra_module_fuel">Ernährung</string>
     <string name="tra_show_calories">Kalorien anzeigen</string>
     <string name="tra_protein_per_kg">Protein: %1$s g pro kg Körpergewicht</string>
     <string name="tra_units_title">Einheiten</string>
@@ -51,7 +51,7 @@
     <string name="tra_timer_sound">Ton</string>
     <string name="tra_timer_vibration">Vibration</string>
     <string name="tra_timer_voice">Sprachansagen</string>
-    <string name="tra_privacy_note">Trainings-, Körper- und Fueling-Daten bleiben verschlüsselt auf diesem Gerät und landen nur in deinen eigenen Backups.</string>
+    <string name="tra_privacy_note">Trainings-, Körper- und Ernährungsdaten bleiben verschlüsselt auf diesem Gerät und landen nur in deinen eigenen Backups.</string>
     <string name="tra_goal_perform">Leistung</string>
     <string name="tra_goal_maintain">Halten</string>
     <string name="tra_goal_strength">Kraft aufbauen</string>

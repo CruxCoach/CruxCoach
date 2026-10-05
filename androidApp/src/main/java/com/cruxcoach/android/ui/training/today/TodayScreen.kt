@@ -133,7 +133,7 @@ fun TodayScreen(
             if (state.redsSignals.isNotEmpty()) item { RedsCard(state.redsSignals) }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
             if (state.profile.bodyEnabled) item { BodyCard(state, onOpenBody, viewModel::logWeight) }
-            if (state.profile.fuelEnabled) item { FuelCard(state, onOpenFuel, viewModel::addWater) }
+            item { FuelCard(state, onOpenFuel, viewModel::addWater) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = onOpenWeeklyReview, label = { Text(stringResource(R.string.trt_weekly_review)) },

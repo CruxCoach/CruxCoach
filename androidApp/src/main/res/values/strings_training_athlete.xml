@@ -39,7 +39,7 @@
     <string name="tra_module_checkin">Morning check-in</string>
     <string name="tra_module_body">Body tracking</string>
     <string name="tra_hide_numbers">Hide body numbers (trend only)</string>
-    <string name="tra_module_fuel">Fueling</string>
+    <string name="tra_module_fuel">Nutrition</string>
     <string name="tra_show_calories">Show calories</string>
     <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
     <string name="tra_units_title">Units</string>
@@ -53,7 +53,7 @@
     <string name="tra_timer_sound">Sound</string>
     <string name="tra_timer_vibration">Vibration</string>
     <string name="tra_timer_voice">Voice cues</string>
-    <string name="tra_privacy_note">Training, body and fueling data stay encrypted on this device and are only included in your own backups.</string>
+    <string name="tra_privacy_note">Training, body and nutrition data stay encrypted on this device and are only included in your own backups.</string>
     <string name="tra_goal_perform">Perform</string>
     <string name="tra_goal_maintain">Maintain</string>
     <string name="tra_goal_strength">Build strength</string>

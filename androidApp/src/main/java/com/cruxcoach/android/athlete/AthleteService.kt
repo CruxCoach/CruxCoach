@@ -438,6 +438,6 @@ class AthleteService @Inject constructor(
             FuelDay(day, logged = entries.isNotEmpty(), carbsG = entries.mapNotNull { it.carbsG }.takeIf { it.isNotEmpty() }?.sum(),
                 dayLoad = FuelTargets.dayLoad(activities[day]))
         }
-        return RedsGuard.evaluate(profile, heightCm(), weightTrend(), if (profile.fuelEnabled) fuelDays else emptyList())
+        return RedsGuard.evaluate(profile, heightCm(), weightTrend(), fuelDays)
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -1143,6 +1144,8 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
                 // One entry for the whole training area; its own tab bar organises the rest.
                 Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training, "menu_today"),
+                // Nutrition has its own entry and is always on (owner 2026-10-05).
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.FUEL, com.cruxcoach.android.R.string.tr_nav_fuel, "menu_nutrition"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
@@ -1150,6 +1153,7 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                         Icon(when (route) {
                             Routes.BOARD_MAP -> Icons.Default.Map
                             com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.FitnessCenter
+                            com.cruxcoach.android.ui.training.TrainingRoutes.FUEL -> Icons.Default.Restaurant
                             Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
                             else -> Icons.Default.FitnessCenter
                         }, null)

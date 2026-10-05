@@ -305,6 +305,7 @@ data class AthleteProfile(
     val weeklyGoal: Int = 3,
     val goal: AthleteGoal = AthleteGoal.PERFORM,
     val bodyEnabled: Boolean = true,
+    /** No longer read: nutrition is always on since 2026-10-05. Kept so older backups still parse. */
     val fuelEnabled: Boolean = false,
     val fuelIntroAccepted: Boolean = false,
     val hideBodyNumbers: Boolean = false,
