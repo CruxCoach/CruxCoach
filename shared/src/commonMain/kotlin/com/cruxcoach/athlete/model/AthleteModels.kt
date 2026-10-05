@@ -332,13 +332,13 @@ data class AthleteProfile(
     /** Optional monthly measuring round (circumferences) on a day of the month, same time of day. */
     val measureReminderEnabled: Boolean = false,
     val measureReminderDayOfMonth: Int = 1,
-    /** Answers of the optional coach setup (FEAT-070); every field may stay unanswered. */
+    /** Answers of the optional coach setup (FEAT-071); every field may stay unanswered. */
     val coach: CoachProfile = CoachProfile(),
     /** Exercises the athlete never wants suggested ("nie vorschlagen"); the counterpart of favourites. */
     val excludedExercises: Set<String> = emptySet(),
 )
 
-// ── Coach profile (FEAT-070) ─────────────────────────────────────────
+// ── Coach profile (FEAT-071) ─────────────────────────────────────────
 
 @Serializable
 enum class CoachGoal { CLIMB_HARDER, PROJECT, BUILD_STRENGTH, STAY_HEALTHY, COMEBACK, EVENT }

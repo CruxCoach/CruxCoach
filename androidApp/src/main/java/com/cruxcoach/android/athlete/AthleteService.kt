@@ -20,6 +20,7 @@ import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
@@ -150,6 +151,8 @@ class AthleteService @Inject constructor(
         catalogStore.ensureLoaded()
         readyMutex.withLock {
             if (ready) return@withLock
+            // The coach learns from the last months; older ledger rows only cost space.
+            runCatching { repo.pruneSuggestionEvents(System.currentTimeMillis() - LEDGER_KEEP_DAYS * 86_400_000L) }
             importLegacyBodyStats()
             ready = true
         }
@@ -167,25 +170,87 @@ class AthleteService @Inject constructor(
 
     // ── Activity ─────────────────────────────────────────────────────
 
-    /** Board days plus logged trainings, per day, for [days] days up to today. */
+    /**
+     * Board days, climbing logged outside the app and logged trainings, per
+     * day, for [days] days up to today — with the day's climbing intensity
+     * (relative to the athlete's own grade) and load per structure
+     * ([ClimbingLoad]). Sets of a still open training already count for load;
+     * its minutes count once it ends.
+     */
     fun activities(days: Int): Map<String, DayActivity> {
         val today = today()
-        val from = today.minus(DatePeriod(days = days - 1)).toString()
+        val fromDate = today.minus(DatePeriod(days = days - 1))
+        val from = fromDate.toString()
+        val to = today.toString()
         val climbing = runCatching { climbingDays.since(from) }.getOrDefault(emptyMap())
-        val workouts = repo.workoutsBetween(from, today.toString()).filter { !it.isOpen }.groupBy { it.day }
-        return (climbing.keys + workouts.keys).associateWith { day ->
+        val allWorkouts = repo.workoutsBetween(from, to)
+        val workouts = allWorkouts.filter { !it.isOpen }.groupBy { it.day }
+        val manual = runCatching { repo.climbingDaysSince(from) }.getOrDefault(emptyList())
+            .filter { it.day <= to }.groupBy { it.day }
+        val rows = logbookRows()
+        val summary = LogbookSummaries.summarize(rows, today)
+        val rowsByDay = rows.filter { it.day in from..to }.groupBy { it.day }
+        val workoutDay = allWorkouts.associate { it.id to it.day }
+        val zone = TimeZone.currentSystemDefault()
+        val setsByDay = repo.completedSetsSince(fromDate.atStartOfDayIn(zone).toEpochMilliseconds())
+            .mapNotNull { s -> workoutDay[s.workoutId]?.let { it to s } }
+            .groupBy({ it.first }, { it.second })
+        val cat = this.catalog
+        val keys = (climbing.keys + workouts.keys + manual.keys + rowsByDay.keys).filter { it in from..to }
+        return keys.associateWith { day ->
             val c = climbing[day]
             val w = workouts[day].orEmpty()
-            val minutes = w.sumOf { it.durationMinutes ?: 0 }
+            val m = manual[day].orEmpty()
+            val dayRows = rowsByDay[day].orEmpty()
+            val boardIntensity = ClimbingLoad.classifyDay(dayRows, summary)
+            val intensity = (listOfNotNull(boardIntensity) + m.map { it.intensity }).maxByOrNull { it.ordinal }
+            val units = ClimbingLoad.dayUnits(dayRows, summary, c?.minutes ?: 0, m, setsByDay[day].orEmpty(), cat)
             DayActivity(
                 day = day,
-                climbingMinutes = c?.minutes ?: 0,
+                climbingMinutes = (c?.minutes ?: 0) + m.sumOf { it.minutes },
                 climbingEfforts = c?.efforts ?: 0,
-                workoutMinutes = minutes,
+                workoutMinutes = w.sumOf { it.durationMinutes ?: 0 },
                 workoutLoad = w.sumOf { (it.durationMinutes ?: 0) * (it.sessionRpe ?: 6) },
+                climbIntensity = intensity,
+                fingerLoad = units[LoadStructure.FINGER] ?: 0.0,
+                skinLoad = units[LoadStructure.SKIN] ?: 0.0,
+                shoulderLoad = units[LoadStructure.SHOULDER] ?: 0.0,
             )
         }
     }
+
+    /** Acute against chronic load per structure over the last eight weeks. */
+    fun loadStatus(): LoadStatus {
+        val daily = activities(ClimbingLoad.SERIES_DAYS).mapNotNull { (day, a) ->
+            runCatching { LocalDate.parse(day) }.getOrNull()?.let { d ->
+                d to mapOf(LoadStructure.FINGER to a.fingerLoad, LoadStructure.SKIN to a.skinLoad, LoadStructure.SHOULDER to a.shoulderLoad)
+            }
+        }.toMap()
+        return ClimbingLoad.status(daily, today())
+    }
+
+    /** The climber profile: grade timeline, strength to weight, grade band, correlation, bottlenecks. */
+    fun climberProfile(): ClimberProfileData {
+        val today = today()
+        val rows = logbookRows()
+        val summary = LogbookSummaries.summarize(rows, today)
+        val zone = TimeZone.currentSystemDefault()
+        val sets = PerformanceProfiles.RELEVANT_SLUGS.flatMap { slug -> repo.history(slug, HISTORY_LIMIT) }
+            .filter { it.isCompleted }
+            .mapNotNull { s -> s.completedAt?.let { ms -> dayOfMillis(ms, zone) to s } }
+        return PerformanceProfiles.build(
+            rows, summary, sets, repo.allBenchmarks(), catalog,
+            weightTrend().map { it.day to it.trend }, today,
+        ) { ms -> dayOfMillis(ms, zone) }
+    }
+
+    private fun dayOfMillis(ms: Long, zone: TimeZone): LocalDate =
+        kotlin.time.Instant.fromEpochMilliseconds(ms).toLocalDateTime(zone).date
+
+    /** Climbing outside the board app (gym, rock, another board). */
+    fun saveClimbingDay(entry: ClimbingDayEntry) = repo.saveClimbingDay(entry.copy(updatedAt = System.currentTimeMillis()))
+
+    fun deleteClimbingDay(id: String) = repo.deleteClimbingDay(id)
 
     fun streak(profile: AthleteProfile, activities: Map<String, DayActivity>): StreakState {
         val trainingDays = activities.values.filter { it.trained }.mapNotNull { runCatching { LocalDate.parse(it.day) }.getOrNull() }.toSet()
@@ -215,7 +280,8 @@ class AthleteService @Inject constructor(
         val id = repo.newId()
         repo.transaction {
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
-            routine?.items?.forEachIndexed { index, item -> addItem(id, index, item) }
+            val modifier = todaysModifier()
+            routine?.items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
         }
         id
     }
@@ -224,20 +290,41 @@ class AthleteService @Inject constructor(
     fun addExercise(workoutId: String, slug: String): Boolean = synchronized(structureLock) {
         val def = catalog[slug] ?: return false
         val nextBlock = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
-        addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def))
+        addItem(workoutId, nextBlock, WorkoutPlanner.itemFor(def), todaysModifier())
     }
 
-    private fun addItem(workoutId: String, blockIndex: Int, item: RoutineItem): Boolean {
+    /**
+     * Today's form as a change to the prescription (FEAT-071): the check-in
+     * and hard climbing earlier today trim sets and load of main work.
+     */
+    fun todaysModifier(): ReadinessModifier = runCatching {
+        val today = today()
+        val readiness = ReadinessEvaluator.evaluate(repo.checkin(today.toString()), repo.activeInjuries())
+        val activity = activities(1)[today.toString()]
+        val climbed = activity?.takeIf { it.climbingMinutes > 0 || it.climbingEfforts > 0 }?.climbIntensity
+        ReadinessModifiers.of(readiness, climbed)
+    }.getOrDefault(ReadinessModifier.NONE)
+
+    private fun addItem(workoutId: String, blockIndex: Int, item: RoutineItem, modifier: ReadinessModifier = ReadinessModifier.NONE): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
+        val increment = repo.profile().smallestIncrementKg
+        val adjusted = ReadinessModifiers.applyToItem(item, def, modifier)
         val planned = WorkoutPlanner.plan(
-            workoutId, blockIndex, item, catalog, repo.history(item.slug, 60), repo.activeInjuries(),
+            workoutId, blockIndex, adjusted, catalog, repo.history(item.slug, 60), repo.activeInjuries(),
             bodyweight,
             capacityFor = { side -> capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight) },
-            incrementKg = repo.profile().smallestIncrementKg,
+            incrementKg = increment,
             newId = repo::newId,
         )
-        planned.sets.forEach(repo::saveSet)
+        val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
+        planned.sets.forEach { set ->
+            val scaled = if (factor == 1.0 || set.setType != SetType.WORK) set else set.copy(
+                targetLoadKg = ReadinessModifiers.scaleLoad(def, set.targetLoadKg, set.bodyweightKg ?: bodyweight, factor, increment),
+                loadKg = ReadinessModifiers.scaleLoad(def, set.loadKg, set.bodyweightKg ?: bodyweight, factor, increment),
+            )
+            repo.saveSet(scaled)
+        }
         return !planned.skippedForInjury
     }
 
@@ -423,6 +510,27 @@ class AthleteService @Inject constructor(
 
     fun discardWorkout(id: String) = repo.deleteWorkout(id)
 
+    /** One entry in the recommendation ledger the coach learns preferences from (FEAT-071). */
+    fun logSuggestion(
+        kind: SuggestionEventKind,
+        focus: String?,
+        slugs: List<String>,
+        feedback: SuggestionFeedback? = null,
+        workoutId: String? = null,
+        value: Double? = null,
+    ) {
+        runCatching {
+            repo.logSuggestionEvent(SuggestionEvent(repo.newId(), today().toString(), System.currentTimeMillis(), kind, focus,
+                slugs, feedback, workoutId, value))
+        }
+    }
+
+    /** "Nie vorschlagen": the exercise stays in the library but is never suggested. */
+    fun setExcluded(slug: String, excluded: Boolean) {
+        repo.updateProfile { p -> p.copy(excludedExercises = if (excluded) p.excludedExercises + slug else p.excludedExercises - slug) }
+        if (excluded) logSuggestion(SuggestionEventKind.EXCLUDED, null, listOf(slug))
+    }
+
     /** A routine handed to the editor (today's suggestion), taken once; in memory only. */
     @Volatile private var editorDraft: Routine? = null
     fun offerEditorDraft(routine: Routine) { editorDraft = routine }
@@ -440,6 +548,7 @@ class AthleteService @Inject constructor(
         repo.importLegacyBodyStats(rows.map { AthleteRepository.LegacyBodyStat(it.date, it.statName, it.value, it.unit) })
 
     companion object {
+        const val LEDGER_KEEP_DAYS = 180L
         const val MAX_HANG_SLUG = "finger.max_hang"
         const val OTHER_SIDE_FACTOR = 0.95
 

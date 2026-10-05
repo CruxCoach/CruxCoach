@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FEAT-071: climber profile, load model, climbing outside the app (trl_) -->
+<resources>
+    <string name="trl_profile_title">Climber profile</string>
+    <string name="trl_tile_working">Working grade</string>
+    <string name="trl_tile_working_sub">from %1$d sends</string>
+    <string name="trl_tile_flash">Flash grade</string>
+    <string name="trl_tile_max_sub">hardest: %1$s</string>
+    <string name="trl_tile_finger">Finger strength</string>
+    <string name="trl_tile_finger_sub">max hang 20 mm, total load per body weight</string>
+    <string name="trl_tile_pull">Pull 1RM</string>
+    <string name="trl_tile_pull_sub">weighted pull-up, total load per body weight</string>
+    <string name="trl_empty_title">Your profile starts with a few numbers</string>
+    <string name="trl_empty_text">Log boulders on the board or a climbing day, and add a starting value for max hangs or weighted pull-ups. Then you will see where you stand and how grade and strength move together.</string>
+    <string name="trl_action_values">Add performance values</string>
+    <string name="trl_action_log_climbing">Log a climbing day</string>
+
+    <string name="trl_position_title">Strength by grade</string>
+    <string name="trl_tab_finger">Fingers</string>
+    <string name="trl_tab_pull">Pulling</string>
+    <string name="trl_position_finger_axis">Two-hand hang of about 10 s on a 20 mm edge: body weight plus added weight, in percent of body weight, against the grade you climbed at the time.</string>
+    <string name="trl_position_pull_axis">Weighted pull-up one-rep max: body weight plus added weight, in percent of body weight, against the grade you climbed at the time.</string>
+    <string name="trl_position_no_finger">No finger strength value yet. Enter a max hang (or estimate it), or log one in training.</string>
+    <string name="trl_position_no_pull">No pull value yet. Enter weighted pull-ups or your max pull-ups.</string>
+    <string name="trl_position_no_grade">There is a strength value, but no grade yet: log boulders on the board or a climbing day.</string>
+    <string name="trl_position_you">you: %1$s · %2$s</string>
+    <string name="trl_position_cd">Strength by grade: your newest value %1$s at %2$s, %3$d values in total, shown against the typical range.</string>
+    <string name="trl_legend_band">typical range</string>
+    <string name="trl_legend_you">you over time</string>
+    <string name="trl_position_estimated">Hollow dots are your own estimates; measured values replace them.</string>
+    <string name="trl_subject_finger">Your finger strength</string>
+    <string name="trl_subject_pull">Your pulling strength</string>
+    <string name="trl_reading_below">%1$s (%2$s) is typical for about %3$s – you climb %4$s. Strength could be a lever for you.</string>
+    <string name="trl_reading_above">%1$s (%2$s) is typical for about %3$s – you climb %4$s. Strength is not what holds you back; technique, power or tactics may pay off more.</string>
+    <string name="trl_reading_within">%1$s (%2$s) is in the typical range for %3$s.</string>
+    <string name="trl_reading_no_grade">%1$s (%2$s) is typical for climbers around %3$s.</string>
+
+    <string name="trl_timeline_title">Grade and finger strength over time</string>
+    <string name="trl_timeline_grade">Working grade</string>
+    <string name="trl_timeline_finger">Finger strength</string>
+    <string name="trl_timeline_empty">As soon as there are board sends and finger values, both lines appear here week by week.</string>
+    <string name="trl_timeline_cd">Working grade over %1$d weeks and %2$d finger strength values on a shared time axis.</string>
+    <string name="trl_corr_waiting">%1$d more weeks with both a grade and a finger value, then we show how closely the two move together (now %2$d).</string>
+    <string name="trl_corr_value">r = %1$s over %2$d weeks</string>
+    <string name="trl_corr_strong">Strongly linked: in your data, weeks with stronger fingers are clearly weeks with a higher working grade.</string>
+    <string name="trl_corr_clear">Clearly linked: grade and finger strength usually rise together for you.</string>
+    <string name="trl_corr_weak">Weakly linked: other things move your grade at least as much as finger strength.</string>
+    <string name="trl_corr_none">Hardly linked so far: your grade moves largely independently of finger strength.</string>
+    <string name="trl_corr_negative">Opposite so far: in weeks with more finger strength your grade was lower – often fatigue from a strength block.</string>
+    <string name="trl_corr_note">A correlation shows moving together, not cause and effect.</string>
+
+    <string name="trl_gap_title">Flash and limit</string>
+    <string name="trl_gap_flash">Flash</string>
+    <string name="trl_gap_working">Working grade</string>
+    <string name="trl_gap_max">Hardest</string>
+    <string name="trl_gap_cd">Flash level %1$s, working grade %2$s.</string>
+    <string name="trl_gap_small">Only %1$d steps between flash and working grade: you rarely try at your limit. Limit bouldering and projects can open up new grades.</string>
+    <string name="trl_gap_normal">%1$d steps between flash and working grade – a balanced mix of volume and limit climbing.</string>
+    <string name="trl_gap_large">%1$d steps between flash and working grade: projecting works, flashing lags. More volume near flash level builds the base.</string>
+    <string name="trl_attempts_tile">Attempts per send</string>
+    <string name="trl_attempts_sub">last 12 weeks</string>
+    <string name="trl_angle_tile">Most-climbed angle</string>
+
+    <string name="trl_pickup_title">One-arm pick-up per hand</string>
+    <string name="trl_pickup_cd">One-arm pick-up per hand in percent of body weight over time.</string>
+    <string name="trl_pickup_balanced">Both hands are within five percent of each other.</string>
+    <string name="trl_pickup_imbalance">The %1$s hand is %2$d %% stronger.</string>
+
+    <string name="trl_load_title">Load</string>
+    <string name="trl_load_cd">Daily load on %1$s over eight weeks with 7-day and 28-day mean; trend: %2$s.</string>
+    <string name="trl_legend_acute">7-day mean</string>
+    <string name="trl_legend_chronic">28-day mean</string>
+    <string name="trl_load_note">Board sessions count by attempts and how hard they were for you, climbing outside the app by minutes and intensity, training by load and time. Compared only with your own normal.</string>
+    <string name="trl_structure_finger">Fingers</string>
+    <string name="trl_structure_skin">Skin</string>
+    <string name="trl_structure_shoulder">Shoulders</string>
+    <string name="trl_trend_low">low</string>
+    <string name="trl_trend_normal">normal</string>
+    <string name="trl_trend_rising">rising</string>
+    <string name="trl_trend_spike">jump</string>
+    <string name="trl_trend_low_text">Well below your normal – fine after a pause or as a deload; build up again gradually.</string>
+    <string name="trl_trend_normal_text">In the range of your last four weeks.</string>
+    <string name="trl_trend_rising_text">+%1$d %% against your normal: fine for a while if you recover well.</string>
+    <string name="trl_trend_spike_text">+%1$d %% against your normal: load is rising faster than tissue adapts. The coach suggests less maximal finger work for a few days.</string>
+    <string name="trl_trend_new_text">Load is building up without much history yet – start gently.</string>
+
+    <string name="trl_bottleneck_title">Strengths and bottlenecks</string>
+    <string name="trl_area_finger">Fingers</string>
+    <string name="trl_area_pull">Pulling</string>
+    <string name="trl_area_power">Limit and power</string>
+    <string name="trl_area_endurance">Endurance</string>
+    <string name="trl_area_core">Core</string>
+    <string name="trl_reason_below">below what is typical for your grade</string>
+    <string name="trl_reason_within">typical for your grade</string>
+    <string name="trl_reason_above">above what is typical for your grade</string>
+    <string name="trl_reason_gap_normal">flash and working grade in a balanced ratio</string>
+    <string name="trl_reason_large_gap">big gap between flash and working grade</string>
+    <string name="trl_reason_small_gap">rarely tries at the limit</string>
+    <string name="trl_reason_no_norm">logged, but there is no grade comparison for it</string>
+    <string name="trl_reason_no_finger">no finger value yet</string>
+    <string name="trl_reason_no_pull">no pull value yet</string>
+    <string name="trl_reason_no_grade">no graded board sends yet</string>
+    <string name="trl_reason_no_endurance">no repeaters logged yet</string>
+    <string name="trl_reason_no_core">no core values logged yet</string>
+    <string name="trl_disclaimer">The typical ranges are a rough orientation built from published climbing research and coaching surveys. People differ a lot – it is neither a goal nor a ranking, and nothing here suggests a body weight.</string>
+
+    <string name="trl_card_grade">Working grade %1$s</string>
+    <string name="trl_card_finger">fingers %1$s</string>
+    <string name="trl_card_empty">Grade, strength to weight, load</string>
+    <string name="trl_card_hint">Where you stand, how grade and finger strength move together</string>
+
+    <string name="trl_day_title">Log a climbing day</string>
+    <string name="trl_day_edit_title">Edit climbing day</string>
+    <string name="trl_day_intro">Gym, rock or another board: so recovery rules, streak, stats and fueling know about it.</string>
+    <string name="trl_day_today">Today</string>
+    <string name="trl_day_yesterday">Yesterday</string>
+    <string name="trl_day_pick">Pick a date</string>
+    <string name="trl_day_kind">Where</string>
+    <string name="trl_day_minutes">How long</string>
+    <string name="trl_day_minutes_value">%1$d min</string>
+    <string name="trl_day_minutes_less">15 minutes less</string>
+    <string name="trl_day_minutes_more">15 minutes more</string>
+    <string name="trl_day_intensity">How hard</string>
+    <string name="trl_day_note">Note (optional)</string>
+    <string name="trl_day_from_health">Imported from Health Connect.</string>
+    <string name="trl_kind_gym_boulder">Gym bouldering</string>
+    <string name="trl_kind_gym_rope">Gym rope</string>
+    <string name="trl_kind_outdoor">Rock</string>
+    <string name="trl_kind_other_board">Another board</string>
+    <string name="trl_kind_other">Other</string>
+    <string name="trl_intensity_light">Easy</string>
+    <string name="trl_intensity_light_hint">well below your flash level, technique or recovery</string>
+    <string name="trl_intensity_volume">Moderate</string>
+    <string name="trl_intensity_volume_hint">many routes around your flash level</string>
+    <string name="trl_intensity_hard">Hard</string>
+    <string name="trl_intensity_hard_hint">close to your working grade, several hard tries</string>
+    <string name="trl_intensity_limit">Limit</string>
+    <string name="trl_intensity_limit_hint">projects at or above your working grade, maximal moves</string>
+    <string name="trl_days_title">Climbing days</string>
+    <string name="trl_days_empty">No climbing outside the board app logged yet.</string>
+    <string name="trl_days_source_health">Health Connect</string>
+</resources>

@@ -326,4 +326,39 @@ class TrainingScreensSmokeTest {
             viewModel = com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service)) }
         scrollTo("exercise_stats_list", hasTestTag("exercise_stats_chart"))
     }
+
+    @Test
+    fun `climber profile renders and explains what is missing`() {
+        service.saveClimbingDay(ClimbingDayEntry("cd1", service.today().toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        render { com.cruxcoach.android.ui.training.stats.ClimberProfileScreen({}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.stats.ClimberProfileViewModel(service)) }
+        waitForTag("climber_profile_list")
+    }
+
+    @Test
+    fun `manual climbing day counts as a hard climbing day and is listed`() {
+        val today = service.today().toString()
+        service.saveClimbingDay(ClimbingDayEntry("cd2", today, ClimbingDayKind.OUTDOOR, 120, ClimbIntensity.LIMIT))
+        val day = service.activities(2)[today]
+        assert(day != null && day.climbIntensity == ClimbIntensity.LIMIT && day.climbingMinutes >= 120) { "$day" }
+        assert((day?.fingerLoad ?: 0.0) > 0.0)
+        render { com.cruxcoach.android.ui.training.today.ClimbingDaysScreen({},
+            viewModel = com.cruxcoach.android.ui.training.today.ClimbingDaysViewModel(service)) }
+        waitForTag("climbing_day_row_cd2")
+    }
+
+    @Test
+    fun `coach setup renders its first card`() {
+        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service,
+                mockk(relaxed = true), mockk(relaxed = true))) }
+        waitForTag("coach_next")
+    }
+
+    @Test
+    fun `force gauge screen renders without a device`() {
+        render { com.cruxcoach.android.athlete.force.ForceGaugeScreen({},
+            viewModel = com.cruxcoach.android.athlete.force.ForceGaugeViewModel(context, service)) }
+        waitForTag("force_gauge")
+    }
 }

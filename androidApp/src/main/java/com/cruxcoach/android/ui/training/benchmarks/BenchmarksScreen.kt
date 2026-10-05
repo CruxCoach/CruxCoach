@@ -56,6 +56,8 @@ data class BenchmarkRow(
     /** Newest value per side (null key = two-handed). */
     val values: Map<Side?, Benchmark>,
     val injury: InjuryAdvice,
+    /** Estimated / being learnt / known (FEAT-071). */
+    val learning: LearningState.State = LearningState.State.None,
 )
 
 data class BenchmarksState(
@@ -64,6 +66,8 @@ data class BenchmarksState(
     val others: List<BenchmarkRow> = emptyList(),
     val profile: AthleteProfile = AthleteProfile(),
     val bodyweight: Double? = null,
+    /** Grade anchor for the plausibility hint: the athlete's grade or the logbook's working grade. */
+    val workingDifficulty: Double? = null,
 )
 
 sealed interface BenchmarkEvent { data object TestStarted : BenchmarkEvent }
@@ -79,12 +83,15 @@ class BenchmarksViewModel @Inject constructor(private val service: AthleteServic
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
+            val logbook = runCatching { service.logbookSummary() }.getOrNull()
             combine(repo.observeAllBenchmarks(), repo.observeProfile(), repo.observeActiveInjuries()) { all, profile, injuries ->
                 val catalog = service.catalog
                 val bySlug = all.groupBy { it.exerciseSlug }
                 fun row(slug: String): BenchmarkRow? {
                     val def = catalog[slug] ?: return null
-                    return BenchmarkRow(def, latestPerSide(bySlug[slug].orEmpty()), InjuryAdvisor.assess(def, injuries))
+                    val list = bySlug[slug].orEmpty()
+                    return BenchmarkRow(def, latestPerSide(list), InjuryAdvisor.assess(def, injuries),
+                        LearningState.of(slug, list, com.cruxcoach.android.ui.training.coach.workSessionCount(service, slug)))
                 }
                 BenchmarksState(
                     loading = false,
@@ -93,6 +100,7 @@ class BenchmarksViewModel @Inject constructor(private val service: AthleteServic
                         .sortedBy { it.def.name("en") },
                     profile = profile,
                     bodyweight = service.currentBodyweight(),
+                    workingDifficulty = workingDifficulty(profile, logbook),
                 )
             }.collect { _state.value = it }
         }
@@ -109,16 +117,40 @@ class BenchmarksViewModel @Inject constructor(private val service: AthleteServic
 internal fun latestPerSide(list: List<Benchmark>): Map<Side?, Benchmark> =
     list.groupBy { it.side }.mapValues { (_, v) -> v.maxBy { it.measuredAt } }
 
+/** The athlete's own grade first, then the logbook's working grade when it rests on enough sends. */
+internal fun workingDifficulty(profile: AthleteProfile, logbook: LogbookSummary?): Double? =
+    profile.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: logbook?.takeIf { it.hasGrades }?.workingDifficulty
+
+/**
+ * The value in % body weight on a scale [GradeStrengthNorms] knows (10-s
+ * max on ~20 mm with both hands, pull-up 1RM), or null for other protocols.
+ */
+internal fun normValue(def: ExerciseDefinition, b: Benchmark, bodyweight: Double?): Pair<GradeStrengthNorms.Metric, Double>? {
+    val bw = (b.bodyweightKg ?: bodyweight)?.takeIf { it > 0 } ?: return null
+    val cap = BenchmarkMath.capacity(def, b, bw) ?: return null
+    return when {
+        def.slug == "finger.max_hang" && cap.kind == CapacityKind.TEN_SECOND_MAX && (b.edgeMm?.let { kotlin.math.abs(it - 20.0) <= 2.0 } ?: true) ->
+            GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM to cap.value / bw * 100.0
+        def.slug == "pull.weighted_pull_up" && cap.kind == CapacityKind.E1RM_TOTAL ->
+            GradeStrengthNorms.Metric.PULL_UP_1RM to cap.value / bw * 100.0
+        def.slug == "pull.pull_up" && cap.kind == CapacityKind.MAX_REPS ->
+            GradeStrengthNorms.Metric.PULL_UP_1RM to StrengthMath.epley(bw, cap.value.roundToInt()) / bw * 100.0
+        else -> null
+    }
+}
+
 @Composable
 fun BenchmarksScreen(
     onBack: () -> Unit,
     onOpenExercise: (String) -> Unit,
     onTestStarted: () -> Unit,
     viewModel: BenchmarksViewModel = hiltViewModel(),
+    onOpenForceGauge: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lang = catalogLanguage()
     var entry by remember { mutableStateOf<ExerciseDefinition?>(null) }
+    var estimating by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is BenchmarkEvent.TestStarted) onTestStarted() } }
 
     TrainingScaffold(
@@ -138,19 +170,24 @@ fun BenchmarksScreen(
                     Text(stringResource(R.string.trbm_needs_weight), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
                 }
+                OutlinedButton(onClick = { estimating = true }, modifier = Modifier.padding(top = 8.dp).testTag("benchmarks_quick_estimate")) {
+                    Text(stringResource(R.string.trc_quick_estimate))
+                }
+                Text(stringResource(R.string.trc_quick_estimate_hint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item { SectionTitle(stringResource(R.string.trbm_key_title)) }
             items(state.key, key = { it.def.slug }) { row ->
-                BenchmarkRowCard(row, lang, state.profile, state.bodyweight,
+                BenchmarkRowCard(row, lang, state.profile, state.bodyweight, state.workingDifficulty,
                     onOpen = { onOpenExercise(row.def.slug) }, onEnter = { entry = row.def },
-                    onTest = { viewModel.startTest(row.def.slug) })
+                    onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge)
             }
             if (state.others.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trbm_other_title)) }
                 items(state.others, key = { "o-" + it.def.slug }) { row ->
-                    BenchmarkRowCard(row, lang, state.profile, state.bodyweight,
+                    BenchmarkRowCard(row, lang, state.profile, state.bodyweight, state.workingDifficulty,
                         onOpen = { onOpenExercise(row.def.slug) }, onEnter = { entry = row.def },
-                        onTest = { viewModel.startTest(row.def.slug) })
+                        onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge)
                 }
             }
             item {
@@ -165,8 +202,10 @@ fun BenchmarksScreen(
                 ?.takeIf { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }?.allowedSide,
             newId = viewModel::newId,
             onDismiss = { entry = null },
-            onSave = { viewModel.save(it); entry = null })
+            onSave = { viewModel.save(it); entry = null },
+            workingDifficulty = state.workingDifficulty)
     }
+    if (estimating) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { estimating = false })
 }
 
 @Composable
@@ -175,14 +214,22 @@ private fun BenchmarkRowCard(
     lang: String,
     profile: AthleteProfile,
     bodyweight: Double?,
+    workingDifficulty: Double?,
     onOpen: () -> Unit,
     onEnter: () -> Unit,
     onTest: () -> Unit,
+    onForceGauge: () -> Unit,
 ) {
     val paused = row.injury.verdict == InjuryVerdict.AVOID
     Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("benchmark_row_${row.def.slug}")) {
         Column(Modifier.padding(16.dp)) {
-            Text(row.def.name(lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(row.def.name(lang), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                com.cruxcoach.android.ui.training.coach.learningLabel(row.learning)?.let { label ->
+                    SuggestionChip(onClick = {}, label = { Text(label) }, modifier = Modifier.testTag("benchmark_learning_${row.def.slug}"))
+                }
+            }
             val sides: List<Side?> = if (row.def.unilateral) listOf(Side.LEFT, Side.RIGHT) else listOf(null)
             sides.forEach { side ->
                 val b = row.values[side]
@@ -194,6 +241,9 @@ private fun BenchmarkRowCard(
                 if (b != null) {
                     Text(stringResource(R.string.trbm_meta, sourceLabel(b.source), formatDay(b.measuredAt)),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    normValue(row.def, b, bodyweight)?.let { (metric, pct) ->
+                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
+                    }
                 }
             }
             if (paused) {
@@ -206,6 +256,11 @@ private fun BenchmarkRowCard(
                 }
                 OutlinedButton(onClick = onTest, enabled = !paused, modifier = Modifier.testTag("benchmark_test_${row.def.slug}")) {
                     Icon(Icons.Default.Speed, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.trbm_test))
+                }
+            }
+            if (profile.coach.forceGaugeEnabled && row.def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER && !paused) {
+                TextButton(onClick = onForceGauge, modifier = Modifier.testTag("benchmark_force_${row.def.slug}")) {
+                    Text(stringResource(R.string.trc_force_measure))
                 }
             }
         }
@@ -280,6 +335,8 @@ fun BenchmarkEntryDialog(
     newId: () -> String,
     onDismiss: () -> Unit,
     onSave: (Benchmark) -> Unit,
+    /** Grade anchor for the plausibility hint; null shows none. */
+    workingDifficulty: Double? = null,
 ) {
     val units = profile.units
     val kind = BenchmarkMath.capacityKind(def) ?: run { onDismiss(); return }
@@ -375,6 +432,9 @@ fun BenchmarkEntryDialog(
                         Text(prescriptionText(def, target, units), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    normValue(def, draft, bodyweight)?.let { (metric, pct) ->
+                        com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
+                    }
                 }
             }
         },
@@ -414,6 +474,8 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
         val bodyweight: Double? = null,
         val injury: InjuryAdvice = InjuryAdvice(InjuryVerdict.OK),
         val target: Map<Side?, LoadTarget> = emptyMap(),
+        val learning: LearningState.State = LearningState.State.None,
+        val workingDifficulty: Double? = null,
     )
     private val _state = MutableStateFlow(CardState())
     val state: StateFlow<CardState> = _state.asStateFlow()
@@ -427,6 +489,7 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
+            val logbook = runCatching { service.logbookSummary() }.getOrNull()
             combine(repo.observeBenchmarks(slug), repo.observeProfile(), repo.observeActiveInjuries()) { list, profile, injuries ->
                 val def = service.catalog[slug]
                 val bw = service.currentBodyweight()
@@ -438,7 +501,9 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
                         LoadPrescriber.prescribe(def, WorkoutPlanner.itemFor(def), cap, bw, profile.smallestIncrementKg)?.let { side to it }
                     }.toMap()
                 }
-                CardState(def, values, profile, bw, def?.let { InjuryAdvisor.assess(it, injuries) } ?: InjuryAdvice(InjuryVerdict.OK), targets)
+                CardState(def, values, profile, bw, def?.let { InjuryAdvisor.assess(it, injuries) } ?: InjuryAdvice(InjuryVerdict.OK), targets,
+                    learning = LearningState.of(slug, list, com.cruxcoach.android.ui.training.coach.workSessionCount(service, slug)),
+                    workingDifficulty = workingDifficulty(profile, logbook))
             }.collect { _state.value = it }
         }
     }
@@ -453,7 +518,13 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
 
 /** Performance value of one exercise: what is known, what it plans, enter or test. */
 @Composable
-fun BenchmarkCard(slug: String, onTestStarted: () -> Unit, viewModel: BenchmarkCardViewModel = hiltViewModel(key = "benchmark-$slug")) {
+fun BenchmarkCard(
+    slug: String,
+    onTestStarted: () -> Unit,
+    viewModel: BenchmarkCardViewModel = hiltViewModel(key = "benchmark-$slug"),
+    /** Shown on finger exercises once a force gauge is enabled; null hides it. */
+    onOpenForceGauge: (() -> Unit)? = null,
+) {
     LaunchedEffect(slug) { viewModel.load(slug) }
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is BenchmarkEvent.TestStarted) onTestStarted() } }
     val s by viewModel.state.collectAsStateWithLifecycle()
@@ -464,6 +535,9 @@ fun BenchmarkCard(slug: String, onTestStarted: () -> Unit, viewModel: BenchmarkC
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.trbm_card_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                com.cruxcoach.android.ui.training.coach.learningLabel(s.learning)?.let { label ->
+                    SuggestionChip(onClick = {}, label = { Text(label) }, modifier = Modifier.testTag("exercise_benchmark_learning"))
+                }
                 InfoButton(stringResource(R.string.trbm_title), stringResource(R.string.trbm_info))
             }
             val sides: List<Side?> = if (def.unilateral) listOf(Side.LEFT, Side.RIGHT) else listOf(null)
@@ -484,11 +558,18 @@ fun BenchmarkCard(slug: String, onTestStarted: () -> Unit, viewModel: BenchmarkC
                 OutlinedButton(onClick = viewModel::startTest, enabled = s.injury.verdict != InjuryVerdict.AVOID,
                     modifier = Modifier.testTag("exercise_benchmark_test")) { Text(stringResource(R.string.trbm_test)) }
             }
+            if (onOpenForceGauge != null && s.profile.coach.forceGaugeEnabled &&
+                def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER && s.injury.verdict != InjuryVerdict.AVOID) {
+                TextButton(onClick = onOpenForceGauge, modifier = Modifier.testTag("exercise_benchmark_force")) {
+                    Text(stringResource(R.string.trc_force_measure))
+                }
+            }
         }
     }
     if (entering) {
         BenchmarkEntryDialog(def, s.profile, s.bodyweight,
             allowedSide = s.injury.takeIf { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }?.allowedSide,
-            newId = viewModel::newId, onDismiss = { entering = false }, onSave = { viewModel.save(it); entering = false })
+            newId = viewModel::newId, onDismiss = { entering = false }, onSave = { viewModel.save(it); entering = false },
+            workingDifficulty = s.workingDifficulty)
     }
 }

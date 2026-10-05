@@ -61,6 +61,12 @@
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <!-- FEAT-071 coach: optional, read-only Health Connect access. Sleep
+         prefills the check-in (never auto-saved), exercise sessions become
+         climbing days. Nothing leaves the device. -->
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+
     <queries>
         <!-- Optional local MoonBoard migration. Used only after the user taps
              the migration action; no Moon credentials are requested. -->
@@ -81,6 +87,8 @@
         <package android:name="com.samsung.android.lool" />
         <package android:name="com.samsung.android.sm" />
         <package android:name="com.oneplus.security" />
+        <!-- FEAT-071: Health Connect provider (Android 9–13; built into 14+). -->
+        <package android:name="com.google.android.apps.healthdata" />
     </queries>
 
     <application
@@ -144,6 +152,28 @@
                       android:pathPrefix="/l/" />
             </intent-filter>
         </activity>
+
+        <!-- FEAT-071: Health Connect privacy rationale. Health Connect links
+             here from its permission screen (Android 9–13) and Android 14+
+             from the system permission-usage view (activity-alias below). -->
+        <activity
+            android:name=".athlete.health.HealthPermissionsRationaleActivity"
+            android:exported="true"
+            android:theme="@style/Theme.CruxCoach">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".athlete.health.HealthPermissionsRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- AppCompat per-app language persistence (pre-Android 13) -->
         <service

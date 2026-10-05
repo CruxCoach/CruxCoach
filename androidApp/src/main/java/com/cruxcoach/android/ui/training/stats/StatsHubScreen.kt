@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,6 +75,9 @@ data class StatsHubState(
     val strength: Map<String, List<Pair<LocalDate, Double>>> = emptyMap(),
     val strengthDefs: Map<String, ExerciseDefinition> = emptyMap(),
     val exercises: List<ExerciseRow> = emptyList(),
+    /** Teaser of the climber profile and the current load per structure. */
+    val logbook: LogbookSummary = LogbookSummary(),
+    val load: LoadStatus? = null,
 ) {
     val hasAnyData: Boolean get() = weeks.any { it.trainingDays > 0 } || exercises.isNotEmpty() || weight.isNotEmpty()
 }
@@ -151,6 +155,9 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
                 if (points.isEmpty()) null else slug to points
             }.toMap()
 
+            val logbook = service.logbookSummary()
+            val load = runCatching { service.loadStatus() }.getOrNull()
+
             // A cancelled load keeps running its blocking queries; it must not overwrite a newer range.
             ensureActive()
             if (_state.value.range != range) return@launch
@@ -171,6 +178,8 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
                 strength = strength,
                 strengthDefs = strength.keys.mapNotNull { slug -> catalog[slug]?.let { slug to it } }.toMap(),
                 exercises = rows,
+                logbook = logbook,
+                load = load,
             )
         }
     }
@@ -186,6 +195,7 @@ fun StatsHubScreen(
     onOpenBenchmarks: () -> Unit,
     viewModel: StatsHubViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
+    onOpenClimberProfile: () -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     var entered by rememberSaveable { mutableStateOf(false) }
@@ -222,6 +232,8 @@ fun StatsHubScreen(
                         supporting = rangeLabel(s.range))
                 }
             }
+            item { ClimberProfileCard(s, onOpenClimberProfile) }
+            s.load?.let { load -> item { LoadChips(load, onOpenClimberProfile) } }
             if (!s.hasAnyData) {
                 item { EmptyHint(stringResource(R.string.trs_empty)) }
             }
@@ -350,3 +362,57 @@ private fun ExerciseStatsRow(row: ExerciseRow, lang: String, profile: AthletePro
         modifier = Modifier.clickable(onClick = onClick).testTag("stats_exercise_${row.def.slug}"),
     )
 }
+
+/** Entry to the climber profile: grade, finger strength, and how the two relate. */
+@Composable
+private fun ClimberProfileCard(s: StatsHubState, onOpen: () -> Unit) {
+    val finger = s.strength["finger.max_hang"]?.lastOrNull()?.second
+    val parts = listOfNotNull(
+        s.logbook.workingDifficulty?.let { stringResource(R.string.trl_card_grade, fontLabel(it)) },
+        finger?.let { stringResource(R.string.trl_card_finger, "${it.roundToInt()} %") },
+    )
+    ElevatedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("stats_climber_profile")) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Insights, contentDescription = null,
+                tint = CruxCoachDesign.colors.brandAccent, modifier = Modifier.size(32.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.trl_profile_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (parts.isEmpty()) stringResource(R.string.trl_card_empty) else parts.joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(stringResource(R.string.trl_card_hint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+/** Current load per structure in one line; details live in the climber profile. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LoadChips(load: LoadStatus, onOpen: () -> Unit) {
+    Column(Modifier.testTag("stats_load")) {
+        Text(stringResource(R.string.trl_load_title), style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LoadStructure.entries.forEach { st ->
+                val trend = load.structures[st]?.trend ?: LoadTrend.LOW
+                AssistChip(
+                    onClick = onOpen,
+                    label = { Text(structureLabel(st) + " · " + trendLabel(trend)) },
+                    colors = when (trend) {
+                        LoadTrend.SPIKE -> AssistChipDefaults.assistChipColors(containerColor = CruxCoachDesign.colors.cautionContainer,
+                            labelColor = CruxCoachDesign.colors.onCautionContainer)
+                        LoadTrend.RISING -> AssistChipDefaults.assistChipColors(labelColor = CruxCoachDesign.colors.caution)
+                        else -> AssistChipDefaults.assistChipColors()
+                    },
+                    modifier = Modifier.testTag("stats_load_${st.name.lowercase()}"),
+                )
+            }
+        }
+    }
+}
+

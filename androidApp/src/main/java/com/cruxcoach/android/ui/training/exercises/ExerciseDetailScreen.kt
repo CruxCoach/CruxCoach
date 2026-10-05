@@ -9,6 +9,9 @@ import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -79,6 +82,8 @@ data class ExerciseDetailState(
     val bests: List<BestEntry> = emptyList(),
     val navigateToWorkout: Boolean = false,
     val addRejected: Boolean = false,
+    /** "Nie vorschlagen": never part of a suggestion (FEAT-071). */
+    val excluded: Boolean = false,
 )
 
 @HiltViewModel
@@ -111,6 +116,7 @@ class ExerciseDetailViewModel @Inject constructor(private val service: AthleteSe
                     chain = if (def != null) catalog.chainOf(def.slug) else emptyList(),
                     advice = if (def != null) InjuryAdvisor.assess(def, injuries) else InjuryAdvice(InjuryVerdict.OK),
                     favorite = slug in favorites,
+                    excluded = slug in profile.excludedExercises,
                     openWorkout = open,
                     profile = profile,
                     sessions = sessionsOf(history),
@@ -144,6 +150,12 @@ class ExerciseDetailViewModel @Inject constructor(private val service: AthleteSe
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.repo.setFavorite(slug, favorite) }
     }
 
+    fun toggleExcluded() {
+        val slug = loadedSlug ?: return
+        val excluded = !_state.value.excluded
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.setExcluded(slug, excluded) }
+    }
+
     /** Adds the exercise to the running training, or starts one with it. */
     fun addToTraining(title: String) {
         val slug = loadedSlug ?: return
@@ -171,6 +183,7 @@ fun ExerciseDetailScreen(
     viewModel: ExerciseDetailViewModel = hiltViewModel(),
     onOpenStats: (String) -> Unit = {},
     onCreateRoutine: (from: String) -> Unit = {},
+    onOpenForceGauge: () -> Unit = {},
 ) {
     LaunchedEffect(slug) { viewModel.load(slug) }
     var addSheet by remember { mutableStateOf(false) }
@@ -200,6 +213,20 @@ fun ExerciseDetailScreen(
                         tint = if (state.favorite) CruxCoachDesign.colors.brandAccent else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.testTag("exercise_detail_more")) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.tre_more_actions))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(if (state.excluded) R.string.tre_include else R.string.tre_exclude)) },
+                            leadingIcon = { Icon(if (state.excluded) Icons.Default.Visibility else Icons.Default.Block, null) },
+                            onClick = { menu = false; viewModel.toggleExcluded() },
+                            modifier = Modifier.testTag("exercise_detail_exclude"),
+                        )
+                    }
+                }
             }
         },
     ) { padding ->
@@ -214,11 +241,15 @@ fun ExerciseDetailScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     item { Header(def, language) }
+                    if (state.excluded) item {
+                        AssistChip(onClick = viewModel::toggleExcluded, label = { Text(stringResource(R.string.tre_excluded_info)) },
+                            leadingIcon = { Icon(Icons.Default.Block, null) }, modifier = Modifier.testTag("exercise_detail_excluded"))
+                    }
                     if (state.advice.verdict != InjuryVerdict.OK) item { InjuryBanner(state.advice) }
                     item { TextSections(def, language) }
                     item { Facts(def) }
                     if (state.chain.size > 1) item { ChainStepper(state.chain, def.slug, language, onOpenExercise) }
-                    item { com.cruxcoach.android.ui.training.benchmarks.BenchmarkCard(def.slug, onTestStarted = onOpenWorkout) }
+                    item { com.cruxcoach.android.ui.training.benchmarks.BenchmarkCard(def.slug, onTestStarted = onOpenWorkout, onOpenForceGauge = onOpenForceGauge) }
                     item {
                         Spacer(Modifier.height(8.dp))
                         com.cruxcoach.android.ui.training.stats.ExerciseProgressCard(def.slug, onOpenStats = { onOpenStats(def.slug) })

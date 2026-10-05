@@ -210,6 +210,11 @@ private fun SetView(
             }
         }
 
+        // While a starting value is still being learnt, say how the athlete teaches it.
+        if (set.setType == SetType.WORK) {
+            com.cruxcoach.android.ui.training.coach.LearningBadge(def.slug, Modifier.padding(top = 8.dp))
+        }
+
         // Target, big.
         Card(Modifier.fillMaxWidth().padding(top = 16.dp)) {
             Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {

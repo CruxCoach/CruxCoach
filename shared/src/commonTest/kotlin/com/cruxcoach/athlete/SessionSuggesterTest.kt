@@ -214,4 +214,216 @@ class SessionSuggesterTest {
         assertTrue(SuggestionReason.LOW_ENERGY in tired.reasons)
         assertTrue(tired.estimatedMinutes <= 36, "was ${tired.estimatedMinutes}")
     }
+
+    // ── FEAT-071: load model, coach profile, blocks, learning ───────
+
+    private val yesterday get() = monday.minus(DatePeriod(days = 1))
+    private val big = profile.copy(sessionMinutes = 120)
+
+    private fun climbed(day: LocalDate, intensity: ClimbIntensity?) =
+        mapOf(day to DayActivity(day.toString(), climbingMinutes = 60, climbingEfforts = 30, climbIntensity = intensity))
+
+    private fun mainSets(s: SessionSuggestion) = s.routine.items.filter { !it.warmup }.sumOf { it.sets }
+
+    @Test
+    fun limitSessionYesterdayBlocksMaxFingerWork() {
+        val s = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.LIMIT)))
+        assertTrue(s.focus == SuggestionFocus.PULL_PUSH || s.focus == SuggestionFocus.LEGS_CORE, "${s.focus}")
+        assertTrue(SuggestionReason.RECOVERY_AFTER_LIMIT in s.reasons, "${s.reasons}")
+        assertTrue(s.basedOn.any { it is Evidence.Climbing && it.daysAgo == 1 && it.intensity == ClimbIntensity.LIMIT }, "${s.basedOn}")
+    }
+
+    @Test
+    fun lightClimbingYesterdayKeepsTheFingerDay() {
+        val s = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.LIGHT)))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, s.focus, "${s.reasons}")
+    }
+
+    @Test
+    fun volumeClimbingFollowsTheRecoveryHours() {
+        val blocked = ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, null) > 24
+        val s = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.VOLUME)))
+        assertEquals(blocked, s.focus != SuggestionFocus.FINGER_STRENGTH, "${s.focus} ${s.reasons}")
+        if (blocked) assertTrue(SuggestionReason.RECOVERY_AFTER_VOLUME in s.reasons)
+    }
+
+    @Test
+    fun mastersGetAnExtraDayAfterFingerSets() {
+        val twoDaysAgo = monday.minus(DatePeriod(days = 2))
+        val hang = ExerciseSet("x", "w", "finger.max_hang", 0, 0, durationS = 10.0, completedAt = 1)
+        val young = SessionSuggester.suggest(input().copy(recentSets = listOf(twoDaysAgo to hang)))
+        val masters = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(ageBand = AgeBand.Y55_PLUS)))
+            .copy(recentSets = listOf(twoDaysAgo to hang)))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, young.focus)
+        assertTrue(masters.focus != SuggestionFocus.FINGER_STRENGTH, "${masters.focus}")
+        assertTrue(SuggestionReason.GUARDRAIL_MASTERS in masters.reasons, "${masters.reasons}")
+    }
+
+    @Test
+    fun mastersRecoveryFromClimbingFollowsTheLoadModel() {
+        val twoDaysAgo = monday.minus(DatePeriod(days = 2))
+        val youngBlocked = ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, null) > 48
+        val oldBlocked = ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, AgeBand.Y55_PLUS) > 48
+        val young = SessionSuggester.suggest(input(activities = climbed(twoDaysAgo, ClimbIntensity.LIMIT)))
+        val old = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(ageBand = AgeBand.Y55_PLUS)),
+            activities = climbed(twoDaysAgo, ClimbIntensity.LIMIT)))
+        assertEquals(youngBlocked, young.focus != SuggestionFocus.FINGER_STRENGTH)
+        assertEquals(oldBlocked, old.focus != SuggestionFocus.FINGER_STRENGTH)
+        if (oldBlocked && !youngBlocked) assertTrue(SuggestionReason.GUARDRAIL_MASTERS in old.reasons)
+    }
+
+    @Test
+    fun risingFingerLoadMeansNoMaxFingerWork() {
+        val status = LoadStatus(mapOf(LoadStructure.FINGER to StructureLoad(30.0, 15.0, 2.0, LoadTrend.SPIKE)), emptyMap())
+        val s = SessionSuggester.suggest(input().copy(loadStatus = status))
+        assertTrue(s.focus != SuggestionFocus.FINGER_STRENGTH)
+        assertTrue(SuggestionReason.FINGER_LOAD_RISING in s.reasons)
+        assertTrue(s.basedOn.contains(Evidence.LoadTrendNote(LoadStructure.FINGER, LoadTrend.SPIKE)))
+        assertTrue(slugs(s).none { LoadDomain.FINGER in catalog[it]!!.domains })
+    }
+
+    @Test
+    fun youngClimbersGetNoMaxHangsOrOneArmWork() {
+        val s = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(ageBand = AgeBand.UNDER_16))))
+        assertTrue("finger.max_hang" !in slugs(s) && "finger.one_arm_pickup" !in slugs(s), "${slugs(s)}")
+        assertEquals(SuggestionReason.GUARDRAIL_YOUTH, s.reasons.first(), "${s.reasons}")
+        assertTrue(s.basedOn.contains(Evidence.Guardrail(GuardrailKind.YOUTH)))
+    }
+
+    @Test
+    fun secondYearClimbersAreGuardedUntilAValueExists() {
+        val coach = CoachProfile(experience = ExperienceBand.Y1_2)
+        val guarded = SessionSuggester.suggest(input(profile = profile.copy(coach = coach)))
+        assertTrue(SuggestionReason.GUARDRAIL_NOVICE in guarded.reasons)
+        assertTrue("finger.max_hang" !in slugs(guarded))
+        val known = SessionSuggester.suggest(input(profile = profile.copy(coach = coach)).copy(benchmarkSlugs = setOf("finger.max_hang")))
+        assertTrue(SuggestionReason.GUARDRAIL_NOVICE !in known.reasons)
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, known.focus)
+    }
+
+    @Test
+    fun fingerPreferencePicksTheFamily() {
+        fun finger(pref: FingerPreference) = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(fingerPreference = pref))))
+        assertTrue("finger.one_arm_pickup" in slugs(finger(FingerPreference.PICKUP)))
+        assertTrue("finger.one_arm_pickup" in slugs(finger(FingerPreference.ONE_ARM)))
+        assertTrue("finger.max_hang" in slugs(finger(FingerPreference.HANGBOARD)))
+        val none = finger(FingerPreference.NONE)
+        assertTrue(none.focus != SuggestionFocus.FINGER_STRENGTH)
+        assertTrue(SuggestionReason.FINGER_PREFERENCE_NONE in none.reasons)
+        assertTrue(none.routine.items.none { !it.warmup && catalog[it.slug]!!.category == ExerciseCategoryV2.FINGER })
+    }
+
+    @Test
+    fun focusAreasAddTheirSlots() {
+        val mobility = SessionSuggester.suggest(input(profile = big.copy(coach = CoachProfile(focus = setOf(FocusArea.MOBILITY)))))
+        assertTrue(slugs(mobility).any { catalog[it]!!.category == ExerciseCategoryV2.MOBILITY }, "${slugs(mobility)}")
+        assertTrue(SuggestionReason.FOCUS_AREAS in mobility.reasons)
+        val prevention = SessionSuggester.suggest(input(profile = big.copy(coach = CoachProfile(focus = setOf(FocusArea.PREVENTION)))))
+        assertTrue(slugs(prevention).count { catalog[it]!!.category == ExerciseCategoryV2.ANTAGONIST } >= 2, "${slugs(prevention)}")
+    }
+
+    @Test
+    fun excludedExercisesAreNeverSuggested() {
+        val excluded = setOf("core.dead_bug", "core.hollow_hold")
+        repeat(5) { variant ->
+            val s = SessionSuggester.suggest(input(profile = profile.copy(excludedExercises = excluded), variant = variant))
+            assertTrue(slugs(s).none { it in excluded }, "${slugs(s)}")
+        }
+    }
+
+    @Test
+    fun learnedPreferencesShapeThePicks() {
+        repeat(4) { variant ->
+            val s = SessionSuggester.suggest(input(variant = variant).copy(affinity = mapOf("core.hollow_hold" to 3.0, "core.dead_bug" to -3.0)))
+            assertTrue("core.hollow_hold" in slugs(s) && "core.dead_bug" !in slugs(s), "${slugs(s)}")
+            assertTrue(SuggestionReason.PREFERENCES_LEARNED in s.reasons)
+        }
+    }
+
+    @Test
+    fun deloadAndTaperWeeksTrimVolumeNotExercises() {
+        fun with(phase: BlockPhase) = SessionSuggester.suggest(input(profile = big).copy(block = BlockState(phase, 1, 1, null)))
+        val build = with(BlockPhase.BUILD)
+        val deload = with(BlockPhase.DELOAD)
+        val taper = with(BlockPhase.TAPER)
+        assertTrue(mainSets(deload) < mainSets(build), "${mainSets(deload)} vs ${mainSets(build)}")
+        assertTrue(mainSets(taper) < mainSets(build))
+        assertEquals(slugs(build), slugs(taper))
+        assertTrue(SuggestionReason.BLOCK_DELOAD in deload.reasons && SuggestionReason.BLOCK_TAPER in taper.reasons)
+    }
+
+    @Test
+    fun eventDayIsForArrivingFresh() {
+        val s = SessionSuggester.suggest(input().copy(block = BlockState(BlockPhase.EVENT, 1, 1, 0)))
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, s.focus)
+        assertEquals(SuggestionReason.BLOCK_EVENT, s.reasons.first())
+        assertTrue(slugs(s).all { catalog[it]!!.category == ExerciseCategoryV2.MOBILITY })
+    }
+
+    @Test
+    fun afterClimbingTodayOnlyAShortAddOn() {
+        val s = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(addOnAfterClimbing = true)),
+            activities = climbed(monday, ClimbIntensity.HARD)).copy(climbingToday = true))
+        assertTrue(s.addOn)
+        assertEquals(SuggestionReason.CLIMBING_DAY_ADDON, s.reasons.first())
+        assertTrue(s.estimatedMinutes <= 15, "was ${s.estimatedMinutes}")
+        assertTrue(slugs(s).all { catalog[it]!!.category in setOf(ExerciseCategoryV2.ANTAGONIST, ExerciseCategoryV2.CORE) }, "${slugs(s)}")
+        val declined = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(addOnAfterClimbing = false)),
+            activities = climbed(monday, ClimbIntensity.HARD)).copy(climbingToday = true))
+        assertTrue(!declined.addOn)
+    }
+
+    @Test
+    fun aUsualClimbingDayGetsTheBoardWarmUpAndAPlan() {
+        val s = SessionSuggester.suggest(input().copy(climbingToday = true))
+        assertEquals(SuggestionFocus.BOARD_DAY, s.focus)
+        assertEquals(SuggestionReason.CLIMBING_DAY, s.reasons.first())
+        assertEquals(com.cruxcoach.domain.playlist.GeneratorType.LIMIT, s.boardPlan?.type)
+    }
+
+    @Test
+    fun boardPlanFollowsBlockAndFocus() {
+        val boardDay = profile.copy(weekPlan = mapOf(1 to PLAN_BOARD))
+        fun plan(p: AthleteProfile, phase: BlockPhase?) =
+            SessionSuggester.suggest(input(profile = p).copy(block = phase?.let { BlockState(it, 1, 1, null) })).boardPlan
+        assertEquals(com.cruxcoach.domain.playlist.GeneratorType.VOLUME, plan(boardDay, BlockPhase.DELOAD)?.type)
+        assertEquals(com.cruxcoach.domain.playlist.GeneratorType.VOLUME, plan(boardDay, BlockPhase.INTRO)?.type)
+        assertEquals(40, plan(boardDay, BlockPhase.TAPER)?.minutes)
+        assertEquals(com.cruxcoach.domain.playlist.GeneratorType.LIMIT, plan(boardDay, BlockPhase.BUILD)?.type)
+        val pe = boardDay.copy(coach = CoachProfile(focus = setOf(FocusArea.POWER_ENDURANCE)))
+        assertEquals(com.cruxcoach.domain.playlist.GeneratorType.POWER_ENDURANCE, plan(pe, BlockPhase.BUILD)?.type)
+    }
+
+    @Test
+    fun confidenceGrowsWithData() {
+        assertEquals(Confidence.LOW, SessionSuggester.suggest(input()).confidence)
+        val rich = input(profile = profile.copy(coach = CoachProfile(setupState = SetupState.DONE)))
+            .copy(logbookSends = 40, benchmarkSlugs = setOf("finger.max_hang", "pull.pull_up"), historyWeeks = 8)
+        assertEquals(Confidence.HIGH, SessionSuggester.suggest(rich).confidence)
+    }
+
+    @Test
+    fun performanceValuesAppearInTheEvidence() {
+        val value = Benchmark(id = "b", exerciseSlug = "finger.max_hang", loadKg = 10.0, durationS = 10.0, measuredAt = 1)
+        val s = SessionSuggester.suggest(input(profile = profile.copy(coach = CoachProfile(fingerPreference = FingerPreference.HANGBOARD)))
+            .copy(benchmarks = listOf(value), benchmarkSlugs = setOf("finger.max_hang")))
+        assertTrue(s.basedOn.contains(Evidence.PerformanceValue(value)), "${s.basedOn}")
+    }
+
+    @Test
+    fun noTimeTodayShortensTheBudget() {
+        val s = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 60)).copy(budgetFactor = 0.5))
+        assertTrue(SuggestionReason.NO_TIME_TODAY in s.reasons)
+        assertTrue(s.estimatedMinutes <= 30, "was ${s.estimatedMinutes}")
+    }
+
+    @Test
+    fun plannedRoutineFollowsTheBlock() {
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("pull.pull_up", sets = 5), RoutineItem("core.dead_bug", sets = 4)))
+        val p = profile.copy(weekPlan = mapOf(1 to "r1"))
+        val build = SessionSuggester.suggest(input(profile = p, routines = listOf(mine)))
+        val deload = SessionSuggester.suggest(input(profile = p, routines = listOf(mine)).copy(block = BlockState(BlockPhase.DELOAD, 1, 1, null)))
+        assertEquals(SuggestionFocus.PLANNED, deload.focus)
+        assertTrue(mainSets(deload) < mainSets(build))
+    }
 }

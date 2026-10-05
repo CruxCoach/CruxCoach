@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FEAT-071 Coach: Health Connect und der experimentelle Kraftmesser. -->
+<resources>
+    <!-- Health-Connect-Karte -->
+    <string name="trd_hc_title">Health Connect</string>
+    <string name="trd_hc_summary">Schlaf für den Check-in und Klettereinheiten von deiner Uhr oder anderen Apps. Nur lesend.</string>
+    <string name="trd_hc_unsupported">Health Connect ist auf diesem Gerät nicht verfügbar.</string>
+    <string name="trd_hc_install_hint">Health Connect muss zuerst installiert oder aktualisiert werden.</string>
+    <string name="trd_hc_install">Health Connect installieren oder aktualisieren</string>
+    <string name="trd_hc_permission_hint">Erlaube das Lesen von Schlaf und Trainingseinheiten, damit der Coach sie nutzen kann.</string>
+    <string name="trd_hc_permit">Zugriff erlauben</string>
+    <string name="trd_hc_sync_now">Jetzt synchronisieren</string>
+    <string name="trd_hc_syncing">Synchronisiere …</string>
+    <string name="trd_hc_manage">Zugriff verwalten</string>
+    <string name="trd_hc_sync_result">Letzter Abgleich: %1$d neu, %2$d aktualisiert, %3$d übersprungen (von Hand eingetragen)</string>
+    <string name="trd_hc_sync_failed">Abgleich hat nicht geklappt – prüfe den Zugriff in Health Connect.</string>
+    <string name="trd_hc_sleep_last_night">Schlaf letzte Nacht: %1$s h</string>
+    <string name="trd_hc_privacy">Liest nur, schreibt nie. Die Daten bleiben auf diesem Gerät und werden nicht hochgeladen.</string>
+    <string name="trd_sleep_chip">Aus Health Connect: %1$s h → %2$d</string>
+
+    <!-- Datenschutz-Erklärung -->
+    <string name="trd_rationale_title">Wie CruxCoach Health Connect nutzt</string>
+    <string name="trd_rationale_intro">Der Trainings-Coach kann zwei Arten von Daten lesen, nur wenn du es erlaubst:</string>
+    <string name="trd_rationale_sleep">Schlafphasen der letzten Nacht – als Vorschlag für den Schlafwert im täglichen Check-in. Ohne dich wird nichts gespeichert.</string>
+    <string name="trd_rationale_exercise">Trainingseinheiten, die als Klettern markiert sind – sie werden zu Klettertagen, damit der Coach Halle, Fels und andere Boards kennt.</string>
+    <string name="trd_rationale_read_only">CruxCoach schreibt nie in Health Connect.</string>
+    <string name="trd_rationale_local">Alles bleibt auf deinem Gerät in der verschlüsselten Trainingsdatenbank. Nichts geht an einen Server.</string>
+    <string name="trd_rationale_revoke">Du kannst die Verbindung jederzeit in den Trainingseinstellungen ausschalten und den Zugriff in Health Connect widerrufen.</string>
+    <string name="trd_rationale_close">Schließen</string>
+
+    <!-- Kraftmesser -->
+    <string name="trd_force_title">Kraftmesser</string>
+    <string name="trd_force_experimental">Experimentell: unterstützt den Tindeq Progressor. Aufbau wie beim Blockheben – unten verankert, du ziehst an der Leiste nach oben. Die Werte sind eine Orientierung, keine Labormessung.</string>
+    <string name="trd_force_enable_hint">Der Kraftmesser ist ausgeschaltet. Schalte ihn ein, um einen Tindeq Progressor zu verbinden.</string>
+    <string name="trd_force_enable">Einschalten</string>
+    <string name="trd_force_status_idle">Nicht verbunden</string>
+    <string name="trd_force_status_scanning">Suche einen Progressor …</string>
+    <string name="trd_force_status_connecting">Verbinde mit %1$s …</string>
+    <string name="trd_force_status_connected">Verbunden: %1$s</string>
+    <string name="trd_force_status_not_found">Kein Progressor gefunden. Weck ihn mit seiner Taste auf und versuch es noch einmal.</string>
+    <string name="trd_force_status_permission">Für die Verbindung braucht die App Bluetooth-Zugriff.</string>
+    <string name="trd_force_status_bluetooth_off">Bluetooth ist ausgeschaltet.</string>
+    <string name="trd_force_status_failed">Verbindung fehlgeschlagen. Versuch es näher am Gerät.</string>
+    <string name="trd_force_battery">Akku %1$s V</string>
+    <string name="trd_force_low_power">Der Progressor meldet einen schwachen Akku.</string>
+    <string name="trd_force_connect">Verbinden</string>
+    <string name="trd_force_disconnect">Trennen</string>
+    <string name="trd_force_tare">Nullen (Tara)</string>
+    <string name="trd_force_peak_recent">Spitze %1$s</string>
+    <string name="trd_force_curve_cd">Kraft über die letzten zehn Sekunden, Spitze %1$s.</string>
+    <string name="trd_force_setup_hint">Nulle den Messer, während die Leiste frei hängt, und zieh dann gleichmäßig – ohne Ruck.</string>
+    <string name="trd_force_hand">Hand</string>
+    <string name="trd_force_hand_left">Links</string>
+    <string name="trd_force_hand_right">Rechts</string>
+    <string name="trd_force_hand_both">Beide Hände</string>
+    <string name="trd_force_edge">Leiste: %1$d mm</string>
+    <string name="trd_force_pull_title">Maximalzug (%1$d s)</string>
+    <string name="trd_force_start">Start</string>
+    <string name="trd_force_get_ready">Bereit machen … %1$d</string>
+    <string name="trd_force_pull_now">Ziehen! %1$d s</string>
+    <string name="trd_force_cancel">Abbrechen</string>
+    <string name="trd_force_no_data">Es kamen keine Kraftdaten an. Prüf die Verbindung und versuch es noch einmal.</string>
+    <string name="trd_force_result_peak">Spitze: %1$s</string>
+    <string name="trd_force_result_mean">Beste 5 s: %1$s</string>
+    <string name="trd_force_result_too_short">Der Zug war kürzer als 5 s – kein Wert zum Speichern.</string>
+    <string name="trd_force_result_pct">%1$d %% des Körpergewichts</string>
+    <string name="trd_force_save">Als Leistungswert speichern</string>
+    <string name="trd_force_saved">Gespeichert – die nächsten geplanten Blockheben-Sätze nutzen ihn.</string>
+    <string name="trd_force_again">Noch einmal messen</string>
+    <string name="trd_force_card_title">Kraftmesser (experimentell)</string>
+    <string name="trd_force_card_summary">Fingerkraft mit einem Tindeq Progressor messen und als Leistungswert speichern.</string>
+    <string name="trd_force_card_open">Kraftmesser öffnen</string>
+</resources>

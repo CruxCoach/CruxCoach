@@ -535,6 +535,9 @@ dependencies {
     implementation(libs.compose.richtext.commonmark)
     implementation(libs.compose.richtext.ui.material3)
 
+    // FEAT-070 coach: Health Connect (read-only sleep + exercise sessions)
+    implementation(libs.health.connect.client)
+
     // Testing
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)

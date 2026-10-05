@@ -20,6 +20,7 @@ import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.db.secure.Nostr_messages
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -494,13 +495,9 @@ class DevContactViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     try {
                         kotlinx.coroutines.withTimeoutOrNull(30_000L) {
-                            while (true) {
-                                val info = workManager
-                                    .getWorkInfoById(request.id)
-                                    .get()
-                                if (info != null && info.state.isFinished) break
-                                kotlinx.coroutines.delay(250)
-                            }
+                            // Flow API: needs no ListenableFuture on the compile classpath.
+                            workManager.getWorkInfoByIdFlow(request.id)
+                                .first { info -> info != null && info.state.isFinished }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Awaiting poll worker failed", e)

@@ -98,4 +98,29 @@ class AthleteRepositoryTest {
         repo.restore(com.cruxcoach.athlete.data.AthleteSnapshot(profile = AthleteProfile(weeklyGoal = 6)), includeProfile = false)
         assertEquals(2, repo.profile().weeklyGoal)
     }
+
+    @Test
+    fun `schema 2 database migrates to 3 and keeps coach data in the backup`() {
+        // A feature build up to 1000020 had schema 2: no coach tables yet.
+        val old = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        old.execute(null, "DROP TABLE climbing_day", 0)
+        old.execute(null, "DROP TABLE suggestion_event", 0)
+        AthleteDatabase.Schema.migrate(old, 2, 3)
+        val migrated = AthleteRepository(AthleteDatabase(old), Dispatchers.IO) { 1_000L }
+        migrated.saveClimbingDay(ClimbingDayEntry("c1", "2026-10-04", ClimbingDayKind.OUTDOOR, 120, ClimbIntensity.HARD))
+        migrated.logSuggestionEvent(SuggestionEvent("e1", "2026-10-04", 5L, SuggestionEventKind.NEXT,
+            slugs = listOf("pull.pull_up"), feedback = SuggestionFeedback.NO_TIME))
+        assertEquals(listOf("c1"), migrated.climbingDaysSince("2026-10-01").map { it.id })
+        assertEquals(SuggestionFeedback.NO_TIME, migrated.suggestionEventsSince(0).single().feedback)
+
+        val snapshot = migrated.snapshot()
+        assertEquals(1, snapshot.climbingDays.size)
+        assertEquals(1, snapshot.suggestionEvents.size)
+        // Restoring into a fresh database brings both back; a second restore adds nothing.
+        repo.restore(snapshot, includeProfile = false)
+        repo.restore(snapshot, includeProfile = false)
+        assertEquals(1, repo.allClimbingDays().size)
+        assertEquals(1, repo.allSuggestionEvents().size)
+        old.close()
+    }
 }
