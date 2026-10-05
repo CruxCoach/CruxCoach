@@ -176,6 +176,37 @@ class AthleteRepository(
         benchmarkQueries.getAllBenchmarks().asFlow().mapToList(dispatcher).map { rows -> rows.map { it.toModel() } }
     fun deleteBenchmark(id: String) = benchmarkQueries.deleteBenchmark(id)
 
+    // ── Coach: climbing outside the app, recommendation ledger ───────
+
+    private val coach get() = db.coachQueries
+
+    fun saveClimbingDay(e: ClimbingDayEntry) = coach.upsertClimbingDay(
+        e.id, e.day, e.kind.name, e.minutes.toLong(), e.intensity.name, e.source.name, e.externalId, e.note,
+        if (e.updatedAt == 0L) clock() else e.updatedAt,
+    )
+    fun climbingDay(id: String): ClimbingDayEntry? = coach.getClimbingDay(id).executeAsOneOrNull()?.toModel()
+    fun climbingDayByExternalId(externalId: String): ClimbingDayEntry? =
+        coach.getClimbingDayByExternalId(externalId).executeAsOneOrNull()?.toModel()
+    /** Newest first; [fromDay] is an ISO date. */
+    fun climbingDaysSince(fromDay: String): List<ClimbingDayEntry> =
+        coach.getClimbingDaysSince(fromDay).executeAsList().mapNotNull { it.toModel() }
+    fun observeClimbingDaysSince(fromDay: String): Flow<List<ClimbingDayEntry>> =
+        coach.getClimbingDaysSince(fromDay).asFlow().mapToList(dispatcher).map { rows -> rows.mapNotNull { it.toModel() } }
+    fun allClimbingDays(): List<ClimbingDayEntry> = coach.getAllClimbingDays().executeAsList().mapNotNull { it.toModel() }
+    fun deleteClimbingDay(id: String) = coach.deleteClimbingDay(id)
+
+    fun logSuggestionEvent(e: SuggestionEvent) = coach.insertSuggestionEvent(
+        e.id, e.day, e.createdAt, e.kind.name, e.focus, e.slugs.joinToString(","), e.feedback?.name, e.workoutId, e.value,
+    )
+    /** Newest first. */
+    fun suggestionEventsSince(fromMillis: Long): List<SuggestionEvent> =
+        coach.getSuggestionEventsSince(fromMillis).executeAsList().mapNotNull { it.toModel() }
+    fun suggestionEventsForDay(day: String): List<SuggestionEvent> =
+        coach.getSuggestionEventsForDay(day).executeAsList().mapNotNull { it.toModel() }
+    fun allSuggestionEvents(): List<SuggestionEvent> = coach.getAllSuggestionEvents().executeAsList().mapNotNull { it.toModel() }
+    /** The ledger only needs recent behaviour; older rows are dropped. */
+    fun pruneSuggestionEvents(beforeMillis: Long) = coach.pruneSuggestionEvents(beforeMillis)
+
     // ── Body ─────────────────────────────────────────────────────────
 
     fun saveMeasurement(m: BodyMeasurement) =
@@ -291,6 +322,8 @@ class AthleteRepository(
         injuries = allInjuries(),
         pauses = pauses(),
         benchmarks = allBenchmarks(),
+        climbingDays = allClimbingDays(),
+        suggestionEvents = allSuggestionEvents(),
     )
 
     /**
@@ -343,6 +376,14 @@ class AthleteRepository(
         snapshot.benchmarks.forEach { b ->
             if (benchmarkQueries.getBenchmark(b.id).executeAsOneOrNull() == null) { saveBenchmark(b); rows++ }
         }
+        snapshot.climbingDays.forEach { d ->
+            val local = coach.getClimbingDay(d.id).executeAsOneOrNull()
+            if (local == null || local.updated_at <= d.updatedAt) { saveClimbingDay(d); rows++ }
+        }
+        snapshot.suggestionEvents.forEach { e ->
+            // Append-only: an id is one event, so a second import adds nothing.
+            logSuggestionEvent(e); rows++
+        }
         snapshot.pauses.forEach { p ->
             val local = wellbeing.getPauses().executeAsList().firstOrNull { it.id == p.id }
             // An ended pause never becomes open again.
@@ -394,6 +435,24 @@ private fun InjuryRow.toModel(): Injury? {
     return Injury(id, region, enumOrNull<InjurySide>(side), detail, severity.toInt(), climbing_paused != 0L,
         started_on, resolved_on, note, updated_at)
 }
+
+private fun com.cruxcoach.db.athlete.Climbing_day.toModel(): ClimbingDayEntry? = ClimbingDayEntry(
+    id = id, day = day,
+    kind = enumOrNull<ClimbingDayKind>(kind) ?: return null,
+    minutes = minutes.toInt(),
+    intensity = enumOrNull<ClimbIntensity>(intensity) ?: return null,
+    source = enumOrNull<ClimbingDaySource>(source) ?: ClimbingDaySource.MANUAL,
+    externalId = external_id, note = note, updatedAt = updated_at,
+)
+
+private fun com.cruxcoach.db.athlete.Suggestion_event.toModel(): SuggestionEvent? = SuggestionEvent(
+    id = id, day = day, createdAt = created_at,
+    kind = enumOrNull<SuggestionEventKind>(kind) ?: return null,
+    focus = focus,
+    slugs = slugs.split(',').filter { it.isNotBlank() },
+    feedback = enumOrNull<SuggestionFeedback>(feedback),
+    workoutId = workout_id, value = value_,
+)
 
 private fun com.cruxcoach.db.athlete.Exercise_benchmark.toModel() = Benchmark(
     id = id, exerciseSlug = exercise_slug, side = enumOrNull<Side>(side), edgeMm = edge_mm, grip = enumOrNull<Grip>(grip),

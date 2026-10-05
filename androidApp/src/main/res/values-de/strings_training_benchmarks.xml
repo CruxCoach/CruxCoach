@@ -33,4 +33,5 @@
     <string name="trbm_edge">Leiste (mm)</string>
     <string name="trbm_planned">Geplant: %1$s</string>
     <string name="trbm_from_other_side">(von der anderen Hand geschätzt, −5 %)</string>
+    <string name="trbm_source_estimate">geschätzt</string>
 </resources>

@@ -101,7 +101,8 @@ data class Routine(
 )
 
 @Serializable
-enum class BenchmarkSource { MANUAL, TEST, AUTO }
+/** ESTIMATE: a quick self-estimate from the coach setup; the first logged set replaces it either way. */
+enum class BenchmarkSource { MANUAL, TEST, AUTO, ESTIMATE }
 
 /**
  * What the athlete can do in one exercise: "+20 kg × 5", "32 kg for 10 s on
@@ -331,4 +332,123 @@ data class AthleteProfile(
     /** Optional monthly measuring round (circumferences) on a day of the month, same time of day. */
     val measureReminderEnabled: Boolean = false,
     val measureReminderDayOfMonth: Int = 1,
+    /** Answers of the optional coach setup (FEAT-070); every field may stay unanswered. */
+    val coach: CoachProfile = CoachProfile(),
+    /** Exercises the athlete never wants suggested ("nie vorschlagen"); the counterpart of favourites. */
+    val excludedExercises: Set<String> = emptySet(),
+)
+
+// ── Coach profile (FEAT-070) ─────────────────────────────────────────
+
+@Serializable
+enum class CoachGoal { CLIMB_HARDER, PROJECT, BUILD_STRENGTH, STAY_HEALTHY, COMEBACK, EVENT }
+
+@Serializable
+enum class FocusArea { FINGER_STRENGTH, PULL_STRENGTH, POWER, POWER_ENDURANCE, CORE, MOBILITY, PREVENTION }
+
+@Serializable
+enum class FingerPreference { HANGBOARD, PICKUP, ONE_ARM, NONE }
+
+@Serializable
+enum class ClimbingContext { HOME_BOARD, GYM_BOARD, GYM_BOULDER, ROPE, OUTDOOR }
+
+@Serializable
+enum class ExperienceBand { UNDER_1, Y1_2, Y3_5, OVER_5 }
+
+@Serializable
+enum class AgeBand { UNDER_16, Y16_17, Y18_39, Y40_54, Y55_PLUS }
+
+@Serializable
+enum class SetupState { NOT_STARTED, IN_PROGRESS, DONE, DISMISSED }
+
+/**
+ * What the athlete told the coach. Missing answers stay null/empty — the
+ * engine then falls back to conservative defaults and says so; nothing is
+ * silently filled with an average. Stored locally inside the profile JSON.
+ */
+@Serializable
+data class CoachProfile(
+    val goal: CoachGoal? = null,
+    /** Font boulder grade the athlete aims for, e.g. "7A". */
+    val targetGrade: String? = null,
+    /** A project from the logbook. */
+    val targetClimbUuid: String? = null,
+    val targetClimbName: String? = null,
+    val targetClimbAngle: Int? = null,
+    /** ISO date of a trip or competition (drives taper). */
+    val targetDate: String? = null,
+    /** ISO weekdays the athlete usually climbs on. */
+    val climbingDays: Set<Int> = emptySet(),
+    /** All training days per week, climbing included. */
+    val trainingDaysPerWeek: Int? = null,
+    /** 10–15 min antagonists/core after climbing. */
+    val addOnAfterClimbing: Boolean? = null,
+    val contexts: Set<ClimbingContext> = emptySet(),
+    val experience: ExperienceBand? = null,
+    val ageBand: AgeBand? = null,
+    /** Confirmed boulder grades (Font); prefilled from the logbook. */
+    val currentGrade: String? = null,
+    val currentFlashGrade: String? = null,
+    /** Rope grade, free text in French notation. */
+    val ropeGrade: String? = null,
+    val focus: Set<FocusArea> = emptySet(),
+    val fingerPreference: FingerPreference? = null,
+    /** 0 = short and intense … 100 = longer and calmer; null = no preference. */
+    val intensityStyle: Int? = null,
+    /** 0 = fixed routine … 100 = lots of variety; null = no preference. */
+    val variety: Int? = null,
+    val setupState: SetupState = SetupState.NOT_STARTED,
+    val setupUpdatedAt: Long = 0,
+    /** First day of the current training block (periodisation). */
+    val blockStartDay: String? = null,
+    val healthConnectEnabled: Boolean = false,
+    val forceGaugeEnabled: Boolean = false,
+)
+
+/** How hard a climbing day was, relative to the athlete's own level. */
+@Serializable
+enum class ClimbIntensity { LIGHT, VOLUME, HARD, LIMIT }
+
+@Serializable
+enum class ClimbingDayKind { GYM_BOULDER, GYM_ROPE, OUTDOOR, OTHER_BOARD, OTHER }
+
+@Serializable
+enum class ClimbingDaySource { MANUAL, HEALTH_CONNECT }
+
+/** Climbing outside the board app (gym, rock, another board), logged by hand or from Health Connect. */
+@Serializable
+data class ClimbingDayEntry(
+    val id: String,
+    val day: String,
+    val kind: ClimbingDayKind,
+    val minutes: Int,
+    val intensity: ClimbIntensity,
+    val source: ClimbingDaySource = ClimbingDaySource.MANUAL,
+    /** Health Connect record id, so a re-sync never duplicates. */
+    val externalId: String? = null,
+    val note: String? = null,
+    val updatedAt: Long = 0,
+)
+
+/** What happened to a recommendation — the ledger the coach learns from. */
+@Serializable
+enum class SuggestionEventKind { SHOWN, STARTED, EDITED, SAVED, NEXT, COMPLETED, EXCLUDED, SWAPPED, SKIPPED_SET, FEEDBACK }
+
+/** Why the athlete asked for another suggestion (optional chip). */
+@Serializable
+enum class SuggestionFeedback { NO_TIME, DISLIKE_EXERCISE, MISSING_EQUIPMENT, HURTS, TOO_EASY, TOO_HARD, OTHER }
+
+@Serializable
+data class SuggestionEvent(
+    val id: String,
+    val day: String,
+    val createdAt: Long,
+    val kind: SuggestionEventKind,
+    val focus: String? = null,
+    /** Exercise slugs the event is about. */
+    val slugs: List<String> = emptyList(),
+    val feedback: SuggestionFeedback? = null,
+    val workoutId: String? = null,
+    /** Kind-specific number: completion share 0–1, minutes, … */
+    val value: Double? = null,
 )

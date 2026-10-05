@@ -1,0 +1,65 @@
+-- Coach data (FEAT-070): climbing outside the board app and the
+-- recommendation ledger the coach learns preferences from. Local only.
+
+CREATE TABLE climbing_day (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    minutes INTEGER NOT NULL,
+    intensity TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'MANUAL',
+    external_id TEXT,
+    note TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX climbing_day_day ON climbing_day(day);
+
+CREATE TABLE suggestion_event (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    focus TEXT,
+    slugs TEXT NOT NULL DEFAULT '',
+    feedback TEXT,
+    workout_id TEXT,
+    value REAL
+);
+
+CREATE INDEX suggestion_event_day ON suggestion_event(day, created_at);
+
+upsertClimbingDay:
+INSERT OR REPLACE INTO climbing_day(id, day, kind, minutes, intensity, source, external_id, note, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getClimbingDay:
+SELECT * FROM climbing_day WHERE id = ?;
+
+getClimbingDayByExternalId:
+SELECT * FROM climbing_day WHERE external_id = ?;
+
+getClimbingDaysSince:
+SELECT * FROM climbing_day WHERE day >= ? ORDER BY day DESC, updated_at DESC;
+
+getAllClimbingDays:
+SELECT * FROM climbing_day ORDER BY day DESC;
+
+deleteClimbingDay:
+DELETE FROM climbing_day WHERE id = ?;
+
+insertSuggestionEvent:
+INSERT OR REPLACE INTO suggestion_event(id, day, created_at, kind, focus, slugs, feedback, workout_id, value)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getSuggestionEventsSince:
+SELECT * FROM suggestion_event WHERE created_at >= ? ORDER BY created_at DESC;
+
+getSuggestionEventsForDay:
+SELECT * FROM suggestion_event WHERE day = ? ORDER BY created_at DESC;
+
+getAllSuggestionEvents:
+SELECT * FROM suggestion_event ORDER BY created_at DESC;
+
+pruneSuggestionEvents:
+DELETE FROM suggestion_event WHERE created_at < ?;
