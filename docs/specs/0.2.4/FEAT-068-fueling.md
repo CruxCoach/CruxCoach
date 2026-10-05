@@ -9,7 +9,10 @@ created: 2026-10-04
 
 # Feature Spec: Fueling, not dieting (0.2.4)
 
-Opt-in module (off by default, intro screen before first use).
+Always on with its own main-menu entry "Nutrition" / "Ernährung" next to
+"Training" (owner decision 2026-10-05; it was an opt-in module before). The
+guard rails are explained once in a dismissible card on the first visit.
+Calories stay hidden by default.
 
 - Protein: 1.6 g/kg trend weight by default (adjustable 1.4–2.0).
 - Carbohydrate: 3–7 g/kg by the day's training load (rest, light, training,

@@ -175,9 +175,8 @@ fun TodayScreen(
             val doneSomething = state.todaysWorkouts.isNotEmpty() ||
                 state.activity?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
             if (doneSomething) item(key = "done_today") { DoneTodayCard(state, onOpenHistory) }
-            if (state.profile.bodyEnabled || state.profile.fuelEnabled) {
-                item(key = "tiles") { SummaryTiles(state, onOpenBody, onOpenFuel) }
-            }
+            // Nutrition is always on (owner 2026-10-05), so the tiles always show.
+            item(key = "tiles") { SummaryTiles(state, onOpenBody, onOpenFuel) }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = onOpenWeeklyReview, label = { Text(stringResource(R.string.trt_weekly_review)) },
@@ -541,10 +540,8 @@ private fun QuickActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickAction(Icons.Default.Terrain, stringResource(R.string.trt_quick_climbing), "today_log_climbing", onLogClimbing)
         if (state.profile.bodyEnabled) QuickAction(Icons.Default.MonitorWeight, stringResource(R.string.trt_quick_weight), "today_weight", onLogWeight)
-        if (state.profile.fuelEnabled) {
-            QuickAction(Icons.Default.WaterDrop, stringResource(R.string.trt_water_add), "today_water_add", onAddWater)
-            QuickAction(Icons.Default.Restaurant, stringResource(R.string.trt_quick_food), "today_food", onOpenFuel)
-        }
+        QuickAction(Icons.Default.WaterDrop, stringResource(R.string.trt_water_add), "today_water_add", onAddWater)
+        QuickAction(Icons.Default.Restaurant, stringResource(R.string.trt_quick_food), "today_food", onOpenFuel)
         if (state.openWorkout == null) QuickAction(Icons.Default.Add, stringResource(R.string.trt_quick_free), "today_start_empty", onStartEmpty)
         QuickAction(Icons.AutoMirrored.Filled.List, stringResource(R.string.trt_routines), "today_routines", onOpenRoutines)
     }
@@ -912,23 +909,22 @@ private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: 
                 }
             }
         }
-        if (state.profile.fuelEnabled) {
-            val t = state.fuelTargets
-            Card(onClick = onOpenFuel, modifier = Modifier.weight(1f).testTag("today_fuel")) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.tr_nav_fuel), style = MaterialTheme.typography.labelLarge)
-                    if (t == null) {
-                        Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        Text("${state.proteinToday.roundToInt()} / ${t.proteinG} g", style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold)
-                        Text(stringResource(R.string.trt_protein), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        LinearProgressIndicator(
-                            progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
-                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
-                        )
-                    }
+        // Nutrition is always on (owner 2026-10-05).
+        val t = state.fuelTargets
+        Card(onClick = onOpenFuel, modifier = Modifier.weight(1f).testTag("today_fuel")) {
+            Column(Modifier.padding(12.dp)) {
+                Text(stringResource(R.string.tr_nav_fuel), style = MaterialTheme.typography.labelLarge)
+                if (t == null) {
+                    Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("${state.proteinToday.roundToInt()} / ${t.proteinG} g", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.trt_protein), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(
+                        progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
+                    )
                 }
             }
         }

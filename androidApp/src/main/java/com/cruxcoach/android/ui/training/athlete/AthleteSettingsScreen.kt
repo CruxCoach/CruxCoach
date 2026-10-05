@@ -181,14 +181,14 @@ fun AthleteSettingsScreen(
             SwitchRow(stringResource(R.string.tra_module_checkin), p.checkinEnabled, "module_checkin") { v -> viewModel.update { it.copy(checkinEnabled = v) } }
             SwitchRow(stringResource(R.string.tra_module_body), p.bodyEnabled, "module_body") { v -> viewModel.update { it.copy(bodyEnabled = v) } }
             SwitchRow(stringResource(R.string.tra_hide_numbers), p.hideBodyNumbers, "hide_numbers") { v -> viewModel.update { it.copy(hideBodyNumbers = v) } }
-            SwitchRow(stringResource(R.string.tra_module_fuel), p.fuelEnabled, "module_fuel") { v -> viewModel.update { it.copy(fuelEnabled = v) } }
-            if (p.fuelEnabled) {
-                SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
-                Text(stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)), modifier = Modifier.padding(top = 8.dp))
-                var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
-                Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
-                    onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
-            }
+
+            // Nutrition is always on (owner 2026-10-05); only its options remain.
+            SectionTitle(stringResource(R.string.tra_module_fuel))
+            SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
+            Text(stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)), modifier = Modifier.padding(top = 8.dp))
+            var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
+            Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
+                onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
 
             // Units and personal data
             SectionTitle(stringResource(R.string.tra_units_title))

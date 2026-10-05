@@ -126,7 +126,7 @@ class WeeklyReviewViewModel @Inject constructor(private val service: AthleteServ
             val trend = service.weightTrend()
             val startTrend = trend.lastOrNull { it.day <= start }?.trend
             val endTrend = trend.lastOrNull { it.day <= end }?.trend
-            val food = if (profile.fuelEnabled) repo.foodLogBetween(start.toString(), end.toString()) else emptyList()
+            val food = repo.foodLogBetween(start.toString(), end.toString())
             val loggedDays = food.map { it.day }.toSet()
             val checkins = repo.checkinsBetween(start.toString(), end.toString())
             fun avg(values: List<Int?>) = values.filterNotNull().takeIf { it.isNotEmpty() }?.average()
@@ -228,7 +228,7 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                     }) else stringResource(R.string.tra_review_weight_change, formatMass(s.weightChangeKg!!, s.profile.units, signed = true)),
                 )
             }
-            if (s.profile.fuelEnabled && s.proteinAvg != null) {
+            if (s.proteinAvg != null) {
                 SectionTitle(stringResource(R.string.tr_nav_fuel))
                 Text(stringResource(R.string.tra_review_protein, s.proteinAvg!!.roundToInt(), s.proteinTarget ?: 0))
             }

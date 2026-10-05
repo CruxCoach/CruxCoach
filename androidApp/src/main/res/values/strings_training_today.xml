@@ -72,7 +72,7 @@
     <string name="trt_sugg_test_title">Time for a baseline test</string>
     <string name="trt_sugg_test_text">Max hang, pull-ups and hollow hold show your progress in strength to weight.</string>
     <string name="trt_sugg_weight_title">Log your body weight</string>
-    <string name="trt_sugg_weight_text">Needed for percent of body weight on the hangboard and for fueling targets.</string>
+    <string name="trt_sugg_weight_text">Needed for percent of body weight on the hangboard and for nutrition targets.</string>
     <string name="trt_sugg_weight_action">Log</string>
     <string name="trt_reds_title">Look after your energy</string>
     <string name="trt_reds_info">Climbing rewards strength to weight, and that can tempt people into eating too little. Too little energy for the training you do (relative energy deficiency in sport, RED-S) costs strength, recovery and health – bones, hormones, immune system. CruxCoach only notices patterns and never diagnoses. If several signs fit you – lasting tiredness, frequent illness, missed periods, dizziness, stalling despite training – talk to a doctor or a sports dietitian.</string>
