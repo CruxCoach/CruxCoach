@@ -15,6 +15,12 @@ data class DayActivity(
     val workoutMinutes: Int = 0,
     /** Session RPE × minutes of logged trainings (Foster's session load). */
     val workoutLoad: Int = 0,
+    /** Hardest climbing of the day relative to the athlete's own level; null without graded climbing. */
+    val climbIntensity: com.cruxcoach.athlete.model.ClimbIntensity? = null,
+    /** Load units per structure from climbing and training (FEAT-070 load model, see ClimbingLoad). */
+    val fingerLoad: Double = 0.0,
+    val skinLoad: Double = 0.0,
+    val shoulderLoad: Double = 0.0,
 ) {
     val trained: Boolean get() = climbingMinutes > 0 || climbingEfforts > 0 || workoutMinutes > 0
 }

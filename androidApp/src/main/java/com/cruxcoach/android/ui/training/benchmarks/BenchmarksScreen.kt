@@ -257,6 +257,7 @@ private fun sourceLabel(s: BenchmarkSource): String = stringResource(when (s) {
     BenchmarkSource.MANUAL -> R.string.trbm_source_manual
     BenchmarkSource.TEST -> R.string.trbm_source_test
     BenchmarkSource.AUTO -> R.string.trbm_source_auto
+    BenchmarkSource.ESTIMATE -> R.string.trbm_source_estimate
 })
 
 private fun formatDay(epochMs: Long): String =

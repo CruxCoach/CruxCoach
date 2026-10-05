@@ -401,6 +401,20 @@ object CruxCoachBackup {
         requireSize("athlete.injuries", a.injuries.size)
         requireSize("athlete.pauses", a.pauses.size)
         requireSize("athlete.benchmarks", a.benchmarks.size)
+        requireSize("athlete.climbingDays", a.climbingDays.size)
+        require(a.suggestionEvents.size <= MAX_SET_COLLECTION_SIZE) { "invalid backup: athlete.suggestionEvents too large (${a.suggestionEvents.size})" }
+        for (d in a.climbingDays) {
+            requireLen("climbingDay.id", d.id, MAX_EXTERNAL_ID_LEN); requireLen("climbingDay.day", d.day, MAX_DATE_LEN)
+            requireIntRange("climbingDay.minutes", d.minutes, 0..24 * 60)
+            requireLen("climbingDay.externalId", d.externalId, MAX_EXTERNAL_ID_LEN); requireLen("climbingDay.note", d.note, MAX_COMMENT_LEN)
+        }
+        for (e in a.suggestionEvents) {
+            requireLen("suggestionEvent.id", e.id, MAX_EXTERNAL_ID_LEN); requireLen("suggestionEvent.day", e.day, MAX_DATE_LEN)
+            requireLen("suggestionEvent.focus", e.focus, MAX_NAME_LEN); requireLen("suggestionEvent.workoutId", e.workoutId, MAX_EXTERNAL_ID_LEN)
+            require(e.slugs.size <= 64) { "invalid backup: suggestionEvent.slugs too large" }
+            e.slugs.forEach { requireLen("suggestionEvent.slug", it, MAX_NAME_LEN) }
+            requireFinite("suggestionEvent.value", e.value)
+        }
         for (b in a.benchmarks) {
             requireLen("benchmark.id", b.id, MAX_EXTERNAL_ID_LEN); requireLen("benchmark.slug", b.exerciseSlug, MAX_NAME_LEN)
             listOf(b.edgeMm, b.loadKg, b.durationS, b.bodyweightKg).forEach { requireFinite("benchmark.value", it) }

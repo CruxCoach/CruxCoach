@@ -67,6 +67,31 @@ class ExerciseCatalogStore @Inject constructor(
 @Singleton
 class ClimbingDaysReader @Inject constructor(private val secureDb: SecureDatabase) {
 
+    private val logbook by lazy { com.cruxcoach.data.repository.PersonalBoardRepositoryImpl(secureDb) }
+
+    /**
+     * Every logbook row (sends and failed sessions on all boards) for the
+     * coach: grades, tries, flashes. Reads the light logbook snapshot the
+     * playlist generator uses, without frame blobs.
+     */
+    fun logbookRows(): List<com.cruxcoach.athlete.logic.ClimbRow> {
+        val all = logbook.getUserLogbookAllLight()
+        val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(all)
+        return all.map { a ->
+            com.cruxcoach.athlete.logic.ClimbRow(
+                day = a.climbedAt.take(10),
+                climbUuid = a.climbUuid,
+                difficulty = a.difficultyAverage,
+                tries = a.bidCount.toInt().coerceAtLeast(1),
+                sent = a.isSend,
+                flash = a.isSend && a.uuid in flashUuids,
+                angle = a.angle.toInt(),
+                brand = a.boardBrand,
+                climbedAt = a.climbedAt,
+            )
+        }.filter { it.day.length == 10 }
+    }
+
     data class ClimbingDay(val day: String, val minutes: Int, val efforts: Int)
 
     fun since(fromDay: String): Map<String, ClimbingDay> {
@@ -100,6 +125,22 @@ class AthleteService @Inject constructor(
 ) {
     val repo: AthleteRepository get() = repoLazy.get()
     val catalog: ExerciseCatalog get() = catalogStore.catalog.value
+
+    @Volatile private var logbookCache: Pair<Long, List<ClimbRow>>? = null
+
+    /** Board logbook rows for the coach, cached for a minute (the logbook only grows during a session). */
+    fun logbookRows(): List<ClimbRow> {
+        val now = System.currentTimeMillis()
+        logbookCache?.let { (at, rows) -> if (now - at < 60_000) return rows }
+        val rows = runCatching { climbingDays.logbookRows() }.getOrDefault(emptyList())
+        logbookCache = now to rows
+        return rows
+    }
+
+    fun invalidateLogbook() { logbookCache = null }
+
+    /** Working grade, flash grade, rhythm — the coach setup's prefill and the load model's anchor. */
+    fun logbookSummary(): LogbookSummary = LogbookSummaries.summarize(logbookRows(), today())
 
     private val readyMutex = Mutex()
     @Volatile private var ready = false

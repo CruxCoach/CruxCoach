@@ -25,8 +25,11 @@ data class AthleteSnapshot(
     val injuries: List<Injury> = emptyList(),
     val pauses: List<PausePeriod> = emptyList(),
     val benchmarks: List<Benchmark> = emptyList(),
+    val climbingDays: List<ClimbingDayEntry> = emptyList(),
+    val suggestionEvents: List<SuggestionEvent> = emptyList(),
 ) {
-    val trainingRows: Int get() = workouts.size + sets.size + routines.size + customExercises.size + benchmarks.size
+    val trainingRows: Int get() = workouts.size + sets.size + routines.size + customExercises.size + benchmarks.size +
+        climbingDays.size + suggestionEvents.size
     val bodyRows: Int get() = measurements.size
     val fuelRows: Int get() = foodItems.size + foodLog.size + hydration.size
     val wellbeingRows: Int get() = checkins.size + injuries.size + pauses.size
@@ -34,7 +37,7 @@ data class AthleteSnapshot(
 
     fun onlyTraining() = AthleteSnapshot(profile = profile, workouts = workouts, sets = sets, routines = routines,
         customExercises = customExercises, favorites = favorites, checkins = checkins, injuries = injuries, pauses = pauses,
-        benchmarks = benchmarks)
+        benchmarks = benchmarks, climbingDays = climbingDays, suggestionEvents = suggestionEvents)
     fun onlyBody() = AthleteSnapshot(measurements = measurements)
     fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration)
 
@@ -46,5 +49,7 @@ data class AthleteSnapshot(
         foodLog = foodLog + other.foodLog, hydration = hydration + other.hydration, checkins = checkins + other.checkins,
         injuries = injuries + other.injuries, pauses = pauses + other.pauses,
         benchmarks = benchmarks + other.benchmarks,
+        climbingDays = climbingDays + other.climbingDays,
+        suggestionEvents = suggestionEvents + other.suggestionEvents,
     )
 }

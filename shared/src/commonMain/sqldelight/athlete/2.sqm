@@ -1,0 +1,30 @@
+-- Migration 2 → 3 (FEAT-070): climbing outside the board app and the
+-- recommendation ledger. Feature builds up to 1000020 shipped schema 2.
+
+CREATE TABLE IF NOT EXISTS climbing_day (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    minutes INTEGER NOT NULL,
+    intensity TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'MANUAL',
+    external_id TEXT,
+    note TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS climbing_day_day ON climbing_day(day);
+
+CREATE TABLE IF NOT EXISTS suggestion_event (
+    id TEXT NOT NULL PRIMARY KEY,
+    day TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    focus TEXT,
+    slugs TEXT NOT NULL DEFAULT '',
+    feedback TEXT,
+    workout_id TEXT,
+    value REAL
+);
+
+CREATE INDEX IF NOT EXISTS suggestion_event_day ON suggestion_event(day, created_at);

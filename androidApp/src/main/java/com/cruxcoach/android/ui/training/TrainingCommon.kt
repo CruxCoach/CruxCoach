@@ -70,6 +70,11 @@ object TrainingRoutes {
         if (q.isNotEmpty()) append("?" + q.joinToString("&"))
     }
     const val WEEK_PLAN = "training_week_plan"
+    // FEAT-070 coach
+    const val COACH_SETUP = "coach_setup"
+    const val CLIMBER_PROFILE = "climber_profile"
+    const val FORCE_GAUGE = "force_gauge"
+    const val CLIMBING_DAYS = "climbing_days"
 }
 
 /** The five tabs of the training area. */
