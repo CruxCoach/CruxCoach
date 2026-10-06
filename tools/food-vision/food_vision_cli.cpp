@@ -7,6 +7,7 @@
 //   food_vision_cli --model M.gguf --mmproj P.gguf
 //       --assets androidApp/src/main/assets/foodvision [--max-side 640]
 //       [--threads 4] img1.jpg [img2.jpg ...]
+//   food_vision_cli … --text "80 g Haferflocken mit Milch" [--text …]
 
 #include <algorithm>
 #include <atomic>
@@ -86,6 +87,7 @@ int main(int argc, char ** argv) {
     std::string assets;
     int max_side = 640;
     std::vector<std::string> images;
+    std::vector<std::string> texts;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         auto next = [&]() -> std::string {
@@ -99,9 +101,10 @@ int main(int argc, char ** argv) {
         else if (arg == "--ctx") load.n_ctx = std::atoi(next().c_str());
         else if (arg == "--image-max-tokens") load.image_max_tokens = std::atoi(next().c_str());
         else if (arg == "--max-side") max_side = std::atoi(next().c_str());
+        else if (arg == "--text") texts.push_back(next());
         else images.push_back(arg);
     }
-    if (load.model_path.empty() || load.mmproj_path.empty() || assets.empty() || images.empty()) {
+    if (load.model_path.empty() || load.mmproj_path.empty() || assets.empty() || (images.empty() && texts.empty())) {
         std::fprintf(stderr, "usage: %s --model M --mmproj P --assets DIR [--threads N] [--max-side PX] images...\n", argv[0]);
         return 2;
     }
@@ -122,6 +125,27 @@ int main(int argc, char ** argv) {
     std::fprintf(stderr, "loaded in %.0f ms\n", load_timings.load_ms);
 
     std::atomic<bool> cancel(false);
+
+    // Typed meals: same engine without an image, the app's text prompt.
+    cruxvision::RunParams text_run;
+    text_run.system_prompt = trim(read_file(assets + "/text-system-v1.txt"));
+    const std::string text_template = trim(read_file(assets + "/text-user-v1.txt"));
+    text_run.grammar = run.grammar;
+    for (const auto & meal : texts) {
+        std::string user = text_template;
+        const auto at = user.find("{meal}");
+        if (at != std::string::npos) user.replace(at, 6, meal);
+        text_run.user_prompt = user;
+        cruxvision::Timings t;
+        std::string err;
+        const std::string out = engine->run(text_run, cancel, t, err);
+        std::printf("{\"meal\":\"%s\",\"ok\":%s,\"error\":\"%s\",\"text\":\"%s\",\"prompt_tokens\":%d,"
+                    "\"output_tokens\":%d,\"prompt_ms\":%.0f,\"generate_ms\":%.0f}\n",
+                    cruxvision::json_escape(meal).c_str(), err.empty() ? "true" : "false", err.c_str(),
+                    cruxvision::json_escape(out).c_str(), t.prompt_tokens, t.output_tokens, t.image_ms, t.generate_ms);
+        std::fflush(stdout);
+    }
+
     for (const auto & path : images) {
         int w = 0, h = 0, channels = 0;
         uint8_t * pixels = stbi_load(path.c_str(), &w, &h, &channels, 3);

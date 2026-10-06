@@ -47,6 +47,7 @@ fun FuelScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val photoState by photoViewModel.state.collectAsStateWithLifecycle()
     var photoOpen by remember { mutableStateOf(false) }
+    var textOpen by remember { mutableStateOf(false) }
     var photoExplain by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -109,9 +110,14 @@ fun FuelScreen(
                             Text(stringResource(R.string.trf_quick_add))
                         }
                         OutlinedButton(onClick = { foodsOpen = true }, modifier = Modifier.testTag("fuel_my_foods")) {
-                            Icon(Icons.Default.Bookmarks, null, Modifier.size(18.dp))
+                            Icon(Icons.Default.Search, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_my_foods))
+                            Text(stringResource(R.string.trf_find_food))
+                        }
+                        OutlinedButton(onClick = { textOpen = true }, modifier = Modifier.testTag("fuel_describe")) {
+                            Icon(Icons.Default.EditNote, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.trf_describe))
                         }
                         FoodPhotoButton(photoState.support, photoState.tooSlow,
                             onOpen = { photoOpen = true }, onExplain = { photoExplain = true })
@@ -154,6 +160,8 @@ fun FuelScreen(
             onToggleFavorite = viewModel::toggleFavorite,
             onDelete = viewModel::deleteFood,
             onCreate = { createFood = true; foodsOpen = false },
+            searchBls = photoViewModel::search,
+            onPickBls = { amountFor = FoodPhotoViewModel.blsFoodItem(it); foodsOpen = false },
         )
     }
     amountFor?.let { item ->
@@ -180,6 +188,15 @@ fun FuelScreen(
             initialMeal = defaultMeal,
             onDismiss = { photoOpen = false },
             onSaved = { photoOpen = false },
+            viewModel = photoViewModel,
+        )
+    }
+    if (textOpen) {
+        FoodTextSheet(
+            day = (state.day ?: state.today)?.toString().orEmpty(),
+            initialMeal = defaultMeal,
+            onDismiss = { textOpen = false },
+            onSaved = { textOpen = false },
             viewModel = photoViewModel,
         )
     }

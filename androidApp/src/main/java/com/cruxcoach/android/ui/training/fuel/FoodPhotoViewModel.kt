@@ -23,6 +23,7 @@ import com.cruxcoach.athlete.logic.DetectedFood
 import com.cruxcoach.athlete.logic.DeviceFacts
 import com.cruxcoach.athlete.logic.FoodMatcher
 import com.cruxcoach.athlete.logic.FoodVisionParser
+import com.cruxcoach.athlete.logic.MealTextParser
 import com.cruxcoach.athlete.logic.VisionCapability
 import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.model.FoodItem
@@ -62,10 +63,22 @@ sealed interface PhotoPhase {
     data object Idle : PhotoPhase
     data class Probing(val startedAt: Long) : PhotoPhase
     data class Analyzing(val startedAt: Long, val preview: Bitmap?, val estimateMs: Long?) : PhotoPhase
-    data class Review(val preview: Bitmap?, val items: List<ReviewItem>, val seconds: Int) : PhotoPhase
+    data class Review(
+        val preview: Bitmap?,
+        val items: List<ReviewItem>,
+        val seconds: Int,
+        val source: ReviewSource = ReviewSource.PHOTO,
+        /** Meal named in a typed description ("zum Frühstück"). */
+        val mealHint: Meal? = null,
+        /** The typed description, kept for a second pass with the model. */
+        val text: String? = null,
+    ) : PhotoPhase
     data class Failed(val error: PhotoError) : PhotoPhase
     data object Saved : PhotoPhase
 }
+
+/** Where the review list came from. */
+enum class ReviewSource { PHOTO, TEXT_RULES, TEXT_MODEL }
 
 sealed interface PhotoError {
     data object OutOfMemory : PhotoError
@@ -211,12 +224,19 @@ class FoodPhotoViewModel @Inject constructor(
         }
     }
 
-    /** Matches the model's foods against BLS and opens the review list. */
-    internal suspend fun showReview(preview: Bitmap?, detections: List<DetectedFood>, seconds: Int) {
+    /** Matches the detected foods against BLS and opens the review list. */
+    internal suspend fun showReview(
+        preview: Bitmap?,
+        detections: List<DetectedFood>,
+        seconds: Int,
+        source: ReviewSource = ReviewSource.PHOTO,
+        mealHint: Meal? = null,
+        text: String? = null,
+    ) {
         val matcher = bls.matcher()
         // Scoring 7,140 foods per detection is too much for the main thread.
         val items = withContext(Dispatchers.Default) { detections.map { reviewItem(it, matcher) } }
-        _state.update { it.copy(phase = PhotoPhase.Review(preview, items, seconds)) }
+        _state.update { it.copy(phase = PhotoPhase.Review(preview, items, seconds, source, mealHint, text)) }
     }
 
     fun cancel() {
@@ -225,12 +245,64 @@ class FoodPhotoViewModel @Inject constructor(
         _state.update { it.copy(phase = PhotoPhase.Idle) }
     }
 
-    /** Cancelling the calling coroutine also stops the native run. */
+    // ── Typed meal ───────────────────────────────────────────────────
+
+    /**
+     * Turns a typed description into the review list at once, without the
+     * model: on typical sentences the rules beat the 2B model (which also
+     * invents foods for vague input) and need no waiting. The model stays
+     * available as a second opinion, see [onTextWithModel].
+     */
+    fun onText(text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        work?.cancel()
+        work = viewModelScope.launch {
+            val parsed = withContext(Dispatchers.Default) { MealTextParser.parse(trimmed) }
+            showReview(null, parsed.foods, seconds = 0, source = ReviewSource.TEXT_RULES, mealHint = parsed.meal, text = trimmed)
+        }
+    }
+
+    /** True when the installed model may be asked to read a typed meal. */
+    val modelAvailable: Boolean get() = _state.value.canTakePhotos
+
+    /** Asks the on-device model to read the description; keeps the rules' list if it fails or finds nothing. */
+    fun onTextWithModel(text: String) {
+        val ready = store.state.value as? VisionModelStore.State.Ready ?: return
+        val fallback = _state.value.phase as? PhotoPhase.Review
+        val hint = MealTextParser.parse(text).meal
+        work?.cancel()
+        work = viewModelScope.launch {
+            val started = SystemClock.elapsedRealtime()
+            _state.update { it.copy(phase = PhotoPhase.Analyzing(started, null, null)) }
+            val p = prompt()
+            val outcome = run(ready.model, null, p.textSystem, p.forMeal(text), p.grammar, maxTokens = null)
+            val foods = if (outcome.ok) FoodVisionParser.parse(outcome.text) else emptyList()
+            if (foods.isEmpty() && fallback != null) {
+                _state.update { it.copy(phase = fallback) }
+                return@launch
+            }
+            if (!outcome.ok) return@launch failFor(outcome)
+            val seconds = ((SystemClock.elapsedRealtime() - started) / 1000).toInt()
+            showReview(null, foods, seconds, source = ReviewSource.TEXT_MODEL, mealHint = hint, text = text)
+        }
+    }
+
+    private suspend fun prompt(): VisionPrompt =
+        prompt ?: withContext(Dispatchers.IO) { VisionPrompt.load(context) }.also { prompt = it }
+
+    /** A photo run; cancelling the calling coroutine also stops the native run. */
     private suspend fun run(model: VisionModel, image: PreparedImage, maxTokens: Int?): VisionOutcome {
-        val p = prompt ?: withContext(Dispatchers.IO) { VisionPrompt.load(context) }.also { prompt = it }
+        val p = prompt()
+        return run(model, image, p.system, p.user, p.grammar, maxTokens)
+    }
+
+    private suspend fun run(
+        model: VisionModel, image: PreparedImage?, system: String, user: String, grammar: String, maxTokens: Int?,
+    ): VisionOutcome {
         val weights = store.fileFor(model.weights)?.absolutePath ?: return VisionOutcome(false, "no_storage", "")
         val projector = store.fileFor(model.projector)?.absolutePath ?: return VisionOutcome(false, "no_storage", "")
-        val request = VisionRequest(model, weights, projector, image, p)
+        val request = VisionRequest(model, weights, projector, image, system, user, grammar)
         return client.analyze(if (maxTokens != null) request.copy(maxTokens = maxTokens) else request)
     }
 
@@ -321,14 +393,11 @@ class FoodPhotoViewModel @Inject constructor(
     }
 
     /** The food as a reusable "my foods" entry (per 100 g), keeping favourite and use count. */
-    private fun blsItem(food: BlsFood, now: Long): FoodItem {
-        val id = "bls:${food.code}"
-        val existing = service.repo.foodItem(id)
-        return (existing ?: FoodItem(id = id, name = blsName(food), source = BlsRepository.SOURCE)).copy(
+    private fun blsItem(food: BlsFood, now: Long): FoodItem =
+        (service.repo.foodItem("bls:${food.code}") ?: blsFoodItem(food)).copy(
             kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
             updatedAt = now,
         )
-    }
 
     /** Called when the sheet closes: frees the ":vision" process and its memory. */
     fun onClose() {
@@ -355,6 +424,12 @@ class FoodPhotoViewModel @Inject constructor(
         private fun german() = Locale.getDefault().language == "de"
 
         fun blsName(food: BlsFood): String = if (german()) food.nameDe else food.nameEn
+
+        /** A BLS food as an (unsaved) per-100 g food item; saved on first use. */
+        fun blsFoodItem(food: BlsFood) = FoodItem(
+            id = "bls:${food.code}", name = blsName(food), source = BlsRepository.SOURCE,
+            kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+        )
 
         fun displayName(food: DetectedFood): String = if (german()) food.nameDe else food.nameEn
 

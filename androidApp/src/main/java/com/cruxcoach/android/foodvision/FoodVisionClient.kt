@@ -49,12 +49,15 @@ data class VisionOutcome(
     }
 }
 
+/** One model run: a photo, or no [image] for a typed meal. */
 data class VisionRequest(
     val model: VisionModel,
     val weightsPath: String,
     val projectorPath: String,
-    val image: PreparedImage,
-    val prompt: VisionPrompt,
+    val image: PreparedImage?,
+    val system: String,
+    val user: String,
+    val grammar: String,
     val maxTokens: Int = VisionProtocol.MAX_TOKENS,
 )
 
@@ -87,12 +90,12 @@ class FoodVisionClient(private val context: Context) {
             putString(VisionProtocol.KEY_MODEL, request.weightsPath)
             putString(VisionProtocol.KEY_MMPROJ, request.projectorPath)
             putInt(VisionProtocol.KEY_THREADS, DeviceFactsReader.inferenceThreads())
-            putString(VisionProtocol.KEY_RGB_PATH, request.image.rgbFile.absolutePath)
-            putInt(VisionProtocol.KEY_WIDTH, request.image.width)
-            putInt(VisionProtocol.KEY_HEIGHT, request.image.height)
-            putString(VisionProtocol.KEY_SYSTEM, request.prompt.system)
-            putString(VisionProtocol.KEY_USER, request.prompt.user)
-            putString(VisionProtocol.KEY_GRAMMAR, request.prompt.grammar)
+            putString(VisionProtocol.KEY_RGB_PATH, request.image?.rgbFile?.absolutePath.orEmpty())
+            putInt(VisionProtocol.KEY_WIDTH, request.image?.width ?: 0)
+            putInt(VisionProtocol.KEY_HEIGHT, request.image?.height ?: 0)
+            putString(VisionProtocol.KEY_SYSTEM, request.system)
+            putString(VisionProtocol.KEY_USER, request.user)
+            putString(VisionProtocol.KEY_GRAMMAR, request.grammar)
             putInt(VisionProtocol.KEY_MAX_TOKENS, request.maxTokens)
         }
         val id = ++requestId

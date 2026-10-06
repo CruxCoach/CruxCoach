@@ -31,6 +31,24 @@ photos anywhere. Hardware that cannot run it shows the feature greyed out.
 Nutrients never come from the model; the model only names foods and guesses
 portions.
 
+## Without a photo (owner request 2026-10-06)
+
+- **Find food:** the "my foods" sheet also searches the 7,140 BLS foods
+  while typing (two letters or more), offline on every phone. A picked BLS
+  food is logged by grams and becomes one of "my foods" on first use.
+- **Describe a meal:** a sentence ("Zum Frühstück 80 g Haferflocken mit
+  200 ml Milch und eine Banane", typed or dictated with the keyboard
+  microphone) goes through `MealTextParser` – numbers and number words,
+  units (g, ml, EL, slice, glass, plate, handful …), piece weights of common
+  foods, typical portions, meal words ("zum Frühstück", "abends") – into the
+  same review list as a photo. Instant and identical on every phone.
+- Where the photo model is installed, the review offers "analyse with the AI
+  model" as a second opinion (text-only run, `text-*-v1.txt` prompts). It is
+  not the default: on eight typical sentences the rules were more accurate
+  than Qwen3.5-2B, which invented foods for "Döner mit allem" and doubled
+  bread and toast weights; 4B was better but split a döner into parts and is
+  slower.
+
 ## Hardware gate (VisionCapability)
 
 | Check | Rule |

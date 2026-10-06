@@ -65,7 +65,16 @@
     <string name="trf_qa_optional">Alle Werte sind optional – schätzen ist völlig okay.</string>
     <string name="trf_qa_remember">Auch als Lebensmittel merken</string>
 
-    <string name="trf_foods_search">Suchen</string>
+    <string name="trf_foods_search">Eigene Lebensmittel und Datenbank durchsuchen</string>
+    <string name="trf_find_food">Lebensmittel suchen</string>
+    <string name="trf_foods_bls_title">Lebensmitteldatenbank (BLS)</string>
+    <string name="trf_foods_bls_hint">Tippe mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
+    <string name="trf_foods_bls_none">Kein Treffer in der Datenbank.</string>
+    <string name="trf_describe">Beschreiben</string>
+    <string name="trf_describe_title">Mahlzeit beschreiben</string>
+    <string name="trf_describe_placeholder">z. B. 2 Scheiben Vollkornbrot mit Käse und ein Glas Orangensaft</string>
+    <string name="trf_describe_hint">Mengen wie „80 g“, „2 Scheiben“ oder „ein Glas“ machen das Ergebnis genauer. Du kannst auch mit dem Mikrofon der Tastatur sprechen.</string>
+    <string name="trf_describe_go">Auswerten</string>
     <string name="trf_foods_empty">Noch keine gespeicherten Lebensmittel. Leg eins an oder merk dir einen Schnelleintrag.</string>
     <string name="trf_foods_new">Neues Lebensmittel</string>
     <string name="trf_food_per_portion">pro Portion</string>

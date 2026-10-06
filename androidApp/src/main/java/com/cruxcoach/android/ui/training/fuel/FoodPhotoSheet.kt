@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.LocalDrink
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -188,7 +189,7 @@ private fun DownloadPane(state: FoodPhotoState, download: VisionModelStore.State
 }
 
 @Composable
-private fun WaitPane(startedAt: Long, label: String, estimateMs: Long?, onCancel: (() -> Unit)?) {
+internal fun WaitPane(startedAt: Long, label: String, estimateMs: Long?, onCancel: (() -> Unit)?) {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(startedAt) { while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
     val seconds = ((now - startedAt) / 1000).toInt()
@@ -209,7 +210,7 @@ private fun WaitPane(startedAt: Long, label: String, estimateMs: Long?, onCancel
 }
 
 @Composable
-private fun AnalyzingPane(phase: PhotoPhase.Analyzing, onCancel: () -> Unit) {
+internal fun AnalyzingPane(phase: PhotoPhase.Analyzing, onCancel: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         phase.preview?.let { Preview(it) }
         WaitPane(phase.startedAt, stringResource(R.string.fvp_analyzing), phase.estimateMs, onCancel)
@@ -285,7 +286,7 @@ private fun cameraNeedsGrant(context: Context): Boolean {
 }
 
 @Composable
-private fun ErrorPane(error: PhotoError, onRetry: () -> Unit) {
+internal fun ErrorPane(error: PhotoError, onRetry: () -> Unit) {
     val context = LocalContext.current
     val text = when (error) {
         PhotoError.OutOfMemory -> stringResource(R.string.fvp_error_memory)
@@ -306,15 +307,28 @@ private fun ErrorPane(error: PhotoError, onRetry: () -> Unit) {
 // ── Review ───────────────────────────────────────────────────────────
 
 @Composable
-private fun ReviewPane(phase: PhotoPhase.Review, initialMeal: Meal, viewModel: FoodPhotoViewModel, onSave: (Meal) -> Unit) {
-    var meal by rememberSaveable { mutableStateOf(initialMeal) }
+internal fun ReviewPane(phase: PhotoPhase.Review, initialMeal: Meal, viewModel: FoodPhotoViewModel, onSave: (Meal) -> Unit) {
+    var meal by rememberSaveable(phase.mealHint) { mutableStateOf(phase.mealHint ?: initialMeal) }
     var choosingFor by remember { mutableStateOf<ReviewItem?>(null) }
     var adding by remember { mutableStateOf(false) }
     val count = phase.items.count { it.included && FoodPhotoViewModel.amountOf(it) != null }
     Column(Modifier.testTag("fuel_photo_review"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         phase.preview?.let { Preview(it) }
-        Text(stringResource(R.string.fvp_review_hint, phase.seconds), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            when (phase.source) {
+                ReviewSource.PHOTO -> stringResource(R.string.fvp_review_hint, phase.seconds)
+                ReviewSource.TEXT_RULES -> stringResource(R.string.fvp_review_text_hint)
+                ReviewSource.TEXT_MODEL -> stringResource(R.string.fvp_review_text_model_hint, phase.seconds)
+            },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val text = phase.text
+        if (phase.source == ReviewSource.TEXT_RULES && text != null && viewModel.modelAvailable) {
+            OutlinedButton(onClick = { viewModel.onTextWithModel(text) }, modifier = Modifier.testTag("fuel_text_model")) {
+                Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.fvp_text_model))
+            }
+        }
         if (phase.items.isEmpty()) Text(stringResource(R.string.fvp_review_empty), modifier = Modifier.testTag("fuel_photo_empty"))
         LazyColumn(Modifier.heightIn(max = 360.dp)) {
             items(phase.items, key = { it.key }) { item ->
