@@ -34,7 +34,6 @@
     <string name="trt_day_paused">Pause</string>
     <string name="trt_day_rest">Ruhetag</string>
     <string name="trt_continue_workout">Training läuft – weitermachen</string>
-    <string name="trt_pause_active">Pause aktiv (Krankheit, Verletzung oder Urlaub)</string>
     <string name="trt_pause_end">Pause beenden</string>
     <string name="trt_checkin_title">Wie geht\'s dir heute?</string>
     <string name="trt_checkin_hint">Freiwillig, vier Tipps. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
@@ -48,8 +47,6 @@
     <string name="trt_ready_go">Startklar</string>
     <string name="trt_ready_adapt">Heute anpassen</string>
     <string name="trt_ready_rest">Heute erholen</string>
-    <string name="trt_ready_info_title">Warum diese Empfehlung?</string>
-    <string name="trt_ready_info_text">CruxCoach verbindet deinen Check-in mit offenen Verletzungen. Der zuerst genannte Grund hat entschieden. Schlechte Haut oder müde Finger streichen das Training nicht – sie verschieben die Last: Hangboard- oder Krafttag statt Board. Krankheit heißt Pause.</string>
     <string name="trt_reason_sick">Du fühlst dich krank – erhol dich. Deine Serie ist pausiert.</string>
     <string name="trt_reason_injury_paused">Verletzungsmodus: Klettern pausiert. Training ohne Wand, das die verletzte Stelle schont, ist okay.</string>
     <string name="trt_reason_injury">Eine Verletzung ist offen – Übungen, die sie belasten, sind markiert.</string>
@@ -64,15 +61,9 @@
     <string name="trt_short_motivation">Motivation</string>
     <string name="trt_injury_mode">Verletzung eingetragen</string>
     <string name="trt_injury_mode_paused">Verletzungsmodus – Klettern pausiert</string>
-    <string name="trt_injury_mode_hint">Übungen, die die verletzte Stelle belasten, sind ausgeblendet oder markiert; einseitige Übungen bleiben für die gesunde Seite verfügbar.</string>
-    <string name="trt_injury_start">Verletzungs-Routine starten</string>
     <string name="trt_injury_manage">Verwalten</string>
-    <string name="trt_today_training">Training heute</string>
     <string name="trt_workout_untitled">Training</string>
-    <string name="trt_nothing_yet">Noch nichts erfasst – Board-Sessions erscheinen hier von selbst.</string>
-    <string name="trt_start_training">Training</string>
     <string name="trt_routines">Routinen</string>
-    <string name="trt_history">Verlauf</string>
     <string name="trt_weekly_review">Wochenrückblick</string>
     <string name="trt_report_injury">Verletzung eintragen</string>
     <string name="trt_sugg_equipment_title">Was hast du?</string>
@@ -93,15 +84,26 @@
     <string name="trt_spike_text">Mehr Belastungstage als in den drei Wochen davor. Kein Verbot – nur gut zu wissen.</string>
     <string name="trt_trend_direction">Trendrichtung</string>
     <string name="trt_trend_weight">Trend: %1$s</string>
-    <string name="trt_trend_rate">%1$s pro Woche</string>
-    <string name="trt_numbers_hidden">Zahlen ausgeblendet – der Pfeil zeigt den Trend.</string>
     <string name="trt_weight_today">Gewicht heute (%1$s)</string>
     <string name="trt_fuel_needs_weight">Trag dein Körpergewicht ein, dann siehst du Protein- und Kohlenhydrat-Ziele.</string>
     <string name="trt_protein">Protein</string>
-    <string name="trt_carbs_for">Kohlenhydrate für: %1$s</string>
-    <string name="trt_water">Wasser</string>
     <string name="trt_water_add">+250 ml</string>
     <string name="trt_sugg_benchmarks_title">Startwerte eintragen</string>
     <string name="trt_sugg_benchmarks_text">Max Hang, Blockheben, Klimmzug mit Zusatzgewicht: Aus dem, was du schaffst, plant CruxCoach deine Lasten.</string>
     <string name="trt_sugg_benchmarks_action">Eintragen</string>
+    <string name="trt_today_hero">Dein Training heute</string>
+    <string name="trt_more_exercises">+ %1$d weitere</string>
+    <string name="trt_low_data">Noch wenig Daten – mit jedem Eintrag wird der Vorschlag persönlicher</string>
+    <string name="trt_warmup_start">Aufwärmen starten</string>
+    <string name="trt_more_actions">Weitere Aktionen</string>
+    <string name="trt_based_on_title">Basierend auf</string>
+    <string name="trt_checkin_prompt_hint">4 kurze Fragen – damit der Vorschlag zu heute passt</string>
+    <string name="trt_pause_short">Pause aktiv</string>
+    <string name="trt_quick_climbing">Klettertag</string>
+    <string name="trt_quick_weight">Gewicht</string>
+    <string name="trt_quick_food">Essen</string>
+    <string name="trt_quick_free">Freies Training</string>
+    <string name="trt_done_today">Heute erledigt</string>
+    <string name="trt_tile_trend">Trend</string>
+    <string name="trt_numbers_hidden_short">verborgen</string>
 </resources>

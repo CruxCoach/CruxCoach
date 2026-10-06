@@ -6,6 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -75,6 +80,8 @@ fun TodayScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var askWhy by rememberSaveable { mutableStateOf(false) }
+    var showWhy by rememberSaveable { mutableStateOf(false) }
+    var showWeight by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val snackScope = rememberCoroutineScope()
@@ -109,20 +116,19 @@ fun TodayScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // One glance: where the week stands, what needs attention, then today's training.
             item { WeekHeader(state) }
-            state.block?.let { block -> item(key = "block_chip") { BlockChip(block) } }
-            item(key = "coach_card") { coachCard() }
-            state.openWorkout?.let { item { OpenWorkoutCard(onOpenPlayer) } }
-            item {
-                ReadinessCard(state, onSave = viewModel::saveCheckin, onClear = viewModel::clearCheckin,
-                    onEndPause = viewModel::endPause)
-            }
-            state.suggestion?.let { suggestion ->
+            state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
+            if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
+            if (state.openWorkout != null) {
+                item(key = "open_workout") { OpenWorkoutCard(onOpenPlayer) }
+            } else state.suggestion?.let {
                 item(key = "daily_suggestion") {
                     DailySuggestionCard(
                         state = state,
                         onStart = viewModel::startSuggestion,
                         onNext = { askWhy = true },
+                        onWhy = { showWhy = true },
                         onEdit = { title -> viewModel.editTarget(title).let { (id, from) -> onOpenEditor(id, from) } },
                         onSave = viewModel::saveSuggestion,
                         onOpenPlaylistGenerator = onOpenPlaylistGenerator,
@@ -132,12 +138,23 @@ fun TodayScreen(
                     item(key = "duration_hint") { DurationHintCard(minutes, onApply = viewModel::applyDurationHint) }
                 }
             }
-            if (state.injuries.isNotEmpty()) item { InjuryCard(state, onOpenInjuries, onStart = { viewModel.startRoutine(BuiltinRoutines.INJURY_ONE_ARM) }) }
-            item {
-                TrainCard(state, onStartEmpty = viewModel::startEmptyWorkout, onOpenRoutines = onOpenRoutines,
-                    onOpenExercises = onOpenExercises, onOpenHistory = onOpenHistory, onLogClimbing = onLogClimbing)
+            item(key = "checkin") {
+                CheckinCard(state, onSave = viewModel::saveCheckin, onClear = viewModel::clearCheckin)
             }
-            state.suggestions.forEach { s ->
+            item(key = "quick") {
+                QuickActions(
+                    state = state,
+                    onLogClimbing = onLogClimbing,
+                    onLogWeight = { showWeight = true },
+                    onAddWater = { viewModel.addWater(250) },
+                    onOpenFuel = onOpenFuel,
+                    onStartEmpty = viewModel::startEmptyWorkout,
+                    onOpenRoutines = onOpenRoutines,
+                )
+            }
+            item(key = "coach_card") { coachCard() }
+            // Setup hints one at a time: the next useful step, not a to-do list.
+            state.suggestions.firstOrNull()?.let { s ->
                 item(key = s.name) {
                     SuggestionCard(s, onAction = {
                         when (s) {
@@ -151,12 +168,18 @@ fun TodayScreen(
             }
             if (state.redsSignals.isNotEmpty()) item { RedsCard(state.redsSignals) }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
-            if (state.profile.bodyEnabled) item { BodyCard(state, onOpenBody, viewModel::logWeight) }
-            if (state.profile.fuelEnabled) item { FuelCard(state, onOpenFuel, viewModel::addWater) }
+            val doneSomething = state.todaysWorkouts.isNotEmpty() ||
+                state.activity?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
+            if (doneSomething) item(key = "done_today") { DoneTodayCard(state, onOpenHistory) }
+            if (state.profile.bodyEnabled || state.profile.fuelEnabled) {
+                item(key = "tiles") { SummaryTiles(state, onOpenBody, onOpenFuel) }
+            }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = onOpenWeeklyReview, label = { Text(stringResource(R.string.trt_weekly_review)) },
                         leadingIcon = { Icon(Icons.Default.Insights, null) }, modifier = Modifier.testTag("today_weekly_review"))
+                    AssistChip(onClick = onOpenExercises, label = { Text(stringResource(R.string.tr_nav_exercises)) },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) }, modifier = Modifier.testTag("today_exercises"))
                     if (state.injuries.isEmpty()) {
                         AssistChip(onClick = onOpenInjuries, label = { Text(stringResource(R.string.trt_report_injury)) },
                             leadingIcon = { Icon(Icons.Default.Healing, null) }, modifier = Modifier.testTag("today_report_injury"))
@@ -167,6 +190,8 @@ fun TodayScreen(
         }
     }
 
+    if (showWhy) WhySheet(state, onDismiss = { showWhy = false })
+    if (showWeight) WeightDialog(state, onDismiss = { showWeight = false }, onSave = { kg -> viewModel.logWeight(kg); showWeight = false })
     if (askWhy) {
         NextSuggestionSheet(
             state = state,
@@ -254,84 +279,137 @@ private fun OpenWorkoutCard(onOpen: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.brandAccent),
         modifier = Modifier.fillMaxWidth().testTag("today_open_workout"),
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.PlayArrow, null, tint = CruxCoachDesign.colors.onBrandAccent)
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.PlayArrow, null, tint = CruxCoachDesign.colors.onBrandAccent, modifier = Modifier.size(32.dp))
             Spacer(Modifier.width(12.dp))
             Text(stringResource(R.string.trt_continue_workout), color = CruxCoachDesign.colors.onBrandAccent,
-                style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** Thin status line: an open pause, with the way out right there. */
+@Composable
+private fun PauseBanner(onEndPause: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag("today_pause")) {
+        Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Bedtime, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.trt_pause_short), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = onEndPause, modifier = Modifier.testTag("today_end_pause")) { Text(stringResource(R.string.trt_pause_end)) }
+        }
+    }
+}
+
+/** Thin status line for injury mode; the suggestion below already trains around it. */
+@Composable
+private fun InjuryBanner(state: TodayState, onManage: () -> Unit) {
+    val paused = state.injuries.any { it.climbingPaused }
+    val summary = state.injuries.map { i -> listOfNotNull(regionLabel(i.region), i.side?.let { injurySideLabel(it) }).joinToString(" ") }
+    Surface(
+        onClick = onManage,
+        color = CruxCoachDesign.colors.cautionContainer, contentColor = CruxCoachDesign.colors.onCautionContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag("today_injury"),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Healing, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(if (paused) R.string.trt_injury_mode_paused else R.string.trt_injury_mode),
+                    style = MaterialTheme.typography.labelLarge)
+                Text(summary.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = stringResource(R.string.trt_injury_manage))
         }
     }
 }
 
 // ── Readiness check-in ──────────────────────────────────────────────
 
+/**
+ * The check-in as one line: a prompt until answered (it opens in place),
+ * afterwards the day's verdict with the answers in a few characters.
+ */
 @Composable
-private fun ReadinessCard(
+private fun CheckinCard(
     state: TodayState,
     onSave: (Int?, Int?, Int?, Int?, Boolean) -> Unit,
     onClear: () -> Unit,
-    onEndPause: () -> Unit,
 ) {
     val checkin = state.checkin
-    var editing by rememberSaveable(checkin?.createdAt) { mutableStateOf(false) }
+    var expanded by rememberSaveable(checkin?.createdAt) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().testTag("today_readiness")) {
-        Column(Modifier.padding(16.dp)) {
-            if (state.openPause != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bedtime, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.trt_pause_active), modifier = Modifier.weight(1f))
-                    TextButton(onClick = onEndPause, modifier = Modifier.testTag("today_end_pause")) {
-                        Text(stringResource(R.string.trt_pause_end))
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            when {
+                expanded -> {
+                    CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false) { s, e, sk, f, sick ->
+                        onSave(s, e, sk, f, sick); expanded = false
+                    }
+                    Row {
+                        TextButton(onClick = { expanded = false }) { Text(stringResource(R.string.tr_action_cancel)) }
+                        if (checkin != null) TextButton(onClick = { onClear(); expanded = false }) { Text(stringResource(R.string.trt_checkin_reset)) }
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            }
-            if (checkin == null || editing) {
-                if (!state.profile.checkinEnabled && checkin == null) {
-                    ReadinessResult(state)
-                    return@Column
-                }
-                CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false) { s, e, sk, f, sick ->
-                    onSave(s, e, sk, f, sick); editing = false
-                }
-            } else {
-                ReadinessResult(state)
-                Row {
-                    TextButton(onClick = { editing = true }, modifier = Modifier.testTag("today_checkin_edit")) {
-                        Text(stringResource(R.string.trt_checkin_change))
+                checkin == null && state.profile.checkinEnabled -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { expanded = true }.testTag("today_checkin_open"),
+                ) {
+                    Icon(Icons.Default.Mood, null)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.trt_checkin_prompt_hint), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = onClear) { Text(stringResource(R.string.trt_checkin_reset)) }
+                    Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.trt_checkin_title))
                 }
+                else -> ReadinessResult(state, onEdit = if (state.profile.checkinEnabled) ({ expanded = true }) else null)
             }
         }
     }
 }
 
 @Composable
-private fun ReadinessResult(state: TodayState) {
+private fun ReadinessResult(state: TodayState, onEdit: (() -> Unit)?) {
     val r = state.readiness
+    val c = state.checkin
     val (icon, title) = when (r.level) {
         ReadinessLevel.GO -> Icons.Default.CheckCircle to stringResource(R.string.trt_ready_go)
         ReadinessLevel.ADAPT -> Icons.Default.Tune to stringResource(R.string.trt_ready_adapt)
         ReadinessLevel.REST -> Icons.Default.Bedtime to stringResource(R.string.trt_ready_rest)
     }
+    // Answers in a few characters ("Schlaf 4 · Haut 2"); the injury has its own banner above.
+    val answers = listOfNotNull(
+        c?.sleep?.let { stringResource(R.string.trt_q_sleep) + " " + it },
+        c?.energy?.let { stringResource(R.string.trt_q_energy) + " " + it },
+        c?.skin?.let { stringResource(R.string.trt_q_skin) + " " + it },
+        c?.fingers?.let { stringResource(R.string.trt_q_fingers) + " " + it },
+        if (c?.sick == true) stringResource(R.string.trt_short_sick) else null,
+    )
+    val factor = r.reasons.firstOrNull { it != ReadinessReason.INJURY_CLIMBING_PAUSED && it != ReadinessReason.INJURY_ACTIVE && it != ReadinessReason.ALL_GOOD }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = when (r.level) {
             ReadinessLevel.GO -> CruxCoachDesign.colors.positive
             ReadinessLevel.ADAPT -> CruxCoachDesign.colors.caution
             ReadinessLevel.REST -> MaterialTheme.colorScheme.onSurfaceVariant
         })
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        InfoButton(stringResource(R.string.trt_ready_info_title), stringResource(R.string.trt_ready_info_text))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            if (answers.isNotEmpty()) {
+                Text(answers.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("today_checkin_summary"))
+            }
+        }
+        if (onEdit != null) TextButton(onClick = onEdit, modifier = Modifier.testTag("today_checkin_edit")) {
+            Text(stringResource(R.string.trt_checkin_change))
+        }
     }
-    Text(readinessReasonText(r.decidingFactor), style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 4.dp).testTag("today_readiness_reason"))
-    val more = r.reasons.drop(1).filter { it != ReadinessReason.ALL_GOOD }
-    if (more.isNotEmpty()) {
-        Text(more.map { readinessReasonShort(it) }.joinToString(" · "), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+    factor?.let {
+        Text(readinessReasonText(it), style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp).testTag("today_readiness_reason"))
     }
 }
 
@@ -411,59 +489,55 @@ private fun ScaleRow(label: String, value: Int?, tag: String, onChange: (Int?) -
     }
 }
 
-// ── Injury mode ─────────────────────────────────────────────────────
+// ── Quick actions and today's log ───────────────────────────────────
 
+/** Everything logged often, always in the same place. */
 @Composable
-private fun InjuryCard(state: TodayState, onManage: () -> Unit, onStart: () -> Unit) {
-    val paused = state.injuries.any { it.climbingPaused }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
-            contentColor = CruxCoachDesign.colors.onCautionContainer),
-        modifier = Modifier.fillMaxWidth().testTag("today_injury"),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Healing, null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(if (paused) R.string.trt_injury_mode_paused else R.string.trt_injury_mode),
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            }
-            val summary = state.injuries.map { i ->
-                listOfNotNull(regionLabel(i.region), i.side?.let { injurySideLabel(it) }).joinToString(" ")
-            }
-            Text(summary.joinToString(", "), style = MaterialTheme.typography.bodyMedium)
-            Text(stringResource(R.string.trt_injury_mode_hint), style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp))
-            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onStart, modifier = Modifier.testTag("today_injury_start")) {
-                    Text(stringResource(R.string.trt_injury_start))
-                }
-                OutlinedButton(onClick = onManage) { Text(stringResource(R.string.trt_injury_manage)) }
-            }
+private fun QuickActions(
+    state: TodayState,
+    onLogClimbing: () -> Unit,
+    onLogWeight: () -> Unit,
+    onAddWater: () -> Unit,
+    onOpenFuel: () -> Unit,
+    onStartEmpty: () -> Unit,
+    onOpenRoutines: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("today_quick"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        QuickAction(Icons.Default.Terrain, stringResource(R.string.trt_quick_climbing), "today_log_climbing", onLogClimbing)
+        if (state.profile.bodyEnabled) QuickAction(Icons.Default.MonitorWeight, stringResource(R.string.trt_quick_weight), "today_weight", onLogWeight)
+        if (state.profile.fuelEnabled) {
+            QuickAction(Icons.Default.WaterDrop, stringResource(R.string.trt_water_add), "today_water_add", onAddWater)
+            QuickAction(Icons.Default.Restaurant, stringResource(R.string.trt_quick_food), "today_food", onOpenFuel)
         }
+        if (state.openWorkout == null) QuickAction(Icons.Default.Add, stringResource(R.string.trt_quick_free), "today_start_empty", onStartEmpty)
+        QuickAction(Icons.AutoMirrored.Filled.List, stringResource(R.string.trt_routines), "today_routines", onOpenRoutines)
     }
 }
 
-// ── Training of the day ─────────────────────────────────────────────
-
 @Composable
-private fun TrainCard(
-    state: TodayState,
-    onStartEmpty: () -> Unit,
-    onOpenRoutines: () -> Unit,
-    onOpenExercises: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onLogClimbing: () -> Unit = {},
-) {
-    Card(Modifier.fillMaxWidth().testTag("today_train")) {
+private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
+        Icon(icon, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, maxLines = 1)
+    }
+}
+
+/** What is already done today — only shown once there is something. */
+@Composable
+private fun DoneTodayCard(state: TodayState, onOpenHistory: () -> Unit) {
+    val a = state.activity
+    val climbed = a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0)
+    if (!climbed && state.todaysWorkouts.isEmpty()) return
+    OutlinedCard(onClick = onOpenHistory, modifier = Modifier.fillMaxWidth().testTag("today_train")) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trt_today_training), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text(dayLoadLabel(state.dayLoad), style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.trt_done_today), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(dayLoadLabel(state.dayLoad), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            val a = state.activity
-            if (a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0)) {
+            if (climbed && a != null) {
                 Text(
                     if (a.climbingMinutes > 0) pluralStringResource(R.plurals.trt_board_minutes, a.climbingMinutes, a.climbingMinutes)
                     else pluralStringResource(R.plurals.trt_board_efforts, a.climbingEfforts, a.climbingEfforts),
@@ -474,25 +548,6 @@ private fun TrainCard(
                 Text("• " + com.cruxcoach.android.ui.training.workout.workoutTitle(w) +
                     (w.durationMinutes?.let { " · " + pluralStringResource(R.plurals.trt_minutes, it, it) } ?: ""),
                     style = MaterialTheme.typography.bodyMedium)
-            }
-            if ((a == null || !a.trained) && state.todaysWorkouts.isEmpty()) {
-                Text(stringResource(R.string.trt_nothing_yet), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-            }
-            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onStartEmpty, enabled = state.openWorkout == null, modifier = Modifier.testTag("today_start_empty")) {
-                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.trt_start_training))
-                }
-                OutlinedButton(onClick = onOpenRoutines, modifier = Modifier.testTag("today_routines")) {
-                    Text(stringResource(R.string.trt_routines))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onOpenExercises, modifier = Modifier.testTag("today_exercises")) { Text(stringResource(R.string.tr_nav_exercises)) }
-                TextButton(onClick = onOpenHistory, modifier = Modifier.testTag("today_history")) { Text(stringResource(R.string.trt_history)) }
-                TextButton(onClick = onLogClimbing, modifier = Modifier.testTag("today_log_climbing")) {
-                    Text(stringResource(R.string.tre_log_climbing))
-                }
             }
         }
     }
@@ -588,11 +643,17 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.LEVEL_HARDER -> R.string.tre_reason_level_harder
 })
 
+/**
+ * Today's training as the one big thing on the screen: what, how long, the
+ * first exercises and one big button. Reasons, evidence and confidence sit
+ * behind "Warum?"; another suggestion, adapt and save are small actions.
+ */
 @Composable
 private fun DailySuggestionCard(
     state: TodayState,
     onStart: (String) -> Unit,
     onNext: () -> Unit,
+    onWhy: () -> Unit,
     onEdit: (String) -> Unit,
     onSave: (String) -> Unit,
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
@@ -600,9 +661,9 @@ private fun DailySuggestionCard(
     val s = state.suggestion ?: return
     val language = catalogLanguage()
     val title = suggestionTitle(state)
-    val reasons = s.reasons.map { suggestionReasonText(it) }
     val main = s.routine.items.filter { !it.warmup }
-    val names = main.take(5).map { item -> state.catalog.fallbackFor(item.slug).name(language) }
+    val shown = main.take(4)
+    var menu by remember { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
@@ -610,64 +671,129 @@ private fun DailySuggestionCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.trsg_card_label), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trsg_why_title), reasons.joinToString("\n\n"))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f, fill = false).testTag("today_suggestion_title"))
-                Spacer(Modifier.width(8.dp))
-                ConfidenceBadge(s.confidence)
-            }
-            if (s.plannedEntry != null && (s.focus == SuggestionFocus.PLANNED || s.focus == SuggestionFocus.BOARD_DAY)) {
-                Text(stringResource(R.string.trsg_planned_today), style = MaterialTheme.typography.bodySmall)
-            }
-            Text(
-                pluralStringResource(R.plurals.trsg_meta, s.routine.items.size, s.routine.items.size, s.estimatedMinutes),
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
-            )
-            if (names.isNotEmpty()) {
-                Text(names.joinToString(" · ") + if (main.size > names.size) " …" else "",
-                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-            }
-            reasons.firstOrNull()?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)
-                    .testTag("today_suggestion_reason"))
-            }
-            val evidence = s.basedOn.take(4).map { evidenceText(it, state, language) }.filter { it.isNotBlank() }
-            if (evidence.isNotEmpty()) {
-                Text(stringResource(R.string.tre_based_on, evidence.joinToString(" · ")), style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_based_on"))
-            }
-            s.boardPlan?.let { plan ->
-                FilledTonalButton(onClick = { onOpenPlaylistGenerator(plan.type.name, plan.minutes) },
-                    modifier = Modifier.padding(top = 8.dp).testTag("today_suggestion_board")) {
-                    Icon(Icons.Default.Terrain, null); Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.tre_board_create) + " · " + stringResource(R.string.tre_board_plan, generatorLabel(plan.type), plan.minutes))
+                Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                state.block?.let {
+                    Text(blockLabel(it), style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("today_block"))
                 }
             }
-            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
+            Text(pluralStringResource(R.plurals.trsg_meta, s.routine.items.size, s.routine.items.size, s.estimatedMinutes),
+                style = MaterialTheme.typography.bodyMedium)
+            if (shown.isNotEmpty()) {
+                Column(Modifier.padding(top = 8.dp)) {
+                    shown.forEach { item ->
+                        Text("• " + state.catalog.fallbackFor(item.slug).name(language), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    }
+                    if (main.size > shown.size) {
+                        Text(stringResource(R.string.trt_more_exercises, main.size - shown.size), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            s.reasons.firstOrNull()?.let {
+                Text(suggestionReasonText(it), style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                    modifier = Modifier.padding(top = 8.dp).testTag("today_suggestion_reason"))
+            }
+            if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {
+                Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onWhy).testTag("today_suggestion_confidence"))
+            }
+            val plan = s.boardPlan
+            if (plan != null) {
+                // Board day: the session on the board is the main thing, the warm-up comes with it.
+                Button(onClick = { onOpenPlaylistGenerator(plan.type.name, plan.minutes) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_board")) {
+                    Icon(Icons.Default.Terrain, null); Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.tre_board_plan, generatorLabel(plan.type), plan.minutes))
+                }
+                OutlinedButton(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_suggestion_start")) {
+                    Text(stringResource(R.string.trt_warmup_start))
+                }
+            } else {
                 Button(onClick = { onStart(title) }, enabled = s.routine.items.isNotEmpty(),
-                    modifier = Modifier.testTag("today_suggestion_start")) {
-                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.trsg_start))
-                }
-                OutlinedButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) {
-                    Text(stringResource(R.string.trsg_next))
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_suggestion_start")) {
+                    Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.trsg_start))
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onEdit(title) }, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
-                    Text(stringResource(R.string.trsg_edit))
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) { Text(stringResource(R.string.trsg_next)) }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { onEdit(title) }, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.trsg_edit))
                 }
-                TextButton(onClick = { onSave(title) }, enabled = s.routine.items.isNotEmpty(),
-                    modifier = Modifier.testTag("today_suggestion_save")) {
-                    Text(stringResource(R.string.trsg_save))
+                IconButton(onClick = onWhy, modifier = Modifier.testTag("today_suggestion_why")) {
+                    Icon(Icons.Default.Info, contentDescription = stringResource(R.string.trsg_why_title))
+                }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.testTag("today_suggestion_more")) {
+                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.trsg_save)) },
+                            onClick = { menu = false; onSave(title) },
+                            enabled = s.routine.items.isNotEmpty(),
+                            leadingIcon = { Icon(Icons.Default.BookmarkAdd, null) },
+                            modifier = Modifier.testTag("today_suggestion_save"),
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** "Warum?": every reason, what the suggestion was based on, and how sure it is. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
+    val s = state.suggestion ?: return
+    val language = catalogLanguage()
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("today_why_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
+            Text(stringResource(R.string.trsg_why_title), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            s.reasons.forEach { Text("• " + suggestionReasonText(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
+            val evidence = s.basedOn.map { evidenceText(it, state, language) }.filter { it.isNotBlank() }
+            if (evidence.isNotEmpty()) {
+                Text(stringResource(R.string.trt_based_on_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                evidence.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
+            }
+            Text(stringResource(R.string.tre_conf_info_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+            Text(confidenceLabel(s.confidence) + " – " + stringResource(R.string.tre_conf_info_text), style = MaterialTheme.typography.bodySmall)
+            state.block?.let {
+                Text(blockLabel(it), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                Text(stringResource(R.string.tre_block_info_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeightDialog(state: TodayState, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
+    val units = state.profile.units
+    var input by rememberSaveable { mutableStateOf("") }
+    val parsed = parseDecimal(input)?.let { Units.massFromDisplay(it, units) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.trt_weight_today, Units.massUnit(units))) },
+        text = {
+            OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                supportingText = state.trendKg?.takeIf { !state.profile.hideBodyNumbers }?.let { t ->
+                    { Text(stringResource(R.string.trt_trend_weight, formatMass(t, units))) }
+                },
+                modifier = Modifier.testTag("today_weight_input"))
+        },
+        confirmButton = {
+            TextButton(onClick = { parsed?.let(onSave) }, enabled = parsed != null && parsed in 20.0..300.0,
+                modifier = Modifier.testTag("today_weight_save")) { Text(stringResource(R.string.tr_action_save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
+    )
 }
 
 // ── Safety cards ────────────────────────────────────────────────────
@@ -715,70 +841,56 @@ private fun LoadSpikeCard(state: TodayState) {
 
 // ── Body and fueling summaries ──────────────────────────────────────
 
+/** Body and fueling as two small tiles; the screens behind them hold the details. */
 @Composable
-private fun BodyCard(state: TodayState, onOpen: () -> Unit, onLogWeight: (Double) -> Unit) {
+private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: () -> Unit) {
     val units = state.profile.units
-    var input by rememberSaveable { mutableStateOf("") }
-    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("today_body")) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.tr_nav_body), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                val rate = state.weeklyRateKg
-                if (rate != null) {
-                    val icon = when {
-                        abs(rate) < 0.1 -> Icons.AutoMirrored.Filled.TrendingFlat
-                        rate > 0 -> Icons.AutoMirrored.Filled.TrendingUp
-                        else -> Icons.AutoMirrored.Filled.TrendingDown
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.profile.bodyEnabled) {
+            Card(onClick = onOpenBody, modifier = Modifier.weight(1f).testTag("today_body")) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(stringResource(R.string.tr_nav_body), style = MaterialTheme.typography.labelLarge)
+                    val trend = state.trendKg
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when {
+                                trend == null -> "–"
+                                state.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+                                else -> formatMass(trend, units)
+                            },
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        )
+                        state.weeklyRateKg?.let { rate ->
+                            Spacer(Modifier.width(6.dp))
+                            Icon(when {
+                                abs(rate) < 0.1 -> Icons.AutoMirrored.Filled.TrendingFlat
+                                rate > 0 -> Icons.AutoMirrored.Filled.TrendingUp
+                                else -> Icons.AutoMirrored.Filled.TrendingDown
+                            }, contentDescription = stringResource(R.string.trt_trend_direction), modifier = Modifier.size(18.dp))
+                        }
                     }
-                    Icon(icon, contentDescription = stringResource(R.string.trt_trend_direction))
-                }
-            }
-            val trend = state.trendKg
-            if (trend != null && !state.profile.hideBodyNumbers) {
-                Text(stringResource(R.string.trt_trend_weight, formatMass(trend, units)), style = MaterialTheme.typography.bodyLarge)
-                state.weeklyRateKg?.let { Text(stringResource(R.string.trt_trend_rate, formatMass(it, units, signed = true)),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            } else if (trend != null) {
-                Text(stringResource(R.string.trt_numbers_hidden), style = MaterialTheme.typography.bodySmall)
-            }
-            if (state.lastWeighDay != state.today?.toString()) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedTextField(
-                        value = input, onValueChange = { input = it },
-                        label = { Text(stringResource(R.string.trt_weight_today, Units.massUnit(units))) },
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.weight(1f).testTag("today_weight_input"),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    val parsed = parseDecimal(input)?.let { Units.massFromDisplay(it, units) }
-                    FilledTonalButton(
-                        onClick = { parsed?.let(onLogWeight); input = "" },
-                        enabled = parsed != null && parsed in 20.0..300.0,
-                        modifier = Modifier.testTag("today_weight_save"),
-                    ) { Text(stringResource(R.string.tr_action_save)) }
+                    Text(stringResource(R.string.trt_tile_trend), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun FuelCard(state: TodayState, onOpen: () -> Unit, onAddWater: (Int) -> Unit) {
-    val t = state.fuelTargets
-    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("today_fuel")) {
-        Column(Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.tr_nav_fuel), style = MaterialTheme.typography.titleMedium)
-            if (t == null) {
-                Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
-                return@Column
-            }
-            Progress(stringResource(R.string.trt_protein), state.proteinToday, t.proteinG.toDouble(), "g")
-            Progress(stringResource(R.string.trt_carbs_for, dayLoadLabel(t.dayLoad)), state.carbsToday, t.carbsG.toDouble(), "g")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Progress(stringResource(R.string.trt_water), state.waterTodayMl.toDouble(), t.waterMl.toDouble(), "ml",
-                    Modifier.weight(1f))
-                FilledTonalButton(onClick = { onAddWater(250) }, modifier = Modifier.padding(start = 8.dp).testTag("today_water_add")) {
-                    Text(stringResource(R.string.trt_water_add))
+        if (state.profile.fuelEnabled) {
+            val t = state.fuelTargets
+            Card(onClick = onOpenFuel, modifier = Modifier.weight(1f).testTag("today_fuel")) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(stringResource(R.string.tr_nav_fuel), style = MaterialTheme.typography.labelLarge)
+                    if (t == null) {
+                        Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text("${state.proteinToday.roundToInt()} / ${t.proteinG} g", style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.trt_protein), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LinearProgressIndicator(
+                            progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
+                        )
+                    }
                 }
             }
         }
@@ -813,26 +925,11 @@ private fun blockLabel(b: com.cruxcoach.athlete.logic.BlockState): String = when
 }
 
 @Composable
-private fun BlockChip(block: com.cruxcoach.athlete.logic.BlockState) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("today_block")) {
-        AssistChip(onClick = {}, label = { Text(blockLabel(block)) }, leadingIcon = { Icon(Icons.Default.DateRange, null) })
-        InfoButton(stringResource(R.string.tre_block_info_title), stringResource(R.string.tre_block_info_text))
-    }
-}
-
-@Composable
-private fun ConfidenceBadge(c: com.cruxcoach.athlete.logic.Confidence) {
-    val label = stringResource(when (c) {
-        com.cruxcoach.athlete.logic.Confidence.LOW -> R.string.tre_conf_low
-        com.cruxcoach.athlete.logic.Confidence.MEDIUM -> R.string.tre_conf_medium
-        com.cruxcoach.athlete.logic.Confidence.HIGH -> R.string.tre_conf_high
-    })
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Badge(containerColor = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            modifier = Modifier.testTag("today_suggestion_confidence")) { Text(label) }
-        InfoButton(stringResource(R.string.tre_conf_info_title), stringResource(R.string.tre_conf_info_text))
-    }
-}
+private fun confidenceLabel(c: com.cruxcoach.athlete.logic.Confidence): String = stringResource(when (c) {
+    com.cruxcoach.athlete.logic.Confidence.LOW -> R.string.tre_conf_low
+    com.cruxcoach.athlete.logic.Confidence.MEDIUM -> R.string.tre_conf_medium
+    com.cruxcoach.athlete.logic.Confidence.HIGH -> R.string.tre_conf_high
+})
 
 @Composable
 private fun generatorLabel(t: com.cruxcoach.domain.playlist.GeneratorType): String = stringResource(when (t) {
