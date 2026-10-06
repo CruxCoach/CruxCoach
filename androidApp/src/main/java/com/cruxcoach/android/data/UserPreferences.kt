@@ -86,6 +86,7 @@ object KeyScopedKeys {
     val KILTER_UPLOAD_REJECTIONS = stringPreferencesKey("kilter_upload_rejections")
     val KILTER_UPLOAD_LEARNED = stringPreferencesKey("kilter_upload_learned_ids")
     val KILTER_UPLOAD_LAST_OUTCOME = stringPreferencesKey("kilter_upload_last_outcome")
+    val KILTER_UPLOAD_IN_DOUBT = stringPreferencesKey("kilter_upload_in_doubt")
     val KILTER_UPLOAD_IMPORTED = booleanPreferencesKey("kilter_upload_imported")
 
     // Cursor for the live community-climb Nostr subscription. Holds the
@@ -1018,6 +1019,17 @@ class UserPreferences(
         keyScoped.edit { prefs ->
             if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LEARNED)
             else prefs[KeyScopedKeys.KILTER_UPLOAD_LEARNED] = json
+        }
+    }
+
+    val kilterUploadInDoubt: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT]
+    }
+
+    suspend fun setKilterUploadInDoubt(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT] = json
         }
     }
 

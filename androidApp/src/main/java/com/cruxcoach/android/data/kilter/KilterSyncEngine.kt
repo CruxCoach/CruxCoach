@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -82,6 +83,7 @@ class KilterSyncEngine @Inject constructor(
     private val uploadLedger: KilterUploadLedger = InMemoryKilterUploadLedger(),
     private val lowercaseIndexSource: KilterLowercaseClimbIndexSource = KilterLowercaseClimbIndexSource.EMPTY,
     private val aliasSource: KilterClimbAliasSource = KilterClimbAliasSource.EMPTY,
+    private val retryScheduler: KilterUploadRetryScheduler = KilterUploadRetryScheduler.NONE,
 ) {
     /** Wall clock of the upload ledger; replaced in tests. */
     internal var clock: () -> Long = System::currentTimeMillis
@@ -100,8 +102,10 @@ class KilterSyncEngine @Inject constructor(
          * Max logs per Kilter bulk-upload request. A large offline backlog is
          * split into batches so one oversized POST can't fail the whole
          * upload, and each batch that succeeds is marked synced independently.
+         * Kilter took over 30 s for 200 rows under load (field report,
+         * 2026-10-05); smaller requests keep its answer within the timeout.
          */
-        const val UPLOAD_CHUNK = 200
+        const val UPLOAD_CHUNK = 100
 
         /**
          * Bulk requests per upload run. A clean queue needs one per
@@ -112,6 +116,30 @@ class KilterSyncEngine @Inject constructor(
 
         /** Statuses that say nothing about the rows: stop and retry later. */
         val TRANSIENT_HTTP = setOf(408, 425, 429, 502, 503, 504)
+
+        /** Gateway answers: Kilter itself may still have written the request. */
+        val GATEWAY_HTTP = setOf(502, 504)
+
+        /**
+         * No new request starts after this long, so that a run in a background
+         * worker ends within WorkManager's 10-minute budget even when Kilter is
+         * slow (one more request can take up to the upload call timeout). What
+         * is left goes to an automatic follow-up run.
+         */
+        const val RUN_TIME_BUDGET_MS = 5L * 60 * 1000
+
+        /**
+         * How long Kilter may still be writing a request whose answer was lost.
+         * Before that its rows wait; after it, an ascent of the request missing
+         * from Kilter's logbook shows the request was not written.
+         */
+        const val DOUBT_SETTLE_MS = 5L * 60 * 1000
+
+        /** Stops after which an automatic follow-up run is scheduled. */
+        val RETRYABLE = setOf(
+            KilterUploadReason.NETWORK, KilterUploadReason.TIMEOUT, KilterUploadReason.HTTP,
+            KilterUploadReason.INTERNAL, KilterUploadReason.WALL_CONTEXT,
+        )
 
         /**
          * Requests a run may spend on rows sent one by one before the bulk
@@ -688,12 +716,22 @@ class KilterSyncEngine @Inject constructor(
         trigger: KilterUploadTrigger = KilterUploadTrigger.MANUAL,
         prefetchedLogs: List<KilterLog>? = null,
         snapshotGeneration: Long? = null,
+        /** Number of this automatic follow-up run ([KilterUploadTrigger.RETRY]), 0 for any other. */
+        retryAttempt: Int = 0,
     ): KilterUploadStatus = withContext(Dispatchers.IO) {
         uploadMutex.withLock {
             val snapshot = prefetchedLogs?.takeIf { snapshotGeneration == null || snapshotGeneration == uploadGeneration.get() }
-            UploadRun(trigger).run(snapshot)
+            UploadRun(trigger, retryAttempt).run(snapshot)
         }
     }
+
+    /**
+     * [uploadPendingLogs] for a screen: the run outlives the caller. Cancelled
+     * mid-request, a run would lose Kilter's answer and leave the request's
+     * rows in doubt.
+     */
+    suspend fun uploadPendingLogsDetached(trigger: KilterUploadTrigger): KilterUploadStatus =
+        scope.async { uploadPendingLogs(trigger) }.await()
 
     /** Upload opt-in for Aurora-imported entries; see [KilterUploadLedger.importedUploadEnabled]. */
     val importedUploadEnabled get() = uploadLedger.importedUploadEnabled
@@ -730,8 +768,11 @@ class KilterSyncEngine @Inject constructor(
             buildList {
                 for (r in rejections) {
                     val row = rows[r.logUuid] ?: continue
-                    val reason = if (r.confirmed || r.unproven >= UNPROVEN_STRIKES) KilterNotUploadedReason.NOT_ON_KILTER
-                        else KilterNotUploadedReason.RETRY_LATER
+                    val reason = when {
+                        r.likelyOnKilter -> KilterNotUploadedReason.PROBABLY_ON_KILTER
+                        r.confirmed || r.unproven >= UNPROVEN_STRIKES -> KilterNotUploadedReason.NOT_ON_KILTER
+                        else -> KilterNotUploadedReason.RETRY_LATER
+                    }
                     add(entry(row, reason, r.wireId, r.httpStatus))
                 }
                 outcome.conflicts.mapNotNull(rows::get).forEach { add(entry(it, KilterNotUploadedReason.CONFLICT)) }
@@ -750,7 +791,10 @@ class KilterSyncEngine @Inject constructor(
     /** Counts runs that sent requests: a logbook read before one of them may be stale. */
     private val uploadGeneration = java.util.concurrent.atomic.AtomicLong()
 
-    private inner class UploadRun(private val trigger: KilterUploadTrigger) {
+    private inner class UploadRun(
+        private val trigger: KilterUploadTrigger,
+        private val retryAttempt: Int,
+    ) {
         private val start = clock()
         private var uploaded = 0
         private val attempted = HashSet<String>()
@@ -763,9 +807,19 @@ class KilterSyncEngine @Inject constructor(
         private var rejectedConflict = 0
         private var rejectedInvalid = 0
         private var unconfirmed = 0
+        private var probablyOnKilter = 0
+        /** Requests still without an answer; each is saved before it goes out ([KilterDoubtfulRequest]). */
+        private val doubts = ArrayList<KilterDoubtfulRequest>()
 
-        private fun finish(reason: KilterUploadReason = KilterUploadReason.NONE, http: Int? = null): KilterUploadStatus {
+        /** [more]: the run ended by itself with rows a follow-up run can take now (budget, rows waiting for Kilter). */
+        private fun finish(
+            reason: KilterUploadReason = KilterUploadReason.NONE,
+            http: Int? = null,
+            more: Boolean = false,
+        ): KilterUploadStatus {
             if (requests > 0) uploadGeneration.incrementAndGet()
+            val retry = reason in RETRYABLE || reason == KilterUploadReason.NONE && more
+            val next = (retryAttempt + 1).takeIf { retry && it <= KilterUploadRetryScheduler.DELAYS_MIN.size } ?: 0
             val status = KilterUploadStatus(
                 uploaded = uploaded, pending = pending, attempted = attempted.size,
                 reason = reason, httpStatus = http,
@@ -773,11 +827,18 @@ class KilterSyncEngine @Inject constructor(
                 rejectedByKilter = rejectedByKilter, rejectedConflict = rejectedConflict,
                 rejectedInvalid = rejectedInvalid, heldImported = heldImported,
                 alreadyOnKilter = alreadyOnKilter, requests = requests, unconfirmed = unconfirmed,
+                probablyOnKilter = probablyOnKilter, nextRetry = next,
             )
             uploadDiagnostics.record(status)
             if (reason == KilterUploadReason.AUTHENTICATION) _sessionExpired.value = true
+            // Last: called from the retry worker, scheduling replaces (stops) that worker.
+            if (next > 0) retryScheduler.schedule(next) else if (!retry) retryScheduler.cancel()
             return status
         }
+
+        private fun overTime() = clock() - start >= RUN_TIME_BUDGET_MS
+
+        private fun overBudget() = requests >= MAX_REQUESTS_PER_RUN || overTime()
 
         suspend fun run(prefetchedLogs: List<KilterLog>?): KilterUploadStatus = try {
             upload(prefetchedLogs)
@@ -808,14 +869,21 @@ class KilterSyncEngine @Inject constructor(
             val recent = uploadLedger.rejections().filter { now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
             val previous = recent.filter { it.appVersionCode == versionCode }.associateBy { it.logUuid }
             val earlier = recent.filter { it.appVersionCode != versionCode }.associateBy { it.logUuid }
+            // A log Kilter most likely holds stays held across updates: its uuid is the problem, not the climb id.
+            fun heldEntry(uuid: String) = previous[uuid] ?: earlier[uuid]?.takeIf { it.likelyOnKilter }
             val importedEnabled = uploadLedger.importedUploadEnabled.first()
+            val doubtful = uploadLedger.doubtfulRequests().filter { now - it.atMs in 0..KilterUploadLedger.MAX_AGE_MS }
+            val doubtfulRows = doubtful.flatMapTo(HashSet()) { r -> r.rows.map { it.logUuid } }
             // An imported entry tried under the opt-in stays queued until Kilter settled it, across updates too.
-            val candidates = rows.filter { !it.imported || importedEnabled || it.uuid in previous || it.uuid in earlier }
+            val candidates = rows.filter {
+                !it.imported || importedEnabled || it.uuid in previous || it.uuid in earlier || it.uuid in doubtfulRows
+            }
             heldImported = rows.size - candidates.size
-            // Until Kilter's logbook is read, rows held back with proof count as
-            // refused, not pending (a run that stops early reports them so).
-            rejectedByKilter = candidates.count { previous[it.uuid]?.confirmed == true }
-            pending = candidates.size - rejectedByKilter
+            // Until Kilter's logbook is read, rows held back count as not
+            // uploaded, not pending (a run that stops early reports them so).
+            rejectedByKilter = candidates.count { heldEntry(it.uuid)?.let { r -> r.confirmed && !r.likelyOnKilter } == true }
+            probablyOnKilter = candidates.count { heldEntry(it.uuid)?.likelyOnKilter == true }
+            pending = candidates.size - rejectedByKilter - probablyOnKilter
             if (!userPreferences.kilterPushEnabled.first()) return finish(KilterUploadReason.DISABLED)
             if (candidates.isEmpty()) return finish()
             val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
@@ -835,7 +903,8 @@ class KilterSyncEngine @Inject constructor(
             // A log the user deleted here is on its way out of Kilter and must
             // not stand in for another entry.
             val deleting = personalBoardRepo.pendingLogDeletions().toHashSet()
-            val remote = (prefetchedLogs ?: apiClient.fetchLogs().getOrThrow()).filter { it.logUuid !in deleting }
+            val fetched = prefetchedLogs ?: apiClient.fetchLogs().getOrThrow()
+            val remote = fetched.filter { it.logUuid !in deleting }
             val remoteByUuid = remote.associateBy { it.logUuid }
             val twins = KilterTwinIndex(remote)
             val learned = LinkedHashMap(uploadLedger.learnedWireIds())
@@ -854,6 +923,7 @@ class KilterSyncEngine @Inject constructor(
             val invalid = ArrayList<String>()
             pending = candidates.size
             rejectedByKilter = 0
+            probablyOnKilter = 0
             for (row in candidates.sortedByDescending { it.sortMillis }) {
                 val createdAt = KilterLogUploadPlan.kilterTimestamp(row.climbedAt)
                 if (createdAt == null) {
@@ -889,6 +959,56 @@ class KilterSyncEngine @Inject constructor(
                     }
                 }
             }
+
+            // Requests whose answer was lost, decided against Kilter's logbook
+            // before twins are matched: rows of a written request are on Kilter
+            // and must not stand in for other entries.
+            val listed = fetched.mapTo(HashSet()) { it.logUuid }
+            val unsynced = candidates.mapTo(HashSet()) { it.uuid }
+            val waitingForKilter = HashSet<String>()
+            val open = ArrayList<KilterDoubtfulRequest>()
+            for (r in doubtful) {
+                val local = r.rows.filter { it.logUuid in unsynced }
+                when {
+                    local.isEmpty() -> Unit
+                    // Kilter wrote the request as a whole: also the attempts it does not list are there.
+                    r.rows.any { it.logUuid in listed } -> {
+                        val sent = r.rows.associateBy { it.logUuid }
+                        unmatched = unmatched.filterTo(ArrayList()) { item ->
+                            val row = sent[item.uuid] ?: return@filterTo true
+                            if (row.rowVersion == item.rowVersion) {
+                                settled += item
+                            } else {
+                                // Edited since it was sent: Kilter holds the older copy.
+                                rejectedConflict++
+                                pending--
+                                conflicts += item.uuid
+                            }
+                            false
+                        }
+                    }
+                    // Kilter may still be writing it: its rows wait.
+                    now - r.atMs < DOUBT_SETTLE_MS -> {
+                        doubts += r
+                        local.mapTo(waitingForKilter) { it.logUuid }
+                    }
+                    // Kilter lists every ascent it holds; one missing means the request was not written.
+                    local.any { it.ascent } -> Unit
+                    // Only attempts, which Kilter often does not list: sent again first, see [send].
+                    else -> {
+                        doubts += r
+                        open += r
+                    }
+                }
+            }
+            val byUuid = unmatched.associateBy { it.uuid }
+            val claimed = HashSet<String>(waitingForKilter)
+            val probes = open.mapNotNull { r ->
+                val group = r.rows.mapNotNull { row -> byUuid[row.logUuid]?.takeIf { claimed.add(it.uuid) } }
+                if (group.isEmpty()) null.also { doubts.remove(r) } else r to group
+            }
+            unmatched = unmatched.filterTo(ArrayList()) { it.uuid !in claimed }
+
             // Exact twins for every entry first (under any id the climb has on
             // Kilter), then the nearest log up to a day away for imported ones,
             // so no exact twin is taken by a looser match.
@@ -914,17 +1034,22 @@ class KilterSyncEngine @Inject constructor(
             // A climb Kilter refused under every id, with proof, is not on Kilter:
             // its other rows go one by one and their lone refusal counts as proven.
             // Rows of a climb refused without proof wait like the refused row.
-            val provenClimbs = previous.values.filter { it.confirmed }.mapNotNullTo(HashSet()) { it.climbKey }
+            val provenClimbs = previous.values.filter { it.confirmed && !it.likelyOnKilter }.mapNotNullTo(HashSet()) { it.climbKey }
             // Proven under an earlier build: retried one by one with every id, the proof still holds.
-            val provenEarlier = earlier.values.filter { it.confirmed }.mapNotNullTo(HashSet()) { it.climbKey } - provenClimbs
+            val provenEarlier = earlier.values.filter { it.confirmed && !it.likelyOnKilter }
+                .mapNotNullTo(HashSet()) { it.climbKey } - provenClimbs
             val suspectClimbs = previous.values.filterNot { it.confirmed }.associate { (it.climbKey ?: it.logUuid) to it.retryAtMs }
             val waiting = ArrayList<KilterUploadItem>()
             val retryAfterUpdate = ArrayList<KilterUploadItem>()
             val notOnKilter = ArrayList<KilterUploadItem>()
             val chunked = ArrayList<KilterUploadItem>()
             for (item in unmatched) {
-                val held = previous[item.uuid]?.takeIf { it.fingerprint == item.fingerprint }
+                val held = heldEntry(item.uuid)?.takeIf { it.likelyOnKilter || it.fingerprint == item.fingerprint }
                 when {
+                    held?.likelyOnKilter == true -> {
+                        probablyOnKilter++
+                        pending--
+                    }
                     held?.confirmed == true -> {
                         rejectedByKilter++
                         pending--
@@ -943,9 +1068,24 @@ class KilterSyncEngine @Inject constructor(
             }
             unconfirmed += resting.size
 
-            val outcome = send(retryAfterUpdate + notOnKilter, retried = due, chunked = chunked)
+            // Climbs Kilter has taken logs of: a refusal of a doubtful row of one is about the log, not the climb.
+            val remoteClimbs = remote.mapTo(HashSet()) { normUuidKey(it.climbUuid) }
+            val outcome = send(
+                probes, retryAfterUpdate + notOnKilter, retried = due, chunked = chunked,
+                knownClimb = { it in remoteClimbs || it in learned },
+            )
             accepted.forEach { ledger.remove(it) }
             learned.putAll(outcome.learned)
+            doubts.removeAll(outcome.decided.toSet())
+            for (r in outcome.likely) {
+                ledger[r.item.uuid] = KilterUploadRejection(
+                    logUuid = r.item.uuid, fingerprint = r.item.fingerprint, appVersionCode = versionCode,
+                    httpStatus = r.http, atMs = now, confirmed = true,
+                    climbKey = r.item.climbKey, wireId = r.item.log.climbUuid, likelyOnKilter = true,
+                )
+                probablyOnKilter++
+                pending--
+            }
             var unprovenHttp: Int? = null
             val provenNow = outcome.refused.filter { outcome.lastAcceptedRequest > it.request }.mapTo(HashSet()) { it.item.climbKey }
             for (r in outcome.refused) {
@@ -978,8 +1118,9 @@ class KilterSyncEngine @Inject constructor(
             uploadLedger.saveRejections(ledger.values.sortedBy { it.atMs })
             uploadLedger.saveLearnedWireIds(learned)
             uploadLedger.saveLastOutcome(KilterUploadOutcome(conflicts = conflicts, invalid = invalid))
+            uploadLedger.saveDoubtfulRequests(doubts)
             // The imported opt-in covers the entries present when it was given.
-            val complete = outcome.stop == null && !outcome.exhausted && outcome.deferred == 0
+            val complete = outcome.stop == null && !outcome.exhausted && outcome.deferred == 0 && doubts.isEmpty()
             if (importedEnabled && complete) uploadLedger.setImportedUploadEnabled(false)
 
             val stop = outcome.stop
@@ -988,7 +1129,10 @@ class KilterSyncEngine @Inject constructor(
                 // New rows refused and nothing accepted after any of them:
                 // Kilter may be down. Shown as a failure, nothing held back.
                 unprovenHttp != null && !outcome.anyAccepted && fresh -> finish(KilterUploadReason.HTTP, unprovenHttp)
-                else -> finish(http = unprovenHttp)
+                else -> finish(
+                    http = unprovenHttp,
+                    more = outcome.exhausted || outcome.deferred > 0 || waitingForKilter.isNotEmpty(),
+                )
             }
         }
 
@@ -1008,11 +1152,31 @@ class KilterSyncEngine @Inject constructor(
             return marked
         }
 
-        /** One request; marks its rows synced when Kilter took it. */
+        /**
+         * One request; marks its rows synced when Kilter took it. The request
+         * is saved as doubtful before it goes out and dropped once Kilter
+         * answered, so that a lost answer — also when the app is stopped
+         * mid-request — leaves a trace the next run settles.
+         */
         private suspend fun post(batch: List<KilterUploadItem>): Posted {
             requests++
             batch.forEach { attempted += it.uuid }
+            val doubt = KilterDoubtfulRequest(clock(), batch.map { KilterDoubtfulRow(it.uuid, it.rowVersion, it.isAscent) })
+            doubts += doubt
+            uploadLedger.saveDoubtfulRequests(doubts)
             val result = apiClient.uploadLogs(batch.map { it.log })
+            val error = result.exceptionOrNull()
+            if (error is CancellationException) throw error
+            val http = (error as? KilterUploadException)?.status
+            val answered = when {
+                result.isSuccess -> true
+                http != null -> http !in GATEWAY_HTTP
+                else -> !KilterUploadFailure.noAnswer(error)
+            }
+            if (answered) {
+                doubts.remove(doubt)
+                uploadLedger.saveDoubtfulRequests(doubts)
+            }
             if (result.isSuccess) {
                 batch.forEach { accepted += it.uuid }
                 val marked = markSynced(batch)
@@ -1020,32 +1184,124 @@ class KilterSyncEngine @Inject constructor(
                 pending -= marked
                 return Posted.Accepted
             }
-            val error = result.exceptionOrNull()
-            if (error is CancellationException) throw error
-            val http = (error as? KilterUploadException)?.status
             // Unauthenticated, offline, overloaded or a lost response (the
-            // rows may have been written; the next run's read of the logbook
-            // settles them): stop, keep everything pending.
+            // rows may have been written; the next run settles them against
+            // Kilter's logbook): stop, keep everything pending.
             if (http == null || http == 401 || http == 403 || http in TRANSIENT_HTTP) return Posted.Stopped(stopFor(error, http))
             return Posted.Refused(http)
         }
 
         /**
-         * Sends [singles] (rows of a climb Kilter refused with proof) one by
-         * one, then [retried] and [chunked] in chunks,
-         * the retries first so that the chunks after them can prove a renewed
-         * refusal. Every full chunk goes out before a refused one is isolated,
-         * so a single bad row costs the queue nothing but its own requests.
-         * Rows of a climb Kilter refused under every id in this run leave the
-         * chunks not yet sent and wait for the next run.
+         * Sends the rows of [probes] (doubtful requests of attempts only, which
+         * Kilter's logbook cannot decide) as their request again, then
+         * [singles] (rows of a climb Kilter refused with proof) one by one,
+         * then [retried] and [chunked] in chunks, the retries first so that
+         * the chunks after them can prove a renewed refusal. Every full chunk
+         * goes out before a refused one is isolated, so a single bad row costs
+         * the queue nothing but its own requests. Rows of a climb Kilter
+         * refused under every id in this run leave the chunks not yet sent and
+         * wait for the next run.
+         *
+         * A doubtful request Kilter refuses again is either held by Kilter or
+         * names a climb Kilter does not take under that id. Up to two of its
+         * rows, of different climbs and preferably of ones Kilter has logs of,
+         * go alone under every id: Kilter takes one, so it never wrote the
+         * request, and the rest goes again like a refused chunk. Kilter refuses
+         * a row of a climb it has logs of, or rows of two climbs: it holds the
+         * request. A request of one climb Kilter has no log of cannot be told
+         * apart from that climb being unknown, and is settled like a refused chunk.
          */
         private suspend fun send(
+            probes: List<Pair<KilterDoubtfulRequest, List<KilterUploadItem>>>,
             singles: List<KilterUploadItem>,
             retried: List<KilterUploadItem>,
             chunked: List<KilterUploadItem>,
+            knownClimb: (String) -> Boolean,
         ): SendOutcome {
             val out = SendOutcome()
+            fun known(climbKey: String) = knownClimb(climbKey) || climbKey in out.acceptedClimbs || climbKey in out.learned
             val refusedClimbs = HashSet<String>()
+            val again = ArrayList<List<KilterUploadItem>>()
+
+            /** One row alone, under each of its ids from [first] on. */
+            suspend fun alone(first: KilterUploadItem): Alone {
+                var item = first
+                while (true) {
+                    when (val posted = post(listOf(item))) {
+                        Posted.Accepted -> {
+                            out.accept(requests, listOf(item))
+                            if (item.tried > 0) out.learned[item.climbKey] = item.log.climbUuid
+                            return Alone.Accepted
+                        }
+                        is Posted.Stopped -> return Alone.Stopped(posted.stop)
+                        is Posted.Refused -> item = item.nextCandidate() ?: return Alone.Refused(Refusal(item, posted.http, requests))
+                    }
+                }
+            }
+
+            for ((doubt, rows) in probes) {
+                if (!userPreferences.kilterPushEnabled.first()) return out.apply { stop = Stop(KilterUploadReason.DISABLED) }
+                if (overBudget()) {
+                    out.deferred += rows.size
+                    continue
+                }
+                val whole = when (val posted = post(rows)) {
+                    Posted.Accepted -> {
+                        out.accept(requests, rows)
+                        out.decided += doubt
+                        continue
+                    }
+                    is Posted.Stopped -> return out.apply { stop = posted.stop }
+                    is Posted.Refused -> posted.http
+                }
+                // Refused again: Kilter holds the request, or a row of it names a
+                // climb Kilter does not take under that id. Rows of different
+                // climbs, preferably ones Kilter has logs of, go alone under every id.
+                val samples = rows.distinctBy { it.climbKey }.sortedByDescending { known(it.climbKey) }.take(2)
+                val refusedSamples = ArrayList<Refusal>()
+                var written: Boolean? = null
+                for (sample in samples) {
+                    if (overTime()) break
+                    // A lone row was just refused under its first id.
+                    val start = if (rows.size == 1) sample.nextCandidate() else sample
+                    val result = if (start == null) Alone.Refused(Refusal(sample, whole, requests)) else alone(start)
+                    when (result) {
+                        Alone.Accepted -> {
+                            written = false
+                            break
+                        }
+                        is Alone.Stopped -> return out.apply { stop = result.stop }
+                        is Alone.Refused -> {
+                            refusedSamples += result.refusal
+                            // Refused under every id although Kilter knows the climb, or two climbs at once: it holds the log.
+                            if (known(sample.climbKey) || refusedSamples.size == 2) {
+                                written = true
+                                break
+                            }
+                        }
+                    }
+                }
+                val decided = written != null || samples.size == refusedSamples.size
+                if (!decided) {
+                    // Out of time: undecided until the next run.
+                    out.deferred += rows.size
+                    continue
+                }
+                out.decided += doubt
+                if (written == true) {
+                    rows.forEach { out.likely += Refusal(it, whole, requests) }
+                    continue
+                }
+                // Kilter never wrote the request (or cannot be told apart from a climb it
+                // does not know): refused samples count as refusals, the rest goes again.
+                for (r in refusedSamples) {
+                    out.refused += r
+                    refusedClimbs += r.item.climbKey
+                }
+                val sampled = samples.mapTo(HashSet()) { it.uuid }
+                rows.filter { it.uuid !in sampled }.takeIf { it.isNotEmpty() }?.let { again += it }
+            }
+
             val promoted = ArrayList<KilterUploadItem>()
             val queue = ArrayDeque(singles)
             var current: KilterUploadItem? = null
@@ -1054,7 +1310,7 @@ class KilterSyncEngine @Inject constructor(
                 if (!userPreferences.kilterPushEnabled.first()) return out.apply { stop = Stop(KilterUploadReason.DISABLED) }
                 val item = current ?: queue.removeFirstOrNull() ?: break
                 current = null
-                if (requests >= MAX_SINGLE_REQUESTS_PER_RUN) {
+                if (requests >= MAX_SINGLE_REQUESTS_PER_RUN || overTime()) {
                     out.deferred += 1 + queue.size
                     break
                 }
@@ -1062,7 +1318,7 @@ class KilterSyncEngine @Inject constructor(
                 val row = if (item.climbKey in refusedClimbs && item.tried == 0) item.copy(candidates = listOf(item.log.climbUuid)) else item
                 when (val posted = post(listOf(row))) {
                     Posted.Accepted -> {
-                        out.accept(requests)
+                        out.accept(requests, listOf(row))
                         out.learned[row.climbKey] = row.log.climbUuid
                         // The climb's other queued rows now know their id and can go in a chunk.
                         val same = queue.filter { it.climbKey == row.climbKey }
@@ -1082,12 +1338,12 @@ class KilterSyncEngine @Inject constructor(
 
             // Retries are settled first, splitting included, so that the chunks
             // after them can prove a renewed refusal.
-            val retries = ArrayDeque(retried.chunked(UPLOAD_CHUNK))
+            val retries = ArrayDeque(again + retried.chunked(UPLOAD_CHUNK))
             val chunks = ArrayDeque((promoted + chunked).chunked(UPLOAD_CHUNK))
             val isolating = ArrayDeque<List<KilterUploadItem>>()
             while (retries.isNotEmpty() || chunks.isNotEmpty() || isolating.isNotEmpty()) {
                 if (!userPreferences.kilterPushEnabled.first()) return out.apply { stop = Stop(KilterUploadReason.DISABLED) }
-                if (requests >= MAX_REQUESTS_PER_RUN) return out.apply { exhausted = true }
+                if (overBudget()) return out.apply { exhausted = true }
                 val split = if (retries.isNotEmpty()) retries else isolating
                 var batch = retries.removeFirstOrNull() ?: chunks.removeFirstOrNull() ?: isolating.removeFirst()
                 if (batch.size > 1 && refusedClimbs.isNotEmpty()) {
@@ -1098,7 +1354,7 @@ class KilterSyncEngine @Inject constructor(
                 }
                 when (val posted = post(batch)) {
                     Posted.Accepted -> {
-                        out.accept(requests)
+                        out.accept(requests, batch)
                         batch.singleOrNull()?.takeIf { it.tried > 0 }?.let { out.learned[it.climbKey] = it.log.climbUuid }
                     }
                     is Posted.Stopped -> return out.apply { stop = posted.stop }
@@ -1133,6 +1389,13 @@ class KilterSyncEngine @Inject constructor(
         class Stopped(val stop: Stop) : Posted
     }
 
+    /** A row sent alone under each of its ids. */
+    private sealed interface Alone {
+        data object Accepted : Alone
+        class Refused(val refusal: Refusal) : Alone
+        class Stopped(val stop: Stop) : Alone
+    }
+
     private class Stop(val reason: KilterUploadReason, val http: Int? = null)
 
     private fun stopFor(error: Throwable?, http: Int?): Stop = when {
@@ -1140,7 +1403,8 @@ class KilterSyncEngine @Inject constructor(
         http != null -> Stop(KilterUploadReason.HTTP, http)
         error is KilterApiException && error.reason == KilterAuthResult.Error.Reason.NotAuthenticated ->
             Stop(KilterUploadReason.AUTHENTICATION)
-        error is java.io.IOException -> Stop(KilterUploadReason.NETWORK)
+        error is java.io.IOException ->
+            Stop(if (KilterUploadFailure.timedOut(error)) KilterUploadReason.TIMEOUT else KilterUploadReason.NETWORK)
         else -> {
             Log.w(TAG, "Kilter upload failed (${error?.javaClass?.simpleName})")
             Stop(KilterUploadReason.INTERNAL)
@@ -1154,7 +1418,13 @@ class KilterSyncEngine @Inject constructor(
         var anyAccepted = false
         /** Ordinal of the last request Kilter accepted, -1 if none: proof for refusals before it. */
         var lastAcceptedRequest = -1
+        /** Climbs of rows Kilter accepted in this run. */
+        val acceptedClimbs = HashSet<String>()
         val refused = ArrayList<Refusal>()
+        /** Rows of a doubtful request Kilter most likely holds already. */
+        val likely = ArrayList<Refusal>()
+        /** Doubtful requests this run settled. */
+        val decided = ArrayList<KilterDoubtfulRequest>()
         /** Ids Kilter took for rows that needed another than their first. */
         val learned = LinkedHashMap<String, String>()
         /** Rows left for the next run although the budget held. */
@@ -1163,9 +1433,10 @@ class KilterSyncEngine @Inject constructor(
         /** The request budget ran out with rows still unsent. */
         var exhausted = false
 
-        fun accept(request: Int) {
+        fun accept(request: Int, batch: List<KilterUploadItem>) {
             anyAccepted = true
             lastAcceptedRequest = request
+            batch.mapTo(acceptedClimbs) { it.climbKey }
         }
     }
 

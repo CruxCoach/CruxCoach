@@ -38,6 +38,12 @@ data class KilterUploadRejection(
     val climbKey: String? = null,
     /** The last id Kilter refused for the climb, for the list the user can report. */
     val wireId: String? = null,
+    /**
+     * Sent in a request whose answer was lost and refused since: Kilter most
+     * likely holds this log already. Held across updates (the log uuid is the
+     * problem, not the climb id) and not evidence against the climb.
+     */
+    val likelyOnKilter: Boolean = false,
 )
 
 /** Rows of the last run Kilter could not take for reasons other than a refusal. */
@@ -45,6 +51,27 @@ data class KilterUploadRejection(
 data class KilterUploadOutcome(
     val conflicts: List<String> = emptyList(),
     val invalid: List<String> = emptyList(),
+)
+
+/**
+ * An upload request that got no answer (timeout, lost connection, the app
+ * stopped mid-request). Kilter writes a bulk request as a whole or not at all,
+ * so one of its rows in Kilter's logbook proves all of them are there, also
+ * attempts Kilter does not list. Saved before the request goes out and
+ * dropped once Kilter answered it.
+ */
+@Serializable
+data class KilterDoubtfulRequest(
+    val atMs: Long,
+    val rows: List<KilterDoubtfulRow>,
+)
+
+@Serializable
+data class KilterDoubtfulRow(
+    val logUuid: String,
+    /** The local row's version when it was sent: an edit since means Kilter holds an older copy. */
+    val rowVersion: Long,
+    val ascent: Boolean,
 )
 
 /** Per-identity upload decisions that must survive a restart. */
@@ -58,6 +85,10 @@ interface KilterUploadLedger {
 
     suspend fun lastOutcome(): KilterUploadOutcome
     suspend fun saveLastOutcome(outcome: KilterUploadOutcome)
+
+    /** Requests that got no answer: Kilter may have written them ([KilterDoubtfulRequest]). */
+    suspend fun doubtfulRequests(): List<KilterDoubtfulRequest>
+    suspend fun saveDoubtfulRequests(requests: List<KilterDoubtfulRequest>)
 
     /**
      * Entries imported from an Aurora export stay local unless the user opts
@@ -77,6 +108,7 @@ interface KilterUploadLedger {
         const val MAX_REJECTIONS = 1000
         const val MAX_LEARNED = 2000
         const val MAX_OUTCOME = 500
+        const val MAX_DOUBTFUL_REQUESTS = 40
     }
 }
 
@@ -84,6 +116,7 @@ class InMemoryKilterUploadLedger : KilterUploadLedger {
     private var held = emptyList<KilterUploadRejection>()
     private var learned = emptyMap<String, String>()
     private var outcome = KilterUploadOutcome()
+    private var doubtful = emptyList<KilterDoubtfulRequest>()
     override val importedUploadEnabled = MutableStateFlow(false)
     override suspend fun rejections() = held
     override suspend fun saveRejections(rejections: List<KilterUploadRejection>) {
@@ -97,11 +130,16 @@ class InMemoryKilterUploadLedger : KilterUploadLedger {
     override suspend fun saveLastOutcome(outcome: KilterUploadOutcome) {
         this.outcome = outcome.bounded()
     }
+    override suspend fun doubtfulRequests() = doubtful
+    override suspend fun saveDoubtfulRequests(requests: List<KilterDoubtfulRequest>) {
+        doubtful = requests.takeLast(KilterUploadLedger.MAX_DOUBTFUL_REQUESTS)
+    }
     override suspend fun setImportedUploadEnabled(enabled: Boolean) { importedUploadEnabled.value = enabled }
     override suspend fun clear() {
         held = emptyList()
         learned = emptyMap()
         outcome = KilterUploadOutcome()
+        doubtful = emptyList()
         importedUploadEnabled.value = false
     }
 }
@@ -139,6 +177,15 @@ class PreferencesKilterUploadLedger(private val prefs: UserPreferences) : Kilter
         )
     }
 
+    override suspend fun doubtfulRequests(): List<KilterDoubtfulRequest> = runCatching {
+        prefs.kilterUploadInDoubt.first()?.let { json.decodeFromString<List<KilterDoubtfulRequest>>(it) }
+    }.getOrNull().orEmpty()
+
+    override suspend fun saveDoubtfulRequests(requests: List<KilterDoubtfulRequest>) {
+        val bounded = requests.takeLast(KilterUploadLedger.MAX_DOUBTFUL_REQUESTS)
+        prefs.setKilterUploadInDoubt(if (bounded.isEmpty()) null else json.encodeToString(bounded))
+    }
+
     override val importedUploadEnabled: Flow<Boolean> = prefs.kilterUploadImportedEnabled
     override suspend fun setImportedUploadEnabled(enabled: Boolean) = prefs.setKilterUploadImportedEnabled(enabled)
 
@@ -146,6 +193,7 @@ class PreferencesKilterUploadLedger(private val prefs: UserPreferences) : Kilter
         prefs.setKilterUploadRejections(null)
         prefs.setKilterUploadLearned(null)
         prefs.setKilterUploadLastOutcome(null)
+        prefs.setKilterUploadInDoubt(null)
         prefs.setKilterUploadImportedEnabled(false)
     }
 }

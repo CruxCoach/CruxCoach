@@ -41,6 +41,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   same climb was sent on two consecutive late evenings: it is matched to the
   nearest of Kilter's logs in time, not to the first one of the day.
 
+- A slow Kilter no longer ends the upload with "Cannot reach Kilter". Under
+  load Kilter took longer than the 30 seconds the app waited for a 200-entry
+  request (field report on the 0.2.4 test build). Uploads now go in requests of
+  100 entries and wait up to 90 seconds for an answer; "Kilter is answering too
+  slowly right now" is told apart from a missing connection.
+- After a timeout, a lost connection or a Kilter error the app tries again by
+  itself (after 2, 5, 15, 30, 60 and 120 minutes, once online), and also
+  continues a large backlog that one run did not finish. Starting the upload in
+  the settings no longer stops when the screen is left.
+- A request whose answer was lost no longer turns into "Kilter does not know
+  this climb". Kilter writes a request as a whole or not at all and refuses a
+  log it already holds; the app notes each request before sending it and
+  settles a request without an answer against Kilter's logbook, also for the
+  attempts Kilter leaves out of it. Entries it cannot settle that way are
+  listed as "probably on Kilter already".
+
 - The climb detail no longer clips holds at the board's edge. A climb set on a
   larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board
   was drawn on your board anyway; it is now shown on the size it was set on, as
