@@ -123,7 +123,10 @@ class TrainingScreensSmokeTest {
     /** Lazy lists compose only what is on screen; scroll the target into view first. */
     private fun scrollTo(listTag: String, target: SemanticsMatcher) {
         waitForTag(listTag)
-        compose.onNodeWithTag(listTag).performScrollToNode(target)
+        // Screens fill their lists asynchronously: retry until the item is part of the list.
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag(listTag).performScrollToNode(target) }.isSuccess
+        }
         compose.onNode(target, useUnmergedTree = true).assertExists()
     }
 
