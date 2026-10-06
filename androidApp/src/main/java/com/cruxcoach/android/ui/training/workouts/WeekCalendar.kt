@@ -199,7 +199,7 @@ fun WeekDaySheet(
 ) {
     val isToday = cell.date == today
     val past = cell.date < today
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("week_day_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("week_day_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             val dateText = java.time.LocalDate.parse(cell.date.toString())
                 .format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL))

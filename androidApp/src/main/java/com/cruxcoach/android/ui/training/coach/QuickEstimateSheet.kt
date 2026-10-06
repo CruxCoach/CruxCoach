@@ -181,7 +181,7 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
     val units = s.units
     fun kg(text: String): Double? = parseDecimal(text)?.let { Units.massFromDisplay(it, units) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("quick_estimate_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("quick_estimate_sheet")) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.trc_estimate_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.trc_estimate_intro), style = MaterialTheme.typography.bodyMedium,

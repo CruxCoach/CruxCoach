@@ -80,6 +80,19 @@ class WeeklyReviewViewModel @Inject constructor(private val service: AthleteServ
 
     private fun load(offset: Int) {
         viewModelScope.launch(Dispatchers.IO) {
+            try {
+                loadNow(offset)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A week that fails to load shows as empty, never as an endless spinner.
+                _state.value = _state.value.copy(loading = false, weekOffset = offset)
+            }
+        }
+    }
+
+    private suspend fun loadNow(offset: Int) {
+        run {
             service.ensureReady()
             val repo = service.repo
             val profile = repo.profile()

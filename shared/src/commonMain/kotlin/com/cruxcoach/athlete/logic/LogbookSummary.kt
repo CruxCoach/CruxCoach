@@ -98,7 +98,8 @@ object LogbookSummaries {
     fun withCoachGrades(summary: LogbookSummary, currentGrade: String?, flashGrade: String?): LogbookSummary {
         if (summary.workingDifficulty != null) return summary
         val working = currentGrade?.let(::difficultyOf) ?: return summary
-        val flash = flashGrade?.let(::difficultyOf)
+        // A flash above the working grade is a typo, not a profile: cap it.
+        val flash = flashGrade?.let(::difficultyOf)?.coerceAtMost(working)
         return summary.copy(
             workingDifficulty = working, workingGrade = fontOf(working),
             flashDifficulty = flash ?: summary.flashDifficulty, flashGrade = flash?.let(::fontOf) ?: summary.flashGrade,

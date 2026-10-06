@@ -137,7 +137,7 @@ fun AddToWorkoutSheet(
     }
     val name = state.def?.name(lang).orEmpty()
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("add_to_workout_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("add_to_workout_sheet")) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             Text(name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
             message?.let {

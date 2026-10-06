@@ -81,7 +81,7 @@ fun QuickAddSheet(
     val defaultName = stringResource(R.string.trf_qa_default_name)
     val valid = listOf(protein, carbs, fat, kcal).all(::fieldValid) && (!remember || name.isNotBlank())
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("fuel_quick_add_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_quick_add_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.trf_qa_title), style = MaterialTheme.typography.titleLarge)
@@ -133,7 +133,7 @@ fun FoodsSheet(
     val q = query.trim().lowercase()
     // The repository already orders favourites first, then by use count.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("fuel_foods_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
