@@ -1,7 +1,7 @@
 ---
 status: implemented-on-branch
 queue: active
-base: feat/0.2.4-training-body@4716560d4
+base: feat/0.2.4-training-body@a49624dc6
 branch: feat/0.2.4-food-photo
 depends_on: [FEAT-068]
 created: 2026-10-04
