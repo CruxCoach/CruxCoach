@@ -1070,9 +1070,17 @@ class KilterSyncEngine @Inject constructor(
 
             // Climbs Kilter has taken logs of: a refusal of a doubtful row of one is about the log, not the climb.
             val remoteClimbs = remote.mapTo(HashSet()) { normUuidKey(it.climbUuid) }
+            // Climbs of doubtful rows in the Kilter catalogue, as far as nothing proved them unknown: Kilter
+            // knows nearly all of them (whole-catalogue check 2026-10-04), so a refusal is likelier about the log.
+            val catalogued = probes.flatMapTo(HashSet()) { (_, group) -> group.map { it.climbKey } }
+                .filterTo(HashSet()) { key ->
+                    key !in provenClimbs && key !in provenEarlier && key !in suspectClimbs &&
+                        boardRepository.existingClimbUuids(ClimbUuid.spellings(key)).isNotEmpty()
+                }
             val outcome = send(
                 probes, retryAfterUpdate + notOnKilter, retried = due, chunked = chunked,
                 knownClimb = { it in remoteClimbs || it in learned },
+                catalogued = catalogued,
             )
             accepted.forEach { ledger.remove(it) }
             learned.putAll(outcome.learned)
@@ -1204,12 +1212,13 @@ class KilterSyncEngine @Inject constructor(
          *
          * A doubtful request Kilter refuses again is either held by Kilter or
          * names a climb Kilter does not take under that id. Up to two of its
-         * rows, of different climbs and preferably of ones Kilter has logs of,
-         * go alone under every id: Kilter takes one, so it never wrote the
-         * request, and the rest goes again like a refused chunk. Kilter refuses
-         * a row of a climb it has logs of, or rows of two climbs: it holds the
-         * request. A request of one climb Kilter has no log of cannot be told
-         * apart from that climb being unknown, and is settled like a refused chunk.
+         * rows, of different climbs and the best known first, go alone under
+         * every id: Kilter takes one, so it never wrote the request, and the
+         * rest goes again like a refused chunk. Kilter refuses a row of a climb
+         * it has logs of, or rows of two catalogue climbs (of the only climb, if
+         * the request has one): it holds the request. Otherwise a refusal cannot
+         * be told apart from an unknown climb, and the rows are settled like a
+         * refused chunk.
          */
         private suspend fun send(
             probes: List<Pair<KilterDoubtfulRequest, List<KilterUploadItem>>>,
@@ -1217,6 +1226,7 @@ class KilterSyncEngine @Inject constructor(
             retried: List<KilterUploadItem>,
             chunked: List<KilterUploadItem>,
             knownClimb: (String) -> Boolean,
+            catalogued: Set<String>,
         ): SendOutcome {
             val out = SendOutcome()
             fun known(climbKey: String) = knownClimb(climbKey) || climbKey in out.acceptedClimbs || climbKey in out.learned
@@ -1256,12 +1266,25 @@ class KilterSyncEngine @Inject constructor(
                 }
                 // Refused again: Kilter holds the request, or a row of it names a
                 // climb Kilter does not take under that id. Rows of different
-                // climbs, preferably ones Kilter has logs of, go alone under every id.
-                val samples = rows.distinctBy { it.climbKey }.sortedByDescending { known(it.climbKey) }.take(2)
+                // climbs go alone under every id, the best known climbs first.
+                // How strongly a refusal under every id says "Kilter holds this log":
+                // 2 when Kilter has logs of the climb, 1 when it is in the catalogue.
+                fun weight(climbKey: String) = when {
+                    climbKey in refusedClimbs -> 0
+                    known(climbKey) -> 2
+                    climbKey in catalogued -> 1
+                    else -> 0
+                }
+                val samples = rows.distinctBy { it.climbKey }.sortedByDescending { weight(it.climbKey) }.take(2)
+                // One climb: its rows share their fate, so the label is all a weak verdict can get wrong.
+                val needed = if (samples.size == 1) 1 else 2
                 val refusedSamples = ArrayList<Refusal>()
+                val tried = HashSet<String>()
+                var evidence = 0
                 var written: Boolean? = null
                 for (sample in samples) {
                     if (overTime()) break
+                    tried += sample.uuid
                     // A lone row was just refused under its first id.
                     val start = if (rows.size == 1) sample.nextCandidate() else sample
                     val result = if (start == null) Alone.Refused(Refusal(sample, whole, requests)) else alone(start)
@@ -1273,8 +1296,8 @@ class KilterSyncEngine @Inject constructor(
                         is Alone.Stopped -> return out.apply { stop = result.stop }
                         is Alone.Refused -> {
                             refusedSamples += result.refusal
-                            // Refused under every id although Kilter knows the climb, or two climbs at once: it holds the log.
-                            if (known(sample.climbKey) || refusedSamples.size == 2) {
+                            evidence += weight(sample.climbKey)
+                            if (evidence >= needed) {
                                 written = true
                                 break
                             }
@@ -1298,8 +1321,7 @@ class KilterSyncEngine @Inject constructor(
                     out.refused += r
                     refusedClimbs += r.item.climbKey
                 }
-                val sampled = samples.mapTo(HashSet()) { it.uuid }
-                rows.filter { it.uuid !in sampled }.takeIf { it.isNotEmpty() }?.let { again += it }
+                rows.filter { it.uuid !in tried }.takeIf { it.isNotEmpty() }?.let { again += it }
             }
 
             val promoted = ArrayList<KilterUploadItem>()
