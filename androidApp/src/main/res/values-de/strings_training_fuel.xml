@@ -6,7 +6,7 @@
     <string name="trf_intro_protein">Protein richtet sich nach deinem Körpergewicht (etwa 1,4–2,0 g pro kg).</string>
     <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Sessions.</string>
     <string name="trf_intro_no_budget">Kein Kalorienbudget, kein „zu viel“, keine guten oder schlechten Lebensmittel.</string>
-    <string name="trf_intro_hidden">Kalorien sind standardmäßig ausgeblendet; du kannst sie in den Einstellungen anzeigen.</string>
+    <string name="trf_intro_hidden">Kalorien stehen bei allen Werten dabei; in den Einstellungen kannst du sie ausblenden.</string>
     <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät.</string>
     <string name="trf_intro_got_it">Verstanden</string>
 
@@ -26,6 +26,7 @@
     <string name="trf_water_entry_desc">%1$d ml, tippen zum Entfernen</string>
     <string name="trf_day_total">Tagessumme</string>
     <string name="trf_kcal_value">%1$d kcal</string>
+    <string name="trf_kcal_estimated">≈ %1$d kcal</string>
     <string name="trf_value_g">%1$d g</string>
     <string name="trf_to_go">noch %1$d g</string>
     <string name="trf_reached">Ziel erreicht</string>
