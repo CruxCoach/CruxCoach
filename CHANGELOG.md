@@ -71,7 +71,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   calorie budget, no red "over" states, no good or bad foods. A RED-S guard
   watches for low weight, fast loss and very low carbohydrate on training days
   and then pauses any weight-loss goal and points to professional help. It is
-  always on; a card explains the guard rails once on the first visit.
+  always on; a card explains the guard rails once on the first visit. Every
+  entry, meal and day shows protein, carbohydrate, fat and calories (calories
+  can be hidden; without logged kcal they are estimated from the macros, "≈").
 - Food photos (FEAT-069): photograph a meal, and a model running only on the
   phone lists the foods with estimated grams. Nutrients come from the German
   food database BLS 4.0 (Max Rubner-Institut, CC BY 4.0, bundled offline);

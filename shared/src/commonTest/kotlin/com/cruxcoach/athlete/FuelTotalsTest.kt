@@ -21,12 +21,16 @@ class FuelTotalsTest {
             entry("toast", Meal.BREAKFAST, 4.0, 30.0, 6.0),
         )
         val day = MacroTotals.of(log)
-        assertEquals(MacroTotals(kcal = 470.0, protein = 44.0, carbs = 110.0, fat = 16.0, entries = 4), day)
+        // 350 + 120 logged, shake 25 g protein → 100 kcal, toast 16 + 120 + 54 = 190 kcal estimated.
+        assertEquals(MacroTotals(kcal = 760.0, protein = 44.0, carbs = 110.0, fat = 16.0, entries = 4, kcalEstimated = true), day)
 
         val meals = MacroTotals.byMeal(log)
         // Order follows the Meal enum, not the log order; empty meals are left out.
         assertEquals(listOf(Meal.BREAKFAST, Meal.LUNCH, Meal.POST_TRAINING), meals.map { it.first })
         assertEquals(MacroTotals(470.0, 15.0, 80.0, 10.0, 2), meals.single { it.first == Meal.LUNCH }.second)
+        assertEquals(MacroTotals.Energy(100.0, estimated = true), MacroTotals.energy(log[2]))
+        assertEquals(MacroTotals.Energy(350.0, estimated = false), MacroTotals.energy(log[0]))
+        assertNull(MacroTotals.energy(FoodLogEntry("x", "2026-10-05", 1, Meal.SNACK, name = "x")))
     }
 
     @Test

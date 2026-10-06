@@ -12,7 +12,9 @@ created: 2026-10-04
 Always on with its own main-menu entry "Nutrition" / "Ernährung" next to
 "Training" (owner decision 2026-10-05; it was an opt-in module before). The
 guard rails are explained once in a dismissible card on the first visit.
-Calories stay hidden by default.
+Calories are shown by default (owner 2026-10-06) and can be hidden in the
+settings; entries without kcal show the energy of their macros (Atwater
+4/4/9) marked "≈".
 
 - Protein: 1.6 g/kg trend weight by default (adjustable 1.4–2.0).
 - Carbohydrate: 3–7 g/kg by the day's training load (rest, light, training,

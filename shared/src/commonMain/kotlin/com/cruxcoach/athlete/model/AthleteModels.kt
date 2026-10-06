@@ -309,7 +309,8 @@ data class AthleteProfile(
     val fuelEnabled: Boolean = false,
     val fuelIntroAccepted: Boolean = false,
     val hideBodyNumbers: Boolean = false,
-    val showCalories: Boolean = false,
+    /** On by default since 2026-10-05 (owner); the settings switch hides them. */
+    val showCalories: Boolean = true,
     val proteinPerKg: Double = 1.6,
     val timerSound: Boolean = true,
     val timerVibration: Boolean = true,

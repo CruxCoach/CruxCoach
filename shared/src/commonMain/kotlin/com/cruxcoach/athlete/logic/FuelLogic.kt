@@ -91,9 +91,21 @@ object FuelTargets {
 
 /**
  * Sums of logged nutrients for a day or a meal. Missing values count as zero:
- * a quick entry may carry only protein.
+ * a quick entry may carry only protein. An entry without kcal contributes the
+ * energy of its macros (Atwater 4/4/9 kcal per g) and marks the sum as an
+ * estimate.
  */
-data class MacroTotals(val kcal: Double, val protein: Double, val carbs: Double, val fat: Double, val entries: Int) {
+data class MacroTotals(
+    val kcal: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+    val entries: Int,
+    val kcalEstimated: Boolean = false,
+) {
+    /** Energy of one entry; [estimated] when it comes from the macros instead of logged kcal. */
+    data class Energy(val kcal: Double, val estimated: Boolean)
+
     /** Share of energy from fat, from the macros (4/4/9 kcal per g); null without any macros. */
     val fatEnergyShare: Double?
         get() {
@@ -107,12 +119,21 @@ data class MacroTotals(val kcal: Double, val protein: Double, val carbs: Double,
         const val FAT_SHARE_MAX = 0.35
 
         fun of(entries: List<FoodLogEntry>) = MacroTotals(
-            kcal = entries.sumOf { it.kcal ?: 0.0 },
+            kcal = entries.sumOf { energy(it)?.kcal ?: 0.0 },
             protein = entries.sumOf { it.proteinG ?: 0.0 },
             carbs = entries.sumOf { it.carbsG ?: 0.0 },
             fat = entries.sumOf { it.fatG ?: 0.0 },
             entries = entries.size,
+            kcalEstimated = entries.any { energy(it)?.estimated == true },
         )
+
+        /** Logged kcal, else the energy of the logged macros; null when the entry has neither. */
+        fun energy(entry: FoodLogEntry): Energy? {
+            entry.kcal?.let { return Energy(it, estimated = false) }
+            if (entry.proteinG == null && entry.carbsG == null && entry.fatG == null) return null
+            val kcal = 4 * (entry.proteinG ?: 0.0) + 4 * (entry.carbsG ?: 0.0) + 9 * (entry.fatG ?: 0.0)
+            return Energy(kcal, estimated = true)
+        }
 
         /** Per meal, in the order of [Meal]; meals without entries are left out. */
         fun byMeal(entries: List<FoodLogEntry>): List<Pair<Meal, MacroTotals>> =
