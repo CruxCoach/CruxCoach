@@ -142,3 +142,28 @@ Nokia 6.1 (Android 15), owner's test account; every check read back through
   refuses 40 in both cases, as it refuses all 19 Boardsesh-origin climbs:
   those are the climbs the upload lists as not on Kilter. All probe logs were
   deleted again and the account verified back in its initial state.
+
+## Field report on build 1000019 (2026-10-05): a slow Kilter, lost answers
+
+- The reporter's first run sent three 200-row requests: two went through, the
+  third failed without HTTP status after under 16 s in all (`reason=NETWORK`);
+  the manual retry failed after 30.5 s, the client's read timeout. Kilter was
+  slow, not unreachable; an hour later the upload went through.
+- Probe on the test account: Kilter answers a log uuid it holds and an unknown
+  climb with the same empty HTTP 500, and `GET /logs/{uuid}` returns `[]` for
+  any uuid. A refusal alone therefore cannot tell "already written" from "climb
+  unknown"; a lost answer of a request carrying attempts (which `GET /logs`
+  often leaves out) turned into "Kilter does not know this climb" on resend.
+- Changes: requests of 100 rows; 90 s read and 120 s call timeout for the
+  upload's calls (bulk, logbook read); `TIMEOUT` reported apart from `NETWORK`.
+  Every request is saved as doubtful before it goes out and dropped once Kilter
+  answered. The next run settles it: one of its rows in Kilter's logbook proves
+  the whole request written (bulk is atomic), so its unlisted attempts are
+  marked synced; past 5 minutes, an unlisted ascent of it proves it was not.
+  A request of attempts only is sent again: taken, it was not written; refused,
+  rows of up to two climbs go alone under every id, and a refusal of a climb
+  Kilter has logs of, or of two climbs, means Kilter holds it ("probably on
+  Kilter", held, listed). Follow-up runs after 2, 5, 15, 30, 60, 120 minutes on
+  network, timeout, HTTP and internal stops, a used-up request or 5-minute time
+  budget and rows waiting for Kilter; a finished run cancels them.
+
