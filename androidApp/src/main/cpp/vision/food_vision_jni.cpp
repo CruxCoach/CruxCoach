@@ -86,12 +86,13 @@ Java_com_cruxcoach_android_foodvision_NativeFoodVision_nativeRun(
         JNIEnv * env, jobject, jlong handle, jbyteArray rgb, jint width, jint height,
         jstring system_prompt, jstring user_prompt, jstring grammar, jint max_tokens) {
     Session * s = session(handle);
-    if (s == nullptr || rgb == nullptr) return to_bytes(env, "{\"ok\":false,\"error\":\"not_loaded\"}");
-    const jsize length = env->GetArrayLength(rgb);
-    if (width <= 0 || height <= 0 || length != static_cast<jsize>(width) * height * 3) {
+    if (s == nullptr) return to_bytes(env, "{\"ok\":false,\"error\":\"not_loaded\"}");
+    // An empty array means a text-only request (a typed meal).
+    const jsize length = rgb != nullptr ? env->GetArrayLength(rgb) : 0;
+    if (length > 0 && (width <= 0 || height <= 0 || length != static_cast<jsize>(width) * height * 3)) {
         return to_bytes(env, "{\"ok\":false,\"error\":\"invalid_image\"}");
     }
-    jbyte * pixels = env->GetByteArrayElements(rgb, nullptr);
+    jbyte * pixels = length > 0 ? env->GetByteArrayElements(rgb, nullptr) : nullptr;
     cruxvision::RunParams params;
     params.rgb = reinterpret_cast<const uint8_t *>(pixels);
     params.width = width;
@@ -105,7 +106,7 @@ Java_com_cruxcoach_android_foodvision_NativeFoodVision_nativeRun(
     cruxvision::Timings timings;
     std::string error;
     const std::string text = s->engine->run(params, s->cancel, timings, error);
-    env->ReleaseByteArrayElements(rgb, pixels, JNI_ABORT);
+    if (pixels != nullptr) env->ReleaseByteArrayElements(rgb, pixels, JNI_ABORT);
 
     std::string json = "{\"ok\":";
     json += error.empty() ? "true" : "false";

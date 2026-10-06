@@ -97,8 +97,9 @@ class FoodVisionService : Service() {
             handle = h
             loadedKey = key
         }
-        val rgbFile = File(request.getString(VisionProtocol.KEY_RGB_PATH).orEmpty())
-        val rgb = rgbFile.readBytes()
+        // No image path: a typed meal, text only.
+        val rgbPath = request.getString(VisionProtocol.KEY_RGB_PATH).orEmpty()
+        val rgb = if (rgbPath.isEmpty()) ByteArray(0) else File(rgbPath).readBytes()
         val bytes = NativeFoodVision.nativeRun(
             handle,
             rgb,

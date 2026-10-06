@@ -22,11 +22,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.training.EmptyHint
 import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.mealLabel
 import com.cruxcoach.android.ui.training.parseDecimal
+import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.Meal
 
@@ -118,7 +120,10 @@ fun QuickAddSheet(
     }
 }
 
-/** Saved foods: favourites first, then most used; search; star; create; tap to log. */
+/**
+ * Saved foods (favourites first, then most used) plus, while searching, the
+ * 7,140 foods of the bundled BLS 4.0 – offline on every phone (FEAT-069).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FoodsSheet(
@@ -128,11 +133,20 @@ fun FoodsSheet(
     onToggleFavorite: (FoodItem) -> Unit,
     onDelete: (FoodItem) -> Unit,
     onCreate: () -> Unit,
+    searchBls: suspend (String) -> List<BlsFood> = { emptyList() },
+    onPickBls: (BlsFood) -> Unit = {},
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim().lowercase()
     // The repository already orders favourites first, then by use count.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
+    var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
+    LaunchedEffect(q) {
+        if (q.length < 2) { blsResults = emptyList(); return@LaunchedEffect }
+        delay(250)
+        val own = foods.map { it.id }.toSet()
+        blsResults = searchBls(q).filter { "bls:${it.code}" !in own }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -149,10 +163,10 @@ fun FoodsSheet(
                 label = { Text(stringResource(R.string.trf_foods_search)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_foods_search"),
             )
-            if (visible.isEmpty()) {
+            if (visible.isEmpty() && q.isEmpty()) {
                 EmptyHint(stringResource(R.string.trf_foods_empty))
-            } else {
-                LazyColumn(Modifier.heightIn(max = 460.dp)) {
+            }
+            LazyColumn(Modifier.heightIn(max = 460.dp)) {
                     items(visible, key = { it.id }) { item ->
                         ListItem(
                             headlineContent = { Text(item.name) },
@@ -180,7 +194,30 @@ fun FoodsSheet(
                             modifier = Modifier.clickable { onPick(item) }.testTag("fuel_food_${item.id}"),
                         )
                     }
-                }
+                    item(key = "bls_header") {
+                        Column(Modifier.padding(top = 12.dp)) {
+                            Text(stringResource(R.string.trf_foods_bls_title), style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                stringResource(when {
+                                    q.length < 2 -> R.string.trf_foods_bls_hint
+                                    blsResults.isEmpty() -> R.string.trf_foods_bls_none
+                                    else -> R.string.fvp_attribution
+                                }),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag("fuel_foods_bls_hint"),
+                            )
+                        }
+                    }
+                    items(blsResults, key = { "bls_${it.code}" }) { food ->
+                        ListItem(
+                            headlineContent = { Text(FoodPhotoViewModel.blsName(food)) },
+                            supportingContent = {
+                                Text(stringResource(R.string.fvp_per_100, formatNumber(food.kcal), formatNumber(food.protein),
+                                    formatNumber(food.carbs), formatNumber(food.fat)))
+                            },
+                            modifier = Modifier.clickable { onPickBls(food) }.testTag("fuel_bls_${food.code}"),
+                        )
+                    }
             }
         }
     }

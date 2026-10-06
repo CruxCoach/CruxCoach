@@ -40,14 +40,15 @@ double elapsed_ms(std::chrono::steady_clock::time_point since) {
 
 // Qwen3.5 chat format with thinking switched off, which is what the model's
 // own template renders for enable_thinking = false. The media marker is
-// replaced by <|vision_start|> image tokens <|vision_end|> in mtmd_tokenize.
-std::string build_prompt(const std::string & system_prompt, const std::string & user_prompt) {
+// replaced by <|vision_start|> image tokens <|vision_end|> in mtmd_tokenize;
+// a text-only request (a typed meal) has no marker.
+std::string build_prompt(const std::string & system_prompt, const std::string & user_prompt, bool with_image) {
     std::string prompt;
     if (!system_prompt.empty()) {
         prompt += "<|im_start|>system\n" + system_prompt + "<|im_end|>\n";
     }
     prompt += "<|im_start|>user\n";
-    prompt += mtmd_default_marker();
+    if (with_image) prompt += mtmd_default_marker();
     prompt += user_prompt;
     prompt += "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n";
     return prompt;
@@ -217,7 +218,8 @@ std::unique_ptr<Engine> Engine::load(const LoadParams & params, std::string & er
 
 std::string Engine::run(const RunParams & params, const std::atomic<bool> & cancel, Timings & timings, std::string & error) {
     Impl & s = *impl;
-    if (params.rgb == nullptr || params.width <= 0 || params.height <= 0) {
+    const bool with_image = params.rgb != nullptr;
+    if (with_image && (params.width <= 0 || params.height <= 0)) {
         error = "invalid_image";
         return {};
     }
@@ -230,14 +232,16 @@ std::string Engine::run(const RunParams & params, const std::atomic<bool> & canc
     } abort_reset{ s.ctx };
 
     const auto image_started = std::chrono::steady_clock::now();
-    std::unique_ptr<mtmd_bitmap, BitmapDeleter> bitmap(
-        mtmd_bitmap_init(static_cast<uint32_t>(params.width), static_cast<uint32_t>(params.height), params.rgb));
-    if (!bitmap) {
-        error = "invalid_image";
-        return {};
+    std::unique_ptr<mtmd_bitmap, BitmapDeleter> bitmap;
+    if (with_image) {
+        bitmap.reset(mtmd_bitmap_init(static_cast<uint32_t>(params.width), static_cast<uint32_t>(params.height), params.rgb));
+        if (!bitmap) {
+            error = "invalid_image";
+            return {};
+        }
     }
 
-    const std::string prompt = build_prompt(params.system_prompt, params.user_prompt);
+    const std::string prompt = build_prompt(params.system_prompt, params.user_prompt, with_image);
     mtmd_input_text text;
     text.text = prompt.c_str();
     text.text_len = prompt.size();
@@ -246,7 +250,7 @@ std::string Engine::run(const RunParams & params, const std::atomic<bool> & canc
 
     std::unique_ptr<mtmd_input_chunks, ChunksDeleter> chunks(mtmd_input_chunks_init());
     const mtmd_bitmap * bitmaps[] = { bitmap.get() };
-    if (mtmd_tokenize(s.mctx, chunks.get(), &text, bitmaps, 1) != 0) {
+    if (mtmd_tokenize(s.mctx, chunks.get(), &text, bitmaps, with_image ? 1 : 0) != 0) {
         error = "tokenize_failed";
         return {};
     }

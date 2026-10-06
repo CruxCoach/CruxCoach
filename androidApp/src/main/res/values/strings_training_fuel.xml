@@ -65,7 +65,16 @@
     <string name="trf_qa_optional">All values are optional – estimating is perfectly fine.</string>
     <string name="trf_qa_remember">Also save as a food</string>
 
-    <string name="trf_foods_search">Search</string>
+    <string name="trf_find_food">Find food</string>
+    <string name="trf_foods_bls_title">Food database (BLS)</string>
+    <string name="trf_foods_bls_hint">Type at least two letters to search 7,140 foods of the German food composition database.</string>
+    <string name="trf_foods_bls_none">No match in the database.</string>
+    <string name="trf_describe">Describe</string>
+    <string name="trf_describe_title">Describe a meal</string>
+    <string name="trf_describe_placeholder">e.g. 2 slices of wholemeal bread with cheese and a glass of orange juice</string>
+    <string name="trf_describe_hint">Amounts like “80 g”, “2 slices” or “a glass” make the result more precise. You can also dictate with the keyboard’s microphone.</string>
+    <string name="trf_describe_go">Analyse</string>
+    <string name="trf_foods_search">Search your foods and the database</string>
     <string name="trf_foods_empty">No saved foods yet. Create one or save a quick entry.</string>
     <string name="trf_foods_new">New food</string>
     <string name="trf_food_per_portion">per portion</string>

@@ -29,7 +29,8 @@ struct LoadParams {
 };
 
 struct RunParams {
-    // Packed RGB, width * height * 3 bytes, row-major.
+    // Packed RGB, width * height * 3 bytes, row-major; nullptr for a
+    // text-only request (a meal the user typed).
     const uint8_t * rgb = nullptr;
     int width = 0;
     int height = 0;

@@ -35,6 +35,9 @@
     <string name="fvp_photo_description">Dein Foto der Mahlzeit</string>
 
     <string name="fvp_review_hint">Erkannt in %d s. Mengen sind Schätzungen – tippe auf ein Lebensmittel, um es zu ändern.</string>
+    <string name="fvp_review_text_hint">Aus deiner Beschreibung. Mengen ohne Angabe sind typische Portionen – tippe auf ein Lebensmittel, um es zu ändern.</string>
+    <string name="fvp_review_text_model_hint">Vom KI-Modell in %d s ausgewertet. Bitte prüfen – es kann sich irren.</string>
+    <string name="fvp_text_model">Mit KI-Modell auswerten</string>
     <string name="fvp_review_empty">Auf diesem Foto wurde kein Essen erkannt.</string>
     <string name="fvp_uncertain">unsicher</string>
     <string name="fvp_no_match">Keine Nährwerte – tippen, um ein Lebensmittel zu wählen</string>
