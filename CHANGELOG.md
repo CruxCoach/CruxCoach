@@ -72,6 +72,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   structure and your bottlenecks.
 - Board days: "create board session" opens the playlist generator preset for
   the block and your focus.
+- Weekly volume plan per area (fingers, pull, push, legs, core, antagonists,
+  mobility); board days count; the daily suggestion fills what the week still
+  needs. A "this week" view shows planned, done and missed days.
+- During training the next sets follow the last one: missed reps or no
+  reserve make them lighter, a big reserve heavier; "let go" in a hang records
+  the time actually held. "It hurts" swaps, lightens or ends the exercise.
+- Back after a break (10+ days, illness, a healed finger injury): one or two
+  shorter weeks without maximal finger load, automatically.
+- Training reminders on planned days; a body map and grip pictograms for every
+  exercise; a reward screen with new bests after each training.
 - Optional Health Connect (read-only): last night's sleep as a check-in hint and
   climbing sessions as climbing days. Experimental Tindeq Progressor support
   with live force and a max-pull test.

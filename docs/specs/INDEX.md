@@ -93,7 +93,7 @@ spec file so other branches see the reservation.
 | FEAT-068 | Fueling, not dieting | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-068-fueling.md` |
 | FEAT-069 | Food photo recognition (allocated on `feat/0.2.4-food-photo`) | v0.2.4 | other branch | `0.2.4/FEAT-069-food-photo-recognition.md` (on that branch) |
 | FEAT-070 | Training organisation, stats, own workouts, daily suggestion | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-070-training-organisation-stats-suggestions.md` |
-| FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.4 | in-progress | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
+| FEAT-071 | Coach profile, start values, data-driven recommendations | v0.2.4 | implemented-on-branch | `0.2.4/FEAT-071-coach-profile-data-driven-recommendations.md` |
 
 The architecture guide for FEAT-059 is
 [`0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md`](0.2.3/OFFLINE-BOARDCELL-FIPS-ARCHITECTURE.md).
