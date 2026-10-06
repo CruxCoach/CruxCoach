@@ -10,6 +10,7 @@ import org.junit.Test
 import java.time.Instant
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -141,7 +142,7 @@ class KilterUploadContractSimulationTest {
         world.verifyRun(status, optedIn = false, firstRequest = before, label = "S1")
         assertContains(
             KilterUploadDiagnostics.diagnosticLine(status),
-            "attempted=1710 uploaded=1710 pending=0 reason=NONE http=none requests=9 rejectedKilter=0 " +
+            "attempted=1710 uploaded=1710 pending=0 reason=NONE http=none requests=18 rejectedKilter=0 " +
                 "rejectedConflict=0 rejectedInvalid=0 heldImported=0 alreadyOnKilter=0",
         )
         assertTrue(world.allDelivered(includeImported = false))
@@ -241,13 +242,14 @@ class KilterUploadContractSimulationTest {
             assertEquals(KilterUploadReason.HTTP, first.reason)
             assertEquals(fault.name.removePrefix("HTTP_").toInt(), first.httpStatus)
             assertEquals(3, first.requests)
-            assertEquals(400, first.uploaded)
-            assertEquals(600, first.pending)
+            assertEquals(200, first.uploaded)
+            assertEquals(800, first.pending)
             assertEquals(0, first.rejected)
+            assertEquals(1, first.nextRetry, "a follow-up run is scheduled")
             sim.kilter.fault = { _, _ -> null }
             sim.restartApp()
             val second = world.uploadRun("S4a $fault run 2")
-            assertEquals(600, second.uploaded)
+            assertEquals(800, second.uploaded)
             assertEquals(0, second.pending)
             assertTrue(world.allDelivered(includeImported = false))
         }
@@ -255,7 +257,7 @@ class KilterUploadContractSimulationTest {
         val sim = newSim()
         val world = UploadWorld(sim, seed = 42)
         repeat(1000) { world.add(if (it == 500) Fate.UNKNOWN else Fate.VALID) }
-        sim.kilter.fault = { op, n -> if (op == Op.BULK && n == 8) Fault.HTTP_503 else null }
+        sim.kilter.fault = { op, n -> if (op == Op.BULK && n == 12) Fault.HTTP_503 else null }
         val first = world.uploadRun("S4a isolating run 1")
         assertEquals(503, first.httpStatus)
         assertTrue(sim.parked().isEmpty())
@@ -271,16 +273,16 @@ class KilterUploadContractSimulationTest {
         repeat(1000) { world.add(Fate.VALID) }
         sim.kilter.fault = { op, n -> if (op == Op.BULK && n == 1) Fault.LOST_RESPONSE else null }
         val first = world.uploadRun("S4b run 1")
-        assertEquals(KilterUploadReason.NETWORK, first.reason)
-        assertEquals(200, first.uploaded)
-        assertEquals(800, first.pending)
-        assertEquals(400, sim.kilter.logs.size, "Kilter wrote the request whose answer was lost")
+        assertEquals(KilterUploadReason.TIMEOUT, first.reason)
+        assertEquals(100, first.uploaded)
+        assertEquals(900, first.pending)
+        assertEquals(200, sim.kilter.logs.size, "Kilter wrote the request whose answer was lost")
         sim.kilter.fault = { _, _ -> null }
         sim.restartApp()
         val second = world.uploadRun("S4b run 2")
-        assertEquals(200, second.alreadyOnKilter)
-        assertEquals(600, second.uploaded)
-        assertEquals(3, second.requests)
+        assertEquals(100, second.alreadyOnKilter)
+        assertEquals(800, second.uploaded)
+        assertEquals(8, second.requests)
         assertEquals(0, second.pending)
         assertEquals(1000, sim.kilter.logs.size)
         assertEquals(0, sim.kilter.knownUuidRefusals)
@@ -408,7 +410,7 @@ class KilterUploadContractSimulationTest {
         val first = world.uploadRun("S7 run 1")
         assertEquals(5, first.rejectedConflict)
         assertEquals(500, first.uploaded)
-        assertEquals(3, first.requests)
+        assertEquals(5, first.requests)
         assertEquals(0, first.pending)
         assertFalse(first.failed)
         val second = world.uploadRun("S7 run 2")
@@ -457,10 +459,294 @@ class KilterUploadContractSimulationTest {
         assertEquals(null, sim.logbook.isSynced(deleted.uuid), "the download did not bring the deleted entry back")
     }
 
+    // ── Slow Kilter, lost answers and follow-up runs (field report 2026-10-05) ──
+
+    /** The rows of the bulk request with this ordinal. */
+    private fun UploadSimulation.rowsOf(ordinal: Int): Set<String> = kilter.requests[ordinal].rows.mapTo(HashSet()) { it.logUuid }
+
+    /** The rows sent from request [from] on. */
+    private fun UploadSimulation.sentFrom(from: Int): Set<String> =
+        kilter.requests.drop(from).flatMapTo(HashSet()) { r -> r.rows.map { it.logUuid } }
+
+    /** A follow-up run, checked. */
+    private suspend fun UploadWorld.retryRun(label: String): KilterUploadStatus {
+        val optedIn = sim.ledger.importedUploadEnabled.value
+        val queued = sim.ledger.rejections().mapTo(HashSet()) { it.logUuid }
+        val before = kilter.requests.size
+        val status = sim.retryRun()
+        verifyRun(status, optedIn, before, label, queued)
+        return status
+    }
+
+    @Test fun s14_kilter_answering_too_slowly_retries_by_itself_and_settles_the_request_without_resending_it() = runTest(timeout = 120.seconds) {
+        // The report: Kilter took 200 entries, then answered the next request too late (it wrote it all the same).
+        val sim = newSim()
+        val world = reporterWorld(sim)
+        sim.kilter.fault = { op, n -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && n == 2 } }
+        val first = world.uploadRun("S14 run 1", KilterUploadTrigger.ENABLED)
+        assertEquals(KilterUploadReason.TIMEOUT, first.reason)
+        assertEquals(200, first.uploaded)
+        assertEquals(1510, first.pending)
+        assertEquals(1, first.nextRetry)
+        assertEquals(1, sim.retries.scheduled)
+        assertEquals(sim.rowsOf(2), sim.ledger.doubtfulRequests().single().rows.mapTo(HashSet()) { it.logUuid })
+
+        // Two minutes later, by itself: Kilter's logbook shows the request was written.
+        sim.kilter.fault = { _, _ -> null }
+        val second = world.retryRun("S14 follow-up")
+        println("S14 ${line(first)} | ${line(second)}")
+        assertEquals(KilterUploadReason.NONE, second.reason)
+        assertEquals(100, second.alreadyOnKilter)
+        assertEquals(1410, second.uploaded)
+        assertEquals(15, second.requests)
+        assertEquals(0, second.pending)
+        assertEquals(0, second.nextRetry)
+        assertEquals("cancel", sim.retries.calls.last())
+        assertTrue(sim.ledger.doubtfulRequests().isEmpty())
+        assertEquals(0, sim.kilter.knownUuidRefusals)
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
+    @Test fun s15_rows_of_a_request_kilter_may_still_be_writing_wait_and_go_once_it_shows_it_did_not() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 150)
+        repeat(300) { world.add(Fate.VALID) }
+        // The connection breaks off mid-request; the client cannot tell whether Kilter got it.
+        sim.kilter.fault = { op, n -> Fault.BROKEN_OFF.takeIf { op == Op.BULK && n == 1 } }
+        val first = world.uploadRun("S15 run 1")
+        assertEquals(KilterUploadReason.NETWORK, first.reason)
+        assertEquals(100, first.uploaded)
+        assertEquals(1, first.nextRetry)
+        val doubtful = sim.rowsOf(1)
+        sim.kilter.fault = { _, _ -> null }
+
+        val before = sim.kilter.requests.size
+        val waiting = world.retryRun("S15 follow-up 1, within the settle time")
+        assertTrue(sim.sentFrom(before).none { it in doubtful }, "rows Kilter may still be writing are not sent")
+        assertEquals(100, waiting.uploaded)
+        assertEquals(100, waiting.pending)
+        assertEquals(KilterUploadReason.NONE, waiting.reason)
+        assertEquals(2, waiting.nextRetry, "the waiting rows bring a follow-up run")
+
+        val settled = world.retryRun("S15 follow-up 2")
+        println("S15 ${line(first)} | ${line(waiting)} | ${line(settled)}")
+        assertEquals(100, settled.uploaded)
+        assertEquals(0, settled.pending)
+        assertEquals(0, settled.nextRetry)
+        assertTrue(sim.ledger.doubtfulRequests().isEmpty())
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
+    @Test fun s16_attempts_kilter_does_not_list_are_settled_with_the_written_request_instead_of_sent_again() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 160)
+        repeat(300) { world.add(Fate.VALID) }
+        sim.kilter.fault = { op, n -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && n == 1 } }
+        world.uploadRun("S16 run 1")
+        val written = sim.rowsOf(1)
+        val attempts = written.count { sim.kilter.logs.getValue(it).topped == false }
+        assertTrue(attempts > 0)
+        sim.kilter.fault = { _, _ -> null }
+        val second = world.uploadRun("S16 run 2")
+        println("S16 ${line(second)} attempts in the written request=$attempts")
+        assertEquals(100, second.alreadyOnKilter, "listed ascents and unlisted attempts alike")
+        assertEquals(100, second.uploaded)
+        assertEquals(0, second.pending)
+        assertEquals(0, second.probablyOnKilter)
+        assertTrue(sim.kilter.resent.isEmpty())
+        assertTrue(written.all { sim.logbook.isSynced(it) == true })
+    }
+
+    @Test fun s17_a_written_request_of_attempts_only_is_found_out_with_a_few_requests_and_listed_as_probably_on_kilter() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 170)
+        repeat(150) { world.add(Fate.VALID, isAscent = true) }
+        val bids = (1..100).map { world.add(Fate.VALID, isAscent = false) }.mapTo(HashSet()) { it.uuid }
+        // The newest entries go first: the lost request holds the 100 attempts.
+        sim.kilter.fault = { op, n -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && n == 0 } }
+        val first = world.uploadRun("S17 run 1")
+        assertEquals(KilterUploadReason.TIMEOUT, first.reason)
+        assertEquals(bids, sim.rowsOf(0))
+        sim.kilter.fault = { _, _ -> null }
+
+        val second = world.uploadRun("S17 run 2")
+        println("S17 ${line(second)}")
+        assertEquals(100, second.probablyOnKilter)
+        assertEquals(0, second.rejectedByKilter)
+        assertEquals(150, second.uploaded)
+        assertEquals(0, second.pending)
+        // The request again, two rows of different climbs alone under each of their ids, then the ascents.
+        assertTrue(second.requests in (1 + 2 + 2)..(1 + 4 + 2), "requests=${second.requests}")
+        val listed = sim.engine.notUploadedEntries()
+        assertEquals(bids, listed.mapTo(HashSet()) { it.logUuid })
+        assertTrue(listed.all { it.reason == KilterNotUploadedReason.PROBABLY_ON_KILTER })
+        assertEquals(0, world.uploadRun("S17 idle").requests)
+
+        // Held across an app update: the log uuid is the problem, not the climb id.
+        sim.ledger.saveRejections(sim.ledger.rejections().map { it.copy(appVersionCode = it.appVersionCode - 1) })
+        val updated = world.uploadRun("S17 after an update")
+        assertEquals(0, updated.requests)
+        assertEquals(100, updated.probablyOnKilter)
+
+        // Once Kilter lists the attempts, they settle.
+        sim.kilter.hideAttempts = false
+        val listedNow = world.uploadRun("S17 attempts listed")
+        assertEquals(100, listedNow.alreadyOnKilter)
+        assertEquals(0, listedNow.probablyOnKilter)
+        assertTrue(sim.engine.notUploadedEntries().isEmpty())
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
+    @Test fun s17b_two_unknown_climbs_in_a_lost_request_of_attempts_kilter_never_wrote_hold_nothing_else_back() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 175)
+        world.seedHistory(50) // Kilter has logs of some climbs: those are sampled first
+        repeat(100) { world.add(Fate.VALID, isAscent = true) }
+        repeat(48) { world.add(Fate.VALID, isAscent = false, climb = world.sharedClimb()) }
+        val unknown = (1..2).map { world.add(Fate.UNKNOWN, isAscent = false) }.mapTo(HashSet()) { it.uuid }
+        repeat(50) { world.add(Fate.VALID, isAscent = false) }
+        sim.kilter.fault = { op, n -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && n == 0 } }
+        world.uploadRun("S17b run 1")
+        assertTrue(unknown.all { it in sim.rowsOf(0) })
+        assertFalse(sim.kilter.requests[0].written)
+        sim.kilter.fault = { _, _ -> null }
+        val runs = (1..3).map { world.uploadRun("S17b run ${it + 1}") }
+        println("S17b ${runs.map { line(it) }}")
+        assertEquals(0, runs.sumOf { it.probablyOnKilter })
+        assertTrue(world.allDelivered(includeImported = false))
+        assertEquals(unknown, sim.parked())
+    }
+
+    @Test fun s18_a_request_of_attempts_only_that_kilter_never_got_goes_up_with_one_request() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 180)
+        repeat(50) { world.add(Fate.VALID, isAscent = true) }
+        val bids = (1..100).map { world.add(Fate.VALID, isAscent = false) }.mapTo(HashSet()) { it.uuid }
+        sim.kilter.fault = { op, n -> Fault.BROKEN_OFF.takeIf { op == Op.BULK && n == 0 } }
+        world.uploadRun("S18 run 1")
+        assertEquals(bids, sim.rowsOf(0))
+        sim.kilter.fault = { _, _ -> null }
+        val second = world.uploadRun("S18 run 2")
+        println("S18 ${line(second)}")
+        assertEquals(150, second.uploaded)
+        assertEquals(2, second.requests)
+        assertEquals(0, second.probablyOnKilter)
+        assertTrue(sim.kilter.resent.isEmpty())
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
+    @Test fun s19_an_unknown_climb_in_a_lost_request_of_attempts_is_still_found_and_nothing_else_is_held() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 190)
+        repeat(150) { world.add(Fate.VALID, isAscent = true) }
+        repeat(60) { world.add(Fate.VALID, isAscent = false) }
+        val unknown = world.add(Fate.UNKNOWN, isAscent = false)
+        repeat(39) { world.add(Fate.VALID, isAscent = false) }
+        // Kilter refuses the request for the unknown climb, but the answer is lost.
+        sim.kilter.fault = { op, n -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && n == 0 } }
+        world.uploadRun("S19 run 1")
+        assertTrue(unknown.uuid in sim.rowsOf(0))
+        assertFalse(sim.kilter.requests[0].written)
+        sim.kilter.fault = { _, _ -> null }
+        val runs = (1..3).map { world.uploadRun("S19 run ${it + 1}") }
+        println("S19 ${runs.map { line(it) }}")
+        assertEquals(0, runs.sumOf { it.probablyOnKilter })
+        assertTrue(world.allDelivered(includeImported = false))
+        assertEquals(setOf(unknown.uuid), sim.parked())
+        assertEquals(KilterNotUploadedReason.NOT_ON_KILTER, sim.engine.notUploadedEntries().single().reason)
+    }
+
+    @Test fun s20_a_request_cut_short_by_the_app_stopping_is_settled_from_the_note_taken_before_it() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        sim.kilter.hideAttempts = true
+        val world = UploadWorld(sim, seed = 200)
+        repeat(300) { world.add(Fate.VALID) }
+        sim.kilter.fault = { op, n -> Fault.APP_STOPPED.takeIf { op == Op.BULK && n == 1 } }
+        assertFailsWith<kotlinx.coroutines.CancellationException> { sim.upload() }
+        val written = sim.rowsOf(1)
+        assertTrue(sim.kilter.requests[1].written)
+        assertEquals(written, sim.ledger.doubtfulRequests().single().rows.mapTo(HashSet()) { it.logUuid })
+        assertTrue(written.none { sim.logbook.isSynced(it) == true }, "the app stopped before it saw the answer")
+        sim.kilter.fault = { _, _ -> null }
+        sim.restartApp()
+        val next = world.uploadRun("S20 after the restart")
+        println("S20 ${line(next)}")
+        assertEquals(100, next.alreadyOnKilter)
+        assertEquals(100, next.uploaded)
+        assertTrue(sim.kilter.resent.isEmpty(), "the unlisted attempts of the written request are not sent again")
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
+    @Test fun s21_follow_up_runs_back_off_end_after_six_and_are_cancelled_by_a_run_that_finishes() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 210)
+        repeat(300) { world.add(Fate.VALID) }
+        sim.kilter.fault = { op, _ -> Fault.OFFLINE.takeIf { op == Op.BULK } }
+        val first = world.uploadRun("S21 offline")
+        assertEquals(KilterUploadReason.NETWORK, first.reason)
+        assertEquals(1, first.nextRetry)
+        assertTrue(sim.ledger.doubtfulRequests().isEmpty(), "a request that never reached Kilter leaves no doubt")
+        val start = sim.now
+        val attempts = (1..6).map { world.retryRun("S21 follow-up $it").nextRetry }
+        assertEquals(listOf(2, 3, 4, 5, 6, 0), attempts)
+        assertEquals((2L + 5 + 15 + 30 + 60 + 120) * 60_000, sim.now - start)
+        assertEquals(0, sim.retries.scheduled)
+        // The next trigger starts over, and a finished run cancels what is scheduled.
+        sim.kilter.fault = { _, _ -> null }
+        world.add(Fate.VALID)
+        val back = world.uploadRun("S21 new entry", KilterUploadTrigger.NEW_LOG)
+        assertEquals(301, back.uploaded)
+        assertEquals("cancel", sim.retries.calls.last())
+
+        // A run that runs out of requests goes on by itself.
+        val big = newSim()
+        val bigWorld = UploadWorld(big, seed = 211)
+        repeat(4500) { bigWorld.add(Fate.VALID) }
+        val budget = bigWorld.uploadRun("S21 budget")
+        assertEquals(40, budget.requests)
+        assertEquals(KilterUploadReason.NONE, budget.reason)
+        assertEquals(1, budget.nextRetry)
+        val rest = bigWorld.retryRun("S21 budget follow-up")
+        assertEquals(5, rest.requests)
+        assertEquals(0, rest.pending)
+        assertEquals(0, rest.nextRetry)
+        assertTrue(bigWorld.allDelivered(includeImported = false))
+
+        // A lost session or a switched-off upload ends the follow-ups.
+        big.kilter.fault = { op, _ -> Fault.HTTP_401.takeIf { op == Op.BULK } }
+        bigWorld.add(Fate.VALID)
+        assertEquals(KilterUploadReason.AUTHENTICATION, bigWorld.uploadRun("S21 401").reason)
+        assertEquals("cancel", big.retries.calls.last())
+        big.push.value = false
+        assertEquals(KilterUploadReason.DISABLED, big.upload().reason)
+        assertEquals("cancel", big.retries.calls.last())
+    }
+
+    @Test fun s22_a_slow_kilter_ends_the_run_within_the_time_budget_and_a_follow_up_finishes() = runTest(timeout = 60.seconds) {
+        val sim = newSim()
+        val world = UploadWorld(sim, seed = 220)
+        repeat(1000) { world.add(Fate.VALID) }
+        sim.requestMs = 40_000
+        val first = world.uploadRun("S22 slow")
+        assertEquals(8, first.requests, "no request starts after five minutes")
+        assertEquals(800, first.uploaded)
+        assertEquals(KilterUploadReason.NONE, first.reason)
+        assertEquals(1, first.nextRetry)
+        val rest = world.retryRun("S22 follow-up")
+        assertEquals(2, rest.requests)
+        assertEquals(0, rest.pending)
+        assertTrue(world.allDelivered(includeImported = false))
+    }
+
     // ── S9: random logbooks and fault plans ─────────────────────────────
 
     private enum class RunFault(val contentBlind500: Boolean = false) {
-        STOP_503, STOP_429, STOP_401, LOST_RESPONSE, OFFLINE_FROM, FETCH_FAILS,
+        STOP_503, STOP_429, STOP_401, LOST_RESPONSE, BROKEN_OFF, APP_STOPPED, OFFLINE_FROM, FETCH_FAILS,
         WHOLE_RUN_500(true), SPORADIC_500(true), OUTAGE_FROM(true),
     }
 
@@ -475,6 +761,8 @@ class KilterUploadContractSimulationTest {
                 RunFault.STOP_429 -> Fault.HTTP_429.takeIf { op == Op.BULK && i == k }
                 RunFault.STOP_401 -> Fault.HTTP_401.takeIf { op == Op.BULK && i == k }
                 RunFault.LOST_RESPONSE -> Fault.LOST_RESPONSE.takeIf { op == Op.BULK && i == k }
+                RunFault.BROKEN_OFF -> Fault.BROKEN_OFF.takeIf { op == Op.BULK && i == k }
+                RunFault.APP_STOPPED -> Fault.APP_STOPPED.takeIf { op == Op.BULK && i == k }
                 RunFault.OFFLINE_FROM -> Fault.OFFLINE.takeIf { op == Op.BULK && i >= k }
                 RunFault.FETCH_FAILS -> fetchFault.takeIf { op == Op.FETCH }
                 RunFault.WHOLE_RUN_500 -> Fault.HTTP_500.takeIf { op == Op.BULK }
@@ -488,9 +776,13 @@ class KilterUploadContractSimulationTest {
 
     private class SeedOutcome(val seed: Int, val size: Int, val faultRuns: Int, val runsAfterFaults: Int, val requests: List<Int>, val violation: String?)
 
-    /** One random logbook through random faults, then fault-free runs until everything is delivered. */
-    private suspend fun simulate(seed: Int, faults: List<RunFault>): SeedOutcome {
+    /**
+     * One random logbook through random faults, then fault-free runs until everything is delivered.
+     * [hideAttempts]: Kilter leaves attempts out of its logbook, as observed live.
+     */
+    private suspend fun simulate(seed: Int, faults: List<RunFault>, hideAttempts: Boolean = false): SeedOutcome {
         val sim = newSim()
+        sim.kilter.hideAttempts = hideAttempts
         val world = UploadWorld(sim, seed = 9_000L + seed)
         val rng = world.rng
         world.seedHistory(rng.nextInt(300))
@@ -527,14 +819,22 @@ class KilterUploadContractSimulationTest {
                 val fault = if (faulty) faults[rng.nextInt(faults.size)] else null
                 sim.kilter.fault = if (fault == null) noFaults else faultPlan(fault, rng, sim.kilter)
                 val trigger = KilterUploadTrigger.values()[rng.nextInt(KilterUploadTrigger.values().size)]
-                val status = world.uploadRun("seed=$seed run=$run fault=$fault", trigger)
+                val status = try {
+                    world.uploadRun("seed=$seed run=$run fault=$fault", trigger)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // The app was stopped mid-request; it starts again.
+                    check(fault == RunFault.APP_STOPPED) { "cancelled without being stopped: ${e.message}" }
+                    sim.restartApp()
+                    continue
+                }
                 sim.kilter.forgetRowsBefore(sim.kilter.requests.size)
                 requests += status.requests
                 lastHeldImported = status.heldImported
                 // Done once everything Kilter takes is there; entries of unknown climbs may wait for proof.
                 val parked = sim.parked()
                 val waiting = world.entries.values.count { it.fate == Fate.UNKNOWN && sim.logbook.isSynced(it.uuid) == false && it.uuid !in parked }
-                if (!faulty && status.pending <= waiting && status.reason == KilterUploadReason.NONE && world.allDelivered(includeImported = false)) {
+                val delivered = world.allDelivered(includeImported = false, heldOnKilter = sim.probablyOnKilter())
+                if (!faulty && status.pending <= waiting && status.reason == KilterUploadReason.NONE && delivered) {
                     val idle = world.uploadRun("seed=$seed idle", trigger)
                     if (idle.requests != 0) return SeedOutcome(seed, size, faultRuns, run - faultRuns, requests, "idle run sent ${idle.requests} requests")
                     return SeedOutcome(seed, size, faultRuns, run - faultRuns, requests, null)
@@ -565,6 +865,15 @@ class KilterUploadContractSimulationTest {
         val faults = RunFault.values().filterNot { it.contentBlind500 }
         val outcomes = (1..50).map { simulate(it, faults) }
         report("S9", outcomes)
+        val violations = outcomes.filter { it.violation != null }
+        assertTrue(violations.isEmpty(), violations.joinToString("\n") { "seed ${it.seed}: ${it.violation}" })
+    }
+
+    /** The same with Kilter leaving attempts out of its logbook: lost answers are settled without listing them. */
+    @Test fun s9c_random_logbooks_whose_attempts_kilter_does_not_list() = runTest(timeout = 300.seconds) {
+        val faults = RunFault.values().filterNot { it.contentBlind500 }
+        val outcomes = (1..50).map { simulate(it, faults, hideAttempts = true) }
+        report("S9c", outcomes)
         val violations = outcomes.filter { it.violation != null }
         assertTrue(violations.isEmpty(), violations.joinToString("\n") { "seed ${it.seed}: ${it.violation}" })
     }
@@ -697,7 +1006,7 @@ class KilterUploadContractSimulationTest {
         for (entry in movedEntries) assertEquals(entry.climb!!.id, sim.kilter.logs.getValue(entry.uuid).climbUuid)
         assertEquals(twinId.id, sim.kilter.logs.getValue(keep.uuid).climbUuid)
         // Moved climbs name the id Kilter lists first: they go in the chunks like everything else.
-        assertEquals(2, first.requests)
+        assertEquals(4, first.requests)
 
         // A later entry of a moved climb goes in a chunk at once, after a restart too.
         sim.restartApp()

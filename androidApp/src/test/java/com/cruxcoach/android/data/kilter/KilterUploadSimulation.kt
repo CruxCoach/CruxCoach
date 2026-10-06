@@ -122,8 +122,12 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         HTTP_503, HTTP_429, HTTP_401,
         /** Kilter fails on its own: 500 whatever the request holds. */
         HTTP_500,
-        /** Kilter processes the request, the client never sees the answer. */
+        /** Kilter processes the request, the client times out before the answer (the field report of 2026-10-05). */
         LOST_RESPONSE,
+        /** The connection breaks off mid-request, before Kilter wrote anything; the client cannot tell. */
+        BROKEN_OFF,
+        /** Kilter processes the request while the app is stopped mid-request (the run is cancelled). */
+        APP_STOPPED,
         /** The request never reaches Kilter. */
         OFFLINE,
     }
@@ -144,6 +148,13 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
     /** Requests refused because they named a log uuid Kilter holds already: a client resending a written log. */
     var knownUuidRefusals = 0
         private set
+    /** The log uuids those requests named again. */
+    val resent = HashSet<String>()
+    /** Requests naming one log uuid twice. */
+    var duplicatesInRequest = 0
+        private set
+    /** Rows Kilter wrote while the client got no answer (or was stopped). */
+    val writtenWithoutAnswer = HashSet<String>()
     var fetches = 0
         private set
     var deletes = 0
@@ -151,6 +162,9 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
 
     /** Which fault, if any, hits the [Op] request with this ordinal (per op, from 0). */
     var fault: (Op, Int) -> Fault? = { _, _ -> null }
+
+    /** Kilter keeps attempts (topped=false) but leaves them out of `GET /logs`, as observed live. */
+    var hideAttempts = false
 
     init {
         climbs.forEach(::addClimb)
@@ -187,6 +201,8 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         val inRequest = HashSet<String>()
         if (rows.any { it.logUuid in logs || !inRequest.add(it.logUuid) }) {
             knownUuidRefusals++
+            if (rows.size != rows.distinctBy { it.logUuid }.size) duplicatesInRequest++
+            rows.filterTo(ArrayList()) { it.logUuid in logs }.mapTo(resent) { it.logUuid }
             return 500
         }
         return null
@@ -198,7 +214,11 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         val injected = fault(Op.BULK, ordinal)
         if (injected == Fault.OFFLINE) {
             requests += BulkRequest(ordinal, rows, null, written = false, fault = injected)
-            return Result.failure(IOException("unreachable"))
+            return Result.failure(java.net.UnknownHostException("unreachable"))
+        }
+        if (injected == Fault.BROKEN_OFF) {
+            requests += BulkRequest(ordinal, rows, null, written = false, fault = injected)
+            return Result.failure(java.net.SocketException("Connection reset"))
         }
         val status = when (injected) {
             Fault.HTTP_503 -> 503
@@ -209,10 +229,12 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         }
         val written = status == 200
         if (written) rows.forEach(::write)
-        val lost = injected == Fault.LOST_RESPONSE
+        val lost = injected == Fault.LOST_RESPONSE || injected == Fault.APP_STOPPED
+        if (lost && written) rows.mapTo(writtenWithoutAnswer) { it.logUuid }
         requests += BulkRequest(ordinal, rows, if (lost) null else status, written, injected)
+        if (injected == Fault.APP_STOPPED) throw kotlinx.coroutines.CancellationException("app stopped mid-request")
         return when {
-            lost -> Result.failure(IOException("response lost"))
+            lost -> Result.failure(java.net.SocketTimeoutException("timeout"))
             status == 200 -> Result.success(Unit)
             else -> Result.failure(KilterUploadException(status))
         }
@@ -220,7 +242,7 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
 
     /** GET /logs, failing the way KilterApiClient.fetchLogs does after its own retries. */
     fun fetch(): Result<List<KilterLog>> = when (val injected = fault(Op.FETCH, fetches++)) {
-        null -> Result.success(logs.values.toList())
+        null -> Result.success(logs.values.filter { it.topped || !hideAttempts })
         Fault.OFFLINE, Fault.LOST_RESPONSE -> Result.failure(IOException("unreachable"))
         Fault.HTTP_401 -> Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
         else -> Result.failure(Exception("HTTP ${injected.name.removePrefix("HTTP_")}: "))
@@ -382,6 +404,10 @@ internal class UploadSimulation(
     val push = MutableStateFlow(true)
     val statuses = ArrayList<KilterUploadStatus>()
     var now: Long = Instant.parse("2026-10-01T08:00:00Z").toEpochMilli()
+    /** How long each bulk request takes on the run's clock. */
+    var requestMs: Long = 0
+    /** Automatic follow-up runs: the attempt scheduled last, 0 when none is (or it was cancelled). */
+    val retries = RecordingRetryScheduler()
 
     private val api = mockk<KilterApiClient>(relaxed = true)
     private val tokens = mockk<KilterTokenStore>(relaxed = true)
@@ -402,7 +428,10 @@ internal class UploadSimulation(
         every { tokens.getWallUuid() } returns WALL
         every { tokens.getProductLayoutUuid() } returns "10"
         every { diagnostics.record(any()) } answers { statuses += firstArg<KilterUploadStatus>() }
-        coEvery { api.uploadLogs(any()) } answers { kilter.bulk(firstArg()) }
+        coEvery { api.uploadLogs(any()) } answers {
+            now += requestMs
+            kilter.bulk(firstArg())
+        }
         coEvery { api.fetchLogs() } answers { kilter.fetch() }
         coEvery { api.deleteLog(any()) } answers { kilter.delete(firstArg()) }
         coEvery { api.fetchLoggedClimbs() } returns Result.success(KilterLoggedClimbsResponse())
@@ -415,6 +444,7 @@ internal class UploadSimulation(
         api, tokens, catalogue, logbook, mockk(relaxed = true), prefs, diagnostics,
         dagger.Lazy { pendingImports }, ledger, KilterLowercaseClimbIndexSource { index },
         KilterClimbAliasSource { KilterClimbAliases(HashMap(aliases)) },
+        retries,
     ).also { it.clock = { now } }
 
     /** The app is restarted: a fresh engine, the same stores. */
@@ -427,6 +457,14 @@ internal class UploadSimulation(
         return engine.uploadPendingLogs(trigger)
     }
 
+    /** The follow-up run the last run scheduled, when it is due. */
+    suspend fun retryRun(): KilterUploadStatus {
+        val attempt = retries.start()
+        check(attempt > 0) { "no follow-up run is scheduled" }
+        now += KilterUploadRetryScheduler.DELAYS_MIN[attempt - 1] * 60_000L
+        return engine.uploadPendingLogs(KilterUploadTrigger.RETRY, retryAttempt = attempt)
+    }
+
     suspend fun sync(afterMs: Long = 20 * 60_000L): KilterSyncReport {
         now += afterMs
         return engine.syncBidirectional().getOrThrow()
@@ -434,11 +472,34 @@ internal class UploadSimulation(
 
     suspend fun parked(): Set<String> = ledger.rejections().filter { it.confirmed }.mapTo(HashSet()) { it.logUuid }
 
+    /** Entries held as probably on Kilter already. */
+    suspend fun probablyOnKilter(): Set<String> = ledger.rejections().filter { it.likelyOnKilter }.mapTo(HashSet()) { it.logUuid }
+
     companion object {
         const val USER = "sim-user"
         const val GYM = "sim-gym"
         const val WALL = "sim-wall"
     }
+}
+
+/** Records what the engine schedules instead of handing it to WorkManager. */
+internal class RecordingRetryScheduler : KilterUploadRetryScheduler {
+    var scheduled = 0
+        private set
+    val calls = ArrayList<String>()
+
+    override fun schedule(attempt: Int) {
+        scheduled = attempt
+        calls += "schedule $attempt"
+    }
+
+    override fun cancel() {
+        scheduled = 0
+        calls += "cancel"
+    }
+
+    /** The scheduled run starts: the attempt it carries. */
+    fun start(): Int = scheduled.also { scheduled = 0 }
 }
 
 /** What should become of a logbook entry. */
@@ -678,7 +739,11 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         val sent = kilter.requests.subList(firstRequest, kilter.requests.size)
         if (status.requests > MAX_REQUESTS) fail("requests=${status.requests} exceeds $MAX_REQUESTS")
         if (sent.size != status.requests) fail("status counts ${status.requests} requests, Kilter saw ${sent.size}")
-        if (kilter.knownUuidRefusals > 0) fail("a log Kilter already holds was sent again (${kilter.knownUuidRefusals} requests)")
+        // Kilter leaves attempts out of its logbook: one of a request whose answer was lost may be sent
+        // again to find out whether Kilter holds it. Nothing else is sent twice.
+        val resentAllowed = if (kilter.hideAttempts) kilter.writtenWithoutAnswer.filterTo(HashSet()) { kilter.logs[it]?.topped == false } else emptySet()
+        (kilter.resent - resentAllowed).firstOrNull()?.let { fail("a log Kilter already holds was sent again ($it, ${kilter.knownUuidRefusals} requests)") }
+        if (kilter.duplicatesInRequest > 0) fail("a request named one log twice")
         if (kilter.dashedLegacyWrites.isNotEmpty()) {
             fail("a legacy climb was written under its dashed id (separate statistics identity): ${kilter.dashedLegacyWrites.first().climbUuid}")
         }
@@ -715,9 +780,10 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
             }
         }
 
+        // Held as probably on Kilter is right when Kilter has it.
         val parked = sim.parked().filter { uuid ->
             val entry = entries[uuid]
-            entry != null && entry.fate in BELONGS_ON_KILTER && logbook.isSynced(uuid) == false
+            entry != null && entry.fate in BELONGS_ON_KILTER && logbook.isSynced(uuid) == false && uuid !in kilter.logs
         }
         if (parked.isNotEmpty()) fail("${parked.size} entries Kilter would take are held back, e.g. ${parked.first()}")
 
@@ -733,11 +799,14 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         if (status.uploaded > status.attempted) fail("uploaded > attempted")
     }
 
-    /** Every entry that belongs on Kilter (and was not left out as imported) is there and marked; nothing else is. */
-    fun allDelivered(includeImported: Boolean): Boolean = entries.values.all { entry ->
+    /**
+     * Every entry that belongs on Kilter (and was not left out as imported) is there and marked; nothing else is.
+     * [heldOnKilter]: entries held as probably on Kilter, delivered when Kilter has them.
+     */
+    fun allDelivered(includeImported: Boolean, heldOnKilter: Set<String> = emptySet()): Boolean = entries.values.all { entry ->
         if (entry.imported && !includeImported) return@all true
         when (entry.fate) {
-            Fate.VALID -> logbook.isSynced(entry.uuid) == true && entry.uuid in kilter.logs
+            Fate.VALID -> entry.uuid in kilter.logs && (logbook.isSynced(entry.uuid) == true || entry.uuid in heldOnKilter)
             Fate.TWIN -> logbook.isSynced(entry.uuid) == true
             else -> true
         }

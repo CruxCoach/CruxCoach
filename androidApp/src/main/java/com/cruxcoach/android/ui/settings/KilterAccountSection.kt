@@ -763,6 +763,7 @@ private fun com.cruxcoach.android.data.kilter.KilterNotUploadedEntry.details(con
     parts += context.getString(
         when (reason) {
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.NOT_ON_KILTER -> R.string.kilter_upload_reason_not_on_kilter
+            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.PROBABLY_ON_KILTER -> R.string.kilter_upload_reason_probably_on_kilter
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.RETRY_LATER -> R.string.kilter_upload_reason_retry_later
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.CONFLICT -> R.string.kilter_upload_reason_conflict
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.INVALID_DATE -> R.string.kilter_upload_reason_invalid_date

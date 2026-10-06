@@ -11,7 +11,14 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Serializable
-enum class KilterUploadReason { NONE, DISABLED, AUTHENTICATION, WALL_CONTEXT, NETWORK, HTTP, CONFLICT, INTERNAL }
+enum class KilterUploadReason {
+    NONE, DISABLED, AUTHENTICATION, WALL_CONTEXT,
+    /** No connection to Kilter, or it broke off mid-request. */
+    NETWORK,
+    /** Kilter took longer to answer than the app waits; the request's rows may be on Kilter. */
+    TIMEOUT,
+    HTTP, CONFLICT, INTERNAL,
+}
 
 /** Only fixed categories and counts may cross the diagnostics boundary. */
 @Serializable
@@ -39,9 +46,16 @@ data class KilterUploadStatus(
     val requests: Int = 0,
     /** Pending rows Kilter refused alone without proof yet (no upload accepted after them); retried, not held. */
     val unconfirmed: Int = 0,
+    /**
+     * Rows of a request whose answer was lost that Kilter refuses when sent
+     * again: it most likely holds them already. Held, listed.
+     */
+    val probablyOnKilter: Int = 0,
+    /** Number of the automatic follow-up run scheduled after this one, 0 for none ([KilterUploadRetryScheduler]). */
+    val nextRetry: Int = 0,
 ) {
     val failed: Boolean get() = reason != KilterUploadReason.NONE && reason != KilterUploadReason.DISABLED
-    val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid
+    val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid + probablyOnKilter
     /** Rows not on Kilter after this run that the user can list ([KilterSyncEngine.notUploadedEntries]). */
     val notUploaded: Int get() = rejected + unconfirmed
 }
@@ -49,6 +63,8 @@ data class KilterUploadStatus(
 enum class KilterNotUploadedReason {
     /** Kilter refused the climb under every id it may have there, with proof. */
     NOT_ON_KILTER,
+    /** Sent in a request whose answer was lost, refused since: Kilter most likely has it already. */
+    PROBABLY_ON_KILTER,
     /** Kilter refused it alone, but nothing was accepted after; tried again later. */
     RETRY_LATER,
     /** Kilter holds this entry's uuid with different content. */
@@ -72,9 +88,27 @@ data class KilterNotUploadedEntry(
 )
 
 @Serializable
-enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START }
+enum class KilterUploadTrigger { MANUAL, ENABLED, NEW_LOG, APP_START, RETRY }
 
 class KilterUploadException(val status: Int) : Exception("Kilter upload HTTP $status")
+
+/** How a request that got no HTTP answer failed. */
+object KilterUploadFailure {
+    /** True when the request may have reached Kilter (anything but "never connected"). */
+    fun noAnswer(error: Throwable?): Boolean = when (error) {
+        null -> false
+        is java.net.UnknownHostException, is java.net.ConnectException,
+        is java.net.NoRouteToHostException, is java.net.PortUnreachableException,
+        is javax.net.ssl.SSLHandshakeException -> false
+        is java.net.SocketTimeoutException -> error.message?.contains("connect", ignoreCase = true) != true
+        is java.io.IOException -> true
+        else -> false
+    }
+
+    /** True when Kilter took too long to answer (read or call timeout), as opposed to no connection. */
+    fun timedOut(error: Throwable?): Boolean =
+        (error is java.net.SocketTimeoutException || error is java.io.InterruptedIOException) && noAnswer(error)
+}
 
 /** A Kilter read answered with an HTTP error; the message keeps the former "HTTP <code>: <body>" shape. */
 class KilterHttpException(val status: Int, body: String) : Exception("HTTP $status: $body")
@@ -117,6 +151,6 @@ class KilterUploadDiagnostics @Inject constructor(@ApplicationContext context: C
                 "attempted=${s.attempted} uploaded=${s.uploaded} pending=${s.pending} reason=${s.reason} http=${s.httpStatus ?: "none"} " +
                 "requests=${s.requests} rejectedKilter=${s.rejectedByKilter} rejectedConflict=${s.rejectedConflict} " +
                 "rejectedInvalid=${s.rejectedInvalid} heldImported=${s.heldImported} alreadyOnKilter=${s.alreadyOnKilter} " +
-                "retryLater=${s.unconfirmed}"
+                "retryLater=${s.unconfirmed} probablyOnKilter=${s.probablyOnKilter} autoRetry=${s.nextRetry}"
     }
 }

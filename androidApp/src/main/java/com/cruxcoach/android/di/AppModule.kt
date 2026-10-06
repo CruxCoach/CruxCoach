@@ -810,6 +810,7 @@ object AppModule {
         pendingImports: dagger.Lazy<com.cruxcoach.android.data.PendingImports>,
         lowercaseClimbIndex: com.cruxcoach.android.data.kilter.KilterLowercaseClimbIndexSource,
         climbAliases: com.cruxcoach.android.data.kilter.KilterClimbAliasSource,
+        @ApplicationContext context: Context,
     ): KilterSyncEngine {
         return KilterSyncEngine(
             apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences,
@@ -817,6 +818,7 @@ object AppModule {
             uploadLedger = com.cruxcoach.android.data.kilter.PreferencesKilterUploadLedger(userPreferences),
             lowercaseIndexSource = lowercaseClimbIndex,
             aliasSource = climbAliases,
+            retryScheduler = com.cruxcoach.android.data.kilter.WorkManagerKilterUploadRetryScheduler(context),
         )
     }
 

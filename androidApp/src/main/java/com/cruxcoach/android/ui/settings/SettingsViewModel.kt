@@ -1182,7 +1182,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 // The observed upload status owns the result and retry/report actions.
                 // Do not repeat it in the generic import/sync result card.
-                kilterSyncEngine.uploadPendingLogs(trigger)
+                kilterSyncEngine.uploadPendingLogsDetached(trigger)
             } finally {
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = false)) }
             }
