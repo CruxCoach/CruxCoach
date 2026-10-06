@@ -132,7 +132,9 @@ class NutritionAlwaysOnTest {
         compose.onNodeWithText("97 g to go", substring = true).assertExists()
         compose.onNodeWithText("of energy", substring = true).assertExists()
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))
-        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g")
+        // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
+        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g · ≈ 470 kcal")
+        compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈ 470 kcal")
     }
 
     @Test

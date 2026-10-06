@@ -6,7 +6,7 @@
     <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0 g per kg).</string>
     <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
     <string name="trf_intro_no_budget">No calorie budget, no “too much”, no good or bad foods.</string>
-    <string name="trf_intro_hidden">Calories are hidden by default; you can show them in the settings.</string>
+    <string name="trf_intro_hidden">Calories are shown with every value; you can hide them in the settings.</string>
     <string name="trf_intro_private">Everything stays encrypted on your device.</string>
     <string name="trf_intro_got_it">Got it</string>
 
@@ -26,6 +26,7 @@
     <string name="trf_water_entry_desc">%1$d ml, tap to remove</string>
     <string name="trf_day_total">Day total</string>
     <string name="trf_kcal_value">%1$d kcal</string>
+    <string name="trf_kcal_estimated">≈ %1$d kcal</string>
     <string name="trf_value_g">%1$d g</string>
     <string name="trf_to_go">%1$d g to go</string>
     <string name="trf_reached">Target reached</string>

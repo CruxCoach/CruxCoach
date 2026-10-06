@@ -270,8 +270,8 @@ private fun DaySummaryCard(state: FuelState, onAddWater: (Int) -> Unit, onRemove
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.trf_day_total), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (state.profile.showCalories) {
-                    Text(stringResource(R.string.trf_kcal_value, totals.kcal.roundToInt()), style = MaterialTheme.typography.titleMedium,
+                if (state.profile.showCalories && totals.entries > 0) {
+                    Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("fuel_kcal"))
                 }
             }
@@ -356,12 +356,17 @@ private fun remainingText(value: Double, target: Int): String {
 /** Grams for display: one decimal below 10 g, whole grams above. */
 fun grams(value: Double): String = formatNumber(value, if (value < 10) 1 else 0)
 
+/** "470 kcal", or "≈ 470 kcal" when (part of) it comes from the macros. */
+@Composable
+private fun kcalText(kcal: Double, estimated: Boolean): String =
+    stringResource(if (estimated) R.string.trf_kcal_estimated else R.string.trf_kcal_value, kcal.roundToInt())
+
 /** "P 32 · K 85 · F 14 g", plus kcal when calories are shown. */
 @Composable
-fun macrosText(protein: Double?, carbs: Double?, fat: Double?, kcal: Double?, showCalories: Boolean): String {
+fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTotals.Energy?, showCalories: Boolean): String {
     val macros = stringResource(R.string.trf_entry_macros_g,
         protein?.let(::grams) ?: "–", carbs?.let(::grams) ?: "–", fat?.let(::grams) ?: "–")
-    return if (showCalories && kcal != null) macros + " · " + stringResource(R.string.trf_kcal_value, kcal.roundToInt()) else macros
+    return if (showCalories && energy != null) macros + " · " + kcalText(energy.kcal, energy.estimated) else macros
 }
 
 @Composable
@@ -370,7 +375,8 @@ private fun MealCard(meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry
         Column(Modifier.padding(vertical = 8.dp)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(mealLabel(meal), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text(macrosText(totals.protein, totals.carbs, totals.fat, totals.kcal, showCalories),
+                Text(macrosText(totals.protein, totals.carbs, totals.fat,
+                    MacroTotals.Energy(totals.kcal, totals.kcalEstimated).takeIf { totals.entries > 0 }, showCalories),
                     style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("fuel_meal_total_${meal.name.lowercase()}"))
             }
             entries.forEach { entry -> EntryRow(entry, showCalories, onDelete = { onDelete(entry) }) }
@@ -418,7 +424,7 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, onDelete: () ->
         entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
         else -> null
     }
-    val macros = macrosText(entry.proteinG, entry.carbsG, entry.fatG, entry.kcal, showCalories)
+    val macros = macrosText(entry.proteinG, entry.carbsG, entry.fatG, MacroTotals.energy(entry), showCalories)
     ListItem(
         headlineContent = { Text(entry.name) },
         supportingContent = { Text(listOfNotNull(amount, macros).joinToString(" · ")) },
