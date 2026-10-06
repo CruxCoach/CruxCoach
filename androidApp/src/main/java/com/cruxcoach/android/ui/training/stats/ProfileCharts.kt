@@ -84,14 +84,16 @@ fun GradePositionChart(
 
     Column(modifier.semantics { contentDescription = description }) {
         Row(Modifier.fillMaxWidth().height(height)) {
-            Column(Modifier.fillMaxHeight().padding(end = 6.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            // Bottom padding = the grade-label strip under the plot, so "100 %" sits on the plot's floor.
+            Column(Modifier.fillMaxHeight().padding(end = 6.dp, bottom = GRADE_LABEL_STRIP), verticalArrangement = Arrangement.SpaceBetween) {
                 Text("${yMax.roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
                 Text("${((yMax + yMin) / 2).roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
                 Text("${yMin.roundToInt()} %", style = MaterialTheme.typography.labelSmall, color = labelColor)
             }
             Canvas(Modifier.weight(1f).fillMaxHeight()) {
                 val w = size.width
-                val h = size.height
+                // The plot ends above the grade labels instead of running underneath them.
+                val h = size.height - GRADE_LABEL_STRIP.toPx()
                 fun x(d: Double) = ((d - xMin) / (xMax - xMin)).toFloat() * w
                 fun y(v: Double) = h - ((v - yMin) / (yMax - yMin)).toFloat() * h
                 (0..4).forEach { i -> drawLine(gridColor, Offset(0f, h * i / 4f), Offset(w, h * i / 4f), strokeWidth = 1f) }
@@ -155,7 +157,7 @@ fun GradePositionChart(
                     if (tick % stepEvery == 0) {
                         val layout = measurer.measure(fontLabel(d), labelStyle)
                         val lx = (x(d) - layout.size.width / 2f).coerceIn(0f, w - layout.size.width)
-                        drawText(layout, topLeft = Offset(lx, h - layout.size.height - 2f))
+                        drawText(layout, topLeft = Offset(lx, h + (GRADE_LABEL_STRIP.toPx() - layout.size.height) / 2f))
                     }
                     d += 1.0
                     tick++
@@ -369,3 +371,6 @@ fun BottleneckBars(bars: List<BottleneckBar>, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** Height of the grade labels under the position chart. */
+private val GRADE_LABEL_STRIP = 20.dp

@@ -625,11 +625,11 @@ private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> Co
     PrefillHint(state.prefill[PrefillField.AGE])
     QuestionLabel(stringResource(R.string.trc_current_grade))
     GradeStepper(d.currentGrade, startFrom = state.logbook.workingDifficulty, tag = "coach_current_grade",
-        onChange = { g -> update { it.copy(currentGrade = g) } })
+        onChange = { g -> update { it.copy(currentGrade = g, currentFlashGrade = capFlash(it.currentFlashGrade, g)) } })
     PrefillHint(state.prefill[PrefillField.GRADE])
     QuestionLabel(stringResource(R.string.trc_flash_grade))
     GradeStepper(d.currentFlashGrade, startFrom = state.logbook.flashDifficulty ?: d.currentGrade?.let { LogbookSummaries.difficultyOf(it)?.minus(2.0) },
-        tag = "coach_flash_grade", onChange = { g -> update { it.copy(currentFlashGrade = g) } })
+        tag = "coach_flash_grade", onChange = { g -> update { it.copy(currentFlashGrade = capFlash(g, it.currentGrade)) } })
     PrefillHint(state.prefill[PrefillField.FLASH_GRADE])
     OutlinedTextField(
         value = d.ropeGrade.orEmpty(),
@@ -957,3 +957,10 @@ internal fun fingerPrefLabel(f: FingerPreference): String = stringResource(when 
     FingerPreference.ONE_ARM -> R.string.trc_finger_one_arm
     FingerPreference.NONE -> R.string.trc_finger_none
 })
+
+/** A flash is never harder than what the athlete can work out. */
+internal fun capFlash(flash: String?, working: String?): String? {
+    val f = flash?.let { LogbookSummaries.difficultyOf(it) } ?: return flash
+    val w = working?.let { LogbookSummaries.difficultyOf(it) } ?: return flash
+    return if (f > w) working else flash
+}

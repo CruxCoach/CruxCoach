@@ -755,7 +755,7 @@ private fun DailySuggestionCard(
 private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
     val s = state.suggestion ?: return
     val language = catalogLanguage()
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("today_why_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("today_why_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.trsg_why_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))

@@ -160,7 +160,7 @@ fun ClimbingDaySheet(onDismiss: () -> Unit, editId: String? = null) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("climbing_day_sheet")) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("climbing_day_sheet")) {
         val today = s.today
         val day = s.day
         if (s.loading || today == null || day == null) {

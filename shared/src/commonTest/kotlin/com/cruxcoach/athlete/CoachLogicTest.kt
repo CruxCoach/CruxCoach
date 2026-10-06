@@ -91,4 +91,16 @@ class CoachLogicTest {
         assertEquals(LearningState.State.Known, LearningState.of("pull.pull_up", estimate, 2))
         assertEquals(LearningState.State.Known, LearningState.of("pull.pull_up", listOf(bench("pull.pull_up")), 0))
     }
+
+    @Test
+    fun coachGradesStandInWithoutLogbookAndFlashIsCapped() {
+        val s = LogbookSummaries.withCoachGrades(LogbookSummary(), currentGrade = "6c+", flashGrade = "7a")
+        assertTrue(s.gradesFromCoach)
+        assertEquals("6c+", s.workingGrade)
+        // A flash above the working grade is capped to it.
+        assertEquals(s.workingDifficulty, s.flashDifficulty)
+        // A graded logbook always wins.
+        val logbook = LogbookSummary(workingDifficulty = 22.0, workingGrade = "7a", sampleSize = 20)
+        assertEquals(logbook, LogbookSummaries.withCoachGrades(logbook, "5c", null))
+    }
 }
