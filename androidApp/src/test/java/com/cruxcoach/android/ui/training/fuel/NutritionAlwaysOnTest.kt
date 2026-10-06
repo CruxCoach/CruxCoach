@@ -87,9 +87,8 @@ class NutritionAlwaysOnTest {
         athleteDriver.close(); secureDriver.close()
     }
 
-    // Generous: the first Robolectric render of the fuel screen is slow on a busy machine.
     private fun waitForTag(tag: String) =
-        compose.waitUntil(30_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
     @Test
     fun `fresh profile gets the food log with a one-time intro card`() {
@@ -106,8 +105,8 @@ class NutritionAlwaysOnTest {
         compose.onNodeWithTag("fuel_quick_add").assertExists()
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_intro_ok"))
         compose.onNodeWithTag("fuel_intro_ok").performClick()
-        compose.waitUntil(10_000) { repo.profile().fuelIntroAccepted }
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("fuel_intro").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { repo.profile().fuelIntroAccepted }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_intro").fetchSemanticsNodes().isEmpty() }
         compose.onAllNodesWithTag("fuel_intro").assertCountEquals(0)
     }
 
@@ -147,5 +146,10 @@ class NutritionAlwaysOnTest {
         compose.onNodeWithTag("menu_nutrition").performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         assertEquals(TrainingRoutes.FUEL, selected)
+    }
+
+    private companion object {
+        /** CI runners and the shared dev server render slowly; same limit as TrainingScreensSmokeTest. */
+        const val WAIT_MS = 60_000L
     }
 }
