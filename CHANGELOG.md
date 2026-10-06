@@ -47,6 +47,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   plan, the check-in, injuries, finger load of the last two days, equipment,
   favourites, performance values and the preferred duration, with the reasons
   shown; start it, ask for another one, adapt it or save it as a workout.
+- Today is calmer: today's training is the big card at the top with one start
+  button; reasons, evidence and confidence sit behind "Why?"; the check-in is
+  one line until you open it; climbing day, weight, water, food, free training
+  and workouts are always in the same quick-action row.
+- Coach setup on the first visit: four optional cards (goal, week, climbing
+  and experience, what suits you), prefilled from your board logbook and your
+  profile; start values are learned during training, estimated in two
+  questions, or measured in a guided test; a week plan proposed from your real
+  rhythm.
+- Suggestions use all your data: every climbing day is rated against your own
+  level (light, volume, hard, limit) and sets the recovery; finger, skin and
+  shoulder load over the last 7 vs 28 days; guardrails for young climbers,
+  beginners and masters; your focus, finger-training preference, style and
+  goal; what you liked, skipped or never want to see; training blocks with an
+  intro, build and deload week and a taper before a trip or competition.
+  Set prescriptions follow today's check-in, and the summary flags stalls,
+  declines and "too easy/too hard twice" with a swap to the next variant.
+- Climbing outside the board app (gym, rock, another board) can be logged in
+  a few taps and counts everywhere.
+- Climber profile: grade vs finger strength and grade vs pull strength next to
+  an orientation band, your own path over time, working grade and finger
+  strength on one timeline with their correlation, flash-to-max gap, load per
+  structure and your bottlenecks.
+- Board days: "create board session" opens the playlist generator preset for
+  the block and your focus.
+- Optional Health Connect (read-only): last night's sleep as a check-in hint and
+  climbing sessions as climbing days. Experimental Tindeq Progressor support
+  with live force and a max-pull test.
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
