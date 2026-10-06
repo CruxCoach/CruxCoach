@@ -187,6 +187,17 @@ fun RestScreen(
             }
         }
 
+        // Set-to-set autoregulation: what the last set changed for the rest of the block.
+        state.adjustment?.let { adj ->
+            Spacer(Modifier.height(12.dp))
+            Text(
+                adjustmentText(adj, units),
+                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("player_adjustment"),
+            )
+        }
+
         // What comes next.
         state.next?.let { next ->
             Spacer(Modifier.height(24.dp))
@@ -228,4 +239,22 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
             androidx.compose.ui.res.pluralStringResource(R.plurals.trp_capacity_reps, capacity.value.toInt(), capacity.value.toInt())
         com.cruxcoach.athlete.logic.CapacityKind.MAX_SECONDS -> stringResource(R.string.trp_capacity_seconds, capacity.value.toInt())
     }
+}
+
+/** "Keine Reserve → nächste Sätze −2,5 kg", "Wiederholungen verpasst → nächste Sätze −1 Wdh.". */
+@Composable
+internal fun adjustmentText(adj: com.cruxcoach.athlete.logic.SetAdjustment, units: UnitSystem): String {
+    val reason = stringResource(when (adj.reason) {
+        com.cruxcoach.athlete.logic.AdjustReason.MISSED_REPS -> R.string.trp2_adj_missed
+        com.cruxcoach.athlete.logic.AdjustReason.NO_RESERVE -> R.string.trp2_adj_no_reserve
+        com.cruxcoach.athlete.logic.AdjustReason.BIG_RESERVE -> R.string.trp2_adj_big_reserve
+        com.cruxcoach.athlete.logic.AdjustReason.HOLD_FAILED -> R.string.trp2_adj_hold_failed
+        com.cruxcoach.athlete.logic.AdjustReason.HOLD_EASY -> R.string.trp2_adj_hold_easy
+    })
+    val change = buildList {
+        if (kotlin.math.abs(adj.loadDeltaKg) > 1e-9) add(com.cruxcoach.android.ui.training.formatMass(adj.loadDeltaKg, units, signed = true))
+        if (adj.repsDelta != 0) add(stringResource(R.string.trp2_adj_reps, adj.repsDelta))
+        if (kotlin.math.abs(adj.durationDeltaS) > 1e-9) add(stringResource(R.string.trp2_adj_seconds, kotlin.math.round(adj.durationDeltaS).toInt()))
+    }.joinToString(" · ")
+    return stringResource(R.string.trp2_adj_line, reason, change)
 }

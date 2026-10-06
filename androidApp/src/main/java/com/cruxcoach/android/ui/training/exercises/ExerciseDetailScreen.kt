@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.exercises
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -241,6 +242,7 @@ fun ExerciseDetailScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     item { Header(def, language) }
+                    item { VisualHeader(def) }
                     if (state.excluded) item {
                         AssistChip(onClick = viewModel::toggleExcluded, label = { Text(stringResource(R.string.tre_excluded_info)) },
                             leadingIcon = { Icon(Icons.Default.Block, null) }, modifier = Modifier.testTag("exercise_detail_excluded"))
@@ -304,6 +306,68 @@ private fun Header(def: ExerciseDefinition, language: String) {
             DifficultyDots(def.difficulty)
         }
     }
+}
+
+/**
+ * What the exercise trains, as a picture: the body map (front and back,
+ * tap an area for its name) and, for finger work, the grip on the edge.
+ */
+@Composable
+private fun VisualHeader(def: ExerciseDefinition) {
+    val areas = remember(def.slug) { com.cruxcoach.android.ui.training.bodymap.ExerciseBodyAreas.of(def) }
+    val grip = remember(def.slug) {
+        com.cruxcoach.android.ui.training.bodymap.gripFor(def, null)
+            ?.takeIf { def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER || def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.HANG }
+    }
+    var tapped by remember(def.slug) { mutableStateOf<com.cruxcoach.android.ui.training.bodymap.BodyArea?>(null) }
+    Card(Modifier.fillMaxWidth().padding(top = 12.dp).testTag("exercise_detail_bodymap")) {
+        Column(Modifier.padding(12.dp)) {
+            Text(stringResource(R.string.trb_detail_title), style = MaterialTheme.typography.titleSmall)
+            com.cruxcoach.android.ui.training.bodymap.BodyMap(
+                highlights = areas,
+                onAreaClick = { tapped = it },
+                modifier = Modifier.fillMaxWidth().height(220.dp).padding(top = 8.dp),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                LegendSwatch(com.cruxcoach.android.ui.training.bodymap.bodyMapColor(1f))
+                Text(stringResource(R.string.trb_legend_main), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 6.dp, end = 16.dp))
+                LegendSwatch(com.cruxcoach.android.ui.training.bodymap.bodyMapColor(0.5f))
+                Text(stringResource(R.string.trb_legend_involved), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 6.dp))
+            }
+            val t = tapped
+            Text(
+                when {
+                    t == null -> stringResource(R.string.trb_detail_tap)
+                    (areas[t] ?: 0f) >= 1f -> stringResource(R.string.trb_selected_main, com.cruxcoach.android.ui.training.bodymap.bodyAreaLabel(t))
+                    (areas[t] ?: 0f) > 0f -> stringResource(R.string.trb_selected_involved, com.cruxcoach.android.ui.training.bodymap.bodyAreaLabel(t))
+                    else -> stringResource(R.string.trb_selected_none, com.cruxcoach.android.ui.training.bodymap.bodyAreaLabel(t))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp).testTag("exercise_detail_bodymap_tapped"),
+            )
+            if (grip != null) {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    com.cruxcoach.android.ui.training.bodymap.GripPictogram(grip, def.defaults.edgeMm?.toDouble(),
+                        Modifier.width(110.dp).height(76.dp).testTag("exercise_detail_grip"))
+                    Column(Modifier.padding(start = 12.dp)) {
+                        Text(stringResource(R.string.trb_grip_title), style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(com.cruxcoach.android.ui.training.bodymap.gripTypeLabel(grip), style = MaterialTheme.typography.titleSmall)
+                        def.defaults.edgeMm?.let {
+                            Text(stringResource(R.string.trb_edge_mm, it), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendSwatch(color: androidx.compose.ui.graphics.Color) {
+    Box(Modifier.size(12.dp).background(color, androidx.compose.foundation.shape.CircleShape))
 }
 
 @Composable

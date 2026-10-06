@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Body map and grip pictograms (exercise visuals). -->
+    <string name="trb_front">Front</string>
+    <string name="trb_back">Back</string>
+    <string name="trb_tap_hint">Tap the body to choose</string>
+    <string name="trb_cd_title">Body map</string>
+    <string name="trb_cd_main">Mainly: %1$s.</string>
+    <string name="trb_cd_involved">Also involved: %1$s.</string>
+    <string name="trb_legend_main">Mainly</string>
+    <string name="trb_legend_involved">Also involved</string>
+    <string name="trb_detail_title">What it trains</string>
+    <string name="trb_detail_tap">Tap an area for its name</string>
+    <string name="trb_selected_main">%1$s – trained mainly</string>
+    <string name="trb_selected_involved">%1$s – also involved</string>
+    <string name="trb_selected_none">%1$s – hardly involved here</string>
+    <string name="trb_grip_title">Grip</string>
+    <string name="trb_edge_mm">%1$d mm</string>
+    <string name="trb_injury_where">Tap where it hurts – or pick a region below</string>
+    <string name="trb_area_fingers">Fingers</string>
+    <string name="trb_area_forearm_flexors">Forearm flexors</string>
+    <string name="trb_area_forearm_extensors">Forearm extensors</string>
+    <string name="trb_area_wrist">Wrist</string>
+    <string name="trb_area_elbow">Elbow</string>
+    <string name="trb_area_biceps">Biceps</string>
+    <string name="trb_area_triceps">Triceps</string>
+    <string name="trb_area_shoulder_front">Front shoulder</string>
+    <string name="trb_area_shoulder_rear">Rear shoulder</string>
+    <string name="trb_area_rotator_cuff">Rotator cuff</string>
+    <string name="trb_area_chest">Chest</string>
+    <string name="trb_area_upper_back">Upper back</string>
+    <string name="trb_area_lats">Lats</string>
+    <string name="trb_area_abs">Abs</string>
+    <string name="trb_area_obliques">Obliques</string>
+    <string name="trb_area_lower_back">Lower back</string>
+    <string name="trb_area_hips">Hip flexors</string>
+    <string name="trb_area_glutes">Glutes</string>
+    <string name="trb_area_quads">Quads</string>
+    <string name="trb_area_hamstrings">Hamstrings</string>
+    <string name="trb_area_adductors">Adductors</string>
+    <string name="trb_area_calves">Calves</string>
+    <string name="trb_area_neck">Neck</string>
+    <string name="trb_area_knee">Knee</string>
+    <string name="trb_area_ankle">Ankle</string>
+    <string name="trb_grip_half_crimp">Half crimp</string>
+    <string name="trb_grip_open_hand">Open hand</string>
+    <string name="trb_grip_full_crimp">Full crimp</string>
+    <string name="trb_grip_pinch">Pinch</string>
+    <string name="trb_grip_sloper">Sloper</string>
+    <string name="trb_grip_jug">Jug</string>
+    <string name="trb_grip_pocket">Pocket</string>
+    <string name="trb_grip_bar">Bar</string>
+</resources>

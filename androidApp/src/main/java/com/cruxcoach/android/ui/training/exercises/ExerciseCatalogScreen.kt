@@ -397,7 +397,9 @@ private fun ExerciseRow(
                 )
             }
         }
-        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.testTag("exercise_thumb_${def.slug}"))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

@@ -255,6 +255,9 @@ fun routineName(r: Routine): String = builtinRoutineText(r.builtinKey)?.first?.l
 @Composable
 fun routineDescription(r: Routine): String? = builtinRoutineText(r.builtinKey)?.second?.let { stringResource(it) } ?: r.notes
 
+/** Name resource of a built-in routine outside composition (notifications). */
+fun builtinRoutineNameRes(key: String?): Int? = builtinRoutineText(key)?.first
+
 private fun builtinRoutineText(key: String?): Pair<Int, Int>? = when (key) {
     "warmup_board" -> R.string.tr_routine_warmup_board to R.string.tr_routine_warmup_board_desc
     "finger_basics" -> R.string.tr_routine_finger_basics to R.string.tr_routine_finger_basics_desc

@@ -74,6 +74,8 @@ data class TodayState(
     val durationHint: Int? = null,
     /** Body weight for the performance values in the evidence line. */
     val bodyweightKg: Double? = null,
+    /** This week's volume per area (weekly plan), empty when it could not be computed. */
+    val weekly: List<AreaProgress> = emptyList(),
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -182,7 +184,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
         val loadStatus = runCatching { service.loadStatus() }.getOrNull()
         val block = blockState(i, loadStatus, today)
-        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities, block, loadStatus)
+        val weekly = runCatching { weeklyProgress(i, activities, block, today, weekStart) }.getOrDefault(emptyList())
+        val (daily, plannedName) = if (i.open != null) null to null else suggest(i, readiness, activities, block, loadStatus, weekly, weekStart)
         daily?.let { s ->
             val sig = signature(s.focus.name, s.routine.items.map { it.slug })
             if (shownToday.add(sig)) service.logSuggestion(SuggestionEventKind.SHOWN, s.focus.name, s.routine.items.map { it.slug })
@@ -200,6 +203,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 block = block,
                 durationHint = durationHint,
                 bodyweightKg = service.currentBodyweight(),
+                weekly = weekly,
                 catalog = service.catalog,
                 profile = i.profile,
                 today = today,
@@ -253,8 +257,27 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         }.getOrNull()
 
     /** Builds the engine input from all the coach knows; a failure only hides the card. */
+    /**
+     * The weekly volume plan: targets for this athlete and this block, and what
+     * the week holds so far (logged sets of every training this week, board and
+     * manual climbing days as credit).
+     */
+    private fun weeklyProgress(
+        i: Inputs, activities: Map<String, DayActivity>, block: BlockState?, today: LocalDate, weekStart: LocalDate,
+    ): List<AreaProgress> {
+        val repo = service.repo
+        val days = i.profile.coach.trainingDaysPerWeek ?: i.profile.weeklyGoal
+        val targets = WeeklyVolume.targets(i.profile, block, i.injuries, days)
+        val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
+        val zone = java.time.ZoneId.systemDefault()
+        val startMs = java.time.LocalDate.parse(weekStart.toString()).atStartOfDay(zone).toInstant().toEpochMilli()
+        val weekSets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
+        return WeeklyVolume.progress(weekSets, activities, service.catalog, weekStart, targets, today)
+    }
+
     private fun suggest(
         i: Inputs, readiness: Readiness, activities: Map<String, DayActivity>, block: BlockState?, loadStatus: LoadStatus?,
+        weekly: List<AreaProgress> = emptyList(), weekStart: LocalDate? = null,
     ): Pair<SessionSuggestion?, String?> =
         runCatching {
             val repo = service.repo
@@ -277,6 +300,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 today.dayOfWeek.isoDayNumber in i.profile.coach.climbingDays
             val benchmarks = repo.allBenchmarks().groupBy { it.exerciseSlug }.mapNotNull { (_, list) -> list.maxByOrNull { it.measuredAt } }
             val historyWeeks = parsedActivities.filterValues { it.trained }.keys.map { ConsistencyStreak.weekStart(it) }.distinct().size
+            // Back after a break or a healed finger injury: a conservative ramp on top of every other rule.
+            val returnState = runCatching {
+                val since = today.minus(DatePeriod(days = 120))
+                val days120 = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
+                val sets120 = repo.completedSetsSince(System.currentTimeMillis() - 120L * 24 * 3600 * 1000)
+                    .mapNotNull { set -> days120[set.workoutId]?.let { it to set } }
+                ReturnToTraining.state(activities, repo.pauses(), repo.allInjuries(), today,
+                    maxFingerBefore = ReturnToTraining.maxFingerBefore(sets120, service.catalog, today))
+            }.getOrNull()
             val input = SuggestionInput(
                 catalog = service.catalog,
                 profile = i.profile,
@@ -301,6 +333,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 budgetFactor = budgetFactor,
                 logbookSends = runCatching { service.logbookSummary().sampleSize }.getOrDefault(0),
                 historyWeeks = historyWeeks,
+                weekly = weekly,
+                weekStart = weekStart,
+                returnState = returnState,
             )
             val suggestion = SessionSuggester.suggest(input)
             val plannedName = suggestion.plannedEntry

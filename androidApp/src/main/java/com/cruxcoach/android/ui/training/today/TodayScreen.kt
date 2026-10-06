@@ -641,6 +641,9 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.NO_TIME_TODAY -> R.string.tre_reason_no_time
     SuggestionReason.LEVEL_EASIER -> R.string.tre_reason_level_easier
     SuggestionReason.LEVEL_HARDER -> R.string.tre_reason_level_harder
+    SuggestionReason.RETURN_AFTER_BREAK -> R.string.tre_reason_return_break
+    SuggestionReason.RETURN_FINGER -> R.string.tre_reason_return_finger
+    SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
 })
 
 /**
@@ -1019,6 +1022,10 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
         com.cruxcoach.athlete.logic.GuardrailKind.MASTERS -> R.string.tre_ev_guard_masters
     })
     is com.cruxcoach.athlete.logic.Evidence.History -> stringResource(R.string.tre_ev_history, e.weeks, e.logbookSends)
+    is com.cruxcoach.athlete.logic.Evidence.Return -> stringResource(R.string.tre_ev_return, e.state.daysOff, e.state.week, e.state.weeksTotal)
+    is com.cruxcoach.athlete.logic.Evidence.WeeklyTarget -> stringResource(
+        if (e.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) R.string.trv_ev_sessions else R.string.trv_ev_sets,
+        com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(e.area), e.done, e.target)
 }
 
 @Composable

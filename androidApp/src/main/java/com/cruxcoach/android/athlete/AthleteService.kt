@@ -471,6 +471,128 @@ class AthleteService @Inject constructor(
         }
     }
 
+    /**
+     * Set-to-set autoregulation: after a completed work set, the athlete's
+     * untouched planned sets of the same block and side move by one small
+     * step ([SetAutoregulation]). [previous] is what an earlier call already
+     * applied for the same set (e.g. before the reserve answer came in), so
+     * changing the answer never stacks steps. Returns the adjustment that now
+     * stands for [done], or null when nothing changes.
+     */
+    fun adjustUpcomingSets(workoutId: String, done: ExerciseSet, previous: SetAdjustment? = null): SetAdjustment? = synchronized(structureLock) {
+        val def = catalog[done.exerciseSlug] ?: return null
+        val open = repo.setsFor(workoutId)
+            .filter {
+                it.id != done.id && it.blockIndex == done.blockIndex && it.exerciseSlug == done.exerciseSlug &&
+                    it.side == done.side && it.setType == SetType.WORK && SetAutoregulation.untouched(it)
+            }
+            .sortedBy { it.setIndex }
+        val next = open.firstOrNull() ?: return null
+        val increment = repo.profile().smallestIncrementKg
+        val bodyweight = done.bodyweightKg ?: currentBodyweight()
+        // Increases stop one step above what the performance value prescribes.
+        val ceiling = runCatching {
+            val item = RoutineItem(def.slug, sets = 1, repsMin = next.targetReps, repsMax = next.targetReps,
+                durationS = next.targetDurationS?.toInt(), edgeMm = next.edgeMm?.toInt(), grip = next.grip)
+            LoadPrescriber.prescribe(def, item, capacityFor(def, next.side, next.edgeMm, next.grip, bodyweight), bodyweight, increment)
+                ?.loadKg?.plus(increment)
+        }.getOrNull()
+        val adjustment = SetAutoregulation.adjust(def, done.copy(bodyweightKg = bodyweight), next, increment, ceiling)
+        val delta = SetAutoregulation.difference(adjustment, previous) ?: return adjustment
+        repo.transaction { open.forEach { repo.saveSet(SetAutoregulation.apply(def, it, delta)) } }
+        adjustment
+    }
+
+    /** What "it hurts" changed in the open training. */
+    data class PainOutcome(val action: PainAction, val newSlug: String? = null, val injuryId: String? = null)
+
+    /**
+     * "Tut weh" in the middle of a training (MCI's pain sheet, climber
+     * version): swap the block's open sets to an exercise that spares the
+     * region, make them lighter, or end the exercise. Completed sets stay.
+     * With [remember] the pain becomes an injury, so every later suggestion
+     * and plan respects it; strong pain pauses climbing.
+     */
+    fun painStop(
+        workoutId: String,
+        blockIndex: Int,
+        region: InjuryRegion,
+        side: InjurySide?,
+        severity: Int,
+        action: PainAction,
+        remember: Boolean = false,
+    ): PainOutcome = synchronized(structureLock) {
+        val sets = repo.setsFor(workoutId)
+        val block = sets.filter { it.blockIndex == blockIndex }
+        val def = block.firstOrNull()?.let { catalog.fallbackFor(it.exerciseSlug) } ?: return PainOutcome(action)
+        val now = System.currentTimeMillis()
+        val injury = Injury(
+            id = repo.newId(), region = region, side = side, severity = severity.coerceIn(0, 9),
+            climbingPaused = severity >= PAIN_PAUSE_SEVERITY, startedOn = today().toString(), updatedAt = now,
+        )
+        val open = block.filter { !it.isCompleted }
+        repo.transaction {
+            if (remember) repo.saveInjury(injury)
+            when (action) {
+                PainAction.SWAP -> {
+                    val alternative = painAlternative(def, repo.activeInjuries() + (if (remember) emptyList<Injury>() else listOf(injury)))
+                    if (alternative == null) {
+                        lighten(def, open)
+                        return@transaction PainOutcome(PainAction.LIGHTER, injuryId = injury.id.takeIf { remember })
+                    }
+                    open.forEach { repo.deleteSet(it.id) }
+                    // The alternative comes right after this block: later blocks move one place down.
+                    sets.filter { it.blockIndex > blockIndex }.forEach { repo.saveSet(it.copy(blockIndex = it.blockIndex + 1)) }
+                    val remaining = open.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().size.coerceAtLeast(1)
+                    addItem(workoutId, blockIndex + 1, WorkoutPlanner.itemFor(alternative).copy(sets = remaining))
+                    PainOutcome(PainAction.SWAP, alternative.slug, injury.id.takeIf { remember })
+                }
+                PainAction.LIGHTER -> { lighten(def, open); PainOutcome(PainAction.LIGHTER, injuryId = injury.id.takeIf { remember }) }
+                PainAction.END_EXERCISE -> {
+                    open.forEach { repo.deleteSet(it.id) }
+                    PainOutcome(PainAction.END_EXERCISE, injuryId = injury.id.takeIf { remember })
+                }
+            }
+        }
+    }
+
+    /** −20 % total load and two reps less (or 20 % shorter holds) on the open sets. */
+    private fun lighten(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, open: List<ExerciseSet>) {
+        val increment = repo.profile().smallestIncrementKg
+        val bodyweight = currentBodyweight()
+        open.filter { it.setType != SetType.WARMUP }.forEach { s ->
+            val bw = s.bodyweightKg ?: bodyweight
+            repo.saveSet(s.copy(
+                targetLoadKg = ReadinessModifiers.scaleLoad(def, s.targetLoadKg, bw, PAIN_LIGHTER_FACTOR, increment),
+                loadKg = ReadinessModifiers.scaleLoad(def, s.loadKg, bw, PAIN_LIGHTER_FACTOR, increment),
+                targetReps = s.targetReps?.let { (it - 2).coerceAtLeast(1) },
+                reps = s.reps?.let { (it - 2).coerceAtLeast(1) },
+                targetDurationS = s.targetDurationS?.takeIf { s.loadKg == null }?.let { (it * PAIN_LIGHTER_FACTOR).coerceAtLeast(3.0) } ?: s.targetDurationS,
+                durationS = s.durationS?.takeIf { s.loadKg == null }?.let { (it * PAIN_LIGHTER_FACTOR).coerceAtLeast(3.0) } ?: s.durationS,
+            ))
+        }
+    }
+
+    /**
+     * An exercise that spares the hurting region: the easier chain partner
+     * first, then the same category, same kind and closest difficulty, with
+     * owned equipment and nothing the athlete excluded.
+     */
+    private fun painAlternative(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, injuries: List<Injury>): com.cruxcoach.athlete.catalog.ExerciseDefinition? {
+        val profile = repo.profile()
+        val owned = if (profile.equipmentConfigured) profile.equipment + com.cruxcoach.athlete.catalog.EquipmentV2.NONE else null
+        fun fits(d: com.cruxcoach.athlete.catalog.ExerciseDefinition): Boolean {
+            if (d.slug == def.slug || d.kind == com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB) return false
+            if (d.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP || d.slug in profile.excludedExercises) return false
+            if (owned != null && !d.equipment.all { com.cruxcoach.athlete.catalog.EquipmentV2.satisfied(it, owned) }) return false
+            val verdict = InjuryAdvisor.assess(d, injuries).verdict
+            return verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
+        }
+        def.easier?.let { catalog[it] }?.takeIf(::fits)?.let { return it }
+        return catalog.all.filter { it.category == def.category && fits(it) }
+            .minWithOrNull(compareBy({ if (it.kind == def.kind) 0 else 1 }, { kotlin.math.abs(it.difficulty - def.difficulty) }, { it.slug }))
+    }
+
     fun startRest(seconds: Int) = sessionManager.startRestTimer(seconds)
 
     /** The shared rest timer (same as the board player): banner, Doze-safe alarm, notification. */
@@ -549,6 +671,9 @@ class AthleteService @Inject constructor(
 
     companion object {
         const val LEDGER_KEEP_DAYS = 180L
+        /** Pain from this level on pauses climbing when it is remembered as an injury. */
+        const val PAIN_PAUSE_SEVERITY = 5
+        const val PAIN_LIGHTER_FACTOR = 0.8
         const val MAX_HANG_SLUG = "finger.max_hang"
         const val OTHER_SIDE_FACTOR = 0.95
 
@@ -596,3 +721,6 @@ class AthleteService @Inject constructor(
         return RedsGuard.evaluate(profile, heightCm(), weightTrend(), if (profile.fuelEnabled) fuelDays else emptyList())
     }
 }
+
+/** What "it hurts" does to the current exercise. */
+enum class PainAction { SWAP, LIGHTER, END_EXERCISE }

@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -72,6 +73,10 @@ data class SummaryState(
     val routineCounts: Map<String, Int> = emptyMap(),
     /** One-shot message: swapped in n workouts (≥ 0), deload started (-1). */
     val message: Int? = null,
+    /** Total load moved in weighted rep work (kg × reps) and time under load on holds, for the reward header. */
+    val volumeKg: Double = 0.0,
+    val hangSeconds: Int = 0,
+    val streak: com.cruxcoach.athlete.logic.StreakState? = null,
 )
 
 @HiltViewModel
@@ -102,9 +107,27 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 val trend = ProgressionAdvisor.trend(def, sessions, profile.smallestIncrementKg)
                 trend.takeIf { it.kind != TrendKind.NONE && it.kind != TrendKind.PROGRESSING }?.let { slug to it }
             }
+            val work = sets.filter { it.setType == SetType.WORK }
+            val volume = work.sumOf { s ->
+                val def = catalog.fallbackFor(s.exerciseSlug)
+                val loaded = def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT_PLUS
+                if ((def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS) && loaded)
+                    (com.cruxcoach.athlete.logic.StrengthMath.effectiveLoad(def.load, s.loadKg, s.bodyweightKg) ?: 0.0) * (s.reps ?: 0)
+                else 0.0
+            }
+            val hang = work.sumOf { s ->
+                val def = catalog.fallbackFor(s.exerciseSlug)
+                when (def.kind) {
+                    ExerciseKind.HANG -> s.durationS ?: 0.0
+                    ExerciseKind.INTERVAL -> (s.workS ?: def.defaults.workS?.toDouble() ?: 7.0) * (s.repsPerSet ?: def.defaults.repsPerSet ?: 6)
+                    else -> 0.0
+                }
+            }
+            val streak = runCatching { service.streak(profile, service.activities(7 * 26)) }.getOrNull()
             _state.update {
                 it.copy(
                     loading = false, workout = workout, blocks = blocks, catalog = catalog,
+                    volumeKg = volume, hangSeconds = hang.roundToInt(), streak = streak,
                     summary = if (workout != null) service.summarize(workoutId) else null,
                     units = profile.units,
                     trends = trends,
@@ -222,42 +245,32 @@ fun WorkoutSummaryScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, null, tint = CruxCoachDesign.colors.positive)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.trw_summary_saved), style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold)
-                    }
-                    Text(
-                        workoutTitle(workout) + " · " + formatDay(workout.day),
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(stringResource(R.string.trw_summary_sets), summary.completedSets.toString(), Modifier.weight(1f))
-                    StatTile(stringResource(R.string.trw_summary_exercises), summary.exercises.toString(), Modifier.weight(1f))
-                    StatTile(
-                        stringResource(R.string.trw_summary_duration),
-                        summary.durationMinutes?.let { pluralStringResource(R.plurals.trw_minutes, it, it) } ?: "–",
-                        Modifier.weight(1f),
-                    )
-                }
-            }
+            item { RewardHeader(workout, summary, state) }
             if (summary.records.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trw_records_title)) }
                 summary.records.forEach { (slug, record) ->
                     item(key = "pr_$slug") {
                         val def = state.catalog.fallbackFor(slug)
-                        ListItem(
-                            headlineContent = { Text(def.name(language)) },
-                            supportingContent = { Text(recordValueText(resources, def, record, state.units)) },
-                            leadingContent = { Icon(Icons.Default.EmojiEvents, null, tint = CruxCoachDesign.colors.brandAccent) },
-                            modifier = Modifier.testTag("summary_record_$slug"),
-                        )
+                        val now = recordValueText(resources, def, record, state.units)
+                        val before = if (record.previous > 0) recordValueText(resources, def, record.copy(value = record.previous), state.units) else null
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
+                                contentColor = CruxCoachDesign.colors.onPositiveContainer),
+                            modifier = Modifier.fillMaxWidth().testTag("summary_record_$slug"),
+                        ) {
+                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EmojiEvents, null, tint = CruxCoachDesign.colors.brandAccent, modifier = Modifier.size(32.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(def.name(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (before != null) stringResource(R.string.trp2_record_from_to, before, now)
+                                        else stringResource(R.string.trp2_record_first, now),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -482,3 +495,65 @@ private fun setLine(def: ExerciseDefinition, s: ExerciseSet, units: UnitSystem):
 internal fun formatDay(day: String): String = runCatching {
     java.time.LocalDate.parse(day).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
 }.getOrDefault(day)
+
+/**
+ * The end of a training as a small celebration (MCI-style reward screen):
+ * a check that pops in, "done", the key numbers, and where the week stands.
+ */
+@Composable
+private fun RewardHeader(workout: Workout, summary: WorkoutSummary, state: SummaryState) {
+    val scale = remember { androidx.compose.animation.core.Animatable(0.4f) }
+    LaunchedEffect(workout.id) {
+        scale.animateTo(1f, androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+        ))
+    }
+    Column(Modifier.fillMaxWidth().testTag("summary_reward"), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            Icons.Default.CheckCircle, null, tint = CruxCoachDesign.colors.positive,
+            modifier = Modifier.size(88.dp).graphicsLayer { scaleX = scale.value; scaleY = scale.value },
+        )
+        Text(stringResource(R.string.trp2_reward_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 8.dp))
+        Text(workoutTitle(workout) + " · " + formatDay(workout.day), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatTile(
+                stringResource(R.string.trw_summary_duration),
+                summary.durationMinutes?.let { pluralStringResource(R.plurals.trw_minutes, it, it) } ?: "–",
+                Modifier.weight(1f),
+            )
+            StatTile(stringResource(R.string.trw_summary_sets), summary.completedSets.toString(), Modifier.weight(1f))
+            when {
+                state.volumeKg > 0 -> StatTile(stringResource(R.string.trp2_tile_volume),
+                    formatMass(state.volumeKg, state.units), Modifier.weight(1f))
+                state.hangSeconds > 0 -> StatTile(stringResource(R.string.trp2_tile_hang),
+                    formatClock(state.hangSeconds), Modifier.weight(1f))
+                else -> StatTile(stringResource(R.string.trw_summary_exercises), summary.exercises.toString(), Modifier.weight(1f))
+            }
+        }
+        state.streak?.let { st ->
+            Spacer(Modifier.height(12.dp))
+            Card(Modifier.fillMaxWidth().testTag("summary_week")) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        if (st.currentWeekDone) stringResource(R.string.trp2_week_goal_reached)
+                        else stringResource(R.string.trp2_week_goal, st.currentWeekDays, st.goal),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    LinearProgressIndicator(
+                        progress = { if (st.goal > 0) (st.currentWeekDays.toFloat() / st.goal).coerceIn(0f, 1f) else 0f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = CruxCoachDesign.colors.positive,
+                    )
+                    if (st.weeks > 0) {
+                        Text(pluralStringResource(R.plurals.trp2_streak_weeks, st.weeks, st.weeks), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+}

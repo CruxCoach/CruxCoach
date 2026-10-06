@@ -123,4 +123,7 @@
     <string name="tre_trend_stall_generic">Try another edge or grip for a few weeks.</string>
     <string name="tre_trend_stall_try">Variation: %1$s</string>
     <string name="tre_trend_title">Across sessions</string>
+    <string name="tre_reason_return_break">Back after a break: fewer sets and no maximal finger load for now – the body needs a short ramp.</string>
+    <string name="tre_reason_return_finger">Your finger injury healed recently: finger work stays light for a few more weeks.</string>
+    <string name="tre_ev_return">Re-entry after %1$d days (week %2$d of %3$d)</string>
 </resources>

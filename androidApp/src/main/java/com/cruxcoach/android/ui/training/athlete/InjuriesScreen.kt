@@ -30,6 +30,12 @@ import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.InjurySide
 import com.cruxcoach.athlete.model.PausePeriod
 import com.cruxcoach.athlete.model.PauseReason
+import com.cruxcoach.athlete.model.Side
+import com.cruxcoach.android.ui.training.bodymap.BodyArea
+import com.cruxcoach.android.ui.training.bodymap.BodyMapPicker
+import com.cruxcoach.android.ui.training.bodymap.bodyAreaLabel
+import com.cruxcoach.android.ui.training.bodymap.bodyAreas
+import com.cruxcoach.android.ui.training.bodymap.toInjuryRegion
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -217,17 +223,41 @@ private fun AddInjuryDialog(
     var severity by rememberSaveable { mutableFloatStateOf(3f) }
     var pauseClimbing by rememberSaveable { mutableStateOf(true) }
     var pauseStreak by rememberSaveable { mutableStateOf(true) }
+    var area by rememberSaveable { mutableStateOf<BodyArea?>(BodyArea.FINGERS) }
+    val areaLabels = BodyArea.entries.associateWith { bodyAreaLabel(it) }
+    fun chooseRegion(r: InjuryRegion) {
+        region = r
+        pauseClimbing = r in setOf(InjuryRegion.FINGER, InjuryRegion.WRIST, InjuryRegion.ELBOW, InjuryRegion.SHOULDER, InjuryRegion.SKIN)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.tra_injury_add)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(stringResource(R.string.tra_injury_where), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.trb_injury_where), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Tap the body: the area picks the region, a paired area also the side, and a finer
+                // area than the region (forearm → elbow, hamstring → knee) goes into the detail field.
+                BodyMapPicker(
+                    selected = area,
+                    onSelect = { a ->
+                        area = a
+                        a.toInjuryRegion()?.let { r ->
+                            chooseRegion(r)
+                            if (detail.isBlank() && a !in r.bodyAreas()) detail = areaLabels.getValue(a)
+                        }
+                    },
+                    onSide = { tapped ->
+                        if (region.limb && tapped != null) side = if (tapped == Side.LEFT) InjurySide.LEFT else InjurySide.RIGHT
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("injury_body_map"),
+                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     InjuryRegion.entries.forEach { r ->
                         FilterChip(selected = region == r, onClick = {
-                            region = r
-                            pauseClimbing = r in setOf(InjuryRegion.FINGER, InjuryRegion.WRIST, InjuryRegion.ELBOW, InjuryRegion.SHOULDER, InjuryRegion.SKIN)
+                            chooseRegion(r)
+                            area = r.bodyAreas().firstOrNull()
                         }, label = { Text(regionLabel(r)) }, modifier = Modifier.testTag("injury_region_${r.name.lowercase()}"))
                     }
                 }

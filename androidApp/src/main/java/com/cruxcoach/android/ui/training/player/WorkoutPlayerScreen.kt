@@ -1,6 +1,11 @@
 package com.cruxcoach.android.ui.training.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SkipNext
@@ -18,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -45,6 +53,7 @@ import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.UnitSystem
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Guided training: one set at a time with a large target, a timer where the
@@ -62,6 +71,34 @@ fun WorkoutPlayerScreen(
     val timer by viewModel.restTimer.collectAsStateWithLifecycle()
     val language = catalogLanguage()
     var finishing by rememberSaveable { mutableStateOf(false) }
+    var reportingPain by rememberSaveable { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    // A clear tick when a set is done; a longer buzz when it was a new best.
+    val completeSet: () -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        viewModel.completeCurrent()
+    }
+    LaunchedEffect(state.feedback) {
+        if (state.feedback?.record != null) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+    }
+    val snackbar = remember { SnackbarHostState() }
+    val painResult = state.painResult
+    val painText = painResult?.let { r ->
+        val head = when (r.action) {
+            com.cruxcoach.android.athlete.PainAction.SWAP ->
+                stringResource(R.string.trp2_pain_done_swap, state.painNewDef?.name(language) ?: "")
+            com.cruxcoach.android.athlete.PainAction.LIGHTER -> stringResource(R.string.trp2_pain_done_lighter)
+            com.cruxcoach.android.athlete.PainAction.END_EXERCISE -> stringResource(R.string.trp2_pain_done_end)
+        }
+        if (r.injuryId != null) head + " " + stringResource(R.string.trp2_pain_saved) else head
+    }
+    val snackScope = rememberCoroutineScope()
+    LaunchedEffect(painResult) {
+        val text = painText ?: return@LaunchedEffect
+        viewModel.consumePainResult()
+        // Shown outside the effect: consuming the result restarts the effect and would cancel it.
+        snackScope.launch { snackbar.showSnackbar(text) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -83,7 +120,11 @@ fun WorkoutPlayerScreen(
     if (state.phase == PlayerPhase.TIMER) {
         val current = state.current
         if (current != null) {
-            TimerPhaseContent(current, state, onDone = viewModel::completeCurrent, onCancel = viewModel::cancelTimer)
+            TimerPhaseContent(current, state, onDone = completeSet, onCancel = viewModel::cancelTimer,
+                onReleased = { held ->
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.completeCurrent(heldSeconds = held)
+                })
             return
         }
     }
@@ -93,6 +134,7 @@ fun WorkoutPlayerScreen(
         title = title,
         onBack = onBack,
         showRestBanner = false,
+        snackbarHost = { SnackbarHost(snackbar) },
         actions = {
             if (state.workout != null) {
                 IconButton(onClick = onOverview, modifier = Modifier.testTag("player_overview")) {
@@ -120,7 +162,18 @@ fun WorkoutPlayerScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
-            when (state.phase) {
+            // Set → rest → next set as a soft cross-fade instead of a jump.
+            // The key decides which screen a layer shows, so the leaving layer keeps its own layout while it fades.
+            val screenKey = when (state.phase) {
+                PlayerPhase.SET, PlayerPhase.TIMER -> PlayerPhase.SET to state.current?.set?.id
+                else -> state.phase to null
+            }
+            AnimatedContent(
+                targetState = screenKey,
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                label = "player_phase",
+            ) { key ->
+            when (key.first) {
                 PlayerPhase.LOADING -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 PlayerPhase.NO_WORKOUT -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                     EmptyHint(stringResource(R.string.trw_no_open))
@@ -132,11 +185,12 @@ fun WorkoutPlayerScreen(
                         state = state,
                         language = language,
                         onUpdate = viewModel::update,
-                        onDone = viewModel::completeCurrent,
+                        onDone = completeSet,
                         onStartTimer = viewModel::startTimer,
                         onSkip = viewModel::skip,
                         onOverview = onOverview,
                         onOpenExercise = onOpenExercise,
+                        onPain = { reportingPain = true },
                     )
                 }
                 PlayerPhase.REST -> RestScreen(
@@ -150,7 +204,22 @@ fun WorkoutPlayerScreen(
                 )
                 PlayerPhase.COMPLETE -> CompleteView(state, onFinish = { finishing = true }, onOverview = onOverview)
             }
+            }
         }
+    }
+
+    if (reportingPain) {
+        val current = state.current
+        if (current == null) reportingPain = false
+        else PainSheet(
+            exerciseName = current.def.name(language),
+            setSide = current.set.side,
+            onDismiss = { reportingPain = false },
+            onConfirm = { region, side, severity, action, remember ->
+                reportingPain = false
+                viewModel.reportPain(region, side, severity, action, remember)
+            },
+        )
     }
 
     if (finishing) {
@@ -176,6 +245,7 @@ private fun SetView(
     onSkip: () -> Unit,
     onOverview: () -> Unit,
     onOpenExercise: (String) -> Unit,
+    onPain: () -> Unit = {},
 ) {
     val set = item.set
     val def = item.def
@@ -191,13 +261,24 @@ private fun SetView(
             val redundant = set.setType == SetType.WARMUP && def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP
             if (set.setType != SetType.WORK && !redundant) {
                 AssistChip(onClick = {}, label = { Text(setTypeLabel(set.setType)) }, modifier = Modifier.testTag("player_badge"))
+                Spacer(Modifier.width(8.dp))
             }
+            AssistChip(
+                onClick = onPain,
+                label = { Text(stringResource(R.string.trp2_pain_button)) },
+                leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
+                modifier = Modifier.testTag("player_pain"),
+            )
         }
-        Text(
-            def.name(language),
-            style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable(role = Role.Button) { onOpenExercise(def.slug) }.testTag("player_exercise_name"),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.size(56.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                def.name(language),
+                style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f).clickable(role = Role.Button) { onOpenExercise(def.slug) }.testTag("player_exercise_name"),
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             Text(stringResource(R.string.trp_set_of, item.position.setNumber, item.position.setsInBlock),
                 style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -407,7 +488,10 @@ private fun snap(value: Double, step: Double): Double = (value / step).roundToIn
 // ── Timer phase (full screen) ────────────────────────────────────────
 
 @Composable
-private fun TimerPhaseContent(item: PlayerItem, state: PlayerState, onDone: () -> Unit, onCancel: () -> Unit) {
+private fun TimerPhaseContent(
+    item: PlayerItem, state: PlayerState, onDone: () -> Unit, onCancel: () -> Unit,
+    onReleased: (Double) -> Unit = {},
+) {
     val set = item.set
     val def = item.def
     val profile = state.profile
@@ -431,6 +515,7 @@ private fun TimerPhaseContent(item: PlayerItem, state: PlayerState, onDone: () -
         onSetFinished = {},
         onDone = onDone,
         finishAutomatically = true,
+        onReleasedEarly = if (interval) null else onReleased,
         modifier = Modifier.testTag("player_timer"),
     )
 }
