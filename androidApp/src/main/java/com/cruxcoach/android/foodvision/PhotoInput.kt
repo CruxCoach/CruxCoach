@@ -16,9 +16,20 @@ import kotlin.math.roundToInt
 data class PreparedImage(val rgbFile: File, val width: Int, val height: Int, val preview: Bitmap)
 
 /** Prompt files shipped in assets/foodvision; tools/food-vision evaluates the same files. */
-data class VisionPrompt(val system: String, val user: String, val grammar: String) {
+data class VisionPrompt(
+    val system: String,
+    val user: String,
+    val grammar: String,
+    val textSystem: String,
+    /** Contains "{meal}" where the typed description goes. */
+    val textUser: String,
+) {
+    /** The text prompt for [meal]; chat control tokens in user input are removed. */
+    fun forMeal(meal: String): String = textUser.replace("{meal}", meal.replace("<|", "").replace("|>", "").take(MAX_MEAL_CHARS))
+
     companion object {
         private const val VERSION = "v1"
+        const val MAX_MEAL_CHARS = 500
 
         fun load(context: Context): VisionPrompt {
             fun read(name: String) = context.assets.open("foodvision/$name").bufferedReader().use { it.readText() }
@@ -26,6 +37,8 @@ data class VisionPrompt(val system: String, val user: String, val grammar: Strin
                 system = read("system-$VERSION.txt").trim(),
                 user = read("user-$VERSION.txt").trim(),
                 grammar = read("grammar-$VERSION.gbnf"),
+                textSystem = read("text-system-$VERSION.txt").trim(),
+                textUser = read("text-user-$VERSION.txt").trim(),
             )
         }
     }

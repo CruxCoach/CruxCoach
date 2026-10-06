@@ -35,6 +35,9 @@
     <string name="fvp_photo_description">Your meal photo</string>
 
     <string name="fvp_review_hint">Recognised in %d s. Amounts are estimates – tap a food to change it.</string>
+    <string name="fvp_review_text_hint">From your description. Amounts you did not give are typical portions – tap a food to change it.</string>
+    <string name="fvp_review_text_model_hint">Read by the AI model in %d s. Please check – it can be wrong.</string>
+    <string name="fvp_text_model">Analyse with the AI model</string>
     <string name="fvp_review_empty">No food was recognised in this photo.</string>
     <string name="fvp_uncertain">unsure</string>
     <string name="fvp_no_match">No nutrients – tap to choose a food</string>

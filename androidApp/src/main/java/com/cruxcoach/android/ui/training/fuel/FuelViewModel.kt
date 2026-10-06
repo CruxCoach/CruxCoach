@@ -160,6 +160,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val repo = service.repo
         val n = scale(item, portions, grams) ?: return@io
         val now = System.currentTimeMillis()
+        // A food picked from the BLS search becomes one of "my foods" on first use.
+        if (item.source == SOURCE_BLS && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
         repo.saveFoodLog(
             FoodLogEntry(
                 id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
@@ -215,6 +217,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         const val SOURCE_PORTION = "portion"
         /** Nutrient fields hold values per 100 g. */
         const val SOURCE_USER = "user"
+        /** From the bundled BLS 4.0, per 100 g; id "bls:" + code. */
+        const val SOURCE_BLS = "bls"
 
         fun isPerPortion(item: FoodItem) = item.source == SOURCE_PORTION
 
