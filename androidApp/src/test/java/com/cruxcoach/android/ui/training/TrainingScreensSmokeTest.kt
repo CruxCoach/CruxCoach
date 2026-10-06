@@ -361,4 +361,26 @@ class TrainingScreensSmokeTest {
             viewModel = com.cruxcoach.android.athlete.force.ForceGaugeViewModel(context, service)) }
         waitForTag("force_gauge")
     }
+
+    @Test
+    fun `workouts tab shows this week's calendar`() {
+        render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {},
+            viewModel = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)) }
+        scrollTo("workouts_list", hasTestTag("week_calendar"))
+    }
+
+    @Test
+    fun `letting go early records the held time and lowers the next hang`() {
+        val id = service.startWorkout(null, null)
+        service.addExercise(id, "finger.one_arm_pickup")
+        val first = repo.setsFor(id).filter { it.setType == com.cruxcoach.athlete.model.SetType.WORK }
+            .minWith(compareBy({ it.setIndex }, { it.side?.ordinal ?: -1 }))
+        val planned = first.durationS ?: first.targetDurationS ?: 10.0
+        // Held only 6 s of a 10 s hang.
+        val held = first.copy(durationS = 6.0, completedAt = System.currentTimeMillis())
+        service.completeSet(held, startRest = false)
+        val adjustment = service.adjustUpcomingSets(id, held)
+        assert(planned > 6.0)
+        assert(adjustment != null) { "a hold that ended early must change the next sets" }
+    }
 }

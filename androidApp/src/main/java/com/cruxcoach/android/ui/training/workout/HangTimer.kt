@@ -120,6 +120,11 @@ fun HangTimerContent(
     modifier: Modifier = Modifier,
     /** Calls [onDone] by itself when the last phase ends (guided mode); otherwise a "Done" button waits. */
     finishAutomatically: Boolean = false,
+    /**
+     * Single hangs only: a big "let go" button during the hang that ends it and reports the
+     * seconds actually held, so the next sets can follow what really happened.
+     */
+    onReleasedEarly: ((heldSeconds: Double) -> Unit)? = null,
 ) {
     val repCount = reps.coerceAtLeast(1)
     val setCount = sets.coerceAtLeast(1)
@@ -310,6 +315,20 @@ fun HangTimerContent(
                     trackColor = fg.copy(alpha = 0.25f),
                 )
                 Spacer(Modifier.height(32.dp))
+                val releasable = onReleasedEarly != null && repCount == 1 && setCount == 1 && phase == TimerPhase.WORK && current != null
+                if (releasable && current != null) {
+                    Button(
+                        onClick = {
+                            running = false
+                            onReleasedEarly?.invoke(((elapsedMs - current.startMs).coerceAtLeast(0L) / 100L) / 10.0)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = fg, contentColor = bg),
+                        modifier = Modifier.fillMaxWidth(0.8f).heightIn(min = 64.dp).testTag("hang_timer_released"),
+                    ) {
+                        Text(stringResource(R.string.trw_timer_released), style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (done) {
                         Button(onClick = onDone, modifier = Modifier.testTag("hang_timer_done")) {

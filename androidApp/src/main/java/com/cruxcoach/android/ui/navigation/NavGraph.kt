@@ -301,6 +301,9 @@ fun CruxCoachNavHost(
             route.startsWith("message_thread/") ||
             route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
+            // Training reminder: Today is the training area's start, so a plain single-top visit.
+            route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
+                navController.navigate(route) { launchSingleTop = true }
             route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY -> {
                 // Body reminder: open the Body tab the way the drawer would, with Today
                 // underneath, so the tab bar's pop-to-Today works and back leaves the area.

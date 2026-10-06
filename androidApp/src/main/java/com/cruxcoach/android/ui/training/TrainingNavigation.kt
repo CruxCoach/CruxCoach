@@ -91,6 +91,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
             onWorkoutStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
             tabBar = tabBar(TrainingTab.WORKOUTS),
+            volumeCard = { com.cruxcoach.android.ui.training.workouts.WeeklyVolumeCard() },
         )
     }
     screen(TrainingRoutes.STATS, "TrainingStats", back) {

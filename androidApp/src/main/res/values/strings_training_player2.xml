@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Guided player: set-to-set autoregulation, "it hurts", reward screen (MCI parity round). -->
+<resources>
+    <string name="trp2_adj_missed">Reps missed</string>
+    <string name="trp2_adj_no_reserve">Nothing left in the tank</string>
+    <string name="trp2_adj_big_reserve">Plenty left in the tank</string>
+    <string name="trp2_adj_hold_failed">Hold ended early</string>
+    <string name="trp2_adj_hold_easy">Held with ease</string>
+    <string name="trp2_adj_line">%1$s → next sets %2$s</string>
+    <string name="trp2_adj_reps">%1$+d reps</string>
+    <string name="trp2_adj_seconds">%1$+d s</string>
+
+    <string name="trp2_pain_button">It hurts</string>
+    <string name="trp2_pain_title">What hurts?</string>
+    <string name="trp2_pain_region">Where?</string>
+    <string name="trp2_pain_side">Side</string>
+    <string name="trp2_pain_level">Pain: %1$d of 9</string>
+    <string name="trp2_pain_action">What now?</string>
+    <string name="trp2_action_swap">Swap to an exercise that spares it</string>
+    <string name="trp2_action_lighter">Carry on lighter</string>
+    <string name="trp2_action_end">End this exercise</string>
+    <string name="trp2_pain_remember">Remember as an injury – suggestions will spare it</string>
+    <string name="trp2_pain_medical">Sharp, strong or lasting pain: stop training and have it checked by a doctor or physiotherapist.</string>
+    <string name="trp2_pain_confirm">Apply</string>
+    <string name="trp2_pain_done_swap">Swapped to %1$s.</string>
+    <string name="trp2_pain_done_lighter">The remaining sets are lighter.</string>
+    <string name="trp2_pain_done_end">Exercise ended.</string>
+    <string name="trp2_pain_saved">Saved as an injury.</string>
+
+    <string name="trp2_reward_title">Training done!</string>
+    <string name="trp2_tile_volume">Volume</string>
+    <string name="trp2_tile_hang">Time on the edge</string>
+    <string name="trp2_record_from_to">%1$s → %2$s</string>
+    <string name="trp2_record_first">%1$s · first value</string>
+    <string name="trp2_week_goal">This week: %1$d of %2$d training days</string>
+    <string name="trp2_week_goal_reached">Weekly goal reached</string>
+    <plurals name="trp2_streak_weeks">
+        <item quantity="one">%1$d week in a row on plan</item>
+        <item quantity="other">%1$d weeks in a row on plan</item>
+    </plurals>
+</resources>

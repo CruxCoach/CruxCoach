@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Geführter Player: Satz-zu-Satz-Anpassung, "Tut weh", Belohnungsscreen (MCI-Paritätsrunde). -->
+<resources>
+    <string name="trp2_adj_missed">Wiederholungen verpasst</string>
+    <string name="trp2_adj_no_reserve">Keine Reserve</string>
+    <string name="trp2_adj_big_reserve">Viel Reserve</string>
+    <string name="trp2_adj_hold_failed">Zu früh losgelassen</string>
+    <string name="trp2_adj_hold_easy">Locker gehalten</string>
+    <string name="trp2_adj_line">%1$s → nächste Sätze %2$s</string>
+    <string name="trp2_adj_reps">%1$+d Wdh.</string>
+    <string name="trp2_adj_seconds">%1$+d s</string>
+
+    <string name="trp2_pain_button">Tut weh</string>
+    <string name="trp2_pain_title">Was tut weh?</string>
+    <string name="trp2_pain_region">Wo?</string>
+    <string name="trp2_pain_side">Seite</string>
+    <string name="trp2_pain_level">Schmerz: %1$d von 9</string>
+    <string name="trp2_pain_action">Was jetzt?</string>
+    <string name="trp2_action_swap">Gegen eine schonende Übung tauschen</string>
+    <string name="trp2_action_lighter">Leichter weitermachen</string>
+    <string name="trp2_action_end">Übung beenden</string>
+    <string name="trp2_pain_remember">Als Verletzung merken – die Vorschläge schonen die Stelle</string>
+    <string name="trp2_pain_medical">Bei stechenden, starken oder anhaltenden Schmerzen: Training beenden und ärztlich oder physiotherapeutisch abklären lassen.</string>
+    <string name="trp2_pain_confirm">Übernehmen</string>
+    <string name="trp2_pain_done_swap">Getauscht gegen %1$s.</string>
+    <string name="trp2_pain_done_lighter">Die restlichen Sätze sind leichter.</string>
+    <string name="trp2_pain_done_end">Übung beendet.</string>
+    <string name="trp2_pain_saved">Als Verletzung gespeichert.</string>
+
+    <string name="trp2_reward_title">Training geschafft!</string>
+    <string name="trp2_tile_volume">Volumen</string>
+    <string name="trp2_tile_hang">Zeit an der Leiste</string>
+    <string name="trp2_record_from_to">%1$s → %2$s</string>
+    <string name="trp2_record_first">%1$s · erster Wert</string>
+    <string name="trp2_week_goal">Diese Woche: %1$d von %2$d Trainingstagen</string>
+    <string name="trp2_week_goal_reached">Wochenziel erreicht</string>
+    <plurals name="trp2_streak_weeks">
+        <item quantity="one">%1$d Woche in Folge im Plan</item>
+        <item quantity="other">%1$d Wochen in Folge im Plan</item>
+    </plurals>
+</resources>

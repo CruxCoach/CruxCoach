@@ -86,6 +86,12 @@ enum class SuggestionReason {
     NO_TIME_TODAY,
     LEVEL_EASIER,
     LEVEL_HARDER,
+    /** The weekly volume plan: this area has the most left to do this week (see [WeeklyVolume]). */
+    WEEKLY_TARGET,
+    /** Back after a break: fewer sets and no maximal finger load for now (see [ReturnToTraining]). */
+    RETURN_AFTER_BREAK,
+    /** A finger injury healed recently: finger work stays light for a few weeks. */
+    RETURN_FINGER,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -109,6 +115,10 @@ sealed interface Evidence {
     data class FocusNote(val areas: Set<FocusArea>) : Evidence
     data class Guardrail(val kind: GuardrailKind) : Evidence
     data class History(val weeks: Int, val logbookSends: Int) : Evidence
+    /** Weekly plan: [done] of [target] this week — finger sessions for FINGER, hard sets otherwise. */
+    data class WeeklyTarget(val area: VolumeArea, val done: Int, val target: Int) : Evidence
+    /** Re-entry after [daysOff] days: week [week] of [weeksTotal]. */
+    data class Return(val state: ReturnState) : Evidence
 }
 
 /** A board session to fill with the playlist generator. */
@@ -155,6 +165,12 @@ data class SuggestionInput(
     val logbookSends: Int = 0,
     /** Weeks with any logged training or climbing. */
     val historyWeeks: Int = 0,
+    /** This week's volume per area (see [WeeklyVolume]); empty keeps the day-by-day rules. */
+    val weekly: List<AreaProgress> = emptyList(),
+    /** Monday of the week [weekly] counts; derived from [today] when null. */
+    val weekStart: LocalDate? = null,
+    /** Re-entry after a break or a healed finger injury (see [ReturnToTraining]); null when training normally. */
+    val returnState: ReturnState? = null,
 )
 
 data class SessionSuggestion(
@@ -284,14 +300,21 @@ object SessionSuggester {
             return build(ctx, SuggestionFocus.INJURY_SAFE, withFocusAreas(base, SuggestionFocus.INJURY_SAFE, coach.focus, ctx), budget, planned)
         }
 
-        // 4. Recovery state decides between finger work and the rest.
+        // 4. Recovery state decides between finger work and the rest; the weekly plan
+        //    then decides what the rest is (and whether the fingers already had their week).
         val skinLow = ReadinessReason.SKIN_LOW in readiness.reasons
+        val weekly = weeklyWeights(input)
         val focus = when {
             fingerBlock != null -> { reasons += fingerBlock; null }
             skinLow -> { reasons += SuggestionReason.SKIN_LOW; null }
             coach.fingerPreference == FingerPreference.NONE -> { reasons += SuggestionReason.FINGER_PREFERENCE_NONE; null }
+            weekly != null && fingerTargetMet(input) -> {
+                reasons += SuggestionReason.WEEKLY_TARGET
+                weeklyEvidence(ctx, VolumeArea.FINGER)
+                null
+            }
             else -> { reasons += SuggestionReason.FINGERS_RESTED; SuggestionFocus.FINGER_STRENGTH }
-        } ?: run {
+        } ?: weeklyFocus(ctx, weekly) ?: run {
             val pullLast = lastDay(input, setOf(ExerciseCategoryV2.PULL, ExerciseCategoryV2.PUSH))
             val legsLast = lastDay(input, setOf(ExerciseCategoryV2.LEGS, ExerciseCategoryV2.CORE))
             val legsFirst = when {
@@ -320,6 +343,98 @@ object SessionSuggester {
                 budget, planned)
         }
         return result
+    }
+
+    // ── Weekly volume plan ───────────────────────────────────────────
+
+    private val WEEKLY_FOCI = setOf(SuggestionFocus.FINGER_STRENGTH, SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE,
+        SuggestionFocus.INJURY_SAFE)
+
+    private fun weeklyWeights(input: SuggestionInput): Map<VolumeArea, Double>? {
+        if (input.weekly.isEmpty()) return null
+        return WeeklyVolume.deficitWeights(input.weekly, input.today, input.weekStart ?: WeeklyVolume.weekStartOf(input.today))
+    }
+
+    /** Finger sessions (board days included) already reached this week's goal, or there is no finger goal. */
+    private fun fingerTargetMet(input: SuggestionInput): Boolean {
+        val p = input.weekly.firstOrNull { it.area == VolumeArea.FINGER } ?: return false
+        return p.status == AreaStatus.DONE || p.status == AreaStatus.OVER
+    }
+
+    private fun weeklyEvidence(ctx: Ctx, area: VolumeArea) {
+        val p = ctx.input.weekly.firstOrNull { it.area == area } ?: return
+        ctx.evidence += Evidence.WeeklyTarget(area, p.effective.roundToInt(), p.goal)
+    }
+
+    /** Upper body or legs and core: whichever has more left this week, when the gap is clear. */
+    private fun weeklyFocus(ctx: Ctx, weights: Map<VolumeArea, Double>?): SuggestionFocus? {
+        weights ?: return null
+        fun w(a: VolumeArea) = (weights[a] ?: 0.0).coerceAtLeast(0.0)
+        val upper = w(VolumeArea.PULL) + w(VolumeArea.PUSH) + 0.5 * w(VolumeArea.ANTAGONIST)
+        val lower = w(VolumeArea.LEGS) + w(VolumeArea.CORE)
+        if (kotlin.math.abs(upper - lower) < 0.3) return null
+        val legs = lower > upper
+        val top = (if (legs) listOf(VolumeArea.LEGS, VolumeArea.CORE) else listOf(VolumeArea.PULL, VolumeArea.PUSH, VolumeArea.ANTAGONIST))
+            .maxBy { w(it) }
+        ctx.reasons += SuggestionReason.WEEKLY_TARGET
+        weeklyEvidence(ctx, top)
+        return if (legs) SuggestionFocus.LEGS_CORE else SuggestionFocus.PULL_PUSH
+    }
+
+    private fun slotFor(area: VolumeArea): Slot? = when (area) {
+        VolumeArea.PULL -> Slot.PULL
+        VolumeArea.PUSH -> Slot.PUSH
+        VolumeArea.LEGS -> Slot.LEGS
+        VolumeArea.CORE -> Slot.CORE
+        VolumeArea.ANTAGONIST -> Slot.ANTAGONIST
+        VolumeArea.MOBILITY -> Slot.MOBILITY
+        VolumeArea.FINGER -> null
+    }
+
+    private fun areaFor(slot: Slot): VolumeArea? = when (slot) {
+        Slot.PULL -> VolumeArea.PULL
+        Slot.PUSH -> VolumeArea.PUSH
+        Slot.LEGS -> VolumeArea.LEGS
+        Slot.CORE -> VolumeArea.CORE
+        Slot.ANTAGONIST -> VolumeArea.ANTAGONIST
+        Slot.MOBILITY -> VolumeArea.MOBILITY
+        Slot.WARMUP, Slot.FINGER_MAIN, Slot.POWER -> null
+    }
+
+    /**
+     * Shapes the slots by the week: areas over their maximum hand their slots
+     * to what is missing, and the area with the most left gets a slot early in
+     * the session (so the time budget trims generic slots first). Finger work
+     * is never added here — the recovery rules alone decide it — and every
+     * slot still goes through the injury filter, guardrails and exclusions.
+     */
+    private fun withWeeklyDeficit(slots: List<Slot>, focus: SuggestionFocus, ctx: Ctx): List<Slot> {
+        val input = ctx.input
+        val weights = weeklyWeights(input) ?: return slots
+        val list = slots.toMutableList()
+        if (focus == SuggestionFocus.INJURY_SAFE && Slot.FINGER_MAIN in list && fingerTargetMet(input)) {
+            // The healthy hand already had its finger sessions this week.
+            list.remove(Slot.FINGER_MAIN)
+            ctx.reasons += SuggestionReason.WEEKLY_TARGET
+            weeklyEvidence(ctx, VolumeArea.FINGER)
+        }
+        val open = weights.filter { (area, w) -> slotFor(area) != null && w > 0.3 }
+        for (i in list.indices.reversed()) {
+            val area = areaFor(list[i]) ?: continue
+            if ((weights[area] ?: 0.0) < 0.0) {
+                val replacement = open.maxByOrNull { it.value }?.key?.let(::slotFor)
+                if (replacement != null) list[i] = replacement else list.removeAt(i)
+            }
+        }
+        val top = open.filterValues { it >= 0.8 }.maxByOrNull { it.value }?.key
+        if (top != null) {
+            val slot = slotFor(top)!!
+            val present = list.count { it == slot }
+            if (present == 0 || (present < 2 && (weights[top] ?: 0.0) >= 2.0)) list.add(min(2, list.size), slot)
+            ctx.reasons += SuggestionReason.WEEKLY_TARGET
+            weeklyEvidence(ctx, top)
+        }
+        return list
     }
 
     private fun slotsFor(focus: SuggestionFocus): List<Slot> = when (focus) {
@@ -584,7 +699,8 @@ object SessionSuggester {
         planned: String?,
     ): SessionSuggestion {
         val input = ctx.input
-        var items = pickSlots(ctx, slots, allowWall = false, focus = focus, taken = mutableSetOf())
+        val shaped = if (focus in WEEKLY_FOCI) withWeeklyDeficit(slots, focus, ctx) else slots
+        var items = pickSlots(ctx, shaped, allowWall = false, focus = focus, taken = mutableSetOf())
         if (focus != SuggestionFocus.REST && focus != SuggestionFocus.MOBILITY_RECOVERY) {
             items = applyStyle(items, input.coach.intensityStyle, input.catalog)
             items = applyBlock(ctx, items)
@@ -604,6 +720,23 @@ object SessionSuggester {
         addOn: Boolean = false,
     ): SessionSuggestion {
         val input = ctx.input
+        // Re-entry applies to every path — generated, planned, board warm-up, add-on — after all other rules.
+        val back = input.returnState
+        val routine = if (back == null) routine else {
+            ctx.reasons += if (back.reason == ReturnReason.FINGER_INJURY_HEALED) SuggestionReason.RETURN_FINGER
+                else SuggestionReason.RETURN_AFTER_BREAK
+            ctx.evidence.add(0, Evidence.Return(back))
+            routine.copy(items = routine.items.mapNotNull { item ->
+                ReturnToTraining.applyToItem(item, input.catalog.fallbackFor(item.slug), back)
+            })
+        }
+        val boardPlan = if (back == null || boardPlan == null || !back.noMaxFinger) boardPlan else {
+            // The first board sessions back are volume, not limit: shorter, no maximal attempts.
+            boardPlan.copy(
+                type = if (boardPlan.type == GeneratorType.LIMIT || boardPlan.type == GeneratorType.PROJECTING) GeneratorType.VOLUME else boardPlan.type,
+                minutes = (boardPlan.minutes * back.setsFactor).roundToInt().coerceAtLeast(20),
+            )
+        }
         val main = routine.items.filter { !it.warmup }
         val favs = main.count { it.slug in input.favorites }
         if (favs > 0) {

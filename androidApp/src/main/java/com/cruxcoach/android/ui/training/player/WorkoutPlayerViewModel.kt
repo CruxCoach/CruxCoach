@@ -8,6 +8,10 @@ import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.logic.Capacity
 import com.cruxcoach.athlete.logic.PersonalRecord
 import com.cruxcoach.athlete.logic.PlayerQueue
+import com.cruxcoach.athlete.logic.SetAdjustment
+import com.cruxcoach.athlete.model.InjuryRegion
+import com.cruxcoach.athlete.model.InjurySide
+import com.cruxcoach.android.athlete.PainAction
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.ExerciseSet
 import com.cruxcoach.athlete.model.Workout
@@ -64,6 +68,12 @@ data class PlayerState(
     val restArmed: Boolean = false,
     val restFinished: Boolean = false,
     val feedback: PlayerFeedback? = null,
+    /** How the rest of the block changed after [lastDone] (set-to-set autoregulation). */
+    val adjustment: SetAdjustment? = null,
+    /** One-shot result of "it hurts", for a short confirmation. */
+    val painResult: com.cruxcoach.android.athlete.AthleteService.PainOutcome? = null,
+    /** The exercise a pain swap brought in, for the confirmation. */
+    val painNewDef: ExerciseDefinition? = null,
     val completedCount: Int = 0,
     val closing: Boolean = false,
 )
@@ -95,6 +105,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     /** Set the athlete moved to by skipping; null = the first open set. */
     private var focusId: String? = null
+    /** What autoregulation already applied per completed set, so a changed reserve answer never stacks steps. */
+    private val applied = mutableMapOf<String, SetAdjustment?>()
     private var advanceJob: Job? = null
 
     private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
@@ -204,11 +216,15 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         }
     }
 
-    /** Ticks the shown set off and moves into the rest (or to the end). */
-    fun completeCurrent() {
+    /**
+     * Ticks the shown set off and moves into the rest (or to the end). [heldSeconds] is the
+     * time actually held when the athlete let go before the hang timer ended.
+     */
+    fun completeCurrent(heldSeconds: Double? = null) {
         val st = _state.value
-        val current = st.current ?: return
+        val current0 = st.current ?: return
         if (st.phase == PlayerPhase.REST) return
+        val current = if (heldSeconds == null) current0 else current0.copy(set = current0.set.copy(durationS = heldSeconds))
         val doneLocal = current.set.copy(completedAt = System.currentTimeMillis())
         val setsAfter = st.sets.map { if (it.id == doneLocal.id) doneLocal else it }
         val next = PlayerQueue.nextAfter(setsAfter, doneLocal)?.takeIf { !it.isCompleted && it.id != doneLocal.id }
@@ -231,12 +247,16 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 restArmed = false,
                 restFinished = false,
                 feedback = null,
+                adjustment = null,
                 completedCount = setsAfter.count { s -> s.isCompleted },
             )
         }
         enqueue {
             val startRest = next != null && rest > 0
             val outcome = service.completeSetDetailed(current.set, startRest = startRest, restSeconds = rest)
+            // Missed reps or a hold that ended early move the next sets at once; the reserve answer may refine it.
+            val adjustment = runCatching { service.adjustUpcomingSets(doneLocal.workoutId, doneLocal, applied[doneLocal.id]) }.getOrNull()
+            applied[doneLocal.id] = adjustment
             val now = _state.value
             if (startRest && (now.phase != PlayerPhase.REST || now.lastDone?.set?.id != current.set.id)) {
                 // The athlete already ended this rest while the write was queued.
@@ -247,7 +267,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             withContext(Dispatchers.Main) {
                 _state.update { s ->
                     if (s.lastDone?.set?.id != current.set.id) s
-                    else s.copy(feedback = feedback, restArmed = s.phase == PlayerPhase.REST)
+                    else s.copy(feedback = feedback, adjustment = adjustment, restArmed = s.phase == PlayerPhase.REST)
                 }
                 // The timer may already have run out while the write was queued.
                 onRestTimer(service.restTimer.value)
@@ -261,8 +281,36 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val done = _state.value.lastDone?.set ?: return
         val updated = done.copy(rir = rir)
         _state.update { it.copy(lastDone = it.lastDone?.copy(set = updated)) }
-        enqueue { service.updateSet(updated) }
+        enqueue {
+            service.updateSet(updated)
+            // The answer arrives during the rest, before the next set starts: adjust what is still planned.
+            val adjustment = runCatching { service.adjustUpcomingSets(updated.workoutId, updated, applied[updated.id]) }.getOrNull()
+            applied[updated.id] = adjustment
+            withContext(Dispatchers.Main) {
+                _state.update { s -> if (s.lastDone?.set?.id == updated.id) s.copy(adjustment = adjustment) else s }
+            }
+        }
     }
+
+    // ── It hurts ─────────────────────────────────────────────────────
+
+    /**
+     * "Tut weh" on the shown set: swap, lighten or end the exercise; with
+     * [remember] the pain becomes an injury the coach keeps respecting.
+     */
+    fun reportPain(region: InjuryRegion, side: InjurySide?, severity: Int, action: PainAction, remember: Boolean) {
+        val current = _state.value.current ?: return
+        focusId = null
+        enqueue {
+            val outcome = runCatching {
+                service.painStop(current.set.workoutId, current.set.blockIndex, region, side, severity, action, remember)
+            }.getOrNull()
+            val newDef = outcome?.newSlug?.let { service.catalog.fallbackFor(it) }
+            withContext(Dispatchers.Main) { _state.update { it.copy(painResult = outcome, painNewDef = newDef) } }
+        }
+    }
+
+    fun consumePainResult() = _state.update { it.copy(painResult = null, painNewDef = null) }
 
     fun adjustRest(deltaSeconds: Int) = enqueue { service.adjustRest(deltaSeconds) }
 
@@ -286,7 +334,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 phase = if (currentSet == null) PlayerPhase.COMPLETE else PlayerPhase.SET,
                 current = currentSet?.let { item(ordered, it) },
                 upcoming = upcomingSet?.let { item(ordered, it) },
-                lastDone = null, next = null, restArmed = false, restFinished = false, feedback = null, sideSwitch = false,
+                lastDone = null, next = null, restArmed = false, restFinished = false, feedback = null, adjustment = null, sideSwitch = false,
             )
         }
     }

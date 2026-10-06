@@ -114,6 +114,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
         PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
         PerfLogger.trace("BodyReminders.ensureScheduled") { com.cruxcoach.android.athlete.BodyReminders.ensureScheduled(this) }
+        PerfLogger.trace("TrainingReminders.ensureScheduled") { com.cruxcoach.android.athlete.TrainingReminders.ensureScheduled(this) }
         PerfLogger.trace("NotificationPollWorker.schedule") { NotificationPollWorker.schedule(this) }
 
         // FEAT-001: NIP-65 relay discovery — opportunistic refresh on app

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Körperkarte und Griff-Piktogramme (Übungsbilder). -->
+    <string name="trb_front">Vorne</string>
+    <string name="trb_back">Hinten</string>
+    <string name="trb_tap_hint">Tippe auf den Körper, um zu wählen</string>
+    <string name="trb_cd_title">Körperkarte</string>
+    <string name="trb_cd_main">Hauptsächlich: %1$s.</string>
+    <string name="trb_cd_involved">Mit beteiligt: %1$s.</string>
+    <string name="trb_legend_main">Hauptsächlich</string>
+    <string name="trb_legend_involved">Mit beteiligt</string>
+    <string name="trb_detail_title">Was trainiert wird</string>
+    <string name="trb_detail_tap">Tippe auf eine Stelle für ihren Namen</string>
+    <string name="trb_selected_main">%1$s – hauptsächlich trainiert</string>
+    <string name="trb_selected_involved">%1$s – mit beteiligt</string>
+    <string name="trb_selected_none">%1$s – hier kaum beteiligt</string>
+    <string name="trb_grip_title">Griff</string>
+    <string name="trb_edge_mm">%1$d mm</string>
+    <string name="trb_injury_where">Tippe auf die Stelle, die wehtut – oder wähle unten einen Bereich</string>
+    <string name="trb_area_fingers">Finger</string>
+    <string name="trb_area_forearm_flexors">Unterarm-Beuger</string>
+    <string name="trb_area_forearm_extensors">Unterarm-Strecker</string>
+    <string name="trb_area_wrist">Handgelenk</string>
+    <string name="trb_area_elbow">Ellbogen</string>
+    <string name="trb_area_biceps">Bizeps</string>
+    <string name="trb_area_triceps">Trizeps</string>
+    <string name="trb_area_shoulder_front">Vordere Schulter</string>
+    <string name="trb_area_shoulder_rear">Hintere Schulter</string>
+    <string name="trb_area_rotator_cuff">Rotatorenmanschette</string>
+    <string name="trb_area_chest">Brust</string>
+    <string name="trb_area_upper_back">Oberer Rücken</string>
+    <string name="trb_area_lats">Latissimus</string>
+    <string name="trb_area_abs">Bauch</string>
+    <string name="trb_area_obliques">Seitliche Bauchmuskeln</string>
+    <string name="trb_area_lower_back">Unterer Rücken</string>
+    <string name="trb_area_hips">Hüftbeuger</string>
+    <string name="trb_area_glutes">Gesäß</string>
+    <string name="trb_area_quads">Oberschenkel vorne</string>
+    <string name="trb_area_hamstrings">Oberschenkel hinten</string>
+    <string name="trb_area_adductors">Adduktoren</string>
+    <string name="trb_area_calves">Waden</string>
+    <string name="trb_area_neck">Nacken</string>
+    <string name="trb_area_knee">Knie</string>
+    <string name="trb_area_ankle">Sprunggelenk</string>
+    <string name="trb_grip_half_crimp">Halb aufgestellt</string>
+    <string name="trb_grip_open_hand">Offen hängend</string>
+    <string name="trb_grip_full_crimp">Voll aufgestellt</string>
+    <string name="trb_grip_pinch">Zange</string>
+    <string name="trb_grip_sloper">Sloper</string>
+    <string name="trb_grip_jug">Henkel</string>
+    <string name="trb_grip_pocket">Loch</string>
+    <string name="trb_grip_bar">Stange</string>
+</resources>

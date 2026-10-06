@@ -211,6 +211,7 @@ fun AthleteSettingsScreen(
 
             // Reminders
             ReminderSection(p) { transform -> viewModel.update(transform) }
+            TrainingReminderSection(p) { transform -> viewModel.update(transform) }
 
             // Timer
             SectionTitle(stringResource(R.string.tra_timer_title))
@@ -343,6 +344,79 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
                     applyChange { it.copy(weighReminderMinutes = state.hour * 60 + state.minute) }
                     picking = false
                 }, modifier = Modifier.testTag("reminder_time_save")) { Text(stringResource(R.string.tr_action_save)) }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
+    }
+}
+
+/**
+ * Optional reminder on planned training days (week plan). Same pattern as
+ * the body reminders: stored in the profile, rescheduled at once, the
+ * notification permission asked when switching it on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrainingReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> AthleteProfile) -> Unit) {
+    val context = LocalContext.current
+    fun applyChange(transform: (AthleteProfile) -> AthleteProfile) {
+        update(transform)
+        com.cruxcoach.android.athlete.TrainingReminders.reschedule(context, transform(p))
+    }
+    fun notificationsAllowed(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    var allowed by remember { mutableStateOf(notificationsAllowed()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        allowed = granted
+        applyChange { it.copy(trainingReminderEnabled = true) }
+    }
+    var picking by rememberSaveable { mutableStateOf(false) }
+    val timeText = String.format(java.util.Locale.ROOT, "%02d:%02d", p.trainingReminderMinutes / 60, p.trainingReminderMinutes % 60)
+
+    SectionTitle(stringResource(R.string.trw_reminder_title)) {
+        InfoButton(stringResource(R.string.trw_reminder_title), stringResource(R.string.trw_reminder_info))
+    }
+    SwitchRow(stringResource(R.string.trw_reminder_switch), p.trainingReminderEnabled, "training_reminder") { on ->
+        when {
+            !on -> applyChange { it.copy(trainingReminderEnabled = false) }
+            notificationsAllowed() -> { allowed = true; applyChange { it.copy(trainingReminderEnabled = true) } }
+            else -> launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    if (p.trainingReminderEnabled) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.trr_time, timeText), modifier = Modifier.weight(1f))
+            TextButton(onClick = { picking = true }, modifier = Modifier.testTag("training_reminder_time")) {
+                Text(stringResource(R.string.trr_time_pick))
+            }
+        }
+        SwitchRow(stringResource(R.string.trw_reminder_board_days), p.trainingReminderOnClimbingDays, "training_reminder_board") { v ->
+            applyChange { it.copy(trainingReminderOnClimbingDays = v) }
+        }
+        if (p.weekPlan.isEmpty()) {
+            Text(stringResource(R.string.trw_reminder_no_plan), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("training_reminder_no_plan"))
+        }
+        if (!allowed) {
+            Text(stringResource(R.string.trr_permission_denied), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (picking) {
+        val state = rememberTimePickerState(
+            initialHour = p.trainingReminderMinutes / 60,
+            initialMinute = p.trainingReminderMinutes % 60,
+            is24Hour = android.text.format.DateFormat.is24HourFormat(context),
+        )
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text(stringResource(R.string.trr_time_pick)) },
+            text = { TimePicker(state = state) },
+            confirmButton = {
+                TextButton(onClick = {
+                    applyChange { it.copy(trainingReminderMinutes = state.hour * 60 + state.minute) }
+                    picking = false
+                }, modifier = Modifier.testTag("training_reminder_time_save")) { Text(stringResource(R.string.tr_action_save)) }
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )

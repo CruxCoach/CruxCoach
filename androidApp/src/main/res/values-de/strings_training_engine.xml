@@ -123,4 +123,7 @@
     <string name="tre_trend_stall_generic">Probier für ein paar Wochen eine andere Leiste oder Griffart.</string>
     <string name="tre_trend_stall_try">Variation: %1$s</string>
     <string name="tre_trend_title">Über mehrere Einheiten</string>
+    <string name="tre_reason_return_break">Zurück nach einer Pause: weniger Sätze und vorerst keine maximale Fingerlast – der Körper braucht einen kurzen Anlauf.</string>
+    <string name="tre_reason_return_finger">Deine Fingerverletzung ist erst kürzlich verheilt: Fingertraining bleibt noch ein paar Wochen leicht.</string>
+    <string name="tre_ev_return">Wiedereinstieg nach %1$d Tagen (Woche %2$d von %3$d)</string>
 </resources>

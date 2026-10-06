@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Trainings-Erinnerung (Wochenplan) -->
+    <string name="trw_notify_title">Heute: %1$s</string>
+    <string name="trw_notify_text">Tippe für deinen Vorschlag – er passt sich deinem Tag an.</string>
+    <string name="trw_notify_board">Board-Session</string>
+    <string name="trw_reminder_title">Trainings-Erinnerung</string>
+    <string name="trw_reminder_info">An Tagen mit einem Workout im Wochenplan erinnert dich CruxCoach zur gewählten Zeit. Keine Erinnerung an Ruhetagen, an Tagen, an denen du schon trainiert oder geklettert hast, und während einer Pause.</string>
+    <string name="trw_reminder_switch">An geplanten Trainingstagen erinnern</string>
+    <string name="trw_reminder_board_days">Auch an Board-Tagen</string>
+    <string name="trw_reminder_no_plan">Noch kein Wochenplan – ohne Plan gibt es nichts zu erinnern.</string>
+
+    <!-- Wochenansicht -->
+    <string name="trw_week_title">Diese Woche</string>
+    <string name="trw_week_progress">%1$d von %2$d geplant</string>
+    <string name="trw_short_board">Board</string>
+    <string name="trw_short_rest">Ruhe</string>
+    <string name="trw_status_done">erledigt</string>
+    <string name="trw_status_planned">geplant</string>
+    <string name="trw_status_missed">verpasst</string>
+    <string name="trw_status_paused">Pause</string>
+    <string name="trw_status_rest">Ruhetag</string>
+    <string name="trw_status_free">frei</string>
+    <string name="trw_day_planned">Geplant: %1$s</string>
+    <string name="trw_day_missed">Verpasst – nachholen musst du nichts, der Plan läuft einfach weiter.</string>
+    <string name="trw_day_paused">Pause – dieser Tag zählt nicht gegen deine Woche.</string>
+    <string name="trw_day_nothing">Nichts eingetragen.</string>
+    <string name="trw_action_adapt">Anpassen</string>
+    <string name="trw_action_log">Klettern nachtragen</string>
+    <string name="trw_action_history">Verlauf</string>
+
+    <!-- Wiedereinstieg nach einer Pause -->
+    <string name="trw_return_break">Wiedereinstieg: Woche %1$d von %2$d nach %3$d Tagen Pause</string>
+    <string name="trw_return_illness">Nach %1$d Tagen krank: Woche %2$d von %3$d</string>
+    <string name="trw_return_finger">Finger-Wiedereinstieg: Woche %1$d von %2$d nach der Verletzung</string>
+    <string name="trw_return_detail_nomax">Kürzere Einheiten (%1$d %%) und ohne Max-Fingerlast.</string>
+    <string name="trw_return_detail">Kürzere Einheiten (%1$d %%).</string>
+    <string name="trw_return_detail_finger">Nur leichte Fingerarbeit, keine Max-Hangs – alles andere wie gewohnt.</string>
+    <string name="trw_return_info_title">Warum ein Wiedereinstieg?</string>
+    <string name="trw_return_info">Nach einer Pause brauchen vor allem Sehnen und Ringbänder ein paar Einheiten, um sich wieder an Last zu gewöhnen – mehr als die Muskeln. Die Rampe endet nach ein bis zwei Wochen oder sobald du an vier Tagen trainiert hast. Nach einer verheilten Fingerverletzung bleiben nur die Finger vier Wochen lang unter dem Limit. Das ist keine medizinische Beratung; wenn etwas wehtut, hör auf und lass es abklären.</string>
+</resources>

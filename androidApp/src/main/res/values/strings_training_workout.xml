@@ -81,7 +81,6 @@
 
     <!-- Summary -->
     <string name="trw_summary_title">Summary</string>
-    <string name="trw_summary_saved">Training saved</string>
     <string name="trw_summary_sets">Sets</string>
     <string name="trw_summary_exercises">Exercises</string>
     <string name="trw_summary_duration">Duration</string>
@@ -137,4 +136,5 @@
         <item quantity="other">%d sets</item>
     </plurals>
     <string name="trw_open_player">Guided mode</string>
+    <string name="trw_timer_released">Let go</string>
 </resources>

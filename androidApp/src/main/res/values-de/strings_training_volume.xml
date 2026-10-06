@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Wochenvolumen (MCI-Parität Punkt 2) -->
+    <string name="trv_title">Diese Woche</string>
+    <string name="trv_info_title">Wochenplan</string>
+    <string name="trv_info_text">Jeder Bereich hat eine Spanne harter Sätze pro Woche (Finger: Einheiten mit mindestens 48 h Abstand). Ziel, Fokus, Erfahrung, Trainingstage und der aktuelle Block bestimmen die Spanne. Harte Board-Tage zählen für Finger, Zug und Rumpf. Der Vorschlag für heute füllt, was noch fehlt – nie auf Kosten der Erholung oder einer Verletzung.</string>
+    <string name="trv_empty">Gerade keine Wochenziele – Entlastung, Taper oder Wettkampftag halten die Woche frei.</string>
+    <string name="trv_legend">Volle Farbe: geloggt · hell: aus dem Klettern · Striche: Wochenspanne</string>
+    <string name="trv_area_finger">Finger</string>
+    <string name="trv_area_pull">Zug</string>
+    <string name="trv_area_push">Druck</string>
+    <string name="trv_area_legs">Beine</string>
+    <string name="trv_area_core">Rumpf</string>
+    <string name="trv_area_antagonist">Antagonisten</string>
+    <string name="trv_area_mobility">Mobilität</string>
+    <string name="trv_value_sets">%1$s / %2$d–%3$d Sätze</string>
+    <string name="trv_value_sessions">%1$s / %2$d Einheiten</string>
+    <string name="trv_status_below">im Rückstand</string>
+    <string name="trv_status_on_track">im Plan</string>
+    <string name="trv_status_done">erreicht</string>
+    <string name="trv_status_over">über der Spanne</string>
+    <string name="trv_reason_weekly">Dein Wochenplan: In diesem Bereich fehlt diese Woche noch am meisten.</string>
+    <string name="trv_ev_sets">Woche: %1$s %2$d/%3$d Sätze</string>
+    <string name="trv_ev_sessions">Woche: %1$s %2$d/%3$d Einheiten</string>
+</resources>

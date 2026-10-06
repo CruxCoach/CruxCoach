@@ -371,6 +371,8 @@ class MainActivity : AppCompatActivity() {
             raw == "app_share" -> raw
             // Body-data reminder (athlete BodyReminders): opens the body screen, no parameters.
             raw == "body" -> raw
+            // Week-plan training reminder (athlete TrainingReminders): opens Today, no parameters.
+            raw == "today" -> raw
             // Carries no parameters and reaches no import sink of its own: the
             // MoonBoard screen only offers a file picker and the opt-in
             // accessibility transfer, both of which need a further user tap.

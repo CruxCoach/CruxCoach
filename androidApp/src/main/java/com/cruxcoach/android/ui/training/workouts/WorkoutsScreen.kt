@@ -40,6 +40,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.datetime.plus
+import kotlinx.datetime.minus
+import kotlinx.datetime.isoDayNumber
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
@@ -51,6 +54,11 @@ data class WorkoutsState(
     val profile: AthleteProfile = AthleteProfile(),
     val openWorkout: Workout? = null,
     val catalog: ExerciseCatalog = ExerciseCatalog.EMPTY,
+    val today: kotlinx.datetime.LocalDate? = null,
+    /** Monday to Sunday of the current week: plan and status. */
+    val week: List<WeekDayCell> = emptyList(),
+    /** Re-entry ramp after a break or a healed finger injury. */
+    val returnState: com.cruxcoach.athlete.logic.ReturnState? = null,
 )
 
 sealed interface WorkoutsEvent { data object Started : WorkoutsEvent }
@@ -61,6 +69,8 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
     val state: StateFlow<WorkoutsState> = _state.asStateFlow()
     private val _events = Channel<WorkoutsEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+    /** Board sessions live in another database; a return to the tab recomputes the week. */
+    private val weekTick = MutableStateFlow(0)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -71,9 +81,46 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
                 repo.observeProfile(),
                 repo.observeOpenWorkout(),
                 service.catalogStore.catalog,
-            ) { routines, profile, open, catalog -> WorkoutsState(false, routines, profile, open, catalog) }
-                .collect { _state.value = it }
+            ) { routines, profile, open, catalog -> Base(routines, profile, open, catalog) }
+                .collect { b ->
+                    // Keeps the week fields, which the second collector owns.
+                    _state.update { it.copy(loading = false, routines = b.routines, profile = b.profile, openWorkout = b.open, catalog = b.catalog) }
+                }
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val repo = service.repo
+            val from = service.today().minus(kotlinx.datetime.DatePeriod(days = ACTIVITY_DAYS)).toString()
+            combine(
+                repo.observeProfile(),
+                repo.observeRecentWorkouts(30),
+                repo.observeClimbingDaysSince(from),
+                repo.observePauses(),
+                weekTick,
+            ) { profile, _, _, pauses, _ -> profile to pauses }
+                .collect { (profile, pauses) -> runCatching { computeWeek(profile, pauses) } }
+        }
+    }
+
+    private data class Base(val routines: List<Routine>, val profile: AthleteProfile, val open: Workout?, val catalog: ExerciseCatalog)
+
+    fun refreshWeek() { weekTick.update { it + 1 } }
+
+    private fun computeWeek(profile: AthleteProfile, pauses: List<PausePeriod>) {
+        val repo = service.repo
+        val today = service.today()
+        val activities = service.activities(days = ACTIVITY_DAYS)
+        val monday = today.minus(kotlinx.datetime.DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
+        val sunday = monday.plus(kotlinx.datetime.DatePeriod(days = 6))
+        val week = buildWeek(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses)
+        // Max-finger work before the break decides whether a long ramp's second week allows it again.
+        val since = today.minus(kotlinx.datetime.DatePeriod(days = 120))
+        val workoutDays = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to it.day }
+        val sets = repo.completedSetsSince(System.currentTimeMillis() - 120L * 86_400_000L)
+            .mapNotNull { s -> workoutDays[s.workoutId]?.let { d -> runCatching { kotlinx.datetime.LocalDate.parse(d) }.getOrNull() }?.let { it to s } }
+        val maxBefore = com.cruxcoach.athlete.logic.ReturnToTraining.maxFingerBefore(sets, service.catalog, today)
+        val ret = com.cruxcoach.athlete.logic.ReturnToTraining.state(activities, pauses, repo.allInjuries(), today, maxBefore)
+        _state.update { it.copy(today = today, week = week, returnState = ret) }
     }
 
     fun start(routine: Routine, title: String?) = io {
@@ -88,6 +135,11 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
     }
 
     fun delete(routine: Routine) = io { service.repo.deleteRoutine(routine.id) }
+
+    private companion object {
+        /** Enough history for a 21-day break plus a two-week ramp. */
+        const val ACTIVITY_DAYS = 70
+    }
 
     private fun io(block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
@@ -118,10 +170,15 @@ fun WorkoutsScreen(
     onWorkoutStarted: () -> Unit,
     viewModel: WorkoutsViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
+    /** Weekly volume per area (integrator slot), shown under the week view. */
+    volumeCard: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lang = catalogLanguage()
     var deleting by remember { mutableStateOf<Routine?>(null) }
+    var dayCell by remember { mutableStateOf<WeekDayCell?>(null) }
+    var logClimbing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { viewModel.refreshWeek() }
     val copySuffix = stringResource(R.string.trwo_copy_suffix)
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is WorkoutsEvent.Started) onWorkoutStarted() } }
 
@@ -147,6 +204,11 @@ fun WorkoutsScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            state.returnState?.let { r -> item(key = "return") { ReturnBanner(r) } }
+            if (state.week.isNotEmpty()) {
+                item(key = "week") { WeekCalendarCard(state.week, state.routines, onDayClick = { dayCell = it }) }
+            }
+            item(key = "volume") { volumeCard() }
             state.openWorkout?.let {
                 item {
                     Card(
@@ -207,6 +269,35 @@ fun WorkoutsScreen(
                 )
             }
         }
+    }
+
+    dayCell?.let { cell ->
+        val planned = cell.planned?.let { entry ->
+            when {
+                entry == PLAN_BOARD || entry == PLAN_REST -> null
+                entry.startsWith("builtin:") -> BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
+                else -> state.routines.firstOrNull { it.id == entry }
+            }
+        }
+        val plannedTitle = planned?.let { routineName(it) }
+        WeekDaySheet(
+            cell = cell,
+            today = state.today ?: cell.date,
+            routines = state.routines,
+            plannedRoutine = planned,
+            onDismiss = { dayCell = null },
+            onStart = { r -> dayCell = null; viewModel.start(r, plannedTitle) },
+            onAdapt = { r ->
+                dayCell = null
+                if (r.builtinKey != null && state.routines.none { it.id == r.id }) onOpenEditor(null, "builtin:" + r.builtinKey)
+                else onOpenEditor(r.id, null)
+            },
+            onLogClimbing = { dayCell = null; logClimbing = true },
+            onOpenHistory = { dayCell = null; onOpenHistory() },
+        )
+    }
+    if (logClimbing) {
+        com.cruxcoach.android.ui.training.today.ClimbingDaySheet(onDismiss = { logClimbing = false; viewModel.refreshWeek() })
     }
 
     deleting?.let { routine ->

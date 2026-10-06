@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Training reminder (week plan) -->
+    <string name="trw_notify_title">Today: %1$s</string>
+    <string name="trw_notify_text">Tap for your suggestion – it adapts to how your day looks.</string>
+    <string name="trw_notify_board">Board session</string>
+    <string name="trw_reminder_title">Training reminder</string>
+    <string name="trw_reminder_info">On days with a workout in your week plan, CruxCoach reminds you at the time you choose. No reminder on rest days, on days you already trained or climbed, or during a pause.</string>
+    <string name="trw_reminder_switch">Remind me on planned training days</string>
+    <string name="trw_reminder_board_days">Also on board days</string>
+    <string name="trw_reminder_no_plan">No week plan yet – without a plan there is nothing to remind you of.</string>
+
+    <!-- Week view -->
+    <string name="trw_week_title">This week</string>
+    <string name="trw_week_progress">%1$d of %2$d planned</string>
+    <string name="trw_short_board">Board</string>
+    <string name="trw_short_rest">Rest</string>
+    <string name="trw_status_done">done</string>
+    <string name="trw_status_planned">planned</string>
+    <string name="trw_status_missed">missed</string>
+    <string name="trw_status_paused">pause</string>
+    <string name="trw_status_rest">rest day</string>
+    <string name="trw_status_free">free</string>
+    <string name="trw_day_planned">Planned: %1$s</string>
+    <string name="trw_day_missed">Missed – nothing to make up, the plan simply goes on.</string>
+    <string name="trw_day_paused">Pause – this day does not count against your week.</string>
+    <string name="trw_day_nothing">Nothing logged.</string>
+    <string name="trw_action_adapt">Adapt</string>
+    <string name="trw_action_log">Log climbing</string>
+    <string name="trw_action_history">History</string>
+
+    <!-- Return after a break -->
+    <string name="trw_return_break">Easing back in: week %1$d of %2$d after %3$d days off</string>
+    <string name="trw_return_illness">After %1$d days ill: week %2$d of %3$d</string>
+    <string name="trw_return_finger">Finger re-entry: week %1$d of %2$d after the injury</string>
+    <string name="trw_return_detail_nomax">Shorter sessions (%1$d %%) and no maximal finger load.</string>
+    <string name="trw_return_detail">Shorter sessions (%1$d %%).</string>
+    <string name="trw_return_detail_finger">Only light finger work, no max hangs – everything else as usual.</string>
+    <string name="trw_return_info_title">Why ease back in?</string>
+    <string name="trw_return_info">After a break, tendons and pulleys need a few sessions to get used to load again, more than muscles do. The ramp ends after one or two weeks, or as soon as you have trained on four days. After a healed finger injury, only the fingers stay off the limit for four weeks. This is not medical advice; if something hurts, stop and get it checked.</string>
+</resources>
