@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: implemented-on-branch
 queue: active
 base: main@b5bef5163 (0.2.3)
 branch: feat/0.2.4-training-body
@@ -63,6 +63,28 @@ created: 2026-10-05
   hint, climbing sessions as climbing days.
 - Force gauge (experimental): Tindeq Progressor live force and max-pull test
   as a test value.
+
+## 3b. MCI-parity round (2026-10-06)
+
+- Weekly volume plan (`WeeklyVolume`): targets per area (finger, pull, push,
+  legs, core, antagonist, mobility) in hard sets per ISO week, scaled by goal,
+  focus, experience, age, block phase and training days; board days credit
+  finger and pull work; the suggestion fills the largest remaining deficit.
+- In-session autoregulation (`SetAutoregulation`): the remaining sets of a
+  block follow the last set (missed reps, RIR 0, big reserve, a hang let go
+  early via the "let go" button).
+- Pain stop in the player: body-map region, side, pain 0–9, swap / lighter /
+  end exercise, optional injury; medical-advice line.
+- Re-entry (`ReturnToTraining`): ≥ 10 days off → one week at 70 % sets, no
+  max finger; ≥ 21 days or illness ≥ 7 days → two weeks (60 %, 80 %); healed
+  finger injury → four weeks of light finger work; applied in every
+  suggestion path, board sessions become volume.
+- Training reminders (`TrainingReminders`) on planned days; week view in the
+  Workouts tab (planned / done / missed / paused).
+- Own body map (front/back) with primary/secondary areas for every catalogue
+  exercise, grip pictograms with edge depth, thumbnails; reward header after
+  training; haptics.
+- Today: one hero card, compact check-in, fixed quick-action row.
 
 ## 4. Visualisation
 
