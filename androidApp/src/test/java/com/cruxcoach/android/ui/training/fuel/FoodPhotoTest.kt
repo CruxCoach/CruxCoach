@@ -108,10 +108,10 @@ class FoodPhotoTest {
     }
 
     private fun waitForTag(tag: String) =
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
     private fun waitForText(text: String) =
-        compose.waitUntil(15_000) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
     @Test
     fun `weak phone sees a greyed photo button that explains itself`() {
@@ -169,7 +169,7 @@ class FoodPhotoTest {
         photo.setAmount(sprouts.key, "120")
         val day = service.today().toString()
         photo.save(day, Meal.LUNCH)
-        compose.waitUntil(10_000) { photo.state.value.phase is PhotoPhase.Saved }
+        compose.waitUntil(WAIT_MS) { photo.state.value.phase is PhotoPhase.Saved }
 
         val log = repo.foodLog(day)
         assertEquals(2, log.size)
@@ -196,5 +196,10 @@ class FoodPhotoTest {
         waitForText("counts as drinking")
         waitForText("BLS 4.0")
         waitForText("Log 2 entries")
+    }
+
+    private companion object {
+        /** CI runners and the shared dev server render slowly; same limit as TrainingScreensSmokeTest. */
+        const val WAIT_MS = 60_000L
     }
 }
