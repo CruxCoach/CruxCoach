@@ -132,8 +132,14 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         OFFLINE,
     }
 
-    /** One bulk request as Kilter saw it. [status] is what the client got, null when no answer arrived. */
-    class BulkRequest(val ordinal: Int, val rows: List<KilterLog>, val status: Int?, val written: Boolean, val fault: Fault?) {
+    /**
+     * One bulk request as Kilter saw it. [status] is what the client got, null when no answer arrived.
+     * [resent]: its rows Kilter held already; [hidden]: Kilter left attempts out of its logbook then.
+     */
+    class BulkRequest(
+        val ordinal: Int, val rows: List<KilterLog>, val status: Int?, val written: Boolean, val fault: Fault?,
+        val resent: Set<String> = emptySet(), val hidden: Boolean = false,
+    ) {
         val accepted: Boolean get() = status == 200
     }
 
@@ -181,7 +187,7 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
     fun forgetRowsBefore(ordinal: Int) {
         for (i in 0 until minOf(ordinal, requests.size)) {
             val r = requests[i]
-            if (r.rows.isNotEmpty()) requests[i] = BulkRequest(r.ordinal, emptyList(), r.status, r.written, r.fault)
+            if (r.rows.isNotEmpty()) requests[i] = BulkRequest(r.ordinal, emptyList(), r.status, r.written, r.fault, r.resent, r.hidden)
         }
     }
 
@@ -202,7 +208,6 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         if (rows.any { it.logUuid in logs || !inRequest.add(it.logUuid) }) {
             knownUuidRefusals++
             if (rows.size != rows.distinctBy { it.logUuid }.size) duplicatesInRequest++
-            rows.filterTo(ArrayList()) { it.logUuid in logs }.mapTo(resent) { it.logUuid }
             return 500
         }
         return null
@@ -212,12 +217,14 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
     fun bulk(rows: List<KilterLog>): Result<Unit> {
         val ordinal = requests.size
         val injected = fault(Op.BULK, ordinal)
+        val again = rows.mapNotNullTo(HashSet()) { row -> row.logUuid.takeIf { it in logs } }
+        resent += again
         if (injected == Fault.OFFLINE) {
-            requests += BulkRequest(ordinal, rows, null, written = false, fault = injected)
+            requests += BulkRequest(ordinal, rows, null, written = false, fault = injected, resent = again, hidden = hideAttempts)
             return Result.failure(java.net.UnknownHostException("unreachable"))
         }
         if (injected == Fault.BROKEN_OFF) {
-            requests += BulkRequest(ordinal, rows, null, written = false, fault = injected)
+            requests += BulkRequest(ordinal, rows, null, written = false, fault = injected, resent = again, hidden = hideAttempts)
             return Result.failure(java.net.SocketException("Connection reset"))
         }
         val status = when (injected) {
@@ -231,7 +238,7 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         if (written) rows.forEach(::write)
         val lost = injected == Fault.LOST_RESPONSE || injected == Fault.APP_STOPPED
         if (lost && written) rows.mapTo(writtenWithoutAnswer) { it.logUuid }
-        requests += BulkRequest(ordinal, rows, if (lost) null else status, written, injected)
+        requests += BulkRequest(ordinal, rows, if (lost) null else status, written, injected, again, hideAttempts)
         if (injected == Fault.APP_STOPPED) throw kotlinx.coroutines.CancellationException("app stopped mid-request")
         return when {
             lost -> Result.failure(java.net.SocketTimeoutException("timeout"))
@@ -739,10 +746,12 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         val sent = kilter.requests.subList(firstRequest, kilter.requests.size)
         if (status.requests > MAX_REQUESTS) fail("requests=${status.requests} exceeds $MAX_REQUESTS")
         if (sent.size != status.requests) fail("status counts ${status.requests} requests, Kilter saw ${sent.size}")
-        // Kilter leaves attempts out of its logbook: one of a request whose answer was lost may be sent
-        // again to find out whether Kilter holds it. Nothing else is sent twice.
-        val resentAllowed = if (kilter.hideAttempts) kilter.writtenWithoutAnswer.filterTo(HashSet()) { kilter.logs[it]?.topped == false } else emptySet()
-        (kilter.resent - resentAllowed).firstOrNull()?.let { fail("a log Kilter already holds was sent again ($it, ${kilter.knownUuidRefusals} requests)") }
+        // While Kilter leaves attempts out of its logbook, one of a request whose answer was lost may be
+        // sent again to find out whether Kilter holds it. Nothing else is sent twice.
+        for (request in sent) for (uuid in request.resent) {
+            val probe = request.hidden && uuid in kilter.writtenWithoutAnswer && kilter.logs[uuid]?.topped == false
+            if (!probe) fail("a log Kilter already holds was sent again ($uuid in request ${request.ordinal})")
+        }
         if (kilter.duplicatesInRequest > 0) fail("a request named one log twice")
         if (kilter.dashedLegacyWrites.isNotEmpty()) {
             fail("a legacy climb was written under its dashed id (separate statistics identity): ${kilter.dashedLegacyWrites.first().climbUuid}")

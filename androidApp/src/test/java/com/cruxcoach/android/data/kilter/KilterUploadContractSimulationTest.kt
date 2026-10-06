@@ -616,6 +616,7 @@ class KilterUploadContractSimulationTest {
         val runs = (1..3).map { world.uploadRun("S17b run ${it + 1}") }
         println("S17b ${runs.map { line(it) }}")
         assertEquals(0, runs.sumOf { it.probablyOnKilter })
+        assertEquals(0, runs.first().pending, "every row of the request is settled in the first run")
         assertTrue(world.allDelivered(includeImported = false))
         assertEquals(unknown, sim.parked())
     }
@@ -790,14 +791,21 @@ class KilterUploadContractSimulationTest {
         val plan = ArrayList<() -> Unit>()
         repeat(size) { plan += { world.add(Fate.VALID) } }
         if (rng.nextBoolean()) repeat(rng.nextInt(31)) { plan += { world.add(Fate.UNKNOWN) } }
-        repeat(rng.nextInt(size / 20 + 1)) { plan += { world.add(Fate.TWIN) } }
-        repeat(rng.nextInt(4)) { plan += { world.add(Fate.CONFLICT) } }
+        // Kilter's copy of an attempt cannot be seen while it leaves attempts out of its logbook:
+        // twins and conflicts are ascents then.
+        repeat(rng.nextInt(size / 20 + 1)) { plan += { if (hideAttempts) world.add(Fate.TWIN, isAscent = true) else world.add(Fate.TWIN) } }
+        repeat(rng.nextInt(4)) { plan += { if (hideAttempts) world.add(Fate.CONFLICT, isAscent = true) else world.add(Fate.CONFLICT) } }
         repeat(rng.nextInt(4)) { plan += { world.add(Fate.INVALID) } }
         repeat(rng.nextInt(4)) { plan += { world.add(Fate.COMMUNITY) } }
         repeat(rng.nextInt(6)) { plan += { world.add(Fate.VALID, climb = world.cruxcoachClimb(), spelling = LocalSpelling.CATALOGUE) } }
         if (rng.nextBoolean()) {
             repeat(rng.nextInt(size / 8 + 2)) { plan += { world.add(Fate.VALID, imported = true) } }
-            repeat(rng.nextInt(size / 8 + 2)) { plan += { world.addImportedTwin(TwinShift.values()[rng.nextInt(4)]) } }
+            repeat(rng.nextInt(size / 8 + 2)) {
+                plan += {
+                    val shift = TwinShift.values()[rng.nextInt(4)]
+                    if (hideAttempts) world.addImportedTwin(shift, isAscent = true) else world.addImportedTwin(shift)
+                }
+            }
             if (rng.nextInt(4) == 0) plan += { world.add(Fate.UNKNOWN, imported = true) }
         }
         plan.shuffled(rng).forEach { it() }
