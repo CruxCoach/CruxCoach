@@ -9,7 +9,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasTestTag
 import androidx.test.core.app.ApplicationProvider
@@ -34,6 +36,8 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -63,6 +67,9 @@ class FoodPhotoTest {
     private lateinit var repo: AthleteRepository
     private lateinit var service: AthleteService
     private lateinit var sessionManager: BoardSessionManager
+    /** Created view models; their scopes are cancelled before the databases close. */
+    private val viewModels = mutableListOf<androidx.lifecycle.ViewModel>()
+    private fun <T : androidx.lifecycle.ViewModel> T.tracked(): T = also { viewModels += it }
 
     private val modernCpu = setOf("fp", "asimd", "fphp", "asimdhp", "asimddp")
     /** Nokia 6.1: Snapdragon 630, 2.8 GB. */
@@ -75,7 +82,7 @@ class FoodPhotoTest {
     }
 
     private fun photoViewModel(f: DeviceFacts) =
-        FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), facts(f))
+        FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), facts(f)).tracked()
 
     @Before
     fun setUp() {
@@ -98,6 +105,14 @@ class FoodPhotoTest {
 
     @After
     fun tearDown() {
+        // Let in-flight database work finish before the drivers close underneath it.
+        viewModels.forEach { it.viewModelScope.cancel() }
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(10_000) {
+                viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
+            }
+        }
         athleteDriver.close(); secureDriver.close()
     }
 
@@ -117,10 +132,10 @@ class FoodPhotoTest {
     fun `weak phone sees a greyed photo button that explains itself`() {
         val photo = photoViewModel(nokia)
         assertEquals(VisionSupport.Unsupported(VisionSupport.Reason.CPU_FEATURES), photo.state.value.support)
-        render { FuelScreen({}, {}, viewModel = FuelViewModel(service), photoViewModel = photo) }
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_photo"))
-        compose.onNodeWithTag("fuel_photo").assertIsEnabled().performClick()
+        compose.onNodeWithTag("fuel_photo").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_photo_unavailable")
         waitForText("too old")
         compose.onAllNodesWithTag("fuel_photo_sheet").assertCountEquals(0)
@@ -138,10 +153,10 @@ class FoodPhotoTest {
     fun `capable phone opens the setup with the 2B download`() {
         val photo = photoViewModel(pixel6a)
         assertEquals(VisionSupport.Supported(VisionTier.SMALL), photo.state.value.support)
-        render { FuelScreen({}, {}, viewModel = FuelViewModel(service), photoViewModel = photo) }
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_photo"))
-        compose.onNodeWithTag("fuel_photo").performClick()
+        compose.onNodeWithTag("fuel_photo").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_photo_setup")
         waitForText("Qwen3.5 2B")
         waitForTag("fuel_photo_download")

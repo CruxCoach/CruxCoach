@@ -33,6 +33,8 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -60,6 +62,9 @@ class NutritionAlwaysOnTest {
     private lateinit var repo: AthleteRepository
     private lateinit var service: AthleteService
     private lateinit var sessionManager: BoardSessionManager
+    /** Created view models; their scopes are cancelled before the databases close. */
+    private val viewModels = mutableListOf<androidx.lifecycle.ViewModel>()
+    private fun <T : androidx.lifecycle.ViewModel> T.tracked(): T = also { viewModels += it }
 
     @Before
     fun setUp() {
@@ -84,6 +89,14 @@ class NutritionAlwaysOnTest {
 
     @After
     fun tearDown() {
+        // Let in-flight database work finish before the drivers close underneath it.
+        viewModels.forEach { it.viewModelScope.cancel() }
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        runBlocking {
+            kotlinx.coroutines.withTimeoutOrNull(10_000) {
+                viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
+            }
+        }
         athleteDriver.close(); secureDriver.close()
     }
 
@@ -92,10 +105,10 @@ class NutritionAlwaysOnTest {
 
     @Test
     fun `fresh profile gets the food log with a one-time intro card`() {
-        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context))
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
         compose.setContent {
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service), photoViewModel = photo) }
+                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
             }
         }
         waitForTag("fuel_list")
@@ -104,7 +117,7 @@ class NutritionAlwaysOnTest {
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_quick_add"))
         compose.onNodeWithTag("fuel_quick_add").assertExists()
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_intro_ok"))
-        compose.onNodeWithTag("fuel_intro_ok").performClick()
+        compose.onNodeWithTag("fuel_intro_ok").performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(WAIT_MS) { repo.profile().fuelIntroAccepted }
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_intro").fetchSemanticsNodes().isEmpty() }
         compose.onAllNodesWithTag("fuel_intro").assertCountEquals(0)
@@ -119,10 +132,10 @@ class NutritionAlwaysOnTest {
             name = "Pasta", amountG = 250.0, proteinG = 12.0, carbsG = 70.0, fatG = 2.0))
         repo.saveFoodLog(com.cruxcoach.athlete.model.FoodLogEntry("b", today, 2, com.cruxcoach.athlete.model.Meal.LUNCH,
             name = "Tomato sauce", amountG = 150.0, proteinG = 3.0, carbsG = 10.0, fatG = 8.0))
-        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context))
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
         compose.setContent {
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service), photoViewModel = photo) }
+                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
             }
         }
         waitForTag("fuel_list")
