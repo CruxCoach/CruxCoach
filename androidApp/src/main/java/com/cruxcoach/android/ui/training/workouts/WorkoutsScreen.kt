@@ -106,6 +106,9 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
 
     fun refreshWeek() { weekTick.update { it + 1 } }
 
+    /** Computes the week on the calling thread; also used by tests to get a deterministic state. */
+    internal fun computeWeekNow() = computeWeek(service.repo.profile(), service.repo.pauses())
+
     private fun computeWeek(profile: AthleteProfile, pauses: List<PausePeriod>) {
         val repo = service.repo
         val today = service.today()
@@ -113,6 +116,8 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
         val monday = today.minus(kotlinx.datetime.DatePeriod(days = today.dayOfWeek.isoDayNumber - 1))
         val sunday = monday.plus(kotlinx.datetime.DatePeriod(days = 6))
         val week = buildWeek(today, profile.weekPlan, activities, repo.workoutsBetween(monday.toString(), sunday.toString()), pauses)
+        // The week shows even if the re-entry check below fails.
+        _state.update { it.copy(today = today, week = week) }
         // Max-finger work before the break decides whether a long ramp's second week allows it again.
         val since = today.minus(kotlinx.datetime.DatePeriod(days = 120))
         val workoutDays = repo.workoutsBetween(since.toString(), today.toString()).associate { it.id to it.day }
@@ -120,7 +125,7 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
             .mapNotNull { s -> workoutDays[s.workoutId]?.let { d -> runCatching { kotlinx.datetime.LocalDate.parse(d) }.getOrNull() }?.let { it to s } }
         val maxBefore = com.cruxcoach.athlete.logic.ReturnToTraining.maxFingerBefore(sets, service.catalog, today)
         val ret = com.cruxcoach.athlete.logic.ReturnToTraining.state(activities, pauses, repo.allInjuries(), today, maxBefore)
-        _state.update { it.copy(today = today, week = week, returnState = ret) }
+        _state.update { it.copy(returnState = ret) }
     }
 
     fun start(routine: Routine, title: String?) = io {
