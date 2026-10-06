@@ -167,3 +167,13 @@ Nokia 6.1 (Android 15), owner's test account; every check read back through
   network, timeout, HTTP and internal stops, a used-up request or 5-minute time
   budget and rows waiting for Kilter; a finished run cancels them.
 
+Device round on build 1000020 (Nokia 6.1, test account, 2026-10-06): leaving
+the settings 4 s after confirming the imported upload, the run went on and
+finished (330 up, 3 twins, 8 proven unknown, 36 requests, 19 s); an ascent
+logged offline went up by itself 33 s after the network returned (WorkManager
+`kilter-upload-retry`, 120 s delay, network constraint; `trigger=RETRY`).
+Cutting Wi-Fi and data 2.5 s after confirming broke the first 100-row request,
+but the run reported `UnknownHostException`: OkHttp had silently retried the
+POST on a new connection (`retryOnConnectionFailure`), so no doubtful request
+was noted. The bulk upload now uses a client without that retry.
+

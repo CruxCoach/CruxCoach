@@ -435,6 +435,17 @@ class KilterApiClient @Inject constructor(
             .callTimeout(UPLOAD_CALL_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
+
+    /**
+     * The bulk upload must not be resent by OkHttp: on a connection that
+     * breaks mid-request it would silently post the rows again on a new one,
+     * where Kilter refuses a written row as known, and the error the caller
+     * gets would be the retry's (offline: "unknown host"), hiding that the
+     * first request may have been written (device test, 2026-10-06).
+     */
+    private val bulkHttpClient: OkHttpClient by lazy {
+        uploadHttpClient.newBuilder().retryOnConnectionFailure(false).build()
+    }
     private val refreshMutex = Mutex()
 
     // Client-side login throttle. Per-email exponential backoff in
@@ -917,7 +928,7 @@ class KilterApiClient @Inject constructor(
                 .addHeader("Authorization", "Bearer $token")
                 .post(json.encodeToString(logs).toRequestBody("application/json".toMediaType()))
                 .build()
-            uploadHttpClient.newCall(request).execute().use { response ->
+            bulkHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     // Do not retain response bodies: servers can echo private log data.
                     return@withContext Result.failure(KilterUploadException(response.code))

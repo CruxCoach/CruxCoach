@@ -55,7 +55,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   log it already holds; the app notes each request before sending it and
   settles a request without an answer against Kilter's logbook, also for the
   attempts Kilter leaves out of it. Entries it cannot settle that way are
-  listed as "probably on Kilter already".
+  listed as "probably on Kilter already". The HTTP client no longer resends an
+  upload by itself when the connection breaks mid-request.
 
 - The climb detail no longer clips holds at the board's edge. A climb set on a
   larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board
