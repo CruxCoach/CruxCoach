@@ -83,7 +83,7 @@ class BenchmarksViewModel @Inject constructor(private val service: AthleteServic
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
-            val logbook = runCatching { service.logbookSummary() }.getOrNull()
+            val logbook = runCatching { service.gradeSummary() }.getOrNull()
             combine(repo.observeAllBenchmarks(), repo.observeProfile(), repo.observeActiveInjuries()) { all, profile, injuries ->
                 val catalog = service.catalog
                 val bySlug = all.groupBy { it.exerciseSlug }
@@ -489,7 +489,7 @@ class BenchmarkCardViewModel @Inject constructor(private val service: AthleteSer
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
-            val logbook = runCatching { service.logbookSummary() }.getOrNull()
+            val logbook = runCatching { service.gradeSummary() }.getOrNull()
             combine(repo.observeBenchmarks(slug), repo.observeProfile(), repo.observeActiveInjuries()) { list, profile, injuries ->
                 val def = service.catalog[slug]
                 val bw = service.currentBodyweight()

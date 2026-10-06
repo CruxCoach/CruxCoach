@@ -48,7 +48,6 @@
     <string name="trc_session_minutes">Länge eines Trainings ohne Wand</string>
     <string name="trc_minutes">%1$d min</string>
     <string name="trc_add_on">Nach dem Klettern noch 10–15 min Antagonisten oder Rumpf?</string>
-    <string name="trc_preview_week">Vorgeschlagene Woche: %1$s</string>
     <string name="trc_experience_title">Klettern und Erfahrung</string>
     <string name="trc_experience_why">Damit der Coach sicher bleibt: Max-Hangs und Campus erst, wenn die Finger so weit sind, mehr Erholung, wo es hilft.</string>
     <string name="trc_contexts">Wo kletterst du?</string>
@@ -191,4 +190,6 @@
     <string name="trc_week_proposal_same">Dein Plan entspricht dem Vorschlag.</string>
     <string name="trc_week_proposal_show">Ansehen</string>
     <string name="trc_week_proposal_hide">Ausblenden</string>
+    <string name="trc_preview_week_title">Vorgeschlagene Woche</string>
+    <string name="trc_grade_pick">Grad wählen</string>
 </resources>

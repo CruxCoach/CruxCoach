@@ -143,6 +143,12 @@ class AthleteService @Inject constructor(
     /** Working grade, flash grade, rhythm — the coach setup's prefill and the load model's anchor. */
     fun logbookSummary(): LogbookSummary = LogbookSummaries.summarize(logbookRows(), today())
 
+    /** [logbookSummary], with the coach-setup grades standing in when there is no graded logbook. */
+    fun gradeSummary(): LogbookSummary {
+        val coach = repo.profile().coach
+        return LogbookSummaries.withCoachGrades(logbookSummary(), coach.currentGrade, coach.currentFlashGrade)
+    }
+
     private val readyMutex = Mutex()
     @Volatile private var ready = false
 
@@ -233,7 +239,8 @@ class AthleteService @Inject constructor(
     fun climberProfile(): ClimberProfileData {
         val today = today()
         val rows = logbookRows()
-        val summary = LogbookSummaries.summarize(rows, today)
+        val coach = repo.profile().coach
+        val summary = LogbookSummaries.withCoachGrades(LogbookSummaries.summarize(rows, today), coach.currentGrade, coach.currentFlashGrade)
         val zone = TimeZone.currentSystemDefault()
         val sets = PerformanceProfiles.RELEVANT_SLUGS.flatMap { slug -> repo.history(slug, HISTORY_LIMIT) }
             .filter { it.isCompleted }

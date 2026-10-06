@@ -50,8 +50,8 @@
         <item quantity="other">%d Wiederholungen</item>
     </plurals>
     <string name="trx_reps_short">%d×</string>
-    <string name="trx_add_to_running">Zum laufenden Training hinzufügen</string>
-    <string name="trx_start_with">Training mit dieser Übung starten</string>
+    <string name="trx_add_to_running">Zum Training</string>
+    <string name="trx_start_with">Damit starten</string>
     <string name="trx_injury_avoid">Deine Verletzung (%1$s) schließt diese Übung im Moment aus.</string>
     <string name="trx_injury_caution">Deine Verletzung (%1$s): nur schmerzfrei und mit weniger Last.</string>
     <string name="trx_injury_one_side">Deine Verletzung (%1$s): trainiere nur die %2$s Seite.</string>

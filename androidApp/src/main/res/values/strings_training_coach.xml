@@ -48,7 +48,6 @@
     <string name="trc_session_minutes">Length of a training without the wall</string>
     <string name="trc_minutes">%1$d min</string>
     <string name="trc_add_on">10–15 min antagonists or core after climbing?</string>
-    <string name="trc_preview_week">Proposed week: %1$s</string>
     <string name="trc_experience_title">Climbing and experience</string>
     <string name="trc_experience_why">Keeps the coach safe: max hangs and campus only when your fingers are ready, more recovery where it helps.</string>
     <string name="trc_contexts">Where do you climb?</string>
@@ -191,4 +190,6 @@
     <string name="trc_week_proposal_same">Your plan matches the proposal.</string>
     <string name="trc_week_proposal_show">Show</string>
     <string name="trc_week_proposal_hide">Hide</string>
+    <string name="trc_preview_week_title">Proposed week</string>
+    <string name="trc_grade_pick">Choose grade</string>
 </resources>

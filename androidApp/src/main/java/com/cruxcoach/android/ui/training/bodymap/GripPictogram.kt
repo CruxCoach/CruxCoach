@@ -2,6 +2,8 @@ package com.cruxcoach.android.ui.training.bodymap
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -76,14 +78,15 @@ fun gripFor(def: ExerciseDefinition, grip: Grip?): GripType? {
 @Composable
 fun GripPictogram(grip: GripType, edgeMm: Double?, modifier: Modifier = Modifier) {
     val label = gripTypeLabel(grip) + (edgeMm?.takeIf { isEdgeGrip(grip) }?.let { " · ${it.roundToInt()} mm" } ?: "")
-    Box(modifier.semantics { contentDescription = label }) {
-        GripCanvas(grip, edgeMm, Modifier.fillMaxSize())
+    // The depth label sits under the drawing, never on top of the edge.
+    Column(modifier.semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally) {
+        GripCanvas(grip, edgeMm, Modifier.fillMaxWidth().weight(1f))
         if (edgeMm != null && isEdgeGrip(grip)) {
             Text(
                 stringResource(R.string.trb_edge_mm, edgeMm.roundToInt()),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }

@@ -53,8 +53,10 @@ fun PainSheet(
     val severity = pain.roundToInt()
     val remember = rememberIt ?: (severity >= 5)
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("player_pain_sheet")) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
+    // Fully open: the body map is the main control and must not sit under the navigation bar.
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("player_pain_sheet")) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Healing, null, tint = CruxCoachDesign.colors.caution)
                 Spacer(Modifier.width(8.dp))
