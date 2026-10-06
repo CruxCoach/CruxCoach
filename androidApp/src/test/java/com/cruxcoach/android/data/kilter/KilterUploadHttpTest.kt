@@ -88,4 +88,22 @@ class KilterUploadHttpTest {
             assertEquals(1, server.requestCount)
         }
     }
+
+    @Test fun a_connection_lost_mid_request_is_not_resent_and_counts_as_without_answer() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST))
+            server.enqueue(MockResponse().setResponseCode(500))
+            val tokens = mockk<KilterTokenStore>(relaxed = true)
+            every { tokens.getAccessToken() } returns "synthetic-test-token"
+            every { tokens.isAccessTokenExpired() } returns false
+            // The app's client retries on connection failures by default; the bulk upload must not.
+            val client = KilterApiClient(tokens, OkHttpClient())
+            client.setEndpointsForTesting(server.url("/").toString().trimEnd('/'))
+            val result = client.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+            val error = assertIs<java.io.IOException>(result.exceptionOrNull())
+            assertEquals(1, server.requestCount, "the rows went out once")
+            assertTrue(KilterUploadFailure.noAnswer(error), "$error")
+        }
+    }
 }
