@@ -49,6 +49,8 @@ data class LogbookSummary(
     /** Weekdays climbed in at least a third of the last twelve weeks. */
     val usualClimbingDays: Set<Int> = emptySet(),
     val lastClimbDay: String? = null,
+    /** The grades come from the coach setup (no graded board logbook yet). */
+    val gradesFromCoach: Boolean = false,
 ) {
     val hasGrades: Boolean get() = workingDifficulty != null && sampleSize >= LogbookProfile.MIN_SAMPLE
 }
@@ -86,6 +88,21 @@ object LogbookSummaries {
             weekdayCounts = weekdayCounts,
             usualClimbingDays = weekdayCounts.filterValues { it >= 4 }.keys,
             lastClimbDay = days.maxOrNull()?.toString(),
+        )
+    }
+
+    /**
+     * Without a graded board logbook the grades the athlete confirmed in the
+     * coach setup stand in, so gym climbers get the grade-based views too.
+     */
+    fun withCoachGrades(summary: LogbookSummary, currentGrade: String?, flashGrade: String?): LogbookSummary {
+        if (summary.workingDifficulty != null) return summary
+        val working = currentGrade?.let(::difficultyOf) ?: return summary
+        val flash = flashGrade?.let(::difficultyOf)
+        return summary.copy(
+            workingDifficulty = working, workingGrade = fontOf(working),
+            flashDifficulty = flash ?: summary.flashDifficulty, flashGrade = flash?.let(::fontOf) ?: summary.flashGrade,
+            gradesFromCoach = true,
         )
     }
 

@@ -139,4 +139,5 @@
     <string name="trl_days_title">Climbing days</string>
     <string name="trl_days_empty">No climbing outside the board app logged yet.</string>
     <string name="trl_days_source_health">Health Connect</string>
+    <string name="trl_tile_from_coach">as you told the coach</string>
 </resources>

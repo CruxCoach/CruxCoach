@@ -51,8 +51,8 @@
         <item quantity="other">%d reps</item>
     </plurals>
     <string name="trx_reps_short">%d×</string>
-    <string name="trx_add_to_running">Add to current training</string>
-    <string name="trx_start_with">Start training with this exercise</string>
+    <string name="trx_add_to_running">Add to training</string>
+    <string name="trx_start_with">Start with it</string>
     <string name="trx_injury_avoid">Your injury (%1$s) rules this exercise out for now.</string>
     <string name="trx_injury_caution">Your injury (%1$s): only pain-free, with reduced load.</string>
     <string name="trx_injury_one_side">Your injury (%1$s): train the %2$s side only.</string>

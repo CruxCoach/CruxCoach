@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Wochenvolumen (MCI-Parität Punkt 2) -->
-    <string name="trv_title">Diese Woche</string>
+    <string name="trv_title">Wochenziele</string>
     <string name="trv_info_title">Wochenplan</string>
     <string name="trv_info_text">Jeder Bereich hat eine Spanne harter Sätze pro Woche (Finger: Einheiten mit mindestens 48 h Abstand). Ziel, Fokus, Erfahrung, Trainingstage und der aktuelle Block bestimmen die Spanne. Harte Board-Tage zählen für Finger, Zug und Rumpf. Der Vorschlag für heute füllt, was noch fehlt – nie auf Kosten der Erholung oder einer Verletzung.</string>
     <string name="trv_empty">Gerade keine Wochenziele – Entlastung, Taper oder Wettkampftag halten die Woche frei.</string>
@@ -22,4 +22,5 @@
     <string name="trv_reason_weekly">Dein Wochenplan: In diesem Bereich fehlt diese Woche noch am meisten.</string>
     <string name="trv_ev_sets">Woche: %1$s %2$d/%3$d Sätze</string>
     <string name="trv_ev_sessions">Woche: %1$s %2$d/%3$d Einheiten</string>
+    <string name="trv_paused">Pause aktiv – die Wochenziele ruhen, bis du zurück bist.</string>
 </resources>

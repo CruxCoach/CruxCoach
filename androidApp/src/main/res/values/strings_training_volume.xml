@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Weekly volume plan (MCI-parity point 2) -->
-    <string name="trv_title">This week</string>
+    <string name="trv_title">Weekly targets</string>
     <string name="trv_info_title">Weekly plan</string>
     <string name="trv_info_text">Each area has a range of hard sets per week (fingers: sessions at least 48 h apart). Your goal, focus, experience, training days and the current block set the range. Hard board days count towards fingers, pulling and core. Today\'s suggestion fills what is still missing — never at the cost of recovery or an injury.</string>
     <string name="trv_empty">No weekly targets right now – a deload, taper or competition day keeps the week free.</string>
@@ -22,4 +22,5 @@
     <string name="trv_reason_weekly">Your weekly plan: this area has the most left to do this week.</string>
     <string name="trv_ev_sets">Week: %1$s %2$d/%3$d sets</string>
     <string name="trv_ev_sessions">Week: %1$s %2$d/%3$d sessions</string>
+    <string name="trv_paused">Pause active – the weekly targets rest until you are back.</string>
 </resources>

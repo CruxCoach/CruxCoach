@@ -80,7 +80,7 @@ class QuickEstimateViewModel @Inject constructor(private val service: AthleteSer
             val catalog = service.catalog
             val hang = catalog["finger.max_hang"]?.let { InjuryAdvisor.assess(it, injuries) }
             val pickup = catalog["finger.one_arm_pickup"]?.let { InjuryAdvisor.assess(it, injuries) }
-            val logbook = runCatching { service.logbookSummary() }.getOrNull()
+            val logbook = runCatching { service.gradeSummary() }.getOrNull()
             val working = profile.coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) }
                 ?: logbook?.takeIf { it.hasGrades }?.workingDifficulty
             _state.value = QuickEstimateState(

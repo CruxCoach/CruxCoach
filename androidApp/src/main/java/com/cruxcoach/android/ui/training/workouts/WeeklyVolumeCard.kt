@@ -48,6 +48,8 @@ import kotlin.math.max
 data class WeeklyVolumeState(
     val loading: Boolean = true,
     val progress: List<AreaProgress> = emptyList(),
+    /** An open pause (illness, injury, holiday): the week's targets rest. */
+    val paused: Boolean = false,
 )
 
 @HiltViewModel
@@ -96,6 +98,7 @@ class WeeklyVolumeViewModel @Inject constructor(private val service: AthleteServ
         _state.value = WeeklyVolumeState(
             loading = false,
             progress = WeeklyVolume.progress(sets, activities, service.catalog, weekStart, targets, today),
+            paused = repo.openPause() != null,
         )
     }
 }
@@ -129,6 +132,9 @@ fun WeeklyVolumeCard(modifier: Modifier = Modifier) {
             }
             when {
                 s.loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                // During a pause nothing is "behind": the targets wait for the return.
+                s.paused -> Text(stringResource(R.string.trv_paused), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp).testTag("weekly_volume_paused"))
                 rows.isEmpty() -> Text(stringResource(R.string.trv_empty), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> {

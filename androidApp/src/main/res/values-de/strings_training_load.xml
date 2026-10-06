@@ -139,4 +139,5 @@
     <string name="trl_days_title">Klettertage</string>
     <string name="trl_days_empty">Noch kein Klettern außerhalb der Board-App eingetragen.</string>
     <string name="trl_days_source_health">Health Connect</string>
+    <string name="trl_tile_from_coach">laut deinem Coach-Profil</string>
 </resources>

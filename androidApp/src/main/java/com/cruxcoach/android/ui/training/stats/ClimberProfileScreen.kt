@@ -154,7 +154,11 @@ private fun HeadlineTiles(p: ClimberProfileData) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(stringResource(R.string.trl_tile_working), p.summary.workingDifficulty?.let(::fontLabel) ?: dash, Modifier.weight(1f),
-                supporting = if (p.summary.sampleSize > 0) stringResource(R.string.trl_tile_working_sub, p.summary.sampleSize) else null)
+                supporting = when {
+                    p.summary.gradesFromCoach -> stringResource(R.string.trl_tile_from_coach)
+                    p.summary.sampleSize > 0 -> stringResource(R.string.trl_tile_working_sub, p.summary.sampleSize)
+                    else -> null
+                })
             StatTile(stringResource(R.string.trl_tile_flash), p.summary.flashDifficulty?.let(::fontLabel) ?: dash, Modifier.weight(1f),
                 supporting = p.summary.maxDifficulty?.let { stringResource(R.string.trl_tile_max_sub, fontLabel(it)) })
         }

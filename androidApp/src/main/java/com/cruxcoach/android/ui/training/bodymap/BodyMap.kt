@@ -164,7 +164,7 @@ internal fun BodyMapCanvas(
                 paths.base.forEach { drawPath(it, base) }
                 paths.regions.forEach { (area, path) ->
                     val v = (highlights[area] ?: 0f).coerceIn(0f, 1f)
-                    drawPath(path, if (v <= 0f) idle else lerp(idle, accent, 0.35f + 0.65f * v))
+                    drawPath(path, if (v <= 0f) idle else lerp(idle, accent, areaMix(v)))
                     drawPath(path, outline, style = Stroke(width = 0.6f))
                 }
             }
@@ -577,5 +577,11 @@ fun bodyAreaLabel(area: BodyArea): String = stringResource(when (area) {
 @Composable
 internal fun bodyMapColor(intensity: Float): Color {
     val idle = lerp(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant, 0.12f)
-    return if (intensity <= 0f) idle else lerp(idle, MaterialTheme.colorScheme.primary, 0.35f + 0.65f * intensity.coerceIn(0f, 1f))
+    return if (intensity <= 0f) idle else lerp(idle, MaterialTheme.colorScheme.primary, areaMix(intensity))
 }
+
+/**
+ * Accent share of a highlighted area: main areas get the full accent, involved
+ * ones a clearly weaker tint, so the two read as different at a glance.
+ */
+internal fun areaMix(intensity: Float): Float = if (intensity >= 0.99f) 1f else 0.2f + 0.3f * intensity.coerceIn(0f, 1f)

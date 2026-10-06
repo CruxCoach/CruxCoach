@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training.coach
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -362,8 +363,11 @@ fun CoachSetupScreen(
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@TrainingScaffold
         }
+        // Every card starts at its top, not where the previous one was scrolled to.
+        val scroll = rememberScrollState()
+        LaunchedEffect(state.step) { scroll.scrollTo(0) }
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
+            Modifier.fillMaxSize().padding(padding).verticalScroll(scroll).padding(horizontal = 16.dp)
                 .testTag("coach_setup_${state.step}"),
         ) {
             StepDots(state.step, Modifier.padding(top = 12.dp, bottom = 4.dp))
@@ -571,8 +575,21 @@ private fun WeekCard(state: CoachSetupState, update: ((CoachProfile) -> CoachPro
     }
     val plan = state.proposal
     val routines = state.routines
-    val labels = (1..7).map { day -> weekdayName(day, TextStyle.SHORT) + " " + planEntryLabel(plan[day], routines) }
-    EffectPreview(stringResource(R.string.trc_preview_week, labels.joinToString(" · ")))
+    Card(Modifier.fillMaxWidth().padding(top = 16.dp).testTag("coach_preview"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(stringResource(R.string.trc_preview_week_title), style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer)
+            (1..7).forEach { day ->
+                Row(Modifier.padding(top = 2.dp)) {
+                    Text(weekdayName(day, TextStyle.SHORT), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(48.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Text(planEntryLabel(plan[day], routines), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+        }
+    }
 }
 
 // ── Card 3: climbing and experience ──────────────────────────────────
@@ -810,9 +827,12 @@ internal fun GradeStepper(value: String?, startFrom: Double?, tag: String, onCha
     val index = value?.let { v -> scale.indexOf(v.lowercase()) }?.takeIf { it >= 0 }
     fun startIndex(): Int = startFrom?.let { LogbookSummaries.fontOf(it) }?.let { scale.indexOf(it) }?.takeIf { it >= 0 }
         ?: scale.indexOf("6a").coerceAtLeast(0)
+    var picking by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(value?.let { gradeWithV(it) } ?: stringResource(R.string.trc_none), style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f).testTag(tag))
+        // Tapping the value opens the whole scale: one tap instead of a dozen "+".
+        Text(value?.let { gradeWithV(it) } ?: stringResource(R.string.trc_grade_pick), style = MaterialTheme.typography.titleMedium,
+            color = if (value == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f).clickable { picking = true }.padding(vertical = 8.dp).testTag(tag))
         if (value != null) {
             IconButton(onClick = { onChange(null) }) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.trc_clear)) }
         }
@@ -821,6 +841,27 @@ internal fun GradeStepper(value: String?, startFrom: Double?, tag: String, onCha
         Spacer(Modifier.width(8.dp))
         OutlinedButton(onClick = { onChange(scale[((index ?: startIndex()) + if (index == null) 0 else 1).coerceIn(0, scale.lastIndex)]) },
             modifier = Modifier.testTag("${tag}_plus")) { Text("+") }
+    }
+    if (picking) {
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = ((index ?: startIndex()) - 3).coerceAtLeast(0))
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text(stringResource(R.string.trc_grade_pick)) },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn(state = listState, modifier = Modifier.heightIn(max = 360.dp).testTag("${tag}_list")) {
+                    items(scale.size) { i ->
+                        val g = scale[i]
+                        val selected = i == index
+                        Text(gradeWithV(g), style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.fillMaxWidth().clickable { onChange(g); picking = false }.padding(vertical = 12.dp)
+                                .testTag("${tag}_item_$g"))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 }
 
