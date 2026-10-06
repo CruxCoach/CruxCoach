@@ -44,6 +44,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -367,8 +368,11 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `workouts tab shows this week's calendar`() {
-        render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)) }
+        val vm = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)
+        // Synchronously, so a failure names its line instead of timing out in the UI.
+        vm.computeWeekNow()
+        assertEquals(7, vm.state.value.week.size)
+        render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {}, viewModel = vm) }
         scrollTo("workouts_list", hasTestTag("week_calendar"))
     }
 
