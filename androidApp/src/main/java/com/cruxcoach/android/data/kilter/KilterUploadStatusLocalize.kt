@@ -15,6 +15,7 @@ fun KilterUploadStatus.localized(context: Context): String {
         KilterUploadReason.AUTHENTICATION -> R.string.kilter_upload_auth
         KilterUploadReason.WALL_CONTEXT -> R.string.kilter_upload_wall
         KilterUploadReason.NETWORK -> R.string.kilter_upload_network
+        KilterUploadReason.TIMEOUT -> R.string.kilter_upload_timeout
         KilterUploadReason.HTTP -> R.string.kilter_upload_http
         KilterUploadReason.CONFLICT -> R.string.kilter_upload_conflict
         KilterUploadReason.INTERNAL -> R.string.kilter_upload_internal
@@ -22,8 +23,10 @@ fun KilterUploadStatus.localized(context: Context): String {
     val res = context.resources
     return buildList {
         add(context.getString(reasonText))
+        if (nextRetry > 0) add(context.getString(R.string.kilter_upload_auto_retry))
         if (rejectedByKilter > 0) add(res.getQuantityString(R.plurals.kilter_upload_rejected, rejectedByKilter, rejectedByKilter))
         if (unconfirmed > 0) add(res.getQuantityString(R.plurals.kilter_upload_unconfirmed, unconfirmed, unconfirmed))
+        if (probablyOnKilter > 0) add(res.getQuantityString(R.plurals.kilter_upload_probably_on_kilter, probablyOnKilter, probablyOnKilter))
         if (rejectedInvalid > 0) add(res.getQuantityString(R.plurals.kilter_upload_invalid, rejectedInvalid, rejectedInvalid))
         if (rejectedConflict > 0) add(res.getQuantityString(R.plurals.kilter_upload_conflicts, rejectedConflict, rejectedConflict))
         if (heldImported > 0) add(res.getQuantityString(R.plurals.kilter_upload_held_imported, heldImported, heldImported))

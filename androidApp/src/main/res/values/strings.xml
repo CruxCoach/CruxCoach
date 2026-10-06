@@ -3044,6 +3044,8 @@
     <string name="kilter_upload_network">Cannot reach Kilter. Please check your connection.</string>
     <string name="kilter_upload_http">Kilter rejected the upload. Please try again.</string>
     <string name="kilter_upload_internal">Upload failed. Please try again.</string>
+    <string name="kilter_upload_timeout">Kilter is answering too slowly right now.</string>
+    <string name="kilter_upload_auto_retry">CruxCoach will try again automatically.</string>
     <string name="kilter_upload_retry">Retry upload</string>
     <string name="kilter_upload_report_title">Kilter logbook upload</string>
     <string name="kilter_diagnostics_attach">Attach Kilter upload diagnostics</string>
@@ -3073,13 +3075,18 @@
         <item quantity="one">Kilter has not taken %d entry yet. It is tried again automatically.</item>
         <item quantity="other">Kilter has not taken %d entries yet. They are tried again automatically.</item>
     </plurals>
+    <plurals name="kilter_upload_probably_on_kilter">
+        <item quantity="one">%d entry is probably on Kilter already: an earlier upload got no answer, and Kilter does not take it again.</item>
+        <item quantity="other">%d entries are probably on Kilter already: an earlier upload got no answer, and Kilter does not take them again.</item>
+    </plurals>
     <string name="kilter_upload_show_entries">Show entries</string>
-    <string name="kilter_upload_list_title">Not on Kilter</string>
+    <string name="kilter_upload_list_title">Not uploaded</string>
     <string name="kilter_upload_list_intro">These entries stay in your logbook. If a climb does exist on Kilter, send the list as a bug report so it can be fixed.</string>
     <string name="kilter_upload_list_empty">All entries are on Kilter.</string>
     <string name="kilter_upload_list_report">Send as bug report</string>
     <string name="kilter_upload_reason_not_on_kilter">Kilter does not know this climb</string>
     <string name="kilter_upload_reason_retry_later">Not taken yet, tried again automatically</string>
+    <string name="kilter_upload_reason_probably_on_kilter">Probably on Kilter already (an answer was lost)</string>
     <string name="kilter_upload_reason_conflict">Kilter has this entry with different content</string>
     <string name="kilter_upload_reason_invalid_date">Date Kilter cannot accept</string>
     <string name="kilter_upload_entry_bid">attempts only</string>

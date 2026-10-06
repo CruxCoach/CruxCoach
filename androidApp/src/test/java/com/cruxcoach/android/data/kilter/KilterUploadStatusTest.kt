@@ -77,27 +77,27 @@ class KilterUploadStatusTest {
     @Test fun a_row_refused_after_an_accepted_batch_does_not_block_and_is_held_once_proven() = runTest {
         var now = 1_000_000L
         engine.clock = { now }
-        every { personal.getUnsyncedAscents() } returns (0..200).map(::ascent)
+        every { personal.getUnsyncedAscents() } returns (0..100).map(::ascent)
         coEvery { api.uploadLogs(any()) } returnsMany listOf(
             Result.success(Unit), Result.failure(KilterUploadException(500)),
         )
         val report = engine.syncBidirectional().getOrThrow()
-        assertEquals(200, report.uploaded)
+        assertEquals(100, report.uploaded)
         assertFalse(report.uploadFailed)
         // Refused last: nothing was accepted after it, so it is retried rather than held.
         assertEquals(1, report.uploadStatus?.pending)
         assertEquals(1, report.uploadStatus?.unconfirmed)
         assertEquals(0, report.uploadStatus?.rejectedByKilter)
         coVerify(exactly = 2) { api.uploadLogs(any()) }
-        verify(exactly = 200) { personal.markAscentSyncedIfUnchanged(any(), any()) }
-        verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-200", any()) }
+        verify(exactly = 100) { personal.markAscentSyncedIfUnchanged(any(), any()) }
+        verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-100", any()) }
         // Alone in the queue it waits for its retry instead of costing every trigger a request.
-        every { personal.getUnsyncedAscents() } returns listOf(ascent(200))
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(100))
         assertEquals(1, engine.uploadPendingLogs().unconfirmed)
         coVerify(exactly = 2) { api.uploadLogs(any()) }
         // With a new entry it goes first; Kilter accepts the new one after it: proven, held.
-        every { personal.getUnsyncedAscents() } returns listOf(ascent(200), ascent(201))
-        kilterRefuses("test-climb-200")
+        every { personal.getUnsyncedAscents() } returns listOf(ascent(100), ascent(101))
+        kilterRefuses("test-climb-100")
         val proven = engine.uploadPendingLogs()
         assertEquals(1, proven.rejectedByKilter)
         assertEquals(1, proven.uploaded)
@@ -175,13 +175,13 @@ class KilterUploadStatusTest {
     @Test fun opt_out_between_batches_stops_remaining_requests() = runTest {
         val push = kotlinx.coroutines.flow.MutableStateFlow(true)
         every { prefs.kilterPushEnabled } returns push
-        every { personal.getUnsyncedAscents() } returns (0..200).map(::ascent)
+        every { personal.getUnsyncedAscents() } returns (0..100).map(::ascent)
         coEvery { api.uploadLogs(any()) } answers {
             push.value = false
             Result.success(Unit)
         }
         val result = engine.uploadPendingLogs()
-        assertEquals(200, result.uploaded)
+        assertEquals(100, result.uploaded)
         assertEquals(1, result.pending)
         assertEquals(KilterUploadReason.DISABLED, result.reason)
         coVerify(exactly = 1) { api.uploadLogs(any()) }
@@ -247,8 +247,8 @@ class KilterUploadStatusTest {
         assertEquals(0, result.pending)
         assertEquals(KilterUploadReason.NONE, result.reason)
         verify(exactly = 0) { personal.markAscentSyncedIfUnchanged("test-log-137", any()) }
-        // 2 chunks + about two requests per halving of the refused one.
-        assertTrue(result.requests <= 2 + 2 * 8, "requests=${result.requests}")
+        // 4 chunks + about two requests per halving of the refused one.
+        assertTrue(result.requests <= 4 + 2 * 7, "requests=${result.requests}")
     }
 
     @Test fun the_other_case_of_a_compact_id_is_tried_once_when_the_index_misses_a_climb() = runTest {
@@ -463,7 +463,7 @@ class KilterUploadStatusTest {
             if (logs.any { it.climbUuid == "test-climb-5" }) Result.failure(KilterUploadException(500)) else Result.success(Unit)
         }
         val result = engine.uploadPendingLogs()
-        assertEquals(listOf(200, 200, 200), sizes.take(3))
+        assertEquals(List(6) { 100 }, sizes.take(6))
         assertEquals(599, result.uploaded)
         assertEquals(1, result.rejectedByKilter)
     }
@@ -500,5 +500,32 @@ class KilterUploadStatusTest {
         every { personal.getUnsyncedAscents() } returns listOf(ascent(1))
         engine.uploadPendingLogs(prefetchedLogs = emptyList(), snapshotGeneration = 0)
         coVerify(exactly = 2) { api.fetchLogs() }
+    }
+
+    @Test fun a_failure_without_an_answer_is_told_apart_from_one_that_never_reached_kilter() {
+        // Never sent: nothing can be on Kilter.
+        for (e in listOf(
+            java.net.UnknownHostException("kilter"), java.net.ConnectException("refused"),
+            java.net.NoRouteToHostException("route"), javax.net.ssl.SSLHandshakeException("tls"),
+            java.net.SocketTimeoutException("failed to connect to api.kiltergrips.com after 15000ms"),
+            KilterUploadException(500), null,
+        )) assertFalse(KilterUploadFailure.noAnswer(e), "$e")
+        // Sent, answer missing: Kilter may have written it.
+        for (e in listOf(java.net.SocketTimeoutException("timeout"), java.io.InterruptedIOException("timeout"), java.net.SocketException("Connection reset"), java.io.IOException("unexpected end of stream"))) {
+            assertTrue(KilterUploadFailure.noAnswer(e), "$e")
+        }
+        assertTrue(KilterUploadFailure.timedOut(java.net.SocketTimeoutException("timeout")))
+        assertTrue(KilterUploadFailure.timedOut(java.io.InterruptedIOException("timeout")))
+        assertFalse(KilterUploadFailure.timedOut(java.net.SocketException("Connection reset")))
+        assertFalse(KilterUploadFailure.timedOut(java.net.SocketTimeoutException("failed to connect to api.kiltergrips.com after 15000ms")))
+    }
+
+    @Test fun a_timeout_is_reported_as_such_and_the_request_is_noted_as_doubtful() = runTest {
+        coEvery { api.uploadLogs(any()) } returns Result.failure(java.net.SocketTimeoutException("timeout"))
+        val result = engine.uploadPendingLogs()
+        assertEquals(KilterUploadReason.TIMEOUT, result.reason)
+        assertEquals(1, result.pending)
+        assertEquals(1, result.nextRetry)
+        assertTrue(KilterUploadDiagnostics.diagnosticLine(result).endsWith("probablyOnKilter=0 autoRetry=1"))
     }
 }

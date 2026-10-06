@@ -368,6 +368,9 @@ class KilterApiClient @Inject constructor(
         // Kilter's PowerSync endpoint. User circuits live ONLY here (REST
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
+        const val UPLOAD_READ_TIMEOUT_S = 90L
+        const val UPLOAD_WRITE_TIMEOUT_S = 30L
+        const val UPLOAD_CALL_TIMEOUT_S = 120L
         const val CLIENT_ID = "kilter"
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
@@ -418,6 +421,20 @@ class KilterApiClient @Inject constructor(
     // because isDraft is null"), with the error wrapped as a generic
     // HTTP 500 transaction-error so the cause is invisible client-side.
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    /**
+     * The upload's calls (bulk upload, logbook read) get more time than the
+     * others: under load Kilter took longer than the 30 s read timeout for a
+     * 200-row request (field report, 2026-10-05), and a request it answers too
+     * late leaves its rows in doubt.
+     */
+    private val uploadHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .readTimeout(UPLOAD_READ_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(UPLOAD_WRITE_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(UPLOAD_CALL_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
     private val refreshMutex = Mutex()
 
     // Client-side login throttle. Per-email exponential backoff in
@@ -658,7 +675,7 @@ class KilterApiClient @Inject constructor(
         var lastError: Exception = Exception("fetchLogs: no attempt made")
         repeat(DOWNLOAD_MAX_RETRIES + 1) { attempt ->
             try {
-                val response = httpClient.newCall(request).execute()
+                val response = uploadHttpClient.newCall(request).execute()
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                         ?: return@withContext Result.failure(Exception("Leere Antwort"))
@@ -883,9 +900,10 @@ class KilterApiClient @Inject constructor(
      * all of them and writes nothing (verified live on 2026-09-29), so a
      * failed request can be split and retried without duplicating anything.
      *
-     * Failures: [KilterUploadException] with the HTTP status; IOException when
-     * the response was lost (the rows may have been written); KilterApiException
-     * without a usable session.
+     * Failures: [KilterUploadException] with the HTTP status; an IOException
+     * when no answer arrived ([KilterUploadFailure.noAnswer] tells whether the
+     * request may have reached Kilter, so the rows may have been written);
+     * KilterApiException without a usable session.
      */
     suspend fun uploadLogs(logs: List<KilterLog>): Result<Unit> = withContext(Dispatchers.IO) {
         if (logs.isEmpty()) return@withContext Result.success(Unit)
@@ -899,7 +917,7 @@ class KilterApiClient @Inject constructor(
                 .addHeader("Authorization", "Bearer $token")
                 .post(json.encodeToString(logs).toRequestBody("application/json".toMediaType()))
                 .build()
-            httpClient.newCall(request).execute().use { response ->
+            uploadHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     // Do not retain response bodies: servers can echo private log data.
                     return@withContext Result.failure(KilterUploadException(response.code))
