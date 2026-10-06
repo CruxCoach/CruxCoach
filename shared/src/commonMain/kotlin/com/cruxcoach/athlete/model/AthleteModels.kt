@@ -336,6 +336,11 @@ data class AthleteProfile(
     val coach: CoachProfile = CoachProfile(),
     /** Exercises the athlete never wants suggested ("nie vorschlagen"); the counterpart of favourites. */
     val excludedExercises: Set<String> = emptySet(),
+    /** Optional training reminder on planned days (week plan) at a time of day. */
+    val trainingReminderEnabled: Boolean = false,
+    val trainingReminderMinutes: Int = 17 * 60,
+    /** Also remind on planned board days, not only on off-wall workouts. */
+    val trainingReminderOnClimbingDays: Boolean = true,
 )
 
 // ── Coach profile (FEAT-071) ─────────────────────────────────────────
