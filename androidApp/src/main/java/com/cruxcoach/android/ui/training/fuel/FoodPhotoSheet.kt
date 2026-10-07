@@ -131,7 +131,7 @@ fun FoodPhotoSheet(
     LaunchedEffect(state.phase) { if (state.phase is PhotoPhase.Saved) { viewModel.onClose(); onSaved() } }
     val close = { viewModel.onClose(); onDismiss() }
 
-    ModalBottomSheet(onDismissRequest = close, modifier = Modifier.testTag("fuel_photo_sheet")) {
+    ModalBottomSheet(onDismissRequest = close, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_photo_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.fvp_title), style = MaterialTheme.typography.titleLarge)
             when (val phase = state.phase) {
