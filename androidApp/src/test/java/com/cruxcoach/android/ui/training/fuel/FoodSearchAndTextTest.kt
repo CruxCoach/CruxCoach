@@ -118,7 +118,10 @@ class FoodSearchAndTextTest {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("haferflocken")
-        waitForTag("fuel_bls_C133000")
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_bls_C133000")); true }
+                .getOrDefault(false)
+        }
         compose.onNodeWithTag("fuel_bls_C133000").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_amount_dialog")
         compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("80")
@@ -146,7 +149,11 @@ class FoodSearchAndTextTest {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("skyr")
-        waitForTag("fuel_off_4025500000001")
+        // BLS, USDA and products answer in any order; scroll to the product once it is listed.
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_off_4025500000001")); true }
+                .getOrDefault(false)
+        }
         compose.onNodeWithTag("fuel_off_4025500000001").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_amount_dialog")
         // A product with a serving size starts on "1 portion".
