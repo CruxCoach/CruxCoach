@@ -63,6 +63,9 @@
     <!-- FEAT-069: barcode scan of packaged foods, decoded on the device; nothing is stored. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- FEAT-069: optional, write-only export of meals and water to Health Connect (Android 14+). -->
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
 
     <queries>
         <!-- Optional local MoonBoard migration. Used only after the user taps
@@ -174,6 +177,21 @@
 
         <!-- FEAT-069: the food photo model runs in its own process so that
              Android can reclaim its 2–4 GB without killing the app. -->
+        <!-- Health Connect links here from its permission screen: what CruxCoach writes and why. -->
+        <activity
+            android:name=".foodvision.HealthConnectRationaleActivity"
+            android:exported="false" />
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".foodvision.HealthConnectRationaleActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <service
             android:name=".foodvision.FoodVisionService"
             android:exported="false"

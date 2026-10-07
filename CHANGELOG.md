@@ -96,6 +96,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Logged foods can be changed: tap an entry to fix its amount or meal.
 - Recipes: put a dish together from any foods, split it into portions
   (optionally by the cooked weight) and log it by the portion.
+- Health Connect (Android 14+): optionally send meals and water there, write-only.
 - US foods: "Find food" also lists 7,793 generic foods from USDA FoodData
   Central with their cup weights, so a cup of oats or rice is logged right.
 - Iron, calcium and vitamin D: a weekly estimate from your log next to the

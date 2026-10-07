@@ -96,6 +96,14 @@ portions.
   any food; the ingredients are kept (settings table, `recipe:<id>`) so the
   recipe can be changed. Foods without a weight cannot be ingredients.
 
+- Health Connect (Android 14+, the system's built-in API – no extra library):
+  an opt-in switch in the nutrition settings writes logged meals (name, meal,
+  energy, protein, carbohydrate, fat) and water, write-only. Each entry is one
+  record with client record id `cruxcoach-food-<id>` / `cruxcoach-water-<id>`;
+  the shown day is synced when nutrition opens or changes, so edits replace and
+  deletions remove records. Health Connect's permission screen links to an
+  explanation (VIEW_PERMISSION_USAGE alias). Older Android: the switch says so.
+
 ## US units (owner request 2026-10-07)
 
 - The unit system (metric / US) is an app setting next to the language and

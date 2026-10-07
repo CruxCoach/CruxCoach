@@ -108,8 +108,9 @@ class TrainingScreensSmokeTest {
         }
     }
 
-    private fun waitForTag(tag: String) = compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-    private fun waitForText(text: String) = compose.waitUntil(15_000) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    // 60 s: a loaded CI runner needs more than 15 s for the first database load of a screen.
+    private fun waitForTag(tag: String) = compose.waitUntil(60_000) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+    private fun waitForText(text: String) = compose.waitUntil(60_000) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 
     /** Lazy lists compose only what is on screen; scroll the target into view first. */
     private fun scrollTo(listTag: String, target: SemanticsMatcher) {
@@ -133,7 +134,7 @@ class TrainingScreensSmokeTest {
     @Test
     fun `exercise library lists exercises with injury filters on`() {
         render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = ExerciseCatalogViewModel(service)) }
-        compose.waitUntil(15_000) { compose.onAllNodes(tagPrefix("exercise_row_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(60_000) { compose.onAllNodes(tagPrefix("exercise_row_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
@@ -278,7 +279,7 @@ class TrainingScreensSmokeTest {
     fun `routine editor prefills a starter routine`() {
         render { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, "builtin:${BuiltinRoutines.LEGS_BASICS}", {}, {},
             viewModel = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service)) }
-        compose.waitUntil(15_000) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(60_000) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
