@@ -104,14 +104,24 @@ class AthleteService @Inject constructor(
     private val readyMutex = Mutex()
     @Volatile private var ready = false
 
+    /** The phone's region for first-start defaults; unset when a test builds the service by hand. */
+    @Inject lateinit var systemRegion: SystemRegion
+
     /** Opens the database, loads the catalogue and imports 0.2.3 body stats once. */
     suspend fun ensureReady() = withContext(Dispatchers.IO) {
         catalogStore.ensureLoaded()
         readyMutex.withLock {
             if (ready) return@withLock
+            setFirstStartUnits()
             importLegacyBodyStats()
             ready = true
         }
+    }
+
+    /** A new athlete starts in the units of the phone's region: US customary in the US, metric elsewhere. */
+    private fun setFirstStartUnits() {
+        if (repo.hasStoredProfile() || !::systemRegion.isInitialized) return
+        repo.saveProfile(Units.withUnits(AthleteProfile(), Units.defaultFor(systemRegion.country())))
     }
 
     private fun importLegacyBodyStats() {

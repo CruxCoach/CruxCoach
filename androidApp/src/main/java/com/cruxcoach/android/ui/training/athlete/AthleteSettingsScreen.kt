@@ -163,7 +163,12 @@ fun AthleteSettingsScreen(
             // Nutrition is always on (owner 2026-10-05); only its options remain.
             SectionTitle(stringResource(R.string.tra_module_fuel))
             SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
-            Text(stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)), modifier = Modifier.padding(top = 8.dp))
+            Text(
+                if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
+                    formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
+                else stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)),
+                modifier = Modifier.padding(top = 8.dp),
+            )
             var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
             Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
                 onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
@@ -171,9 +176,10 @@ fun AthleteSettingsScreen(
             // Units and personal data
             SectionTitle(stringResource(R.string.tra_units_title))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { it.copy(units = UnitSystem.METRIC, smallestIncrementKg = 1.0) } },
+                // The same setting as in the app settings, next to the language.
+                FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
                     label = { Text(stringResource(R.string.tra_units_metric)) })
-                FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { it.copy(units = UnitSystem.IMPERIAL, smallestIncrementKg = 2.5 / Units.LB_PER_KG) } },
+                FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
                     label = { Text(stringResource(R.string.tra_units_imperial)) })
             }
             SectionTitle(stringResource(R.string.tra_personal_title)) {

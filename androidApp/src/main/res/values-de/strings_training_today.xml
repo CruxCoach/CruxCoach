@@ -100,7 +100,6 @@
     <string name="trt_protein">Protein</string>
     <string name="trt_carbs_for">Kohlenhydrate für: %1$s</string>
     <string name="trt_water">Wasser</string>
-    <string name="trt_water_add">+250 ml</string>
     <string name="trt_sugg_benchmarks_title">Startwerte eintragen</string>
     <string name="trt_sugg_benchmarks_text">Max Hang, Blockheben, Klimmzug mit Zusatzgewicht: Aus dem, was du schaffst, plant CruxCoach deine Lasten.</string>
     <string name="trt_sugg_benchmarks_action">Eintragen</string>

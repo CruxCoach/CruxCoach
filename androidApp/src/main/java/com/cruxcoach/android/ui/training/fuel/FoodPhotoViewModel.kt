@@ -24,6 +24,7 @@ import com.cruxcoach.athlete.logic.DetectedFood
 import com.cruxcoach.athlete.logic.DeviceFacts
 import com.cruxcoach.athlete.logic.FoodMatcher
 import com.cruxcoach.athlete.logic.FoodVisionParser
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MealTextParser
 import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.VisionCapability
@@ -31,6 +32,7 @@ import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.UnitSystem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +61,8 @@ data class ReviewItem(
     val included: Boolean = true,
     /** Water goes to the hydration log instead of the food log. */
     val water: Boolean = false,
+    /** Unit of [amountText]: g or oz for food, ml or fl oz for water. */
+    val unit: FuelUnits.Amount = if (water) FuelUnits.Amount.ML else FuelUnits.Amount.G,
 )
 
 sealed interface PhotoPhase {
@@ -323,16 +327,22 @@ class FoodPhotoViewModel @Inject constructor(
 
     // ── Review ───────────────────────────────────────────────────────
 
+    /** The athlete's unit system; the fuel screen keeps it current. */
+    @Volatile var units: UnitSystem = UnitSystem.METRIC
+
     private fun reviewItem(food: DetectedFood, matcher: FoodMatcher): ReviewItem {
         if (isWater(food)) {
-            return ReviewItem(nextKey++, food, emptyList(), null, uncertain = false, amountText = amount(food.grams), water = true)
+            val unit = FuelUnits.unitFor(units, drink = true)
+            return ReviewItem(nextKey++, food, emptyList(), null, uncertain = false, amountText = inputText(food.grams, unit),
+                water = true, unit = unit)
         }
         val candidates = matcher.match(food, limit = 6)
         val best = candidates.firstOrNull()
+        val unit = FuelUnits.unitFor(units, drink = best?.food?.let { FuelUnits.isDrink("bls:${it.code}", it.nameEn) } ?: false)
         return ReviewItem(
             key = nextKey++, detected = food, candidates = candidates, choice = best?.food,
             uncertain = best == null || best.score < FoodMatcher.CONFIDENT_SCORE,
-            amountText = amount(food.grams),
+            amountText = inputText(food.grams, unit), unit = unit,
         )
     }
 
@@ -351,7 +361,8 @@ class FoodPhotoViewModel @Inject constructor(
     fun addFood(food: BlsFood) {
         _state.update { s ->
             val review = s.phase as? PhotoPhase.Review ?: return@update s
-            val item = ReviewItem(nextKey++, null, emptyList(), food, uncertain = false, amountText = "100")
+            val unit = FuelUnits.unitFor(units, FuelUnits.isDrink("bls:${food.code}", food.nameEn))
+            val item = ReviewItem(nextKey++, null, emptyList(), food, uncertain = false, amountText = inputText(100.0, unit), unit = unit)
             s.copy(phase = review.copy(items = review.items + item))
         }
     }
@@ -453,9 +464,9 @@ class FoodPhotoViewModel @Inject constructor(
 
         fun displayName(food: DetectedFood): String = if (german()) food.nameDe else food.nameEn
 
-        fun amount(grams: Double): String = grams.toInt().toString()
-
+        /** Grams (or ml for water) of a review line, whatever unit it is shown in. */
         fun amountOf(item: ReviewItem): Double? =
-            item.amountText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 && it <= FoodVisionParser.MAX_GRAMS }
+            item.amountText.replace(',', '.').toDoubleOrNull()?.let { FuelUnits.toBase(it, item.unit) }
+                ?.takeIf { it > 0 && it <= FoodVisionParser.MAX_GRAMS }
     }
 }

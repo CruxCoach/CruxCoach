@@ -42,6 +42,7 @@
     <string name="tra_module_fuel">Nutrition</string>
     <string name="tra_show_calories">Show calories</string>
     <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
+    <string name="tra_protein_per_kg_lb">Protein: %1$s g per kg body weight (%2$s g per lb)</string>
     <string name="tra_units_title">Units</string>
     <string name="tra_units_metric">kg / cm</string>
     <string name="tra_units_imperial">lb / in</string>

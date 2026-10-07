@@ -32,7 +32,10 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.android.ui.training.fuel.amountText
+import com.cruxcoach.android.ui.training.fuel.unitLabel
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.ReadinessLevel
 import com.cruxcoach.athlete.logic.ReadinessReason
 import com.cruxcoach.athlete.logic.RedsSignal
@@ -689,10 +692,13 @@ private fun FuelCard(state: TodayState, onOpen: () -> Unit, onAddWater: (Int) ->
             Progress(stringResource(R.string.trt_protein), state.proteinToday, t.proteinG.toDouble(), "g")
             Progress(stringResource(R.string.trt_carbs_for, dayLoadLabel(t.dayLoad)), state.carbsToday, t.carbsG.toDouble(), "g")
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Progress(stringResource(R.string.trt_water), state.waterTodayMl.toDouble(), t.waterMl.toDouble(), "ml",
-                    Modifier.weight(1f))
-                FilledTonalButton(onClick = { onAddWater(250) }, modifier = Modifier.padding(start = 8.dp).testTag("today_water_add")) {
-                    Text(stringResource(R.string.trt_water_add))
+                // Stored in ml; fl oz in US units.
+                val volume = FuelUnits.unitFor(state.profile.units, drink = true)
+                val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
+                Progress(stringResource(R.string.trt_water), FuelUnits.fromBase(state.waterTodayMl.toDouble(), volume),
+                    FuelUnits.fromBase(t.waterMl.toDouble(), volume), unitLabel(volume), Modifier.weight(1f))
+                FilledTonalButton(onClick = { onAddWater(glass) }, modifier = Modifier.padding(start = 8.dp).testTag("today_water_add")) {
+                    Text(stringResource(R.string.trf_water_add, amountText(glass.toDouble(), volume)))
                 }
             }
         }

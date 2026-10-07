@@ -88,7 +88,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Packaged products: "Find food" also searches 680,000 products from Open Food
   Facts sold in German- and English-speaking countries, and its barcode button
   scans a product – both answered on the phone, nothing is sent. Products
-  from your language region come first. The model (Qwen3.5 2B, or 4B on
+  from your language region come first.
+- US units: Settings → Units next to the language (metric or US, chosen from
+  the phone's region on a first start). Nutrition then shows oz, water and
+  drinks in fl oz, drinks can be logged in cups, and a new food takes the
+  per-portion values of a US label. The model (Qwen3.5 2B, or 4B on
   phones with 8 GB) is downloaded once on request and checked against its
   hash; the photo never leaves the device. On phones with too little memory
   or an older processor the button stays greyed out and says why.
