@@ -83,6 +83,7 @@
     <string name="tra_review_weight_stable">Gewichtstrend stabil</string>
     <string name="tra_review_weight_change">Trendgewicht: %1$s diese Woche</string>
     <string name="tra_review_protein">Protein an erfassten Tagen: %1$d g (Ziel etwa %2$d g)</string>
+    <string name="tra_review_protein_no_target">Protein an erfassten Tagen: %1$d g</string>
     <string name="tra_review_carbs">Kohlenhydrate an erfassten Tagen: %1$d g (Ziel etwa %2$d g für diese Trainingslast)</string>
     <plurals name="tra_review_food_days">
         <item quantity="one">Ernährung an %d Tag erfasst</item>

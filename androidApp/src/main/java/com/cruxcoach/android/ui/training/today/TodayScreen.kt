@@ -898,41 +898,26 @@ private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: 
                 if (t == null) {
                     Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("${state.proteinToday.roundToInt()} / ${t.proteinG} g", style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.trf_progress_g, state.proteinToday.roundToInt(), t.proteinG),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(stringResource(R.string.trt_protein), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LinearProgressIndicator(
                         progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
                     )
-                    // Water in the athlete's units (stored in ml), next to the "+ glass" quick action.
-                    val volume = FuelUnits.unitFor(state.profile.units, drink = true)
-                    Text(
-                        stringResource(R.string.trt_tile_water, stringResource(R.string.trf_progress_volume,
-                            inputText(state.waterTodayMl.toDouble(), volume), amountText(t.waterMl.toDouble(), volume))),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp).testTag("today_fuel_water"),
-                    )
                 }
+                // Water in the athlete's units (stored in ml), next to the "+ glass" quick action;
+                // against the target once a body weight gives one.
+                val volume = FuelUnits.unitFor(state.profile.units, drink = true)
+                val water = if (t != null) stringResource(R.string.trf_progress_volume,
+                    inputText(state.waterTodayMl.toDouble(), volume), amountText(t.waterMl.toDouble(), volume))
+                    else amountText(state.waterTodayMl.toDouble(), volume)
+                Text(stringResource(R.string.trt_tile_water, water),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp).testTag("today_fuel_water"))
             }
         }
-    }
-}
-
-@Composable
-private fun Progress(label: String, value: Double, target: Double, unit: String, modifier: Modifier = Modifier) {
-    Column(modifier.padding(top = 8.dp)) {
-        Row {
-            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text("${value.roundToInt()} / ${target.roundToInt()} $unit", style = MaterialTheme.typography.bodySmall)
-        }
-        LinearProgressIndicator(
-            progress = { if (target > 0) (value / target).toFloat().coerceIn(0f, 1f) else 0f },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            // Reaching or passing a target is never shown as a warning: there is no "over budget".
-            color = CruxCoachDesign.colors.positive,
-        )
     }
 }
 
