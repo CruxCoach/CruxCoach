@@ -1,49 +1,23 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
-import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.cruxcoach.android.athlete.AthleteService
-import com.cruxcoach.android.athlete.ClimbingDaysReader
-import com.cruxcoach.android.athlete.ExerciseCatalogStore
-import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.VisionModelStore
-import com.cruxcoach.android.ui.common.LocalBoardSessionManager
-import com.cruxcoach.athlete.data.AthleteRepository
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.android.ui.settings.FoodDataStorageViewModel
-import com.cruxcoach.db.athlete.AthleteDatabase
-import com.cruxcoach.db.secure.SecureDatabase
-import io.mockk.every
-import io.mockk.mockk
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.cancel
-import org.junit.After
 import org.junit.Assert.assertEquals
 import com.cruxcoach.athlete.model.Meal
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -54,67 +28,18 @@ import org.robolectric.annotation.Config
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class FoodEditAndStorageTest {
-
-    @get:Rule val compose = createComposeRule()
-
-    private val context: Application get() = ApplicationProvider.getApplicationContext()
-    private lateinit var athleteDriver: AndroidSqliteDriver
-    private lateinit var secureDriver: AndroidSqliteDriver
-    private lateinit var repo: AthleteRepository
-    private lateinit var service: AthleteService
-    private lateinit var sessionManager: BoardSessionManager
-    private val viewModels = mutableListOf<androidx.lifecycle.ViewModel>()
-    private fun <T : androidx.lifecycle.ViewModel> T.tracked(): T = also { viewModels += it }
+class FoodEditAndStorageTest : AthleteScreenTest() {
 
     @Before
     fun setUp() {
-        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
-        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
-        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
-        val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
-        every { boardRepo.getActiveSession() } returns null
-        sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
-        service = AthleteService(
-            repoLazy = { repo },
-            catalogStore = ExerciseCatalogStore(context) { repo },
-            climbingDays = ClimbingDaysReader(SecureDatabase(secureDriver)),
-            bodyStatRepository = mockk(relaxed = true),
-            sessionManager = sessionManager,
-        )
-        runBlocking { service.ensureReady() }
         repo.updateProfile { it.copy(fuelIntroAccepted = true) }
         context.getDatabasePath(OffRepository.DB_NAME).delete()
     }
 
-    @After
-    fun tearDown() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        runBlocking {
-            kotlinx.coroutines.withTimeoutOrNull(10_000) {
-                viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
-            }
-        }
-        athleteDriver.close(); secureDriver.close()
-    }
-
-    /** Scrolls the day list until [tag] is composed. */
-    private fun scrollTo(tag: String) = compose.waitUntil(WAIT_MS) {
-        runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag(tag)); true }.getOrDefault(false)
-    }
-
-    private fun waitForTag(tag: String) =
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-
     private fun render() {
         val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context),
             OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
-        compose.setContent {
-            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
-            }
-        }
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
     }
 
@@ -129,7 +54,7 @@ class FoodEditAndStorageTest {
             proteinG = 10.0))
         render()
 
-        scrollTo("fuel_entry_e1")
+        scrollTo("fuel_list", "fuel_entry_e1")
         compose.onNodeWithTag("fuel_entry_e1").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_amount_dialog")
         compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("150")
@@ -139,7 +64,7 @@ class FoodEditAndStorageTest {
         assertEquals(19.5, oats.proteinG!!, 0.001)
         assertEquals(Meal.BREAKFAST, oats.meal)
 
-        scrollTo("fuel_entry_e2")
+        scrollTo("fuel_list", "fuel_entry_e2")
         compose.onNodeWithTag("fuel_entry_e2").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_qa_protein")
         compose.onNodeWithTag("fuel_qa_protein").performTextReplacement("12")
@@ -167,7 +92,4 @@ class FoodEditAndStorageTest {
         assertTrue(!context.getDatabasePath(OffRepository.DB_NAME).exists())
     }
 
-    private companion object {
-        const val WAIT_MS = 60_000L
-    }
 }

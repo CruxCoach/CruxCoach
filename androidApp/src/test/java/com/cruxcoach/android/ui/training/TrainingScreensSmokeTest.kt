@@ -1,25 +1,11 @@
 package com.cruxcoach.android.ui.training
 
 import android.app.Application
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performScrollToNode
-import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.cruxcoach.android.athlete.AthleteService
-import com.cruxcoach.android.athlete.ClimbingDaysReader
-import com.cruxcoach.android.athlete.ExerciseCatalogStore
-import com.cruxcoach.android.data.BoardSessionManager
-import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.training.athlete.*
 import com.cruxcoach.android.ui.training.body.BodyScreen
 import com.cruxcoach.android.ui.training.body.BodyViewModel
@@ -32,18 +18,10 @@ import com.cruxcoach.android.ui.training.fuel.FuelViewModel
 import com.cruxcoach.android.ui.training.today.TodayScreen
 import com.cruxcoach.android.ui.training.today.TodayViewModel
 import com.cruxcoach.android.ui.training.workout.*
-import com.cruxcoach.athlete.data.AthleteRepository
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.model.*
-import com.cruxcoach.db.athlete.AthleteDatabase
-import com.cruxcoach.db.secure.SecureDatabase
-import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,95 +36,18 @@ import org.robolectric.annotation.Config
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class TrainingScreensSmokeTest {
-
-    @get:Rule val compose = createComposeRule()
-
-    // Android's own SQLite (Robolectric) rather than JDBC: registering the
-    // JDBC driver inside the sandbox class loader breaks plain JDBC tests that
-    // run later in the same JVM.
-    private val context: Application get() = ApplicationProvider.getApplicationContext()
-    private lateinit var athleteDriver: AndroidSqliteDriver
-    private lateinit var secureDriver: AndroidSqliteDriver
-    private lateinit var repo: AthleteRepository
-    private lateinit var service: AthleteService
-    private lateinit var sessionManager: BoardSessionManager
+class TrainingScreensSmokeTest : AthleteScreenTest() {
 
     @Before
-    fun setUp() {
-        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
-        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
-        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
-        val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
-        every { boardRepo.getActiveSession() } returns null
-        sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
-        service = AthleteService(
-            repoLazy = { repo },
-            catalogStore = ExerciseCatalogStore(context) { repo },
-            climbingDays = ClimbingDaysReader(SecureDatabase(secureDriver)),
-            bodyStatRepository = mockk(relaxed = true),
-            sessionManager = sessionManager,
-        )
-        runBlocking { service.ensureReady() }
+    fun setUpInjuredClimber() {
         val today = service.today().toString()
-        repo.updateProfile { it.copy(fuelEnabled = true, fuelIntroAccepted = true, equipmentConfigured = true,
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, equipmentConfigured = true,
             equipment = setOf(com.cruxcoach.athlete.catalog.EquipmentV2.PICKUP_BLOCK, com.cruxcoach.athlete.catalog.EquipmentV2.PLATES,
                 com.cruxcoach.athlete.catalog.EquipmentV2.PULL_UP_BAR, com.cruxcoach.athlete.catalog.EquipmentV2.DUMBBELL)) }
         repo.saveMeasurement(BodyMeasurement(today, BodyMetric.WEIGHT.key, 68.0, "kg", 1))
         repo.saveMeasurement(BodyMeasurement(today, BodyMetric.HEIGHT.key, 176.0, "cm", 1))
         repo.saveInjury(Injury("i1", InjuryRegion.FINGER, InjurySide.LEFT, "ring finger A2", 5, true, today))
         repo.saveFoodLog(FoodLogEntry("f1", today, 1, Meal.LUNCH, name = "Rice bowl", proteinG = 30.0, carbsG = 90.0))
-    }
-
-    @After
-    fun tearDown() {
-        athleteDriver.close(); secureDriver.close()
-    }
-
-    private companion object {
-        /**
-         * Generous on purpose: the first Robolectric/Compose test of the class pays a
-         * cold start of ~20 s (more on CI runners), and whichever test runs first
-         * pays it inside its wait. Passing waits return as soon as the node exists.
-         */
-        const val WAIT_MS = 60_000L
-    }
-
-
-    /**
-     * Waits outside Compose until a ViewModel that loads in init has finished
-     * (its state's `loading` is false), so no screen is composed half-loaded and
-     * a load that hangs fails here, by name, instead of as a UI timeout.
-     */
-    private fun <VM : androidx.lifecycle.ViewModel> loaded(vm: VM): VM {
-        val flow = vm.javaClass.methods.firstOrNull { it.name == "getState" && it.parameterCount == 0 }
-            ?.invoke(vm) as? kotlinx.coroutines.flow.StateFlow<*> ?: return vm
-        val loading = flow.value?.javaClass?.methods?.firstOrNull { it.name == "getLoading" && it.parameterCount == 0 } ?: return vm
-        val end = System.currentTimeMillis() + WAIT_MS
-        while (loading.invoke(flow.value) == true) {
-            check(System.currentTimeMillis() < end) { "${vm.javaClass.simpleName} never finished loading" }
-            Thread.sleep(20)
-        }
-        return vm
-    }
-
-    private fun render(content: @androidx.compose.runtime.Composable () -> Unit) {
-        compose.setContent {
-            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) { MaterialTheme { content() } }
-        }
-    }
-
-    private fun waitForTag(tag: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-    private fun waitForText(text: String) = compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(text, substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-
-    /** Lazy lists compose only what is on screen; scroll the target into view first. */
-    private fun scrollTo(listTag: String, target: SemanticsMatcher) {
-        waitForTag(listTag)
-        // Screens fill their lists asynchronously: retry until the item is part of the list.
-        compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag(listTag).performScrollToNode(target) }.isSuccess
-        }
-        compose.onNode(target, useUnmergedTree = true).assertExists()
     }
 
     private fun tagPrefix(prefix: String) = SemanticsMatcher("testTag starts with $prefix") {
@@ -183,7 +84,7 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `exercise detail of the one-arm pick-up renders`() {
-        render { ExerciseDetailScreen("finger.one_arm_pickup", {}, {}, {}, viewModel = ExerciseDetailViewModel(service)) }
+        render { ExerciseDetailScreen("finger.one_arm_pickup", {}, {}, {}, viewModel = ExerciseDetailViewModel(service).tracked()) }
         waitForText("One-Arm Edge Pick-Up")
     }
 
@@ -212,7 +113,7 @@ class TrainingScreensSmokeTest {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.CORE_CLIMBER), null)
         repo.setsFor(id).take(2).forEach { service.completeSet(it, startRest = false) }
         service.finishWorkout(id, 6, "felt good")
-        render { WorkoutSummaryScreen(id, {}, {}, viewModel = WorkoutSummaryViewModel(service)) }
+        render { WorkoutSummaryScreen(id, {}, {}, viewModel = WorkoutSummaryViewModel(service).tracked()) }
         waitForTag("summary_list")
     }
 
@@ -236,10 +137,9 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `fuel screen renders targets for an enabled module`() {
-        val context = ApplicationProvider.getApplicationContext<Application>()
         val photo = com.cruxcoach.android.ui.training.fuel.FoodPhotoViewModel(context, service,
             com.cruxcoach.android.foodvision.VisionModelStore(context), com.cruxcoach.android.foodvision.BlsRepository(context),
-            com.cruxcoach.android.foodvision.DeviceFactsReader(context))
+            com.cruxcoach.android.foodvision.DeviceFactsReader(context)).tracked()
         val loadedVm7 = loaded(FuelViewModel(service))
         render { FuelScreen({}, {}, viewModel = loadedVm7, photoViewModel = photo) }
         waitForTag("fuel_day_label")
@@ -335,7 +235,7 @@ class TrainingScreensSmokeTest {
     @Test
     fun `routine editor prefills a starter routine`() {
         render { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, "builtin:${BuiltinRoutines.LEGS_BASICS}", {}, {},
-            viewModel = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service)) }
+            viewModel = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()) }
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(tagPrefix("routine_item_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
@@ -366,7 +266,7 @@ class TrainingScreensSmokeTest {
         repo.setsFor(id).forEach { service.completeSet(it.copy(reps = 7), startRest = false) }
         service.finishWorkout(id, 6, null)
         render { com.cruxcoach.android.ui.training.stats.ExerciseStatsScreen("pull.pull_up", {}, {},
-            viewModel = com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service)) }
+            viewModel = com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service).tracked()) }
         scrollTo("exercise_stats_list", hasTestTag("exercise_stats_chart"))
     }
 
@@ -387,7 +287,7 @@ class TrainingScreensSmokeTest {
         assert(day != null && day.climbIntensity == ClimbIntensity.LIMIT && day.climbingMinutes >= 120) { "$day" }
         assert((day?.fingerLoad ?: 0.0) > 0.0)
         render { com.cruxcoach.android.ui.training.today.ClimbingDaysScreen({},
-            viewModel = com.cruxcoach.android.ui.training.today.ClimbingDaysViewModel(service)) }
+            viewModel = com.cruxcoach.android.ui.training.today.ClimbingDaysViewModel(service).tracked()) }
         waitForTag("climbing_day_row_cd2")
     }
 
@@ -395,7 +295,7 @@ class TrainingScreensSmokeTest {
     fun `coach setup renders its first card`() {
         render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, {},
             viewModel = com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service,
-                mockk(relaxed = true), mockk(relaxed = true))) }
+                mockk(relaxed = true), mockk(relaxed = true)).tracked()) }
         waitForTag("coach_next")
     }
 
