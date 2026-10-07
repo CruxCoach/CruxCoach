@@ -1,0 +1,15 @@
+{
+  "uniqueId": "gov.usda:fooddata-central-sr-legacy",
+  "artifactVersion": "2018-04",
+  "name": "USDA FoodData Central – SR Legacy",
+  "description": "U.S. Department of Agriculture, Agricultural Research Service. FoodData Central: SR Legacy (2018). 7,793 generic foods with energy, macros, iron, calcium, vitamin D and household measures, extracted by CruxCoach (scripts/build_usda_asset.py).",
+  "website": "https://fdc.nal.usda.gov/",
+  "developers": [
+    {
+      "name": "USDA Agricultural Research Service"
+    }
+  ],
+  "licenses": [
+    "CC0-1.0"
+  ]
+}

@@ -130,7 +130,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - US units: Settings → Units next to the language (metric or US, chosen from
   the phone's region on a first start). Nutrition then shows oz, water and
   drinks in fl oz, drinks can be logged in cups, and a new food takes the
-  per-portion values of a US label. The model (Qwen3.5 2B, or 4B on
+  per-portion values of a US label.
+- Logged foods can be changed: tap an entry to fix its amount or meal.
+- Recipes: put a dish together from any foods, split it into portions
+  (optionally by the cooked weight) and log it by the portion.
+- US foods: "Find food" also lists 7,793 generic foods from USDA FoodData
+  Central with their cup weights, so a cup of oats or rice is logged right.
+- Iron, calcium and vitamin D: a weekly estimate from your log next to the
+  EFSA reference values – information, not a diagnosis.
+- The product database is prepared in the background, and Settings → Delete
+  shows and frees the space it and the photo model take. The model (Qwen3.5 2B, or 4B on
   phones with 8 GB) is downloaded once on request and checked against its
   hash; the photo never leaves the device. On phones with too little memory
   or an older processor the button stays greyed out and says why.

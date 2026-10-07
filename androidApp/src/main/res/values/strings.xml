@@ -373,6 +373,12 @@
     <string name="settings_units_desc">For body weight, training loads and nutrition. Data is stored metric; switching changes only what you see and type.</string>
     <string name="settings_units_metric">Metric (g, ml, kg, cm)</string>
     <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
+    <string name="settings_food_data_title">Nutrition data on this phone</string>
+    <string name="settings_food_products">Product database: %1$s</string>
+    <string name="settings_food_products_hint">Open Food Facts, unpacked from the app; built again on the next product search.</string>
+    <string name="settings_food_model">Photo AI model: %1$s</string>
+    <string name="settings_food_model_hint">Downloaded for meal photos; can be downloaded again at any time.</string>
+    <string name="settings_food_remove">Remove</string>
     <string name="settings_title">Settings</string>
     <string name="settings_display_title">Display</string>
     <string name="settings_display_appearance">Theme</string>

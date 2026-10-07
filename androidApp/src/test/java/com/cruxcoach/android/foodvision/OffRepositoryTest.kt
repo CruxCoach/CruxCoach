@@ -26,7 +26,7 @@ class OffRepositoryTest {
         # version: test-1
         # code	name_de	name_en	brand	kcal	protein_g	carbs_g	fat_g	serving_g	regions
         4337256725446	Edamame		Rewe beste Wahl	102	11	3.3	3.8		1
-        4025500000001	Skyr Natur		Milbona	63	11	4	0.2	150	1
+        4025500000001	Skyr Natur		Milbona	63	11	4	0.2	150	1	1 Becher (150 g)
         0012345678905		Icelandic Skyr Plain	Siggi's	60	11	4	0	150	2
         5000112646870	Fanta Orange	Fanta orange	Fanta	19	0	4.6	0	330	3
         broken line
@@ -72,7 +72,31 @@ class OffRepositoryTest {
         assertEquals("Icelandic Skyr Plain", repo.byBarcode("012345678905")?.nameEn)
         assertEquals("Icelandic Skyr Plain", repo.byBarcode("0012345678905")?.nameEn)
         assertEquals(330.0, repo.byBarcode("5000112646870")?.servingG)
+        assertEquals("1 Becher (150 g)", repo.byBarcode("4025500000001")?.servingLabel)
         assertNull(repo.byBarcode("4000000000000"))
+    }
+
+    @Test
+    fun `an update replaces the database only when it is newer, and survives an older bundled extract`() = runBlocking {
+        repo = repository("2026-10-07 4")
+        assertTrue(repo.ensureReady())
+        val update = java.io.File(context.cacheDir, "update.tsv")
+        update.writeText(extract.replace("# version: test-1", "# version: 2026-11-01").replace("Skyr Natur", "Skyr Natur neu"))
+        assertTrue(repo.installUpdate(update))
+        assertEquals("Skyr Natur neu", repo.byBarcode("4025500000001")?.nameDe)
+        assertEquals("2026-11-01", repo.currentVersion())
+        // The same or an older update is ignored.
+        assertTrue(!repo.installUpdate(update))
+        update.writeText(extract.replace("# version: test-1", "# version: 2026-09-01"))
+        assertTrue(!repo.installUpdate(update))
+
+        // After a restart the older bundled extract does not undo the update …
+        val restarted = repository("2026-10-07 4", "")
+        assertEquals("Skyr Natur neu", restarted.byBarcode("4025500000001")?.nameDe)
+        // … but a newer bundled one (an app update) replaces it.
+        val appUpdate = repository("2026-12-01 4")
+        assertEquals("Skyr Natur", appUpdate.byBarcode("4025500000001")?.nameDe)
+        assertEquals("2026-12-01 4", appUpdate.currentVersion())
     }
 
     @Test
