@@ -376,8 +376,10 @@ private fun ReviewRow(item: ReviewItem, viewModel: FoodPhotoViewModel, onChoose:
     }
     ListItem(
         leadingContent = {
+            // Named after the food, so TalkBack says what is (not) logged.
+            val includeLabel = stringResource(R.string.fvp_include_food, title)
             Checkbox(checked = item.included, onCheckedChange = { viewModel.setIncluded(item.key, it) },
-                modifier = Modifier.testTag("fuel_photo_include_${item.key}"))
+                modifier = Modifier.semantics { contentDescription = includeLabel }.testTag("fuel_photo_include_${item.key}"))
         },
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -407,7 +409,8 @@ private fun ReviewRow(item: ReviewItem, viewModel: FoodPhotoViewModel, onChoose:
                 suffix = { Text(unitLabel(item.unit)) },
                 singleLine = true,
                 isError = grams == null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                // Decimal: US amounts are tenths of an ounce ("4.5 oz").
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.width(104.dp).testTag("fuel_photo_amount_${item.key}"),
             )
         },

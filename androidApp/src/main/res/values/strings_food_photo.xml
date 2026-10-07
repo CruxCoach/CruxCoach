@@ -65,4 +65,5 @@
     <string name="fvp_error_space">Not enough free space: %1$s needed, %2$s free.</string>
     <string name="fvp_error_engine">Recognition failed (%s).</string>
     <string name="fvp_retry">Back</string>
+    <string name="fvp_include_food">Log %1$s</string>
 </resources>

@@ -135,11 +135,11 @@ fun RecipeSheet(
                 if (serving != null) {
                     val f = serving / 100.0
                     fun g(v: Double?) = v?.let { formatNumber(it * f, 0) } ?: "–"
-                    val kcal = item.kcalPer100?.let { (it * f).roundToInt().toString() }
+                    val kcal = item.kcalPer100?.let { (it * f).roundToInt() }
+                    val perPortion = stringResource(R.string.trf_recipe_per_portion, amountText(serving, weightUnit),
+                        g(item.proteinPer100), g(item.carbsPer100), g(item.fatPer100))
                     Text(
-                        stringResource(R.string.trf_recipe_per_portion, amountText(serving, weightUnit),
-                            g(item.proteinPer100), g(item.carbsPer100), g(item.fatPer100)) +
-                            (if (showCalories && kcal != null) " · $kcal kcal" else ""),
+                        if (showCalories && kcal != null) perPortion + " · " + stringResource(R.string.trf_kcal_value, kcal) else perPortion,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.testTag("fuel_recipe_summary"),
                     )
