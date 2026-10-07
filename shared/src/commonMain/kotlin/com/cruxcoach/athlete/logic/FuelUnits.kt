@@ -38,16 +38,34 @@ object FuelUnits {
      * Whether a food is drunk rather than eaten, so US amounts are fl oz and
      * cups make sense. From the BLS group (N non-alcoholic, P alcoholic
      * beverages), a serving given in ml, or the name in German or English.
+     *
+     * Only the head of the name counts – the part before a comma, a bracket or
+     * "mit/aus/im/with …" – so what a food is made with does not make it a
+     * drink ("Kaiserschmarren (mit Milch)", "Thunfisch im eigenen Saft",
+     * "Soup, prepared with water"), and in a hyphenated compound the last part
+     * names the food ("Buttermilch-Dressing").
      */
     fun isDrink(id: String?, name: String, servingLabel: String? = null): Boolean {
         if (id != null && id.startsWith("bls:") && id.length > 4 && id[4] in "NP") return true
         if (servingLabel != null && VOLUME.containsMatchIn(servingLabel)) return true
-        val words = name.lowercase().split(Regex("[^\\p{L}]+")).filter { it.isNotEmpty() }
-        if (words.any { it in NOT_A_DRINK }) return false
+        val head = name.lowercase().split(HEAD, limit = 2).first()
+        val words = head.split(Regex("\\s+"))
+            .map { if ('-' in it.trimEnd('-')) it.substringAfterLast('-') else it }
+            .flatMap { it.split(Regex("[^\\p{L}]+")) }
+            .filter { it.isNotEmpty() }
+        if (words.any { w -> w in NOT_A_DRINK || NOT_A_DRINK_SUFFIXES.any { w.endsWith(it) } }) return false
         return words.any { w -> w in DRINK_WORDS || DRINK_SUFFIXES.any { w.endsWith(it) && !w.startsWith(it) } }
     }
 
     private val VOLUME = Regex("""\d\s*(ml|cl|l|fl\.?\s*oz)\b""", RegexOption.IGNORE_CASE)
+
+    /** Where the name of the food ends and its description begins. */
+    private val HEAD = Regex("""[,(;]|\s(?:mit|aus|im|in|zu|auf|with|on)\s""")
+
+    /** German compounds that end like a drink but are food: "Schwein" (not "Wein"), "Schafskäse", "Speiseeis". */
+    private val NOT_A_DRINK_SUFFIXES = listOf(
+        "schwein", "käse", "kuchen", "brot", "schokolade", "riegel", "pulver", "pudding", "eis", "sauce", "soße", "dressing", "brei",
+    )
 
     private val DRINK_WORDS = setOf(
         "water", "wasser", "juice", "saft", "nectar", "nektar", "milk", "milch", "drink", "beverage", "getränk",
