@@ -1080,7 +1080,8 @@ class SettingsViewModel @Inject constructor(
             // throw (e.g. from the DataStore read) must not strand the
             // spinner with isSyncing = true forever.
             try {
-                val result = kilterSyncEngine.syncBidirectional()
+                // Outlives the screen: leaving it mid-upload would lose Kilter's answer.
+                val result = kilterSyncEngine.syncBidirectionalDetached()
                 val lastSync = userPreferences.kilterLastSync.first()
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isSyncing = false,
@@ -1191,16 +1192,16 @@ class SettingsViewModel @Inject constructor(
 
     /** Loads the entries Kilter did not take, for the list the user opened. */
     fun loadKilterNotUploaded() {
-        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = null)) }
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = null, notUploadedFailed = false)) }
         viewModelScope.launch {
             val entries = try {
                 kilterSyncEngine.notUploadedEntries()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                emptyList()
+                null
             }
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = entries)) }
+            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(notUploaded = entries, notUploadedFailed = entries == null)) }
         }
     }
 

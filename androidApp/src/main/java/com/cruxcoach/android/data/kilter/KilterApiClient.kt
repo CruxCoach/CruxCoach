@@ -131,6 +131,13 @@ private data class ClimbCreatePayload(
 /** Outcome of a Kilter publish. Distinct from a generic Result so callers
  *  can react to the auth-missing case (offer login UI) vs. transient errors
  *  (queue retry) vs. permanent rejections (e.g. uuid conflict). */
+/** Whether Kilter held a log it was asked to delete ([KilterApiClient.deleteLogIfHeld]). */
+enum class KilterDeleteOutcome { HELD, NOT_HELD, FAILED }
+
+/** The access token could not be refreshed for lack of a connection: the request was never sent. */
+class KilterOfflineException(cause: java.io.IOException) :
+    java.io.IOException("token endpoint unreachable (${cause.javaClass.simpleName})", cause)
+
 sealed class KilterPublishResult {
     /** Kilter accepted the climb. `climbUuid` echoes what we sent. */
     data class Success(val climbUuid: String) : KilterPublishResult()
@@ -606,7 +613,19 @@ class KilterApiClient @Inject constructor(
      * opens the app within 30 days. Returns false if the token is expired
      * (UI shows session-expired → user re-logs in manually).
      */
-    suspend fun refreshAccessToken(): Boolean = refreshMutex.withLock {
+    suspend fun refreshAccessToken(): Boolean = try {
+        refreshAccessTokenOrThrow()
+    } catch (e: java.io.IOException) {
+        Log.w(TAG, "Token refresh unreachable (${e.javaClass.simpleName})")
+        false
+    }
+
+    /**
+     * [refreshAccessToken] that throws when the token endpoint cannot be
+     * reached: offline is no expired session, and a caller that can tell the
+     * two apart (the upload, the app-start check) must not ask for a new login.
+     */
+    suspend fun refreshAccessTokenOrThrow(): Boolean = refreshMutex.withLock {
         withContext(Dispatchers.IO) {
             val refreshToken = tokenStore.getRefreshToken() ?: return@withContext false
             try {
@@ -630,6 +649,8 @@ class KilterApiClient @Inject constructor(
                 }
                 Log.w(TAG, "Token refresh failed: HTTP ${response.code}")
             } catch (e: CancellationException) {
+                throw e
+            } catch (e: java.io.IOException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh error", e)
@@ -673,8 +694,11 @@ class KilterApiClient @Inject constructor(
      * Fetch all ascent logs for the authenticated user.
      */
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
-        val token = ensureValidToken()
-            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext Result.failure(e)
+        } ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
         val request = Request.Builder()
             .url("$apiBase/logs")
             .addHeader("Authorization", "Bearer $token")
@@ -919,8 +943,11 @@ class KilterApiClient @Inject constructor(
     suspend fun uploadLogs(logs: List<KilterLog>): Result<Unit> = withContext(Dispatchers.IO) {
         if (logs.isEmpty()) return@withContext Result.success(Unit)
 
-        val token = ensureValidToken()
-            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext Result.failure(e)
+        } ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
             val request = Request.Builder()
@@ -1165,6 +1192,43 @@ class KilterApiClient @Inject constructor(
     }
 
     /**
+     * `DELETE /api/logs/{uuid}` answered as whether Kilter held the log: 200
+     * when it did (it is gone now), 204 (or 404) when it did not (verified
+     * live 2026-10-07, attempts and ascents alike). Kilter takes the same uuid
+     * again afterwards. The upload uses it to find out whether a log it cannot
+     * see in the logbook is there, and to replace a copy Kilter keeps.
+     */
+    suspend fun deleteLogIfHeld(logUuid: String): KilterDeleteOutcome = withContext(Dispatchers.IO) {
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext KilterDeleteOutcome.FAILED
+        } ?: return@withContext KilterDeleteOutcome.FAILED
+        val request = Request.Builder()
+            .url("$apiBase/logs/$logUuid")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                when (resp.code) {
+                    200 -> KilterDeleteOutcome.HELD
+                    204, 404 -> KilterDeleteOutcome.NOT_HELD
+                    else -> {
+                        Log.w(TAG, "deleteLogIfHeld HTTP ${resp.code}")
+                        KilterDeleteOutcome.FAILED
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteLogIfHeld failed (${e.javaClass.simpleName})")
+            KilterDeleteOutcome.FAILED
+        }
+    }
+
+    /**
      * Delete an own climb. Method `DELETE /api/climbs/{uuid}` — verified
      * empirically; the server returns "The climbs have been deleted
      * successfully." on success. Note: there is no PATCH-with-isDeleted
@@ -1352,6 +1416,17 @@ class KilterApiClient @Inject constructor(
         val token = tokenStore.getAccessToken() ?: return null
         if (!tokenStore.isAccessTokenExpired()) return token
         return if (refreshAccessToken()) tokenStore.getAccessToken() else null
+    }
+
+    /** [ensureValidToken] for the upload's calls; offline throws [KilterOfflineException] instead of reading as logged out. */
+    private suspend fun ensureValidTokenOrOffline(): String? {
+        val token = tokenStore.getAccessToken() ?: return null
+        if (!tokenStore.isAccessTokenExpired()) return token
+        return try {
+            if (refreshAccessTokenOrThrow()) tokenStore.getAccessToken() else null
+        } catch (e: java.io.IOException) {
+            throw KilterOfflineException(e)
+        }
     }
 
     /**

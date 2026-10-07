@@ -46,16 +46,13 @@ data class KilterUploadStatus(
     val requests: Int = 0,
     /** Pending rows Kilter refused alone without proof yet (no upload accepted after them); retried, not held. */
     val unconfirmed: Int = 0,
-    /**
-     * Rows of a request whose answer was lost that Kilter refuses when sent
-     * again: it most likely holds them already. Held, listed.
-     */
-    val probablyOnKilter: Int = 0,
+    /** Copies Kilter held under a row's uuid (edited since, or a lost answer) that were deleted to send the row again. */
+    val replaced: Int = 0,
     /** Number of the automatic follow-up run scheduled after this one, 0 for none ([KilterUploadRetryScheduler]). */
     val nextRetry: Int = 0,
 ) {
     val failed: Boolean get() = reason != KilterUploadReason.NONE && reason != KilterUploadReason.DISABLED
-    val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid + probablyOnKilter
+    val rejected: Int get() = rejectedByKilter + rejectedConflict + rejectedInvalid
     /** Rows not on Kilter after this run that the user can list ([KilterSyncEngine.notUploadedEntries]). */
     val notUploaded: Int get() = rejected + unconfirmed
 }
@@ -63,8 +60,6 @@ data class KilterUploadStatus(
 enum class KilterNotUploadedReason {
     /** Kilter refused the climb under every id it may have there, with proof. */
     NOT_ON_KILTER,
-    /** Sent in a request whose answer was lost, refused since: Kilter most likely has it already. */
-    PROBABLY_ON_KILTER,
     /** Kilter refused it alone, but nothing was accepted after; tried again later. */
     RETRY_LATER,
     /** Kilter holds this entry's uuid with different content. */
@@ -97,6 +92,7 @@ object KilterUploadFailure {
     /** True when the request may have reached Kilter (anything but "never connected"). */
     fun noAnswer(error: Throwable?): Boolean = when (error) {
         null -> false
+        is KilterOfflineException -> false
         is java.net.UnknownHostException, is java.net.ConnectException,
         is java.net.NoRouteToHostException, is java.net.PortUnreachableException,
         is javax.net.ssl.SSLHandshakeException -> false
@@ -151,6 +147,6 @@ class KilterUploadDiagnostics @Inject constructor(@ApplicationContext context: C
                 "attempted=${s.attempted} uploaded=${s.uploaded} pending=${s.pending} reason=${s.reason} http=${s.httpStatus ?: "none"} " +
                 "requests=${s.requests} rejectedKilter=${s.rejectedByKilter} rejectedConflict=${s.rejectedConflict} " +
                 "rejectedInvalid=${s.rejectedInvalid} heldImported=${s.heldImported} alreadyOnKilter=${s.alreadyOnKilter} " +
-                "retryLater=${s.unconfirmed} probablyOnKilter=${s.probablyOnKilter} autoRetry=${s.nextRetry}"
+                "retryLater=${s.unconfirmed} replaced=${s.replaced} autoRetry=${s.nextRetry}"
     }
 }

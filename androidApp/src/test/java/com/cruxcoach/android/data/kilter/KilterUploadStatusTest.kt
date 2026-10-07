@@ -44,6 +44,9 @@ class KilterUploadStatusTest {
         coEvery { api.fetchOwnAuthoredClimbs() } returns Result.success(emptyList())
         coEvery { api.fetchCircuits() } returns Result.success(emptyList())
         coEvery { api.uploadLogs(any()) } returns Result.success(Unit)
+        coEvery { api.deleteLogIfHeld(any()) } returns KilterDeleteOutcome.NOT_HELD
+        every { personal.getLogUuidsWithExternalIdPrefix(any()) } returns emptySet()
+        every { personal.pendingLogDeletions() } returns emptyList()
         engine = KilterSyncEngine(
             api, tokens, board, personal, db, prefs, mockk(relaxed = true),
             dagger.Lazy { mockk<com.cruxcoach.android.data.PendingImports>(relaxed = true) },
@@ -526,6 +529,6 @@ class KilterUploadStatusTest {
         assertEquals(KilterUploadReason.TIMEOUT, result.reason)
         assertEquals(1, result.pending)
         assertEquals(1, result.nextRetry)
-        assertTrue(KilterUploadDiagnostics.diagnosticLine(result).endsWith("probablyOnKilter=0 autoRetry=1"))
+        assertTrue(KilterUploadDiagnostics.diagnosticLine(result).endsWith("replaced=0 autoRetry=1"))
     }
 }

@@ -83,6 +83,14 @@ class PersonalBoardRepositoryImpl(
         )
     }
 
+    /**
+     * Kilter keeps a log as first uploaded (bulk upload is insert-only; a known
+     * uuid is refused): its copy is deleted like a deleted entry, and the row,
+     * unsynced, goes up again once the deletion went through
+     * ([pendingLogDeletions] holds it back until then).
+     */
+    private fun queueKilterReplacement(logUuid: String) = queueLogDeletion(logUuid)
+
     override fun pendingLogDeletions(): List<String> =
         database.pendingLogDeletionsQueries.pendingLogDeletionUuids().executeAsList()
 
@@ -95,12 +103,20 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {
-        database.ascentsQueries.updateAscent(
-            bid_count = bidCount,
-            quality = quality,
-            comment = comment,
-            uuid = uuid
-        )
+        database.transaction {
+            val before = database.ascentsQueries.selectAscentUploadState(uuid).executeAsOneOrNull()
+            database.ascentsQueries.updateAscent(
+                bid_count = bidCount,
+                quality = quality,
+                comment = comment,
+                uuid = uuid
+            )
+            // Kilter takes no updates: what it holds goes, the edited row is uploaded anew.
+            // The rating is not part of a Kilter log.
+            if (before?.synced == 1L && (before.bid_count != bidCount || before.comment != comment)) {
+                queueKilterReplacement(uuid)
+            }
+        }
     }
 
     override fun getUserAscentsAll(): List<AscentWithClimb> {
@@ -361,11 +377,18 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun updateBid(uuid: String, bidCount: Long, comment: String?) {
-        database.bidsQueries.updateBid(
-            bid_count = bidCount,
-            comment = comment,
-            uuid = uuid,
-        )
+        database.transaction {
+            val before = database.bidsQueries.selectBidUploadState(uuid).executeAsOneOrNull() ?: return@transaction
+            // Unchanged, it stays as Kilter has it.
+            if (before.bid_count == bidCount && before.comment == comment) return@transaction
+            database.bidsQueries.updateBid(
+                bid_count = bidCount,
+                comment = comment,
+                uuid = uuid,
+            )
+            // A quick-log try after the first is uploaded already: Kilter takes no updates.
+            if (before.synced == 1L) queueKilterReplacement(uuid)
+        }
     }
 
     override fun deleteBid(uuid: String) {
@@ -377,6 +400,10 @@ class PersonalBoardRepositoryImpl(
 
     override fun promoteQuickBidToSend(send: QuickLogSendInput) {
         database.transaction {
+            // The send keeps the attempt row's uuid; Kilter, holding the attempt, would refuse it.
+            if (database.bidsQueries.selectBidUploadState(send.uuid).executeAsOneOrNull()?.synced == 1L) {
+                queueKilterReplacement(send.uuid)
+            }
             database.ascentsQueries.insertAscent(
                 uuid = send.uuid,
                 climb_uuid = send.climbUuid,
@@ -407,6 +434,9 @@ class PersonalBoardRepositoryImpl(
 
     override fun restoreQuickBidFromSend(bid: QuickLogBidInput) {
         database.transaction {
+            if (database.ascentsQueries.selectAscentUploadState(bid.uuid).executeAsOneOrNull()?.synced == 1L) {
+                queueKilterReplacement(bid.uuid)
+            }
             database.bidsQueries.insertBid(
                 uuid = bid.uuid,
                 climb_uuid = bid.climbUuid,
@@ -1066,6 +1096,12 @@ class PersonalBoardRepositoryImpl(
         val bidKeys = database.bidsQueries.getAllBidClimbKeys().executeAsList()
             .map { it.climb_uuid to it.angle }
         return (ascentKeys + bidKeys).distinct()
+    }
+
+    override fun getLogUuidsWithExternalIdPrefix(prefix: String): Set<String> {
+        val pattern = "$prefix%"
+        return (database.ascentsQueries.getAscentUuidsWithExternalIdPrefix(pattern).executeAsList() +
+            database.bidsQueries.getBidUuidsWithExternalIdPrefix(pattern).executeAsList()).toHashSet()
     }
 
     override fun getExistingLogUuids(): Set<String> {
