@@ -262,7 +262,8 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `weekly review renders`() {
-        val loadedVm10 = loaded(WeeklyReviewViewModel(service))
+        val loadedVm10 = loaded(WeeklyReviewViewModel(service, com.cruxcoach.android.foodvision.MicronutrientWeek(service,
+            com.cruxcoach.android.foodvision.BlsRepository(context), com.cruxcoach.android.foodvision.UsdaRepository(context))))
         render { WeeklyReviewScreen({}, viewModel = loadedVm10) }
         waitForTag("review_prev")
     }

@@ -179,7 +179,7 @@ fun FuelScreen(
                     }
                 }
                 // The week's micronutrients below the day: background, not the day's task.
-                micros?.let { summary -> item(key = "micros") { MicroCard(summary) } }
+                micros?.let { summary -> item(key = "micros") { MicroWeekCard(summary) } }
             }
         }
     }
@@ -639,8 +639,8 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits
 
 /** The week's iron, calcium and vitamin D next to EFSA reference values – an estimate, no red states. */
 @Composable
-private fun MicroCard(summary: MicroWatch.Summary) {
-    Card(Modifier.fillMaxWidth().testTag("fuel_micros")) {
+internal fun MicroWeekCard(summary: MicroWatch.Summary, modifier: Modifier = Modifier) {
+    Card(modifier.fillMaxWidth().testTag("fuel_micros")) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.trf_micro_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
