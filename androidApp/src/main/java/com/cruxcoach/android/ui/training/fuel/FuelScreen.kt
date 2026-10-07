@@ -27,6 +27,7 @@ import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.body.shortLabel
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MacroTotals
 import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.logic.RedsSignal
@@ -34,6 +35,7 @@ import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.HydrationEntry
 import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.UnitSystem
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -62,6 +64,13 @@ fun FuelScreen(
     var createBarcode by remember { mutableStateOf<String?>(null) }
     var copyConfirm by remember { mutableStateOf(false) }
     val defaultMeal = remember { FuelViewModel.mealForHour(java.time.LocalTime.now().hour) }
+    val units = state.profile.units
+    // Review lists after a photo or a typed meal show amounts in the same units.
+    LaunchedEffect(units) { photoViewModel.units = units }
+    val foodsById = remember(state.foods) { state.foods.associateBy { it.id } }
+    val isDrink: (FoodLogEntry) -> Boolean = { e ->
+        foodsById[e.foodItemId]?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(e.foodItemId, e.name)
+    }
     val deletedText = stringResource(R.string.trf_deleted)
     val waterRemovedText = stringResource(R.string.trf_water_removed)
     val undoText = stringResource(R.string.trf_undo)
@@ -143,7 +152,7 @@ fun FuelScreen(
                 // One card per meal: its subtotal on top, every entry with its values.
                 MacroTotals.byMeal(state.entries).forEach { (meal, totals) ->
                     item(key = "meal_${meal.name}") {
-                        MealCard(meal, totals, state.entries.filter { it.meal == meal }, state.profile.showCalories, ::deleteEntry)
+                        MealCard(meal, totals, state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink, ::deleteEntry)
                     }
                 }
             }
@@ -178,6 +187,7 @@ fun FuelScreen(
             initialMeal = defaultMeal,
             onDismiss = { amountFor = null },
             onConfirm = { meal, portions, grams -> viewModel.addFood(item, meal, portions, grams); amountFor = null },
+            units = units,
         )
     }
     if (createFood) {
@@ -190,6 +200,7 @@ fun FuelScreen(
                 foodsOpen = true
             },
             barcode = createBarcode,
+            units = units,
         )
     }
     if (scanning) {
@@ -370,28 +381,34 @@ private fun DaySummaryCard(state: FuelState, onAddWater: (Int) -> Unit, onRemove
                 tag = "fuel_fat",
             )
             val waterTarget = t?.waterMl
+            val units = state.profile.units
+            // Stored in ml; fl oz in US units.
+            val volume = FuelUnits.unitFor(units, drink = true)
             ProgressRow(
                 label = stringResource(R.string.trf_water),
                 value = state.waterMl.toDouble(), target = (waterTarget ?: 0).toDouble(),
-                valueText = if (waterTarget != null) stringResource(R.string.trf_progress_ml, state.waterMl, waterTarget) else "${state.waterMl} ml",
+                valueText = if (waterTarget != null) {
+                    stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume),
+                        amountText(waterTarget.toDouble(), volume))
+                } else amountText(state.waterMl.toDouble(), volume),
                 tag = "fuel_water",
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                FilledTonalButton(onClick = { onAddWater(250) }, modifier = Modifier.testTag("fuel_water_250")) {
-                    Icon(Icons.Default.LocalDrink, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.trf_water_250))
-                }
-                FilledTonalButton(onClick = { onAddWater(500) }, modifier = Modifier.testTag("fuel_water_500")) {
-                    Text(stringResource(R.string.trf_water_500))
+                FuelUnits.waterPresetsMl(units).forEachIndexed { i, ml ->
+                    FilledTonalButton(onClick = { onAddWater(ml) }, modifier = Modifier.testTag("fuel_water_$ml")) {
+                        if (i == 0) { Icon(Icons.Default.LocalDrink, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)) }
+                        Text(stringResource(R.string.trf_water_add, amountText(ml.toDouble(), volume)))
+                    }
                 }
             }
             if (state.water.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                     state.water.forEach { w ->
-                        val desc = stringResource(R.string.trf_water_entry_desc, w.ml)
+                        val label = amountText(w.ml.toDouble(), volume)
+                        val desc = stringResource(R.string.trf_water_entry_desc, label)
                         AssistChip(
                             onClick = { onRemoveWater(w) },
-                            label = { Text("${w.ml} ml") },
+                            label = { Text(label) },
                             leadingIcon = { Icon(Icons.Default.LocalDrink, null, Modifier.size(16.dp)) },
                             modifier = Modifier.semantics { contentDescription = desc }.testTag("fuel_water_entry_${w.id}"),
                         )
@@ -426,7 +443,10 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
 }
 
 @Composable
-private fun MealCard(meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry>, showCalories: Boolean, onDelete: (FoodLogEntry) -> Unit) {
+private fun MealCard(
+    meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry>, showCalories: Boolean,
+    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean, onDelete: (FoodLogEntry) -> Unit,
+) {
     Card(Modifier.fillMaxWidth().testTag("fuel_meal_${meal.name.lowercase()}")) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -435,7 +455,7 @@ private fun MealCard(meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry
                     MacroTotals.Energy(totals.kcal, totals.kcalEstimated).takeIf { totals.entries > 0 }, showCalories),
                     style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("fuel_meal_total_${meal.name.lowercase()}"))
             }
-            entries.forEach { entry -> EntryRow(entry, showCalories, onDelete = { onDelete(entry) }) }
+            entries.forEach { entry -> EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onDelete = { onDelete(entry) }) }
         }
     }
 }
@@ -473,10 +493,10 @@ private fun ProgressRow(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, onDelete: () -> Unit) {
+private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits.Amount, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val amount = when {
-        entry.amountG != null -> stringResource(R.string.trf_entry_grams, formatNumber(entry.amountG!!))
+        entry.amountG != null -> amountText(entry.amountG!!, unit)
         entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
         else -> null
     }

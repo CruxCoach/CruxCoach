@@ -67,6 +67,20 @@ portions.
   (signed Kind-30078 manifest + Blossom chunks, `BlossomSyncManager`) –
   needs the production publisher.
 
+## US units (owner request 2026-10-07)
+
+- The unit system (metric / US) is an app setting next to the language and
+  the same value as in the training settings (`AthleteProfile.units`). A first
+  start picks it from the phone's region (US, LR, MM → US units).
+- Storage stays metric. In US units food amounts are oz, drinks and water
+  fl oz, and drinks can be entered in US cups (236.6 ml); drinks count 1 g per
+  ml. A food is a drink by BLS group (N, P), a serving given in ml/fl oz, or
+  its German or English name (`FuelUnits.isDrink`).
+- Water presets: 8 fl oz and 16.9 fl oz instead of 250 and 500 ml.
+- "Create food" takes nutrition per 100 g or per portion (US labels); per
+  portion is the default in US units and is converted to per 100 g.
+- Macros stay in grams and energy in kcal, as on US labels.
+
 ## Hardware gate (VisionCapability)
 
 | Check | Rule |

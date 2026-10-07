@@ -39,7 +39,9 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
+import com.cruxcoach.android.ui.training.fuel.amountText
 import com.cruxcoach.athlete.logic.BuiltinRoutines
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.ReadinessLevel
 import com.cruxcoach.athlete.logic.ReadinessReason
 import com.cruxcoach.athlete.logic.RedsSignal
@@ -150,7 +152,8 @@ fun TodayScreen(
                     state = state,
                     onLogClimbing = onLogClimbing,
                     onLogWeight = { showWeight = true },
-                    onAddWater = { viewModel.addWater(250) },
+                    // One glass: 250 ml, or 8 fl oz in US units; stored in ml.
+                    onAddWater = { viewModel.addWater(FuelUnits.waterPresetsMl(state.profile.units).first()) },
                     onOpenFuel = onOpenFuel,
                     onStartEmpty = viewModel::startEmptyWorkout,
                     onOpenRoutines = onOpenRoutines,
@@ -540,7 +543,10 @@ private fun QuickActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickAction(Icons.Default.Terrain, stringResource(R.string.trt_quick_climbing), "today_log_climbing", onLogClimbing)
         if (state.profile.bodyEnabled) QuickAction(Icons.Default.MonitorWeight, stringResource(R.string.trt_quick_weight), "today_weight", onLogWeight)
-        QuickAction(Icons.Default.WaterDrop, stringResource(R.string.trt_water_add), "today_water_add", onAddWater)
+        val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
+        QuickAction(Icons.Default.WaterDrop,
+            stringResource(R.string.trf_water_add, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true))),
+            "today_water_add", onAddWater)
         QuickAction(Icons.Default.Restaurant, stringResource(R.string.trt_quick_food), "today_food", onOpenFuel)
         if (state.openWorkout == null) QuickAction(Icons.Default.Add, stringResource(R.string.trt_quick_free), "today_start_empty", onStartEmpty)
         QuickAction(Icons.AutoMirrored.Filled.List, stringResource(R.string.trt_routines), "today_routines", onOpenRoutines)

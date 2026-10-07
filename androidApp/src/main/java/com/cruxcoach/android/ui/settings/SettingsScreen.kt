@@ -60,6 +60,7 @@ internal fun SettingsScreen(
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
+    unitsViewModel: UnitsSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
@@ -140,6 +141,9 @@ internal fun SettingsScreen(
             SettingsPage.DISPLAY -> {
                 SettingsSectionCard {
                     LanguageSection()
+                }
+                SettingsSectionCard {
+                    UnitsSection(unitsViewModel)
                 }
                 SettingsSectionCard {
                     DisplaySection(

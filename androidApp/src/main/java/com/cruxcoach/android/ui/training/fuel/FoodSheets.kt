@@ -30,9 +30,11 @@ import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.mealLabel
 import com.cruxcoach.android.ui.training.parseDecimal
 import com.cruxcoach.athlete.logic.BlsFood
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.UnitSystem
 
 /** Meal choice as a wrapping row of chips. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -275,15 +277,29 @@ fun AmountDialog(
     initialMeal: Meal,
     onDismiss: () -> Unit,
     onConfirm: (meal: Meal, portions: Double?, grams: Double?) -> Unit,
+    units: UnitSystem = UnitSystem.METRIC,
 ) {
     val perPortion = FuelViewModel.isPerPortion(item)
     val gramsPossible = !perPortion
+    // Drinks are measured by volume (ml, or fl oz and cups in US units); 1 ml counts as 1 g.
+    val drink = FuelUnits.isDrink(item.id, item.name, item.servingLabel)
+    val baseUnit = FuelUnits.unitFor(units, drink)
+    val amountUnits = if (units == UnitSystem.IMPERIAL && drink) listOf(baseUnit, FuelUnits.Amount.CUP) else listOf(baseUnit)
     var useGrams by rememberSaveable { mutableStateOf(gramsPossible && item.servingG == null) }
+    var unit by rememberSaveable { mutableStateOf(baseUnit) }
     var portions by rememberSaveable { mutableStateOf("1") }
-    var grams by rememberSaveable { mutableStateOf(item.servingG?.let { formatNumber(it) } ?: "100") }
+    var grams by rememberSaveable { mutableStateOf(inputText(item.servingG ?: 100.0, baseUnit)) }
     var meal by rememberSaveable { mutableStateOf(initialMeal) }
     val p = parseDecimal(portions)?.takeIf { it > 0 && it <= 50 }
-    val g = parseDecimal(grams)?.takeIf { it > 0 && it <= 5000 }
+    val g = parseDecimal(grams)?.let { FuelUnits.toBase(it, unit) }?.takeIf { it > 0 && it <= 5000 }
+
+    fun switchTo(next: FuelUnits.Amount) {
+        // Keep the amount, not the number: 240 ml becomes 8.1 fl oz or 1 cup.
+        val base = parseDecimal(grams)?.let { FuelUnits.toBase(it, unit) }
+        if (base != null) grams = inputText(base, next)
+        unit = next
+        useGrams = true
+    }
     val canPortion = perPortion || item.servingG != null
     val valid = if (useGrams) g != null else (p != null && canPortion)
 
@@ -294,16 +310,22 @@ fun AmountDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.trf_amount_title), style = MaterialTheme.typography.labelLarge)
-                if (gramsPossible && canPortion) {
+                if (gramsPossible && (canPortion || amountUnits.size > 1)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = !useGrams, onClick = { useGrams = false },
-                            label = { Text(stringResource(R.string.trf_amount_portions)) })
-                        FilterChip(selected = useGrams, onClick = { useGrams = true },
-                            label = { Text(stringResource(R.string.trf_amount_grams)) })
+                        if (canPortion) {
+                            FilterChip(selected = !useGrams, onClick = { useGrams = false },
+                                label = { Text(stringResource(R.string.trf_amount_portions)) })
+                        }
+                        amountUnits.forEach { u ->
+                            FilterChip(selected = useGrams && unit == u, onClick = { switchTo(u) },
+                                label = { Text(if (u == FuelUnits.Amount.G) stringResource(R.string.trf_amount_grams) else unitLabel(u)) },
+                                modifier = Modifier.testTag("fuel_amount_unit_${u.name.lowercase()}"))
+                        }
                     }
                 }
                 if (useGrams) {
-                    NumberField(stringResource(R.string.trf_amount_grams), grams, "fuel_amount_grams", Modifier.fillMaxWidth()) { grams = it }
+                    NumberField(if (unit == FuelUnits.Amount.G) stringResource(R.string.trf_amount_grams) else unitLabel(unit),
+                        grams, "fuel_amount_grams", Modifier.fillMaxWidth()) { grams = it }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(0.5, 1.0, 2.0).forEach { preset ->
@@ -313,7 +335,7 @@ fun AmountDialog(
                         }
                     }
                     NumberField(stringResource(R.string.trf_amount_portions), portions, "fuel_amount_portions", Modifier.fillMaxWidth()) { portions = it }
-                    item.servingG?.let { Text(stringResource(R.string.trf_amount_serving, formatNumber(it)), style = MaterialTheme.typography.bodySmall) }
+                    item.servingG?.let { Text(stringResource(R.string.trf_amount_serving, amountText(it, baseUnit)), style = MaterialTheme.typography.bodySmall) }
                 }
                 Text(stringResource(R.string.trf_qa_meal), style = MaterialTheme.typography.labelLarge)
                 MealPicker(meal) { meal = it }
@@ -337,7 +359,10 @@ fun CreateFoodDialog(
     onSave: (name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?) -> Unit,
     /** Shown when the food is created for a scanned code that was not in the database. */
     barcode: String? = null,
+    units: UnitSystem = UnitSystem.METRIC,
 ) {
+    // US labels state nutrition per serving, European ones per 100 g.
+    var perServing by rememberSaveable { mutableStateOf(units == UnitSystem.IMPERIAL) }
     var name by rememberSaveable { mutableStateOf("") }
     var brand by rememberSaveable { mutableStateOf("") }
     var protein by rememberSaveable { mutableStateOf("") }
@@ -346,7 +371,12 @@ fun CreateFoodDialog(
     var kcal by rememberSaveable { mutableStateOf("") }
     var servingG by rememberSaveable { mutableStateOf("") }
     var servingLabel by rememberSaveable { mutableStateOf("") }
-    val valid = name.isNotBlank() && listOf(protein, carbs, fat, kcal, servingG).all(::fieldValid)
+    val serving = optionalAmount(servingG)?.takeIf { it > 0 }
+    val anyNutrient = listOf(protein, carbs, fat, kcal).any { it.isNotBlank() }
+    val valid = name.isNotBlank() && listOf(protein, carbs, fat, kcal, servingG).all(::fieldValid) &&
+        (!perServing || !anyNutrient || serving != null)
+    /** Per 100 g, whichever way the label gave them. */
+    fun per100(text: String): Double? = optionalAmount(text)?.let { v -> if (perServing) serving?.let { v * 100.0 / it } else v }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -359,7 +389,14 @@ fun CreateFoodDialog(
                 OutlinedTextField(value = brand, onValueChange = { brand = it.take(80) }, singleLine = true,
                     label = { Text(stringResource(R.string.trf_create_brand)) }, modifier = Modifier.fillMaxWidth())
                 barcode?.let { Text(stringResource(R.string.trf_create_barcode, it), style = MaterialTheme.typography.bodySmall) }
-                Text(stringResource(R.string.trf_create_per100), style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !perServing, onClick = { perServing = false },
+                        label = { Text(stringResource(R.string.trf_create_values_100g)) }, modifier = Modifier.testTag("fuel_create_per100"))
+                    FilterChip(selected = perServing, onClick = { perServing = true },
+                        label = { Text(stringResource(R.string.trf_create_values_serving)) }, modifier = Modifier.testTag("fuel_create_per_serving"))
+                }
+                Text(stringResource(if (perServing) R.string.trf_create_per_serving else R.string.trf_create_per100),
+                    style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(stringResource(R.string.trf_qa_protein), protein, "fuel_create_protein", Modifier.weight(1f)) { protein = it }
                     NumberField(stringResource(R.string.trf_qa_carbs), carbs, "fuel_create_carbs", Modifier.weight(1f)) { carbs = it }
@@ -377,8 +414,8 @@ fun CreateFoodDialog(
             TextButton(
                 onClick = {
                     onSave(name.trim(), brand.trim().ifBlank { null },
-                        Nutrients(optionalAmount(kcal), optionalAmount(protein), optionalAmount(carbs), optionalAmount(fat)),
-                        optionalAmount(servingG)?.takeIf { it > 0 }, servingLabel.trim().ifBlank { null })
+                        Nutrients(per100(kcal), per100(protein), per100(carbs), per100(fat)),
+                        serving, servingLabel.trim().ifBlank { null })
                 },
                 enabled = valid,
                 modifier = Modifier.testTag("fuel_create_save"),

@@ -21,9 +21,13 @@
     <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
     <string name="trf_carbs_per_kg">%1$s g/kg</string>
     <string name="trf_water">Water</string>
-    <string name="trf_water_250">+250 ml</string>
-    <string name="trf_water_500">+500 ml</string>
-    <string name="trf_water_entry_desc">%1$d ml, tap to remove</string>
+    <string name="trf_water_add">+%1$s</string>
+    <string name="trf_progress_volume">%1$s / %2$s</string>
+    <string name="trf_amount_with_unit">%1$s %2$s</string>
+    <string name="trf_unit_oz">oz</string>
+    <string name="trf_unit_floz">fl oz</string>
+    <string name="trf_unit_cups">cups</string>
+    <string name="trf_water_entry_desc">%1$s, tap to remove</string>
     <string name="trf_day_total">Day total</string>
     <string name="trf_kcal_value">%1$d kcal</string>
     <string name="trf_kcal_estimated">≈ %1$d kcal</string>
@@ -34,7 +38,6 @@
     <string name="trf_fat_share">%1$d %% of energy · guideline %2$d–%3$d %%</string>
     <string name="trf_fat_info">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35 %% of energy from fat; less than 20 %% is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
-    <string name="trf_progress_ml">%1$d / %2$d ml</string>
     <string name="trf_quick_add">Quick entry</string>
     <string name="trf_my_foods">My foods</string>
     <string name="trf_copy_previous">Same as yesterday</string>
@@ -48,7 +51,6 @@
     <string name="trf_entry_macros">P %1$s · C %2$s · F %3$s</string>
     <string name="trf_entry_macros_g">P %1$s · C %2$s · F %3$s g</string>
     <string name="trf_entry_portions">%1$s × portion</string>
-    <string name="trf_entry_grams">%1$s g</string>
     <string name="trf_entry_menu">Options for %1$s</string>
     <string name="trf_deleted">Entry deleted</string>
     <string name="trf_water_removed">Water removed</string>
@@ -97,12 +99,15 @@
     <string name="trf_amount_portions">Portions</string>
     <string name="trf_amount_grams">Grams</string>
     <string name="trf_amount_add">Log</string>
-    <string name="trf_amount_serving">1 portion = %1$s g</string>
+    <string name="trf_amount_serving">1 portion = %1$s</string>
 
     <string name="trf_create_title">New food</string>
     <string name="trf_create_name">Name</string>
     <string name="trf_create_brand">Brand (optional)</string>
     <string name="trf_create_per100">Nutrition per 100 g (optional)</string>
+    <string name="trf_create_per_serving">Nutrition per portion (optional, needs the portion size)</string>
+    <string name="trf_create_values_100g">Per 100 g</string>
+    <string name="trf_create_values_serving">Per portion (US label)</string>
     <string name="trf_create_serving_g">Portion size in g (optional)</string>
     <string name="trf_create_serving_label">Portion name (optional, e.g. bar)</string>
 
