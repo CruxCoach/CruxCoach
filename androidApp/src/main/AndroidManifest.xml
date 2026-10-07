@@ -66,7 +66,7 @@
     <!-- Optional Health Connect link, one switch per direction in the training
          settings. FEAT-071 coach reads: sleep prefills the check-in (never
          auto-saved), exercise sessions become climbing days. FEAT-069 nutrition
-         writes logged meals and water. Nothing is uploaded anywhere. -->
+         writes logged meals and water. The link itself uploads nothing. -->
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />

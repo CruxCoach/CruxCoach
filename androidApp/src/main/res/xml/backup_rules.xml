@@ -59,4 +59,8 @@
          up entirely above 25 MB) and its device-specific download/probe state. -->
     <exclude domain="external" path="foodvision"/>
     <exclude domain="sharedpref" path="foodvision.xml"/>
+    <!-- Which entries this install already wrote to this phone's Health
+         Connect. The food log itself (database) is not restored by Auto
+         Backup, so on another phone this list would be wrong. -->
+    <exclude domain="sharedpref" path="health_connect_export.xml"/>
 </full-backup-content>

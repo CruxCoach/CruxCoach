@@ -17,7 +17,7 @@
     <string name="trd_hc_sync_result">Letzter Abgleich: %1$d neu, %2$d aktualisiert, %3$d übersprungen (von Hand eingetragen)</string>
     <string name="trd_hc_sync_failed">Abgleich hat nicht geklappt – prüfe den Zugriff in Health Connect.</string>
     <string name="trd_hc_sleep_last_night">Schlaf letzte Nacht: %1$s h</string>
-    <string name="trd_hc_privacy">Nichts wird hochgeladen: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem Handy, und was es schreibt, geht nur an Health Connect auf diesem Handy.</string>
+    <string name="trd_hc_privacy">Die Verbindung selbst lädt nichts hoch: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem Handy (und ist nur dann Teil deines verschlüsselten Backups, wenn du das Backup eingeschaltet hast), und was es schreibt, geht nur an Health Connect auf diesem Handy.</string>
     <string name="trd_sleep_chip">Aus Health Connect: %1$s h → %2$d</string>
 
     <!-- Datenschutz-Erklärung -->
@@ -27,7 +27,7 @@
     <string name="trd_rationale_exercise">Lesen: Trainingseinheiten, die als Klettern markiert sind – sie werden zu Klettertagen, damit der Coach Halle, Fels und andere Boards kennt.</string>
     <string name="trd_rationale_nutrition">Schreiben: was du in der Ernährung einträgst – jedes Lebensmittel mit Name, Mahlzeit, Energie, Protein, Kohlenhydraten und Fett sowie jedes Glas Wasser –, damit andere Apps, denen du es erlaubst, es nutzen können. Geänderte oder gelöschte Einträge werden dort angepasst.</string>
     <string name="trd_rationale_scope">CruxCoach liest nichts anderes und schreibt nichts anderes.</string>
-    <string name="trd_rationale_local">Alles andere bleibt auf deinem Gerät in der verschlüsselten Trainingsdatenbank. Nichts geht an einen Server.</string>
+    <string name="trd_rationale_local">Was CruxCoach liest, bleibt auf deinem Gerät in der verschlüsselten Trainingsdatenbank. Es verlässt das Gerät nur in deinem eigenen verschlüsselten Backup, wenn du das eingeschaltet hast.</string>
     <string name="trd_rationale_revoke">Du kannst jeden Teil in den Trainingseinstellungen ausschalten und den Zugriff in Health Connect jederzeit widerrufen. Bereits geschriebene Daten bleiben in Health Connect, bis du sie dort löschst.</string>
     <string name="trd_rationale_close">Schließen</string>
 

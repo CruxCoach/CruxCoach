@@ -52,6 +52,13 @@ class BoardLayerBackupExclusionTest {
     }
 
     @Test
+    fun `the Health Connect export list stays with the phone it was written on`() {
+        val target = "sharedpref" to "health_connect_export.xml"
+        assertEquals(1, exclusions(R.xml.backup_rules).count { it == target })
+        assertEquals(2, exclusions(R.xml.data_extraction_rules).count { it == target })
+    }
+
+    @Test
     fun `food photo model and its device state stay out of backups`() {
         // FEAT-069: 2–4 GB of weights would make Auto Backup give up (25 MB limit).
         listOf("external" to "foodvision", "sharedpref" to "foodvision.xml").forEach { target ->
