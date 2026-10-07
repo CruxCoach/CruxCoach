@@ -6,6 +6,8 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithTag
 import com.cruxcoach.android.ui.training.athlete.*
 import com.cruxcoach.android.ui.training.body.BodyScreen
 import com.cruxcoach.android.ui.training.body.BodyViewModel
@@ -158,6 +160,23 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val loadedVm9 = loaded(AthleteSettingsViewModel(service))
         render { AthleteSettingsScreen({}, viewModel = loadedVm9) }
         waitForTag("preset_home")
+    }
+
+    @Test
+    fun `settings opened from nutrition start at the nutrition options`() {
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, scrollToNutrition = true) }
+        waitForTag("settings_nutrition")
+        compose.waitUntil(WAIT_MS) { runCatching { compose.onNodeWithTag("settings_nutrition").assertIsDisplayed() }.isSuccess }
+    }
+
+    @Test
+    fun `one Health Connect card has a switch per direction`() {
+        val vm = com.cruxcoach.android.athlete.health.HealthConnectSettingsViewModel(
+            com.cruxcoach.android.athlete.health.HealthConnectSource(context, service), service).tracked()
+        render { com.cruxcoach.android.athlete.health.HealthConnectSettingsCard(viewModel = vm) }
+        waitForTag("health_connect_switch")
+        waitForTag("health_connect_export_switch")
     }
 
     @Test

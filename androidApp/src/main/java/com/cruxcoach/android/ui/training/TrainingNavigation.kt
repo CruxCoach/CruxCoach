@@ -266,13 +266,14 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         BodyScreen(onBack = leave, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) }, tabBar = tabBar(TrainingTab.BODY))
     }
     screen(TrainingRoutes.FUEL, "Fuel", back) {
-        FuelScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) })
+        FuelScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION) })
     }
     screen(TrainingRoutes.INJURIES, "Injuries", back) {
         InjuriesScreen(onBack = back, onOpenRoutines = { goTab(TrainingTab.WORKOUTS) })
     }
     screen(TrainingRoutes.WEEKLY_REVIEW, "WeeklyReview", back) { WeeklyReviewScreen(onBack = back) }
-    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) {
+    @Composable
+    fun athleteSettings(scrollToNutrition: Boolean) {
         AthleteSettingsScreen(
             onBack = back,
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
@@ -286,8 +287,11 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                     androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.cruxcoach.android.R.string.trl_days_title))
                 }
             },
+            scrollToNutrition = scrollToNutrition,
         )
     }
+    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) { athleteSettings(scrollToNutrition = false) }
+    screen(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION, "AthleteSettings", back) { athleteSettings(scrollToNutrition = true) }
 }
 
 private fun NavGraphBuilder.screen(route: String, name: String, back: () -> Unit, content: @Composable () -> Unit) {
