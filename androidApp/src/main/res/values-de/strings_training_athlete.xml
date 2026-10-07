@@ -41,9 +41,6 @@
     <string name="tra_show_calories">Kalorien anzeigen</string>
     <string name="tra_protein_per_kg">Protein: %1$s g pro kg Körpergewicht</string>
     <string name="tra_protein_per_kg_lb">Protein: %1$s g pro kg Körpergewicht (%2$s g pro lb)</string>
-    <string name="tra_units_title">Einheiten</string>
-    <string name="tra_units_metric">kg / cm</string>
-    <string name="tra_units_imperial">lb / in</string>
     <string name="tra_personal_title">Über dich (freiwillig)</string>
     <string name="tra_personal_info">Wird nur für die Gesundheits-Schwellen des Energie-Checks (sie unterscheiden sich nach Geschlecht) und für deinen Ape-Index genutzt. Nichts verlässt dein Gerät.</string>
     <string name="tra_height">Größe (%1$s)</string>
