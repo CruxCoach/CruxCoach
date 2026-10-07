@@ -77,6 +77,11 @@ fun FuelScreen(
     // Review lists after a photo or a typed meal show amounts in the same units.
     LaunchedEffect(units) { photoViewModel.units = units }
     LaunchedEffect(Unit) { photoViewModel.prepareProducts() }
+    // Changes of the shown day go to Health Connect once the export is on (write-only).
+    LaunchedEffect(state.day, state.entries, state.water, state.profile.healthConnectExport) {
+        val day = state.day ?: return@LaunchedEffect
+        if (state.profile.healthConnectExport && !state.loading) photoViewModel.exportDay(day.toString(), state.entries, state.water)
+    }
     // Iron, calcium and vitamin D over the week up to the shown day.
     val microDay = state.day ?: state.today
     val micros by produceState<MicroWatch.Summary?>(null, microDay, state.entries, state.profile.sex, state.profile.birthYear) {

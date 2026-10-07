@@ -21,6 +21,11 @@
     <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
     <string name="trf_carbs_per_kg">%1$s g/kg</string>
     <string name="trf_water">Water</string>
+    <string name="trf_hc_title">CruxCoach and Health Connect</string>
+    <string name="trf_hc_switch">Send meals and water to Health Connect</string>
+    <string name="trf_hc_hint">Write-only: CruxCoach never reads health data. Changed or deleted entries are updated there too when you open nutrition.</string>
+    <string name="trf_hc_unavailable">Sending meals and water to Health Connect needs Android 14 or newer.</string>
+    <string name="trf_hc_rationale">If you switch it on in the nutrition settings, CruxCoach writes what you log – each meal with its name, meal, energy, protein, carbohydrate and fat, and each glass of water – to Health Connect, so other apps you allow can use it. CruxCoach only writes, it never reads data from Health Connect. Switching it off stops the export; data already written stays in Health Connect until you delete it there. Everything else stays on your phone.</string>
     <string name="trf_recipe_new">Recipe</string>
     <string name="trf_recipe_title">Recipe</string>
     <string name="trf_recipe_edit">Edit recipe</string>

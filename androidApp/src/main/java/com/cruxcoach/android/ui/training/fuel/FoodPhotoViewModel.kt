@@ -11,6 +11,7 @@ import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.FoodVisionClient
 import com.cruxcoach.android.foodvision.OffRepository
+import com.cruxcoach.android.foodvision.HealthConnectExporter
 import com.cruxcoach.android.foodvision.UsdaRepository
 import com.cruxcoach.android.foodvision.PhotoInput
 import com.cruxcoach.android.foodvision.PreparedImage
@@ -33,6 +34,7 @@ import com.cruxcoach.athlete.logic.VisionCapability
 import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
+import com.cruxcoach.athlete.model.HydrationEntry
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.UnitSystem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -133,6 +135,7 @@ class FoodPhotoViewModel @Inject constructor(
     factsReader: DeviceFactsReader,
     private val products: OffRepository = OffRepository(context),
     private val usda: UsdaRepository = UsdaRepository(context),
+    private val healthConnect: HealthConnectExporter = HealthConnectExporter(context),
 ) : ViewModel() {
 
     private val facts = factsReader.read()
@@ -376,6 +379,11 @@ class FoodPhotoViewModel @Inject constructor(
 
     /** Packaged products (Open Food Facts) by name or brand, on the device. */
     suspend fun searchProducts(query: String): List<OffProduct> = products.search(query)
+
+    /** Mirrors the shown day to Health Connect when the athlete switched the export on. */
+    fun exportDay(day: String, entries: List<FoodLogEntry>, water: List<HydrationEntry>) {
+        viewModelScope.launch { healthConnect.syncDay(day, entries, water) }
+    }
 
     /** Unpacks the product database in the background before the first search needs it. */
     fun prepareProducts() = products.prepareInBackground()
