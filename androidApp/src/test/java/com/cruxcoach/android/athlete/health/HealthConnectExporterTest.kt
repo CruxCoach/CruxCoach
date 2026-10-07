@@ -20,7 +20,10 @@ import org.robolectric.annotation.Config
 @Config(application = Application::class, sdk = [34])
 class HealthConnectExporterTest {
 
-    private val entry = FoodLogEntry(id = "e1", day = "2026-10-07", loggedAt = 1_791_400_000_000, meal = Meal.POST_TRAINING,
+    private val loggedAt = 1_791_400_000_000
+    /** The day of [loggedAt] wherever the test runs, so the entry counts as logged on its own day. */
+    private val loggedDay = java.time.Instant.ofEpochMilli(loggedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+    private val entry = FoodLogEntry(id = "e1", day = loggedDay, loggedAt = loggedAt, meal = Meal.POST_TRAINING,
         name = "Skyr", amountG = 250.0, kcal = 157.5, proteinG = 27.5, carbsG = 10.0)
 
     @Test
@@ -37,6 +40,22 @@ class HealthConnectExporterTest {
         // Not logged: not written as zero.
         assertNull(record.totalFat)
         assertEquals(entry.loggedAt, record.startTime.toEpochMilli())
+    }
+
+    @Test
+    fun `an entry logged for an earlier day lands on that day`() {
+        val zone = java.time.ZoneId.systemDefault()
+        // Tuesday 08:15, logging Monday's dinner.
+        val tuesdayMorning = java.time.LocalDate.of(2026, 10, 6).atTime(8, 15).atZone(zone).toInstant().toEpochMilli()
+        val record = HealthConnectExporter.nutrition(entry.copy(day = "2026-10-05", loggedAt = tuesdayMorning, meal = Meal.DINNER), 1)
+        val at = record.startTime.atZone(zone)
+        assertEquals(java.time.LocalDate.of(2026, 10, 5), at.toLocalDate())
+        assertEquals(java.time.LocalTime.of(8, 15), at.toLocalTime())
+        // Logged on its own day: the logging time as it is.
+        val sameDay = HealthConnectExporter.timeOf("2026-10-06", tuesdayMorning)
+        assertEquals(tuesdayMorning, sameDay.toEpochMilli())
+        val water = HealthConnectExporter.hydration(HydrationEntry("w2", "2026-10-05", tuesdayMorning, 500), version = 1)
+        assertEquals(java.time.LocalDate.of(2026, 10, 5), water.startTime.atZone(zone).toLocalDate())
     }
 
     @Test
