@@ -43,6 +43,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -146,6 +147,7 @@ class FoodPhotoViewModel @Inject constructor(
     private var prompt: VisionPrompt? = null
     private var work: Job? = null
     private var poller: Job? = null
+    private var saving: Job? = null
     private var nextKey = 0
 
     init {
@@ -202,8 +204,11 @@ class FoodPhotoViewModel @Inject constructor(
         work = viewModelScope.launch {
             _state.update { it.copy(phase = PhotoPhase.Probing(SystemClock.elapsedRealtime())) }
             val image = withContext(Dispatchers.IO) { PhotoInput.probeImage(context) }
-            val outcome = run(ready.model, image, maxTokens = PROBE_TOKENS)
-            image.rgbFile.delete()
+            val outcome = try {
+                run(ready.model, image, maxTokens = PROBE_TOKENS)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { image.rgbFile.delete() }
+            }
             if (!outcome.ok) return@launch failFor(outcome)
             val estimate = VisionCapability.estimateFullRunMs(outcome.imageMs, outcome.generateMs, outcome.outputTokens)
             store.saveProbe(ready.model, VisionModelStore.Probe(estimate, VisionCapability.verdict(estimate)))
@@ -233,8 +238,12 @@ class FoodPhotoViewModel @Inject constructor(
                 runCatching { PhotoInput.prepare(context, uri) }.getOrNull().also { deleteAfter?.delete() }
             } ?: return@launch fail(PhotoError.Image)
             _state.update { it.copy(phase = PhotoPhase.Analyzing(started, image.preview, ready.probe?.estimatedMs)) }
-            val outcome = run(ready.model, image, maxTokens = null)
-            withContext(Dispatchers.IO) { image.rgbFile.delete() }
+            // The prepared photo goes even when the analysis is cancelled or the sheet closes.
+            val outcome = try {
+                run(ready.model, image, maxTokens = null)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { image.rgbFile.delete() }
+            }
             if (!outcome.ok) return@launch failFor(outcome)
             val seconds = ((SystemClock.elapsedRealtime() - started) / 1000).toInt()
             showReview(image.preview, FoodVisionParser.parse(outcome.text), seconds)
@@ -421,8 +430,10 @@ class FoodPhotoViewModel @Inject constructor(
     /** Writes every included line to [day]: food log entries, and water to hydration. */
     fun save(day: String, meal: Meal) {
         val review = _state.value.phase as? PhotoPhase.Review ?: return
+        // A second tap while the first save is still writing would log the meal twice.
+        if (saving?.isActive == true) return
         val lines = review.items.filter { it.included && amountOf(it) != null }
-        viewModelScope.launch(Dispatchers.IO) {
+        saving = viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
             val now = System.currentTimeMillis()
@@ -463,6 +474,10 @@ class FoodPhotoViewModel @Inject constructor(
     fun onClose() {
         work?.cancel()
         work = null
+        // A download that finishes while the sheet is closed must not start the probe
+        // (and load the model) behind the user's back; onOpen resumes polling.
+        poller?.cancel()
+        poller = null
         client.release()
         _state.update { it.copy(phase = PhotoPhase.Idle) }
     }
