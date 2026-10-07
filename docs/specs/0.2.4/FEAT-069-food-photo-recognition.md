@@ -57,7 +57,8 @@ portions.
   size. It ships as the finished SQLite table (52 MB, 17.5 MB zstd); on first
   use it is unpacked and gets its FTS4 index on the phone (~91 MB together; the
   barcode is the integer row key, so a UPC-A and its EAN-13 form are the same
-  product). Importing it from text instead took 3+ minutes on a Nokia 6.1.
+  product). On a Nokia 6.1 this takes 31 s; importing the same rows from
+  text took 187–212 s.
 - "Find food" searches own foods, BLS and these products; products of the
   app language's region come first. The search field has a barcode scanner
   (CameraX + ZXing, already in the build, no Google services). Every search
@@ -163,7 +164,7 @@ Product search, serving labels, editing, US units, the weekly micronutrient
 card and the storage section work on the phone; the scanner opens and binds
 the camera (a real scan needs the owner: the phone's camera privacy toggle is
 on). Findings fixed right after: the product database took ~3.5 minutes to
-prepare (now without journal/fsync), the first search said "no match" while
+prepare (now shipped as a finished table: 31 s), the first search said "no match" while
 the BLS/USDA tables were still loading (now preloaded, "Searching…"), oat
 cookies ranked before oat flakes, an Italian serving label was shown.
 
