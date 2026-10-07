@@ -11,7 +11,7 @@ import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.FoodVisionClient
 import com.cruxcoach.android.foodvision.OffRepository
-import com.cruxcoach.android.foodvision.HealthConnectExporter
+import com.cruxcoach.android.athlete.health.HealthConnectExporter
 import com.cruxcoach.android.foodvision.UsdaRepository
 import com.cruxcoach.android.foodvision.PhotoInput
 import com.cruxcoach.android.foodvision.PreparedImage
