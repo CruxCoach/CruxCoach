@@ -142,7 +142,7 @@ fun BodyScreen(
             Modifier.fillMaxSize().padding(padding).testTag("body_list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         ) {
-            if (state.redsSignals.isNotEmpty()) item { SupportCard() }
+            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "body_reds", Modifier.padding(vertical = 8.dp)) }
             item { RoundCard(onOpen = { roundOpen = true }) }
             item { Column { WeightSection(state, onRange = viewModel::setRange) } }
             item {
@@ -427,25 +427,6 @@ private fun StrengthSection(state: BodyState) {
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(stringResource(R.string.trb_strength_best, points.maxOf { it.percentBodyweight }.roundToInt()),
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-
-@Composable
-private fun SupportCard() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
-            contentColor = CruxCoachDesign.colors.onCautionContainer),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("body_reds"),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Favorite, null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.trb_reds_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trb_reds_title), stringResource(R.string.trb_reds_info))
-            }
-            Text(stringResource(R.string.trb_reds_text), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

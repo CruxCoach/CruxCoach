@@ -141,8 +141,4 @@
     <string name="trf_create_serving_g">Portionsgröße in g (optional)</string>
     <string name="trf_create_serving_label">Portionsname (optional, z. B. Riegel)</string>
 
-    <string name="trf_reds_title">Genug Energie?</string>
-    <string name="trf_reds_low_carbs">An mehreren Trainingstagen lagen deine Kohlenhydrate deutlich unter dem, was dein Training braucht.</string>
-    <string name="trf_reds_other">Dein Verlauf zeigt etwas, das auf zu wenig Energie hindeuten kann.</string>
-    <string name="trf_reds_info">Zu wenig Energie über längere Zeit (RED-S) kann Leistung, Knochen, Hormone und Stimmung beeinträchtigen. CruxCoach stellt keine Diagnose, und Eintragen ist nie Pflicht. Wenn du oft müde oder krank bist, dein Zyklus unregelmäßig wird oder deine Leistung stagniert, sprich mit einer Ärztin, einem Arzt oder einer Fachkraft für Sporternährung.</string>
 </resources>
