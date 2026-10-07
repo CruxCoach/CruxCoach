@@ -1,50 +1,31 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
-import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.athlete.ClimbingDaysReader
 import com.cruxcoach.android.athlete.ExerciseCatalogStore
-import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
-import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.VisionModelStore
-import com.cruxcoach.android.ui.common.LocalBoardSessionManager
-import com.cruxcoach.athlete.data.AthleteRepository
 import com.cruxcoach.android.athlete.SystemRegion
 import com.cruxcoach.android.ui.settings.UnitsSection
 import com.cruxcoach.android.ui.settings.UnitsSettingsViewModel
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.UnitSystem
-import com.cruxcoach.db.athlete.AthleteDatabase
 import com.cruxcoach.db.secure.SecureDatabase
-import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.cancel
-import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -57,55 +38,15 @@ import org.robolectric.annotation.Config
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class UsUnitsTest {
+class UsUnitsTest : AthleteScreenTest() {
 
-    @get:Rule val compose = createComposeRule()
-
-    private val context: Application get() = ApplicationProvider.getApplicationContext()
-    private lateinit var athleteDriver: AndroidSqliteDriver
-    private lateinit var secureDriver: AndroidSqliteDriver
-    private lateinit var repo: AthleteRepository
-    private lateinit var service: AthleteService
-    private lateinit var sessionManager: BoardSessionManager
-    private val viewModels = mutableListOf<androidx.lifecycle.ViewModel>()
-    private fun <T : androidx.lifecycle.ViewModel> T.tracked(): T = also { viewModels += it }
-
-    @Before
-    fun setUp() {
-        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
-        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
-        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
-        val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
-        every { boardRepo.getActiveSession() } returns null
-        sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
-        service = AthleteService(
-            repoLazy = { repo },
-            catalogStore = ExerciseCatalogStore(context) { repo },
-            climbingDays = ClimbingDaysReader(SecureDatabase(secureDriver)),
-            bodyStatRepository = mockk(relaxed = true),
-            sessionManager = sessionManager,
-        )
+    /** A phone set to the US: a new athlete starts in US units. */
+    override fun beforeReady() {
         service.systemRegion = object : SystemRegion(context) { override fun country() = "US" }
     }
 
-    @After
-    fun tearDown() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        runBlocking {
-            kotlinx.coroutines.withTimeoutOrNull(10_000) {
-                viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
-            }
-        }
-        athleteDriver.close(); secureDriver.close()
-    }
-
-    private fun waitForTag(tag: String) =
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-
     @Test
     fun `a first start in the US picks US units, an existing profile keeps its own`() {
-        runBlocking { service.ensureReady() }
         assertEquals(UnitSystem.IMPERIAL, repo.profile().units)
         assertEquals(2.5, repo.profile().smallestIncrementKg * com.cruxcoach.athlete.logic.Units.LB_PER_KG, 1e-9)
 
@@ -135,11 +76,7 @@ class UsUnitsTest {
         repo.saveFoodItem(FoodItem(id = "juice", name = "Orange juice", kcalPer100 = 45.0, proteinPer100 = 0.7,
             carbsPer100 = 10.0, fatPer100 = 0.2, updatedAt = 1))
         val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
-        compose.setContent {
-            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
-            }
-        }
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
 
         // A US cup of water: 8 fl oz, stored as 237 ml.
@@ -168,7 +105,4 @@ class UsUnitsTest {
         }
     }
 
-    private companion object {
-        const val WAIT_MS = 60_000L
-    }
 }

@@ -1,43 +1,22 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
-import androidx.lifecycle.viewModelScope
-import androidx.test.core.app.ApplicationProvider
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.cruxcoach.android.athlete.AthleteService
-import com.cruxcoach.android.athlete.ClimbingDaysReader
-import com.cruxcoach.android.athlete.ExerciseCatalogStore
-import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.VisionModelStore
-import com.cruxcoach.android.ui.common.LocalBoardSessionManager
-import com.cruxcoach.athlete.data.AthleteRepository
 import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.model.FoodItem
-import com.cruxcoach.db.athlete.AthleteDatabase
-import com.cruxcoach.db.secure.SecureDatabase
-import io.mockk.every
-import io.mockk.mockk
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -46,58 +25,13 @@ import org.robolectric.annotation.Config
 /** Writing a recipe from searched ingredients, then changing it (FEAT-069). */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class RecipeFlowTest {
-
-    @get:Rule val compose = createComposeRule()
-
-    private val context: Application get() = ApplicationProvider.getApplicationContext()
-    private lateinit var athleteDriver: AndroidSqliteDriver
-    private lateinit var secureDriver: AndroidSqliteDriver
-    private lateinit var repo: AthleteRepository
-    private lateinit var service: AthleteService
-    private lateinit var sessionManager: BoardSessionManager
-    private val viewModels = mutableListOf<androidx.lifecycle.ViewModel>()
-    private fun <T : androidx.lifecycle.ViewModel> T.tracked(): T = also { viewModels += it }
+class RecipeFlowTest : AthleteScreenTest() {
 
     @Before
     fun setUp() {
-        athleteDriver = AndroidSqliteDriver(AthleteDatabase.Schema, context, null)
-        secureDriver = AndroidSqliteDriver(SecureDatabase.Schema, context, null)
-        repo = AthleteRepository(AthleteDatabase(athleteDriver), Dispatchers.IO) { System.currentTimeMillis() }
-        val boardRepo = mockk<com.cruxcoach.data.repository.PersonalBoardRepository>(relaxed = true)
-        every { boardRepo.getActiveSession() } returns null
-        sessionManager = BoardSessionManager(boardRepo, mockk(relaxed = true), mockk(relaxed = true))
-        service = AthleteService(
-            repoLazy = { repo },
-            catalogStore = ExerciseCatalogStore(context) { repo },
-            climbingDays = ClimbingDaysReader(SecureDatabase(secureDriver)),
-            bodyStatRepository = mockk(relaxed = true),
-            sessionManager = sessionManager,
-        )
-        runBlocking { service.ensureReady() }
         repo.updateProfile { it.copy(fuelIntroAccepted = true) }
         repo.saveFoodItem(FoodItem(id = "milk", name = "Milch", kcalPer100 = 64.0, proteinPer100 = 3.3,
             carbsPer100 = 4.8, fatPer100 = 3.5, updatedAt = 1))
-    }
-
-    @After
-    fun tearDown() {
-        viewModels.forEach { it.viewModelScope.cancel() }
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        runBlocking {
-            kotlinx.coroutines.withTimeoutOrNull(10_000) {
-                viewModels.forEach { it.viewModelScope.coroutineContext[kotlinx.coroutines.Job]?.join() }
-            }
-        }
-        athleteDriver.close(); secureDriver.close()
-    }
-
-    private fun waitForTag(tag: String) =
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-
-    private fun click(tag: String) {
-        waitForTag(tag)
-        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun addIngredient(search: String?, tag: String, grams: String) {
@@ -117,11 +51,7 @@ class RecipeFlowTest {
     fun `a recipe from a BLS food and an own food is saved and can be changed`() {
         val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context),
             OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
-        compose.setContent {
-            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
-            }
-        }
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
         click("fuel_my_foods")
@@ -156,7 +86,4 @@ class RecipeFlowTest {
         assertEquals(1, repo.foodItems().count { it.source == Recipe.SOURCE })
     }
 
-    private companion object {
-        const val WAIT_MS = 60_000L
-    }
 }
