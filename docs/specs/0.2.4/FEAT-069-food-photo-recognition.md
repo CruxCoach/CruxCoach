@@ -1,8 +1,8 @@
 ---
 status: implemented-on-branch
 queue: active
-base: feat/0.2.4-training-body@a49624dc6
-branch: feat/0.2.4-food-photo
+base: feat/0.2.4-training-body@bdcdd90c9
+branch: feat/0.2.4-training-nutrition (nutrition line feat/0.2.4-food-photo@eaaa405b1, merged with training on 2026-10-07)
 depends_on: [FEAT-068]
 created: 2026-10-04
 ---
@@ -15,7 +15,7 @@ photos anywhere. Hardware that cannot run it shows the feature greyed out.
 
 ## Flow
 
-1. Fueling screen → "Photo". The button is always visible; on unsupported
+1. Nutrition screen → "Photo". The button is always visible; on unsupported
    hardware it is greyed out and a tap explains why.
 2. First use: download one model (one-time, Wi-Fi by default, system
    notification), SHA-256 check, then a probe run on a drawn plate.
@@ -98,13 +98,21 @@ portions.
   any food; the ingredients are kept (settings table, `recipe:<id>`) so the
   recipe can be changed. Foods without a weight cannot be ingredients.
 
-- Health Connect (Android 14+, the system's built-in API – no extra library):
-  an opt-in switch in the nutrition settings writes logged meals (name, meal,
-  energy, protein, carbohydrate, fat) and water, write-only. Each entry is one
+- Health Connect export: logged meals (name, meal, energy, protein,
+  carbohydrate, fat) and water are written to Health Connect when the athlete
+  switches "Send meals and water to Health Connect" on. Each entry is one
   record with client record id `cruxcoach-food-<id>` / `cruxcoach-water-<id>`;
   the shown day is synced when nutrition opens or changes, so edits replace and
-  deletions remove records. Health Connect's permission screen links to an
-  explanation (VIEW_PERMISSION_USAGE alias). Older Android: the switch says so.
+  deletions remove records. Since the merge with the training line it uses the
+  app's one Health Connect layer (`athlete/health`, Jetpack
+  `connect-client`, Android 9+ with the Health Connect app, built into 14+),
+  next to the coach's reading of sleep and climbing sessions (FEAT-071): one
+  card in the training settings with one switch per direction, each with its
+  own permissions, and one explanation activity for Health Connect's
+  permission screen and the Android 14 permission-usage view. The first
+  version used the platform API (Android 14+ only) to avoid the Jetpack
+  client's Guava, which hides `ListenableFuture` from the compile classpath;
+  the barcode scanner now uses `ProcessCameraProvider.awaitInstance` instead.
 
 ## US units (owner request 2026-10-07)
 
@@ -171,7 +179,7 @@ cookies ranked before oat flakes, an Italian serving label was shown.
 ## Open
 
 - A real barcode scan and the Health Connect export on a phone with Health
-  Connect set up (owner).
+  Connect set up (owner), including Android 9–13 with the Health Connect app.
 - Measured speed on real 6 GB and 8 GB phones (only the Nokia 6.1 is
   available; it is gated out).
 - Quality evaluation on German dishes; the server run on the Mensa benchmark

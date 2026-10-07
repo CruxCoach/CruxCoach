@@ -2,7 +2,7 @@
 status: implemented-on-branch
 queue: active
 base: main@b5bef5163 (0.2.3)
-branch: feat/0.2.4-training-body
+branch: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07)
 depends_on: [FEAT-066, FEAT-067]
 created: 2026-10-04
 ---

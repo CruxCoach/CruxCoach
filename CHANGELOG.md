@@ -7,8 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Training beyond the board (FEAT-066). A new "Today" hub and an "Exercises"
-  library are in the main menu. The library has 199 exercises written for
+- Training beyond the board (FEAT-066). A "Today" hub and an "Exercises"
+  library inside the new training area. The library has 199 exercises written for
   climbers – fingers, pulling, pushing and antagonists, core, legs and hips,
   mobility, warm-up, power, endurance and technique – in German and English,
   with "why it matters", steps, cues, typical mistakes, progression chains
@@ -82,9 +82,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   shorter weeks without maximal finger load, automatically.
 - Training reminders on planned days; a body map and grip pictograms for every
   exercise; a reward screen with new bests after each training.
-- Optional Health Connect (read-only): last night's sleep as a check-in hint and
-  climbing sessions as climbing days. Experimental Tindeq Progressor support
-  with live force and a max-pull test.
+- Optional Health Connect link (Android 9 and newer; on Android 9–13 with the
+  Health Connect app), one card in the training settings with a switch per
+  direction: read last night's sleep as a check-in hint and climbing sessions
+  as climbing days, and send logged meals and water to Health Connect.
+  Nothing is uploaded. Experimental Tindeq Progressor support with live force
+  and a max-pull test.
 - Injury mode: note an injury with region, side and pain, and exercises that
   load it are hidden or marked, wall climbing can be paused, and one-sided work
   stays available for the healthy side – e.g. one-arm pick-ups on the right
@@ -92,7 +95,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Optional morning check-in (sleep, energy, skin, fingers, ill) that only ever
   makes the day gentler and names the deciding reason; illness, injury and
   holiday pauses; a weekly consistency streak in which rest days never count
-  against you; a weekly review with bests, load per structure and trends.
+  against you; a weekly review with bests, load per structure, trends and
+  nutrition (logged days, protein and carbohydrate against the targets of the
+  week's training, iron, calcium and vitamin D).
 - Body tracking (FEAT-067): back-dated entries, one value per day, a smoothed
   trend weight instead of noisy daily numbers, circumferences, ape index,
   strength-to-weight progress, and a "hide numbers" mode. Body stats from older
@@ -104,11 +109,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   keep-or-overwrite for existing days and a day/month choice when dates are
   ambiguous.
 - Nutrition (FEAT-068) with its own entry in the main menu: protein by body weight and carbohydrate
-  targets that follow the training day – board sessions count automatically –
+  targets that follow the training day – board sessions and logged climbing
+  days count automatically, a light day less than a limit session –
   plus water, quick entries, own foods, favourites and "same as yesterday". No
   calorie budget, no red "over" states, no good or bad foods. A RED-S guard
   watches for low weight, fast loss and very low carbohydrate on training days
-  and then pauses any weight-loss goal and points to professional help. It is
+  and then pauses any weight-loss goal and points to professional help – the
+  same card in Today, Nutrition, Body and the weekly review. It is
   always on; a card explains the guard rails once on the first visit. Every
   entry, meal and day shows protein, carbohydrate, fat and calories (calories
   can be hidden; without logged kcal they are estimated from the macros, "≈").
@@ -128,13 +135,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   scans a product – both answered on the phone, nothing is sent. Products
   from your language region come first.
 - US units: Settings → Units next to the language (metric or US, chosen from
-  the phone's region on a first start). Nutrition then shows oz, water and
-  drinks in fl oz, drinks can be logged in cups, and a new food takes the
-  per-portion values of a US label.
+  the phone's region on a first start; the same setting as in the training
+  settings). Loads and body weight are then in lb, lengths in in, food in oz,
+  water and drinks in fl oz – also on Today –, drinks can be logged in cups,
+  and a new food takes the per-portion values of a US label. Everything is
+  stored metric.
 - Logged foods can be changed: tap an entry to fix its amount or meal.
 - Recipes: put a dish together from any foods, split it into portions
   (optionally by the cooked weight) and log it by the portion.
-- Health Connect (Android 14+): optionally send meals and water there, write-only.
 - US foods: "Find food" also lists 7,793 generic foods from USDA FoodData
   Central with their cup weights, so a cup of oats or rice is logged right.
 - Iron, calcium and vitamin D: a weekly estimate from your log next to the
@@ -144,7 +152,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   phones with 8 GB) is downloaded once on request and checked against its
   hash; the photo never leaves the device. On phones with too little memory
   or an older processor the button stays greyed out and says why.
-- Training, body and fueling data live in a separate encrypted database per
+- Training, body and nutrition data live in a separate encrypted database per
   account and are included in the cloud backup and the manual export.
 
 ### Fixed
