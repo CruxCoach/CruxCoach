@@ -26,6 +26,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.training.EmptyHint
 import com.cruxcoach.android.ui.training.formatNumber
@@ -157,6 +159,8 @@ fun FoodsSheet(
     onEditRecipe: ((FoodItem) -> Unit)? = null,
     /** Shown instead of "My foods" when the sheet picks a recipe ingredient. */
     title: String? = null,
+    /** The product database is still being unpacked (first use after install or update). */
+    productsPreparing: Boolean = false,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim().lowercase()
@@ -165,22 +169,30 @@ fun FoodsSheet(
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
     var usdaResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
+    // "No match" only once a source has answered; until then "Searching…".
     var searching by remember { mutableStateOf(false) }
+    var searchingBls by remember { mutableStateOf(false) }
     LaunchedEffect(q) {
-        if (q.length < 2) { blsResults = emptyList(); productResults = emptyList(); usdaResults = emptyList(); return@LaunchedEffect }
+        if (q.length < 2) {
+            blsResults = emptyList(); productResults = emptyList(); usdaResults = emptyList()
+            searching = false; searchingBls = false
+            return@LaunchedEffect
+        }
         delay(250)
         val own = foods.map { it.id }.toSet()
-        blsResults = searchBls(q).filter { "bls:${it.code}" !in own }
-        usdaResults = searchUsda(q).filter { "usda:${it.code}" !in own }
-        // The first product search may unpack the bundled database for a few seconds.
         searching = true
-        productResults = searchProducts(q).filter { "off:${it.code}" !in own }
-        searching = false
+        searchingBls = true
+        // The three sources answer independently; a slow one never holds up the others.
+        coroutineScope {
+            launch { blsResults = searchBls(q).filter { "bls:${it.code}" !in own }; searchingBls = false }
+            launch { usdaResults = searchUsda(q).filter { "usda:${it.code}" !in own } }
+            launch { productResults = searchProducts(q).filter { "off:${it.code}" !in own }; searching = false }
+        }
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                 onCreateRecipe?.let { create ->
                     TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
                         Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
@@ -251,6 +263,7 @@ fun FoodsSheet(
                             Text(
                                 stringResource(when {
                                     q.length < 2 -> R.string.trf_foods_bls_hint
+                                    searchingBls && blsResults.isEmpty() -> R.string.trf_foods_searching
                                     blsResults.isEmpty() -> R.string.trf_foods_bls_none
                                     else -> R.string.fvp_attribution
                                 }),
@@ -295,7 +308,8 @@ fun FoodsSheet(
                                 Text(stringResource(R.string.trf_foods_products_title), style = MaterialTheme.typography.titleSmall)
                                 Text(
                                     stringResource(when {
-                                        searching && productResults.isEmpty() -> R.string.trf_products_preparing
+                                        productsPreparing && productResults.isEmpty() -> R.string.trf_products_preparing
+                                        searching && productResults.isEmpty() -> R.string.trf_foods_searching
                                         productResults.isEmpty() -> R.string.trf_foods_bls_none
                                         else -> R.string.trf_off_attribution
                                     }),

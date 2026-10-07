@@ -46,7 +46,10 @@
     <string name="trf_micro_calcium">Calcium</string>
     <string name="trf_micro_vitamin_d">Vitamin D</string>
     <string name="trf_micro_value">%1$s / %2$s %3$s pro Tag</string>
-    <string name="trf_micro_coverage">Geschätzt aus %1$d %% deiner Einträge an %2$d Tagen. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</string>
+    <plurals name="trf_micro_coverage">
+        <item quantity="one">Geschätzt aus %1$d %% deiner Einträge an %2$d Tag. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
+        <item quantity="other">Geschätzt aus %1$d %% deiner Einträge an %2$d Tagen. Allgemeine Lebensmittel (BLS, USDA) zählen; Markenprodukte und Schnelleinträge haben keine Werte.</item>
+    </plurals>
     <string name="trf_micro_info">Eine Schätzung aus deinen Einträgen, neben den EFSA-Referenzwerten für Erwachsene: Eisen 16 mg für Frauen vor der Menopause, sonst 11 mg; Calcium 1000 mg bis 24 Jahre, danach 950 mg; Vitamin D 15 µg, das die Haut im Sommer auch selbst bildet. Wer als Kletterer wenig isst, kommt hier zuerst zu kurz. Bleibt ein Wert über Wochen niedrig, lohnt ein Gespräch mit Ärztin, Arzt oder Sporternährungsberatung – vor allem bei Müdigkeit oder Verletzungen. Das ist keine Diagnose.</string>
     <string name="trf_entry_edit">Bearbeiten</string>
     <string name="trf_edit_title">Eintrag bearbeiten</string>
@@ -101,6 +104,7 @@
     <string name="trf_foods_bls_title">Lebensmitteldatenbank (BLS)</string>
     <string name="trf_foods_bls_hint">Tippe mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
     <string name="trf_foods_bls_none">Kein Treffer in der Datenbank.</string>
+    <string name="trf_foods_searching">Suche läuft …</string>
     <string name="trf_foods_products_title">Markenprodukte (Open Food Facts)</string>
     <string name="trf_products_preparing">Die Produktdatenbank wird auf diesem Gerät eingerichtet – einmalig, ein paar Sekunden …</string>
     <string name="trf_off_attribution">Produktdaten: Open-Food-Facts-Mitwirkende (ODbL)</string>

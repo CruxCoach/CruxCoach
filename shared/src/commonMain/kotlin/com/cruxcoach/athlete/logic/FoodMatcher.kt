@@ -141,18 +141,20 @@ class FoodMatcher(foods: List<BlsFood>) {
         var sum = 0.0
         query.alternatives.forEachIndexed { i, words ->
             var best = 0.0
-            var bestToken: String? = null
+            var bestTokens: List<String> = emptyList()
             for (word in words) {
                 for (token in candidate.content) {
                     val s = wordSimilarity(word, token)
-                    if (s > best) { best = s; bestToken = token }
+                    if (s > best) { best = s; bestTokens = listOf(token) }
                 }
-                for (pair in candidate.pairs) {
-                    if (pair == word && 0.95 > best) { best = 0.95; bestToken = null }
+                // "Haferflocken" against "Hafer Flocken": both words are used up, so
+                // they do not count as extra words against the candidate.
+                candidate.tokens.zipWithNext().forEach { (a, b) ->
+                    if (a + b == word && 0.95 > best) { best = 0.95; bestTokens = listOf(a, b) }
                 }
                 if (best < 0.5 && word.length >= 5 && candidate.joined.contains(word)) best = 0.5
             }
-            if (bestToken != null && best >= 0.6) used += bestToken
+            if (best >= 0.6) used += bestTokens
             // The head noun matters most: weight the first query word double.
             sum += if (i == 0) best * 2 else best
         }
