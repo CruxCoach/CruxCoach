@@ -53,7 +53,7 @@ object FuelUnits {
         "water", "wasser", "juice", "saft", "nectar", "nektar", "milk", "milch", "drink", "beverage", "getränk",
         "smoothie", "shake", "kefir", "buttermilk", "buttermilch", "soda", "cola", "lemonade", "limonade", "limo",
         "schorle", "tea", "tee", "coffee", "kaffee", "latte", "cappuccino", "espresso", "beer", "bier", "wine",
-        "wein", "sekt", "cider", "kombucha", "spritzer",
+        "wein", "sekt", "cider", "kombucha", "spritzer", "beverages",
     )
 
     /** German compounds: "Orangensaft", "Hafermilch", "Pfefferminztee", "Weißbier" – but not "Saftschinken". */

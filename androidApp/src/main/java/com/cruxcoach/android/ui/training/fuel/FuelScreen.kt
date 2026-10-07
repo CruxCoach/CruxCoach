@@ -29,7 +29,9 @@ import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.body.shortLabel
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MacroTotals
+import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffTable
+import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.logic.RedsSignal
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
@@ -59,6 +61,13 @@ fun FuelScreen(
     var amountFor by remember { mutableStateOf<FoodItem?>(null) }
     var createFood by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
+    /** A recipe being written; while [pickingIngredient] the food list chooses its next ingredient. */
+    var recipeDraft by remember { mutableStateOf<RecipeDraft?>(null) }
+    var pickingIngredient by remember { mutableStateOf(false) }
+    var ingredientFor by remember { mutableStateOf<FoodItem?>(null) }
+    val onlyWeighedText = stringResource(R.string.trf_recipe_only_weighed)
+    /** A logged entry being changed: by amount when its food is known, else as a quick entry. */
+    var editing by remember { mutableStateOf<FoodLogEntry?>(null) }
     /** A scanned code that is neither one of "my foods" nor in the product database. */
     var scanMiss by remember { mutableStateOf<String?>(null) }
     var createBarcode by remember { mutableStateOf<String?>(null) }
@@ -67,6 +76,12 @@ fun FuelScreen(
     val units = state.profile.units
     // Review lists after a photo or a typed meal show amounts in the same units.
     LaunchedEffect(units) { photoViewModel.units = units }
+    LaunchedEffect(Unit) { photoViewModel.prepareProducts() }
+    // Iron, calcium and vitamin D over the week up to the shown day.
+    val microDay = state.day ?: state.today
+    val micros by produceState<MicroWatch.Summary?>(null, microDay, state.entries, state.profile.sex, state.profile.birthYear) {
+        value = microDay?.let { photoViewModel.microWeek(it, state.profile.sex, state.profile.birthYear) }
+    }
     val foodsById = remember(state.foods) { state.foods.associateBy { it.id } }
     val isDrink: (FoodLogEntry) -> Boolean = { e ->
         foodsById[e.foodItemId]?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(e.foodItemId, e.name)
@@ -152,9 +167,12 @@ fun FuelScreen(
                 // One card per meal: its subtotal on top, every entry with its values.
                 MacroTotals.byMeal(state.entries).forEach { (meal, totals) ->
                     item(key = "meal_${meal.name}") {
-                        MealCard(meal, totals, state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink, ::deleteEntry)
+                        MealCard(meal, totals, state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink,
+                            onEdit = { editing = it }, onDelete = ::deleteEntry)
                     }
                 }
+                // The week's micronutrients below the day: background, not the day's task.
+                micros?.let { summary -> item(key = "micros") { MicroCard(summary) } }
             }
         }
     }
@@ -179,6 +197,13 @@ fun FuelScreen(
             searchProducts = photoViewModel::searchProducts,
             onPickProduct = { amountFor = FoodPhotoViewModel.offFoodItem(it); foodsOpen = false },
             onScan = { scanning = true; foodsOpen = false },
+            searchUsda = photoViewModel::searchUsda,
+            onPickUsda = { amountFor = FoodPhotoViewModel.usdaFoodItem(it); foodsOpen = false },
+            onCreateRecipe = { recipeDraft = RecipeDraft(id = null); foodsOpen = false },
+            onEditRecipe = { item ->
+                foodsOpen = false
+                scope.launch { viewModel.loadRecipe(item.id)?.let { recipeDraft = RecipeDraft.of(item.id, it, units) } }
+            },
         )
     }
     amountFor?.let { item ->
@@ -202,6 +227,79 @@ fun FuelScreen(
             barcode = createBarcode,
             units = units,
         )
+    }
+    recipeDraft?.let { draft ->
+        if (pickingIngredient) {
+            fun pick(item: FoodItem) {
+                if (FuelViewModel.isPerPortion(item)) {
+                    scope.launch { snackbar.showSnackbar(onlyWeighedText) }
+                } else {
+                    ingredientFor = item
+                }
+                pickingIngredient = false
+            }
+            FoodsSheet(
+                foods = state.foods.filter { it.id != draft.id && !FuelViewModel.isPerPortion(it) },
+                onDismiss = { pickingIngredient = false },
+                onPick = ::pick,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onDelete = viewModel::deleteFood,
+                onCreate = null,
+                searchBls = photoViewModel::search,
+                onPickBls = { pick(FoodPhotoViewModel.blsFoodItem(it)) },
+                searchProducts = photoViewModel::searchProducts,
+                onPickProduct = { pick(FoodPhotoViewModel.offFoodItem(it)) },
+                searchUsda = photoViewModel::searchUsda,
+                onPickUsda = { pick(FoodPhotoViewModel.usdaFoodItem(it)) },
+                title = stringResource(R.string.trf_recipe_pick),
+            )
+        } else if (ingredientFor == null) {
+            RecipeSheet(
+                draft = draft,
+                units = units,
+                showCalories = state.profile.showCalories,
+                onChange = { recipeDraft = it },
+                onAddIngredient = { pickingIngredient = true },
+                onSave = { recipe -> viewModel.saveRecipe(draft.id, recipe); recipeDraft = null; foodsOpen = true },
+                onDismiss = { recipeDraft = null },
+            )
+        }
+    }
+    ingredientFor?.let { item ->
+        AmountDialog(
+            item = item,
+            initialMeal = defaultMeal,
+            onDismiss = { ingredientFor = null },
+            onConfirm = { _, portions, grams ->
+                val g = grams ?: portions?.let { p -> item.servingG?.let { it * p } }
+                if (g != null) {
+                    recipeDraft = recipeDraft?.let { it.copy(ingredients = it.ingredients + Recipe.ingredient(item, g)) }
+                }
+                ingredientFor = null
+            },
+            units = units,
+            forRecipe = true,
+        )
+    }
+    editing?.let { entry ->
+        val item = entry.foodItemId?.let { foodsById[it] }
+        if (item != null) {
+            AmountDialog(
+                item = item,
+                initialMeal = entry.meal,
+                onDismiss = { editing = null },
+                onConfirm = { meal, portions, grams -> viewModel.updateEntry(entry, item, meal, portions, grams); editing = null },
+                units = units,
+                editing = entry,
+            )
+        } else {
+            QuickAddSheet(
+                initialMeal = entry.meal,
+                onDismiss = { editing = null },
+                onSave = { name, meal, nutrients, _ -> viewModel.updateQuickEntry(entry, name, meal, nutrients); editing = null },
+                editing = entry,
+            )
+        }
     }
     if (scanning) {
         BarcodeScannerDialog(
@@ -445,7 +543,7 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
 @Composable
 private fun MealCard(
     meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry>, showCalories: Boolean,
-    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean, onDelete: (FoodLogEntry) -> Unit,
+    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().testTag("fuel_meal_${meal.name.lowercase()}")) {
         Column(Modifier.padding(vertical = 8.dp)) {
@@ -455,7 +553,9 @@ private fun MealCard(
                     MacroTotals.Energy(totals.kcal, totals.kcalEstimated).takeIf { totals.entries > 0 }, showCalories),
                     style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("fuel_meal_total_${meal.name.lowercase()}"))
             }
-            entries.forEach { entry -> EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onDelete = { onDelete(entry) }) }
+            entries.forEach { entry ->
+                EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
+            }
         }
     }
 }
@@ -493,7 +593,7 @@ private fun ProgressRow(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits.Amount, onDelete: () -> Unit) {
+private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits.Amount, onEdit: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val amount = when {
         entry.amountG != null -> amountText(entry.amountG!!, unit)
@@ -511,6 +611,12 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
+                        text = { Text(stringResource(R.string.trf_entry_edit)) },
+                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                        onClick = { menu = false; onEdit() },
+                        modifier = Modifier.testTag("fuel_entry_edit_${entry.id}"),
+                    )
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.tr_action_delete)) },
                         leadingIcon = { Icon(Icons.Default.Delete, null) },
                         onClick = { menu = false; onDelete() },
@@ -519,8 +625,40 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits
                 }
             }
         },
-        modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { menu = true }).testTag("fuel_entry_${entry.id}"),
+        modifier = Modifier.combinedClickable(onClick = onEdit, onLongClick = { menu = true }).testTag("fuel_entry_${entry.id}"),
     )
+}
+
+/** The week's iron, calcium and vitamin D next to EFSA reference values – an estimate, no red states. */
+@Composable
+private fun MicroCard(summary: MicroWatch.Summary) {
+    Card(Modifier.fillMaxWidth().testTag("fuel_micros")) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.trf_micro_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trf_micro_title), stringResource(R.string.trf_micro_info))
+            }
+            summary.items.forEach { item ->
+                val (label, unit) = when (item.nutrient) {
+                    MicroWatch.Nutrient.IRON -> R.string.trf_micro_iron to "mg"
+                    MicroWatch.Nutrient.CALCIUM -> R.string.trf_micro_calcium to "mg"
+                    MicroWatch.Nutrient.VITAMIN_D -> R.string.trf_micro_vitamin_d to "µg"
+                }
+                ProgressRow(
+                    label = stringResource(label),
+                    value = item.perDay, target = item.reference,
+                    valueText = stringResource(R.string.trf_micro_value, formatNumber(item.perDay, if (item.reference < 100) 1 else 0),
+                        formatNumber(item.reference, 0), unit),
+                    tag = "fuel_micro_${item.nutrient.name.lowercase()}",
+                )
+            }
+            Text(
+                stringResource(R.string.trf_micro_coverage, (summary.coverage * 100).roundToInt(), summary.loggedDays),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
 }
 
 @Composable

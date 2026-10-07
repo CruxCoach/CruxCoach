@@ -7,7 +7,7 @@ plausible energy, protein, carbohydrate and fat per 100 g (energy within
 25 % or 40 kcal of 4/4/9 kcal per gram of the macros). Columns: barcode,
 German name, English name (either may be empty, never both), first brand,
 kcal, protein, carbs, fat, serving in g, regions (1 = German-speaking,
-2 = English-speaking, 3 = both). Sorted by barcode, zstd level 19 (8 MiB
+2 = English-speaking, 3 = both), serving label as printed on the pack. Sorted by barcode, zstd level 19 (8 MiB
 window), decoded in the app by the bundled zstd library.
 
 Source: Open Food Facts, https://world.openfoodfacts.org/data — database
@@ -25,6 +25,7 @@ import csv
 import datetime
 import gzip
 import io
+import re
 import subprocess
 import sys
 import urllib.request
@@ -48,6 +49,9 @@ def number(row: list[str], ix: dict[str, int], col: str) -> float | None:
         return float(row[i])
     except ValueError:
         return None
+
+
+GRAMS_ONLY = re.compile(r"^\s*\d+(?:[.,]\d+)?\s*g\s*$", re.IGNORECASE)
 
 
 def clean(text: str, limit: int) -> str:
@@ -98,7 +102,13 @@ def extract(stream: io.TextIOBase) -> tuple[list[str], int, dict[int, int]]:
         brand = clean(row[ix["brands"]].split(",")[0], 60) if ix["brands"] < len(row) else ""
         serving = number(row, ix, "serving_quantity")
         serving_text = fmt(serving) if serving and 0 < serving <= 2000 else ""
-        rows[code] = "\t".join([code, name_de, name_en, brand, fmt(kcal), fmt(p), fmt(c), fmt(f), serving_text, str(regions)])
+        # The label's own words for a serving ("1 cup (30 g)", "1 Riegel (40 g)", "330 ml");
+        # a bare gram figure adds nothing to serving_g.
+        label = clean(col(row, "serving_size"), 40) if serving_text else ""
+        if GRAMS_ONLY.match(label):
+            label = ""
+        rows[code] = "\t".join([code, name_de, name_en, brand, fmt(kcal), fmt(p), fmt(c), fmt(f), serving_text,
+                                 str(regions), label])
         per_region[regions] += 1
     return [rows[k] for k in sorted(rows)], total, per_region
 
@@ -106,6 +116,8 @@ def extract(stream: io.TextIOBase) -> tuple[list[str], int, dict[int, int]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--csv", help="local copy of the export (.csv or .csv.gz); default downloads it")
+    parser.add_argument("--out", help="write the extract here instead of the app asset (for a Blossom update, "
+                                      "see cruxcoach-blossom-sync/food_products_blossom_upload.py)")
     args = parser.parse_args()
 
     if args.csv:
@@ -122,14 +134,16 @@ def main() -> None:
         f"# version: {today}",
         f"# products: {len(lines)} of {total} (German-speaking {per_region[1]}, English-speaking {per_region[2]}, "
         f"both {per_region[3]}; plausible energy, protein, carbohydrate, fat per 100 g)",
-        "# code\tname_de\tname_en\tbrand\tkcal\tprotein_g\tcarbs_g\tfat_g\tserving_g\tregions",
+        "# code\tname_de\tname_en\tbrand\tkcal\tprotein_g\tcarbs_g\tfat_g\tserving_g\tregions\tserving_label",
     ]
     data = ("\n".join(header + lines) + "\n").encode("utf-8")
-    ASSET.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["zstd", "-q", "-f", "-19", "-o", str(ASSET)], input=data, check=True)
-    VERSION_FILE.write_text(f"{today} {len(lines)}\n", encoding="utf-8")
+    asset = Path(args.out).resolve() if args.out else ASSET
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["zstd", "-q", "-f", "-19", "-o", str(asset)], input=data, check=True)
+    if not args.out:
+        VERSION_FILE.write_text(f"{today} {len(lines)}\n", encoding="utf-8")
     print(f"wrote {len(lines)} products {per_region} ({len(data) / 1e6:.1f} MB raw, "
-          f"{ASSET.stat().st_size / 1e6:.1f} MB zstd) to {ASSET}")
+          f"{asset.stat().st_size / 1e6:.1f} MB zstd) to {asset}")
 
 
 if __name__ == "__main__":

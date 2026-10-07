@@ -67,6 +67,35 @@ portions.
   (signed Kind-30078 manifest + Blossom chunks, `BlossomSyncManager`) –
   needs the production publisher.
 
+## Everyday use, US foods, micronutrients (owner request 2026-10-07)
+
+- Logged entries can be edited: tap (or menu → Edit). A food's amount, unit
+  and meal change and its nutrients are scaled again; a quick entry without a
+  food opens with its values.
+- The product database is unpacked in the background when nutrition opens
+  (after an install or update), so the first search does not wait. Settings →
+  Delete shows the space the product database and the photo model take and
+  removes either; the database is rebuilt on the next search.
+- Products keep the pack's serving words ("1 cup (30 g)", "1 Riegel (40 g)",
+  "330 ml") as the portion name.
+- USDA FoodData Central SR Legacy (public domain, CC0): 7,793 generic US
+  foods with English names, the same nutrients as BLS and household measures.
+  "Find food" lists them after BLS; a USDA food's portion is its cup where
+  USDA weighed one, so cups work for solid foods too. Available carbohydrate
+  is by difference minus fibre, as in BLS and on EU labels.
+- Weekly watch items: iron, calcium and vitamin D over the last 7 days,
+  estimated from logged BLS and USDA foods (products and quick entries carry
+  no micronutrients; the card says how much of the log it covers), next to
+  EFSA reference values (iron PRI 16 mg for women under 50, else 11 mg;
+  calcium PRI 1000 mg to 24 years, then 950 mg; vitamin D AI 15 µg). No red
+  states, no diagnosis; the info text points to a doctor or sports dietitian.
+
+- Recipes: a name, ingredients from any source with their raw weight,
+  portions and, if weighed, the cooked weight. Saved as one of "my foods"
+  (per 100 g of the finished dish, one portion as serving) and logged like
+  any food; the ingredients are kept (settings table, `recipe:<id>`) so the
+  recipe can be changed. Foods without a weight cannot be ingredients.
+
 ## US units (owner request 2026-10-07)
 
 - The unit system (metric / US) is an app setting next to the language and
@@ -112,8 +141,11 @@ The Android version is not a criterion. The Nokia 6.1 test phone (Snapdragon
 
 ## Privacy
 
-Only the two model URLs (Hugging Face) are contacted, once, on the user's
-request. The photo is copied to the app cache, scaled, analysed and deleted;
+Only the model downloads go online, once, on the user's request: first a HEAD
+request to the CruxCoach Blossom mirror (blossom.cruxcoach.org, by SHA-256),
+then the files from there or from the pinned Hugging Face revision. Newer
+product data arrives with the background board sync (same relays and Blossom
+servers as the board catalogues) and only once the product search was used. The photo is copied to the app cache, scaled, analysed and deleted;
 nothing is uploaded, nothing is stored except the log entries the user saves.
 
 ## Open
@@ -122,5 +154,10 @@ nothing is uploaded, nothing is stored except the log entries the user saves.
   available; it is gated out).
 - Quality evaluation on German dishes; the server run on the Mensa benchmark
   is in the run notes.
-- Mirroring the model files on our own Blossom server instead of Hugging
-  Face (needs the owner's go; storage).
+- Model mirror: the app asks blossom.cruxcoach.org first; the files still
+  have to be uploaded there (cruxcoach-blossom-sync `upload_model_mirror.py`,
+  operator only; the 4B file exceeds a 2 GB upload limit if the server has one).
+- Product updates: the app side is in; publishing needs the operator
+  (cruxcoach-blossom-sync `food_products_blossom_upload.py`, branch
+  feat/food-products-dataset) and the relay allowlist entry
+  `cruxcoach/food-products`.

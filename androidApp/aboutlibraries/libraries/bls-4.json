@@ -2,7 +2,7 @@
   "uniqueId": "de.mri:bls-4.0",
   "artifactVersion": "4.0",
   "name": "Bundeslebensmittelschlüssel (BLS) 4.0",
-  "description": "Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe. DOI: 10.25826/Data20251217-134202-0. Energy, protein, fat and carbohydrate of 7,140 foods, extracted by CruxCoach (scripts/build_bls_asset.py) for food photo recognition.",
+  "description": "Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe. DOI: 10.25826/Data20251217-134202-0. Energy, protein, fat, carbohydrate, iron, calcium and vitamin D of 7,140 foods, extracted by CruxCoach (scripts/build_bls_asset.py) for food search, photo recognition and the weekly micronutrient estimate.",
   "website": "https://www.blsdb.de",
   "developers": [
     {

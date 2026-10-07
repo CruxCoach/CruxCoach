@@ -92,7 +92,7 @@ class VisionModelStore @Inject constructor(@ApplicationContext private val conte
             val networks = DownloadManager.Request.NETWORK_WIFI or
                 (if (allowMobile) DownloadManager.Request.NETWORK_MOBILE else 0)
             val ids = model.files.mapIndexed { i, file ->
-                val request = DownloadManager.Request(file.url.toUri())
+                val request = DownloadManager.Request(sourceFor(file).toUri())
                     .setTitle(context.getString(R.string.fvp_download_title, i + 1, model.files.size))
                     .setDestinationUri(Uri.fromFile(File(dir, file.fileName)))
                     .setAllowedNetworkTypes(networks)
@@ -169,6 +169,25 @@ class VisionModelStore @Inject constructor(@ApplicationContext private val conte
         if (current is State.Ready && current.model == model) _state.value = current.copy(probe = probe)
     }
 
+    /** Size a mirror reports for a URL (HEAD), or null; tests replace it. */
+    internal var headLength: (String) -> Long? = ::contentLength
+
+    /** The first mirror that holds the file with the expected size, else Hugging Face. */
+    internal fun sourceFor(file: ModelFile): String =
+        VisionModels.mirrorUrls(file).firstOrNull { headLength(it) == file.bytes } ?: file.url
+
+    private fun contentLength(url: String): Long? = runCatching {
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        try {
+            connection.requestMethod = "HEAD"
+            connection.connectTimeout = MIRROR_TIMEOUT_MS
+            connection.readTimeout = MIRROR_TIMEOUT_MS
+            if (connection.responseCode == 200) connection.contentLengthLong.takeIf { it >= 0 } else null
+        } finally {
+            connection.disconnect()
+        }
+    }.getOrNull()
+
     /** Cancels a running download or removes an installed model. */
     suspend fun remove() = mutex.withLock {
         withContext(Dispatchers.IO) {
@@ -218,6 +237,7 @@ class VisionModelStore @Inject constructor(@ApplicationContext private val conte
 
     companion object {
         private const val TAG = "VisionModelStore"
+        private const val MIRROR_TIMEOUT_MS = 5_000
         private const val PREFS = "foodvision"
         private const val DIR = "foodvision"
         private const val KEY_MODEL = "model"

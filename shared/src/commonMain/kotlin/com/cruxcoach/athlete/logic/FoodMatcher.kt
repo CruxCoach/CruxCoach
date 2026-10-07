@@ -3,7 +3,11 @@ package com.cruxcoach.athlete.logic
 import kotlin.math.max
 import kotlin.math.min
 
-/** One row of the bundled BLS 4.0 extract; nutrients per 100 g edible portion. */
+/**
+ * One generic food: a row of the bundled BLS 4.0 extract or, with an empty
+ * German name, of the USDA SR Legacy extract. Nutrients per 100 g edible
+ * portion; micronutrients null where the table has no value.
+ */
 data class BlsFood(
     val code: String,
     val nameDe: String,
@@ -12,12 +16,20 @@ data class BlsFood(
     val protein: Double,
     val fat: Double,
     val carbs: Double,
-)
+    val ironMg: Double? = null,
+    val calciumMg: Double? = null,
+    val vitaminDUg: Double? = null,
+    /** Household measures with grams per one unit ("cup" to 81 g); USDA only. */
+    val portions: List<Portion> = emptyList(),
+) {
+    data class Portion(val label: String, val grams: Double)
+}
 
 /**
- * Parser for `assets/fuel/bls_4_0_macros.tsv`: `#` comment lines (source and
- * licence), then code, German name, English name, kcal, protein, fat,
- * carbohydrate per 100 g, tab separated.
+ * Parser for `assets/fuel/bls_4_0_macros.tsv` and `usda_sr_legacy.tsv`: `#`
+ * comment lines (source and licence), then code, German name, English name,
+ * kcal, protein, fat, carbohydrate per 100 g, optionally iron mg, calcium mg,
+ * vitamin D µg and portions ("cup=81|tbsp=5.1"), tab separated.
  */
 object BlsTable {
     fun parse(text: String): List<BlsFood> = text.lineSequence()
@@ -31,9 +43,33 @@ object BlsTable {
                 protein = f[4].toDoubleOrNull() ?: return@mapNotNull null,
                 fat = f[5].toDoubleOrNull() ?: return@mapNotNull null,
                 carbs = f[6].toDoubleOrNull() ?: return@mapNotNull null,
+                ironMg = f.getOrNull(7)?.toDoubleOrNull(),
+                calciumMg = f.getOrNull(8)?.toDoubleOrNull(),
+                vitaminDUg = f.getOrNull(9)?.toDoubleOrNull(),
+                portions = f.getOrNull(10).orEmpty().split('|').mapNotNull { part ->
+                    val label = part.substringBefore('=', "").trim()
+                    val grams = part.substringAfter('=', "").toDoubleOrNull()
+                    if (label.isEmpty() || grams == null || grams <= 0) null else BlsFood.Portion(label, grams)
+                },
             )
         }
         .toList()
+}
+
+/**
+ * USDA names put the food first and stack qualifiers after commas ("Milk,
+ * whole, 3.25% milkfat, with added vitamin D"); a search for "whole milk"
+ * would otherwise prefer "Cheese, mozzarella, whole milk". The matcher
+ * therefore also sees the core – the first two parts without parentheses –
+ * in the otherwise empty German slot; the full English name stays for display
+ * and for queries that name a qualifier ("oats regular quick").
+ */
+object UsdaNames {
+    fun core(name: String): String =
+        name.replace(Regex("\\([^)]*\\)"), " ").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            .take(2).joinToString(", ")
+
+    fun indexed(food: BlsFood): BlsFood = if (food.nameDe.isEmpty()) food.copy(nameDe = core(food.nameEn)) else food
 }
 
 /**

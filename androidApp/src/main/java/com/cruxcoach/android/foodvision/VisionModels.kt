@@ -4,8 +4,9 @@ import com.cruxcoach.athlete.logic.VisionTier
 
 /**
  * The two photo models (FEAT-069). Neither ships in the APK: the user
- * downloads one on demand, pinned to an exact Hugging Face revision and
- * checked against its SHA-256 before first use. Both are Qwen3.5 (Apache-2.0)
+ * downloads one on demand – from the CruxCoach Blossom mirror when it holds
+ * the file, else from the pinned Hugging Face revision – and it is checked
+ * against its SHA-256 before first use. Both are Qwen3.5 (Apache-2.0)
  * as 4-bit GGUF with the F16 vision projector, built by Unsloth.
  */
 data class ModelFile(val fileName: String, val url: String, val sha256: String, val bytes: Long)
@@ -63,6 +64,15 @@ object VisionModels {
     )
 
     val ALL = listOf(SMALL, LARGE)
+
+    /**
+     * Blossom mirrors asked first: they serve a file under its SHA-256, so a
+     * hit is the pinned file by construction (and is still verified after the
+     * download). Hugging Face is the fallback.
+     */
+    val MIRRORS = listOf("https://blossom.cruxcoach.org")
+
+    fun mirrorUrls(file: ModelFile): List<String> = MIRRORS.map { "${it.trimEnd('/')}/${file.sha256}" }
 
     fun forTier(tier: VisionTier): VisionModel = if (tier == VisionTier.LARGE) LARGE else SMALL
 

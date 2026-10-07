@@ -11,6 +11,7 @@ import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.FoodVisionClient
 import com.cruxcoach.android.foodvision.OffRepository
+import com.cruxcoach.android.foodvision.UsdaRepository
 import com.cruxcoach.android.foodvision.PhotoInput
 import com.cruxcoach.android.foodvision.PreparedImage
 import com.cruxcoach.android.foodvision.VisionModel
@@ -26,6 +27,7 @@ import com.cruxcoach.athlete.logic.FoodMatcher
 import com.cruxcoach.athlete.logic.FoodVisionParser
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MealTextParser
+import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.VisionCapability
 import com.cruxcoach.athlete.logic.VisionSupport
@@ -47,6 +49,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import javax.inject.Inject
+import kotlinx.datetime.minus
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import com.cruxcoach.athlete.model.Sex
 
 /** One line of the review list after a photo. */
 data class ReviewItem(
@@ -126,6 +132,7 @@ class FoodPhotoViewModel @Inject constructor(
     private val bls: BlsRepository,
     factsReader: DeviceFactsReader,
     private val products: OffRepository = OffRepository(context),
+    private val usda: UsdaRepository = UsdaRepository(context),
 ) : ViewModel() {
 
     private val facts = factsReader.read()
@@ -370,6 +377,9 @@ class FoodPhotoViewModel @Inject constructor(
     /** Packaged products (Open Food Facts) by name or brand, on the device. */
     suspend fun searchProducts(query: String): List<OffProduct> = products.search(query)
 
+    /** Unpacks the product database in the background before the first search needs it. */
+    fun prepareProducts() = products.prepareInBackground()
+
     /** A scanned barcode in the on-device product database. */
     suspend fun productByBarcode(code: String): OffProduct? = products.byBarcode(code)
 
@@ -378,6 +388,30 @@ class FoodPhotoViewModel @Inject constructor(
     suspend fun search(query: String): List<BlsFood> {
         val matcher = bls.matcher()
         return withContext(Dispatchers.Default) { matcher.search(query, limit = 25).map { it.food } }
+    }
+
+    /** USDA generic foods (English names, household measures). */
+    suspend fun searchUsda(query: String): List<BlsFood> {
+        val matcher = usda.matcher()
+        return withContext(Dispatchers.Default) { matcher.search(query, limit = 15).map { it.food } }
+    }
+
+    /**
+     * Iron, calcium and vitamin D over the 7 days up to [day], from logged BLS
+     * and USDA foods; null when none of them carries micronutrients.
+     */
+    suspend fun microWeek(day: LocalDate, sex: Sex?, birthYear: Int?): MicroWatch.Summary? = withContext(Dispatchers.IO) {
+        service.ensureReady()
+        val entries = service.repo.foodLogBetween(day.minus(DatePeriod(days = 6)).toString(), day.toString())
+        val foods = entries.mapNotNull { it.foodItemId }.toSet().associateWith { id ->
+            val food = when {
+                id.startsWith("bls:") -> bls.food(id.removePrefix("bls:"))
+                id.startsWith("usda:") -> usda.food(id.removePrefix("usda:"))
+                else -> null
+            }
+            food?.let { MicroWatch.Per100(it.ironMg, it.calciumMg, it.vitaminDUg) }
+        }
+        MicroWatch.summarize(entries, sex, birthYear?.let { day.year - it }) { foods[it] }
     }
 
     /** Writes every included line to [day]: food log entries, and water to hydration. */
@@ -453,8 +487,21 @@ class FoodPhotoViewModel @Inject constructor(
         fun offFoodItem(p: OffProduct) = FoodItem(
             id = "off:${p.code}", name = p.displayName(german()), brand = p.brand.ifEmpty { null }, barcode = p.code,
             kcalPer100 = p.kcal, proteinPer100 = p.protein, carbsPer100 = p.carbs, fatPer100 = p.fat,
-            servingG = p.servingG, source = OffRepository.SOURCE,
+            servingG = p.servingG, servingLabel = p.servingLabel, source = OffRepository.SOURCE,
         )
+
+        /**
+         * A USDA food as an (unsaved) per-100 g food item; saved on first use. Its
+         * portion is a cup where USDA weighed one, so cups work for solid foods too.
+         */
+        fun usdaFoodItem(food: BlsFood): FoodItem {
+            val portion = food.portions.firstOrNull { it.label.startsWith("cup") } ?: food.portions.firstOrNull()
+            return FoodItem(
+                id = "usda:${food.code}", name = food.nameEn, source = UsdaRepository.SOURCE,
+                kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+                servingG = portion?.grams, servingLabel = portion?.let { "1 ${it.label}" },
+            )
+        }
 
         /** A BLS food as an (unsaved) per-100 g food item; saved on first use. */
         fun blsFoodItem(food: BlsFood) = FoodItem(

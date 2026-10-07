@@ -10,6 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -32,7 +34,9 @@ import com.cruxcoach.android.ui.training.parseDecimal
 import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.OffProduct
+import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.model.FoodItem
+import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.UnitSystem
 
@@ -76,13 +80,16 @@ fun QuickAddSheet(
     initialMeal: Meal,
     onDismiss: () -> Unit,
     onSave: (name: String, meal: Meal, nutrients: Nutrients, remember: Boolean) -> Unit,
+    /** A logged quick entry to change instead of a new one. */
+    editing: FoodLogEntry? = null,
 ) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var meal by rememberSaveable { mutableStateOf(initialMeal) }
-    var protein by rememberSaveable { mutableStateOf("") }
-    var carbs by rememberSaveable { mutableStateOf("") }
-    var fat by rememberSaveable { mutableStateOf("") }
-    var kcal by rememberSaveable { mutableStateOf("") }
+    fun text(v: Double?) = v?.let { formatNumber(it) }.orEmpty()
+    var name by rememberSaveable { mutableStateOf(editing?.name.orEmpty()) }
+    var meal by rememberSaveable { mutableStateOf(editing?.meal ?: initialMeal) }
+    var protein by rememberSaveable { mutableStateOf(text(editing?.proteinG)) }
+    var carbs by rememberSaveable { mutableStateOf(text(editing?.carbsG)) }
+    var fat by rememberSaveable { mutableStateOf(text(editing?.fatG)) }
+    var kcal by rememberSaveable { mutableStateOf(text(editing?.kcal)) }
     var remember by rememberSaveable { mutableStateOf(false) }
     val defaultName = stringResource(R.string.trf_qa_default_name)
     val valid = listOf(protein, carbs, fat, kcal).all(::fieldValid) && (!remember || name.isNotBlank())
@@ -90,7 +97,7 @@ fun QuickAddSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_quick_add_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.trf_qa_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(if (editing != null) R.string.trf_edit_title else R.string.trf_qa_title), style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(
                 value = name, onValueChange = { name = it.take(120) },
                 label = { Text(stringResource(R.string.trf_qa_name)) }, singleLine = true,
@@ -108,9 +115,11 @@ fun QuickAddSheet(
             }
             Text(stringResource(R.string.trf_qa_optional), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { remember = !remember }) {
-                Checkbox(checked = remember, onCheckedChange = { remember = it }, modifier = Modifier.testTag("fuel_qa_remember"))
-                Text(stringResource(R.string.trf_qa_remember))
+            if (editing == null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { remember = !remember }) {
+                    Checkbox(checked = remember, onCheckedChange = { remember = it }, modifier = Modifier.testTag("fuel_qa_remember"))
+                    Text(stringResource(R.string.trf_qa_remember))
+                }
             }
             Button(
                 onClick = {
@@ -136,12 +145,18 @@ fun FoodsSheet(
     onPick: (FoodItem) -> Unit,
     onToggleFavorite: (FoodItem) -> Unit,
     onDelete: (FoodItem) -> Unit,
-    onCreate: () -> Unit,
+    onCreate: (() -> Unit)?,
     searchBls: suspend (String) -> List<BlsFood> = { emptyList() },
     onPickBls: (BlsFood) -> Unit = {},
     searchProducts: suspend (String) -> List<OffProduct> = { emptyList() },
     onPickProduct: (OffProduct) -> Unit = {},
     onScan: (() -> Unit)? = null,
+    searchUsda: suspend (String) -> List<BlsFood> = { emptyList() },
+    onPickUsda: (BlsFood) -> Unit = {},
+    onCreateRecipe: (() -> Unit)? = null,
+    onEditRecipe: ((FoodItem) -> Unit)? = null,
+    /** Shown instead of "My foods" when the sheet picks a recipe ingredient. */
+    title: String? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim().lowercase()
@@ -149,12 +164,14 @@ fun FoodsSheet(
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
+    var usdaResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     LaunchedEffect(q) {
-        if (q.length < 2) { blsResults = emptyList(); productResults = emptyList(); return@LaunchedEffect }
+        if (q.length < 2) { blsResults = emptyList(); productResults = emptyList(); usdaResults = emptyList(); return@LaunchedEffect }
         delay(250)
         val own = foods.map { it.id }.toSet()
         blsResults = searchBls(q).filter { "bls:${it.code}" !in own }
+        usdaResults = searchUsda(q).filter { "usda:${it.code}" !in own }
         // The first product search may unpack the bundled database for a few seconds.
         searching = true
         productResults = searchProducts(q).filter { "off:${it.code}" !in own }
@@ -163,11 +180,20 @@ fun FoodsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = onCreate, modifier = Modifier.testTag("fuel_food_new")) {
-                    Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.trf_foods_new))
+                Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                onCreateRecipe?.let { create ->
+                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
+                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.trf_recipe_new))
+                    }
+                }
+                onCreate?.let { create ->
+                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
+                        Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.trf_foods_new))
+                    }
                 }
             }
             OutlinedTextField(
@@ -186,7 +212,7 @@ fun FoodsSheet(
             if (visible.isEmpty() && q.isEmpty()) {
                 EmptyHint(stringResource(R.string.trf_foods_empty))
             }
-            LazyColumn(Modifier.heightIn(max = 460.dp)) {
+            LazyColumn(Modifier.heightIn(max = 460.dp).testTag("fuel_foods_list")) {
                     items(visible, key = { it.id }) { item ->
                         ListItem(
                             headlineContent = { Text(item.name) },
@@ -200,6 +226,11 @@ fun FoodsSheet(
                             },
                             trailingContent = {
                                 Row {
+                                    if (item.source == Recipe.SOURCE && onEditRecipe != null) {
+                                        IconButton(onClick = { onEditRecipe(item) }, modifier = Modifier.testTag("fuel_recipe_edit_${item.id}")) {
+                                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.trf_recipe_edit))
+                                        }
+                                    }
                                     IconButton(onClick = { onToggleFavorite(item) }, modifier = Modifier.testTag("fuel_food_star_${item.id}")) {
                                         Icon(
                                             if (item.favorite) Icons.Default.Star else Icons.Default.StarBorder,
@@ -237,6 +268,26 @@ fun FoodsSheet(
                             },
                             modifier = Modifier.clickable { onPickBls(food) }.testTag("fuel_bls_${food.code}"),
                         )
+                    }
+                    // US generic foods with household measures (cups, slices); English names only.
+                    if (usdaResults.isNotEmpty()) {
+                        item(key = "usda_header") {
+                            Column(Modifier.padding(top = 12.dp)) {
+                                Text(stringResource(R.string.trf_foods_usda_title), style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.trf_usda_attribution), style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        items(usdaResults, key = { "usda_${it.code}" }) { food ->
+                            ListItem(
+                                headlineContent = { Text(food.nameEn) },
+                                supportingContent = {
+                                    Text(stringResource(R.string.fvp_per_100, formatNumber(food.kcal), formatNumber(food.protein),
+                                        formatNumber(food.carbs), formatNumber(food.fat)))
+                                },
+                                modifier = Modifier.clickable { onPickUsda(food) }.testTag("fuel_usda_${food.code}"),
+                            )
+                        }
                     }
                     if (q.length >= 2) {
                         item(key = "off_header") {
@@ -278,6 +329,10 @@ fun AmountDialog(
     onDismiss: () -> Unit,
     onConfirm: (meal: Meal, portions: Double?, grams: Double?) -> Unit,
     units: UnitSystem = UnitSystem.METRIC,
+    /** A logged entry to change: its amount and meal are the starting values. */
+    editing: FoodLogEntry? = null,
+    /** Picking a recipe ingredient: no meal, "Add" instead of "Log". */
+    forRecipe: Boolean = false,
 ) {
     val perPortion = FuelViewModel.isPerPortion(item)
     val gramsPossible = !perPortion
@@ -285,11 +340,14 @@ fun AmountDialog(
     val drink = FuelUnits.isDrink(item.id, item.name, item.servingLabel)
     val baseUnit = FuelUnits.unitFor(units, drink)
     val amountUnits = if (units == UnitSystem.IMPERIAL && drink) listOf(baseUnit, FuelUnits.Amount.CUP) else listOf(baseUnit)
-    var useGrams by rememberSaveable { mutableStateOf(gramsPossible && item.servingG == null) }
+    val editedByGrams = editing != null && editing.portions == null && editing.amountG != null
+    var useGrams by rememberSaveable { mutableStateOf(gramsPossible && (item.servingG == null || editedByGrams)) }
     var unit by rememberSaveable { mutableStateOf(baseUnit) }
-    var portions by rememberSaveable { mutableStateOf("1") }
-    var grams by rememberSaveable { mutableStateOf(inputText(item.servingG ?: 100.0, baseUnit)) }
-    var meal by rememberSaveable { mutableStateOf(initialMeal) }
+    var portions by rememberSaveable { mutableStateOf(editing?.portions?.let { formatNumber(it, 2) } ?: "1") }
+    var grams by rememberSaveable {
+        mutableStateOf(inputText(editing?.amountG?.takeIf { editedByGrams } ?: item.servingG ?: 100.0, baseUnit))
+    }
+    var meal by rememberSaveable { mutableStateOf(editing?.meal ?: initialMeal) }
     val p = parseDecimal(portions)?.takeIf { it > 0 && it <= 50 }
     val g = parseDecimal(grams)?.let { FuelUnits.toBase(it, unit) }?.takeIf { it > 0 && it <= 5000 }
 
@@ -335,10 +393,21 @@ fun AmountDialog(
                         }
                     }
                     NumberField(stringResource(R.string.trf_amount_portions), portions, "fuel_amount_portions", Modifier.fillMaxWidth()) { portions = it }
-                    item.servingG?.let { Text(stringResource(R.string.trf_amount_serving, amountText(it, baseUnit)), style = MaterialTheme.typography.bodySmall) }
+                    item.servingG?.let { g ->
+                        // The pack's own words where known ("1 cup (30 g)"), with the amount in US units.
+                        val amount = amountText(g, baseUnit)
+                        val text = when {
+                            item.servingLabel == null -> amount
+                            units == UnitSystem.IMPERIAL -> "${item.servingLabel} · $amount"
+                            else -> item.servingLabel!!
+                        }
+                        Text(stringResource(R.string.trf_amount_serving, text), style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                Text(stringResource(R.string.trf_qa_meal), style = MaterialTheme.typography.labelLarge)
-                MealPicker(meal) { meal = it }
+                if (!forRecipe) {
+                    Text(stringResource(R.string.trf_qa_meal), style = MaterialTheme.typography.labelLarge)
+                    MealPicker(meal) { meal = it }
+                }
             }
         },
         confirmButton = {
@@ -346,7 +415,13 @@ fun AmountDialog(
                 onClick = { if (useGrams) onConfirm(meal, null, g) else onConfirm(meal, p, null) },
                 enabled = valid,
                 modifier = Modifier.testTag("fuel_amount_confirm"),
-            ) { Text(stringResource(R.string.trf_amount_add)) }
+            ) {
+                Text(stringResource(when {
+                    forRecipe -> R.string.trf_recipe_add_confirm
+                    editing != null -> R.string.tr_action_save
+                    else -> R.string.trf_amount_add
+                }))
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
     )

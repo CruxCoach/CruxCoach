@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -158,6 +159,36 @@ class FoodSearchAndTextTest {
         assertEquals(150.0, entry.amountG!!, 0.0)
         assertEquals(16.5, entry.proteinG!!, 0.01)
         assertEquals("4025500000001", repo.foodItem("off:4025500000001")!!.barcode)
+    }
+
+    @Test
+    fun `a USDA food is logged by the cup and feeds the weekly micronutrients`() {
+        repo.updateProfile { com.cruxcoach.athlete.logic.Units.withUnits(it, com.cruxcoach.athlete.model.UnitSystem.IMPERIAL) }
+        render()
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_foods_search")
+        compose.onNodeWithTag("fuel_foods_search").performTextInput("oats regular quick")
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_usda_173904")); true }.getOrDefault(false)
+        }
+        compose.onNodeWithTag("fuel_usda_173904").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_amount_dialog")
+        // USDA weighed a cup of oats: one portion is that cup, shown with its weight in oz.
+        compose.onNodeWithText("1 cup · 2.9 oz", substring = true).assertExists()
+        compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
+
+        val day = service.today().toString()
+        compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }
+        val entry = repo.foodLog(day).single()
+        assertEquals("usda:173904", entry.foodItemId)
+        assertEquals(81.0, entry.amountG!!, 0.001)
+        assertEquals("1 cup", repo.foodItem("usda:173904")!!.servingLabel)
+        // 81 g oats carry 3.4 mg iron (4.25 mg per 100 g).
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_micros")); true }.getOrDefault(false)
+        }
+        compose.onNodeWithText("3.4 / 11 mg", substring = true, useUnmergedTree = true).assertExists()
     }
 
     @Test

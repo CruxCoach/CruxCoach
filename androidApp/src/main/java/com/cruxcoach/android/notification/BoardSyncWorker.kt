@@ -9,6 +9,7 @@ import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.SyncInterval
+import com.cruxcoach.android.foodvision.FoodProductsSync
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
@@ -21,7 +22,8 @@ class BoardSyncWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val syncManager: BoardSyncManager,
     private val importer: BoardDatabaseImporter,
-    private val notificationService: AppNotificationService
+    private val notificationService: AppNotificationService,
+    private val foodProductsSync: FoodProductsSync,
 ) : CoroutineWorker(appContext, workerParams) {
 
     // On API < 31 an expedited worker runs as a FOREGROUND SERVICE, and
@@ -47,6 +49,11 @@ class BoardSyncWorker @AssistedInject constructor(
             val finalState = syncManager.state
                 .filter { !it.isSyncing }
                 .first()
+
+            // Newer product data for the offline food search rides along (FEAT-069);
+            // it never decides the board sync's outcome.
+            val food = foodProductsSync.sync()
+            Log.i(TAG, "Food products update: $food")
 
             if (finalState.errorMessage != null && !importer.isImported()) {
                 // Only retry if we have no data at all — stale data is better than retrying endlessly
