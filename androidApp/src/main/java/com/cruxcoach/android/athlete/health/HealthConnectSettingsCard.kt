@@ -3,6 +3,7 @@ package com.cruxcoach.android.athlete.health
 import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -10,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -29,9 +31,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HealthConnectCardState(
+    /** Coach reads sleep and climbing sessions (CoachProfile.healthConnectEnabled). */
     val enabled: Boolean = false,
+    /** Nutrition writes meals and water (AthleteProfile.healthConnectExport). */
+    val exportEnabled: Boolean = false,
     val availability: HealthConnectAvailability = HealthConnectAvailability.UNSUPPORTED,
     val permitted: Boolean = false,
+    val exportPermitted: Boolean = false,
     val syncing: Boolean = false,
     val lastSync: HealthSyncResult? = null,
     val sleepHours: Double? = null,
@@ -55,10 +61,17 @@ class HealthConnectSettingsViewModel @Inject constructor(
 
     fun refresh() = viewModelScope.launch(Dispatchers.IO) {
         service.ensureReady()
-        val enabled = service.repo.profile().coach.healthConnectEnabled
+        val profile = service.repo.profile()
         val availability = source.availability()
-        val permitted = availability == HealthConnectAvailability.AVAILABLE && source.hasAllPermissions()
-        _state.update { it.copy(enabled = enabled, availability = availability, permitted = permitted) }
+        val granted = if (availability == HealthConnectAvailability.AVAILABLE) source.grantedPermissions() else emptySet()
+        _state.update {
+            it.copy(
+                enabled = profile.coach.healthConnectEnabled, exportEnabled = profile.healthConnectExport,
+                availability = availability,
+                permitted = granted.containsAll(HealthConnectSource.PERMISSIONS),
+                exportPermitted = granted.containsAll(HealthConnectExporter.PERMISSIONS),
+            )
+        }
     }
 
     /** Turning on only stores the wish; the screen asks for permissions when they are missing. */
@@ -69,10 +82,18 @@ class HealthConnectSettingsViewModel @Inject constructor(
         if (on && _state.value.permitted) syncNow()
     }
 
+    /** The nutrition export; the shown day is written when nutrition opens or changes. */
+    fun setExportEnabled(on: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        service.ensureReady()
+        service.repo.updateProfile { it.copy(healthConnectExport = on) }
+        _state.update { it.copy(exportEnabled = on) }
+    }
+
     fun onPermissionsResult(granted: Set<String>) {
-        val permitted = granted.containsAll(HealthConnectSource.PERMISSIONS)
-        _state.update { it.copy(permitted = permitted) }
-        if (permitted) syncNow() else refresh()
+        val readNow = granted.containsAll(HealthConnectSource.PERMISSIONS)
+        // The result lists only what this request granted; re-read the rest.
+        refresh()
+        if (readNow && _state.value.enabled) syncNow()
     }
 
     fun installIntent() = source.installIntent()
@@ -87,9 +108,11 @@ class HealthConnectSettingsViewModel @Inject constructor(
 }
 
 /**
- * Settings card for the optional Health Connect link: on/off, install or
- * update hint, permission request, manual sync with the last result, and
- * the privacy line. For the training settings screen (integrator places it).
+ * The app's one place for Health Connect (training settings): one switch per
+ * direction – the coach reads sleep and climbing sessions, nutrition writes
+ * meals and water – each with its own permissions, the install or update
+ * hint for Android 9–13, a manual sync with the last result, and the
+ * privacy line.
  */
 @Composable
 fun HealthConnectSettingsCard(
@@ -109,30 +132,38 @@ fun HealthConnectSettingsCard(
             fallback?.let { runCatching { context.startActivity(it) } }
         } catch (_: SecurityException) { }
     }
+    val available = state.availability == HealthConnectAvailability.AVAILABLE
+    fun request(permissions: Set<String>) { runCatching { launcher.launch(permissions) } }
 
     OutlinedCard(modifier.fillMaxWidth().testTag("health_connect_card")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.trd_hc_title), style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.trd_hc_summary), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(
-                    checked = state.enabled,
-                    onCheckedChange = { on ->
-                        viewModel.setEnabled(on)
-                        if (on && state.availability == HealthConnectAvailability.AVAILABLE && !state.permitted) {
-                            runCatching { launcher.launch(HealthConnectSource.PERMISSIONS) }
-                        }
-                    },
-                    enabled = state.availability != HealthConnectAvailability.UNSUPPORTED || state.enabled,
-                    modifier = Modifier.testTag("health_connect_switch"),
-                )
+            Text(stringResource(R.string.trd_hc_title), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.trd_hc_summary), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            DirectionSwitch(
+                title = stringResource(R.string.trd_hc_read_switch),
+                hint = stringResource(R.string.trd_hc_read_hint),
+                checked = state.enabled,
+                enabled = state.availability != HealthConnectAvailability.UNSUPPORTED || state.enabled,
+                tag = "health_connect_switch",
+            ) { on ->
+                viewModel.setEnabled(on)
+                if (on && available && !state.permitted) request(HealthConnectSource.PERMISSIONS)
+            }
+            DirectionSwitch(
+                title = stringResource(R.string.trf_hc_switch),
+                hint = stringResource(R.string.trf_hc_hint),
+                checked = state.exportEnabled,
+                enabled = state.availability != HealthConnectAvailability.UNSUPPORTED || state.exportEnabled,
+                tag = "health_connect_export_switch",
+            ) { on ->
+                viewModel.setExportEnabled(on)
+                if (on && available && !state.exportPermitted) request(HealthConnectExporter.PERMISSIONS)
             }
             when (state.availability) {
                 HealthConnectAvailability.UNSUPPORTED ->
-                    Text(stringResource(R.string.trd_hc_unsupported), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.trd_hc_unsupported), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("health_connect_unavailable"))
                 HealthConnectAvailability.NEEDS_INSTALL_OR_UPDATE -> {
                     Text(stringResource(R.string.trd_hc_install_hint), style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick = { open(viewModel.installIntent(), android.content.Intent(android.content.Intent.ACTION_VIEW,
@@ -141,23 +172,30 @@ fun HealthConnectSettingsCard(
                         Text(stringResource(R.string.trd_hc_install))
                     }
                 }
-                HealthConnectAvailability.AVAILABLE -> if (state.enabled) {
-                    if (!state.permitted) {
+                HealthConnectAvailability.AVAILABLE -> if (state.enabled || state.exportEnabled) {
+                    // Permissions still missing for a switched-on direction.
+                    val missing = buildSet {
+                        if (state.enabled && !state.permitted) addAll(HealthConnectSource.PERMISSIONS)
+                        if (state.exportEnabled && !state.exportPermitted) addAll(HealthConnectExporter.PERMISSIONS)
+                    }
+                    if (missing.isNotEmpty()) {
                         Text(stringResource(R.string.trd_hc_permission_hint), style = MaterialTheme.typography.bodySmall)
-                        Button(onClick = { runCatching { launcher.launch(HealthConnectSource.PERMISSIONS) } },
-                            modifier = Modifier.testTag("health_connect_permit")) {
+                        Button(onClick = { request(missing) }, modifier = Modifier.testTag("health_connect_permit")) {
                             Text(stringResource(R.string.trd_hc_permit))
                         }
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (state.enabled && state.permitted) {
                             FilledTonalButton(onClick = viewModel::syncNow, enabled = !state.syncing,
                                 modifier = Modifier.testTag("health_connect_sync")) {
                                 Text(stringResource(if (state.syncing) R.string.trd_hc_syncing else R.string.trd_hc_sync_now))
                             }
-                            TextButton(onClick = { open(viewModel.settingsIntent()) }) {
-                                Text(stringResource(R.string.trd_hc_manage))
-                            }
                         }
+                        TextButton(onClick = { open(viewModel.settingsIntent()) }) {
+                            Text(stringResource(R.string.trd_hc_manage))
+                        }
+                    }
+                    if (state.enabled && state.permitted) {
                         state.lastSync?.let { r ->
                             Text(
                                 if (r.failed) stringResource(R.string.trd_hc_sync_failed)
@@ -176,5 +214,21 @@ fun HealthConnectSettingsCard(
             Text(stringResource(R.string.trd_hc_privacy), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+private fun DirectionSwitch(title: String, hint: String, checked: Boolean, enabled: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+    // The whole row toggles, so TalkBack reads the title with the switch state.
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(start = 8.dp))
     }
 }

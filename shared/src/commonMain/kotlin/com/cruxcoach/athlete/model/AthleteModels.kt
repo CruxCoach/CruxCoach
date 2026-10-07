@@ -312,7 +312,7 @@ data class AthleteProfile(
     val hideBodyNumbers: Boolean = false,
     /** On by default since 2026-10-05 (owner); the settings switch hides them. */
     val showCalories: Boolean = true,
-    /** Write logged meals and water to Health Connect (FEAT-069, Android 14+); needs its write permissions. */
+    /** Write logged meals and water to Health Connect (FEAT-069); needs its two write permissions. */
     val healthConnectExport: Boolean = false,
     val proteinPerKg: Double = 1.6,
     val timerSound: Boolean = true,

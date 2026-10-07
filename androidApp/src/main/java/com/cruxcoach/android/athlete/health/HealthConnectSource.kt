@@ -49,11 +49,13 @@ data class HealthSyncResult(
 )
 
 /**
- * Optional, read-only bridge to Health Connect (FEAT-071): last night's sleep
- * for the check-in and climbing sessions from watches and other apps as
- * climbing days. Everything stays on the device — the coach only reads, and
- * every call is guarded so a missing provider, an old provider or revoked
- * permissions never crash anything. Nothing runs unless the athlete turned
+ * The app's one Health Connect layer, on the Jetpack client so it works on
+ * Android 9–13 (Health Connect app) and 14+ (built in). This class reads
+ * (FEAT-071): last night's sleep for the check-in and climbing sessions from
+ * watches and other apps as climbing days; [HealthConnectExporter] writes
+ * logged meals and water (FEAT-069) through the same access helpers. Every
+ * call is guarded so a missing provider, an old provider or revoked
+ * permissions never crash anything. Reading runs only when the athlete turned
  * it on ([com.cruxcoach.athlete.model.CoachProfile.healthConnectEnabled]).
  */
 @Singleton
@@ -65,15 +67,9 @@ class HealthConnectSource @Inject constructor(
     private val _lastSync = MutableStateFlow<HealthSyncResult?>(null)
     val lastSync: StateFlow<HealthSyncResult?> = _lastSync.asStateFlow()
 
-    fun availability(): HealthConnectAvailability = runCatching {
-        when (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE)) {
-            HealthConnectClient.SDK_AVAILABLE -> HealthConnectAvailability.AVAILABLE
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectAvailability.NEEDS_INSTALL_OR_UPDATE
-            else -> if (isProviderInstallable()) HealthConnectAvailability.NEEDS_INSTALL_OR_UPDATE else HealthConnectAvailability.UNSUPPORTED
-        }
-    }.getOrDefault(HealthConnectAvailability.UNSUPPORTED)
+    fun availability(): HealthConnectAvailability = availabilityOf(context)
 
-    /** The permission dialog of Health Connect; launch it with [PERMISSIONS]. */
+    /** The permission dialog of Health Connect; launch it with [PERMISSIONS] or [HealthConnectExporter.PERMISSIONS]. */
     fun permissionContract(): ActivityResultContract<Set<String>, Set<String>> =
         PermissionController.createRequestPermissionResultContract()
 
@@ -184,29 +180,44 @@ class HealthConnectSource @Inject constructor(
         putExtra("callerId", context.packageName)
     }
 
-    private fun isProviderInstallable(): Boolean = android.os.Build.VERSION.SDK_INT < 34
-
-    private suspend fun <T> guarded(fallback: T, block: suspend (HealthConnectClient) -> T): T = withContext(Dispatchers.IO) {
-        try {
-            if (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE) != HealthConnectClient.SDK_AVAILABLE) return@withContext fallback
-            block(HealthConnectClient.getOrCreate(context, PROVIDER_PACKAGE))
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // SecurityException (revoked), RemoteException, IllegalState (provider gone) …
-            Log.w(TAG, "Health Connect call failed: ${e.javaClass.simpleName}")
-            fallback
-        }
-    }
+    private suspend fun <T> guarded(fallback: T, block: suspend (HealthConnectClient) -> T): T = guarded(context, fallback, block)
 
     companion object {
         private const val TAG = "HealthConnectSource"
         const val PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
 
+        /** Read access for the coach: sleep and exercise sessions. */
         val PERMISSIONS: Set<String> = setOf(
             HealthPermission.getReadPermission(SleepSessionRecord::class),
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         )
+
+        fun availabilityOf(context: Context): HealthConnectAvailability = runCatching {
+            when (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE)) {
+                HealthConnectClient.SDK_AVAILABLE -> HealthConnectAvailability.AVAILABLE
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> HealthConnectAvailability.NEEDS_INSTALL_OR_UPDATE
+                // Android 9–13 get Health Connect as an app from the store.
+                else -> if (android.os.Build.VERSION.SDK_INT < 34) HealthConnectAvailability.NEEDS_INSTALL_OR_UPDATE
+                    else HealthConnectAvailability.UNSUPPORTED
+            }
+        }.getOrDefault(HealthConnectAvailability.UNSUPPORTED)
+
+        /**
+         * Runs [block] with a client, or returns [fallback] when Health Connect is
+         * missing or the call fails (revoked access, provider gone, …).
+         */
+        suspend fun <T> guarded(context: Context, fallback: T, block: suspend (HealthConnectClient) -> T): T = withContext(Dispatchers.IO) {
+            try {
+                if (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE) != HealthConnectClient.SDK_AVAILABLE) return@withContext fallback
+                block(HealthConnectClient.getOrCreate(context, PROVIDER_PACKAGE))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // SecurityException (revoked), RemoteException, IllegalState (provider gone) …
+                Log.w(TAG, "Health Connect call failed: ${e.javaClass.simpleName}")
+                fallback
+            }
+        }
 
         private val AWAKE_STAGES = setOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)
     }

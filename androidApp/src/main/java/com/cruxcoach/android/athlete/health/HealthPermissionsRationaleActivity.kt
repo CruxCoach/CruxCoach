@@ -18,7 +18,7 @@ import com.cruxcoach.android.ui.theme.CruxCoachTheme
 /**
  * Privacy rationale Health Connect shows from its permission screen
  * (Android 9–13) and Android 14+ from the permission-usage view: what the
- * coach reads, why, and that it stays on the device.
+ * coach reads, what nutrition writes, why, and that nothing is uploaded.
  */
 class HealthPermissionsRationaleActivity : ComponentActivity() {
 
@@ -37,7 +37,8 @@ class HealthPermissionsRationaleActivity : ComponentActivity() {
                         Text(stringResource(R.string.trd_rationale_intro), style = MaterialTheme.typography.bodyLarge)
                         Point(stringResource(R.string.trd_rationale_sleep))
                         Point(stringResource(R.string.trd_rationale_exercise))
-                        Point(stringResource(R.string.trd_rationale_read_only))
+                        Point(stringResource(R.string.trd_rationale_nutrition))
+                        Point(stringResource(R.string.trd_rationale_scope))
                         Point(stringResource(R.string.trd_rationale_local))
                         Point(stringResource(R.string.trd_rationale_revoke))
                         Spacer(Modifier.height(8.dp))

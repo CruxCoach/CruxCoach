@@ -79,7 +79,7 @@ fun FuelScreen(
     LaunchedEffect(units) { photoViewModel.units = units }
     LaunchedEffect(Unit) { photoViewModel.prepareProducts() }
     val productsState by photoViewModel.productsState.collectAsState()
-    // Changes of the shown day go to Health Connect once the export is on (write-only).
+    // Changes of the shown day go to Health Connect once the export is on (training settings).
     LaunchedEffect(state.day, state.entries, state.water, state.profile.healthConnectExport) {
         val day = state.day ?: return@LaunchedEffect
         if (state.profile.healthConnectExport && !state.loading) photoViewModel.exportDay(day.toString(), state.entries, state.water)

@@ -3,11 +3,13 @@
 <resources>
     <!-- Health-Connect-Karte -->
     <string name="trd_hc_title">Health Connect</string>
-    <string name="trd_hc_summary">Schlaf für den Check-in und Klettereinheiten von deiner Uhr oder anderen Apps. Nur lesend.</string>
+    <string name="trd_hc_summary">Optionale Verbindung zu Health Connect auf diesem Handy. Jede Richtung hat ihren eigenen Schalter und eigene Berechtigungen.</string>
+    <string name="trd_hc_read_switch">Schlaf und Klettereinheiten lesen</string>
+    <string name="trd_hc_read_hint">Der Schlaf der letzten Nacht wird im Check-in vorgeschlagen; Klettereinheiten von Uhr oder anderen Apps werden zu Klettertagen für den Coach.</string>
     <string name="trd_hc_unsupported">Health Connect ist auf diesem Gerät nicht verfügbar.</string>
     <string name="trd_hc_install_hint">Health Connect muss zuerst installiert oder aktualisiert werden.</string>
     <string name="trd_hc_install">Health Connect installieren oder aktualisieren</string>
-    <string name="trd_hc_permission_hint">Erlaube das Lesen von Schlaf und Trainingseinheiten, damit der Coach sie nutzen kann.</string>
+    <string name="trd_hc_permission_hint">Erlaube den Zugriff in Health Connect für die eingeschalteten Teile.</string>
     <string name="trd_hc_permit">Zugriff erlauben</string>
     <string name="trd_hc_sync_now">Jetzt synchronisieren</string>
     <string name="trd_hc_syncing">Synchronisiere …</string>
@@ -15,17 +17,18 @@
     <string name="trd_hc_sync_result">Letzter Abgleich: %1$d neu, %2$d aktualisiert, %3$d übersprungen (von Hand eingetragen)</string>
     <string name="trd_hc_sync_failed">Abgleich hat nicht geklappt – prüfe den Zugriff in Health Connect.</string>
     <string name="trd_hc_sleep_last_night">Schlaf letzte Nacht: %1$s h</string>
-    <string name="trd_hc_privacy">Liest nur, schreibt nie. Die Daten bleiben auf diesem Gerät und werden nicht hochgeladen.</string>
+    <string name="trd_hc_privacy">Nichts wird hochgeladen: Was CruxCoach liest, bleibt in seiner verschlüsselten Datenbank auf diesem Handy, und was es schreibt, geht nur an Health Connect auf diesem Handy.</string>
     <string name="trd_sleep_chip">Aus Health Connect: %1$s h → %2$d</string>
 
     <!-- Datenschutz-Erklärung -->
     <string name="trd_rationale_title">Wie CruxCoach Health Connect nutzt</string>
-    <string name="trd_rationale_intro">Der Trainings-Coach kann zwei Arten von Daten lesen, nur wenn du es erlaubst:</string>
-    <string name="trd_rationale_sleep">Schlafphasen der letzten Nacht – als Vorschlag für den Schlafwert im täglichen Check-in. Ohne dich wird nichts gespeichert.</string>
-    <string name="trd_rationale_exercise">Trainingseinheiten, die als Klettern markiert sind – sie werden zu Klettertagen, damit der Coach Halle, Fels und andere Boards kennt.</string>
-    <string name="trd_rationale_read_only">CruxCoach schreibt nie in Health Connect.</string>
-    <string name="trd_rationale_local">Alles bleibt auf deinem Gerät in der verschlüsselten Trainingsdatenbank. Nichts geht an einen Server.</string>
-    <string name="trd_rationale_revoke">Du kannst die Verbindung jederzeit in den Trainingseinstellungen ausschalten und den Zugriff in Health Connect widerrufen.</string>
+    <string name="trd_rationale_intro">CruxCoach kann Folgendes mit Health Connect austauschen – jeden Teil erst, wenn du ihn in den Trainingseinstellungen einschaltest und erlaubst:</string>
+    <string name="trd_rationale_sleep">Lesen: Schlafphasen der letzten Nacht – als Vorschlag für den Schlafwert im täglichen Check-in. Ohne dich wird nichts gespeichert.</string>
+    <string name="trd_rationale_exercise">Lesen: Trainingseinheiten, die als Klettern markiert sind – sie werden zu Klettertagen, damit der Coach Halle, Fels und andere Boards kennt.</string>
+    <string name="trd_rationale_nutrition">Schreiben: was du in der Ernährung einträgst – jedes Lebensmittel mit Name, Mahlzeit, Energie, Protein, Kohlenhydraten und Fett sowie jedes Glas Wasser –, damit andere Apps, denen du es erlaubst, es nutzen können. Geänderte oder gelöschte Einträge werden dort angepasst.</string>
+    <string name="trd_rationale_scope">CruxCoach liest nichts anderes und schreibt nichts anderes.</string>
+    <string name="trd_rationale_local">Alles andere bleibt auf deinem Gerät in der verschlüsselten Trainingsdatenbank. Nichts geht an einen Server.</string>
+    <string name="trd_rationale_revoke">Du kannst jeden Teil in den Trainingseinstellungen ausschalten und den Zugriff in Health Connect jederzeit widerrufen. Bereits geschriebene Daten bleiben in Health Connect, bis du sie dort löschst.</string>
     <string name="trd_rationale_close">Schließen</string>
 
     <!-- Kraftmesser -->

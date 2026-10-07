@@ -1,14 +1,14 @@
-package com.cruxcoach.android.foodvision
+package com.cruxcoach.android.athlete.health
 
 import android.app.Application
-import android.health.connect.datatypes.MealType
+import androidx.health.connect.client.records.MealType
+import androidx.health.connect.client.records.metadata.Metadata
 import androidx.test.core.app.ApplicationProvider
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.HydrationEntry
 import com.cruxcoach.athlete.model.Meal
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,10 +28,10 @@ class HealthConnectExporterTest {
         val record = HealthConnectExporter.nutrition(entry, version = 7)
         assertEquals("cruxcoach-food-e1", record.metadata.clientRecordId)
         assertEquals(7L, record.metadata.clientRecordVersion)
-        assertEquals("Skyr", record.mealName)
+        assertEquals(Metadata.RECORDING_METHOD_MANUAL_ENTRY, record.metadata.recordingMethod)
+        assertEquals("Skyr", record.name)
         assertEquals(MealType.MEAL_TYPE_SNACK, record.mealType)
-        // The platform stores small calories.
-        assertEquals(157_500.0, record.energy!!.inCalories, 1e-6)
+        assertEquals(157.5, record.energy!!.inKilocalories, 1e-6)
         assertEquals(27.5, record.protein!!.inGrams, 1e-9)
         assertEquals(10.0, record.totalCarbohydrate!!.inGrams, 1e-9)
         // Not logged: not written as zero.
@@ -47,9 +47,19 @@ class HealthConnectExporterTest {
     }
 
     @Test
-    fun `without permission nothing is written`() = runBlocking {
-        val exporter = HealthConnectExporter(ApplicationProvider.getApplicationContext())
-        assertFalse(exporter.hasPermissions())
-        exporter.syncDay("2026-10-07", listOf(entry), emptyList())
+    fun `the write permissions are the platform names the manifest declares`() {
+        assertEquals(
+            setOf("android.permission.health.WRITE_NUTRITION", "android.permission.health.WRITE_HYDRATION"),
+            HealthConnectExporter.PERMISSIONS,
+        )
+        assertEquals(
+            setOf("android.permission.health.READ_SLEEP", "android.permission.health.READ_EXERCISE"),
+            HealthConnectSource.PERMISSIONS,
+        )
+    }
+
+    @Test
+    fun `without Health Connect or permission nothing is written and nothing throws`() = runBlocking {
+        HealthConnectExporter(ApplicationProvider.getApplicationContext()).syncDay("2026-10-07", listOf(entry), emptyList())
     }
 }

@@ -3,11 +3,13 @@
 <resources>
     <!-- Health Connect settings card -->
     <string name="trd_hc_title">Health Connect</string>
-    <string name="trd_hc_summary">Sleep for the check-in and climbing sessions from your watch or other apps. Read-only.</string>
+    <string name="trd_hc_summary">Optional link with Health Connect on this phone. Each direction has its own switch and its own permissions.</string>
+    <string name="trd_hc_read_switch">Read sleep and climbing sessions</string>
+    <string name="trd_hc_read_hint">Last night\'s sleep is suggested in the check-in; climbing sessions from your watch or other apps become climbing days for the coach.</string>
     <string name="trd_hc_unsupported">Health Connect is not available on this device.</string>
     <string name="trd_hc_install_hint">Health Connect needs to be installed or updated first.</string>
     <string name="trd_hc_install">Install or update Health Connect</string>
-    <string name="trd_hc_permission_hint">Allow reading sleep and exercise sessions so the coach can use them.</string>
+    <string name="trd_hc_permission_hint">Allow access in Health Connect for the parts you switched on.</string>
     <string name="trd_hc_permit">Allow access</string>
     <string name="trd_hc_sync_now">Sync now</string>
     <string name="trd_hc_syncing">Syncing …</string>
@@ -15,17 +17,18 @@
     <string name="trd_hc_sync_result">Last sync: %1$d new, %2$d updated, %3$d skipped (logged by hand)</string>
     <string name="trd_hc_sync_failed">Sync did not work – check access in Health Connect.</string>
     <string name="trd_hc_sleep_last_night">Sleep last night: %1$s h</string>
-    <string name="trd_hc_privacy">Only reads, never writes. The data stays on this device and is not uploaded.</string>
+    <string name="trd_hc_privacy">Nothing is uploaded: what CruxCoach reads stays in its encrypted database on this phone, and what it writes goes only to Health Connect on this phone.</string>
     <string name="trd_sleep_chip">From Health Connect: %1$s h → %2$d</string>
 
     <!-- Privacy rationale -->
     <string name="trd_rationale_title">How CruxCoach uses Health Connect</string>
-    <string name="trd_rationale_intro">The training coach can read two kinds of data, only if you allow it:</string>
-    <string name="trd_rationale_sleep">Sleep sessions of last night – shown as a suggestion for the sleep score in your daily check-in. Nothing is saved without you.</string>
-    <string name="trd_rationale_exercise">Exercise sessions marked as climbing – added as climbing days, so the coach knows about gym, rock and other boards.</string>
-    <string name="trd_rationale_read_only">CruxCoach never writes to Health Connect.</string>
-    <string name="trd_rationale_local">Everything stays on your device in the encrypted training database. Nothing is sent to a server.</string>
-    <string name="trd_rationale_revoke">You can turn the link off in the training settings and revoke access in Health Connect at any time.</string>
+    <string name="trd_rationale_intro">CruxCoach can exchange the following with Health Connect – each part only after you switch it on in the training settings and allow it:</string>
+    <string name="trd_rationale_sleep">Read: sleep sessions of last night – shown as a suggestion for the sleep score in your daily check-in. Nothing is saved without you.</string>
+    <string name="trd_rationale_exercise">Read: exercise sessions marked as climbing – added as climbing days, so the coach knows about gym, rock and other boards.</string>
+    <string name="trd_rationale_nutrition">Write: what you log in nutrition – each food with its name, meal, energy, protein, carbohydrate and fat, and each glass of water – so other apps you allow can use it. Changed or deleted entries are updated there.</string>
+    <string name="trd_rationale_scope">CruxCoach reads nothing else and writes nothing else.</string>
+    <string name="trd_rationale_local">Everything else stays on your device in the encrypted training database. Nothing is sent to a server.</string>
+    <string name="trd_rationale_revoke">You can switch each part off in the training settings and revoke access in Health Connect at any time. Data already written stays in Health Connect until you delete it there.</string>
     <string name="trd_rationale_close">Close</string>
 
     <!-- Force gauge -->
