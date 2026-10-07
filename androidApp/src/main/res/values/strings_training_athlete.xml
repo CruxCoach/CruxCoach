@@ -86,6 +86,7 @@
     <string name="tra_review_weight_stable">Weight trend stable</string>
     <string name="tra_review_weight_change">Trend weight: %1$s this week</string>
     <string name="tra_review_protein">Protein on logged days: %1$d g (target about %2$d g)</string>
+    <string name="tra_review_protein_no_target">Protein on logged days: %1$d g</string>
     <string name="tra_review_carbs">Carbohydrate on logged days: %1$d g (target about %2$d g for that training load)</string>
     <plurals name="tra_review_food_days">
         <item quantity="one">Food logged on %d day</item>

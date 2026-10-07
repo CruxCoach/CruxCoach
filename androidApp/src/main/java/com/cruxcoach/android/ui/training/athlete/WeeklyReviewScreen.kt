@@ -254,7 +254,9 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
             if (s.proteinAvg != null) {
                 SectionTitle(stringResource(R.string.tr_nav_fuel))
                 Text(pluralStringResource(R.plurals.tra_review_food_days, s.foodDays, s.foodDays), style = MaterialTheme.typography.bodySmall)
-                Text(stringResource(R.string.tra_review_protein, s.proteinAvg!!.roundToInt(), s.proteinTarget ?: 0))
+                // Without a body weight there is no target to name.
+                Text(s.proteinTarget?.let { stringResource(R.string.tra_review_protein, s.proteinAvg!!.roundToInt(), it) }
+                    ?: stringResource(R.string.tra_review_protein_no_target, s.proteinAvg!!.roundToInt()))
                 if (s.carbsAvg != null && s.carbsTargetAvg != null) {
                     Text(stringResource(R.string.tra_review_carbs, s.carbsAvg!!.roundToInt(), s.carbsTargetAvg!!),
                         modifier = Modifier.testTag("review_carbs"))
