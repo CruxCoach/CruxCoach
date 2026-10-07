@@ -22,10 +22,15 @@ abstract class FoodTableRepository(
     private var loaded: Loaded? = null
 
     private suspend fun load(): Loaded = mutex.withLock {
-        loaded ?: withContext(Dispatchers.IO) {
+        loaded ?: (shared[asset] ?: withContext(Dispatchers.IO) {
             val foods = BlsTable.parse(context.assets.open(asset).bufferedReader().use { it.readText() }).map(prepare)
-            Loaded(FoodMatcher(foods), foods.associateBy { it.code })
-        }.also { loaded = it }
+            Loaded(FoodMatcher(foods), foods.associateBy { it.code }).also { shared.putIfAbsent(asset, it) }
+        }).also { loaded = it }
+    }
+
+    private companion object {
+        /** The tables never change at run time: one parse per process, however many instances. */
+        val shared = java.util.concurrent.ConcurrentHashMap<String, Loaded>()
     }
 
     suspend fun matcher(): FoodMatcher = load().matcher

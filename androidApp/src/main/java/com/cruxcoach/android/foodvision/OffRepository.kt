@@ -256,6 +256,8 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
 
     /** The bundled table, unpacked next to the database it becomes. */
     private fun unpackPrebuilt(): File {
+        // Load the decoder before copying 17.5 MB: without it (unit tests) fail fast.
+        ZstdNative.hashCode()
         val target = context.getDatabasePath(DB_NAME)
         target.parentFile?.mkdirs()
         val packed = File(context.cacheDir, "off_products.db.zst")
