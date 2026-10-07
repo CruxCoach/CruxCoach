@@ -17,7 +17,7 @@
     <string name="trd_hc_sync_result">Last sync: %1$d new, %2$d updated, %3$d skipped (logged by hand)</string>
     <string name="trd_hc_sync_failed">Sync did not work – check access in Health Connect.</string>
     <string name="trd_hc_sleep_last_night">Sleep last night: %1$s h</string>
-    <string name="trd_hc_privacy">Nothing is uploaded: what CruxCoach reads stays in its encrypted database on this phone, and what it writes goes only to Health Connect on this phone.</string>
+    <string name="trd_hc_privacy">The link itself uploads nothing: what CruxCoach reads stays in its encrypted database on this phone (and is part of your encrypted backup only if you turned the backup on), and what it writes goes only to Health Connect on this phone.</string>
     <string name="trd_sleep_chip">From Health Connect: %1$s h → %2$d</string>
 
     <!-- Privacy rationale -->
@@ -27,7 +27,7 @@
     <string name="trd_rationale_exercise">Read: exercise sessions marked as climbing – added as climbing days, so the coach knows about gym, rock and other boards.</string>
     <string name="trd_rationale_nutrition">Write: what you log in nutrition – each food with its name, meal, energy, protein, carbohydrate and fat, and each glass of water – so other apps you allow can use it. Changed or deleted entries are updated there.</string>
     <string name="trd_rationale_scope">CruxCoach reads nothing else and writes nothing else.</string>
-    <string name="trd_rationale_local">Everything else stays on your device in the encrypted training database. Nothing is sent to a server.</string>
+    <string name="trd_rationale_local">What CruxCoach reads is kept on your device in the encrypted training database. It leaves the device only inside your own encrypted backup, if you turned that on.</string>
     <string name="trd_rationale_revoke">You can switch each part off in the training settings and revoke access in Health Connect at any time. Data already written stays in Health Connect until you delete it there.</string>
     <string name="trd_rationale_close">Close</string>
 
