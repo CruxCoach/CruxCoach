@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.training.fuel
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -118,8 +120,11 @@ fun QuickAddSheet(
             Text(stringResource(R.string.trf_qa_optional), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (editing == null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { remember = !remember }) {
-                    Checkbox(checked = remember, onCheckedChange = { remember = it }, modifier = Modifier.testTag("fuel_qa_remember"))
+                // One toggle for TalkBack: the label is read with the checkbox state.
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.toggleable(value = remember, role = Role.Checkbox, onValueChange = { remember = it })
+                        .testTag("fuel_qa_remember")) {
+                    Checkbox(checked = remember, onCheckedChange = null)
                     Text(stringResource(R.string.trf_qa_remember))
                 }
             }
