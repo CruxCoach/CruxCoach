@@ -28,7 +28,17 @@ object MealTextParser {
         MEAL_HINTS.flatMap { it.first }.sortedByDescending { it.length }.forEach { t = t.replace(Regex("\\b$it\\b"), " ") }
         val segments = t.split(SEPARATORS).map { it.trim() }.filter { it.isNotEmpty() }
         // A food named twice ("Reis …, halber Teller Reis") keeps the stated amount.
-        val parsed = segments.mapNotNull(::segment)
+        val parsed = mutableListOf<Parsed>()
+        for (raw in segments) {
+            // "Chicken breast, about 6 oz": an amount on its own belongs to the food before it.
+            val amount = amountOnly(raw)
+            val last = parsed.lastOrNull()
+            if (amount != null) {
+                if (last != null && !last.explicit) parsed[parsed.lastIndex] = Parsed(last.food.copy(grams = amount), explicit = true)
+                continue
+            }
+            segment(raw)?.let { parsed += it }
+        }
         // groupBy keeps the order of first mentions.
         val foods = parsed.groupBy { FoodMatcher.normalize(it.food.nameDe).joinToString(" ") }.values
             .map { same -> (same.firstOrNull { it.explicit } ?: same.first()).food }
@@ -77,6 +87,28 @@ object MealTextParser {
         val label = name.replaceFirstChar { it.uppercase() }
         val food = DetectedFood(label, label, grams.roundToInt().toDouble().coerceIn(1.0, FoodVisionParser.MAX_GRAMS))
         return Parsed(food, explicit = count != null || unit != null)
+    }
+
+    /** Grams of a segment that is only an amount ("about 6 oz", "200 g"), else null. */
+    private fun amountOnly(raw: String): Double? {
+        val words = raw.replace(Regex("[^\\p{L}\\p{N}½¼¾.,]+"), " ").trim().split(' ').filter { it.isNotEmpty() }
+        var count: Double? = null
+        var unit: Double? = null
+        for (w in words) {
+            val number = numberOf(w)
+            when {
+                number != null && count == null -> {
+                    count = number
+                    UNIT_SUFFIX.matchEntire(w)?.groupValues?.get(2)?.let { u -> UNITS[u]?.let { unit = it } }
+                }
+                w in NUMBER_WORDS && count == null -> count = NUMBER_WORDS.getValue(w)
+                unit == null && w in UNITS -> unit = UNITS.getValue(w)
+                w in FILLER || w in SIZE -> Unit
+                else -> return null
+            }
+        }
+        val grams = unit?.takeIf { it > 0 } ?: return null
+        return ((count ?: 1.0) * grams).takeIf { it in 1.0..FoodVisionParser.MAX_GRAMS }
     }
 
     private val UNIT_SUFFIX = Regex("([0-9]+(?:[.,][0-9]+)?)([a-z]+)")
@@ -150,6 +182,7 @@ object MealTextParser {
         "handvoll" to 30.0, "handful" to 30.0, "prise" to 1.0, "pinch" to 1.0,
         "dose" to 330.0, "can" to 330.0, "flasche" to 500.0, "bottle" to 500.0,
         "riegel" to 40.0, "bar" to 40.0, "schuss" to 20.0, "splash" to 20.0, "spritzer" to 20.0,
+        "scoop" to 30.0, "scoops" to 30.0, "messlöffel" to 30.0, "bag" to 40.0, "bags" to 40.0,
     )
 
     private val SIZE = mapOf(
@@ -182,6 +215,7 @@ object MealTextParser {
     private val SLICES = linkedMapOf(
         "brot" to 50.0, "bread" to 50.0, "vollkornbrot" to 50.0, "toast" to 25.0, "kaese" to 20.0,
         "cheese" to 20.0, "schinken" to 20.0, "ham" to 20.0, "wurst" to 15.0, "salami" to 10.0, "pizza" to 110.0,
+        "bacon" to 10.0, "speck" to 10.0,
     )
 
     /** Normalised word prefix → typical portion when no amount is given. */
@@ -194,6 +228,7 @@ object MealTextParser {
         "wasser" to 300.0, "water" to 300.0, "saft" to 200.0, "juice" to 200.0, "shake" to 300.0,
         "nuesse" to 30.0, "nuts" to 30.0, "oatmeal" to 250.0, "porridge" to 250.0, "cereal" to 40.0,
         "smoothie" to 300.0, "sandwich" to 200.0, "steak" to 200.0, "fries" to 150.0, "pommes" to 150.0,
-        "bier" to 500.0, "beer" to 500.0, "wein" to 150.0, "wine" to 150.0,
+        "bier" to 500.0, "beer" to 500.0, "wein" to 150.0, "wine" to 150.0, "bacon" to 30.0, "speck" to 30.0,
+        "chips" to 30.0,
     )
 }

@@ -38,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.cruxcoach.android.foodvision.HealthConnectExporter
 
 data class AthleteSettingsState(
     val profile: AthleteProfile = AthleteProfile(),
@@ -194,6 +195,7 @@ fun AthleteSettingsScreen(
             var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
             Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
                 onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
+            HealthConnectRow(p.healthConnectExport) { on -> viewModel.update { it.copy(healthConnectExport = on) } }
 
             // Units and personal data
             SectionTitle(stringResource(R.string.tra_units_title))
@@ -468,6 +470,33 @@ private fun HeightField(heightCm: Double?, units: UnitSystem, onSave: (Double) -
         FilledTonalButton(onClick = { cm?.let(onSave) }, enabled = cm != null && cm in 100.0..250.0 && cm != heightCm) {
             Text(stringResource(R.string.tr_action_save))
         }
+    }
+}
+
+/**
+ * Opt-in export to Health Connect (FEAT-069, Android 14+). Switching it on asks
+ * for the two write permissions; it stays off when they are not granted.
+ */
+@Composable
+private fun HealthConnectRow(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val exporter = remember { HealthConnectExporter(context) }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        onChange(exporter.hasPermissions())
+    }
+    if (exporter.available()) {
+        SwitchRow(stringResource(R.string.trf_hc_switch), enabled && exporter.hasPermissions(), "health_connect") { on ->
+            when {
+                !on -> onChange(false)
+                exporter.hasPermissions() -> onChange(true)
+                else -> request.launch(HealthConnectExporter.PERMISSIONS)
+            }
+        }
+        Text(stringResource(R.string.trf_hc_hint), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Text(stringResource(R.string.trf_hc_unavailable), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp).testTag("health_connect_unavailable"))
     }
 }
 

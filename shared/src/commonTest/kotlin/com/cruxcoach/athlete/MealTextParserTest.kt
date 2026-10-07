@@ -74,6 +74,18 @@ class MealTextParserTest {
     }
 
     @Test
+    fun englishAmountsAfterTheFoodScoopsAndBags() {
+        assertEquals(listOf("Chicken breast" to 170, "Rice" to 240, "Broccoli" to 150),
+            items("Chicken breast, about 6 oz, with a cup of rice and some broccoli"))
+        assertEquals(listOf("Protein shake" to 300, "Whey" to 30, "Milk" to 340),
+            items("Protein shake with one scoop of whey and 12 oz of milk after training"))
+        assertEquals(listOf("Turkey sandwich" to 200, "Chips" to 28), items("Lunch: a turkey sandwich and a small bag of chips"))
+        assertEquals(listOf("Eggs" to 120, "Bacon" to 30, "Orange juice" to 200), items("Two eggs, bacon and a glass of orange juice"))
+        // An amount after a food that already has one is not moved.
+        assertEquals(listOf("Reis" to 200), items("200 g Reis, 100 g"))
+    }
+
+    @Test
     fun emptyOrFillerOnlyGivesNothing() {
         assertEquals(emptyList(), parse("").foods)
         assertEquals(emptyList(), parse("ich habe heute etwas gegessen").foods)

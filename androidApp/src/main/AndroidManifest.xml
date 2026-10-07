@@ -63,6 +63,9 @@
     <!-- FEAT-069: barcode scan of packaged foods, decoded on the device; nothing is stored. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- FEAT-069: optional, write-only export of meals and water to Health Connect (Android 14+). -->
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION" />
+    <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
 
     <!-- FEAT-071 coach: optional, read-only Health Connect access. Sleep
          prefills the check-in (never auto-saved), exercise sessions become
@@ -204,6 +207,12 @@
 
         <!-- FEAT-069: the food photo model runs in its own process so that
              Android can reclaim its 2–4 GB without killing the app. -->
+        <!-- Health Connect links here from its permission screen: what CruxCoach writes and why.
+             Android 14+ reaches it through the coach's ViewPermissionUsageActivity alias. -->
+        <activity
+            android:name=".foodvision.HealthConnectRationaleActivity"
+            android:exported="false" />
+
         <service
             android:name=".foodvision.FoodVisionService"
             android:exported="false"
