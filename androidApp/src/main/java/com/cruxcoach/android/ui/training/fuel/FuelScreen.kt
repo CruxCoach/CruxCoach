@@ -633,7 +633,11 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits
                 }
             }
         },
-        modifier = Modifier.combinedClickable(onClick = onEdit, onLongClick = { menu = true }).testTag("fuel_entry_${entry.id}"),
+        modifier = Modifier.combinedClickable(
+            onClickLabel = stringResource(R.string.trf_entry_edit),
+            onLongClickLabel = stringResource(R.string.trf_entry_menu, entry.name),
+            onClick = onEdit, onLongClick = { menu = true },
+        ).testTag("fuel_entry_${entry.id}"),
     )
 }
 

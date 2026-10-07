@@ -11,6 +11,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -165,8 +167,11 @@ private fun SetupPane(state: FoodPhotoState, onDownload: (Boolean) -> Unit) {
         Text(stringResource(R.string.fvp_setup_estimate), style = MaterialTheme.typography.bodyMedium)
         Text(stringResource(R.string.fvp_setup_source), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { allowMobile = !allowMobile }) {
-            Checkbox(checked = allowMobile, onCheckedChange = { allowMobile = it }, modifier = Modifier.testTag("fuel_photo_mobile"))
+        // One toggle for TalkBack: the label is read with the checkbox state.
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.toggleable(value = allowMobile, role = Role.Checkbox, onValueChange = { allowMobile = it })
+                .testTag("fuel_photo_mobile")) {
+            Checkbox(checked = allowMobile, onCheckedChange = null)
             Text(stringResource(R.string.fvp_allow_mobile))
         }
         Button(onClick = { onDownload(allowMobile) }, modifier = Modifier.fillMaxWidth().testTag("fuel_photo_download")) {
