@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -317,11 +318,11 @@ private fun GapSection(p: ClimberProfileData) {
         )
         p.flashGap?.let { gap ->
             val steps = gap.roundToInt()
-            Text(stringResource(when {
-                gap <= 1.0 -> R.string.trl_gap_small
-                gap >= 5.0 -> R.string.trl_gap_large
-                else -> R.string.trl_gap_normal
-            }, steps), style = MaterialTheme.typography.bodyMedium)
+            Text(pluralStringResource(when {
+                gap <= 1.0 -> R.plurals.trl_gap_small
+                gap >= 5.0 -> R.plurals.trl_gap_large
+                else -> R.plurals.trl_gap_normal
+            }, steps, steps), style = MaterialTheme.typography.bodyMedium)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(stringResource(R.string.trl_attempts_tile), p.attemptsPerSend?.let { formatNumber(it, 1) } ?: "–", Modifier.weight(1f),
@@ -339,9 +340,10 @@ private fun PickupSection(p: ClimberProfileData) {
     val left = p.pickupLeft.map { it.day to it.pctBw }
     val right = p.pickupRight.map { it.day to it.pctBw }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        AlignedTimeline(listOf(
-            TimelineRow(stringResource(R.string.tr_side_left), colors[0], left) { pct(it) },
-            TimelineRow(stringResource(R.string.tr_side_right), colors[1], right) { pct(it) },
+        // A hand without values (e.g. the injured one) gets no empty row.
+        AlignedTimeline(listOfNotNull(
+            TimelineRow(stringResource(R.string.tr_side_left), colors[0], left) { pct(it) }.takeIf { left.isNotEmpty() },
+            TimelineRow(stringResource(R.string.tr_side_right), colors[1], right) { pct(it) }.takeIf { right.isNotEmpty() },
         ), stringResource(R.string.trl_pickup_cd), Modifier.fillMaxWidth(), rowHeight = 72.dp)
         val l = p.pickupLeft.lastOrNull()?.pctBw
         val r = p.pickupRight.lastOrNull()?.pctBw
@@ -374,7 +376,7 @@ private fun LoadSection(load: LoadStatus, onLogClimbing: () -> Unit) {
         val series = load.series[structure].orEmpty()
         val sl = load.structures[structure]
         LoadTrendChart(series, stringResource(R.string.trl_load_cd, structureLabel(structure), trendLabel(sl?.trend ?: LoadTrend.LOW)),
-            Modifier.fillMaxWidth())
+            modifier = Modifier.fillMaxWidth(), leadIn = com.cruxcoach.athlete.logic.ClimbingLoad.LEAD_DAYS)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Legend(CruxCoachDesign.colors.brandAccent, stringResource(R.string.trl_legend_acute))
             Legend(MaterialTheme.colorScheme.onSurfaceVariant, stringResource(R.string.trl_legend_chronic))

@@ -52,6 +52,8 @@ data class LoadStatus(
 object ClimbingLoad {
 
     const val SERIES_DAYS = 56
+    /** Days before the shown window that the series also carries, so a 28-day mean is complete from its first shown day. */
+    const val LEAD_DAYS = 27
     private const val ACUTE_DAYS = 7
     private const val CHRONIC_DAYS = 28
     /** Below this mean daily load there is no meaningful baseline to compare against. */
@@ -213,7 +215,7 @@ object ClimbingLoad {
      * entry count as zero — rest days are part of the average.
      */
     fun status(daily: Map<LocalDate, Map<LoadStructure, Double>>, today: LocalDate): LoadStatus {
-        val days = (SERIES_DAYS - 1 downTo 0).map { today.minus(DatePeriod(days = it)) }
+        val days = (SERIES_DAYS + LEAD_DAYS - 1 downTo 0).map { today.minus(DatePeriod(days = it)) }
         val series = LoadStructure.entries.associateWith { s -> days.map { d -> d to (daily[d]?.get(s) ?: 0.0) } }
         val structures = series.mapValues { (_, points) ->
             val values = points.map { it.second }

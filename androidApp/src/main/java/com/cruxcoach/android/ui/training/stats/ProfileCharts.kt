@@ -288,16 +288,22 @@ fun GradeGapGauge(flash: Double?, working: Double?, max: Double?, labels: Triple
  * changing faster than the body is used to.
  */
 @Composable
-fun LoadTrendChart(series: List<Pair<LocalDate, Double>>, description: String, modifier: Modifier = Modifier, height: Dp = 140.dp) {
-    if (series.isEmpty()) return
+fun LoadTrendChart(
+    series: List<Pair<LocalDate, Double>>, description: String, modifier: Modifier = Modifier, height: Dp = 140.dp,
+    /** Leading days used only to complete the means; not drawn. */
+    leadIn: Int = 0,
+) {
+    if (series.size <= leadIn) return
     val barColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
     val acuteColor = CruxCoachDesign.colors.brandAccent
     val chronicColor = MaterialTheme.colorScheme.onSurfaceVariant
     val gridColor = MaterialTheme.colorScheme.outlineVariant
-    val values = series.map { it.second }
-    fun rolling(n: Int) = values.indices.map { i -> values.subList(max(0, i - n + 1), i + 1).average() }
+    val all = series.map { it.second }
+    fun rolling(n: Int) = all.indices.map { i -> all.subList(max(0, i - n + 1), i + 1).average() }.drop(leadIn)
     val acute = rolling(7)
     val chronic = rolling(28)
+    val values = all.drop(leadIn)
+    @Suppress("NAME_SHADOWING") val series = series.drop(leadIn)
     val maxY = (values + acute + chronic).maxOrNull()?.takeIf { it > 0 } ?: 1.0
     Column(modifier.semantics { contentDescription = description }) {
         Canvas(Modifier.fillMaxWidth().height(height)) {

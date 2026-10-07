@@ -25,7 +25,7 @@
     <string name="tre_ev_climb_days">climbing %1$d days ago: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d attempts</string>
     <string name="tre_ev_climb_today">climbing today: %1$s</string>
-    <string name="tre_ev_climb_yesterday">board yesterday: %1$s</string>
+    <string name="tre_ev_climb_yesterday">climbing yesterday: %1$s</string>
     <string name="tre_ev_favorites">your favourites</string>
     <string name="tre_ev_focus">focus: %1$s</string>
     <string name="tre_ev_goal">goal: %1$s</string>
@@ -98,9 +98,9 @@
     <string name="tre_reason_level_easier">You found it too hard – today\'s picks are a step easier.</string>
     <string name="tre_reason_level_harder">You found it too easy – today\'s picks are a step harder.</string>
     <string name="tre_reason_no_time">Less time today – the session is shorter.</string>
-    <string name="tre_reason_recovery_hard">Your last board session was hard for your level – your fingers need their recovery, today pulling, pushing, legs or core.</string>
-    <string name="tre_reason_recovery_limit">Your last board session was at your limit – 48 to 72 hours without max finger work.</string>
-    <string name="tre_reason_recovery_volume">Your last board session was volume – pulling and core are fine today, fingers rest.</string>
+    <string name="tre_reason_recovery_hard">Your last climbing session was hard for your level – your fingers need their recovery, today pulling, pushing, legs or core.</string>
+    <string name="tre_reason_recovery_limit">Your last climbing session was at your limit – 48 to 72 hours without max finger work.</string>
+    <string name="tre_reason_recovery_volume">Your last climbing session was volume – pulling and core are fine today, fingers rest.</string>
     <string name="tre_reason_skin_rising">Your skin load is rising fast – no max finger work and no board today.</string>
     <string name="tre_struct_finger">finger</string>
     <string name="tre_struct_shoulder">shoulder</string>

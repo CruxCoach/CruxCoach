@@ -90,7 +90,7 @@ class ClimbingLoadTest {
         val finger = status.structures.getValue(LoadStructure.FINGER)
         assertEquals(LoadTrend.SPIKE, finger.trend)
         assertTrue(finger.ratio!! > ClimbingLoad.SPIKE_RATIO)
-        assertEquals(ClimbingLoad.SERIES_DAYS, status.series.getValue(LoadStructure.FINGER).size)
+        assertEquals(ClimbingLoad.SERIES_DAYS + ClimbingLoad.LEAD_DAYS, status.series.getValue(LoadStructure.FINGER).size)
         assertEquals(today, status.series.getValue(LoadStructure.FINGER).last().first)
         // Nothing logged: no baseline, low trend.
         assertEquals(LoadTrend.LOW, status.structures.getValue(LoadStructure.SKIN).trend)

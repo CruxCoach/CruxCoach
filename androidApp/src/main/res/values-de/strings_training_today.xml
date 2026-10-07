@@ -106,4 +106,8 @@
     <string name="trt_done_today">Heute erledigt</string>
     <string name="trt_tile_trend">Trend</string>
     <string name="trt_numbers_hidden_short">verborgen</string>
+    <string name="trt_done_hero_title">Für heute geschafft</string>
+    <string name="trt_done_hero_text">Erholung gehört zum Training. Willst du trotzdem mehr, schlägt der Coach etwas vor, das zu deinem heutigen Training passt.</string>
+    <string name="trt_done_hero_more">Noch etwas trainieren</string>
+    <string name="trt_done_hero_history">Verlauf</string>
 </resources>
