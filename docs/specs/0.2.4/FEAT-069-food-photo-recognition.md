@@ -96,14 +96,17 @@ portions.
   portions and, if weighed, the cooked weight. Saved as one of "my foods"
   (per 100 g of the finished dish, one portion as serving) and logged like
   any food; the ingredients are kept (settings table, `recipe:<id>`) so the
-  recipe can be changed. Foods without a weight cannot be ingredients.
+  recipe can be changed, and travel in the backup (`AthleteSnapshot.recipes`,
+  additive). Foods without a weight cannot be ingredients.
 
 - Health Connect export: logged meals (name, meal, energy, protein,
   carbohydrate, fat) and water are written to Health Connect when the athlete
   switches "Send meals and water to Health Connect" on. Each entry is one
-  record with client record id `cruxcoach-food-<id>` / `cruxcoach-water-<id>`;
-  the shown day is synced when nutrition opens or changes, so edits replace and
-  deletions remove records. Since the merge with the training line it uses the
+  record with client record id `cruxcoach-food-<id>` / `cruxcoach-water-<id>`,
+  timed on the entry's own day (an entry added for yesterday is not counted
+  today); the shown day is synced when nutrition opens or changes, so edits
+  replace and deletions remove records. Which entries were written is device
+  state and stays out of Android backups. Since the merge with the training line it uses the
   app's one Health Connect layer (`athlete/health`, Jetpack
   `connect-client`, Android 9+ with the Health Connect app, built into 14+),
   next to the coach's reading of sleep and climbing sessions (FEAT-071): one
@@ -122,7 +125,10 @@ portions.
 - Storage stays metric. In US units food amounts are oz, drinks and water
   fl oz, and drinks can be entered in US cups (236.6 ml); drinks count 1 g per
   ml. A food is a drink by BLS group (N, P), a serving given in ml/fl oz, or
-  its German or English name (`FuelUnits.isDrink`).
+  the head of its German or English name – the part before a comma, a
+  bracket or "mit/aus/im/with …", in a hyphenated compound its last part –
+  so "Schwein" (not "Wein"), "Thunfisch im eigenen Saft" or "Kaiserschmarren
+  (mit Milch)" stay food (`FuelUnits.isDrink`).
 - Water presets: 8 fl oz and 16.9 fl oz instead of 250 and 500 ml.
 - "Create food" takes nutrition per 100 g or per portion (US labels); per
   portion is the default in US units and is converted to per 100 g.
