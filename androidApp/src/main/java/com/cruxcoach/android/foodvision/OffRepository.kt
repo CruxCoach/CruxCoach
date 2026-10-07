@@ -44,8 +44,15 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         data object Failed : State
     }
 
-    /** Source of the extract's lines; tests hand in plain text instead of the zstd asset. */
-    internal var source: () -> BufferedReader = ::unpackAsset
+    /**
+     * The bundled table, unpacked to a scratch SQLite file (scripts/build_off_asset.py);
+     * the phone only adds the FTS index. Null builds from [source] instead.
+     */
+    internal var prebuilt: (() -> File)? = ::unpackPrebuilt
+
+    /** Lines of a TSV extract for [build]; tests hand in plain text, which also skips [prebuilt]. */
+    internal var source: () -> BufferedReader = { error("no TSV extract bundled; updates bring their own") }
+        set(value) { field = value; prebuilt = null }
     /** Version of the bundled extract; tests set it together with [source]. */
     internal var assetVersion: () -> String = {
         runCatching { context.assets.open(VERSION_ASSET).bufferedReader().use { it.readText().trim() } }.getOrDefault("")
@@ -82,7 +89,7 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
             }
             existing.close()
         }
-        return runCatching { build(file, bundled, source) }
+        return runCatching { prebuilt?.let { finishPrebuilt(file, bundled, it()) } ?: build(file, bundled, source) }
             .onFailure { e ->
                 Log.w(TAG, "could not build the product database", e)
                 _state.value = State.Failed
@@ -235,13 +242,7 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
             } finally {
                 database.endTransaction()
             }
-            // FTS4 with diacritics folded ("muesli" still needs the u-umlaut, "musli" finds "Müsli").
-            val withFts = runCatching {
-                database.execSQL(
-                    "CREATE VIRTUAL TABLE product_fts USING fts4(content=\"product\", name_de, name_en, brand, tokenize=unicode61 \"remove_diacritics=1\")",
-                )
-                database.execSQL("INSERT INTO product_fts(product_fts) VALUES('rebuild')")
-            }.onFailure { Log.w(TAG, "FTS4 unavailable, falling back to LIKE search", it) }.isSuccess
+            val withFts = createFts(database)
             database.insert("meta", null, ContentValues().apply { put("key", KEY_VERSION); put("value", version) })
             database.insert("meta", null, ContentValues().apply { put("key", KEY_FTS); put("value", if (withFts) "1" else "0") })
             database.close()
@@ -250,6 +251,58 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
             tmp.delete()
             throw e
         }
+        moveIntoPlace(tmp, target, version)
+    }
+
+    /** The bundled table, unpacked next to the database it becomes. */
+    private fun unpackPrebuilt(): File {
+        val target = context.getDatabasePath(DB_NAME)
+        target.parentFile?.mkdirs()
+        val packed = File(context.cacheDir, "off_products.db.zst")
+        val tmp = File(target.parentFile, "$DB_NAME.tmp")
+        context.assets.open(ASSET).use { input -> packed.outputStream().use { input.copyTo(it) } }
+        try {
+            ZstdNative.decompressFile(packed, tmp, MAX_UNPACKED_BYTES)
+        } finally {
+            packed.delete()
+        }
+        return tmp
+    }
+
+    /**
+     * Adds the FTS index to an unpacked table ([tmp]) and moves it into place.
+     * Building only the index took about half a minute on a Nokia 6.1, the
+     * whole import from text more than three.
+     */
+    private fun finishPrebuilt(target: File, version: String, tmp: File) {
+        _state.value = State.Preparing(0.5f)
+        val database = SQLiteDatabase.openDatabase(tmp.path, null,
+            SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+        try {
+            database.rawQuery("PRAGMA journal_mode = OFF", null).use { it.moveToFirst() }
+            database.rawQuery("PRAGMA synchronous = OFF", null).use { it.moveToFirst() }
+            require(meta(database, KEY_VERSION) != null) { "bundled product table has no version" }
+            val withFts = createFts(database)
+            database.execSQL("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", arrayOf<Any>(KEY_VERSION, version))
+            database.execSQL("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", arrayOf<Any>(KEY_FTS, if (withFts) "1" else "0"))
+        } catch (e: Throwable) {
+            database.close()
+            tmp.delete()
+            throw e
+        }
+        database.close()
+        moveIntoPlace(tmp, target, version)
+    }
+
+    /** FTS4 with diacritics folded; false (LIKE search) where the phone's SQLite lacks it. */
+    private fun createFts(database: SQLiteDatabase): Boolean = runCatching {
+        database.execSQL(
+            "CREATE VIRTUAL TABLE product_fts USING fts4(content=\"product\", name_de, name_en, brand, tokenize=unicode61 \"remove_diacritics=1\")",
+        )
+        database.execSQL("INSERT INTO product_fts(product_fts) VALUES('rebuild')")
+    }.onFailure { Log.w(TAG, "FTS4 unavailable, falling back to LIKE search", it) }.isSuccess
+
+    private fun moveIntoPlace(tmp: File, target: File, version: String) {
         File(tmp.path + "-journal").delete()
         target.delete()
         File(target.path + "-journal").delete()
@@ -258,17 +311,6 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         fts = meta(opened, KEY_FTS) == "1"
         db = opened
         _state.value = State.Ready(version)
-    }
-
-    private fun unpackAsset(): BufferedReader {
-        val dir = File(context.cacheDir, "fooddata").apply { mkdirs() }
-        val packed = File(dir, "off_products.tsv.zst")
-        val plain = File(dir, "off_products.tsv")
-        context.assets.open(ASSET).use { input -> packed.outputStream().use { input.copyTo(it) } }
-        ZstdNative.decompressFile(packed, plain, MAX_UNPACKED_BYTES)
-        packed.delete()
-        // Deleted while open: the reader keeps the data, the file system forgets it.
-        return plain.bufferedReader().also { plain.delete() }
     }
 
     private fun open(file: File): SQLiteDatabase? =
@@ -290,7 +332,7 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         /** Versions start with the export date ("2026-10-07 680494" or "2026-10-07"). */
         fun isOlder(version: String, than: String): Boolean = version.take(10) < than.take(10)
 
-        const val ASSET = "fuel/off_products.tsv.zst"
+        const val ASSET = "fuel/off_products.db.zst"
         const val VERSION_ASSET = "fuel/off_products.version"
         const val DB_NAME = "off_products.db"
         /** food_item.source for Open Food Facts products; their id is "off:" + barcode. */
@@ -299,7 +341,7 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         private const val KEY_FTS = "fts"
         private const val COLUMNS = "code, name_de, name_en, brand, kcal, protein, carbs, fat, serving, regions, serving_label"
         private const val EXPECTED_PRODUCTS = 1_000_000f
-        /** zstd-bomb guard; the extract unpacks to well under this. */
+        /** zstd-bomb guard; the bundled table unpacks to ~52 MB, a TSV update to ~50 MB. */
         private const val MAX_UNPACKED_BYTES = 256L * 1024 * 1024
     }
 }
