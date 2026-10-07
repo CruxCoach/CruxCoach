@@ -145,6 +145,12 @@ class FoodVisionClient(private val context: Context) {
                 }
             }
             connection = conn
+            // Cancelled while the process starts: unbind, or the next connect() would
+            // replace this binding and release() could never undo it.
+            cont.invokeOnCancellation {
+                runCatching { context.unbindService(conn) }
+                if (connection === conn) connection = null
+            }
             val bound = runCatching {
                 context.bindService(Intent(context, FoodVisionService::class.java), conn, Context.BIND_AUTO_CREATE)
             }.getOrDefault(false)

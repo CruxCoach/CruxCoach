@@ -262,9 +262,13 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         target.parentFile?.mkdirs()
         val packed = File(context.cacheDir, "off_products.db.zst")
         val tmp = File(target.parentFile, "$DB_NAME.tmp")
-        context.assets.open(ASSET).use { input -> packed.outputStream().use { input.copyTo(it) } }
         try {
+            context.assets.open(ASSET).use { input -> packed.outputStream().use { input.copyTo(it) } }
             ZstdNative.decompressFile(packed, tmp, MAX_UNPACKED_BYTES)
+        } catch (e: Throwable) {
+            // A half-written table is never used and Settings could not free it.
+            tmp.delete()
+            throw e
         } finally {
             packed.delete()
         }

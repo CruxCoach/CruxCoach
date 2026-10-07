@@ -204,6 +204,11 @@ class VisionModelStore @Inject constructor(@ApplicationContext private val conte
     fun bytesOnDisk(): Long = dir()?.listFiles()?.sumOf { it.length() } ?: 0L
 
     private fun fail(model: VisionModel, reason: Reason): State {
+        // A model has two files: when one fails, the other transfer (gigabytes,
+        // perhaps on mobile data) must not keep running out of reach of remove().
+        prefs.getString(KEY_DOWNLOADS, null)?.split(',')?.mapNotNull { it.toLongOrNull() }?.forEach { id ->
+            if (query(id)?.status != DownloadManager.STATUS_SUCCESSFUL) runCatching { dm.remove(id) }
+        }
         prefs.edit { remove(KEY_DOWNLOADS) }
         return State.Failed(model, reason).also { _state.value = it }
     }
