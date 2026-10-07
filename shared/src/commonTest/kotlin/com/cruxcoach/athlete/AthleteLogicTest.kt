@@ -258,6 +258,19 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun carbsFollowTheRatedClimbingIntensity() {
+        // Two hours in the gym: an easy technique day needs less than a limit session.
+        val light = DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.LIGHT)
+        val limit = DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.LIMIT)
+        assertEquals(DayLoad.HARD, FuelTargets.dayLoad(light))
+        assertEquals(DayLoad.VERY_HARD, FuelTargets.dayLoad(limit))
+        assertTrue(FuelTargets.compute(70.0, limit, 1.6).carbsG > FuelTargets.compute(70.0, light, 1.6).carbsG)
+        // Without a rating the day counts like a typical board session.
+        assertEquals(FuelTargets.dayLoad(DayActivity("d", climbingMinutes = 120)),
+            FuelTargets.dayLoad(DayActivity("d", climbingMinutes = 120, climbIntensity = null)))
+    }
+
+    @Test
     fun lowBmiTriggersSignalAndPausesLossGoal() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 50.0))
         val signals = RedsGuard.evaluate(AthleteProfile(goal = AthleteGoal.LOSE_WEIGHT, sex = Sex.MALE), 175.0, trend, emptyList())

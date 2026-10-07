@@ -2,6 +2,7 @@ package com.cruxcoach.athlete.logic
 
 import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.AthleteProfile
+import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.Sex
@@ -52,11 +53,25 @@ object FuelTargets {
         val waterMl: Int,
     )
 
+    /**
+     * Session RPE of the day's climbing: from the intensity the coach rated
+     * for that day (board logbook against the athlete's level, or a climbing
+     * day logged by hand or from Health Connect; FEAT-071), else a typical
+     * board session.
+     */
+    fun climbRpe(intensity: ClimbIntensity?): Int = when (intensity) {
+        null -> DEFAULT_CLIMB_RPE
+        ClimbIntensity.LIGHT -> 4
+        ClimbIntensity.VOLUME -> 6
+        ClimbIntensity.HARD -> 8
+        ClimbIntensity.LIMIT -> 9
+    }
+
     fun dayLoad(activity: DayActivity?): DayLoad {
         if (activity == null || !activity.trained) return DayLoad.REST
         val climbMinutes = if (activity.climbingMinutes > 0) activity.climbingMinutes
             else activity.climbingEfforts * MINUTES_PER_EFFORT
-        val load = climbMinutes * DEFAULT_CLIMB_RPE + activity.workoutLoad
+        val load = climbMinutes * climbRpe(activity.climbIntensity) + activity.workoutLoad
         return when {
             load < 200 -> DayLoad.LIGHT
             load < 450 -> DayLoad.MODERATE
