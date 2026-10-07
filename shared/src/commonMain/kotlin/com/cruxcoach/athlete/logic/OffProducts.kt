@@ -28,7 +28,7 @@ data class OffProduct(
 }
 
 /**
- * Format of `assets/fuel/off_products.tsv.zst` (scripts/build_off_asset.py):
+ * Format of the TSV extract (scripts/build_off_asset.py --out; the update channel):
  * `#` comment lines with source, licence and `# version: yyyy-mm-dd`, then
  * barcode, German name, English name, brand, kcal, protein, carbs, fat,
  * serving g, regions, serving label, tab separated.
