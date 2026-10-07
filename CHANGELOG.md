@@ -17,9 +17,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the same climb refused with proof before, or three refusals hours apart. An
   outage, also one that begins halfway through an upload, holds nothing back.
 - Logs of climbs Kilter keeps under a new id now reach Kilter. CruxCoach's
-  catalogue still carries the old id of 455 Kilter climbs (most of them moved to
-  a new id in Kilter's migration of March 2026); Kilter refuses a log naming the
-  old id. A bundled table of these climbs, matched by identical holds and name,
+  catalogue still carries the old id of 793 Kilter climbs (455 it lists, 338
+  Kilter no longer lists, typical of older logs such as an Aurora export; most
+  moved to a new id in Kilter's migration of March 2026); Kilter refuses a log
+  naming the old id. A bundled table of these climbs, matched by identical holds and name,
   sends such a log under the id Kilter lists, and falls back to the old one if
   Kilter refuses the new.
 - Climbs keep the id Kilter stores for them. About a quarter of the legacy
@@ -27,15 +28,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0.2.3 uppercased every compact id, so every log of such a climb was refused.
   A bundled index of these ids, CruxCoach's own climbs and the spellings in the
   account's own logbook now decide the case; a dashed spelling of a legacy climb
-  is sent compact, so it counts towards the climb's own statistics.
+  the board catalogue holds is sent compact, so it counts towards the climb's
+  own statistics.
 - Entries Kilter already has are not uploaded twice: an entry restored under a
   new uuid, or re-sent after a lost response, is recognised in Kilter's copy of
   the logbook, which is now read once per upload instead of once per 200 entries.
 - Entries imported from an Aurora export stay local by default. Kilter usually
   has them already, and uploading them duplicated the logbook there. They can be
-  uploaded on request; entries Kilter has for the same climb, angle and day are
-  skipped.
-- An edited entry whose original Kilter already holds is kept local as a
+  uploaded on request; entries Kilter has for the same climb, angle and send
+  state at most a day apart are skipped. A copy CruxCoach uploaded for one
+  imported entry never counts as Kilter's copy of another.
+- A quick-log sequence ("Try", "Try", "Top") and any edit of an entry already
+  on Kilter now reach Kilter. Kilter takes no updates and refuses a log it
+  holds; 0.2.3 sent such an entry again and the upload failed, and the send
+  stayed local. The app now deletes Kilter's copy and uploads the entry again,
+  also for sends logged this way with an earlier version. An entry Kilter holds
+  with other content that was not changed in CruxCoach stays local as a
   conflict and no longer stops the upload of every other entry.
 - An entry imported from an Aurora export is no longer uploaded twice when the
   same climb was sent on two consecutive late evenings: it is matched to the
@@ -53,10 +61,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A request whose answer was lost no longer turns into "Kilter does not know
   this climb". Kilter writes a request as a whole or not at all and refuses a
   log it already holds; the app notes each request before sending it and
-  settles a request without an answer against Kilter's logbook, also for the
-  attempts Kilter leaves out of it. Entries it cannot settle that way are
-  listed as "probably on Kilter already". The HTTP client no longer resends an
-  upload by itself when the connection breaks mid-request.
+  settles a request without an answer against Kilter's logbook, or, for
+  attempts Kilter leaves out of it, by asking Kilter to delete one of its rows
+  (Kilter tells whether it held it; the row goes up again). The HTTP client no
+  longer resends an upload by itself when the connection breaks mid-request.
+- Offline with an expired Kilter session token, the upload no longer asks for a
+  new login: it waits for the connection and tries again by itself. An app
+  start or a new entry no longer restarts the back-off of these retries, and an
+  entry Kilter refused without proof is retried when its pause ends.
 
 - The climb detail no longer clips holds at the board's edge. A climb set on a
   larger board (e.g. 16 x 12) whose holds reach one hole column beyond your board

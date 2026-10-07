@@ -187,6 +187,14 @@ SELECT DISTINCT climb_uuid, angle FROM ascents;
 getAllAscentUuids:
 SELECT uuid FROM ascents;
 
+-- See bids.selectBidUploadState.
+selectAscentUploadState:
+SELECT synced, bid_count, comment FROM ascents WHERE uuid = ?;
+
+-- Entries imported from an export (external_id prefix), synced or not.
+getAscentUuidsWithExternalIdPrefix:
+SELECT uuid FROM ascents WHERE external_id LIKE ?;
+
 -- ═══ FEAT-005 Aurora-JSON-import — INSERT-or-skip on external_id ═══
 
 -- Idempotent insert: a row with the same external_id is silently

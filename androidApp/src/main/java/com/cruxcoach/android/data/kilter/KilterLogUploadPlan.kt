@@ -31,6 +31,8 @@ internal data class KilterUploadItem(
      * a different request and retries it.
      */
     val fingerprint: Int = log.hashCode(),
+    /** Kilter held a copy under this uuid, deleted to send the row again ([KilterSyncEngine]); only once. */
+    val replaced: Boolean = false,
 ) {
     /** The same row with the next candidate id, or null once Kilter refused every one. */
     fun nextCandidate(): KilterUploadItem? = candidates.getOrNull(tried + 1)?.let {

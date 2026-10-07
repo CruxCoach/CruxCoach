@@ -106,4 +106,38 @@ class KilterUploadHttpTest {
             assertTrue(KilterUploadFailure.noAnswer(error), "$error")
         }
     }
+
+    @Test fun offline_with_an_expired_token_is_a_network_failure_not_a_lost_session() = runTest {
+        val server = MockWebServer().apply { start() }
+        val base = server.url("/").toString().trimEnd('/')
+        server.shutdown() // nothing listens: the token endpoint cannot be reached
+        val tokens = mockk<KilterTokenStore>(relaxed = true)
+        every { tokens.getAccessToken() } returns "expired-token"
+        every { tokens.isAccessTokenExpired() } returns true
+        every { tokens.getRefreshToken() } returns "refresh-token"
+        val client = KilterApiClient(tokens, OkHttpClient())
+        client.setEndpointsForTesting(base)
+        val upload = client.uploadLogs(listOf(KilterLog("stable-log", climbUuid = "native-id")))
+        val error = assertIs<KilterOfflineException>(upload.exceptionOrNull())
+        assertFalse(KilterUploadFailure.noAnswer(error), "the upload never went out")
+        assertIs<KilterOfflineException>(client.fetchLogs().exceptionOrNull())
+        assertFailsWith<java.io.IOException> { client.refreshAccessTokenOrThrow() }
+        assertFalse(client.refreshAccessToken())
+    }
+
+    @Test fun delete_tells_whether_kilter_held_the_log() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse().setResponseCode(200))
+            server.enqueue(MockResponse().setResponseCode(204))
+            server.enqueue(MockResponse().setResponseCode(503))
+            val client = client(server)
+            assertEquals(KilterDeleteOutcome.HELD, client.deleteLogIfHeld("held-log"))
+            assertEquals(KilterDeleteOutcome.NOT_HELD, client.deleteLogIfHeld("held-log"))
+            assertEquals(KilterDeleteOutcome.FAILED, client.deleteLogIfHeld("other-log"))
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/api/logs/held-log", request.path)
+        }
+    }
 }

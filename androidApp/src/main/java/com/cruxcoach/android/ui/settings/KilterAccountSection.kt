@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,6 +36,8 @@ data class KilterAccountState(
     val uploadStatus: KilterUploadStatus? = null,
     /** Loaded when the user opens the list of entries Kilter did not take. */
     val notUploaded: List<com.cruxcoach.android.data.kilter.KilterNotUploadedEntry>? = null,
+    /** Loading [notUploaded] failed. */
+    val notUploadedFailed: Boolean = false,
     val isConnected: Boolean = false,
     val username: String = "",
     val lastSync: String? = null,
@@ -222,7 +225,8 @@ internal fun KilterLogbookSyncStatus(
 ) {
     val upload = state.uploadStatus
     var confirmImported by rememberSaveable { mutableStateOf(false) }
-    var showNotUploaded by rememberSaveable { mutableStateOf(false) }
+    // Not saveable: restored after the process died, the list would never load.
+    var showNotUploaded by remember { mutableStateOf(false) }
     val needsLogin = state.sessionExpired || upload?.reason ==
         com.cruxcoach.android.data.kilter.KilterUploadReason.AUTHENTICATION
     val active = state.pushEnabled && !state.isSyncing
@@ -264,6 +268,7 @@ internal fun KilterLogbookSyncStatus(
     if (showNotUploaded) {
         KilterNotUploadedDialog(
             entries = state.notUploaded,
+            failed = state.notUploadedFailed,
             onDismiss = { showNotUploaded = false },
             onReport = { report ->
                 showNotUploaded = false
@@ -717,6 +722,7 @@ private fun DisconnectedClimbPublishHint(onConnect: () -> Unit) {
 @Composable
 internal fun KilterNotUploadedDialog(
     entries: List<com.cruxcoach.android.data.kilter.KilterNotUploadedEntry>?,
+    failed: Boolean = false,
     onDismiss: () -> Unit,
     onReport: (String) -> Unit,
 ) {
@@ -731,6 +737,7 @@ internal fun KilterNotUploadedDialog(
             ) {
                 Text(stringResource(R.string.kilter_upload_list_intro), style = MaterialTheme.typography.bodySmall)
                 when {
+                    failed -> Text(stringResource(R.string.kilter_upload_list_failed))
                     entries == null -> CircularProgressIndicator(Modifier.padding(8.dp))
                     entries.isEmpty() -> Text(stringResource(R.string.kilter_upload_list_empty))
                     else -> entries.forEach { entry ->
@@ -763,7 +770,6 @@ private fun com.cruxcoach.android.data.kilter.KilterNotUploadedEntry.details(con
     parts += context.getString(
         when (reason) {
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.NOT_ON_KILTER -> R.string.kilter_upload_reason_not_on_kilter
-            com.cruxcoach.android.data.kilter.KilterNotUploadedReason.PROBABLY_ON_KILTER -> R.string.kilter_upload_reason_probably_on_kilter
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.RETRY_LATER -> R.string.kilter_upload_reason_retry_later
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.CONFLICT -> R.string.kilter_upload_reason_conflict
             com.cruxcoach.android.data.kilter.KilterNotUploadedReason.INVALID_DATE -> R.string.kilter_upload_reason_invalid_date
