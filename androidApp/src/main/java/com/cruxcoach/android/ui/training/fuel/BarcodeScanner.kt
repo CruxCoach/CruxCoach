@@ -12,6 +12,7 @@ import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,38 +96,37 @@ private fun CameraPreview(onResult: (String) -> Unit) {
             ))
         }
     }
-    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { ctx ->
-            val view = PreviewView(ctx)
-            val providerFuture = ProcessCameraProvider.getInstance(ctx)
-            providerFuture.addListener({
-                val provider = providerFuture.get()
-                val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
-                val analysis = ImageAnalysis.Builder()
-                    .setResolutionSelector(
-                        ResolutionSelector.Builder().setResolutionStrategy(
-                            ResolutionStrategy(Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
-                        ).build(),
-                    )
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                analysis.setAnalyzer(executor) { image ->
-                    val code = image.use { decode(reader, it) }
-                    if (code != null && done.compareAndSet(false, true)) {
-                        ContextCompat.getMainExecutor(ctx).execute { onResult(code) }
-                    }
-                }
-                runCatching {
-                    provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-                }
-            }, ContextCompat.getMainExecutor(ctx))
-            view
-        },
-        onRelease = { runCatching { ProcessCameraProvider.getInstance(context).get().unbindAll() } },
-    )
+    val view = remember { PreviewView(context) }
+    // awaitInstance rather than getInstance(): the ListenableFuture type is not on
+    // the compile classpath next to the Health Connect client (Guava's empty
+    // listenablefuture artifact replaces it there).
+    var provider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    LaunchedEffect(Unit) {
+        val cameras = ProcessCameraProvider.awaitInstance(context)
+        val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
+        val analysis = ImageAnalysis.Builder()
+            .setResolutionSelector(
+                ResolutionSelector.Builder().setResolutionStrategy(
+                    ResolutionStrategy(Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
+                ).build(),
+            )
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        analysis.setAnalyzer(executor) { image ->
+            val code = image.use { decode(reader, it) }
+            if (code != null && done.compareAndSet(false, true)) {
+                ContextCompat.getMainExecutor(context).execute { onResult(code) }
+            }
+        }
+        runCatching {
+            cameras.unbindAll()
+            cameras.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        }
+        provider = cameras
+    }
+    // Unbind first, so no frame reaches the analyzer after its executor is gone.
+    DisposableEffect(Unit) { onDispose { runCatching { provider?.unbindAll() }; executor.shutdown() } }
+    AndroidView(modifier = Modifier.fillMaxSize(), factory = { view })
 }
 
 /**
