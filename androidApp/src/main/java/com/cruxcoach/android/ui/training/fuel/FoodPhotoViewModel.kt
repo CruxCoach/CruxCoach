@@ -10,6 +10,7 @@ import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.FoodVisionClient
+import com.cruxcoach.android.foodvision.MicronutrientWeek
 import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.athlete.health.HealthConnectExporter
 import com.cruxcoach.android.foodvision.UsdaRepository
@@ -52,8 +53,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import javax.inject.Inject
-import kotlinx.datetime.minus
-import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import com.cruxcoach.athlete.model.Sex
 
@@ -415,23 +414,9 @@ class FoodPhotoViewModel @Inject constructor(
         return withContext(Dispatchers.Default) { matcher.search(query, limit = 15).map { it.food } }
     }
 
-    /**
-     * Iron, calcium and vitamin D over the 7 days up to [day], from logged BLS
-     * and USDA foods; null when none of them carries micronutrients.
-     */
-    suspend fun microWeek(day: LocalDate, sex: Sex?, birthYear: Int?): MicroWatch.Summary? = withContext(Dispatchers.IO) {
-        service.ensureReady()
-        val entries = service.repo.foodLogBetween(day.minus(DatePeriod(days = 6)).toString(), day.toString())
-        val foods = entries.mapNotNull { it.foodItemId }.toSet().associateWith { id ->
-            val food = when {
-                id.startsWith("bls:") -> bls.food(id.removePrefix("bls:"))
-                id.startsWith("usda:") -> usda.food(id.removePrefix("usda:"))
-                else -> null
-            }
-            food?.let { MicroWatch.Per100(it.ironMg, it.calciumMg, it.vitaminDUg) }
-        }
-        MicroWatch.summarize(entries, sex, birthYear?.let { day.year - it }) { foods[it] }
-    }
+    /** Iron, calcium and vitamin D over the 7 days up to [day]; null when none of the foods carries them. */
+    suspend fun microWeek(day: LocalDate, sex: Sex?, birthYear: Int?): MicroWatch.Summary? =
+        MicronutrientWeek(service, bls, usda).upTo(day, sex, birthYear)
 
     /** Writes every included line to [day]: food log entries, and water to hydration. */
     fun save(day: String, meal: Meal) {

@@ -20,6 +20,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.android.foodvision.MicronutrientWeek
+import com.cruxcoach.android.ui.training.fuel.MicroWeekCard
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
@@ -59,6 +61,14 @@ data class WeeklyReviewState(
     val weightChangeKg: Double? = null,
     val proteinAvg: Double? = null,
     val proteinTarget: Int? = null,
+    /** Days of the week with logged food. */
+    val foodDays: Int = 0,
+    val carbsAvg: Double? = null,
+    /** Average carbohydrate target of the logged days, from each day's training load. */
+    val carbsTargetAvg: Int? = null,
+    val micros: MicroWatch.Summary? = null,
+    /** Energy-availability signals; only for the current week (they look at the last days). */
+    val redsSignals: List<RedsSignal> = emptyList(),
     val checkinAverages: List<Pair<Int, Double>> = emptyList(),
     val pausedDays: Int = 0,
 )
@@ -69,7 +79,10 @@ data class WeeklyReviewState(
  * the fast logging screens on purpose.
  */
 @HiltViewModel
-class WeeklyReviewViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+class WeeklyReviewViewModel @Inject constructor(
+    private val service: AthleteService,
+    private val micronutrients: MicronutrientWeek,
+) : ViewModel() {
     private val _state = MutableStateFlow(WeeklyReviewState())
     val state: StateFlow<WeeklyReviewState> = _state.asStateFlow()
 
@@ -128,6 +141,10 @@ class WeeklyReviewViewModel @Inject constructor(private val service: AthleteServ
             val endTrend = trend.lastOrNull { it.day <= end }?.trend
             val food = repo.foodLogBetween(start.toString(), end.toString())
             val loggedDays = food.map { it.day }.toSet()
+            // Carbohydrate targets follow each logged day's training load (FEAT-068).
+            val carbTargets = endTrend?.let { w -> loggedDays.map { FuelTargets.compute(w, activities[it], profile.proteinPerKg).carbsG } }.orEmpty()
+            val micros = runCatching { micronutrients.upTo(end, profile.sex, profile.birthYear) }.getOrNull()
+            val reds = if (offset == 0) runCatching { service.redsSignals(profile, service.activities(7)) }.getOrDefault(emptyList()) else emptyList()
             val checkins = repo.checkinsBetween(start.toString(), end.toString())
             fun avg(values: List<Int?>) = values.filterNotNull().takeIf { it.isNotEmpty() }?.average()
 
@@ -149,6 +166,11 @@ class WeeklyReviewViewModel @Inject constructor(private val service: AthleteServ
                 weightChangeKg = if (startTrend != null && endTrend != null) endTrend - startTrend else null,
                 proteinAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.proteinG ?: 0.0 } / loggedDays.size else null,
                 proteinTarget = endTrend?.let { (it * profile.proteinPerKg).roundToInt() },
+                foodDays = loggedDays.size,
+                carbsAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.carbsG ?: 0.0 } / loggedDays.size else null,
+                carbsTargetAvg = carbTargets.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
+                micros = micros,
+                redsSignals = reds,
                 checkinAverages = listOfNotNull(
                     avg(checkins.map { it.sleep })?.let { R.string.trt_q_sleep to it },
                     avg(checkins.map { it.energy })?.let { R.string.trt_q_energy to it },
@@ -228,9 +250,16 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                     }) else stringResource(R.string.tra_review_weight_change, formatMass(s.weightChangeKg!!, s.profile.units, signed = true)),
                 )
             }
+            if (s.redsSignals.isNotEmpty()) EnergyCareCard(s.redsSignals, "review_reds", Modifier.padding(top = 12.dp))
             if (s.proteinAvg != null) {
                 SectionTitle(stringResource(R.string.tr_nav_fuel))
+                Text(pluralStringResource(R.plurals.tra_review_food_days, s.foodDays, s.foodDays), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.tra_review_protein, s.proteinAvg!!.roundToInt(), s.proteinTarget ?: 0))
+                if (s.carbsAvg != null && s.carbsTargetAvg != null) {
+                    Text(stringResource(R.string.tra_review_carbs, s.carbsAvg!!.roundToInt(), s.carbsTargetAvg!!),
+                        modifier = Modifier.testTag("review_carbs"))
+                }
+                s.micros?.let { MicroWeekCard(it, Modifier.padding(top = 8.dp)) }
             }
             if (s.checkinAverages.isNotEmpty()) {
                 SectionTitle(stringResource(R.string.tra_review_checkins))
