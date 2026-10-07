@@ -25,7 +25,7 @@
     <string name="tre_ev_climb_days">Klettern vor %1$d Tagen: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d Versuche</string>
     <string name="tre_ev_climb_today">Klettern heute: %1$s</string>
-    <string name="tre_ev_climb_yesterday">Board gestern: %1$s</string>
+    <string name="tre_ev_climb_yesterday">Klettern gestern: %1$s</string>
     <string name="tre_ev_favorites">deine Favoriten</string>
     <string name="tre_ev_focus">Fokus: %1$s</string>
     <string name="tre_ev_goal">Ziel: %1$s</string>
@@ -98,9 +98,9 @@
     <string name="tre_reason_level_easier">Dir war es zu schwer – heute eine Stufe leichter.</string>
     <string name="tre_reason_level_harder">Dir war es zu leicht – heute eine Stufe schwerer.</string>
     <string name="tre_reason_no_time">Heute weniger Zeit – die Einheit ist kürzer.</string>
-    <string name="tre_reason_recovery_hard">Deine letzte Board-Session war für dein Niveau hart – die Finger brauchen ihre Erholung, heute Zug, Druck, Beine oder Rumpf.</string>
-    <string name="tre_reason_recovery_limit">Deine letzte Board-Session war am Limit – 48 bis 72 Stunden keine maximale Fingerlast.</string>
-    <string name="tre_reason_recovery_volume">Deine letzte Board-Session war Volumen – Zug und Rumpf gehen heute, die Finger ruhen.</string>
+    <string name="tre_reason_recovery_hard">Deine letzte Klettereinheit war für dein Niveau hart – die Finger brauchen ihre Erholung, heute Zug, Druck, Beine oder Rumpf.</string>
+    <string name="tre_reason_recovery_limit">Deine letzte Klettereinheit war am Limit – 48 bis 72 Stunden keine maximale Fingerlast.</string>
+    <string name="tre_reason_recovery_volume">Deine letzte Klettereinheit war Volumen – Zug und Rumpf gehen heute, die Finger ruhen.</string>
     <string name="tre_reason_skin_rising">Deine Hautlast steigt stark – heute keine maximale Fingerlast und kein Board.</string>
     <string name="tre_struct_finger">Finger</string>
     <string name="tre_struct_shoulder">Schulter</string>

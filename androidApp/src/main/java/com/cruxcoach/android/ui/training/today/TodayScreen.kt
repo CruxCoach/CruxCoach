@@ -81,6 +81,8 @@ fun TodayScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var askWhy by rememberSaveable { mutableStateOf(false) }
     var showWhy by rememberSaveable { mutableStateOf(false) }
+    // After a finished training the hero says so; another session only on request.
+    var moreToday by rememberSaveable(state.today?.toString()) { mutableStateOf(false) }
     var showWeight by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
@@ -122,6 +124,8 @@ fun TodayScreen(
             if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
             if (state.openWorkout != null) {
                 item(key = "open_workout") { OpenWorkoutCard(onOpenPlayer) }
+            } else if (state.todaysWorkouts.isNotEmpty() && !moreToday) {
+                item(key = "done_hero") { DoneHeroCard(state, onMore = { moreToday = true }, onOpenHistory = onOpenHistory) }
             } else state.suggestion?.let {
                 item(key = "daily_suggestion") {
                     DailySuggestionCard(
@@ -284,6 +288,37 @@ private fun OpenWorkoutCard(onOpen: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Text(stringResource(R.string.trt_continue_workout), color = CruxCoachDesign.colors.onBrandAccent,
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** Today's training is done: say so, and offer more only on request. */
+@Composable
+private fun DoneHeroCard(state: TodayState, onMore: () -> Unit, onOpenHistory: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
+            contentColor = CruxCoachDesign.colors.onPositiveContainer),
+        modifier = Modifier.fillMaxWidth().testTag("today_done_hero"),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CheckCircle, null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trt_done_hero_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            val minutes = state.todaysWorkouts.sumOf { it.durationMinutes ?: 0 }
+            // Titles resolved in composition first; joinToString's lambda is not composable.
+            val titles = state.todaysWorkouts.map { com.cruxcoach.android.ui.training.workout.workoutTitle(it) }
+            val minutesText = if (minutes > 0) " · " + pluralStringResource(R.plurals.trt_minutes, minutes, minutes) else ""
+            Text(
+                titles.joinToString(" · ") + minutesText,
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
+            )
+            Text(stringResource(R.string.trt_done_hero_text), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onMore, modifier = Modifier.testTag("today_done_more")) { Text(stringResource(R.string.trt_done_hero_more)) }
+                TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.trt_done_hero_history)) }
+            }
         }
     }
 }

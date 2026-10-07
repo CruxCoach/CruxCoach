@@ -106,4 +106,8 @@
     <string name="trt_done_today">Done today</string>
     <string name="trt_tile_trend">Trend</string>
     <string name="trt_numbers_hidden_short">hidden</string>
+    <string name="trt_done_hero_title">Done for today</string>
+    <string name="trt_done_hero_text">Recovery is part of training. If you still want more, the coach suggests something that fits what you already did.</string>
+    <string name="trt_done_hero_more">Train some more</string>
+    <string name="trt_done_hero_history">History</string>
 </resources>

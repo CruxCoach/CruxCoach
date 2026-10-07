@@ -227,7 +227,7 @@ class AthleteService @Inject constructor(
 
     /** Acute against chronic load per structure over the last eight weeks. */
     fun loadStatus(): LoadStatus {
-        val daily = activities(ClimbingLoad.SERIES_DAYS).mapNotNull { (day, a) ->
+        val daily = activities(ClimbingLoad.SERIES_DAYS + ClimbingLoad.LEAD_DAYS).mapNotNull { (day, a) ->
             runCatching { LocalDate.parse(day) }.getOrNull()?.let { d ->
                 d to mapOf(LoadStructure.FINGER to a.fingerLoad, LoadStructure.SKIN to a.skinLoad, LoadStructure.SHOULDER to a.shoulderLoad)
             }

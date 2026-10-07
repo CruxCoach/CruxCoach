@@ -54,9 +54,18 @@
     <string name="trl_gap_working">Arbeitsgrad</string>
     <string name="trl_gap_max">Härtester</string>
     <string name="trl_gap_cd">Flash-Niveau %1$s, Arbeitsgrad %2$s.</string>
-    <string name="trl_gap_small">Nur %1$d Stufen zwischen Flash und Arbeitsgrad: Du versuchst selten an deinem Limit. Limit-Bouldern und Projekte können neue Grade öffnen.</string>
-    <string name="trl_gap_normal">%1$d Stufen zwischen Flash und Arbeitsgrad – eine ausgewogene Mischung aus Volumen und Limit.</string>
-    <string name="trl_gap_large">%1$d Stufen zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</string>
+    <plurals name="trl_gap_small">
+        <item quantity="one">Nur %1$d Stufe zwischen Flash und Arbeitsgrad: Du versuchst selten an deinem Limit. Limit-Bouldern und Projekte können neue Grade öffnen.</item>
+        <item quantity="other">Nur %1$d Stufen zwischen Flash und Arbeitsgrad: Du versuchst selten an deinem Limit. Limit-Bouldern und Projekte können neue Grade öffnen.</item>
+    </plurals>
+    <plurals name="trl_gap_normal">
+        <item quantity="one">%1$d Stufe zwischen Flash und Arbeitsgrad – eine ausgewogene Mischung aus Volumen und Limit.</item>
+        <item quantity="other">%1$d Stufen zwischen Flash und Arbeitsgrad – eine ausgewogene Mischung aus Volumen und Limit.</item>
+    </plurals>
+    <plurals name="trl_gap_large">
+        <item quantity="one">%1$d Stufe zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</item>
+        <item quantity="other">%1$d Stufen zwischen Flash und Arbeitsgrad: Projektieren klappt, Flashen hinkt hinterher. Mehr Volumen nahe Flash-Niveau baut die Basis.</item>
+    </plurals>
     <string name="trl_attempts_tile">Versuche pro Send</string>
     <string name="trl_attempts_sub">letzte 12 Wochen</string>
     <string name="trl_angle_tile">Häufigster Winkel</string>

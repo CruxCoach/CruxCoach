@@ -54,9 +54,18 @@
     <string name="trl_gap_working">Working grade</string>
     <string name="trl_gap_max">Hardest</string>
     <string name="trl_gap_cd">Flash level %1$s, working grade %2$s.</string>
-    <string name="trl_gap_small">Only %1$d steps between flash and working grade: you rarely try at your limit. Limit bouldering and projects can open up new grades.</string>
-    <string name="trl_gap_normal">%1$d steps between flash and working grade – a balanced mix of volume and limit climbing.</string>
-    <string name="trl_gap_large">%1$d steps between flash and working grade: projecting works, flashing lags. More volume near flash level builds the base.</string>
+    <plurals name="trl_gap_small">
+        <item quantity="one">Only %1$d step between flash and working grade: you rarely try at your limit. Limit bouldering and projects can open up new grades.</item>
+        <item quantity="other">Only %1$d steps between flash and working grade: you rarely try at your limit. Limit bouldering and projects can open up new grades.</item>
+    </plurals>
+    <plurals name="trl_gap_normal">
+        <item quantity="one">%1$d step between flash and working grade – a balanced mix of volume and limit climbing.</item>
+        <item quantity="other">%1$d steps between flash and working grade – a balanced mix of volume and limit climbing.</item>
+    </plurals>
+    <plurals name="trl_gap_large">
+        <item quantity="one">%1$d step between flash and working grade: projecting works, flashing lags. More volume near flash level builds the base.</item>
+        <item quantity="other">%1$d steps between flash and working grade: projecting works, flashing lags. More volume near flash level builds the base.</item>
+    </plurals>
     <string name="trl_attempts_tile">Attempts per send</string>
     <string name="trl_attempts_sub">last 12 weeks</string>
     <string name="trl_angle_tile">Most-climbed angle</string>

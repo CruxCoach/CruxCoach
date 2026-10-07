@@ -70,7 +70,8 @@ fun PainSheet(
                 selected = area,
                 onSelect = { a -> area = a; a.toInjuryRegion()?.let { region = it } },
                 onSide = { s -> s?.let { side = if (it == Side.LEFT) InjurySide.LEFT else InjurySide.RIGHT } },
-                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(vertical = 8.dp),
+                // No height cap: the map and its hint line must both fit.
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 InjuryRegion.entries.forEach { r ->
