@@ -28,6 +28,7 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.body.shortLabel
 import com.cruxcoach.athlete.logic.MacroTotals
+import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.logic.RedsSignal
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
@@ -55,6 +56,10 @@ fun FuelScreen(
     var foodsOpen by remember { mutableStateOf(false) }
     var amountFor by remember { mutableStateOf<FoodItem?>(null) }
     var createFood by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
+    /** A scanned code that is neither one of "my foods" nor in the product database. */
+    var scanMiss by remember { mutableStateOf<String?>(null) }
+    var createBarcode by remember { mutableStateOf<String?>(null) }
     var copyConfirm by remember { mutableStateOf(false) }
     val defaultMeal = remember { FuelViewModel.mealForHour(java.time.LocalTime.now().hour) }
     val deletedText = stringResource(R.string.trf_deleted)
@@ -162,6 +167,9 @@ fun FuelScreen(
             onCreate = { createFood = true; foodsOpen = false },
             searchBls = photoViewModel::search,
             onPickBls = { amountFor = FoodPhotoViewModel.blsFoodItem(it); foodsOpen = false },
+            searchProducts = photoViewModel::searchProducts,
+            onPickProduct = { amountFor = FoodPhotoViewModel.offFoodItem(it); foodsOpen = false },
+            onScan = { scanning = true; foodsOpen = false },
         )
     }
     amountFor?.let { item ->
@@ -174,12 +182,43 @@ fun FuelScreen(
     }
     if (createFood) {
         CreateFoodDialog(
-            onDismiss = { createFood = false },
+            onDismiss = { createFood = false; createBarcode = null },
             onSave = { name, brand, per100, servingG, label ->
-                viewModel.createFood(name, brand, per100, servingG, label)
+                viewModel.createFood(name, brand, per100, servingG, label, barcode = createBarcode)
                 createFood = false
+                createBarcode = null
                 foodsOpen = true
             },
+            barcode = createBarcode,
+        )
+    }
+    if (scanning) {
+        BarcodeScannerDialog(
+            onResult = { code ->
+                scanning = false
+                scope.launch {
+                    // Own foods first (they may carry a barcode), then the product database – both on the device.
+                    val variants = OffTable.barcodeVariants(code)
+                    val own = state.foods.firstOrNull { it.barcode != null && it.barcode in variants }
+                    val item = own ?: photoViewModel.productByBarcode(code)?.let(FoodPhotoViewModel::offFoodItem)
+                    if (item != null) amountFor = item else scanMiss = code
+                }
+            },
+            onDismiss = { scanning = false },
+        )
+    }
+    scanMiss?.let { code ->
+        AlertDialog(
+            onDismissRequest = { scanMiss = null },
+            modifier = Modifier.testTag("fuel_scan_miss"),
+            title = { Text(stringResource(R.string.trf_scan_not_found_title)) },
+            text = { Text(stringResource(R.string.trf_scan_not_found, code)) },
+            confirmButton = {
+                TextButton(onClick = { createBarcode = code; createFood = true; scanMiss = null }, modifier = Modifier.testTag("fuel_scan_create")) {
+                    Text(stringResource(R.string.trf_scan_create))
+                }
+            },
+            dismissButton = { TextButton(onClick = { scanMiss = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
     }
     if (photoOpen) {

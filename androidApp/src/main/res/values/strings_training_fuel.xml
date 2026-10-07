@@ -69,6 +69,16 @@
     <string name="trf_foods_bls_title">Food database (BLS)</string>
     <string name="trf_foods_bls_hint">Type at least two letters to search 7,140 foods of the German food composition database.</string>
     <string name="trf_foods_bls_none">No match in the database.</string>
+    <string name="trf_foods_products_title">Packaged products (Open Food Facts)</string>
+    <string name="trf_products_preparing">Setting up the product database on this device – once, a few seconds…</string>
+    <string name="trf_off_attribution">Product data: Open Food Facts contributors (ODbL)</string>
+    <string name="trf_scan">Scan barcode</string>
+    <string name="trf_scan_hint">Hold the barcode inside the frame. The code is looked up on this device only.</string>
+    <string name="trf_scan_permission">Scanning needs the camera. Nothing is recorded or sent.</string>
+    <string name="trf_scan_not_found_title">Product not found</string>
+    <string name="trf_scan_not_found">%1$s is not in the product database on this device. You can add it as your own food.</string>
+    <string name="trf_scan_create">Add it myself</string>
+    <string name="trf_create_barcode">Barcode %1$s</string>
     <string name="trf_describe">Describe</string>
     <string name="trf_describe_title">Describe a meal</string>
     <string name="trf_describe_placeholder">e.g. 2 slices of wholemeal bread with cheese and a glass of orange juice</string>

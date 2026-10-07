@@ -122,7 +122,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   BLS foods offline on every phone, and "Describe" turns a sentence such as
   "2 slices of wholemeal bread with cheese and a glass of orange juice" into
   the same checkable list – instantly, with the AI model as an optional
-  second opinion where it is installed. The model (Qwen3.5 2B, or 4B on
+  second opinion where it is installed.
+- Packaged products: "Find food" also searches 680,000 products from Open Food
+  Facts sold in German- and English-speaking countries, and its barcode button
+  scans a product – both answered on the phone, nothing is sent. Products
+  from your language region come first. The model (Qwen3.5 2B, or 4B on
   phones with 8 GB) is downloaded once on request and checked against its
   hash; the photo never leaves the device. On phones with too little memory
   or an older processor the button stays greyed out and says why.

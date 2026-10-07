@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -29,6 +30,7 @@ import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.mealLabel
 import com.cruxcoach.android.ui.training.parseDecimal
 import com.cruxcoach.athlete.logic.BlsFood
+import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.Meal
 
@@ -135,17 +137,26 @@ fun FoodsSheet(
     onCreate: () -> Unit,
     searchBls: suspend (String) -> List<BlsFood> = { emptyList() },
     onPickBls: (BlsFood) -> Unit = {},
+    searchProducts: suspend (String) -> List<OffProduct> = { emptyList() },
+    onPickProduct: (OffProduct) -> Unit = {},
+    onScan: (() -> Unit)? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     val q = query.trim().lowercase()
     // The repository already orders favourites first, then by use count.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
     var blsResults by remember { mutableStateOf<List<BlsFood>>(emptyList()) }
+    var productResults by remember { mutableStateOf<List<OffProduct>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
     LaunchedEffect(q) {
-        if (q.length < 2) { blsResults = emptyList(); return@LaunchedEffect }
+        if (q.length < 2) { blsResults = emptyList(); productResults = emptyList(); return@LaunchedEffect }
         delay(250)
         val own = foods.map { it.id }.toSet()
         blsResults = searchBls(q).filter { "bls:${it.code}" !in own }
+        // The first product search may unpack the bundled database for a few seconds.
+        searching = true
+        productResults = searchProducts(q).filter { "off:${it.code}" !in own }
+        searching = false
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
@@ -160,6 +171,13 @@ fun FoodsSheet(
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = onScan?.let { scan ->
+                    {
+                        IconButton(onClick = scan, modifier = Modifier.testTag("fuel_scan")) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = stringResource(R.string.trf_scan))
+                        }
+                    }
+                },
                 label = { Text(stringResource(R.string.trf_foods_search)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_foods_search"),
             )
@@ -217,6 +235,33 @@ fun FoodsSheet(
                             },
                             modifier = Modifier.clickable { onPickBls(food) }.testTag("fuel_bls_${food.code}"),
                         )
+                    }
+                    if (q.length >= 2) {
+                        item(key = "off_header") {
+                            Column(Modifier.padding(top = 12.dp)) {
+                                Text(stringResource(R.string.trf_foods_products_title), style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    stringResource(when {
+                                        searching && productResults.isEmpty() -> R.string.trf_products_preparing
+                                        productResults.isEmpty() -> R.string.trf_foods_bls_none
+                                        else -> R.string.trf_off_attribution
+                                    }),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag("fuel_products_hint"),
+                                )
+                            }
+                        }
+                        items(productResults, key = { "off_${it.code}" }) { product ->
+                            ListItem(
+                                headlineContent = { Text(product.displayName(FoodPhotoViewModel.isGerman())) },
+                                supportingContent = {
+                                    Text(listOfNotNull(product.brand.ifEmpty { null },
+                                        stringResource(R.string.fvp_per_100, formatNumber(product.kcal), formatNumber(product.protein),
+                                            formatNumber(product.carbs), formatNumber(product.fat))).joinToString(" · "))
+                                },
+                                modifier = Modifier.clickable { onPickProduct(product) }.testTag("fuel_off_${product.code}"),
+                            )
+                        }
                     }
             }
         }
@@ -290,6 +335,8 @@ fun AmountDialog(
 fun CreateFoodDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?) -> Unit,
+    /** Shown when the food is created for a scanned code that was not in the database. */
+    barcode: String? = null,
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var brand by rememberSaveable { mutableStateOf("") }
@@ -311,6 +358,7 @@ fun CreateFoodDialog(
                     label = { Text(stringResource(R.string.trf_create_name)) }, modifier = Modifier.fillMaxWidth().testTag("fuel_create_name"))
                 OutlinedTextField(value = brand, onValueChange = { brand = it.take(80) }, singleLine = true,
                     label = { Text(stringResource(R.string.trf_create_brand)) }, modifier = Modifier.fillMaxWidth())
+                barcode?.let { Text(stringResource(R.string.trf_create_barcode, it), style = MaterialTheme.typography.bodySmall) }
                 Text(stringResource(R.string.trf_create_per100), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField(stringResource(R.string.trf_qa_protein), protein, "fuel_create_protein", Modifier.weight(1f)) { protein = it }
