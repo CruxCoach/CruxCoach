@@ -86,7 +86,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
 
     @Test
     fun `exercise detail of the one-arm pick-up renders`() {
-        render { ExerciseDetailScreen("finger.one_arm_pickup", {}, {}, {}, viewModel = ExerciseDetailViewModel(service).tracked()) }
+        // Loaded before rendering (the screen's own load call then returns at once), like the other smoke tests.
+        val vm = loaded(ExerciseDetailViewModel(service).also { it.load("finger.one_arm_pickup") })
+        render { ExerciseDetailScreen("finger.one_arm_pickup", {}, {}, {}, viewModel = vm) }
         waitForText("One-Arm Edge Pick-Up")
     }
 
@@ -115,7 +117,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.CORE_CLIMBER), null)
         repo.setsFor(id).take(2).forEach { service.completeSet(it, startRest = false) }
         service.finishWorkout(id, 6, "felt good")
-        render { WorkoutSummaryScreen(id, {}, {}, viewModel = WorkoutSummaryViewModel(service).tracked()) }
+        val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
+        render { WorkoutSummaryScreen(id, {}, {}, viewModel = vm) }
         waitForTag("summary_list")
     }
 
@@ -284,8 +287,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         service.addExercise(id, "pull.pull_up")
         repo.setsFor(id).forEach { service.completeSet(it.copy(reps = 7), startRest = false) }
         service.finishWorkout(id, 6, null)
-        render { com.cruxcoach.android.ui.training.stats.ExerciseStatsScreen("pull.pull_up", {}, {},
-            viewModel = com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service).tracked()) }
+        val vm = loaded(com.cruxcoach.android.ui.training.stats.ExerciseStatsViewModel(service).also { it.load("pull.pull_up") })
+        render { com.cruxcoach.android.ui.training.stats.ExerciseStatsScreen("pull.pull_up", {}, {}, viewModel = vm) }
         scrollTo("exercise_stats_list", hasTestTag("exercise_stats_chart"))
     }
 
@@ -312,9 +315,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
 
     @Test
     fun `coach setup renders its first card`() {
-        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service,
-                mockk(relaxed = true), mockk(relaxed = true)).tracked()) }
+        val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, mockk(relaxed = true), mockk(relaxed = true)))
+        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, {}, viewModel = vm) }
         waitForTag("coach_next")
     }
 
