@@ -136,7 +136,7 @@ fun FuelScreen(
                 // explained once instead of behind an opt-in.
                 if (!state.profile.fuelIntroAccepted) item { FuelIntroCard(onGotIt = viewModel::acceptIntro) }
                 item { DayHeader(state, viewModel::previousDay, viewModel::nextDay, viewModel::goToday) }
-                if (state.redsSignals.isNotEmpty()) item { FuelSupportCard(state.redsSignals) }
+                if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "fuel_reds") }
                 item { DaySummaryCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
                 item {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -669,24 +669,3 @@ private fun MicroCard(summary: MicroWatch.Summary) {
     }
 }
 
-@Composable
-private fun FuelSupportCard(signals: List<RedsSignal>) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
-            contentColor = CruxCoachDesign.colors.onCautionContainer),
-        modifier = Modifier.fillMaxWidth().testTag("fuel_reds"),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Favorite, null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.trf_reds_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trf_reds_title), stringResource(R.string.trf_reds_info))
-            }
-            Text(
-                stringResource(if (RedsSignal.LOW_CARBS_ON_TRAINING_DAYS in signals) R.string.trf_reds_low_carbs else R.string.trf_reds_other),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
-}

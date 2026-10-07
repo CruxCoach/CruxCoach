@@ -173,7 +173,7 @@ fun TodayScreen(
                     })
                 }
             }
-            if (state.redsSignals.isNotEmpty()) item { RedsCard(state.redsSignals) }
+            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "today_reds") }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
             val doneSomething = state.todaysWorkouts.isNotEmpty() ||
                 state.activity?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
@@ -838,32 +838,6 @@ private fun WeightDialog(state: TodayState, onDismiss: () -> Unit, onSave: (Doub
 }
 
 // ── Safety cards ────────────────────────────────────────────────────
-
-@Composable
-private fun RedsCard(signals: List<RedsSignal>) {
-    Card(Modifier.fillMaxWidth().testTag("today_reds")) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Favorite, null, tint = CruxCoachDesign.colors.caution)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.trt_reds_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trt_reds_title), stringResource(R.string.trt_reds_info))
-            }
-            signals.filter { it != RedsSignal.LOSS_GOAL_PAUSED }.forEach { s ->
-                Text("• " + stringResource(when (s) {
-                    RedsSignal.LOW_BMI -> R.string.trt_reds_low_bmi
-                    RedsSignal.RAPID_LOSS -> R.string.trt_reds_rapid_loss
-                    RedsSignal.LOW_CARBS_ON_TRAINING_DAYS -> R.string.trt_reds_low_carbs
-                    RedsSignal.LOSS_GOAL_PAUSED -> R.string.trt_reds_goal_paused
-                }), style = MaterialTheme.typography.bodyMedium)
-            }
-            if (RedsSignal.LOSS_GOAL_PAUSED in signals) {
-                Text(stringResource(R.string.trt_reds_goal_paused), style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp))
-            }
-        }
-    }
-}
 
 @Composable
 private fun LoadSpikeCard(state: TodayState) {

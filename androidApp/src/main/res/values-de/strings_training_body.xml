@@ -44,9 +44,6 @@
     <string name="trb_value_invalid">Bitte gib einen plausiblen Wert ein.</string>
     <string name="trb_deleted">Eintrag gelöscht</string>
     <string name="trb_undo">Rückgängig</string>
-    <string name="trb_reds_title">Gut für dich sorgen</string>
-    <string name="trb_reds_text">Dein Verlauf zeigt etwas, das auf zu wenig Energie hindeuten kann. Genug essen gehört zum Training – Kraft entsteht in der Erholung.</string>
-    <string name="trb_reds_info">Zu wenig Energie über längere Zeit (RED-S) kann Leistung, Knochen, Hormone und Stimmung beeinträchtigen. CruxCoach stellt keine Diagnose. Wenn dir das bekannt vorkommt – oft müde, oft krank, unregelmäßiger Zyklus, stagnierende Leistung –, sprich mit einer Ärztin, einem Arzt oder einer Fachkraft für Sporternährung.</string>
     <string name="trb_settings_hint">Einheiten und das Ausblenden von Zahlen findest du in den Trainingseinstellungen.</string>
 
     <!-- Waistline-Import -->
