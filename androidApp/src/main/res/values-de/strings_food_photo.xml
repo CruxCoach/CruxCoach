@@ -65,4 +65,5 @@
     <string name="fvp_error_space">Nicht genug freier Speicher: %1$s nötig, %2$s frei.</string>
     <string name="fvp_error_engine">Die Erkennung ist fehlgeschlagen (%s).</string>
     <string name="fvp_retry">Zurück</string>
+    <string name="fvp_include_food">%1$s eintragen</string>
 </resources>

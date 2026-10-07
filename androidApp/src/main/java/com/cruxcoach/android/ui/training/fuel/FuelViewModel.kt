@@ -44,10 +44,6 @@ data class FuelState(
     val previousDayCount: Int = 0,
     val redsSignals: List<RedsSignal> = emptyList(),
 ) {
-    val protein: Double get() = entries.sumOf { it.proteinG ?: 0.0 }
-    val carbs: Double get() = entries.sumOf { it.carbsG ?: 0.0 }
-    val fat: Double get() = entries.sumOf { it.fatG ?: 0.0 }
-    val kcal: Double get() = entries.sumOf { it.kcal ?: 0.0 }
     val waterMl: Int get() = water.sumOf { it.ml }
     val isToday: Boolean get() = day != null && day == today
 }
