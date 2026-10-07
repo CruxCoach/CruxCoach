@@ -10,6 +10,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +47,7 @@ fun FoodTextSheet(
     LaunchedEffect(state.phase) { if (state.phase is PhotoPhase.Saved) { viewModel.onClose(); onSaved() } }
     val close = { viewModel.onClose(); onDismiss() }
 
-    ModalBottomSheet(onDismissRequest = close, modifier = Modifier.testTag("fuel_text_sheet")) {
+    ModalBottomSheet(onDismissRequest = close, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_text_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.trf_describe_title), style = MaterialTheme.typography.titleLarge)
             when (val phase = state.phase) {
