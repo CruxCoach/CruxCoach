@@ -43,9 +43,6 @@
     <string name="tra_show_calories">Show calories</string>
     <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
     <string name="tra_protein_per_kg_lb">Protein: %1$s g per kg body weight (%2$s g per lb)</string>
-    <string name="tra_units_title">Units</string>
-    <string name="tra_units_metric">kg / cm</string>
-    <string name="tra_units_imperial">lb / in</string>
     <string name="tra_personal_title">About you (optional)</string>
     <string name="tra_personal_info">Only used for the health thresholds of the energy check (they differ by sex) and to compute your ape index. Nothing leaves your device.</string>
     <string name="tra_height">Height (%1$s)</string>

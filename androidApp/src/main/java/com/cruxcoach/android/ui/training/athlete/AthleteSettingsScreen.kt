@@ -196,13 +196,15 @@ fun AthleteSettingsScreen(
                 onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
 
             // Units and personal data
-            SectionTitle(stringResource(R.string.tra_units_title))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // The same setting as in the app settings, next to the language.
+            // The same setting, labels and explanation as in the app settings, next to the language.
+            SectionTitle(stringResource(R.string.settings_units_title))
+            Text(stringResource(R.string.settings_units_desc), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
-                    label = { Text(stringResource(R.string.tra_units_metric)) })
+                    label = { Text(stringResource(R.string.settings_units_metric)) }, modifier = Modifier.testTag("units_metric"))
                 FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
-                    label = { Text(stringResource(R.string.tra_units_imperial)) })
+                    label = { Text(stringResource(R.string.settings_units_us)) }, modifier = Modifier.testTag("units_us"))
             }
             SectionTitle(stringResource(R.string.tra_personal_title)) {
                 InfoButton(stringResource(R.string.tra_personal_title), stringResource(R.string.tra_personal_info))
