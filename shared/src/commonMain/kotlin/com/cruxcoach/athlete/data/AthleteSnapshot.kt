@@ -27,6 +27,8 @@ data class AthleteSnapshot(
     val benchmarks: List<Benchmark> = emptyList(),
     val climbingDays: List<ClimbingDayEntry> = emptyList(),
     val suggestionEvents: List<SuggestionEvent> = emptyList(),
+    /** Ingredients of recipe foods by food item id (FEAT-069); the food item itself is in [foodItems]. */
+    val recipes: Map<String, com.cruxcoach.athlete.logic.Recipe> = emptyMap(),
 ) {
     val trainingRows: Int get() = workouts.size + sets.size + routines.size + customExercises.size + benchmarks.size +
         climbingDays.size + suggestionEvents.size
@@ -39,7 +41,7 @@ data class AthleteSnapshot(
         customExercises = customExercises, favorites = favorites, checkins = checkins, injuries = injuries, pauses = pauses,
         benchmarks = benchmarks, climbingDays = climbingDays, suggestionEvents = suggestionEvents)
     fun onlyBody() = AthleteSnapshot(measurements = measurements)
-    fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration)
+    fun onlyFuel() = AthleteSnapshot(foodItems = foodItems, foodLog = foodLog, hydration = hydration, recipes = recipes)
 
     operator fun plus(other: AthleteSnapshot) = AthleteSnapshot(
         profile = other.profile ?: profile,
@@ -51,5 +53,6 @@ data class AthleteSnapshot(
         benchmarks = benchmarks + other.benchmarks,
         climbingDays = climbingDays + other.climbingDays,
         suggestionEvents = suggestionEvents + other.suggestionEvents,
+        recipes = recipes + other.recipes,
     )
 }

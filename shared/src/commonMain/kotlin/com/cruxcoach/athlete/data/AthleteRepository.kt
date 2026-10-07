@@ -1,6 +1,7 @@
 package com.cruxcoach.athlete.data
 
 import com.cruxcoach.athlete.logic.Recipe
+import com.cruxcoach.athlete.logic.Units
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -346,6 +347,7 @@ class AthleteRepository(
         benchmarks = allBenchmarks(),
         climbingDays = allClimbingDays(),
         suggestionEvents = allSuggestionEvents(),
+        recipes = foodItems().mapNotNull { f -> recipe(f.id)?.let { f.id to it } }.toMap(),
     )
 
     /**
@@ -360,8 +362,11 @@ class AthleteRepository(
         val incomingProfile = snapshot.profile
         val local = profile()
         // Settings come back only onto a device that has none of its own yet
-        // (bookkeeping flags aside); this device's migration flag is kept.
-        val untouched = local.copy(legacyBodyStatsImported = false) == AthleteProfile()
+        // (bookkeeping flags aside); this device's migration flag is kept. A
+        // first start on a US phone already chose US units (and lb plates):
+        // that profile counts as untouched too.
+        val bare = local.copy(legacyBodyStatsImported = false)
+        val untouched = UnitSystem.entries.any { bare == Units.withUnits(AthleteProfile(), it) }
         if (includeProfile && incomingProfile != null && untouched) {
             saveProfile(incomingProfile.copy(legacyBodyStatsImported = local.legacyBodyStatsImported)); rows++
         }
@@ -381,9 +386,16 @@ class AthleteRepository(
             val local = body.getMeasurement(m.day, m.metric).executeAsOneOrNull()
             if (local == null || local.measured_at <= m.measuredAt) { saveMeasurement(m); rows++ }
         }
+        val foodsFromBackup = mutableSetOf<String>()
         snapshot.foodItems.forEach { f ->
             val local = fuel.getFoodItem(f.id).executeAsOneOrNull()
-            if (local == null || local.updated_at <= f.updatedAt) { saveFoodItem(f); rows++ }
+            if (local == null || local.updated_at <= f.updatedAt) { saveFoodItem(f); foodsFromBackup += f.id; rows++ }
+        }
+        // A recipe's ingredients follow its food item: restored with it, or where this device has none.
+        snapshot.recipes.forEach { (id, r) ->
+            if (id in foodsFromBackup || recipe(id) == null) {
+                body.putSetting(Recipe.settingKey(id), json.encodeToString(Recipe.serializer(), r), clock()); rows++
+            }
         }
         snapshot.foodLog.forEach { saveFoodLog(it); rows++ }
         snapshot.hydration.forEach { fuel.insertHydration(it.id, it.day, it.loggedAt, it.ml.toLong()); rows++ }

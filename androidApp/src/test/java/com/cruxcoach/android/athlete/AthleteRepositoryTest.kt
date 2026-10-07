@@ -93,6 +93,41 @@ class AthleteRepositoryTest {
     }
 
     @Test
+    fun `recipes travel with the backup and stay editable`() {
+        val recipe = com.cruxcoach.athlete.logic.Recipe("Porridge", portions = 2, ingredients = listOf(
+            com.cruxcoach.athlete.logic.Recipe.Ingredient("oats", "Oats", 80.0, kcalPer100 = 370.0, proteinPer100 = 13.0),
+            com.cruxcoach.athlete.logic.Recipe.Ingredient("milk", "Milk", 300.0, kcalPer100 = 64.0, proteinPer100 = 3.3),
+        ))
+        repo.saveRecipe("r1", recipe)
+        val snapshot = repo.snapshot()
+        assertEquals(recipe, snapshot.recipes["r1"])
+
+        val otherDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        val other = AthleteRepository(AthleteDatabase(otherDriver), Dispatchers.Unconfined) { 0L }
+        other.restore(snapshot, includeProfile = true)
+        assertEquals(recipe, other.recipe("r1"))
+        assertTrue(other.foodItems().any { it.id == "r1" })
+        // Only the nutrition part of a backup carries them as well.
+        assertEquals(recipe, snapshot.onlyFuel().recipes["r1"])
+        otherDriver.close()
+    }
+
+    @Test
+    fun `a first start in US units still takes the backup's settings`() {
+        repo.updateProfile { it.copy(weeklyGoal = 5, proteinPerKg = 1.8) }
+        val snapshot = repo.snapshot()
+
+        val otherDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        val other = AthleteRepository(AthleteDatabase(otherDriver), Dispatchers.Unconfined) { 0L }
+        // What AthleteService.ensureReady saves on a US phone before anything else happens.
+        other.saveProfile(com.cruxcoach.athlete.logic.Units.withUnits(AthleteProfile(), UnitSystem.IMPERIAL))
+        other.restore(snapshot, includeProfile = true)
+        assertEquals(5, other.profile().weeklyGoal)
+        assertEquals(1.8, other.profile().proteinPerKg)
+        otherDriver.close()
+    }
+
+    @Test
     fun `restore without profile keeps local settings`() {
         repo.updateProfile { it.copy(weeklyGoal = 2) }
         repo.restore(com.cruxcoach.athlete.data.AthleteSnapshot(profile = AthleteProfile(weeklyGoal = 6)), includeProfile = false)
