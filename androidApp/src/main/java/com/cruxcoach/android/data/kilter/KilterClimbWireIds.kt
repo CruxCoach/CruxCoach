@@ -158,7 +158,7 @@ class KilterClimbWireIds(
     private val accountSpellings: Map<String, String> = emptyMap(),
     /** normKeys of dashed-spelled logbook ids whose catalogue row is a compact legacy climb. */
     private val legacyKeys: Set<String> = emptySet(),
-    /** Climbs Kilter keeps under another id; offered after the climb's own id. */
+    /** Climbs Kilter keeps under another id; offered before the climb's own id (see [candidates]). */
     private val aliases: KilterClimbAliases = KilterClimbAliases.EMPTY,
     /** normKey → the id Kilter took for the climb in an earlier upload. */
     private val learned: Map<String, String> = emptyMap(),

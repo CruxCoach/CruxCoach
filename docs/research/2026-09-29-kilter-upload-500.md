@@ -59,7 +59,9 @@ such row blocked the whole logbook.
 - Aurora-imported entries (`external_id` `aurora-json:*`) stay local unless the
   user opts in; the opt-in covers the entries present and is withdrawn once a
   run worked through them. Opted-in entries are matched to Kilter's logs by
-  exact second first, then climb, angle and day, then a day either side.
+  exact second first, then to the nearest log of the same climb, angle and send
+  state at most one UTC day away (greedy by time difference; logs this device
+  uploaded for imported entries do not count, review 2026-10-07).
 
 ## Follow-up (2026-10-03): climbs Kilter keeps under another id, proof
 
@@ -176,4 +178,42 @@ Cutting Wi-Fi and data 2.5 s after confirming broke the first 100-row request,
 but the run reported `UnknownHostException`: OkHttp had silently retried the
 POST on a new connection (`retryOnConnectionFailure`), so no doubtful request
 was noted. The bulk upload now uses a client without that retry.
+
+## Review of the release candidate (2026-10-07)
+
+Three independent reviews of the branch diff. Confirmed and fixed:
+
+- Twin pool: a copy this device uploaded for one imported entry could be taken
+  as Kilter's copy of another imported entry of the same climb a day away, so
+  the second was marked synced without ever reaching Kilter (when a run
+  stopped between them). Kilter's copies of imported entries and of the run's
+  own rows are no longer twins.
+- Quick log: an attempt is uploaded after the undo window; further tries
+  edited the row without making it an upload, and "Top" turned it into a send
+  under the same uuid, which Kilter refuses as known. Edits (count, comment) of
+  an entry on Kilter and promotions/undos now queue the deletion of Kilter's
+  copy and make the row an upload again; the upload pushes deletions first and
+  holds such a row until its copy is gone. Rows of earlier builds: a lone row
+  refused under every id is checked with `DELETE /logs/{uuid}` (200 = Kilter
+  held it, now gone, the row goes once more; 204 = not held, the refusal is
+  about the climb); a listed attempt under the uuid of a local send of the same
+  climb and angle is replaced instead of kept as a conflict.
+- Lost answers of attempt-only requests are decided by deleting one row of the
+  request (verified live: 200 when held, 204 when not, the uuid is accepted
+  again afterwards) instead of probing with re-sends; the "probably on Kilter"
+  state is gone.
+- Offline with an expired access token was reported as AUTHENTICATION (sign in
+  again) and cancelled the retries; the token refresh now reports an
+  unreachable endpoint as a network failure. The settings "Sync now" and the
+  retry worker run detached from their caller. Non-retry triggers keep a
+  running retry chain (`KEEP`) instead of restarting its back-off; rows held
+  for a pause get a wake-up run at their retry time. The imported opt-in stays
+  until no row it covers is open. Rows are marked synced before their doubtful
+  request is dropped; a clock set back no longer ages ledger entries out; the
+  list no longer waits for a running upload, and a failed load says so.
+- Alias table: rebuilding it from the current full catalogue (also climbs with
+  `is_listed=0`) gives the bundled 455 pairs unchanged plus 338 for climbs the
+  catalogue no longer lists. Live on the test account all 338 target ids were
+  accepted and stored exactly as sent (4 requests, probe logs deleted again);
+  the table now has 793 pairs.
 

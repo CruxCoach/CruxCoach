@@ -3074,18 +3074,14 @@
         <item quantity="one">Kilter hat %d Eintrag noch nicht angenommen. Er wird automatisch erneut versucht.</item>
         <item quantity="other">Kilter hat %d Einträge noch nicht angenommen. Sie werden automatisch erneut versucht.</item>
     </plurals>
-    <plurals name="kilter_upload_probably_on_kilter">
-        <item quantity="one">%d Eintrag ist vermutlich schon bei Kilter: Ein früherer Upload blieb ohne Antwort, und Kilter nimmt ihn nicht erneut an.</item>
-        <item quantity="other">%d Einträge sind vermutlich schon bei Kilter: Ein früherer Upload blieb ohne Antwort, und Kilter nimmt sie nicht erneut an.</item>
-    </plurals>
     <string name="kilter_upload_show_entries">Einträge anzeigen</string>
+    <string name="kilter_upload_list_failed">Die Liste konnte nicht geladen werden. Bitte erneut versuchen.</string>
     <string name="kilter_upload_list_title">Nicht übertragen</string>
     <string name="kilter_upload_list_intro">Diese Einträge bleiben in deinem Logbuch. Gibt es einen Climb bei Kilter doch, schick die Liste als Fehlerbericht, damit er korrigiert werden kann.</string>
     <string name="kilter_upload_list_empty">Alle Einträge sind bei Kilter.</string>
     <string name="kilter_upload_list_report">Als Fehlerbericht senden</string>
     <string name="kilter_upload_reason_not_on_kilter">Kilter kennt diesen Climb nicht</string>
     <string name="kilter_upload_reason_retry_later">Noch nicht angenommen, wird erneut versucht</string>
-    <string name="kilter_upload_reason_probably_on_kilter">Vermutlich schon bei Kilter (Antwort ging verloren)</string>
     <string name="kilter_upload_reason_conflict">Kilter hat diesen Eintrag mit anderem Inhalt</string>
     <string name="kilter_upload_reason_invalid_date">Datum, das Kilter nicht annimmt</string>
     <string name="kilter_upload_entry_bid">nur Versuche</string>

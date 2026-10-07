@@ -38,12 +38,6 @@ data class KilterUploadRejection(
     val climbKey: String? = null,
     /** The last id Kilter refused for the climb, for the list the user can report. */
     val wireId: String? = null,
-    /**
-     * Sent in a request whose answer was lost and refused since: Kilter most
-     * likely holds this log already. Held across updates (the log uuid is the
-     * problem, not the climb id) and not evidence against the climb.
-     */
-    val likelyOnKilter: Boolean = false,
 )
 
 /** Rows of the last run Kilter could not take for reasons other than a refusal. */

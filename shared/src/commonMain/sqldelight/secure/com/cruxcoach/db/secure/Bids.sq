@@ -44,8 +44,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- the try count and the comment are user-editable. Without this the edit
 -- path wrongly ran updateAscent against the ascents table — a no-op for a
 -- bid uuid, silently dropping the edit.
+-- An edit makes the row a new upload (see ascents.updateAscent).
 updateBid:
-UPDATE bids SET bid_count = ?, comment = ? WHERE uuid = ?;
+UPDATE bids SET bid_count = ?, comment = ?, synced = 0, row_version = row_version + 1 WHERE uuid = ?;
+
+-- What an edit or a promotion needs to know: does Kilter hold this row, and what did it send?
+selectBidUploadState:
+SELECT synced, bid_count, comment FROM bids WHERE uuid = ?;
 
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;
@@ -103,6 +108,10 @@ SELECT DISTINCT climb_uuid, angle FROM bids;
 -- Primary-key (= Kilter log_uuid) set, for dedup-counting a Kilter import.
 getAllBidUuids:
 SELECT uuid FROM bids;
+
+-- See ascents.getAscentUuidsWithExternalIdPrefix.
+getBidUuidsWithExternalIdPrefix:
+SELECT uuid FROM bids WHERE external_id LIKE ?;
 
 -- ═══ FEAT-005 Aurora-JSON-import ═══
 

@@ -7,8 +7,8 @@ them Kilter has the very same climb (identical holds and roles, same name) under
 a new id, mostly a dashed one from the 2026-03-26 migration. A log naming the
 old id is refused with HTTP 500 (verified live on 2026-10-03: "A Bigger Squeeze"
 is refused as 1be3d36a… in both cases and accepted as 0D9A1ED7…), so the upload
-offers the id in this table as its last candidate. It is a fallback, never a
-substitute: a few old ids are still accepted although `/climbs/all` omits them.
+offers the id in this table first and falls back to the old one: a few old ids
+are still accepted although `/climbs/all` omits them.
 
 A pair is written only when the holds match exactly (hole and role, roles of the
 42–45 sets mapped to 12–15) and the names agree; among several such Kilter
