@@ -112,6 +112,24 @@ class TrainingScreensSmokeTest {
         const val WAIT_MS = 60_000L
     }
 
+
+    /**
+     * Waits outside Compose until a ViewModel that loads in init has finished
+     * (its state's `loading` is false), so no screen is composed half-loaded and
+     * a load that hangs fails here, by name, instead of as a UI timeout.
+     */
+    private fun <VM : androidx.lifecycle.ViewModel> loaded(vm: VM): VM {
+        val flow = vm.javaClass.methods.firstOrNull { it.name == "getState" && it.parameterCount == 0 }
+            ?.invoke(vm) as? kotlinx.coroutines.flow.StateFlow<*> ?: return vm
+        val loading = flow.value?.javaClass?.methods?.firstOrNull { it.name == "getLoading" && it.parameterCount == 0 } ?: return vm
+        val end = System.currentTimeMillis() + WAIT_MS
+        while (loading.invoke(flow.value) == true) {
+            check(System.currentTimeMillis() < end) { "${vm.javaClass.simpleName} never finished loading" }
+            Thread.sleep(20)
+        }
+        return vm
+    }
+
     private fun render(content: @androidx.compose.runtime.Composable () -> Unit) {
         compose.setContent {
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) { MaterialTheme { content() } }
@@ -137,7 +155,8 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `today shows readiness and injury mode`() {
-        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = TodayViewModel(service)) }
+        val loadedVm1 = loaded(TodayViewModel(service))
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = loadedVm1) }
         scrollTo("today_list", hasTestTag("today_readiness"))
         scrollTo("today_list", hasTestTag("today_injury"))
         scrollTo("today_list", hasTestTag("today_fuel"))
@@ -145,14 +164,15 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `exercise library lists exercises with injury filters on`() {
-        render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = ExerciseCatalogViewModel(service)) }
+        val loadedVm2 = loaded(ExerciseCatalogViewModel(service))
+        render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = loadedVm2) }
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(tagPrefix("exercise_row_"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
     fun `one-hand finger injury keeps one-arm pick-up visible and favourites on top`() {
         repo.setFavorite("finger.one_arm_pickup", true)
-        val vm = ExerciseCatalogViewModel(service)
+        val vm = loaded(ExerciseCatalogViewModel(service))
         render { ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = vm) }
         compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
         // Left hand hurt: climbing is paused, but finger work stays listed for the healthy hand.
@@ -172,7 +192,8 @@ class TrainingScreensSmokeTest {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.INJURY_ONE_ARM), null)
         val pickupSides = repo.setsFor(id).filter { it.exerciseSlug == "finger.one_arm_pickup" }.map { it.side }.toSet()
         assert(pickupSides == setOf(Side.RIGHT)) { "sides were $pickupSides" }
-        render { WorkoutScreen({}, {}, {}, {}, viewModel = WorkoutViewModel(service)) }
+        val loadedVm3 = loaded(WorkoutViewModel(service))
+        render { WorkoutScreen({}, {}, {}, {}, viewModel = loadedVm3) }
         scrollTo("workout_list", hasText("One-Arm Edge Pick-Up", substring = true))
     }
 
@@ -181,7 +202,8 @@ class TrainingScreensSmokeTest {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.PULL_ANTAGONIST), null)
         repo.setsFor(id).take(3).forEach { service.completeSet(it, startRest = false) }
         service.finishWorkout(id, 7, null)
-        render { RoutinesScreen({}, {}, viewModel = RoutinesViewModel(service)) }
+        val loadedVm4 = loaded(RoutinesViewModel(service))
+        render { RoutinesScreen({}, {}, viewModel = loadedVm4) }
         waitForTag("routines_list")
     }
 
@@ -199,39 +221,45 @@ class TrainingScreensSmokeTest {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.MOBILITY_10), null)
         repo.setsFor(id).take(1).forEach { service.completeSet(it, startRest = false) }
         service.finishWorkout(id, 3, null)
-        render { TrainingHistoryScreen({}, {}, viewModel = TrainingHistoryViewModel(service)) }
+        val loadedVm5 = loaded(TrainingHistoryViewModel(service))
+        render { TrainingHistoryScreen({}, {}, viewModel = loadedVm5) }
         waitForTag("history_list")
     }
 
     @Test
     fun `body screen renders trend and ape index`() {
         repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.ARM_SPAN.key, 181.0, "cm", 1))
-        render { BodyScreen({}, {}, viewModel = BodyViewModel(service)) }
+        val loadedVm6 = loaded(BodyViewModel(service))
+        render { BodyScreen({}, {}, viewModel = loadedVm6) }
         scrollTo("body_list", hasTestTag("body_ape_index"))
     }
 
     @Test
     fun `fuel screen renders targets for an enabled module`() {
-        render { FuelScreen({}, {}, viewModel = FuelViewModel(service)) }
+        val loadedVm7 = loaded(FuelViewModel(service))
+        render { FuelScreen({}, {}, viewModel = loadedVm7) }
         waitForTag("fuel_day_label")
         scrollTo("fuel_list", hasText("Rice bowl", substring = true))
     }
 
     @Test
     fun `injuries settings and weekly review render`() {
-        render { InjuriesScreen({}, {}, viewModel = InjuriesViewModel(service)) }
+        val loadedVm8 = loaded(InjuriesViewModel(service))
+        render { InjuriesScreen({}, {}, viewModel = loadedVm8) }
         waitForTag("injury_i1")
     }
 
     @Test
     fun `athlete settings render`() {
-        render { AthleteSettingsScreen({}, viewModel = AthleteSettingsViewModel(service)) }
+        val loadedVm9 = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = loadedVm9) }
         waitForTag("preset_home")
     }
 
     @Test
     fun `weekly review renders`() {
-        render { WeeklyReviewScreen({}, viewModel = WeeklyReviewViewModel(service)) }
+        val loadedVm10 = loaded(WeeklyReviewViewModel(service))
+        render { WeeklyReviewScreen({}, viewModel = loadedVm10) }
         waitForTag("review_prev")
     }
 
@@ -258,15 +286,17 @@ class TrainingScreensSmokeTest {
     @Test
     fun `guided player shows the current set`() {
         service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.PULL_ANTAGONIST), null)
+        val loadedVm11 = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
         render { com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service)) }
+            viewModel = loadedVm11) }
         waitForTag("player_set_view")
     }
 
     @Test
     fun `performance values screen lists the key exercises`() {
+        val loadedVm12 = loaded(com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service))
         render { com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen({}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service)) }
+            viewModel = loadedVm12) }
         waitForTag("benchmarks_list")
         scrollTo("benchmarks_list", hasTestTag("benchmark_row_finger.one_arm_pickup"))
     }
@@ -282,14 +312,16 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `today shows a suggestion for the injured climber`() {
-        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = TodayViewModel(service)) }
+        val loadedVm13 = loaded(TodayViewModel(service))
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = loadedVm13) }
         scrollTo("today_list", hasTestTag("today_suggestion_card"))
     }
 
     @Test
     fun `workouts tab, editor and week plan render`() {
+        val loadedVm14 = loaded(com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service))
         render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)) }
+            viewModel = loadedVm14) }
         waitForTag("workouts_list")
         scrollTo("workouts_list", hasTestTag("workouts_week_plan"))
         scrollTo("workouts_list", hasTestTag("routine_start_builtin_warmup_board"))
@@ -304,8 +336,9 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `week plan renders seven days`() {
+        val loadedVm15 = loaded(com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service))
         render { com.cruxcoach.android.ui.training.workouts.WeekPlanScreen({},
-            viewModel = com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service)) }
+            viewModel = loadedVm15) }
         waitForTag("week_plan_day_1")
     }
 
@@ -315,8 +348,9 @@ class TrainingScreensSmokeTest {
         service.addExercise(id, "pull.pull_up")
         repo.setsFor(id).forEach { service.completeSet(it.copy(reps = 6), startRest = false) }
         service.finishWorkout(id, 6, null)
+        val loadedVm16 = loaded(com.cruxcoach.android.ui.training.stats.StatsHubViewModel(service))
         render { com.cruxcoach.android.ui.training.stats.StatsHubScreen({}, {}, {}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.stats.StatsHubViewModel(service)) }
+            viewModel = loadedVm16) }
         waitForTag("stats_list")
     }
 
@@ -334,8 +368,9 @@ class TrainingScreensSmokeTest {
     @Test
     fun `climber profile renders and explains what is missing`() {
         service.saveClimbingDay(ClimbingDayEntry("cd1", service.today().toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        val loadedVm17 = loaded(com.cruxcoach.android.ui.training.stats.ClimberProfileViewModel(service))
         render { com.cruxcoach.android.ui.training.stats.ClimberProfileScreen({}, {}, {},
-            viewModel = com.cruxcoach.android.ui.training.stats.ClimberProfileViewModel(service)) }
+            viewModel = loadedVm17) }
         waitForTag("climber_profile_list")
     }
 
@@ -361,14 +396,15 @@ class TrainingScreensSmokeTest {
 
     @Test
     fun `force gauge screen renders without a device`() {
+        val loadedVm18 = loaded(com.cruxcoach.android.athlete.force.ForceGaugeViewModel(context, service))
         render { com.cruxcoach.android.athlete.force.ForceGaugeScreen({},
-            viewModel = com.cruxcoach.android.athlete.force.ForceGaugeViewModel(context, service)) }
+            viewModel = loadedVm18) }
         waitForTag("force_gauge")
     }
 
     @Test
     fun `workouts tab shows this week's calendar`() {
-        val vm = com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service)
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service))
         // Synchronously, so a failure names its line instead of timing out in the UI.
         vm.computeWeekNow()
         assertEquals(7, vm.state.value.week.size)
