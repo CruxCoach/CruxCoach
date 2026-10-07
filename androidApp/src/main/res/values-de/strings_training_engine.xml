@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- FEAT-071 Empfehlungs-Engine: Gründe, Datenbasis, Rückmeldungen, Blöcke, Ausschlüsse, Trends -->
 <resources>
-    <string name="tre_based_on">Basierend auf: %1$s</string>
     <string name="tre_block_build">Aufbau · Woche %1$d/%2$d</string>
     <string name="tre_block_deload">Entlastungswoche</string>
     <string name="tre_block_event">Heute ist dein Tag</string>
     <string name="tre_block_info_text">Das Training läuft in einfachen Zyklen: eine Einstiegswoche, drei Aufbauwochen, eine leichtere Entlastungswoche. Ein Trip- oder Wettkampfdatum ergänzt einen Taper über die letzten zehn Tage. Müde Check-ins oder eine stark steigende Fingerlast können die Entlastung vorziehen – der Kalender ist nur ein Signal.</string>
-    <string name="tre_block_info_title">Trainingsblock</string>
     <string name="tre_block_intro">Einstiegswoche</string>
     <string name="tre_block_taper">Taper: noch %1$d Tage</string>
-    <string name="tre_board_create">Board-Session erstellen</string>
     <string name="tre_board_plan">%1$s · %2$d min</string>
     <string name="tre_conf_high">Präzise</string>
     <string name="tre_conf_info_text">Basis: noch wenig Daten, der Coach bleibt vorsichtig. Persönlich: dein Logbuch, Leistungswerte oder mehrere Wochen Verlauf prägen die Auswahl. Präzise: all das plus dein Coach-Setup. Mehr Daten machen einen Vorschlag nie riskanter – nur passender.</string>
@@ -74,7 +71,6 @@
     <string name="tre_int_limit">Limit</string>
     <string name="tre_int_unknown">ohne Grade</string>
     <string name="tre_int_volume">Volumen</string>
-    <string name="tre_log_climbing">Klettertag eintragen</string>
     <string name="tre_menu_details">Details</string>
     <string name="tre_more_actions">Weitere Aktionen</string>
     <string name="tre_next_subtitle">Freiwillig – deine Antwort passt die heutigen Vorschläge sofort an.</string>

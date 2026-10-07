@@ -1,15 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- FEAT-071 recommendation engine: reasons, evidence, feedback, blocks, exclusions, trends -->
 <resources>
-    <string name="tre_based_on">Based on: %1$s</string>
     <string name="tre_block_build">Build · week %1$d/%2$d</string>
     <string name="tre_block_deload">Deload week</string>
     <string name="tre_block_event">Today is your day</string>
     <string name="tre_block_info_text">Training runs in simple cycles: one intro week, three build weeks, one lighter deload week. A trip or competition date adds a taper over the last ten days. Tired check-ins or a finger-load spike can bring the deload forward – the calendar is only one signal.</string>
-    <string name="tre_block_info_title">Training block</string>
     <string name="tre_block_intro">Intro week</string>
     <string name="tre_block_taper">Taper: %1$d days to go</string>
-    <string name="tre_board_create">Create board session</string>
     <string name="tre_board_plan">%1$s · %2$d min</string>
     <string name="tre_conf_high">Precise</string>
     <string name="tre_conf_info_text">Basic: little data yet, so the coach stays careful. Personal: your logbook, performance values or several weeks of history shape the picks. Precise: all of that plus your coach setup. More data never makes a suggestion riskier – only better matched.</string>
@@ -74,7 +71,6 @@
     <string name="tre_int_limit">limit</string>
     <string name="tre_int_unknown">no grades</string>
     <string name="tre_int_volume">volume</string>
-    <string name="tre_log_climbing">Log a climbing day</string>
     <string name="tre_menu_details">Details</string>
     <string name="tre_more_actions">More actions</string>
     <string name="tre_next_subtitle">Optional – your answer changes today\'s suggestions right away.</string>
