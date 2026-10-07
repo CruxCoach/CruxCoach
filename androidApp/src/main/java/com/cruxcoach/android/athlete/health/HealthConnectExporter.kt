@@ -51,8 +51,7 @@ class HealthConnectExporter @Inject constructor(@ApplicationContext private val 
             val key = "day:$day"
             val before = prefs.getStringSet(key, emptySet()).orEmpty()
                 .associate { it.substringBefore('=') to it.substringAfter('=') }
-            val current = entries.associate { foodId(it.id) to it.hashCode().toString() } +
-                water.associate { waterId(it.id) to it.hashCode().toString() }
+            val current = entries.associate { foodId(it.id) to stamp(it) } + water.associate { waterId(it.id) to stamp(it) }
             val now = System.currentTimeMillis()
             val records = buildList<Record> {
                 entries.filter { before[foodId(it.id)] != current[foodId(it.id)] }.forEach { add(nutrition(it, now)) }
@@ -86,9 +85,29 @@ class HealthConnectExporter @Inject constructor(@ApplicationContext private val 
 
         private fun offset(at: Instant) = ZoneId.systemDefault().rules.getOffset(at)
 
-        /** A logged food as a nutrition record over one minute at the time it was logged. */
+        /**
+         * Content stamp of an entry for the "unchanged" check. From toString(), not
+         * hashCode(): an enum's hash code (the meal) differs from process to
+         * process, which rewrote every record of the day after each app start.
+         */
+        private fun stamp(entry: Any) = entry.toString().hashCode().toString()
+
+        /**
+         * When an entry happened: the time it was logged, moved onto its own day
+         * when it was logged for another day (yesterday's dinner, typed in this
+         * morning, belongs to yesterday). Never in the future.
+         */
+        fun timeOf(day: String, loggedAt: Long, zone: ZoneId = ZoneId.systemDefault()): Instant {
+            val logged = Instant.ofEpochMilli(loggedAt)
+            val date = runCatching { java.time.LocalDate.parse(day) }.getOrNull() ?: return logged
+            val local = logged.atZone(zone)
+            if (local.toLocalDate() == date) return logged
+            return minOf(date.atTime(local.toLocalTime()).atZone(zone).toInstant(), Instant.now())
+        }
+
+        /** A logged food as a nutrition record over one minute at the time it was eaten (see [timeOf]). */
         fun nutrition(e: FoodLogEntry, version: Long): NutritionRecord {
-            val start = Instant.ofEpochMilli(e.loggedAt)
+            val start = timeOf(e.day, e.loggedAt)
             val end = start.plus(Duration.ofMinutes(1))
             return NutritionRecord(
                 startTime = start, startZoneOffset = offset(start),
@@ -104,7 +123,7 @@ class HealthConnectExporter @Inject constructor(@ApplicationContext private val 
         }
 
         fun hydration(w: HydrationEntry, version: Long): HydrationRecord {
-            val start = Instant.ofEpochMilli(w.loggedAt)
+            val start = timeOf(w.day, w.loggedAt)
             val end = start.plus(Duration.ofMinutes(1))
             return HydrationRecord(
                 startTime = start, startZoneOffset = offset(start),
