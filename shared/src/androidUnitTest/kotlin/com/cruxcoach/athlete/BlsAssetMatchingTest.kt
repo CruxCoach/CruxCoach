@@ -71,4 +71,10 @@ class BlsAssetMatchingTest {
             assertTrue(ranked.any { it in codes }, "$de: $ranked")
         }
     }
+
+    @Test
+    fun searchingACompoundFindsItsSplitBlsName() {
+        // Device test 2026-10-07: "Haferflocken" listed oat cookies before "Hafer Flocken".
+        assertEquals("C133000", matcher.search("Haferflocken").first().food.code)
+    }
 }

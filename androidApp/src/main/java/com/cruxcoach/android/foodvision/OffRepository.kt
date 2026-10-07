@@ -194,6 +194,10 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
         tmp.delete()
         val database = SQLiteDatabase.openOrCreateDatabase(tmp, null)
         try {
+            // A scratch file until the rename below: no rollback journal, no fsync per page.
+            // On a Nokia 6.1 the build took 3.5 minutes with them (device test 2026-10-07).
+            database.rawQuery("PRAGMA journal_mode = OFF", null).use { it.moveToFirst() }
+            database.rawQuery("PRAGMA synchronous = OFF", null).use { it.moveToFirst() }
             database.execSQL(
                 // INTEGER PRIMARY KEY makes the barcode the rowid: no extra index (~15 MB less).
                 "CREATE TABLE product(code INTEGER PRIMARY KEY, name_de TEXT NOT NULL, name_en TEXT NOT NULL, brand TEXT NOT NULL, " +
@@ -246,6 +250,7 @@ class OffRepository @Inject constructor(@ApplicationContext private val context:
             tmp.delete()
             throw e
         }
+        File(tmp.path + "-journal").delete()
         target.delete()
         File(target.path + "-journal").delete()
         check(tmp.renameTo(target)) { "could not move the product database into place" }

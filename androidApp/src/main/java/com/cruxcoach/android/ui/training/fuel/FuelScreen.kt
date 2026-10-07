@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
@@ -77,6 +78,7 @@ fun FuelScreen(
     // Review lists after a photo or a typed meal show amounts in the same units.
     LaunchedEffect(units) { photoViewModel.units = units }
     LaunchedEffect(Unit) { photoViewModel.prepareProducts() }
+    val productsState by photoViewModel.productsState.collectAsState()
     // Changes of the shown day go to Health Connect once the export is on (write-only).
     LaunchedEffect(state.day, state.entries, state.water, state.profile.healthConnectExport) {
         val day = state.day ?: return@LaunchedEffect
@@ -204,6 +206,7 @@ fun FuelScreen(
             onScan = { scanning = true; foodsOpen = false },
             searchUsda = photoViewModel::searchUsda,
             onPickUsda = { amountFor = FoodPhotoViewModel.usdaFoodItem(it); foodsOpen = false },
+            productsPreparing = productsState is OffRepository.State.Preparing,
             onCreateRecipe = { recipeDraft = RecipeDraft(id = null); foodsOpen = false },
             onEditRecipe = { item ->
                 foodsOpen = false
@@ -658,7 +661,7 @@ private fun MicroCard(summary: MicroWatch.Summary) {
                 )
             }
             Text(
-                stringResource(R.string.trf_micro_coverage, (summary.coverage * 100).roundToInt(), summary.loggedDays),
+                pluralStringResource(R.plurals.trf_micro_coverage, summary.loggedDays, (summary.coverage * 100).roundToInt(), summary.loggedDays),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )

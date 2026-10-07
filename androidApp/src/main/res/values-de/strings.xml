@@ -376,7 +376,7 @@
     <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
     <string name="settings_food_data_title">Ernährungsdaten auf diesem Handy</string>
     <string name="settings_food_products">Produktdatenbank: %1$s</string>
-    <string name="settings_food_products_hint">Open Food Facts, aus der App entpackt; wird bei der nächsten Produktsuche neu aufgebaut.</string>
+    <string name="settings_food_products_hint">Open Food Facts, aus der App entpackt; wird beim nächsten Öffnen von Ernährung neu aufgebaut.</string>
     <string name="settings_food_model">KI-Modell für Fotos: %1$s</string>
     <string name="settings_food_model_hint">Für Mahlzeitenfotos geladen; lässt sich jederzeit neu laden.</string>
     <string name="settings_food_remove">Entfernen</string>

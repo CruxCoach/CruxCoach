@@ -375,7 +375,7 @@
     <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
     <string name="settings_food_data_title">Nutrition data on this phone</string>
     <string name="settings_food_products">Product database: %1$s</string>
-    <string name="settings_food_products_hint">Open Food Facts, unpacked from the app; built again on the next product search.</string>
+    <string name="settings_food_products_hint">Open Food Facts, unpacked from the app; built again when nutrition opens.</string>
     <string name="settings_food_model">Photo AI model: %1$s</string>
     <string name="settings_food_model_hint">Downloaded for meal photos; can be downloaded again at any time.</string>
     <string name="settings_food_remove">Remove</string>
