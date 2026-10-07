@@ -10,6 +10,7 @@ import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.FoodVisionClient
+import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.PhotoInput
 import com.cruxcoach.android.foodvision.PreparedImage
 import com.cruxcoach.android.foodvision.VisionModel
@@ -24,6 +25,7 @@ import com.cruxcoach.athlete.logic.DeviceFacts
 import com.cruxcoach.athlete.logic.FoodMatcher
 import com.cruxcoach.athlete.logic.FoodVisionParser
 import com.cruxcoach.athlete.logic.MealTextParser
+import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.VisionCapability
 import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.model.FoodItem
@@ -119,6 +121,7 @@ class FoodPhotoViewModel @Inject constructor(
     private val store: VisionModelStore,
     private val bls: BlsRepository,
     factsReader: DeviceFactsReader,
+    private val products: OffRepository = OffRepository(context),
 ) : ViewModel() {
 
     private val facts = factsReader.read()
@@ -353,6 +356,14 @@ class FoodPhotoViewModel @Inject constructor(
         }
     }
 
+    /** Packaged products (Open Food Facts) by name or brand, on the device. */
+    suspend fun searchProducts(query: String): List<OffProduct> = products.search(query)
+
+    /** A scanned barcode in the on-device product database. */
+    suspend fun productByBarcode(code: String): OffProduct? = products.byBarcode(code)
+
+    val productsState get() = products.state
+
     suspend fun search(query: String): List<BlsFood> {
         val matcher = bls.matcher()
         return withContext(Dispatchers.Default) { matcher.search(query, limit = 25).map { it.food } }
@@ -423,7 +434,16 @@ class FoodPhotoViewModel @Inject constructor(
 
         private fun german() = Locale.getDefault().language == "de"
 
+        fun isGerman() = german()
+
         fun blsName(food: BlsFood): String = if (german()) food.nameDe else food.nameEn
+
+        /** A packaged product as an (unsaved) per-100 g food item; saved on first use. */
+        fun offFoodItem(p: OffProduct) = FoodItem(
+            id = "off:${p.code}", name = p.displayName(german()), brand = p.brand.ifEmpty { null }, barcode = p.code,
+            kcalPer100 = p.kcal, proteinPer100 = p.protein, carbsPer100 = p.carbs, fatPer100 = p.fat,
+            servingG = p.servingG, source = OffRepository.SOURCE,
+        )
 
         /** A BLS food as an (unsaved) per-100 g food item; saved on first use. */
         fun blsFoodItem(food: BlsFood) = FoodItem(

@@ -54,7 +54,8 @@ object MealTextParser {
                     // "80g" written together
                     UNIT_SUFFIX.matchEntire(w)?.groupValues?.get(2)?.let { u -> UNITS[u]?.let { unitGrams = it } }
                 }
-                count == null && w in NUMBER_WORDS -> count = NUMBER_WORDS.getValue(w)
+                // "half a pound": the second number word adds nothing.
+                w in NUMBER_WORDS -> if (count == null) count = NUMBER_WORDS.getValue(w)
                 unitGrams == null && w in UNITS -> unitGrams = UNITS.getValue(w)
                 w in SIZE -> sizeFactor = SIZE.getValue(w)
                 w in FILLER -> Unit
@@ -138,7 +139,10 @@ object MealTextParser {
         "tl" to 5.0, "teelöffel" to 5.0, "tsp" to 5.0, "teaspoon" to 5.0, "teaspoons" to 5.0,
         "scheibe" to UNIT_SLICE, "scheiben" to UNIT_SLICE, "slice" to UNIT_SLICE, "slices" to UNIT_SLICE,
         "stück" to UNIT_PIECE, "stk" to UNIT_PIECE, "piece" to UNIT_PIECE, "pieces" to UNIT_PIECE,
-        "tasse" to 150.0, "tassen" to 150.0, "cup" to 150.0, "cups" to 150.0,
+        // A German "Tasse" is a coffee cup, an English "cup" the US measure.
+        "tasse" to 150.0, "tassen" to 150.0, "cup" to 240.0, "cups" to 240.0, "mug" to 300.0, "mugs" to 300.0,
+        "oz" to 28.35, "ounce" to 28.35, "ounces" to 28.35, "lb" to 453.6, "lbs" to 453.6, "pound" to 453.6,
+        "pounds" to 453.6, "pint" to 500.0, "pints" to 500.0,
         "glas" to 200.0, "gläser" to 200.0, "glass" to 200.0, "glasses" to 200.0,
         "becher" to 150.0, "schüssel" to 250.0, "schale" to 250.0, "bowl" to 250.0, "bowls" to 250.0,
         "teller" to 350.0, "plate" to 350.0, "plates" to 350.0,
@@ -157,6 +161,7 @@ object MealTextParser {
         "ich", "hatte", "habe", "hab", "gegessen", "getrunken", "noch", "außerdem", "etwa", "ca", "ca.", "circa",
         "ungefähr", "rund", "so", "zum", "zur", "am", "heute", "dem", "den", "der", "die", "das", "von", "vom",
         "allem", "alles", "bisschen", "etwas", "i", "had", "ate", "drank", "about", "around", "some", "the", "of",
+        "fl", "approx", "roughly", "my", "for",
     )
 
     /** Normalised word prefix → grams of one piece. */
@@ -169,6 +174,8 @@ object MealTextParser {
         "moehre" to 70.0, "carrot" to 70.0, "wuerstchen" to 50.0, "sausage" to 50.0, "frikadelle" to 100.0,
         "muffin" to 80.0, "keks" to 10.0, "cookie" to 10.0, "riegel" to 40.0, "joghurt" to 150.0,
         "yogurt" to 150.0, "pizza" to 450.0, "doener" to 400.0, "kebab" to 400.0, "burger" to 250.0,
+        "bagel" to 100.0, "tortilla" to 40.0, "wrap" to 60.0, "pancake" to 40.0, "waffle" to 40.0,
+        "avocado" to 150.0, "clementine" to 70.0, "plum" to 60.0, "pflaume" to 60.0, "donut" to 70.0,
     )
 
     /** Normalised word prefix → grams of one slice. */
@@ -185,6 +192,8 @@ object MealTextParser {
         "curry" to 250.0, "suppe" to 300.0, "soup" to 300.0, "muesli" to 60.0, "haferflocken" to 60.0,
         "oats" to 60.0, "butter" to 10.0, "kaese" to 30.0, "cheese" to 30.0, "milch" to 200.0, "milk" to 200.0,
         "wasser" to 300.0, "water" to 300.0, "saft" to 200.0, "juice" to 200.0, "shake" to 300.0,
-        "nuesse" to 30.0, "nuts" to 30.0,
+        "nuesse" to 30.0, "nuts" to 30.0, "oatmeal" to 250.0, "porridge" to 250.0, "cereal" to 40.0,
+        "smoothie" to 300.0, "sandwich" to 200.0, "steak" to 200.0, "fries" to 150.0, "pommes" to 150.0,
+        "bier" to 500.0, "beer" to 500.0, "wein" to 150.0, "wine" to 150.0,
     )
 }

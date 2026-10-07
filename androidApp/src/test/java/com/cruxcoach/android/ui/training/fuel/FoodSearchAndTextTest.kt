@@ -21,6 +21,7 @@ import com.cruxcoach.android.athlete.ExerciseCatalogStore
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
+import com.cruxcoach.android.foodvision.OffRepository
 import com.cruxcoach.android.foodvision.VisionModelStore
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.athlete.data.AthleteRepository
@@ -80,6 +81,7 @@ class FoodSearchAndTextTest {
         )
         runBlocking { service.ensureReady() }
         repo.updateProfile { it.copy(fuelIntroAccepted = true) }
+        context.getDatabasePath(OffRepository.DB_NAME).delete()
     }
 
     @After
@@ -95,8 +97,8 @@ class FoodSearchAndTextTest {
         athleteDriver.close(); secureDriver.close()
     }
 
-    private fun render() {
-        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
+    private fun render(products: OffRepository = OffRepository(context)) {
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context), products).tracked()
         compose.setContent {
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
                 MaterialTheme { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
@@ -130,6 +132,32 @@ class FoodSearchAndTextTest {
         assertEquals(13.22 * 0.8, entry.proteinG!!, 0.01)
         // The picked food is now one of "my foods".
         assertEquals("bls", repo.foodItem("bls:C133000")!!.source)
+    }
+
+    @Test
+    fun `product search finds a packaged product and logs one serving`() {
+        val products = OffRepository(context).apply {
+            source = { "# version: t\n4025500000001\tSkyr Natur\t\tMilbona\t63\t11\t4\t0.2\t150\t1\n".reader().buffered() }
+            assetVersion = { "t" }
+        }
+        render(products)
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_foods_search")
+        compose.onNodeWithTag("fuel_foods_search").performTextInput("skyr")
+        waitForTag("fuel_off_4025500000001")
+        compose.onNodeWithTag("fuel_off_4025500000001").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_amount_dialog")
+        // A product with a serving size starts on "1 portion".
+        compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
+
+        val day = service.today().toString()
+        compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }
+        val entry = repo.foodLog(day).single()
+        assertEquals("off:4025500000001", entry.foodItemId)
+        assertEquals(150.0, entry.amountG!!, 0.0)
+        assertEquals(16.5, entry.proteinG!!, 0.01)
+        assertEquals("4025500000001", repo.foodItem("off:4025500000001")!!.barcode)
     }
 
     @Test

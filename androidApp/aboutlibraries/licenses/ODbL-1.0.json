@@ -1,0 +1,7 @@
+{
+  "hash": "ODbL-1.0",
+  "name": "Open Database License 1.0",
+  "url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "spdxId": "ODbL-1.0",
+  "content": "The product data is © Open Food Facts contributors and available under the Open Database License (ODbL) 1.0, https://opendatacommons.org/licenses/odbl/1-0/. Individual contents are under the Database Contents License (DbCL) 1.0. CruxCoach's extract keeps products sold in Germany, Austria, Switzerland, the United Kingdom, Ireland, the United States, Canada, Australia and New Zealand with plausible energy, protein, carbohydrate and fat per 100 g, and only the name, brand, these values, the serving size and the barcode. The extract is a derivative database and is offered under the ODbL; scripts/build_off_asset.py recreates it from the public export."
+}

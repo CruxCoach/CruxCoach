@@ -160,8 +160,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val repo = service.repo
         val n = scale(item, portions, grams) ?: return@io
         val now = System.currentTimeMillis()
-        // A food picked from the BLS search becomes one of "my foods" on first use.
-        if (item.source == SOURCE_BLS && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
+        // A food picked from the BLS or product search becomes one of "my foods" on first use.
+        if (item.source in setOf(SOURCE_BLS, SOURCE_OFF) && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
         repo.saveFoodLog(
             FoodLogEntry(
                 id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
@@ -196,14 +196,14 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     fun toggleFavorite(item: FoodItem) = io { service.repo.setFoodItemFavorite(item.id, !item.favorite) }
     fun deleteFood(item: FoodItem) = io { service.repo.deleteFoodItem(item.id) }
 
-    fun createFood(name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?) = io {
+    fun createFood(name: String, brand: String?, per100: Nutrients, servingG: Double?, servingLabel: String?, barcode: String? = null) = io {
         val repo = service.repo
         repo.saveFoodItem(
             FoodItem(
                 id = repo.newId(), name = name, brand = brand?.takeIf { it.isNotBlank() },
                 kcalPer100 = per100.kcal, proteinPer100 = per100.protein, carbsPer100 = per100.carbs, fatPer100 = per100.fat,
                 servingG = servingG, servingLabel = servingLabel?.takeIf { it.isNotBlank() },
-                source = SOURCE_USER, updatedAt = System.currentTimeMillis(),
+                barcode = barcode, source = SOURCE_USER, updatedAt = System.currentTimeMillis(),
             ),
         )
     }
@@ -219,6 +219,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         const val SOURCE_USER = "user"
         /** From the bundled BLS 4.0, per 100 g; id "bls:" + code. */
         const val SOURCE_BLS = "bls"
+        /** From the bundled Open Food Facts extract, per 100 g; id "off:" + barcode. */
+        const val SOURCE_OFF = "off"
 
         fun isPerPortion(item: FoodItem) = item.source == SOURCE_PORTION
 

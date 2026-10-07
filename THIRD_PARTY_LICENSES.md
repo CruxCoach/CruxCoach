@@ -136,6 +136,21 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   [`scripts/build_bls_asset.py`](scripts/build_bls_asset.py) rebuilds the
   file from the official archive (its SHA-256 is recorded in the file).
 
+### Open Food Facts — packaged products
+
+- **Used in:** product search and barcode scan in "Find food" (FEAT-069),
+  [`OffRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/OffRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/off_products.tsv.zst`](androidApp/src/main/assets/fuel/off_products.tsv.zst)
+  (~12 MB, unpacked once into a local SQLite database on first use)
+- **Source:** https://world.openfoodfacts.org/data (export of the day in `off_products.version`)
+- **License:** Open Database License (ODbL) 1.0 for the database, Database
+  Contents License (DbCL) 1.0 for its contents; © Open Food Facts contributors.
+- **Modifications:** products sold in DE, AT, CH, GB, IE, US, CA, AU or NZ with
+  plausible energy, protein, carbohydrate and fat per 100 g; only barcode,
+  German and English name, first brand, these values, serving size and region.
+  The extract is a derivative database and is offered under the ODbL;
+  [`scripts/build_off_asset.py`](scripts/build_off_asset.py) recreates it.
+
 ### dontkillmyapp.com — OEM background-killer taxonomy
 
 - **Used in:** [`NotificationReliabilityHelper.kt`](androidApp/src/main/java/com/cruxcoach/android/notification/NotificationReliabilityHelper.kt)

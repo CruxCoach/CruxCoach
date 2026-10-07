@@ -64,6 +64,16 @@ class MealTextParserTest {
     }
 
     @Test
+    fun usUnitsAndCups() {
+        val r = parse("For breakfast a cup of oatmeal, 8 oz milk and a bagel")
+        assertEquals(Meal.BREAKFAST, r.meal)
+        assertEquals(listOf("Oatmeal" to 240, "Milk" to 227, "Bagel" to 100), r.foods.map { it.nameDe to it.grams.toInt() })
+        assertEquals(listOf("Steak" to 227), items("half a pound steak"))
+        // A German "Tasse" stays a coffee cup.
+        assertEquals(listOf("Kaffee" to 150), items("eine Tasse Kaffee"))
+    }
+
+    @Test
     fun emptyOrFillerOnlyGivesNothing() {
         assertEquals(emptyList(), parse("").foods)
         assertEquals(emptyList(), parse("ich habe heute etwas gegessen").foods)
