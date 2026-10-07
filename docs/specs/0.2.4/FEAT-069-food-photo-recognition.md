@@ -156,8 +156,20 @@ product data arrives with the background board sync (same relays and Blossom
 servers as the board catalogues) and only once the product search was used. The photo is copied to the app cache, scaled, analysed and deleted;
 nothing is uploaded, nothing is stored except the log entries the user saves.
 
+## Device test (Nokia 6.1, Android 15, 2026-10-07)
+
+Product search, serving labels, editing, US units, the weekly micronutrient
+card and the storage section work on the phone; the scanner opens and binds
+the camera (a real scan needs the owner: the phone's camera privacy toggle is
+on). Findings fixed right after: the product database took ~3.5 minutes to
+prepare (now without journal/fsync), the first search said "no match" while
+the BLS/USDA tables were still loading (now preloaded, "Searching…"), oat
+cookies ranked before oat flakes, an Italian serving label was shown.
+
 ## Open
 
+- A real barcode scan and the Health Connect export on a phone with Health
+  Connect set up (owner).
 - Measured speed on real 6 GB and 8 GB phones (only the Nokia 6.1 is
   available; it is gated out).
 - Quality evaluation on German dishes; the server run on the Mensa benchmark
