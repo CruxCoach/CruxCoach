@@ -40,6 +40,7 @@ import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.fuel.amountText
+import com.cruxcoach.android.ui.training.fuel.inputText
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.ReadinessLevel
@@ -904,6 +905,14 @@ private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: 
                     LinearProgressIndicator(
                         progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
+                    )
+                    // Water in the athlete's units (stored in ml), next to the "+ glass" quick action.
+                    val volume = FuelUnits.unitFor(state.profile.units, drink = true)
+                    Text(
+                        stringResource(R.string.trt_tile_water, stringResource(R.string.trf_progress_volume,
+                            inputText(state.waterTodayMl.toDouble(), volume), amountText(t.waterMl.toDouble(), volume))),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp).testTag("today_fuel_water"),
                     )
                 }
             }
