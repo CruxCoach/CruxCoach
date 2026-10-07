@@ -100,6 +100,28 @@ class OffRepositoryTest {
     }
 
     @Test
+    fun `a bundled table only gets its search index on the phone`() = runBlocking {
+        // What scripts/build_off_asset.py ships: the finished table without FTS.
+        val tmp = context.getDatabasePath(OffRepository.DB_NAME + ".tmp").apply { parentFile?.mkdirs(); delete() }
+        android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(tmp, null).use { d ->
+            d.execSQL("CREATE TABLE product(code INTEGER PRIMARY KEY, name_de TEXT NOT NULL, name_en TEXT NOT NULL, brand TEXT NOT NULL, " +
+                "kcal REAL NOT NULL, protein REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL, serving REAL, regions INTEGER NOT NULL, " +
+                "serving_label TEXT)")
+            d.execSQL("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT)")
+            d.execSQL("INSERT INTO product VALUES (4025500000001, 'Skyr Natur', '', 'Milbona', 63, 11, 4, 0.2, 150, 1, '1 Becher (150 g)')")
+            d.execSQL("INSERT INTO meta VALUES ('version', '2026-10-07'), ('fts', '0')")
+        }
+        val bundled = OffRepository(context).apply {
+            prebuilt = { tmp }
+            assetVersion = { "2026-10-07 1" }
+        }
+        assertEquals("Skyr Natur", bundled.search("skyr").single().nameDe)
+        assertEquals("1 Becher (150 g)", bundled.byBarcode("4025500000001")?.servingLabel)
+        assertEquals("2026-10-07 1", bundled.currentVersion())
+        assertTrue(!tmp.exists())
+    }
+
+    @Test
     fun `a newer bundled extract replaces the database`() = runBlocking {
         assertTrue(repo.ensureReady())
         val updated = repository("test-2", extract.replace("Skyr Natur", "Skyr Natur 0,2 %"))

@@ -54,9 +54,10 @@ portions.
 - The APK bundles an Open Food Facts extract (ODbL): 680,000 products sold in
   German- (DE, AT, CH) and English-speaking countries (GB, IE, US, CA, AU, NZ)
   with plausible energy and macros, German and English names, brand, serving
-  size; 45 MB raw, 12 MB zstd. On first use it is unpacked once into an SQLite
-  database with an FTS4 index (~84 MB; the barcode is the integer row key, so a
-  UPC-A and its EAN-13 form are the same product).
+  size. It ships as the finished SQLite table (52 MB, 17.5 MB zstd); on first
+  use it is unpacked and gets its FTS4 index on the phone (~91 MB together; the
+  barcode is the integer row key, so a UPC-A and its EAN-13 form are the same
+  product). Importing it from text instead took 3+ minutes on a Nokia 6.1.
 - "Find food" searches own foods, BLS and these products; products of the
   app language's region come first. The search field has a barcode scanner
   (CameraX + ZXing, already in the build, no Google services). Every search
