@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
@@ -101,12 +103,23 @@ fun AthleteSettingsScreen(
     onOpenCoachSetup: () -> Unit = {},
     /** Room for device cards (Health Connect, force gauge) added by the integration. */
     extraSections: @Composable () -> Unit = {},
+    /** Opened from the nutrition screen: start at the nutrition options instead of the coach profile. */
+    scrollToNutrition: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
+    val scroll = rememberScrollState()
+    var nutritionTop by remember { mutableIntStateOf(-1) }
+    var scrolledToNutrition by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(nutritionTop) {
+        if (scrollToNutrition && !scrolledToNutrition && nutritionTop >= 0) {
+            scroll.scrollTo(nutritionTop)
+            scrolledToNutrition = true
+        }
+    }
     TrainingScaffold(title = stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
         if (!state.loaded) return@TrainingScaffold
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(scroll).padding(horizontal = 16.dp)) {
             // Coach profile (FEAT-071)
             CoachProfileSection(p, state.completeness, onOpenCoachSetup)
 
@@ -183,7 +196,8 @@ fun AthleteSettingsScreen(
             SwitchRow(stringResource(R.string.tra_hide_numbers), p.hideBodyNumbers, "hide_numbers") { v -> viewModel.update { it.copy(hideBodyNumbers = v) } }
 
             // Nutrition is always on (owner 2026-10-05); only its options remain.
-            SectionTitle(stringResource(R.string.tra_module_fuel))
+            SectionTitle(stringResource(R.string.tra_module_fuel),
+                Modifier.onGloballyPositioned { nutritionTop = it.positionInParent().y.toInt() }.testTag("settings_nutrition"))
             SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
             Text(
                 if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),

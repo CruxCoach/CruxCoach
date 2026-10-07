@@ -55,6 +55,8 @@ object TrainingRoutes {
     const val INJURIES = "injuries"
     const val WEEKLY_REVIEW = "weekly_review"
     const val ATHLETE_SETTINGS = "athlete_settings"
+    /** The same settings, scrolled to the nutrition options (gear on the nutrition screen). */
+    const val ATHLETE_SETTINGS_NUTRITION = "athlete_settings/nutrition"
     const val CUSTOM_EXERCISE = "custom_exercise"
     const val WORKOUT_PLAYER = "workout_player"
     const val BENCHMARKS = "benchmarks"
