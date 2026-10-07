@@ -2,7 +2,7 @@
 status: implemented-on-branch
 queue: active
 base: main@b5bef5163 (0.2.3)
-branch: feat/0.2.4-training-body
+branch: feat/0.2.4-training-nutrition (training line feat/0.2.4-training-body, merged with nutrition on 2026-10-07)
 depends_on: [FEAT-066, FEAT-067, FEAT-070]
 created: 2026-10-05
 ---
@@ -59,8 +59,11 @@ created: 2026-10-05
   too easy / too hard twice → swap to the chain partner.
 - Board days: "create board session" presets the playlist generator from
   block phase and focus.
-- Health Connect (optional, read-only): last night's sleep as a check-in
-  hint, climbing sessions as climbing days.
+- Health Connect (optional): reads last night's sleep as a check-in hint and
+  climbing sessions as climbing days. The same layer and settings card also
+  carry nutrition's optional export of meals and water (FEAT-069); each
+  direction has its own switch and permissions. A climbing day's rated
+  intensity also sets that day's carbohydrate target (FEAT-068).
 - Force gauge (experimental): Tindeq Progressor live force and max-pull test
   as a test value.
 

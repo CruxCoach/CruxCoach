@@ -252,7 +252,7 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 ### Qwen3.5 2B / 4B vision-language models — Qwen Team, Alibaba Cloud
 
 - **Used in:** food photo recognition (FEAT-069), only after the user starts
-  the download in the fueling screen.
+  the download in the nutrition screen.
 - **Files:** 4-bit GGUF and F16 vision projector converted by Unsloth,
   pinned to exact Hugging Face revisions and SHA-256 in
   [`VisionModels.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/VisionModels.kt).

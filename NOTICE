@@ -59,6 +59,32 @@ dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     (https://creativecommons.org/licenses/by-sa/4.0/). See
     THIRD_PARTY_LICENSES.md for the full attribution.
 
+llama.cpp / ggml (b11396) — Copyright (c) 2023-2026 The ggml authors.
+    Fetched at build time (pinned archive, see
+    androidApp/src/main/cpp/vision/CMakeLists.txt) and linked statically into
+    libcruxcoach-vision.so for the on-device food photo model (FEAT-069).
+    Licensed under the MIT License
+    (https://github.com/ggml-org/llama.cpp/blob/master/LICENSE). See
+    THIRD_PARTY_LICENSES.md for the included third-party code.
+
+BLS 4.0 — Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS),
+    Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe.
+    DOI: 10.25826/Data20251217-134202-0. Extract bundled as
+    androidApp/src/main/assets/fuel/bls_4_0_macros.tsv. Licensed under
+    CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/); modifications
+    listed in THIRD_PARTY_LICENSES.md.
+
+Open Food Facts — © Open Food Facts contributors. Product extract bundled
+    as androidApp/src/main/assets/fuel/off_products.db.zst, a derivative
+    database offered under the Open Database License (ODbL) 1.0
+    (https://opendatacommons.org/licenses/odbl/1-0/); contents under the
+    Database Contents License (DbCL) 1.0. See THIRD_PARTY_LICENSES.md.
+
+USDA FoodData Central, SR Legacy — U.S. Department of Agriculture,
+    Agricultural Research Service (https://fdc.nal.usda.gov/). Public domain
+    (CC0 1.0); extract bundled as
+    androidApp/src/main/assets/fuel/usda_sr_legacy.tsv.
+
 MapLibre Native (Android) — Copyright (c) MapLibre contributors. Used as the
     map-rendering engine for the board-locations map (FEAT-015). Licensed
     under the BSD 2-Clause "Simplified" License
