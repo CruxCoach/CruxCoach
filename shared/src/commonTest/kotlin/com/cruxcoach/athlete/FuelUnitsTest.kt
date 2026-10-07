@@ -44,6 +44,24 @@ class FuelUnitsTest {
     }
 
     @Test
+    fun whatAFoodIsMadeWithDoesNotMakeItADrink() {
+        // BLS names outside the beverage groups that used to come out as drinks.
+        listOf(
+            "Schwein Hackfleisch, roh", "Wildschwein Fleisch, roh", "Salami (Schwein)",
+            "Salzlakenkäse aus Kuhmilch, Hirtenkäse, mind. 45 % Fett i. Tr.", "Kaiserschmarren (mit Milch 3,5 % Fett) gebraten",
+            "Thunfisch im eigenen Saft, Konserve, abgetropft", "Porridge gesüßt, mit Wasser", "Buttermilch-Dressing für Salat",
+            "Speiseeis Kaffee, in Waffeltüte", "Roggenbrot mit Buttermilch", "Kraft Foods, Shake N Bake Original Recipe, Coating for Pork, dry",
+            "Soup, chicken noodle, prepared with water",
+        ).forEach { assertFalse(FuelUnits.isDrink(null, it), it) }
+        // Drinks keep their volume units, also with qualifiers after the name.
+        listOf(
+            "Vollmilch frisch, 3,5 % Fett, pasteurisiert", "Haferdrink ungesüßt, angereichert mit Vitaminen", "Gemüsesaft aus Karotte/Möhre",
+            "Kefir mind. 3,5 % Fett", "Eiskaffee", "Glühwein", "Milk, lowfat, fluid, 1% milkfat", "Beverages, coffee, brewed",
+            "Orange juice, raw",
+        ).forEach { assertTrue(FuelUnits.isDrink(null, it), it) }
+    }
+
+    @Test
     fun regionDefaultsAndSwitchingUnits() {
         assertEquals(UnitSystem.IMPERIAL, Units.defaultFor("US"))
         assertEquals(UnitSystem.METRIC, Units.defaultFor("GB"))
