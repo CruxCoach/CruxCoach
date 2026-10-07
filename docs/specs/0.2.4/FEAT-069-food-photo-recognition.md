@@ -49,6 +49,24 @@ portions.
   bread and toast weights; 4B was better but split a döner into parts and is
   slower.
 
+## Packaged products and barcode (owner request 2026-10-07)
+
+- The APK bundles an Open Food Facts extract (ODbL): 680,000 products sold in
+  German- (DE, AT, CH) and English-speaking countries (GB, IE, US, CA, AU, NZ)
+  with plausible energy and macros, German and English names, brand, serving
+  size; 45 MB raw, 12 MB zstd. On first use it is unpacked once into an SQLite
+  database with an FTS4 index (~84 MB; the barcode is the integer row key, so a
+  UPC-A and its EAN-13 form are the same product).
+- "Find food" searches own foods, BLS and these products; products of the
+  app language's region come first. The search field has a barcode scanner
+  (CameraX + ZXing, already in the build, no Google services). Every search
+  and every scan is answered on the device; nothing is sent.
+- A scanned code that is neither an own food nor in the extract can be added
+  as an own food with that barcode.
+- Later: newer extracts between releases through the board-catalogue channel
+  (signed Kind-30078 manifest + Blossom chunks, `BlossomSyncManager`) –
+  needs the production publisher.
+
 ## Hardware gate (VisionCapability)
 
 | Check | Rule |

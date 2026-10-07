@@ -60,6 +60,9 @@
         android:usesPermissionFlags="neverForLocation" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- FEAT-069: barcode scan of packaged foods, decoded on the device; nothing is stored. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <queries>
         <!-- Optional local MoonBoard migration. Used only after the user taps

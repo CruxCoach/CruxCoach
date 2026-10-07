@@ -1,0 +1,14 @@
+{
+  "uniqueId": "org.openfoodfacts:products",
+  "name": "Open Food Facts – product database extract",
+  "description": "Packaged products sold in German- and English-speaking countries with energy, protein, carbohydrate and fat per 100 g, bundled for the offline product search and barcode scan. Extract by CruxCoach (scripts/build_off_asset.py); offered under the same licence.",
+  "website": "https://world.openfoodfacts.org",
+  "developers": [
+    {
+      "name": "Open Food Facts contributors"
+    }
+  ],
+  "licenses": [
+    "ODbL-1.0"
+  ]
+}

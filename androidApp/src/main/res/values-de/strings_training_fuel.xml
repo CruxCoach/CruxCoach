@@ -70,6 +70,16 @@
     <string name="trf_foods_bls_title">Lebensmitteldatenbank (BLS)</string>
     <string name="trf_foods_bls_hint">Tippe mindestens zwei Buchstaben, um 7.140 Lebensmittel aus dem Bundeslebensmittelschlüssel zu durchsuchen.</string>
     <string name="trf_foods_bls_none">Kein Treffer in der Datenbank.</string>
+    <string name="trf_foods_products_title">Markenprodukte (Open Food Facts)</string>
+    <string name="trf_products_preparing">Die Produktdatenbank wird auf diesem Gerät eingerichtet – einmalig, ein paar Sekunden …</string>
+    <string name="trf_off_attribution">Produktdaten: Open-Food-Facts-Mitwirkende (ODbL)</string>
+    <string name="trf_scan">Barcode scannen</string>
+    <string name="trf_scan_hint">Halte den Barcode in den Rahmen. Der Code wird nur auf diesem Gerät nachgeschlagen.</string>
+    <string name="trf_scan_permission">Zum Scannen braucht CruxCoach die Kamera. Es wird nichts aufgezeichnet oder gesendet.</string>
+    <string name="trf_scan_not_found_title">Produkt nicht gefunden</string>
+    <string name="trf_scan_not_found">%1$s ist nicht in der Produktdatenbank auf diesem Gerät. Du kannst es als eigenes Lebensmittel anlegen.</string>
+    <string name="trf_scan_create">Selbst anlegen</string>
+    <string name="trf_create_barcode">Barcode %1$s</string>
     <string name="trf_describe">Beschreiben</string>
     <string name="trf_describe_title">Mahlzeit beschreiben</string>
     <string name="trf_describe_placeholder">z. B. 2 Scheiben Vollkornbrot mit Käse und ein Glas Orangensaft</string>
