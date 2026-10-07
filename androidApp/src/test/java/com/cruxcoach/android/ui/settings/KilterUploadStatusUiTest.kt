@@ -134,10 +134,6 @@ class KilterUploadStatusUiTest {
                 logUuid = "log-2", climbUuid = "877aff1306904ec69dfce1d24024dd39", climbName = null,
                 angle = 35, climbedAt = "2026-10-02T10:00:00", isAscent = false, reason = KilterNotUploadedReason.RETRY_LATER,
             ),
-            KilterNotUploadedEntry(
-                logUuid = "log-3", climbUuid = "2c4e8b9f0a1d4e6f8b7c5d3e1f2a4b6c", climbName = "Moonlight",
-                angle = 30, climbedAt = "2026-10-01T18:00:00", isAscent = false, reason = KilterNotUploadedReason.PROBABLY_ON_KILTER,
-            ),
         )
         compose.setContent {
             MaterialTheme {
@@ -160,7 +156,6 @@ class KilterUploadStatusUiTest {
             val text = assertNotNull(report)
             assertTrue("- A Bigger Squeeze · 40° · 03.10.2026 · Kilter kennt diesen Climb nicht · id 1BE3D36A0B854BB09BA21325DDCE46B2" in text, text)
             assertTrue("- Unbekannter Climb · 35° · 02.10.2026 · nur Versuche · Noch nicht angenommen, wird erneut versucht · id 877aff1306904ec69dfce1d24024dd39" in text, text)
-            assertTrue("- Moonlight · 30° · 01.10.2026 · nur Versuche · Vermutlich schon bei Kilter (Antwort ging verloren) · id 2c4e8b9f0a1d4e6f8b7c5d3e1f2a4b6c" in text, text)
             assertTrue(text.startsWith("Kilter hat diese Logbuch-Einträge nicht angenommen"), text)
         }
         compose.onNodeWithText("Nicht übertragen").assertDoesNotExist()
@@ -171,7 +166,7 @@ class KilterUploadStatusUiTest {
             MaterialTheme {
                 KilterLogbookSyncStatus(
                     KilterAccountState(pushEnabled = true, uploadStatus = KilterUploadStatus(
-                        uploaded = 200, pending = 1510, reason = KilterUploadReason.TIMEOUT, nextRetry = 1, probablyOnKilter = 2,
+                        uploaded = 200, pending = 1510, reason = KilterUploadReason.TIMEOUT, nextRetry = 1,
                     )),
                     {}, {}, {},
                 )
@@ -179,7 +174,6 @@ class KilterUploadStatusUiTest {
         }
         compose.onNodeWithText("Kilter antwortet gerade zu langsam.", substring = true).assertIsDisplayed()
         compose.onNodeWithText("CruxCoach versucht es automatisch erneut.", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("2 Einträge sind vermutlich schon bei Kilter", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Bitte Internetverbindung prüfen", substring = true).assertDoesNotExist()
     }
 }

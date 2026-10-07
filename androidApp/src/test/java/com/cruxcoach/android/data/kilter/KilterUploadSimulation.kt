@@ -255,6 +255,20 @@ internal class FakeKilterServer(climbs: Collection<FixtureClimb>) {
         else -> Result.failure(Exception("HTTP ${injected.name.removePrefix("HTTP_")}: "))
     }
 
+    /** Logs Kilter held when asked to delete them by uuid ([deleteIfHeld]). */
+    val deletedHeld = ArrayList<String>()
+
+    /** DELETE /logs/{uuid}, answered as whether Kilter held the log (200 / 204), as verified live. */
+    fun deleteIfHeld(logUuid: String): KilterDeleteOutcome = when (fault(Op.DELETE, deletes++)) {
+        null -> if (logs.remove(logUuid) != null) {
+            deletedHeld += logUuid
+            KilterDeleteOutcome.HELD
+        } else {
+            KilterDeleteOutcome.NOT_HELD
+        }
+        else -> KilterDeleteOutcome.FAILED
+    }
+
     /** DELETE /logs/{uuid}; an unknown uuid is a harmless no-op. */
     fun delete(logUuid: String): KilterPublishResult = when (fault(Op.DELETE, deletes++)) {
         null -> {
@@ -301,6 +315,36 @@ internal class FakeLogbook(
         ascents.remove(uuid)
         bids.remove(uuid)
         deletions += uuid
+    }
+
+    override fun getLogUuidsWithExternalIdPrefix(prefix: String): Set<String> =
+        (ascents.values.filter { it.externalId?.startsWith(prefix) == true }.map { it.uuid } +
+            bids.values.filter { it.externalId?.startsWith(prefix) == true }.map { it.uuid }).toHashSet()
+
+    /**
+     * The app's edit of an entry, as the repository does it: another quick-log
+     * try, a corrected count. A copy Kilter holds is queued for replacement.
+     */
+    fun editUploaded(uuid: String, bidCount: Long) {
+        val wasSynced = isSynced(uuid) == true
+        editAttempts(uuid, bidCount)
+        if (wasSynced) deletions += uuid
+    }
+
+    /**
+     * A quick-log send of an open attempt: the attempt row becomes the send
+     * under its uuid. [replaceCopy] false models a row of an earlier build,
+     * which did not queue the replacement of the attempt Kilter holds.
+     */
+    fun promote(uuid: String, replaceCopy: Boolean = true) {
+        val bid = bids.remove(uuid) ?: return
+        if (bid.synced && replaceCopy) deletions += uuid
+        ascents[uuid] = RawAscent(
+            uuid = uuid, climbUuid = bid.climbUuid, angle = bid.angle, isMirror = bid.isMirror, attemptId = 0,
+            bidCount = bid.bidCount + 1, quality = null, difficulty = null, isBenchmark = false, comment = bid.comment,
+            climbedAt = bid.climbedAt, synced = false, gymUuid = bid.gymUuid, wallUuid = bid.wallUuid,
+            productLayoutUuid = bid.productLayoutUuid, externalId = bid.externalId,
+        )
     }
 
     /** A local edit: new content, new row version, back to unsynced. */
@@ -441,6 +485,7 @@ internal class UploadSimulation(
         }
         coEvery { api.fetchLogs() } answers { kilter.fetch() }
         coEvery { api.deleteLog(any()) } answers { kilter.delete(firstArg()) }
+        coEvery { api.deleteLogIfHeld(any()) } answers { kilter.deleteIfHeld(firstArg()) }
         coEvery { api.fetchLoggedClimbs() } returns Result.success(KilterLoggedClimbsResponse())
         coEvery { api.fetchOwnAuthoredClimbs() } returns Result.success(emptyList())
         coEvery { api.fetchCircuits() } returns Result.success(emptyList())
@@ -479,8 +524,6 @@ internal class UploadSimulation(
 
     suspend fun parked(): Set<String> = ledger.rejections().filter { it.confirmed }.mapTo(HashSet()) { it.logUuid }
 
-    /** Entries held as probably on Kilter already. */
-    suspend fun probablyOnKilter(): Set<String> = ledger.rejections().filter { it.likelyOnKilter }.mapTo(HashSet()) { it.logUuid }
 
     companion object {
         const val USER = "sim-user"
@@ -493,15 +536,29 @@ internal class UploadSimulation(
 internal class RecordingRetryScheduler : KilterUploadRetryScheduler {
     var scheduled = 0
         private set
+    /** Delay of the wake-up run scheduled last, null when none is. */
+    var wakeInMs: Long? = null
+        private set
     val calls = ArrayList<String>()
 
-    override fun schedule(attempt: Int) {
+    /** WorkManager's REPLACE / KEEP on the chain's unique work. */
+    override fun schedule(attempt: Int, replace: Boolean) {
+        if (!replace && scheduled > 0) {
+            calls += "keep $scheduled"
+            return
+        }
         scheduled = attempt
         calls += "schedule $attempt"
     }
 
+    override fun wakeAfter(delayMs: Long) {
+        wakeInMs = delayMs
+        calls += "wake"
+    }
+
     override fun cancel() {
         scheduled = 0
+        wakeInMs = null
         calls += "cancel"
     }
 
@@ -739,6 +796,8 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         label: String,
         /** Imported entries tried under an earlier opt-in: they stay queued until Kilter settled them. */
         queued: Set<String> = emptySet(),
+        /** Rows Kilter holds from before the device knew to replace them (an earlier build): one resend each finds out. */
+        resendAllowed: Set<String> = emptySet(),
     ) {
         fun fail(message: String): Nothing =
             throw AssertionError("$label: $message\n  ${KilterUploadDiagnostics.diagnosticLine(status)}")
@@ -746,11 +805,10 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         val sent = kilter.requests.subList(firstRequest, kilter.requests.size)
         if (status.requests > MAX_REQUESTS) fail("requests=${status.requests} exceeds $MAX_REQUESTS")
         if (sent.size != status.requests) fail("status counts ${status.requests} requests, Kilter saw ${sent.size}")
-        // While Kilter leaves attempts out of its logbook, one of a request whose answer was lost may be
-        // sent again to find out whether Kilter holds it. Nothing else is sent twice.
+        // Nothing Kilter holds is sent again: a lost answer is settled from the logbook or by asking
+        // Kilter to delete one row of the request, an edited row's copy is deleted before it goes.
         for (request in sent) for (uuid in request.resent) {
-            val probe = request.hidden && uuid in kilter.writtenWithoutAnswer && kilter.logs[uuid]?.topped == false
-            if (!probe) fail("a log Kilter already holds was sent again ($uuid in request ${request.ordinal})")
+            if (uuid !in resendAllowed) fail("a log Kilter already holds was sent again ($uuid in request ${request.ordinal})")
         }
         if (kilter.duplicatesInRequest > 0) fail("a request named one log twice")
         if (kilter.dashedLegacyWrites.isNotEmpty()) {
@@ -789,10 +847,9 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
             }
         }
 
-        // Held as probably on Kilter is right when Kilter has it.
         val parked = sim.parked().filter { uuid ->
             val entry = entries[uuid]
-            entry != null && entry.fate in BELONGS_ON_KILTER && logbook.isSynced(uuid) == false && uuid !in kilter.logs
+            entry != null && entry.fate in BELONGS_ON_KILTER && logbook.isSynced(uuid) == false
         }
         if (parked.isNotEmpty()) fail("${parked.size} entries Kilter would take are held back, e.g. ${parked.first()}")
 
@@ -808,14 +865,11 @@ internal class UploadWorld(val sim: UploadSimulation, seed: Long, climbs: List<F
         if (status.uploaded > status.attempted) fail("uploaded > attempted")
     }
 
-    /**
-     * Every entry that belongs on Kilter (and was not left out as imported) is there and marked; nothing else is.
-     * [heldOnKilter]: entries held as probably on Kilter, delivered when Kilter has them.
-     */
-    fun allDelivered(includeImported: Boolean, heldOnKilter: Set<String> = emptySet()): Boolean = entries.values.all { entry ->
+    /** Every entry that belongs on Kilter (and was not left out as imported) is there and marked; nothing else is. */
+    fun allDelivered(includeImported: Boolean): Boolean = entries.values.all { entry ->
         if (entry.imported && !includeImported) return@all true
         when (entry.fate) {
-            Fate.VALID -> entry.uuid in kilter.logs && (logbook.isSynced(entry.uuid) == true || entry.uuid in heldOnKilter)
+            Fate.VALID -> entry.uuid in kilter.logs && logbook.isSynced(entry.uuid) == true
             Fate.TWIN -> logbook.isSynced(entry.uuid) == true
             else -> true
         }
