@@ -46,7 +46,10 @@
     <string name="trf_micro_calcium">Calcium</string>
     <string name="trf_micro_vitamin_d">Vitamin D</string>
     <string name="trf_micro_value">%1$s / %2$s %3$s a day</string>
-    <string name="trf_micro_coverage">Estimated from %1$d %% of what you logged on %2$d days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</string>
+    <plurals name="trf_micro_coverage">
+        <item quantity="one">Estimated from %1$d %% of what you logged on %2$d day. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+        <item quantity="other">Estimated from %1$d %% of what you logged on %2$d days. Generic foods (BLS, USDA) count; packaged products and quick entries carry no values.</item>
+    </plurals>
     <string name="trf_micro_info">An estimate from the foods you logged, next to the EFSA reference values for adults: iron 16 mg for women before menopause, 11 mg otherwise; calcium 1000 mg up to 24 years, then 950 mg; vitamin D 15 µg, which the skin also makes in summer sun. Climbers who eat little are short of these first. Staying low for weeks is worth a talk with a doctor or sports dietitian – especially with tiredness or injuries. This is not a diagnosis.</string>
     <string name="trf_entry_edit">Edit</string>
     <string name="trf_edit_title">Edit entry</string>
@@ -100,6 +103,7 @@
     <string name="trf_foods_bls_title">Food database (BLS)</string>
     <string name="trf_foods_bls_hint">Type at least two letters to search 7,140 foods of the German food composition database.</string>
     <string name="trf_foods_bls_none">No match in the database.</string>
+    <string name="trf_foods_searching">Searching…</string>
     <string name="trf_foods_products_title">Packaged products (Open Food Facts)</string>
     <string name="trf_products_preparing">Setting up the product database on this device – once, a few seconds…</string>
     <string name="trf_off_attribution">Product data: Open Food Facts contributors (ODbL)</string>

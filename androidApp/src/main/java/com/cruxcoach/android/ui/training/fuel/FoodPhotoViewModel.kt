@@ -30,6 +30,7 @@ import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.MealTextParser
 import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffProduct
+import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.logic.VisionCapability
 import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.model.FoodItem
@@ -385,8 +386,18 @@ class FoodPhotoViewModel @Inject constructor(
         viewModelScope.launch { healthConnect.syncDay(day, entries, water) }
     }
 
-    /** Unpacks the product database in the background before the first search needs it. */
-    fun prepareProducts() = products.prepareInBackground()
+    /**
+     * Unpacks the product database and loads the BLS and USDA tables in the
+     * background, so the first search does not wait for them (on a Nokia 6.1
+     * the tables alone took over ten seconds).
+     */
+    fun prepareProducts() {
+        products.prepareInBackground()
+        viewModelScope.launch(Dispatchers.Default) {
+            runCatching { bls.matcher() }
+            runCatching { usda.matcher() }
+        }
+    }
 
     /** A scanned barcode in the on-device product database. */
     suspend fun productByBarcode(code: String): OffProduct? = products.byBarcode(code)
@@ -495,7 +506,7 @@ class FoodPhotoViewModel @Inject constructor(
         fun offFoodItem(p: OffProduct) = FoodItem(
             id = "off:${p.code}", name = p.displayName(german()), brand = p.brand.ifEmpty { null }, barcode = p.code,
             kcalPer100 = p.kcal, proteinPer100 = p.protein, carbsPer100 = p.carbs, fatPer100 = p.fat,
-            servingG = p.servingG, servingLabel = p.servingLabel, source = OffRepository.SOURCE,
+            servingG = p.servingG, servingLabel = p.servingLabel?.takeIf(OffTable::readableServing), source = OffRepository.SOURCE,
         )
 
         /**

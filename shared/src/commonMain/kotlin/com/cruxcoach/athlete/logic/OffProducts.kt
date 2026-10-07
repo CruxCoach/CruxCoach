@@ -51,6 +51,28 @@ object OffTable {
         )
     }
 
+    /**
+     * Whether a pack's serving words are fit to show to a German or English
+     * reader: an amount only ("330 ml") or a known serving noun ("1 cup
+     * (30 g)", "1 Riegel (40 g)"). Labels in other languages ("1 vasetto
+     * (350 g)", seen on the test phone) are dropped; the grams stay.
+     */
+    fun readableServing(label: String): Boolean {
+        val words = label.lowercase().split(Regex("[^\\p{L}]+")).filter { it.isNotEmpty() }
+        return words.all { it in SERVING_WORDS }
+    }
+
+    private val SERVING_WORDS = setOf(
+        "g", "gr", "gram", "grams", "ml", "l", "cl", "kg", "oz", "fl", "lb",
+        "cup", "cups", "tbsp", "tsp", "tablespoon", "tablespoons", "teaspoon", "teaspoons", "slice", "slices",
+        "piece", "pieces", "pc", "pcs", "bar", "bars", "bottle", "can", "pack", "packet", "pouch", "bag", "box",
+        "serving", "servings", "portion", "portions", "container", "cookie", "cookies", "biscuit", "biscuits",
+        "egg", "eggs", "scoop", "scoops", "glass", "pot", "tub", "cake", "of", "the", "a", "an", "per", "about", "approx",
+        "stück", "stk", "scheibe", "scheiben", "riegel", "becher", "flasche", "dose", "packung", "beutel", "glas",
+        "tasse", "tassen", "portion", "portionen", "el", "tl", "esslöffel", "teelöffel", "messlöffel", "keks", "kekse",
+        "eine", "ein", "einer", "pro", "ca", "von", "der", "packungsinhalt", "tafel", "riegeln", "brötchen", "teil",
+    )
+
     /** The `# version:` value of a header line, or null. */
     fun version(line: String): String? =
         line.takeIf { it.startsWith("# version:") }?.substringAfter(':')?.trim()?.ifEmpty { null }

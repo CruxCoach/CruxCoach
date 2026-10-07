@@ -39,6 +39,15 @@ class OffTableTest {
     }
 
     @Test
+    fun servingLabelsOnlyInGermanOrEnglish() {
+        listOf("1 cup (30 g)", "330 ml", "1 Riegel (40 g)", "2 Scheiben (50 g)", "1 bar (24 g)", "1 portion (100 ml)")
+            .forEach { kotlin.test.assertTrue(OffTable.readableServing(it), it) }
+        // Seen on the test phone for a German Milbona skyr.
+        listOf("1 vasetto (350 g)", "1 emballage (300 g)", "1 pot de 150 g")
+            .forEach { kotlin.test.assertFalse(OffTable.readableServing(it), it) }
+    }
+
+    @Test
     fun ftsQueryUsesPrefixesAndNeutralisesOperators() {
         assertEquals("skyr* natur*", OffTable.ftsQuery("Skyr Natur"))
         assertEquals("oat* or* milk*", OffTable.ftsQuery("oat OR \"milk\"-"))
