@@ -61,6 +61,7 @@ internal fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
     unitsViewModel: UnitsSettingsViewModel = hiltViewModel(),
+    foodDataViewModel: FoodDataStorageViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val backupState by backupViewModel.state.collectAsStateWithLifecycle()
@@ -338,6 +339,9 @@ internal fun SettingsScreen(
                 }
             }
             SettingsPage.DELETE -> {
+                SettingsSectionCard {
+                    FoodDataStorageSection(foodDataViewModel)
+                }
                 SettingsSectionCard {
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,

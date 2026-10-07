@@ -1,5 +1,6 @@
 package com.cruxcoach.athlete.data
 
+import com.cruxcoach.athlete.logic.Recipe
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -228,7 +229,25 @@ class AthleteRepository(
     fun searchFoodItems(query: String): List<FoodItem> = fuel.searchFoodItems(query, query).executeAsList().map { it.toModel() }
     fun markFoodItemUsed(id: String) = fuel.markFoodItemUsed(clock(), id)
     fun setFoodItemFavorite(id: String, favorite: Boolean) = fuel.setFoodItemFavorite(if (favorite) 1 else 0, clock(), id)
-    fun deleteFoodItem(id: String) = fuel.deleteFoodItem(id)
+    fun deleteFoodItem(id: String) = transaction {
+        fuel.deleteFoodItem(id)
+        // A recipe's ingredients go with it (no delete query on settings: emptied).
+        if (body.getSetting(Recipe.settingKey(id)).executeAsOneOrNull() != null) body.putSetting(Recipe.settingKey(id), "", clock())
+    }
+
+    /** A recipe's ingredients, or null for any other food. */
+    fun recipe(foodItemId: String): Recipe? =
+        body.getSetting(Recipe.settingKey(foodItemId)).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { json.decodeFromString(Recipe.serializer(), it) }.getOrNull() }
+
+    /** Saves a recipe and its food item; favourite and use count of an existing one stay. */
+    fun saveRecipe(foodItemId: String, recipe: Recipe) = transaction {
+        val now = clock()
+        val existing = foodItem(foodItemId)
+        val item = recipe.toFoodItem(foodItemId, now)
+        saveFoodItem(existing?.let { item.copy(favorite = it.favorite, useCount = it.useCount, lastUsedAt = it.lastUsedAt) } ?: item)
+        body.putSetting(Recipe.settingKey(foodItemId), json.encodeToString(Recipe.serializer(), recipe), now)
+    }
 
     fun saveFoodLog(e: FoodLogEntry) = fuel.upsertFoodLog(
         e.id, e.day, e.loggedAt, e.meal.name, e.foodItemId, e.name, e.amountG, e.portions, e.kcal, e.proteinG, e.carbsG, e.fatG,

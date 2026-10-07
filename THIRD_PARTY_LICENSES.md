@@ -121,8 +121,8 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ### BLS 4.0 — Max Rubner-Institut
 
-- **Used in:** food photo recognition and food search (FEAT-069),
-  [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
+- **Used in:** food photo recognition, food search and the weekly
+  micronutrient estimate (FEAT-069), [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
 - **Location:** [`androidApp/src/main/assets/fuel/bls_4_0_macros.tsv`](androidApp/src/main/assets/fuel/bls_4_0_macros.tsv)
 - **Source:** Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS),
   Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe.
@@ -130,11 +130,25 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   download at https://www.blsdb.de
 - **License:** CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);
   attribution is shown in the review screen and the licence list.
-- **Modifications:** only energy (kcal), protein, fat and available
-  carbohydrate per 100 g of the 7,140 foods; traces and values below the
-  detection limit are stored as zero; source and reference columns dropped.
+- **Modifications:** only energy (kcal), protein, fat, available
+  carbohydrate, iron, calcium and vitamin D per 100 g of the 7,140 foods;
+  traces and values below the detection limit are stored as zero, missing
+  micronutrients stay empty; source and reference columns dropped.
   [`scripts/build_bls_asset.py`](scripts/build_bls_asset.py) rebuilds the
   file from the official archive (its SHA-256 is recorded in the file).
+
+### USDA FoodData Central — SR Legacy
+
+- **Used in:** food search ("US foods"), household measures (cups) and the
+  weekly micronutrient estimate (FEAT-069), [`BlsRepository.kt`](androidApp/src/main/java/com/cruxcoach/android/foodvision/BlsRepository.kt)
+- **Location:** [`androidApp/src/main/assets/fuel/usda_sr_legacy.tsv`](androidApp/src/main/assets/fuel/usda_sr_legacy.tsv)
+- **Source:** U.S. Department of Agriculture, Agricultural Research Service.
+  FoodData Central: SR Legacy (April 2018), https://fdc.nal.usda.gov/
+- **License:** public domain, published under CC0 1.0; FoodData Central asks
+  to be named as the source.
+- **Modifications:** energy, protein, fat, available carbohydrate (by
+  difference minus fibre), iron, calcium, vitamin D per 100 g and up to five
+  household measures per food; [`scripts/build_usda_asset.py`](scripts/build_usda_asset.py).
 
 ### Open Food Facts — packaged products
 

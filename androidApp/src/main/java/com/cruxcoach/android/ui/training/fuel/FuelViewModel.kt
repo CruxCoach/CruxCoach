@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import com.cruxcoach.athlete.logic.Recipe
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.athlete.AthleteService
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.minus
@@ -161,18 +163,40 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val n = scale(item, portions, grams) ?: return@io
         val now = System.currentTimeMillis()
         // A food picked from the BLS or product search becomes one of "my foods" on first use.
-        if (item.source in setOf(SOURCE_BLS, SOURCE_OFF) && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
+        if (item.source in setOf(SOURCE_BLS, SOURCE_OFF, SOURCE_USDA) && repo.foodItem(item.id) == null) repo.saveFoodItem(item.copy(updatedAt = now))
         repo.saveFoodLog(
             FoodLogEntry(
                 id = repo.newId(), day = currentDay(), loggedAt = now, meal = meal, foodItemId = item.id, name = item.name,
-                amountG = grams ?: if (item.source != SOURCE_PORTION) portions?.let { p -> item.servingG?.let { it * p } } else null,
+                amountG = loggedGrams(item, portions, grams),
                 portions = portions, kcal = n.kcal, proteinG = n.protein, carbsG = n.carbs, fatG = n.fat,
             ),
         )
         repo.markFoodItemUsed(item.id)
     }
 
+    /** A logged food with a new amount or meal; its nutrients are scaled again from the food. */
+    fun updateEntry(entry: FoodLogEntry, item: FoodItem, meal: Meal, portions: Double?, grams: Double?) = io {
+        val n = scale(item, portions, grams) ?: return@io
+        service.repo.saveFoodLog(
+            entry.copy(meal = meal, amountG = loggedGrams(item, portions, grams), portions = portions,
+                kcal = n.kcal, proteinG = n.protein, carbsG = n.carbs, fatG = n.fat),
+        )
+    }
+
+    /** A quick entry (no saved food) with what was typed now. */
+    fun updateQuickEntry(entry: FoodLogEntry, name: String, meal: Meal, nutrients: Nutrients) = io {
+        service.repo.saveFoodLog(
+            entry.copy(name = name, meal = meal, kcal = nutrients.kcal, proteinG = nutrients.protein,
+                carbsG = nutrients.carbs, fatG = nutrients.fat),
+        )
+    }
+
     fun deleteEntry(entry: FoodLogEntry) = io { service.repo.deleteFoodLog(entry.id) }
+
+    /** Saves a recipe as one of "my foods"; a new one gets an id. */
+    fun saveRecipe(id: String?, recipe: Recipe) = io { service.repo.saveRecipe(id ?: service.repo.newId(), recipe) }
+
+    suspend fun loadRecipe(id: String): Recipe? = withContext(Dispatchers.IO) { service.ensureReady(); service.repo.recipe(id) }
     fun restoreEntry(entry: FoodLogEntry) = io { service.repo.saveFoodLog(entry) }
 
     fun addWater(ml: Int) = io { service.repo.addHydration(currentDay(), ml) }
@@ -221,8 +245,14 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         const val SOURCE_BLS = "bls"
         /** From the bundled Open Food Facts extract, per 100 g; id "off:" + barcode. */
         const val SOURCE_OFF = "off"
+        /** From the bundled USDA SR Legacy extract, per 100 g; id "usda:" + FDC id. */
+        const val SOURCE_USDA = "usda"
 
         fun isPerPortion(item: FoodItem) = item.source == SOURCE_PORTION
+
+        /** Grams eaten: as typed, or portions times the portion size; unknown for per-portion foods. */
+        fun loggedGrams(item: FoodItem, portions: Double?, grams: Double?): Double? =
+            grams ?: if (item.source != SOURCE_PORTION) portions?.let { p -> item.servingG?.let { it * p } } else null
 
         /** Scales a food to what was eaten; null when neither amount applies. */
         fun scale(item: FoodItem, portions: Double?, grams: Double?): Nutrients? {

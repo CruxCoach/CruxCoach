@@ -16,6 +16,8 @@ data class OffProduct(
     val servingG: Double?,
     /** Bit 1: sold in DE/AT/CH, bit 2: sold in GB/IE/US/CA/AU/NZ. */
     val regions: Int,
+    /** The pack's own words for a serving: "1 cup (30 g)", "1 Riegel (40 g)", "330 ml". */
+    val servingLabel: String? = null,
 ) {
     fun displayName(german: Boolean): String = if (german) nameDe.ifEmpty { nameEn } else nameEn.ifEmpty { nameDe }
 
@@ -29,7 +31,7 @@ data class OffProduct(
  * Format of `assets/fuel/off_products.tsv.zst` (scripts/build_off_asset.py):
  * `#` comment lines with source, licence and `# version: yyyy-mm-dd`, then
  * barcode, German name, English name, brand, kcal, protein, carbs, fat,
- * serving g, regions, tab separated.
+ * serving g, regions, serving label, tab separated.
  */
 object OffTable {
 
@@ -45,6 +47,7 @@ object OffTable {
             fat = f[7].toDoubleOrNull() ?: return null,
             servingG = f.getOrNull(8)?.toDoubleOrNull()?.takeIf { it > 0 },
             regions = f.getOrNull(9)?.toIntOrNull() ?: 0,
+            servingLabel = f.getOrNull(10)?.trim()?.ifEmpty { null },
         )
     }
 
