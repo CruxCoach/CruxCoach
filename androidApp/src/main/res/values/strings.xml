@@ -369,6 +369,10 @@
 
     <!-- Settings -->
     <string name="settings_language_title">Language</string>
+    <string name="settings_units_title">Units</string>
+    <string name="settings_units_desc">For body weight, training loads and nutrition. Data is stored metric; switching changes only what you see and type.</string>
+    <string name="settings_units_metric">Metric (g, ml, kg, cm)</string>
+    <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
     <string name="settings_title">Settings</string>
     <string name="settings_display_title">Display</string>
     <string name="settings_display_appearance">Theme</string>

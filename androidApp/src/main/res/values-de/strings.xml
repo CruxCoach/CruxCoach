@@ -370,6 +370,10 @@
 
     <!-- Settings -->
     <string name="settings_language_title">Sprache</string>
+    <string name="settings_units_title">Einheiten</string>
+    <string name="settings_units_desc">Für Körpergewicht, Trainingslasten und Ernährung. Gespeichert wird metrisch; die Umstellung ändert nur Anzeige und Eingabe.</string>
+    <string name="settings_units_metric">Metrisch (g, ml, kg, cm)</string>
+    <string name="settings_units_us">US (oz, fl oz, cups, lb, in)</string>
     <string name="settings_title">Einstellungen</string>
     <string name="settings_display_title">Anzeige</string>
     <string name="settings_display_appearance">Design</string>

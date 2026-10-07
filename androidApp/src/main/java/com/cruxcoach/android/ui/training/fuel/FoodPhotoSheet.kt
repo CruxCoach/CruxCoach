@@ -404,7 +404,7 @@ private fun ReviewRow(item: ReviewItem, viewModel: FoodPhotoViewModel, onChoose:
             OutlinedTextField(
                 value = item.amountText,
                 onValueChange = { viewModel.setAmount(item.key, it) },
-                suffix = { Text(stringResource(if (item.water) R.string.fvp_ml else R.string.fvp_grams)) },
+                suffix = { Text(unitLabel(item.unit)) },
                 singleLine = true,
                 isError = grams == null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

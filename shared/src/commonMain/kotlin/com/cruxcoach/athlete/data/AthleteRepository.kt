@@ -54,6 +54,9 @@ class AthleteRepository(
         body.getSetting(KEY_PROFILE).asFlow().mapToOneOrNull(dispatcher)
             .map { it?.let(::decodeProfile) ?: AthleteProfile() }
 
+    /** False until a profile was saved once – the first start, before any default is written. */
+    fun hasStoredProfile(): Boolean = body.getSetting(KEY_PROFILE).executeAsOneOrNull() != null
+
     fun saveProfile(profile: AthleteProfile) {
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
     }
