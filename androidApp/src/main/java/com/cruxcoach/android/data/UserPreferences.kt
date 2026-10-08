@@ -79,6 +79,15 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+    // Kilter log upload: rows held back per content (JSON, bounded), the ids
+    // Kilter took for moved climbs, the last run's conflicts and unreadable
+    // dates, and the opt-in for entries imported from an Aurora export. See
+    // KilterUploadLedger.
+    val KILTER_UPLOAD_REJECTIONS = stringPreferencesKey("kilter_upload_rejections")
+    val KILTER_UPLOAD_LEARNED = stringPreferencesKey("kilter_upload_learned_ids")
+    val KILTER_UPLOAD_LAST_OUTCOME = stringPreferencesKey("kilter_upload_last_outcome")
+    val KILTER_UPLOAD_IN_DOUBT = stringPreferencesKey("kilter_upload_in_doubt")
+    val KILTER_UPLOAD_IMPORTED = booleanPreferencesKey("kilter_upload_imported")
 
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
@@ -981,6 +990,58 @@ class UserPreferences(
 
     suspend fun setKilterClimbPublishEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] = enabled }
+    }
+
+    val kilterUploadRejections: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_REJECTIONS]
+    }
+
+    suspend fun setKilterUploadRejections(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_REJECTIONS)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_REJECTIONS] = json
+        }
+    }
+
+    val kilterUploadImportedEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] ?: false
+    }
+
+    suspend fun setKilterUploadImportedEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_UPLOAD_IMPORTED] = enabled }
+    }
+
+    val kilterUploadLearned: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_LEARNED]
+    }
+
+    suspend fun setKilterUploadLearned(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LEARNED)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_LEARNED] = json
+        }
+    }
+
+    val kilterUploadInDoubt: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT]
+    }
+
+    suspend fun setKilterUploadInDoubt(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_IN_DOUBT] = json
+        }
+    }
+
+    val kilterUploadLastOutcome: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME]
+    }
+
+    suspend fun setKilterUploadLastOutcome(json: String?) {
+        keyScoped.edit { prefs ->
+            if (json == null) prefs.remove(KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME)
+            else prefs[KeyScopedKeys.KILTER_UPLOAD_LAST_OUTCOME] = json
+        }
     }
 
     /**

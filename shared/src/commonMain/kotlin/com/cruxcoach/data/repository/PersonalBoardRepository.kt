@@ -234,6 +234,9 @@ interface PersonalBoardRepository {
      *  count how many fetched logs are genuinely new vs re-imported. */
     fun getExistingLogUuids(): Set<String>
 
+    /** Uuids of the entries whose external_id starts with [prefix] (an import), synced or not. */
+    fun getLogUuidsWithExternalIdPrefix(prefix: String): Set<String> = emptySet()
+
     /** Löschungen, die Kilter noch nicht kennt. Ohne sie holt der nächste
      *  Download einen gelöschten Eintrag zurück: die Dedup-Prüfung kennt nur
      *  die vorhandenen Zeilen. Die Vormerkung verschwindet, sobald Kilter

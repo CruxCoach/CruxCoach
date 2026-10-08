@@ -131,6 +131,13 @@ private data class ClimbCreatePayload(
 /** Outcome of a Kilter publish. Distinct from a generic Result so callers
  *  can react to the auth-missing case (offer login UI) vs. transient errors
  *  (queue retry) vs. permanent rejections (e.g. uuid conflict). */
+/** Whether Kilter held a log it was asked to delete ([KilterApiClient.deleteLogIfHeld]). */
+enum class KilterDeleteOutcome { HELD, NOT_HELD, FAILED }
+
+/** The access token could not be refreshed for lack of a connection: the request was never sent. */
+class KilterOfflineException(cause: java.io.IOException) :
+    java.io.IOException("token endpoint unreachable (${cause.javaClass.simpleName})", cause)
+
 sealed class KilterPublishResult {
     /** Kilter accepted the climb. `climbUuid` echoes what we sent. */
     data class Success(val climbUuid: String) : KilterPublishResult()
@@ -368,8 +375,10 @@ class KilterApiClient @Inject constructor(
         // Kilter's PowerSync endpoint. User circuits live ONLY here (REST
         // /api/circuits is curated-only); [fetchCircuits] reads its stream.
         const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
+        const val UPLOAD_READ_TIMEOUT_S = 90L
+        const val UPLOAD_WRITE_TIMEOUT_S = 30L
+        const val UPLOAD_CALL_TIMEOUT_S = 120L
         const val CLIENT_ID = "kilter"
-        val COMPACT_CLIMB_UUID = Regex("[0-9a-fA-F]{32}")
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
         // `kilter_error` column / Android backup blob). 5xx renders can
@@ -419,6 +428,31 @@ class KilterApiClient @Inject constructor(
     // because isDraft is null"), with the error wrapped as a generic
     // HTTP 500 transaction-error so the cause is invisible client-side.
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    /**
+     * The upload's calls (bulk upload, logbook read) get more time than the
+     * others: under load Kilter took longer than the 30 s read timeout for a
+     * 200-row request (field report, 2026-10-05), and a request it answers too
+     * late leaves its rows in doubt.
+     */
+    private val uploadHttpClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .readTimeout(UPLOAD_READ_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(UPLOAD_WRITE_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(UPLOAD_CALL_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * The bulk upload must not be resent by OkHttp: on a connection that
+     * breaks mid-request it would silently post the rows again on a new one,
+     * where Kilter refuses a written row as known, and the error the caller
+     * gets would be the retry's (offline: "unknown host"), hiding that the
+     * first request may have been written (device test, 2026-10-06).
+     */
+    private val bulkHttpClient: OkHttpClient by lazy {
+        uploadHttpClient.newBuilder().retryOnConnectionFailure(false).build()
+    }
     private val refreshMutex = Mutex()
 
     // Client-side login throttle. Per-email exponential backoff in
@@ -579,7 +613,19 @@ class KilterApiClient @Inject constructor(
      * opens the app within 30 days. Returns false if the token is expired
      * (UI shows session-expired → user re-logs in manually).
      */
-    suspend fun refreshAccessToken(): Boolean = refreshMutex.withLock {
+    suspend fun refreshAccessToken(): Boolean = try {
+        refreshAccessTokenOrThrow()
+    } catch (e: java.io.IOException) {
+        Log.w(TAG, "Token refresh unreachable (${e.javaClass.simpleName})")
+        false
+    }
+
+    /**
+     * [refreshAccessToken] that throws when the token endpoint cannot be
+     * reached: offline is no expired session, and a caller that can tell the
+     * two apart (the upload, the app-start check) must not ask for a new login.
+     */
+    suspend fun refreshAccessTokenOrThrow(): Boolean = refreshMutex.withLock {
         withContext(Dispatchers.IO) {
             val refreshToken = tokenStore.getRefreshToken() ?: return@withContext false
             try {
@@ -603,6 +649,8 @@ class KilterApiClient @Inject constructor(
                 }
                 Log.w(TAG, "Token refresh failed: HTTP ${response.code}")
             } catch (e: CancellationException) {
+                throw e
+            } catch (e: java.io.IOException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh error", e)
@@ -646,8 +694,11 @@ class KilterApiClient @Inject constructor(
      * Fetch all ascent logs for the authenticated user.
      */
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
-        val token = ensureValidToken()
-            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext Result.failure(e)
+        } ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
         val request = Request.Builder()
             .url("$apiBase/logs")
             .addHeader("Authorization", "Bearer $token")
@@ -659,7 +710,7 @@ class KilterApiClient @Inject constructor(
         var lastError: Exception = Exception("fetchLogs: no attempt made")
         repeat(DOWNLOAD_MAX_RETRIES + 1) { attempt ->
             try {
-                val response = httpClient.newCall(request).execute()
+                val response = uploadHttpClient.newCall(request).execute()
                 if (response.isSuccessful) {
                     val body = response.body?.string()
                         ?: return@withContext Result.failure(Exception("Leere Antwort"))
@@ -681,9 +732,9 @@ class KilterApiClient @Inject constructor(
                 val bodyText = response.body?.string().orEmpty().take(MAX_ERR_BODY)
                 response.close()
                 if (response.code !in 500..599) {
-                    return@withContext Result.failure(Exception("HTTP ${response.code}: $bodyText"))
+                    return@withContext Result.failure(KilterHttpException(response.code, bodyText))
                 }
-                lastError = Exception("HTTP ${response.code}: $bodyText")
+                lastError = KilterHttpException(response.code, bodyText)
                 Log.w(TAG, "fetchLogs HTTP ${response.code} (attempt ${attempt + 1})")
             } catch (e: CancellationException) {
                 throw e
@@ -874,52 +925,37 @@ class KilterApiClient @Inject constructor(
         }
     }
 
-    private fun sameUploadedLog(local: KilterLog, remote: KilterLog): Boolean =
-        local.climbUuid == remote.climbUuid && local.angle == remote.angle &&
-            local.topped == remote.topped && local.flashed == remote.flashed &&
-            local.attempts == remote.attempts && local.userUuid == remote.userUuid &&
-            local.gymUuid == remote.gymUuid && local.wallUuid == remote.wallUuid &&
-            local.productLayoutUuid == remote.productLayoutUuid &&
-            runCatching { java.time.Instant.parse(local.createdAt) == java.time.Instant.parse(remote.createdAt) }
-                .getOrDefault(local.createdAt == remote.createdAt)
-
     /**
-     * Upload local ascents to Kilter in bulk.
+     * Post [logs] to Kilter's bulk endpoint exactly as given.
+     *
+     * The caller owns everything around it: climb ids already in the spelling
+     * Kilter stores ([KilterClimbWireIds]), and no log uuid Kilter already
+     * holds — bulk is an insert, not an upsert, and a known uuid fails the
+     * request. Kilter treats the request as a unit: one row it refuses fails
+     * all of them and writes nothing (verified live on 2026-09-29), so a
+     * failed request can be split and retried without duplicating anything.
+     *
+     * Failures: [KilterUploadException] with the HTTP status; an IOException
+     * when no answer arrived ([KilterUploadFailure.noAnswer] tells whether the
+     * request may have reached Kilter, so the rows may have been written);
+     * KilterApiException without a usable session.
      */
     suspend fun uploadLogs(logs: List<KilterLog>): Result<Unit> = withContext(Dispatchers.IO) {
         if (logs.isEmpty()) return@withContext Result.success(Unit)
 
-        val token = ensureValidToken()
-            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext Result.failure(e)
+        } ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
-            // Legacy catalogue keys are case-sensitive upstream: compact uppercase.
-            // Lowercase compact IDs fail; adding UUID hyphens creates a different
-            // statistics identity even when the server resolves the climb's name.
-            // Keep native hyphenated IDs and all local/log identities unchanged.
-            val wireLogs = logs.map { log ->
-                if (COMPACT_CLIMB_UUID.matches(log.climbUuid)) {
-                    log.copy(climbUuid = log.climbUuid.uppercase())
-                } else log
-            }
-            // Kilter bulk inserts are not upserts: duplicate log UUIDs return 500.
-            // Reconcile before posting, including retries after a lost response.
-            val existing = fetchLogs().getOrThrow().associateBy { it.logUuid }
-            val missing = wireLogs.filter { log ->
-                val remote = existing[log.logUuid]
-                if (remote != null && !sameUploadedLog(log, remote)) throw KilterLogConflictException()
-                remote == null
-            }
-            if (missing.isEmpty()) return@withContext Result.success(Unit)
-            val payload = json.encodeToString(missing)
-            val requestBody = payload.toRequestBody("application/json".toMediaType())
-
             val request = Request.Builder()
                 .url("$apiBase/logs/bulk")
                 .addHeader("Authorization", "Bearer $token")
-                .post(requestBody)
+                .post(json.encodeToString(logs).toRequestBody("application/json".toMediaType()))
                 .build()
-            httpClient.newCall(request).execute().use { response ->
+            bulkHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     // Do not retain response bodies: servers can echo private log data.
                     return@withContext Result.failure(KilterUploadException(response.code))
@@ -1156,6 +1192,43 @@ class KilterApiClient @Inject constructor(
     }
 
     /**
+     * `DELETE /api/logs/{uuid}` answered as whether Kilter held the log: 200
+     * when it did (it is gone now), 204 (or 404) when it did not (verified
+     * live 2026-10-07, attempts and ascents alike). Kilter takes the same uuid
+     * again afterwards. The upload uses it to find out whether a log it cannot
+     * see in the logbook is there, and to replace a copy Kilter keeps.
+     */
+    suspend fun deleteLogIfHeld(logUuid: String): KilterDeleteOutcome = withContext(Dispatchers.IO) {
+        val token = try {
+            ensureValidTokenOrOffline()
+        } catch (e: KilterOfflineException) {
+            return@withContext KilterDeleteOutcome.FAILED
+        } ?: return@withContext KilterDeleteOutcome.FAILED
+        val request = Request.Builder()
+            .url("$apiBase/logs/$logUuid")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                when (resp.code) {
+                    200 -> KilterDeleteOutcome.HELD
+                    204, 404 -> KilterDeleteOutcome.NOT_HELD
+                    else -> {
+                        Log.w(TAG, "deleteLogIfHeld HTTP ${resp.code}")
+                        KilterDeleteOutcome.FAILED
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteLogIfHeld failed (${e.javaClass.simpleName})")
+            KilterDeleteOutcome.FAILED
+        }
+    }
+
+    /**
      * Delete an own climb. Method `DELETE /api/climbs/{uuid}` — verified
      * empirically; the server returns "The climbs have been deleted
      * successfully." on success. Note: there is no PATCH-with-isDeleted
@@ -1343,6 +1416,17 @@ class KilterApiClient @Inject constructor(
         val token = tokenStore.getAccessToken() ?: return null
         if (!tokenStore.isAccessTokenExpired()) return token
         return if (refreshAccessToken()) tokenStore.getAccessToken() else null
+    }
+
+    /** [ensureValidToken] for the upload's calls; offline throws [KilterOfflineException] instead of reading as logged out. */
+    private suspend fun ensureValidTokenOrOffline(): String? {
+        val token = tokenStore.getAccessToken() ?: return null
+        if (!tokenStore.isAccessTokenExpired()) return token
+        return try {
+            if (refreshAccessTokenOrThrow()) tokenStore.getAccessToken() else null
+        } catch (e: java.io.IOException) {
+            throw KilterOfflineException(e)
+        }
     }
 
     /**

@@ -3030,6 +3030,8 @@
     <string name="kilter_upload_network">Cannot reach Kilter. Please check your connection.</string>
     <string name="kilter_upload_http">Kilter rejected the upload. Please try again.</string>
     <string name="kilter_upload_internal">Upload failed. Please try again.</string>
+    <string name="kilter_upload_timeout">Kilter is answering too slowly right now.</string>
+    <string name="kilter_upload_auto_retry">CruxCoach will try again automatically.</string>
     <string name="kilter_upload_retry">Retry upload</string>
     <string name="kilter_upload_report_title">Kilter logbook upload</string>
     <string name="kilter_diagnostics_attach">Attach Kilter upload diagnostics</string>
@@ -3038,6 +3040,45 @@
     <string name="kilter_upload_syncing">Syncing logbook…</string>
     <string name="kilter_upload_unchecked">Sync not checked yet</string>
     <string name="kilter_upload_conflict">This entry differs from Kilter. Please check it in the Kilter app.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter does not know the climb of %d entry under any id. It stays in your logbook and is tried again after you edit it or update the app.</item>
+        <item quantity="other">Kilter does not know the climbs of %d entries under any id. They stay in your logbook and are tried again after you edit them or update the app.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d entry differs from its copy in Kilter and stays local. Please check it in the Kilter app.</item>
+        <item quantity="other">%d entries differ from their copies in Kilter and stay local. Please check them in the Kilter app.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d entry from an Aurora export is not uploaded automatically: Kilter usually has it already.</item>
+        <item quantity="other">%d entries from an Aurora export are not uploaded automatically: Kilter usually has them already.</item>
+    </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d entry has a date Kilter cannot accept and stays local.</item>
+        <item quantity="other">%d entries have a date Kilter cannot accept and stay local.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbook synced, except:</string>
+    <plurals name="kilter_upload_unconfirmed">
+        <item quantity="one">Kilter has not taken %d entry yet. It is tried again automatically.</item>
+        <item quantity="other">Kilter has not taken %d entries yet. They are tried again automatically.</item>
+    </plurals>
+    <string name="kilter_upload_show_entries">Show entries</string>
+    <string name="kilter_upload_list_failed">The list could not be loaded. Please try again.</string>
+    <string name="kilter_upload_list_title">Not uploaded</string>
+    <string name="kilter_upload_list_intro">These entries stay in your logbook. If a climb does exist on Kilter, send the list as a bug report so it can be fixed.</string>
+    <string name="kilter_upload_list_empty">All entries are on Kilter.</string>
+    <string name="kilter_upload_list_report">Send as bug report</string>
+    <string name="kilter_upload_reason_not_on_kilter">Kilter does not know this climb</string>
+    <string name="kilter_upload_reason_retry_later">Not taken yet, tried again automatically</string>
+    <string name="kilter_upload_reason_conflict">Kilter has this entry with different content</string>
+    <string name="kilter_upload_reason_invalid_date">Date Kilter cannot accept</string>
+    <string name="kilter_upload_entry_bid">attempts only</string>
+    <string name="kilter_upload_unknown_climb">Unknown climb</string>
+    <string name="kilter_upload_report_list_header">Kilter did not take these logbook entries (app %1$s):</string>
+    <string name="kilter_upload_report_list_more">… and %1$d more</string>
+    <string name="kilter_upload_imported_action">Upload imported entries</string>
+    <string name="kilter_upload_imported_title">Upload imported entries?</string>
+    <string name="kilter_upload_imported_message">These entries come from an Aurora export. If the export is from this Kilter account, Kilter already has most of them. CruxCoach skips every entry Kilter already has for the same climb, angle and day, and uploads the rest.</string>
+    <string name="kilter_upload_imported_confirm">Upload</string>
     <string name="board_angle_change">Change angle, %1$d degrees</string>
     <string name="board_angle_physical_hint">Match the angle of your physical board. This does not move the board.</string>
     <string name="board_angle_unavailable">Choose a board with available angle information first.</string>

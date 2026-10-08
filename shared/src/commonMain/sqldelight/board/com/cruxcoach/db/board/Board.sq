@@ -1025,6 +1025,21 @@ WHERE uuid IN ?
   AND origin = 'cruxcoach'
   AND (kilter_status IS NULL OR kilter_status != 'synced');
 
+-- Climbs authored in CruxCoach among the given uuids. The editor has always
+-- generated their ids in lowercase, and that is the spelling Kilter stores
+-- for the ones it accepted — a log upload must not re-case them.
+cruxcoachClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?
+  AND origin = 'cruxcoach';
+
+-- Which of the given spellings exist as catalogue rows (exact match, uuid
+-- index). Lets the Kilter upload tell a legacy climb (compact row) from a
+-- new-world one (dashed row) when a logbook entry spells it with hyphens.
+existingClimbUuids:
+SELECT uuid FROM climbs
+WHERE uuid IN ?;
+
 -- ═══ Board-scoped list / setter resolution (active-board scoping) ═══
 --
 -- The plain getClimbsByUuids*/getClimbsByPubkey queries above resolve a
@@ -1598,6 +1613,10 @@ LIMIT 1;
 -- the BoardBrowser → Detail flow keeps showing the user's actual
 -- physical board, falling back to the per-climb source size only
 -- when an Aurora-imported / cross-board climb genuinely doesn't fit.
+-- Strict comparison like the browse filter: a size's frame edges sit one
+-- grid unit (4) beyond its outermost mounted holes, so a climb whose edge
+-- equals the frame uses a hole only a larger size has (a 16 x 12 climb
+-- with holds at x = 144 drew them clipped on the 12 x 12 frame).
 canRenderClimbOnSize:
 SELECT 1 FROM climbs c
 JOIN product_sizes ps ON ps.id = :productSizeId AND ps.board_brand = :brand
@@ -1607,10 +1626,10 @@ WHERE c.uuid = :uuid
       WHERE bi.product_size_id = ps.id AND bi.layout_id = c.layout_id AND bi.board_brand = :brand
   )
   AND (c.edge_left IS NULL OR (
-        ps.edge_left   <= c.edge_left  AND
-        ps.edge_right  >= c.edge_right AND
-        ps.edge_bottom <= c.edge_bottom AND
-        ps.edge_top    >= c.edge_top
+        ps.edge_left   < c.edge_left  AND
+        ps.edge_right  > c.edge_right AND
+        ps.edge_bottom < c.edge_bottom AND
+        ps.edge_top    > c.edge_top
       ))
 LIMIT 1;
 
@@ -1632,13 +1651,13 @@ LIMIT 1;
 -- board as zoomed-in on the climb as possible without clipping. The
 -- EXISTS guard ensures we never return a size that has no
 -- board_images rows for the climb's layout (those would render an
--- empty background).
+-- empty background). Containment is strict, as in canRenderClimbOnSize.
 getProductSizeForClimbRender:
 SELECT ps.id FROM climbs c
-JOIN product_sizes ps ON ps.edge_left   <= c.edge_left
-                     AND ps.edge_right  >= c.edge_right
-                     AND ps.edge_bottom <= c.edge_bottom
-                     AND ps.edge_top    >= c.edge_top
+JOIN product_sizes ps ON ps.edge_left   < c.edge_left
+                     AND ps.edge_right  > c.edge_right
+                     AND ps.edge_bottom < c.edge_bottom
+                     AND ps.edge_top    > c.edge_top
                      AND ps.board_brand = :brand
 WHERE c.uuid = :uuid
   AND c.edge_left IS NOT NULL

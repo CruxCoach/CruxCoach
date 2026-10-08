@@ -3029,6 +3029,8 @@
     <string name="kilter_upload_network">Kilter nicht erreichbar. Bitte Internetverbindung prüfen.</string>
     <string name="kilter_upload_http">Kilter hat den Upload abgelehnt. Bitte erneut versuchen.</string>
     <string name="kilter_upload_internal">Upload fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_timeout">Kilter antwortet gerade zu langsam.</string>
+    <string name="kilter_upload_auto_retry">CruxCoach versucht es automatisch erneut.</string>
     <string name="kilter_upload_retry">Upload wiederholen</string>
     <string name="kilter_upload_report_title">Kilter-Logbuch übertragen</string>
     <string name="kilter_diagnostics_attach">Kilter-Uploaddiagnose anhängen</string>
@@ -3037,6 +3039,45 @@
     <string name="kilter_upload_syncing">Logbuch wird synchronisiert…</string>
     <string name="kilter_upload_unchecked">Synchronisierung noch nicht geprüft</string>
     <string name="kilter_upload_conflict">Dieser Eintrag weicht von Kilter ab. Bitte in der Kilter-App prüfen.</string>
+    <plurals name="kilter_upload_rejected">
+        <item quantity="one">Kilter kennt den Climb von %d Eintrag unter keiner ID. Er bleibt in deinem Logbuch und wird nach einer Änderung oder einem App-Update erneut versucht.</item>
+        <item quantity="other">Kilter kennt die Climbs von %d Einträgen unter keiner ID. Sie bleiben in deinem Logbuch und werden nach einer Änderung oder einem App-Update erneut versucht.</item>
+    </plurals>
+    <plurals name="kilter_upload_conflicts">
+        <item quantity="one">%d Eintrag weicht von seiner Kopie bei Kilter ab und bleibt lokal. Bitte in der Kilter-App prüfen.</item>
+        <item quantity="other">%d Einträge weichen von ihren Kopien bei Kilter ab und bleiben lokal. Bitte in der Kilter-App prüfen.</item>
+    </plurals>
+    <plurals name="kilter_upload_held_imported">
+        <item quantity="one">%d Eintrag aus einem Aurora-Export wird nicht automatisch übertragen: Kilter hat ihn meist schon.</item>
+        <item quantity="other">%d Einträge aus einem Aurora-Export werden nicht automatisch übertragen: Kilter hat sie meist schon.</item>
+    </plurals>
+    <plurals name="kilter_upload_invalid">
+        <item quantity="one">%d Eintrag hat ein Datum, das Kilter nicht annimmt, und bleibt lokal.</item>
+        <item quantity="other">%d Einträge haben ein Datum, das Kilter nicht annimmt, und bleiben lokal.</item>
+    </plurals>
+    <string name="kilter_upload_done_except">Logbuch synchronisiert, bis auf:</string>
+    <plurals name="kilter_upload_unconfirmed">
+        <item quantity="one">Kilter hat %d Eintrag noch nicht angenommen. Er wird automatisch erneut versucht.</item>
+        <item quantity="other">Kilter hat %d Einträge noch nicht angenommen. Sie werden automatisch erneut versucht.</item>
+    </plurals>
+    <string name="kilter_upload_show_entries">Einträge anzeigen</string>
+    <string name="kilter_upload_list_failed">Die Liste konnte nicht geladen werden. Bitte erneut versuchen.</string>
+    <string name="kilter_upload_list_title">Nicht übertragen</string>
+    <string name="kilter_upload_list_intro">Diese Einträge bleiben in deinem Logbuch. Gibt es einen Climb bei Kilter doch, schick die Liste als Fehlerbericht, damit er korrigiert werden kann.</string>
+    <string name="kilter_upload_list_empty">Alle Einträge sind bei Kilter.</string>
+    <string name="kilter_upload_list_report">Als Fehlerbericht senden</string>
+    <string name="kilter_upload_reason_not_on_kilter">Kilter kennt diesen Climb nicht</string>
+    <string name="kilter_upload_reason_retry_later">Noch nicht angenommen, wird erneut versucht</string>
+    <string name="kilter_upload_reason_conflict">Kilter hat diesen Eintrag mit anderem Inhalt</string>
+    <string name="kilter_upload_reason_invalid_date">Datum, das Kilter nicht annimmt</string>
+    <string name="kilter_upload_entry_bid">nur Versuche</string>
+    <string name="kilter_upload_unknown_climb">Unbekannter Climb</string>
+    <string name="kilter_upload_report_list_header">Kilter hat diese Logbuch-Einträge nicht angenommen (App %1$s):</string>
+    <string name="kilter_upload_report_list_more">… und %1$d weitere</string>
+    <string name="kilter_upload_imported_action">Importierte übertragen</string>
+    <string name="kilter_upload_imported_title">Importierte Einträge übertragen?</string>
+    <string name="kilter_upload_imported_message">Diese Einträge stammen aus einem Aurora-Export. Stammt er aus diesem Kilter-Konto, hat Kilter die meisten schon. CruxCoach überspringt jeden Eintrag, den Kilter für denselben Boulder, Winkel und Tag bereits hat, und überträgt den Rest.</string>
+    <string name="kilter_upload_imported_confirm">Übertragen</string>
     <string name="board_angle_change">Winkel ändern, %1$d Grad</string>
     <string name="board_angle_physical_hint">Stelle den Winkel wie am Board ein. Das Board wird dadurch nicht verstellt.</string>
     <string name="board_angle_unavailable">Wähle zuerst ein Board mit verfügbaren Winkelangaben.</string>
