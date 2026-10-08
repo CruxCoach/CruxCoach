@@ -108,11 +108,13 @@ class KilterReplacementTest {
 
     @Test fun an_edited_uploaded_send_is_replaced_but_a_new_rating_alone_is_not() {
         ascent("send", synced = true)
-        repo.updateAscent("send", bidCount = 2, quality = 3, comment = null)
+        // Device test 2026-10-08: a new rating first, then more attempts.
+        repo.updateAscent("send", bidCount = 2, quality = 4, comment = null)
         assertTrue(repo.pendingLogDeletions().isEmpty(), "the rating is not part of a Kilter log")
-        repo.markAscentSyncedIfUnchanged("send", unsyncedAscent("send")!!.rowVersion)
-        repo.updateAscent("send", bidCount = 4, quality = 3, comment = null)
+        assertEquals(null, unsyncedAscent("send"), "a rating alone leaves the row as uploaded")
+        repo.updateAscent("send", bidCount = 4, quality = 4, comment = null)
         assertEquals(listOf("send"), repo.pendingLogDeletions())
+        assertEquals(4, unsyncedAscent("send")!!.bidCount)
         assertFalse(unsyncedAscent("send") == null)
     }
 
