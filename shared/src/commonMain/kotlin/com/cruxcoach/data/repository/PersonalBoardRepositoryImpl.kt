@@ -105,6 +105,12 @@ class PersonalBoardRepositoryImpl(
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {
         database.transaction {
             val before = database.ascentsQueries.selectAscentUploadState(uuid).executeAsOneOrNull()
+            // The rating is no part of a Kilter log: a new one alone keeps the row as
+            // uploaded, so that a later edit still knows Kilter holds a copy.
+            if (before != null && before.bid_count == bidCount && before.comment == comment) {
+                database.ascentsQueries.updateAscentQuality(quality = quality, uuid = uuid)
+                return@transaction
+            }
             database.ascentsQueries.updateAscent(
                 bid_count = bidCount,
                 quality = quality,
@@ -112,10 +118,7 @@ class PersonalBoardRepositoryImpl(
                 uuid = uuid
             )
             // Kilter takes no updates: what it holds goes, the edited row is uploaded anew.
-            // The rating is not part of a Kilter log.
-            if (before?.synced == 1L && (before.bid_count != bidCount || before.comment != comment)) {
-                queueKilterReplacement(uuid)
-            }
+            if (before?.synced == 1L) queueKilterReplacement(uuid)
         }
     }
 
