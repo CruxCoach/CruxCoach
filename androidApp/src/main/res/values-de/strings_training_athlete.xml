@@ -32,7 +32,6 @@
     <string name="tra_plan_title">Plan</string>
     <string name="tra_weekly_goal">Wochenziel: %1$d Trainingstage</string>
     <string name="tra_goal">Ziel</string>
-    <string name="tra_goal_loss_blocked">Ein Abnehmziel ist gerade nicht verfügbar, weil dein Gewicht oder Trend dagegen spricht. Kraftfortschritt zeigt sich am Hangboard, nicht auf der Waage.</string>
     <string name="tra_modules_title">Module</string>
     <string name="tra_module_checkin">Morgendlicher Check-in</string>
     <string name="tra_module_body">Körper-Tracking</string>

@@ -75,11 +75,10 @@
     <string name="trt_sugg_weight_text">Needed for percent of body weight on the hangboard and for nutrition targets.</string>
     <string name="trt_sugg_weight_action">Log</string>
     <string name="trt_reds_title">Look after your energy</string>
-    <string name="trt_reds_info">Climbing rewards strength to weight, and that can tempt people into eating too little. Too little energy for the training you do (relative energy deficiency in sport, RED-S) costs strength, recovery and health – bones, hormones, immune system. CruxCoach only notices patterns and never diagnoses. If several signs fit you – lasting tiredness, frequent illness, missed periods, dizziness, stalling despite training – talk to a doctor or a sports dietitian.</string>
+    <string name="trt_reds_info">Climbing rewards strength to weight, and that can tempt people into eating too little. Too little energy for the training you do (relative energy deficiency in sport, RED-S) costs strength, recovery and health – bones, hormones, immune system. CruxCoach shows the numbers behind each sign and never diagnoses; your goals stay yours. If several signs fit you – lasting tiredness, frequent illness, missed periods, dizziness, stalling despite training, thoughts circling around food and weight – talk to a doctor, a sports dietitian or an eating-disorder counselling service.</string>
     <string name="trt_reds_low_bmi">Your body weight is below the range climbing federations use for health checks.</string>
     <string name="trt_reds_rapid_loss">Your weight trend has been falling quickly.</string>
     <string name="trt_reds_low_carbs">On several training days you logged far less carbohydrate than the training needs.</string>
-    <string name="trt_reds_goal_paused">Your weight-loss goal is paused while these signs are present.</string>
     <string name="trt_spike_title">Load jump: %1$s</string>
     <string name="trt_spike_text">More loading days than in the three weeks before. Not a ban – just worth knowing.</string>
     <string name="trt_trend_direction">Trend direction</string>

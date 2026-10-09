@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Energiebedarf, Abnehmziel und Energie-Warnungen (FEAT-068, Owner 2026-10-09: Werte offen zeigen, warnen statt sperren). -->
+<resources>
+    <string name="trn_energy">Energie</string>
+    <string name="trn_of_kcal">von %1$d kcal</string>
+    <string name="trn_to_go">noch %1$d</string>
+    <string name="trn_need_met">Bedarf gedeckt</string>
+    <string name="trn_target_met">Ziel erreicht</string>
+    <string name="trn_over_target">%1$d über Ziel</string>
+    <string name="trn_open_energy">Energiebedarf anzeigen</string>
+
+    <string name="trn_sheet_title">Energie heute</string>
+    <string name="trn_resting">Grundumsatz</string>
+    <string name="trn_everyday">Alltag</string>
+    <string name="trn_training">Training heute</string>
+    <string name="trn_no_training">noch kein Training</string>
+    <string name="trn_need">Bedarf</string>
+    <string name="trn_deficit_line">Defizit für %1$s pro Woche</string>
+    <string name="trn_target">Kalorienziel</string>
+    <string name="trn_eaten">Gegessen</string>
+    <string name="trn_kcal">%1$d kcal</string>
+    <string name="trn_kcal_signed">%1$s kcal</string>
+    <string name="trn_everyday_seated">Meist sitzend</string>
+    <string name="trn_everyday_on_feet">Viel auf den Beinen</string>
+    <string name="trn_everyday_physical">Körperliche Arbeit</string>
+    <string name="trn_age_assumed">Alter angenommen: %1$d. Mit deinem Geburtsjahr wird es genauer.</string>
+    <string name="trn_sex_assumed">Kein Geschlecht angegeben: Mittelwert beider Formeln.</string>
+    <string name="trn_needs_height">Für den Energiebedarf fehlt deine Größe.</string>
+    <string name="trn_needs_weight">Für den Energiebedarf fehlt dein Körpergewicht.</string>
+    <string name="trn_estimate_note" formatted="false">Eine Schätzung (Mifflin-St Jeor plus Alltag und Trainingszeit), oft 10–15 % daneben. Dein Gewichtstrend über einige Wochen zeigt, ob sie passt.</string>
+    <string name="trn_set_goal">Abnehmziel festlegen</string>
+    <string name="trn_edit_goal">Abnehmziel bearbeiten</string>
+
+    <string name="trn_goal_title">Abnehmen</string>
+    <string name="trn_goal_target">Zielgewicht (optional)</string>
+    <string name="trn_goal_pace">Tempo</string>
+    <string name="trn_goal_pace_value">%1$s pro Woche</string>
+    <string name="trn_goal_pace_share">%1$s %% deines Gewichts · etwa %2$d kcal weniger pro Tag</string>
+    <string name="trn_goal_pace_share_plain">%1$s %% deines Gewichts pro Woche</string>
+    <string name="trn_goal_target_today">Kalorienziel heute: etwa %1$d kcal</string>
+    <string name="trn_goal_target_math">Bedarf %1$d − %2$d kcal. Trainingstage bekommen mehr.</string>
+    <string name="trn_goal_weeks">Zielgewicht in etwa %1$d Wochen</string>
+    <string name="trn_goal_reached">Zielgewicht erreicht: Dein Kalorienziel ist dein Bedarf.</string>
+    <string name="trn_goal_save">Speichern</string>
+    <string name="trn_goal_stop">Abnehmen beenden</string>
+    <string name="trn_goal_pace_minus">Langsamer</string>
+    <string name="trn_goal_pace_plus">Schneller</string>
+    <string name="trn_goal_summary">%1$s pro Woche · heute etwa %2$d kcal</string>
+    <string name="trn_goal_summary_plain">%1$s pro Woche</string>
+    <string name="trn_goal_summary_target">Ziel %1$s</string>
+    <string name="trn_goal_edit">Bearbeiten</string>
+    <string name="trn_goal_info" formatted="false">CruxCoach zeigt dir alle Werte und warnt, entscheidet aber nicht für dich. Für Kletternde empfohlen: höchstens 0,5–1 % des Körpergewichts pro Woche und ein Kalorienziel höchstens 25 % unter deinem Bedarf – schnelleres Abnehmen kostet Kraft und Muskeln. Trainingstage bekommen ein höheres Ziel, damit du gut trainieren kannst.</string>
+
+    <string name="trn_adjust_goal">Abnehmziel anpassen</string>
+    <string name="trn_w_low_bmi">Dein BMI liegt bei %1$s – unter %2$s, ab dem Kletterverbände (IFSC) einen Gesundheitscheck empfehlen.</string>
+    <string name="trn_w_rapid_week">Dein Gewicht sinkt um %1$s pro Woche (%2$s %% deines Gewichts). Mehr als 1 %% pro Woche kostet Kraft und Muskeln.</string>
+    <string name="trn_w_rapid_month">Dein Gewicht ist in vier Wochen um %1$s %% gesunken. Mehr als 3 %% kosten Kraft und Muskeln.</string>
+    <string name="trn_w_high_deficit">An %1$d erfassten Tagen hast du im Schnitt %2$d kcal gegessen – %3$d %% unter deinem geschätzten Bedarf von %4$d kcal (falls alles eingetragen ist).</string>
+    <string name="trn_w_high_deficit_plain">An %1$d erfassten Tagen hast du etwa %2$d %% weniger gegessen als dein geschätzter Bedarf (falls alles eingetragen ist).</string>
+    <string name="trn_w_fast_pace">Dein Tempo von %1$s pro Woche sind %2$s %% deines Gewichts – empfohlen sind höchstens 0,5–1 %%.</string>
+    <string name="trn_w_fast_pace_plain" formatted="false">Dein Tempo liegt über 1 % deines Gewichts pro Woche – empfohlen sind höchstens 0,5–1 %.</string>
+    <string name="trn_w_large_deficit">Dein Kalorienziel liegt %1$d %% unter deinem geschätzten Bedarf – mehr als 25 %% sind ein großes Defizit.</string>
+    <string name="trn_w_below_resting">Dein Kalorienziel von %1$d kcal liegt unter deinem Grundumsatz (%2$d kcal).</string>
+    <string name="trn_w_low_target_bmi">Dein Zielgewicht entspricht einem BMI von %1$s – unter %2$s, ab dem Kletterverbände einen Gesundheitscheck empfehlen.</string>
+    <string name="trn_w_low_target_bmi_plain">Dein Zielgewicht liegt unter dem Bereich, den Kletterverbände für Gesundheitschecks nutzen.</string>
+
+    <string name="trn_tile_kcal">%1$d von %2$d kcal</string>
+    <string name="trn_review_energy">Energie an erfassten Tagen: %1$d kcal (geschätzter Bedarf etwa %2$d kcal)</string>
+    <string name="trn_review_energy_no_need">Energie an erfassten Tagen: %1$d kcal</string>
+    <string name="trn_set_everyday">Alltag (für den Energiebedarf)</string>
+    <string name="trn_height_label">Größe (%1$s)</string>
+    <string name="trn_birth_year_label">Geburtsjahr</string>
+</resources>

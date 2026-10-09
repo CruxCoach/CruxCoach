@@ -725,17 +725,51 @@ class AthleteService @Inject constructor(
         return FuelTargets.compute(weight, dayActivity, profile.proteinPerKg)
     }
 
-    fun redsSignals(profile: AthleteProfile, activities: Map<String, DayActivity>): List<RedsSignal> {
+    /** The day's estimated energy need; null without weight or height. */
+    fun energyNeed(profile: AthleteProfile, dayActivity: DayActivity?, weightKg: Double? = currentBodyweight(), heightCm: Double? = heightCm()): EnergyBalance.Need? =
+        EnergyBalance.need(profile, weightKg, heightCm, dayActivity, today().year)
+
+    /** Today's weight-loss plan while the goal is set; null otherwise or without a body weight. */
+    fun weightPlan(profile: AthleteProfile, todayActivity: DayActivity?): WeightPlan.Plan? {
+        if (profile.goal != AthleteGoal.LOSE_WEIGHT) return null
+        val weight = currentBodyweight() ?: return null
+        val height = heightCm()
+        return WeightPlan.plan(profile.weeklyLossKg, profile.targetWeightKg, weight, height, profile.sex,
+            energyNeed(profile, todayActivity, weight, height))
+    }
+
+    /**
+     * The energy guard over the last seven days, with its numbers. Today is
+     * never compared with its need: the day is still running.
+     */
+    fun energyReport(profile: AthleteProfile, activities: Map<String, DayActivity>): EnergyReport {
         val today = today()
         val from = today.minus(DatePeriod(days = 6)).toString()
         val logs = repo.foodLogBetween(from, today.toString()).groupBy { it.day }
+        val weight = currentBodyweight()
+        val height = heightCm()
         val fuelDays = (0..6).map { back ->
             val day = today.minus(DatePeriod(days = 6 - back)).toString()
             val entries = logs[day].orEmpty()
+            val energies = entries.mapNotNull { MacroTotals.energy(it) }
             FuelDay(day, logged = entries.isNotEmpty(), carbsG = entries.mapNotNull { it.carbsG }.takeIf { it.isNotEmpty() }?.sum(),
-                dayLoad = FuelTargets.dayLoad(activities[day]))
+                dayLoad = FuelTargets.dayLoad(activities[day]),
+                kcal = energies.takeIf { it.isNotEmpty() }?.sumOf { it.kcal },
+                needKcal = energyNeed(profile, activities[day], weight, height)?.totalKcal,
+                complete = day != today.toString() && entries.map { it.meal }.distinct().size >= 2)
         }
-        return RedsGuard.evaluate(profile, heightCm(), weightTrend(), fuelDays)
+        return RedsGuard.evaluate(profile, height, weightTrend(), fuelDays, weightPlan(profile, activities[today.toString()]))
+    }
+
+    /** Turns the weight-loss goal on with its target and pace, or off (target and pace stay for next time). */
+    fun saveWeightGoal(lose: Boolean, targetKg: Double?, paceKg: Double) = repo.updateProfile {
+        it.copy(
+            goal = if (lose) AthleteGoal.LOSE_WEIGHT
+                else if (it.goal == AthleteGoal.LOSE_WEIGHT) it.coach.goal?.let(CoachLogic::athleteGoalFor) ?: AthleteGoal.PERFORM
+                else it.goal,
+            targetWeightKg = targetKg,
+            weeklyLossKg = WeightPlan.clampPace(paceKg),
+        )
     }
 }
 

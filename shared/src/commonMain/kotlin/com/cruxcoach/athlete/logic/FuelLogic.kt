@@ -1,6 +1,5 @@
 package com.cruxcoach.athlete.logic
 
-import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.FoodLogEntry
@@ -36,8 +35,8 @@ enum class DayLoad { REST, LIGHT, MODERATE, HARD, VERY_HARD }
  * Protein follows body weight (ISSN range 1.4–2.0 g/kg). Carbohydrate follows
  * the day's training load inside the 3–7 g/kg range reported for climbers —
  * which CruxCoach can set automatically because board sessions are logged
- * anyway. There is deliberately no calorie budget here: the goal is enough
- * fuel for training, not a deficit.
+ * anyway. Energy (need, and the calorie target while losing weight) is
+ * [EnergyBalance] and [WeightPlan].
  */
 object FuelTargets {
 
@@ -82,8 +81,13 @@ object FuelTargets {
 
     fun trainingMinutes(activity: DayActivity?): Int {
         if (activity == null) return 0
-        val climb = if (activity.climbingMinutes > 0) activity.climbingMinutes else activity.climbingEfforts * MINUTES_PER_EFFORT
-        return climb + activity.workoutMinutes
+        return climbingMinutes(activity) + activity.workoutMinutes
+    }
+
+    /** Climbing time of the day; logged efforts count about four minutes each without a recorded session. */
+    fun climbingMinutes(activity: DayActivity?): Int {
+        if (activity == null) return 0
+        return if (activity.climbingMinutes > 0) activity.climbingMinutes else activity.climbingEfforts * MINUTES_PER_EFFORT
     }
 
     fun carbsPerKg(load: DayLoad): Double = when (load) {
@@ -162,27 +166,80 @@ data class MacroTotals(
     }
 }
 
-/** One day of logged fueling, as the energy-availability guard sees it. */
-data class FuelDay(val day: String, val logged: Boolean, val carbsG: Double?, val dayLoad: DayLoad)
+/**
+ * One day of logged fueling, as the energy guard sees it. [kcal] and
+ * [needKcal] compare the day with its estimated need; only [complete] days
+ * (food in at least two meals, and not today) are compared, so a day with one
+ * logged snack does not read as a huge deficit.
+ */
+data class FuelDay(
+    val day: String,
+    val logged: Boolean,
+    val carbsG: Double?,
+    val dayLoad: DayLoad,
+    val kcal: Double? = null,
+    val needKcal: Int? = null,
+    val complete: Boolean = false,
+)
 
 enum class RedsSignal {
     /** BMI under the IFSC 2024 screening threshold. */
     LOW_BMI,
     /** Trend weight falling fast. */
     RAPID_LOSS,
+    /** Logged energy clearly below the estimated need over several days. */
+    HIGH_DEFICIT,
     /** Logged carbohydrate repeatedly far below need on training days. */
     LOW_CARBS_ON_TRAINING_DAYS,
-    /** A weight-loss goal was set but one of the signals above is present. */
-    LOSS_GOAL_PAUSED,
+    /** The planned loss is faster than 1 % of body weight per week. */
+    FAST_PACE,
+    /** The calorie target is far under the need, or under resting energy. */
+    LARGE_DEFICIT,
+    /** The target weight lies under the BMI screening threshold. */
+    LOW_TARGET_BMI,
+}
+
+/** What the energy guard noticed, with the numbers behind it, so the app can show them. */
+data class EnergyReport(
+    val signals: List<RedsSignal> = emptyList(),
+    val bmi: Double? = null,
+    val bmiThreshold: Double = 18.5,
+    /** Trend change per week in kg and as a share of the trend weight; negative while losing. */
+    val weeklyRateKg: Double? = null,
+    val weeklyRateShare: Double? = null,
+    /** Trend change over four weeks as a share of the trend weight. */
+    val fourWeekShare: Double? = null,
+    /** Mean energy eaten and mean estimated need over [comparedDays] complete days. */
+    val avgIntakeKcal: Int? = null,
+    val avgNeedKcal: Int? = null,
+    val comparedDays: Int = 0,
+    val lowCarbDays: Int = 0,
+    /** The weight-loss plan, while one is active. */
+    val plan: WeightPlan.Plan? = null,
+) {
+    /** Mean deficit as a share of the need (0.3 = 30 % under it); null without compared days. */
+    val deficitShare: Double?
+        get() {
+            val intake = avgIntakeKcal ?: return null
+            val need = avgNeedKcal?.takeIf { it > 0 } ?: return null
+            return (need - intake).toDouble() / need
+        }
 }
 
 /**
- * Low-energy-availability guard. It never diagnoses and never prescribes a
- * weight; it only decides when the app should stop supporting weight loss and
- * show the supportive information screen instead. Thresholds follow the IFSC
- * 2024 RED-S policy (BMI 18.5 men / 17.5 women triggers evaluation).
+ * Energy guard. It never diagnoses, never blocks a goal and never prescribes
+ * a weight: it names, with numbers, what argues against the current course
+ * and explains where to get help (owner 2026-10-09: transparent values and
+ * warnings instead of withheld functions). Thresholds: BMI 18.5 men / 17.5
+ * women (IFSC 2024 RED-S policy), loss faster than 1 % of body weight per week
+ * or 3 % in four weeks, a mean deficit above 25 % of the need.
  */
 object RedsGuard {
+
+    /** A mean deficit above this share of the need is a high one. */
+    const val HIGH_DEFICIT_SHARE = 0.25
+    /** Complete days needed before logged intake is compared with the need. */
+    const val MIN_COMPARED_DAYS = 3
 
     fun bmi(weightKg: Double?, heightCm: Double?): Double? {
         val w = weightKg?.takeIf { it > 0 } ?: return null
@@ -197,31 +254,40 @@ object RedsGuard {
         heightCm: Double?,
         trend: List<TrendWeight.Point>,
         fuelDays: List<FuelDay>,
-    ): List<RedsSignal> {
+        plan: WeightPlan.Plan? = null,
+    ): EnergyReport {
         val signals = mutableListOf<RedsSignal>()
         val currentTrend = trend.lastOrNull()?.trend
         val bmi = bmi(currentTrend, heightCm)
-        if (bmi != null && bmi < bmiThreshold(profile.sex)) signals += RedsSignal.LOW_BMI
+        val threshold = bmiThreshold(profile.sex)
+        if (bmi != null && bmi < threshold) signals += RedsSignal.LOW_BMI
 
         val weekly = TrendWeight.weeklyRate(trend, windowDays = 14)
+        val weeklyShare = if (weekly != null && currentTrend != null && currentTrend > 0) weekly / currentTrend else null
         val fourWeeks = TrendWeight.relativeChange(trend, days = 28)
-        val fastWeekly = weekly != null && currentTrend != null && weekly < -0.01 * currentTrend
+        val fastWeekly = weeklyShare != null && weeklyShare < -0.01
         val fastMonthly = fourWeeks != null && fourWeeks < -0.03
         if (fastWeekly || fastMonthly) signals += RedsSignal.RAPID_LOSS
 
-        val weight = currentTrend
-        if (weight != null) {
-            val lowDays = fuelDays.takeLast(7).count { d ->
-                d.logged && d.dayLoad >= DayLoad.MODERATE && (d.carbsG ?: 0.0) / weight < 3.0
-            }
+        val week = fuelDays.takeLast(7)
+        val compared = week.filter { it.complete && it.kcal != null && it.needKcal != null && it.needKcal > 0 }
+        val avgIntake = compared.takeIf { it.size >= MIN_COMPARED_DAYS }?.map { it.kcal!! }?.average()
+        val avgNeed = compared.takeIf { it.size >= MIN_COMPARED_DAYS }?.map { it.needKcal!!.toDouble() }?.average()
+        if (avgIntake != null && avgNeed != null && avgIntake < avgNeed * (1 - HIGH_DEFICIT_SHARE)) signals += RedsSignal.HIGH_DEFICIT
+
+        var lowDays = 0
+        if (currentTrend != null) {
+            lowDays = week.count { d -> d.logged && d.dayLoad >= DayLoad.MODERATE && (d.carbsG ?: 0.0) / currentTrend < 3.0 }
             if (lowDays >= 3) signals += RedsSignal.LOW_CARBS_ON_TRAINING_DAYS
         }
 
-        if (profile.goal == AthleteGoal.LOSE_WEIGHT && signals.isNotEmpty()) signals += RedsSignal.LOSS_GOAL_PAUSED
-        return signals
+        plan?.let { signals += it.warnings }
+        return EnergyReport(
+            signals = signals, bmi = bmi, bmiThreshold = threshold,
+            weeklyRateKg = weekly, weeklyRateShare = weeklyShare, fourWeekShare = fourWeeks,
+            avgIntakeKcal = avgIntake?.roundToInt(), avgNeedKcal = avgNeed?.roundToInt(),
+            comparedDays = if (avgIntake != null) compared.size else 0,
+            lowCarbDays = lowDays, plan = plan,
+        )
     }
-
-    /** A loss goal is only offered when nothing above argues against it. */
-    fun lossGoalAllowed(profile: AthleteProfile, heightCm: Double?, trend: List<TrendWeight.Point>): Boolean =
-        evaluate(profile.copy(goal = AthleteGoal.PERFORM), heightCm, trend, emptyList()).isEmpty()
 }

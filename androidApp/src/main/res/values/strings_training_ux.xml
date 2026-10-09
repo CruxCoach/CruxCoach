@@ -62,7 +62,7 @@
     <string name="tru_enter_weight">Enter weight</string>
     <string name="tru_add_scan">Scan</string>
     <string name="tru_add_quick">Values</string>
-    <string name="tru_fuel_intro_short">Eat enough for your training: protein follows your body weight, carbs follow your training days. No calorie budget, nothing leaves your phone.</string>
+    <string name="tru_fuel_intro_short">Eat enough for your training: protein follows your body weight, carbs follow your training days, energy need and balance in the open. Nothing leaves your phone.</string>
     <string name="tru_carbs_short">Carbs</string>
     <string name="tru_of_g">of %1$d g</string>
     <string name="tru_water_remove">Remove the last glass</string>

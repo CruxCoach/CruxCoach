@@ -117,11 +117,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nutrition (FEAT-068) with its own entry in the main menu: protein by body weight and carbohydrate
   targets that follow the training day – board sessions and logged climbing
   days count automatically, a light day less than a limit session –
-  plus water, quick entries, own foods, favourites and "same as yesterday". No
-  calorie budget, no red "over" states, no good or bad foods. A RED-S guard
-  watches for low weight, fast loss and very low carbohydrate on training days
-  and then pauses any weight-loss goal and points to professional help – the
-  same card in Today, Nutrition, Body and the weekly review. It is
+  plus water, quick entries, own foods, favourites and "same as yesterday".
+  Every value is in the open: an energy ring shows what you ate against your
+  estimated need (resting energy, everyday life and the day's training, each
+  shown), and while losing weight against a calorie target from your pace and
+  optional target weight. Nothing is locked; an energy card warns with the
+  numbers behind it – low BMI, loss faster than 1 % a week, a pace above 1 %,
+  a calorie target more than 25 % under the need or under resting energy,
+  logged days far under the need, very low carbohydrate on training days – and
+  points to professional help, the same card in Today, Nutrition, Body and the
+  weekly review. No red "over" states, no good or bad foods. It is
   always on; a card explains the guard rails once on the first visit. Every
   entry, meal and day shows protein, carbohydrate, fat and calories (calories
   can be hidden; without logged kcal they are estimated from the macros, "≈").

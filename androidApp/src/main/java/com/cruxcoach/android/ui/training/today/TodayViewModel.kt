@@ -55,7 +55,12 @@ data class TodayState(
     val proteinToday: Double = 0.0,
     val carbsToday: Double = 0.0,
     val waterTodayMl: Int = 0,
-    val redsSignals: List<RedsSignal> = emptyList(),
+    /** Energy eaten today (logged kcal, else from the macros); null without entries. */
+    val kcalToday: Double? = null,
+    /** Today's estimated need and, while losing weight, the plan behind the calorie target. */
+    val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
+    val heightCm: Double? = null,
+    val energy: com.cruxcoach.athlete.logic.EnergyReport = com.cruxcoach.athlete.logic.EnergyReport(),
     val loadSpikes: List<LoadDomain> = emptyList(),
     val suggestions: List<TodaySuggestion> = emptyList(),
     val startedWorkout: Boolean = false,
@@ -102,7 +107,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 repo.observeOpenWorkout(),
                 combine(
                     repo.observeRecentWorkouts(30),
-                    repo.observeSeries(BodyMetric.WEIGHT.key),
+                    // Weight and height feed the targets and the energy estimate.
+                    combine(repo.observeSeries(BodyMetric.WEIGHT.key), repo.observeSeries(BodyMetric.HEIGHT.key)) { w, h -> w.size to h.size },
                     repo.observeFoodLog(today),
                     repo.observeHydration(today),
                     repo.observePauses(),
@@ -235,7 +241,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 proteinToday = i.food.sumOf { e -> e.proteinG ?: 0.0 },
                 carbsToday = i.food.sumOf { e -> e.carbsG ?: 0.0 },
                 waterTodayMl = i.water.sumOf { w -> w.ml },
-                redsSignals = service.redsSignals(i.profile, activities),
+                kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
+                need = service.energyNeed(i.profile, activity),
+                heightCm = service.heightCm(),
+                energy = service.energyReport(i.profile, activities),
                 loadSpikes = spikes,
                 suggestions = suggestions,
             )
@@ -487,6 +496,12 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val now = System.currentTimeMillis()
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", now))
     }
+
+    fun logHeight(cm: Double) = io {
+        service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", System.currentTimeMillis()))
+    }
+
+    fun saveWeightGoal(lose: Boolean, targetKg: Double?, paceKg: Double) = io { service.saveWeightGoal(lose, targetKg, paceKg) }
 
     private fun io(block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }

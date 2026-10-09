@@ -271,33 +271,120 @@ class AthleteLogicTest {
     }
 
     @Test
-    fun lowBmiTriggersSignalAndPausesLossGoal() {
+    fun lowBmiIsNamedWithItsValueAndNeverBlocksTheGoal() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 50.0))
-        val signals = RedsGuard.evaluate(AthleteProfile(goal = AthleteGoal.LOSE_WEIGHT, sex = Sex.MALE), 175.0, trend, emptyList())
-        assertTrue(RedsSignal.LOW_BMI in signals)
-        assertTrue(RedsSignal.LOSS_GOAL_PAUSED in signals)
-        assertTrue(!RedsGuard.lossGoalAllowed(AthleteProfile(), 175.0, trend))
+        val report = RedsGuard.evaluate(AthleteProfile(goal = AthleteGoal.LOSE_WEIGHT, sex = Sex.MALE), 175.0, trend, emptyList())
+        assertTrue(RedsSignal.LOW_BMI in report.signals)
+        assertEquals(16.3, report.bmi!!, 0.05)
+        assertEquals(18.5, report.bmiThreshold, 1e-9)
     }
 
     @Test
     fun femaleThresholdIsLower() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 54.0)) // BMI 18.0 at 173 cm
-        assertTrue(RedsSignal.LOW_BMI in RedsGuard.evaluate(AthleteProfile(sex = Sex.MALE), 173.0, trend, emptyList()))
-        assertTrue(RedsSignal.LOW_BMI !in RedsGuard.evaluate(AthleteProfile(sex = Sex.FEMALE), 173.0, trend, emptyList()))
+        assertTrue(RedsSignal.LOW_BMI in RedsGuard.evaluate(AthleteProfile(sex = Sex.MALE), 173.0, trend, emptyList()).signals)
+        assertTrue(RedsSignal.LOW_BMI !in RedsGuard.evaluate(AthleteProfile(sex = Sex.FEMALE), 173.0, trend, emptyList()).signals)
     }
 
     @Test
-    fun rapidLossIsDetected() {
+    fun rapidLossIsDetectedWithItsRate() {
         val start = d("2026-09-01").toEpochDays()
         val trend = TrendWeight.compute((0..28).map { LocalDate.fromEpochDays(start + it) to 70.0 - it * 0.2 })
-        assertTrue(RedsSignal.RAPID_LOSS in RedsGuard.evaluate(AthleteProfile(), 175.0, trend, emptyList()))
+        val report = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, emptyList())
+        assertTrue(RedsSignal.RAPID_LOSS in report.signals)
+        assertTrue(report.weeklyRateKg!! < 0)
+        assertTrue(report.fourWeekShare!! < -0.03)
     }
 
     @Test
     fun lowCarbsOnTrainingDays() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 70.0))
         val days = (1..3).map { FuelDay("2026-10-0$it", logged = true, carbsG = 120.0, dayLoad = DayLoad.HARD) }
-        assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS in RedsGuard.evaluate(AthleteProfile(), 175.0, trend, days))
+        val report = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, days)
+        assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS in report.signals)
+        assertEquals(3, report.lowCarbDays)
+    }
+
+    @Test
+    fun highDeficitNeedsThreeCompleteDays() {
+        val trend = TrendWeight.compute(listOf(d("2026-10-01") to 70.0))
+        fun day(n: Int, kcal: Double, complete: Boolean = true) =
+            FuelDay("2026-10-0$n", logged = true, carbsG = 300.0, dayLoad = DayLoad.REST, kcal = kcal, needKcal = 2400, complete = complete)
+        // Two days are not enough, and a day with one logged snack does not count.
+        val two = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, listOf(day(1, 1200.0), day(2, 1200.0), day(3, 300.0, complete = false)))
+        assertTrue(RedsSignal.HIGH_DEFICIT !in two.signals)
+        assertEquals(0, two.comparedDays)
+        val three = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, listOf(day(1, 1200.0), day(2, 1500.0), day(3, 1500.0)))
+        assertTrue(RedsSignal.HIGH_DEFICIT in three.signals)
+        assertEquals(1400, three.avgIntakeKcal)
+        assertEquals(2400, three.avgNeedKcal)
+        assertEquals(3, three.comparedDays)
+        assertEquals(0.417, three.deficitShare!!, 0.001)
+        // 20 % under need is a deficit, not a high one.
+        val moderate = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, (1..3).map { day(it, 1920.0) })
+        assertTrue(RedsSignal.HIGH_DEFICIT !in moderate.signals)
+    }
+
+    // ── Energy need and weight plan ─────────────────────────────────
+
+    @Test
+    fun energyNeedAddsRestingEverydayAndTraining() {
+        val profile = AthleteProfile(sex = Sex.MALE, birthYear = 1996)
+        // Mifflin-St Jeor: 10 × 70 + 6.25 × 175 − 5 × 30 + 5 = 1648.75
+        val rest = EnergyBalance.need(profile, 70.0, 175.0, null, 2026)!!
+        assertEquals(1649, rest.restingKcal)
+        assertEquals(659.5, rest.everydayKcal.toDouble(), 1.0) // × 1.4 mostly seated
+        assertEquals(0, rest.trainingKcal)
+        assertTrue(!rest.ageAssumed && !rest.sexAssumed)
+        // Two hours of hard climbing: (6 − 1) MET × 70 kg × 2 h = 700 kcal on top.
+        val climb = EnergyBalance.need(profile, 70.0, 175.0, DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.HARD), 2026)!!
+        assertEquals(700, climb.trainingKcal)
+        assertEquals(rest.totalKcal + 700, climb.totalKcal)
+        val physical = EnergyBalance.need(profile.copy(everydayActivity = EverydayActivity.PHYSICAL), 70.0, 175.0, null, 2026)!!
+        assertTrue(physical.totalKcal > rest.totalKcal)
+    }
+
+    @Test
+    fun energyNeedNamesItsAssumptionsAndNeedsHeight() {
+        assertEquals(null, EnergyBalance.need(AthleteProfile(), 70.0, null, null, 2026))
+        val need = EnergyBalance.need(AthleteProfile(), 70.0, 175.0, null, 2026)!!
+        assertTrue(need.ageAssumed && need.sexAssumed)
+        assertEquals(30, EnergyBalance.age(AthleteProfile(), 2026))
+        assertEquals(47, EnergyBalance.age(AthleteProfile(coach = CoachProfile(ageBand = AgeBand.Y40_54)), 2026))
+    }
+
+    @Test
+    fun weightPlanAllowsEveryPaceAndNamesWhatArguesAgainstIt() {
+        val need = EnergyBalance.need(AthleteProfile(sex = Sex.FEMALE, birthYear = 1996), 60.0, 165.0, null, 2026)!!
+        val gentle = WeightPlan.plan(0.3, 57.0, 60.0, 165.0, Sex.FEMALE, need)
+        assertEquals(330, gentle.dailyDeficitKcal)
+        assertEquals(need.totalKcal - 330, gentle.targetKcal)
+        assertEquals(10, gentle.weeksToTarget)
+        assertTrue(gentle.warnings.isEmpty())
+        // 1 kg a week at 60 kg is 1.7 % and a deficit of 1100 kcal: allowed, with both warnings.
+        val fast = WeightPlan.plan(1.0, 45.0, 60.0, 165.0, Sex.FEMALE, need)
+        assertEquals(1100, fast.dailyDeficitKcal)
+        assertTrue(RedsSignal.FAST_PACE in fast.warnings)
+        assertTrue(RedsSignal.LARGE_DEFICIT in fast.warnings)
+        assertTrue(fast.belowResting)
+        // 45 kg at 165 cm is BMI 16.5, under the female threshold of 17.5.
+        assertTrue(RedsSignal.LOW_TARGET_BMI in fast.warnings)
+        // The plan's warnings reach the energy report.
+        val trend = TrendWeight.compute(listOf(d("2026-10-01") to 60.0))
+        val report = RedsGuard.evaluate(AthleteProfile(sex = Sex.FEMALE), 165.0, trend, emptyList(), fast)
+        assertTrue(report.signals.containsAll(fast.warnings))
+    }
+
+    @Test
+    fun weightPlanAtTheTargetEatsTheNeed() {
+        val need = EnergyBalance.need(AthleteProfile(sex = Sex.MALE, birthYear = 1996), 70.0, 175.0, null, 2026)!!
+        val reached = WeightPlan.plan(0.5, 70.5, 70.0, 175.0, Sex.MALE, need)
+        assertTrue(reached.targetReached)
+        assertEquals(0, reached.dailyDeficitKcal)
+        assertEquals(need.totalKcal, reached.targetKcal)
+        assertEquals(0.1, WeightPlan.clampPace(0.0), 1e-9)
+        assertEquals(2.0, WeightPlan.clampPace(5.0), 1e-9)
+        assertEquals(0.7, WeightPlan.clampPace(0.66), 1e-9)
     }
 
     // ── Consistency streak ─────────────────────────────────────────

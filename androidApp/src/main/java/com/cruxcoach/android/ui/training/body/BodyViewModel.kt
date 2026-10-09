@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
-import com.cruxcoach.athlete.logic.RedsSignal
+import com.cruxcoach.athlete.logic.EnergyReport
 import com.cruxcoach.athlete.logic.StrengthMath
 import com.cruxcoach.athlete.logic.TrendWeight
 import com.cruxcoach.athlete.logic.Units
@@ -70,7 +70,7 @@ data class BodyState(
     val strength: List<StrengthPoint> = emptyList(),
     /** Catalogue entries of the strength-to-weight exercises, for names. */
     val strengthDefs: Map<String, ExerciseDefinition> = emptyMap(),
-    val redsSignals: List<RedsSignal> = emptyList(),
+    val energy: EnergyReport = EnergyReport(),
     val importPreview: WaistlineImportPreview? = null,
     val importBusy: Boolean = false,
 ) {
@@ -129,7 +129,7 @@ class BodyViewModel @Inject constructor(private val service: AthleteService) : V
                 recent = recent,
                 strength = strengthPoints(),
                 strengthDefs = STRENGTH_SLUGS.mapNotNull { slug -> service.catalog[slug]?.let { slug to it } }.toMap(),
-                redsSignals = service.redsSignals(profile, service.activities(days = 14)),
+                energy = service.energyReport(profile, service.activities(days = 14)),
             )
         }
     }

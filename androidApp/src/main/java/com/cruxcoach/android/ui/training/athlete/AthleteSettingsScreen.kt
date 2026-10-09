@@ -37,7 +37,6 @@ import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.EquipmentV2
-import com.cruxcoach.athlete.logic.RedsGuard
 import com.cruxcoach.athlete.logic.Units
 import com.cruxcoach.athlete.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,7 +48,6 @@ import javax.inject.Inject
 data class AthleteSettingsState(
     val profile: AthleteProfile = AthleteProfile(),
     val heightCm: Double? = null,
-    val lossGoalAllowed: Boolean = true,
     val loaded: Boolean = false,
     /** How personal the coach can be (FEAT-071). */
     val completeness: com.cruxcoach.athlete.logic.Completeness? = null,
@@ -57,6 +55,9 @@ data class AthleteSettingsState(
     val excluded: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
     /** Latest body weight, shown and entered on "Über dich". */
     val weightKg: Double? = null,
+    /** Today's estimated energy need and, while losing weight, the plan with its warnings. */
+    val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
+    val plan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
 )
 
 @HiltViewModel
@@ -76,8 +77,11 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             ) { profile, heights, benchmarks, _ ->
                 val height = heights.lastOrNull()?.value
                 val trend = service.weightTrend()
+                val todayActivity = service.activities(days = 1)[service.today().toString()]
                 AthleteSettingsState(
-                    profile, height, RedsGuard.lossGoalAllowed(profile, height, trend), loaded = true,
+                    profile, height, loaded = true,
+                    need = service.energyNeed(profile, todayActivity),
+                    plan = service.weightPlan(profile, todayActivity),
                     completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
                     weightKg = trend.lastOrNull()?.trend,
@@ -102,6 +106,8 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     fun logWeight(kg: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
     }
+
+    fun saveWeightGoal(lose: Boolean, targetKg: Double?, paceKg: Double) = io { service.saveWeightGoal(lose, targetKg, paceKg) }
 
     fun setHeight(cm: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", System.currentTimeMillis()))
@@ -139,6 +145,7 @@ fun AthleteSettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
     var weightOpen by rememberSaveable { mutableStateOf(false) }
+    var goalOpen by rememberSaveable { mutableStateOf(false) }
     TrainingScaffold(title = section?.let { sectionTitle(it) } ?: stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
         if (!state.loaded) return@TrainingScaffold
         Column(
@@ -153,19 +160,26 @@ fun AthleteSettingsScreen(
                     SectionTitle(stringResource(R.string.tra_plan_title))
                     Stepper(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), "weekly_goal",
                         onMinus = { viewModel.setWeeklyGoal(p.weeklyGoal - 1) }, onPlus = { viewModel.setWeeklyGoal(p.weeklyGoal + 1) })
-                    // The training goal is the coach's (card above); only losing weight is a choice of its own,
-                    // guarded against too little energy.
+                    // The training goal is the coach's (card above); losing weight is a choice of its own. It is
+                    // never locked: target, pace and calorie target are shown with every warning that applies.
                     SectionTitle(stringResource(R.string.tru_set_weight_goal))
                     val losing = p.goal == AthleteGoal.LOSE_WEIGHT
-                    SwitchRow(stringResource(R.string.tra_goal_lose), losing, "goal_lose_weight", enabled = state.lossGoalAllowed || losing) { on ->
-                        viewModel.update {
-                            it.copy(goal = if (on) AthleteGoal.LOSE_WEIGHT
-                                else it.coach.goal?.let(com.cruxcoach.athlete.logic.CoachLogic::athleteGoalFor) ?: AthleteGoal.PERFORM)
-                        }
+                    SwitchRow(stringResource(R.string.tra_goal_lose), losing, "goal_lose_weight") { on ->
+                        if (on) goalOpen = true else viewModel.saveWeightGoal(false, p.targetWeightKg, p.weeklyLossKg)
                     }
-                    if (!state.lossGoalAllowed) {
-                        Text(stringResource(R.string.tra_goal_loss_blocked), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (losing) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(com.cruxcoach.android.ui.training.common.weightGoalSummary(p, state.plan), style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f).testTag("goal_summary"))
+                            TextButton(onClick = { goalOpen = true }, modifier = Modifier.testTag("goal_edit")) { Text(stringResource(R.string.trn_goal_edit)) }
+                        }
+                        state.plan?.takeIf { it.warnings.isNotEmpty() }?.let { plan ->
+                            val preview = com.cruxcoach.athlete.logic.EnergyReport(signals = plan.warnings, plan = plan)
+                            plan.warnings.forEach { w ->
+                                Text("• " + com.cruxcoach.android.ui.training.energyWarningText(w, preview, p), style = MaterialTheme.typography.bodySmall,
+                                    color = CruxCoachDesign.colors.caution, modifier = Modifier.padding(top = 2.dp).testTag("settings_warning_${w.name.lowercase()}"))
+                            }
+                        }
                     }
                     OutlinedCard(onClick = onOpenBenchmarks, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("open_benchmarks")) {
                         Column(Modifier.padding(12.dp)) {
@@ -224,6 +238,14 @@ fun AthleteSettingsScreen(
                 }
                 SettingsSection.NUTRITION -> {
                     SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
+                    Text(stringResource(R.string.trn_set_everyday), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        EverydayActivity.entries.forEach { e ->
+                            FilterChip(selected = p.everydayActivity == e, onClick = { viewModel.update { it.copy(everydayActivity = e) } },
+                                label = { Text(com.cruxcoach.android.ui.training.common.everydayLabel(e)) },
+                                modifier = Modifier.testTag("settings_everyday_${e.name.lowercase()}"))
+                        }
+                    }
                     Text(
                         if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
                             formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
@@ -285,6 +307,14 @@ fun AthleteSettingsScreen(
             Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
         }
+    }
+    if (goalOpen) {
+        com.cruxcoach.android.ui.training.common.WeightGoalSheet(
+            profile = p, weightKg = state.weightKg, heightCm = state.heightCm, need = state.need,
+            onDismiss = { goalOpen = false },
+            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); goalOpen = false },
+            onLogWeight = viewModel::logWeight, onLogHeight = viewModel::setHeight,
+        )
     }
     if (weightOpen) {
         com.cruxcoach.android.ui.training.common.WeightSheet(
@@ -622,10 +652,10 @@ private fun HeightField(heightCm: Double?, units: UnitSystem, onSave: (Double) -
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, tag: String, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled, modifier = Modifier.testTag("switch_$tag"))
+        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("switch_$tag"))
     }
 }
 

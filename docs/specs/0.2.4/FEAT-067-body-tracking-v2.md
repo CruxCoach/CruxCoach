@@ -18,8 +18,9 @@ created: 2026-10-04
 - Strength-to-weight view from max hang / one-arm pick-up / weighted pull-up.
 - "Hide numbers" mode shows only the trend direction.
 - 0.1–0.2.3 `body_stats` rows are copied once (never overwriting) on first use.
-- No BMI categories, no target weight, no body-fat goals. A weight-loss goal is
-  blocked by the RED-S guard (FEAT-068) when signals are present.
+- No BMI categories and no body-fat goals. A weight-loss goal with an optional
+  target weight and pace (FEAT-068) is never blocked; the energy guard names
+  what argues against it, with numbers (owner 2026-10-09).
 - Measurement round: one date, all metrics optional, last value as hint.
 - Reminders (optional, off by default): weigh-in on chosen weekdays/time and a
   monthly measurement round; WorkManager one-shot jobs, no notification when

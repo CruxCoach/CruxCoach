@@ -34,7 +34,6 @@
     <string name="tra_plan_title">Plan</string>
     <string name="tra_weekly_goal">Weekly goal: %1$d training days</string>
     <string name="tra_goal">Goal</string>
-    <string name="tra_goal_loss_blocked">A weight-loss goal is not available right now because your weight or trend argues against it. Strength progress shows on the hangboard, not on the scale.</string>
     <string name="tra_modules_title">Modules</string>
     <string name="tra_module_checkin">Morning check-in</string>
     <string name="tra_module_body">Body tracking</string>
