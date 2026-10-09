@@ -119,11 +119,7 @@ class FoodMatcher(foods: List<BlsFood>) {
     }
 
     private val index = foods.map {
-        Indexed(
-            it,
-            Words(normalize(it.nameDe), ingredientsOf(it.nameDe), modifiersOf(it.nameDe)),
-            Words(normalize(it.nameEn), ingredientsOf(it.nameEn), modifiersOf(it.nameEn)),
-        )
+        Indexed(it, candidateWords(it.nameDe), candidateWords(it.nameEn))
     }
 
     /** Best candidates for a detected food, best first. */
@@ -191,8 +187,9 @@ class FoodMatcher(foods: List<BlsFood>) {
                 }
                 // "Haferflocken" against "Hafer Flocken": both words are used up, so
                 // they do not count as extra words against the candidate.
-                candidate.tokens.zipWithNext().forEach { (a, b) ->
-                    if (a + b == word && 0.95 > best) { best = 0.95; bestTokens = listOf(a, b) }
+                if (best < 0.95) {
+                    val k = candidate.pairs.indexOf(word)
+                    if (k >= 0) { best = 0.95; bestTokens = listOf(candidate.tokens[k], candidate.tokens[k + 1]) }
                 }
                 if (best < 0.5 && word.length >= 5 && candidate.joined.contains(word)) best = 0.5
             }
@@ -331,6 +328,8 @@ class FoodMatcher(foods: List<BlsFood>) {
             "ground meat" to "mince", "minced meat" to "mince", "green onion" to "spring onion",
             "scallion" to "spring onion", "garbanzo bean" to "chickpea", "garbanzo" to "chickpea",
         )
+        private val PHRASE_PATTERNS = PHRASES.map { (from, to) -> Triple(from, Regex("\\b$from"), to) }
+        private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
 
         /** Query word → the words the BLS uses for it (normalised spelling). */
         private val SYNONYMS: Map<String, List<String>> = buildMap {
@@ -366,6 +365,7 @@ class FoodMatcher(foods: List<BlsFood>) {
 
         /** Words that name what is in or on a food. */
         private val CONNECTORS = setOf("mit", "with", "in", "im", "auf", "on", "aus", "from")
+        private val WORD_BREAKS = Regex("""[\s,;()/]+""")
         private val ALIAS_BRACKETS = Regex("""\((?!\s*(?:mit|with|in|im|auf|on|aus|from)\b)[^)]*\)""", RegexOption.IGNORE_CASE)
 
         /**
@@ -373,8 +373,13 @@ class FoodMatcher(foods: List<BlsFood>) {
          * that repeat the name are left out ("Spätzle mit Käse (Käsespätzle)"), not those that list
          * what is in it ("Kaiserschmarren (mit Milch 3,5 % Fett)").
          */
-        private fun ingredientsOf(name: String): Set<String> {
-            val tokens = normalize(name.replace(ALIAS_BRACKETS, " "))
+        private fun candidateWords(name: String): Words {
+            val tokens = normalize(name)
+            return Words(tokens, ingredientsOf(name, tokens), modifiersOf(name))
+        }
+
+        private fun ingredientsOf(name: String, normalized: List<String>): Set<String> {
+            val tokens = if ('(' in name) normalize(name.replace(ALIAS_BRACKETS, " ")) else normalized
             val at = tokens.indexOfFirst { it in CONNECTORS }
             if (at < 0) return emptySet()
             return tokens.drop(at + 1).toSet() - tokens.take(at).toSet() - STOP_WORDS
@@ -386,7 +391,7 @@ class FoodMatcher(foods: List<BlsFood>) {
          * marks one.
          */
         private fun modifiersOf(name: String): Set<String> =
-            name.split(Regex("""[\s,;()/]+""")).filter { '-' in it }.flatMap { word ->
+            if ('-' !in name) emptySet() else name.split(WORD_BREAKS).filter { '-' in it }.flatMap { word ->
                 val parts = word.split('-')
                 parts.dropLast(1).flatMap { normalize(it) }
             }.toSet()
@@ -396,8 +401,9 @@ class FoodMatcher(foods: List<BlsFood>) {
         fun normalize(text: String): List<String> {
             var t = text.lowercase()
                 .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
-                .replace(Regex("[^a-z0-9]+"), " ")
-            PHRASES.forEach { (from, to) -> t = t.replace(Regex("\\b$from"), to) }
+                .replace(NON_ALPHANUMERIC, " ")
+            // Compiled once: the index normalises some 30 000 names.
+            PHRASE_PATTERNS.forEach { (from, pattern, to) -> if (from in t) t = t.replace(pattern, to) }
             return t.trim()
                 .split(' ')
                 .filter { it.isNotEmpty() }
@@ -412,15 +418,16 @@ class FoodMatcher(foods: List<BlsFood>) {
             return word
         }
 
+        // Called for every query word against every candidate word, so no allocations on the way.
         internal fun wordSimilarity(a: String, b: String): Double = when {
             a == b -> 1.0
-            a.length >= 4 && b.length >= 4 && stem(a) == stem(b) -> 0.9
+            a.length >= 4 && b.length >= 4 && cachedStem(a) == cachedStem(b) -> 0.9
             // English plurals of short words: "egg"/"eggs", "oat"/"oats".
-            min(a.length, b.length) >= 3 && (a + "s" == b || b + "s" == a) -> 0.9
+            min(a.length, b.length) >= 3 && (isPlural(a, b) || isPlural(b, a)) -> 0.9
             // Two typos only in longer words: "brokkoli"/"broccoli", but not "milch"/"witch".
             // … and not between two compounds that only start alike ("frischkaese"/"fleischkaese").
-            min(a.length, b.length) >= 7 && a.take(2) == b.take(2) && editDistanceAtMost(a, b, 2) -> 0.75
-            min(a.length, b.length) >= 5 && editDistanceAtMost(a, b, 1) -> 0.75
+            min(a.length, b.length) >= 7 && a[0] == b[0] && a[1] == b[1] && editDistanceAtMost(a, b, 2) -> 0.75
+            min(a.length, b.length) >= 5 && oneEditAway(a, b) -> 0.75
             // A compound that ends in the word is a kind of it ("Roggenbrot", "Naturjoghurt") –
             // but "Schwein" is no wine and "Fleischkäse" no cheese.
             a.length >= 4 && b.length > a.length && b.endsWith(a) && b !in FALSE_HEADS -> 0.8
@@ -431,6 +438,31 @@ class FoodMatcher(foods: List<BlsFood>) {
         }
 
         private val FALSE_HEADS = setOf("schwein", "fleischkaese", "leberkaese")
+
+        private fun isPlural(word: String, plural: String) =
+            plural.length == word.length + 1 && plural.last() == 's' && plural.startsWith(word)
+
+        /** Stems of the few thousand distinct words, shared by the BLS and USDA matchers. */
+        private val stems = java.util.concurrent.ConcurrentHashMap<String, String>()
+        private fun cachedStem(word: String): String = stems.getOrPut(word) { stem(word) }
+
+        /** Levenshtein distance ≤ 1, without a table. */
+        private fun oneEditAway(a: String, b: String): Boolean {
+            if (kotlin.math.abs(a.length - b.length) > 1) return false
+            val (s, l) = if (a.length <= b.length) a to b else b to a
+            var i = 0
+            var j = 0
+            var edited = false
+            while (i < s.length && j < l.length) {
+                if (s[i] != l[j]) {
+                    if (edited) return false
+                    edited = true
+                    if (s.length == l.length) i++
+                    j++
+                } else { i++; j++ }
+            }
+            return true
+        }
 
         /** Levenshtein distance ≤ [limit]; "brokkoli" vs "broccoli" is 2. */
         private fun editDistanceAtMost(a: String, b: String, limit: Int): Boolean {
