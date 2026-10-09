@@ -120,7 +120,7 @@
 
     <string name="trl_day_title">Klettertag eintragen</string>
     <string name="trl_day_edit_title">Klettertag bearbeiten</string>
-    <string name="trl_day_intro">Halle, Fels oder ein anderes Board: damit Erholungsregeln, Serie, Statistik und Fueling davon wissen.</string>
+    <string name="trl_day_intro">Halle, Fels oder ein anderes Board: damit Erholungsregeln, Serie, Statistik und Ernährung davon wissen.</string>
     <string name="trl_day_today">Heute</string>
     <string name="trl_day_yesterday">Gestern</string>
     <string name="trl_day_pick">Datum wählen</string>

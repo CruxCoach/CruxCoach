@@ -11,7 +11,7 @@
     <string name="fvp_unavailable_cpu">Der Prozessor dieses Geräts ist für das Erkennungsmodell zu alt (es braucht ARMv8.2 mit Dot-Product-Befehlen).</string>
     <string name="fvp_unavailable_abi">Die Foto-Erkennung braucht ein 64-Bit-ARM-Gerät.</string>
     <string name="fvp_unavailable_slow">Der Probelauf hat gezeigt, dass ein Foto hier etwa %d s dauern würde. Das ist zu langsam, deshalb bleibt die Funktion aus. Du kannst das Modell entfernen, um den Speicher freizugeben.</string>
-    <string name="fvp_unavailable_alternatives">Schnelleintrag und eigene Lebensmittel funktionieren wie bisher.</string>
+    <string name="fvp_unavailable_alternatives">Suchen, Barcode, Beschreiben und Schnelleintrag funktionieren wie gewohnt.</string>
 
     <string name="fvp_setup_text">Die Erkennung läuft nur auf deinem Gerät, dein Foto verlässt das Handy nicht. Dafür lädt CruxCoach einmalig ein KI-Modell (%1$s, %2$s).</string>
     <string name="fvp_setup_estimate">Es erkennt Lebensmittel und schätzt die Grammzahl. Die Nährwerte kommen aus dem Bundeslebensmittelschlüssel (BLS 4.0). Prüfe die Vorschläge, bevor du sie einträgst.</string>

@@ -75,7 +75,8 @@ internal fun FoodDataStorageSection(viewModel: FoodDataStorageViewModel) {
             tag = "settings_food_products_remove",
             onRemove = viewModel::removeProducts,
         )
-        StorageRow(
+        // The photo model only takes space once downloaded; on phones that cannot run it, it never is.
+        if (sizes.modelBytes > 0) StorageRow(
             label = stringResource(R.string.settings_food_model, size(sizes.modelBytes)),
             hint = stringResource(R.string.settings_food_model_hint),
             enabled = sizes.modelBytes > 0,

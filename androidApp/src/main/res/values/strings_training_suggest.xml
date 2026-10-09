@@ -35,7 +35,7 @@
     <string name="trsg_reason_fingers_loaded">Your fingers were loaded in the last 48 hours – today pull, push, legs or core.</string>
     <string name="trsg_reason_fingers_tired">Your fingers feel tired – no max finger load today.</string>
     <string name="trsg_reason_skin">Your skin needs a break – no finger session today.</string>
-    <string name="trsg_reason_fingers_rested">Your fingers had two days off – good day for finger strength.</string>
+    <string name="trsg_reason_fingers_rested">No finger load in the last 48 hours – a good day for finger strength.</string>
     <string name="trsg_reason_pull_longer_ago">You trained legs and core more recently than pulling and pushing.</string>
     <string name="trsg_reason_legs_longer_ago">You trained pulling and pushing more recently than legs and core.</string>
     <string name="trsg_reason_low_energy">Little sleep or energy – the session is shorter today.</string>

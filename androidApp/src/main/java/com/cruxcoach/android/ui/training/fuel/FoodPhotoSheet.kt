@@ -317,7 +317,9 @@ internal fun ReviewPane(phase: PhotoPhase.Review, initialMeal: Meal, viewModel: 
     var choosingFor by remember { mutableStateOf<ReviewItem?>(null) }
     var adding by remember { mutableStateOf(false) }
     val count = phase.items.count { it.included && FoodPhotoViewModel.amountOf(it) != null }
-    Column(Modifier.testTag("fuel_photo_review"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // One scrolling column: on a 1080×1920 phone the list, the meal chips and the save
+    // button do not fit, and a nested lazy list cut the button off (device test 2026-10-09).
+    Column(Modifier.verticalScroll(rememberScrollState()).testTag("fuel_photo_review"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         phase.preview?.let { Preview(it) }
         Text(
             when (phase.source) {
@@ -335,10 +337,8 @@ internal fun ReviewPane(phase: PhotoPhase.Review, initialMeal: Meal, viewModel: 
             }
         }
         if (phase.items.isEmpty()) Text(stringResource(R.string.fvp_review_empty), modifier = Modifier.testTag("fuel_photo_empty"))
-        LazyColumn(Modifier.heightIn(max = 360.dp)) {
-            items(phase.items, key = { it.key }) { item ->
-                ReviewRow(item, viewModel, onChoose = { choosingFor = item })
-            }
+        phase.items.forEach { item ->
+            key(item.key) { ReviewRow(item, viewModel, onChoose = { choosingFor = item }) }
         }
         TextButton(onClick = { adding = true }, modifier = Modifier.testTag("fuel_photo_add")) {
             Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))

@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.athlete
 
+import com.cruxcoach.android.ui.training.body.shortLabel
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -198,7 +199,7 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                 IconButton(onClick = viewModel::previous, modifier = Modifier.testTag("review_prev")) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.tra_review_prev))
                 }
-                Text(stringResource(R.string.tra_review_week_of, s.weekStart.toString()), style = MaterialTheme.typography.titleMedium,
+                Text(stringResource(R.string.tra_review_week_of, s.weekStart?.shortLabel().orEmpty()), style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f))
                 IconButton(onClick = viewModel::next, enabled = s.weekOffset > 0, modifier = Modifier.testTag("review_next")) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.tra_review_next))

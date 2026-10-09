@@ -98,7 +98,10 @@ fun RecipeSheet(
             draft.ingredients.forEachIndexed { i, ingredient ->
                 ListItem(
                     headlineContent = { Text(ingredient.name) },
-                    supportingContent = { Text(amountText(ingredient.grams, weightUnit)) },
+                    // Drinks in ml / fl oz, like everywhere else.
+                    supportingContent = {
+                        Text(amountText(ingredient.grams, FuelUnits.unitFor(units, FuelUnits.isDrink(ingredient.foodItemId, ingredient.name))))
+                    },
                     trailingContent = {
                         IconButton(
                             onClick = { onChange(draft.copy(ingredients = draft.ingredients.filterIndexed { j, _ -> j != i })) },

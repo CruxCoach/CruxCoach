@@ -78,6 +78,13 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
         compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g · ≈ 470 kcal")
         compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈ 470 kcal")
+
+        // The day before is "Yesterday", not a bare date (device test 2026-10-09).
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_prev_day"))
+        compose.onNodeWithTag("fuel_prev_day").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_day_label", useUnmergedTree = true).assertTextEquals("Yesterday"); true }.getOrDefault(false)
+        }
     }
 
     @Test

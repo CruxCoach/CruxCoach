@@ -48,6 +48,11 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         var showEstimate by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
         var showClimbingDay by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
         val context = androidx.compose.ui.platform.LocalContext.current
+        // The first visit opens the coach setup right away – collected here, not in the coach card,
+        // which sits further down the lazy list and only composed once scrolled into view.
+        val coachProgress: com.cruxcoach.android.ui.training.coach.CoachProgressViewModel =
+            androidx.hilt.navigation.compose.hiltViewModel(key = "coach-progress")
+        androidx.compose.runtime.LaunchedEffect(coachProgress) { coachProgress.autoOpen.collect { go(TrainingRoutes.COACH_SETUP) } }
         // Health Connect climbing sessions become climbing days; a no-op unless the athlete switched it on.
         androidx.compose.runtime.LaunchedEffect(Unit) {
             runCatching { com.cruxcoach.android.athlete.health.healthConnectSourceOrNull(context)?.syncClimbing() }
@@ -75,7 +80,6 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 com.cruxcoach.android.ui.training.coach.CoachProgressCard(
                     onOpenSetup = { go(TrainingRoutes.COACH_SETUP) },
                     onOpenEstimate = { showEstimate = true },
-                    onAutoOpenSetup = { go(TrainingRoutes.COACH_SETUP) },
                 )
             },
             onLogClimbing = { showClimbingDay = true },
