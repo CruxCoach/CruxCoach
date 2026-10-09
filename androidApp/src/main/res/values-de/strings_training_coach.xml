@@ -169,6 +169,7 @@
     <string name="trc_next_preferences">Als Nächstes: was dir liegt – Fokus und Stil.</string>
     <string name="trc_next_grade">Als Nächstes: dein Grad – um deine Kraft einzuordnen.</string>
     <string name="trc_learning_none">Erster Durchgang: Der Coach startet vorsichtig. Sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_guess">Startlast vorsichtig geschätzt aus Körpergewicht und Kletterniveau – ändere sie, wenn sie nicht passt. Sag nach dem Satz, wie viel noch gegangen wäre.</string>
     <string name="trc_learning_estimated">Startwert geschätzt – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_learning_progress">Startwert wird gelernt (%1$d/%2$d) – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_badge_estimated">geschätzt</string>

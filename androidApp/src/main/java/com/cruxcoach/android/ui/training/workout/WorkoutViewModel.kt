@@ -150,33 +150,9 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
 
     /** Inserts the % ramp before the first work set (negative set indices sort first). */
     fun addWarmups(block: WorkoutBlock) {
-        val s = _state.value
         io {
             val first = block.sets.firstOrNull { it.setType == SetType.WORK } ?: return@io
-            val steps = WarmupRamp.build(block.def, first.loadKg, s.bodyweight ?: first.bodyweightKg, s.profile.smallestIncrementKg)
-            val sides = block.sets.filter { it.setIndex == first.setIndex && it.setType == SetType.WORK }.map { it.side }
-            steps.forEachIndexed { i, step ->
-                sides.forEach { side ->
-                    service.updateSet(
-                        first.copy(
-                            id = service.repo.newId(),
-                            setType = SetType.WARMUP,
-                            setIndex = i - steps.size,
-                            side = side,
-                            loadKg = step.loadKg,
-                            targetLoadKg = step.loadKg,
-                            reps = step.reps ?: first.reps,
-                            targetReps = step.reps ?: first.targetReps,
-                            durationS = step.durationS?.toDouble() ?: first.durationS,
-                            targetDurationS = step.durationS?.toDouble() ?: first.targetDurationS,
-                            restS = 60,
-                            rir = null,
-                            note = null,
-                            completedAt = null,
-                        ),
-                    )
-                }
-            }
+            service.addWarmupRamp(first)
         }
     }
 

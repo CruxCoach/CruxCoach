@@ -299,8 +299,47 @@ class AthleteService @Inject constructor(
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
             val modifier = todaysModifier()
             routine?.items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
+            if (routine?.items?.any { it.warmup } == true) addFingerRampIfMissing(id)
         }
         id
+    }
+
+    /**
+     * A training with a warm-up but no loaded finger warm-up (the hangboard
+     * ramp needs a hangboard) ramps into its first loaded finger exercise:
+     * light block lifts before the heavy ones (owner device test 2026-10-09).
+     */
+    private fun addFingerRampIfMissing(workoutId: String) {
+        fun loadedFinger(slug: String) = catalog.fallbackFor(slug).let { d ->
+            com.cruxcoach.athlete.catalog.LoadDomain.FINGER in d.domains &&
+                (d.load == com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL || d.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS)
+        }
+        val sets = repo.setsFor(workoutId)
+        if (sets.any { it.setType == SetType.WARMUP && loadedFinger(it.exerciseSlug) }) return
+        val first = sets.filter { it.setType == SetType.WORK && loadedFinger(it.exerciseSlug) }
+            .minWithOrNull(compareBy({ it.blockIndex }, { it.setIndex })) ?: return
+        addWarmupRamp(first)
+    }
+
+    /** Inserts the 50/70/85 % ramp before [firstWork] for every side of it (negative set indices sort first). */
+    fun addWarmupRamp(firstWork: ExerciseSet) {
+        val def = catalog.fallbackFor(firstWork.exerciseSlug)
+        val steps = WarmupRamp.build(def, firstWork.loadKg, firstWork.bodyweightKg ?: currentBodyweight(), repo.profile().smallestIncrementKg)
+        val sides = repo.setsFor(firstWork.workoutId)
+            .filter { it.blockIndex == firstWork.blockIndex && it.setIndex == firstWork.setIndex && it.setType == SetType.WORK }
+            .map { it.side }
+        steps.forEachIndexed { i, step ->
+            sides.forEach { side ->
+                repo.saveSet(firstWork.copy(
+                    id = repo.newId(), setType = SetType.WARMUP, setIndex = i - steps.size, side = side,
+                    loadKg = step.loadKg, targetLoadKg = step.loadKg,
+                    reps = step.reps ?: firstWork.reps, targetReps = step.reps ?: firstWork.targetReps,
+                    durationS = step.durationS?.toDouble() ?: firstWork.durationS,
+                    targetDurationS = step.durationS?.toDouble() ?: firstWork.targetDurationS,
+                    restS = 60, rir = null, note = null, completedAt = null,
+                ))
+            }
+        }
     }
 
     /** Appends an exercise; returns false when the open injury rules it out. */
@@ -327,10 +366,15 @@ class AthleteService @Inject constructor(
         val bodyweight = currentBodyweight()
         val increment = repo.profile().smallestIncrementKg
         val adjusted = ReadinessModifiers.applyToItem(item, def, modifier)
+        val history = repo.history(item.slug, 60)
         val planned = WorkoutPlanner.plan(
-            workoutId, blockIndex, adjusted, catalog, repo.history(item.slug, 60), repo.activeInjuries(),
+            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries(),
             bodyweight,
-            capacityFor = { side -> capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight) },
+            capacityFor = { side ->
+                capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
+                    // Nothing logged yet: a careful start load instead of "0 kg" for block lifts and pick-ups.
+                    ?: startEstimate(def, bodyweight).takeIf { item.loadKg == null && history.none { it.isCompleted && it.setType != SetType.WARMUP } }
+            },
             incrementKg = increment,
             newId = repo::newId,
         )
@@ -371,6 +415,21 @@ class AthleteService @Inject constructor(
     }
 
     /**
+     * [StartEstimate] for a block lift or pick-up without any value: from a
+     * related value (two-arm pick-up, max hang, one-arm pick-up) when there is
+     * one, else from body weight and the climbing grade (logbook or coach setup).
+     */
+    fun startEstimate(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, bodyweightKg: Double? = currentBodyweight()): Capacity? {
+        if (!StartEstimate.applies(def)) return null
+        fun known(slug: String, side: Side? = null) = catalog[slug]?.let { capacityFor(it, side, 20.0, null, bodyweightKg) }?.value
+        val twoHand = known(TWO_ARM_PICKUP_SLUG)
+            ?: known(MAX_HANG_SLUG)?.times(StartEstimate.PICKUP_OF_HANG)
+            ?: (known(ONE_ARM_PICKUP_SLUG, Side.LEFT) ?: known(ONE_ARM_PICKUP_SLUG, Side.RIGHT))?.div(StartEstimate.ONE_ARM_SHARE)
+        val difficulty = if (twoHand == null) runCatching { gradeSummary().workingDifficulty }.getOrNull() else null
+        return StartEstimate.capacity(def, bodyweightKg, twoHand, difficulty)
+    }
+
+    /**
      * Saves a value the athlete entered and applies it at once to the open
      * training: planned work sets of that exercise the athlete has not touched
      * yet (load still equals the plan) get the new prescription.
@@ -397,6 +456,15 @@ class AthleteService @Inject constructor(
                     reps = target.reps ?: set.reps, targetReps = target.reps ?: set.targetReps,
                 ))
             }
+        // An untouched ramp in front of the replanned sets follows the new load.
+        val sets = repo.setsFor(workout.id).filter { it.exerciseSlug == slug }
+        sets.filter { it.setType == SetType.WARMUP }.groupBy { it.blockIndex }.forEach { (block, ramp) ->
+            if (ramp.any { it.isCompleted || (it.loadKg ?: 0.0) != (it.targetLoadKg ?: 0.0) }) return@forEach
+            val firstWork = sets.filter { it.blockIndex == block && it.setType == SetType.WORK && !it.isCompleted }
+                .minByOrNull { it.setIndex } ?: return@forEach
+            ramp.forEach { repo.deleteSet(it.id) }
+            addWarmupRamp(firstWork)
+        }
     }
 
     /**
@@ -692,6 +760,8 @@ class AthleteService @Inject constructor(
         const val PAIN_PAUSE_SEVERITY = 5
         const val PAIN_LIGHTER_FACTOR = 0.8
         const val MAX_HANG_SLUG = "finger.max_hang"
+        const val TWO_ARM_PICKUP_SLUG = "finger.two_arm_pickup"
+        const val ONE_ARM_PICKUP_SLUG = "finger.one_arm_pickup"
         const val OTHER_SIDE_FACTOR = 0.95
 
         /** Enough history for every exercise's best values; far above a lifetime of sets per slug and side. */

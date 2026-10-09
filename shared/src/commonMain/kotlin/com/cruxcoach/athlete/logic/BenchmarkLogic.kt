@@ -29,7 +29,53 @@ data class Capacity(
     val bodyweightKg: Double?,
     /** Estimated from the other hand's value (one-sided work without an own value yet). */
     val fromOtherSide: Boolean = false,
+    /** A careful start guess ([StartEstimate]), not a logged or entered value. */
+    val estimated: Boolean = false,
 )
+
+/**
+ * A careful first load for finger work with an external weight – block lifts
+ * and pick-ups – when nothing is logged or entered yet, so the first set does
+ * not read "0 kg" (owner 2026-10-09: "correcting is fine, but 0 should not be
+ * the suggestion"). The two-hand 10-second total on 20 mm comes from a related
+ * value when there is one (two-arm pick-up, a max hang at 70 %, a one-arm
+ * pick-up at 45 % of two hands), else from body weight and the climbing grade:
+ * the low end of [GradeStrengthNorms]' max-hang band (6a without a grade) at
+ * 70 %. The result is taken at 80 % – the first set starts on the easy side,
+ * and the reps-in-reserve answer after it teaches the real value.
+ */
+object StartEstimate {
+    const val CAUTION = 0.8
+    /** A two-arm pick-up on an edge against a two-arm hang on the same edge. */
+    const val PICKUP_OF_HANG = 0.7
+    /** One hand's share of the two-hand total. */
+    const val ONE_ARM_SHARE = 0.45
+    /** 6a on the unified scale, for climbers without a grade. */
+    const val DEFAULT_DIFFICULTY = 16.0
+
+    fun applies(def: ExerciseDefinition): Boolean =
+        def.load == LoadMode.EXTERNAL && BenchmarkMath.capacityKind(def) == CapacityKind.TEN_SECOND_MAX &&
+            com.cruxcoach.athlete.catalog.LoadDomain.FINGER in def.domains
+
+    /** Two-hand 10-second pick-up total from body weight and grade alone. */
+    fun twoHandFromGrade(bodyweightKg: Double, difficulty: Double?): Double {
+        val d = (difficulty ?: DEFAULT_DIFFICULTY).coerceIn(13.0, 32.0)
+        val band = requireNotNull(GradeStrengthNorms.band(GradeStrengthNorms.Metric.FINGER_MAX_HANG_20MM, d))
+        return band.low / 100.0 * bodyweightKg * PICKUP_OF_HANG
+    }
+
+    /**
+     * The start guess for [def], or null when it does not apply. [twoHandTotalKg]
+     * is a two-hand pick-up total derived from a related value, if any.
+     */
+    fun capacity(def: ExerciseDefinition, bodyweightKg: Double?, twoHandTotalKg: Double?, difficulty: Double?): Capacity? {
+        if (!applies(def)) return null
+        val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
+        val twoHand = twoHandTotalKg?.takeIf { it > 0 } ?: twoHandFromGrade(bw, difficulty)
+        val own = if (def.unilateral) twoHand * ONE_ARM_SHARE else twoHand
+        return Capacity(CapacityKind.TEN_SECOND_MAX, own * CAUTION, bw, estimated = true)
+    }
+}
 
 /**
  * Hold time ↔ intensity for isometric finger and hang work, relative to the
