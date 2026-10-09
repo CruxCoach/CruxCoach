@@ -145,9 +145,11 @@ object MealTextParser {
     private val MEAL_HINTS: List<Pair<List<String>, Meal>> = listOf(
         listOf("vor dem training", "before training", "pre workout", "pre-workout") to Meal.PRE_TRAINING,
         listOf("nach dem training", "after training", "post workout", "post-workout") to Meal.POST_TRAINING,
-        listOf("zum frühstück", "zum fruehstueck", "frühstück", "morgens", "for breakfast", "breakfast") to Meal.BREAKFAST,
-        listOf("zum mittagessen", "zu mittag", "mittagessen", "mittags", "for lunch", "lunch") to Meal.LUNCH,
-        listOf("zum abendessen", "zu abend", "abendessen", "abendbrot", "abends", "for dinner", "dinner") to Meal.DINNER,
+        listOf("zum frühstück", "zum fruehstueck", "heute morgen", "frühstück", "morgens", "for breakfast", "breakfast") to Meal.BREAKFAST,
+        listOf("zum mittagessen", "zu mittag", "zum mittag", "heute mittag", "mittagessen", "mittags", "mittag",
+            "for lunch", "lunch") to Meal.LUNCH,
+        listOf("zum abendessen", "zu abend", "zum abend", "heute abend", "abendessen", "abendbrot", "abends",
+            "for dinner", "dinner") to Meal.DINNER,
         listOf("als snack", "zwischendurch", "snack") to Meal.SNACK,
     )
 

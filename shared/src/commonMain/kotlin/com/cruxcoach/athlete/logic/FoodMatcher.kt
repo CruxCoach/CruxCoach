@@ -96,9 +96,12 @@ class FoodMatcher(foods: List<BlsFood>) {
 
     data class Match(val food: BlsFood, val score: Double)
 
-    private class Indexed(val food: BlsFood, val de: Words, val en: Words)
+    private class Indexed(val food: BlsFood, val de: Words, val en: Words) {
+        val drink = FuelUnits.isDrink("bls:${food.code}", food.nameDe) || FuelUnits.isDrink(null, food.nameEn)
+    }
 
-    private class Words(val tokens: List<String>) {
+    /** [ingredients]: candidate words named only after "mit"/"with"/"aus" (see [ingredientsOf]). */
+    private class Words(val tokens: List<String>, val ingredients: Set<String> = emptySet()) {
         val pairs: List<String> = tokens.zipWithNext { a, b -> a + b }
         val joined: String = tokens.joinToString("")
         val content: List<String> = tokens.filter { it !in STOP_WORDS }
@@ -106,16 +109,20 @@ class FoodMatcher(foods: List<BlsFood>) {
         val alternatives: List<List<String>> by lazy { content.map { listOf(it) + synonymsOf(it) } }
     }
 
-    private val index = foods.map { Indexed(it, Words(normalize(it.nameDe)), Words(normalize(it.nameEn))) }
+    private val index = foods.map {
+        Indexed(it, Words(normalize(it.nameDe), ingredientsOf(it.nameDe)), Words(normalize(it.nameEn), ingredientsOf(it.nameEn)))
+    }
 
     /** Best candidates for a detected food, best first. */
     fun match(food: DetectedFood, limit: Int = 5): List<Match> {
         val de = Words(normalize(food.nameDe))
         val en = Words(normalize(food.nameEn))
+        val drink = FuelUnits.isDrink(null, food.nameDe) || FuelUnits.isDrink(null, food.nameEn)
         return rank(limit) {
-            val a = score(de, it.de, it.food.code)
-            val b = score(en, it.en, it.food.code)
-            max(a, b) + 0.5 * min(a, b)
+            // A long name in the other language is no reason to rank lower than no match at all.
+            val a = max(0.0, score(de, it.de, it.food.code))
+            val b = max(0.0, score(en, it.en, it.food.code))
+            max(a, b) + 0.5 * min(a, b) - drinkMismatch(drink, it)
         }
     }
 
@@ -123,8 +130,16 @@ class FoodMatcher(foods: List<BlsFood>) {
     fun search(query: String, limit: Int = 20): List<Match> {
         val q = Words(normalize(query))
         if (q.content.isEmpty()) return emptyList()
-        return rank(limit) { max(score(q, it.de, it.food.code), score(q, it.en, it.food.code)) }
+        val drink = FuelUnits.isDrink(null, query)
+        return rank(limit) { max(score(q, it.de, it.food.code), score(q, it.en, it.food.code)) - drinkMismatch(drink, it) }
     }
+
+    /**
+     * "Milch" asks for a glass of milk, not "Milchschokolade" or "Knäckebrot mit Milch"
+     * (device test 2026-10-09).
+     */
+    private fun drinkMismatch(queryIsDrink: Boolean, candidate: Indexed): Double =
+        if (queryIsDrink && !candidate.drink) DRINK_MISMATCH else 0.0
 
     private fun rank(limit: Int, scoreOf: (Indexed) -> Double): List<Match> =
         index.asSequence()
@@ -155,12 +170,16 @@ class FoodMatcher(foods: List<BlsFood>) {
                 if (best < 0.5 && word.length >= 5 && candidate.joined.contains(word)) best = 0.5
             }
             if (best >= 0.6) used += bestTokens
+            // "Milch" against "Erdbeermilch mit Milch" or "Knäckebrot mit Milch": the asked-for food
+            // is only what the candidate is made with (device test 2026-10-09).
+            if (i == 0 && bestTokens.isNotEmpty() && bestTokens.all { it in candidate.ingredients }) best *= 0.6
             // The head noun matters most: weight the first query word double.
             sum += if (i == 0) best * 2 else best
         }
         var score = sum / (q.size + 1)
 
-        val extra = candidate.content.count { it !in used && it !in PREPARATION_WORDS }
+        // Fat contents ("1,5 % Fett") are numbers, not extra words naming another food.
+        val extra = candidate.content.count { it !in used && it !in PREPARATION_WORDS && !it.all(Char::isDigit) }
         score -= min(0.4, 0.08 * extra)
         if (query.alternatives.first().any { first ->
                 wordSimilarity(first, candidate.content.first()) >= 0.9 || candidate.pairs.firstOrNull() == first
@@ -181,6 +200,8 @@ class FoodMatcher(foods: List<BlsFood>) {
 
         /** From here on the first candidate is preselected in the review. */
         const val CONFIDENT_SCORE = 0.55
+
+        private const val DRINK_MISMATCH = 0.3
 
         private val STOP_WORDS = setOf(
             "mit", "und", "oder", "ohne", "in", "im", "auf", "aus", "vom", "von", "der", "die", "das", "ein", "eine",
@@ -243,6 +264,22 @@ class FoodMatcher(foods: List<BlsFood>) {
             put("truthahn", listOf("pute"))
         }
 
+        /** Words that name what is in or on a food. */
+        private val CONNECTORS = setOf("mit", "with", "in", "im", "auf", "on", "aus", "from")
+        private val ALIAS_BRACKETS = Regex("""\((?!\s*(?:mit|with|in|im|auf|on|aus|from)\b)[^)]*\)""", RegexOption.IGNORE_CASE)
+
+        /**
+         * Words that only follow the first [CONNECTORS] word – what the food is made with. Brackets
+         * that repeat the name are left out ("Spätzle mit Käse (Käsespätzle)"), not those that list
+         * what is in it ("Kaiserschmarren (mit Milch 3,5 % Fett)").
+         */
+        private fun ingredientsOf(name: String): Set<String> {
+            val tokens = normalize(name.replace(ALIAS_BRACKETS, " "))
+            val at = tokens.indexOfFirst { it in CONNECTORS }
+            if (at < 0) return emptySet()
+            return tokens.drop(at + 1).toSet() - tokens.take(at).toSet() - STOP_WORDS
+        }
+
         private fun synonymsOf(word: String): List<String> = SYNONYMS[word] ?: SYNONYMS[stem(word)] ?: emptyList()
 
         fun normalize(text: String): List<String> {
@@ -267,7 +304,9 @@ class FoodMatcher(foods: List<BlsFood>) {
         internal fun wordSimilarity(a: String, b: String): Double = when {
             a == b -> 1.0
             a.length >= 4 && b.length >= 4 && stem(a) == stem(b) -> 0.9
-            min(a.length, b.length) >= 5 && editDistanceAtMost(a, b, 2) -> 0.75
+            // Two typos only in longer words: "brokkoli"/"broccoli", but not "milch"/"witch".
+            min(a.length, b.length) >= 7 && editDistanceAtMost(a, b, 2) -> 0.75
+            min(a.length, b.length) >= 5 && editDistanceAtMost(a, b, 1) -> 0.75
             // A longer compound is usually another food ("Bananenquark").
             min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)) -> 0.6
             min(a.length, b.length) >= 5 && (a.contains(b) || b.contains(a)) -> 0.5
