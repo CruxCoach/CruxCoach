@@ -96,7 +96,14 @@ internal fun buildWeek(
 
 /** "Diese Woche": seven tappable days with plan and status. */
 @Composable
-fun WeekCalendarCard(cells: List<WeekDayCell>, routines: List<Routine>, onDayClick: (WeekDayCell) -> Unit) {
+fun WeekCalendarCard(
+    cells: List<WeekDayCell>,
+    routines: List<Routine>,
+    onDayClick: (WeekDayCell) -> Unit,
+    /** The standard week lives in this card: an empty plan says so, the button edits it. */
+    onEditPlan: (() -> Unit)? = null,
+    planEmpty: Boolean = false,
+) {
     Card(Modifier.fillMaxWidth().testTag("week_calendar")) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -111,6 +118,15 @@ fun WeekCalendarCard(cells: List<WeekDayCell>, routines: List<Routine>, onDayCli
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth()) {
                 cells.forEach { cell -> DayCell(cell, routines, Modifier.weight(1f), onClick = { onDayClick(cell) }) }
+            }
+            if (onEditPlan != null) {
+                if (planEmpty) {
+                    Text(stringResource(R.string.trwo_week_plan_empty), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp))
+                }
+                TextButton(onClick = onEditPlan, modifier = Modifier.padding(start = 0.dp, top = 4.dp).testTag("workouts_week_plan_edit")) {
+                    Text(stringResource(R.string.trwo_week_plan_edit))
+                }
             }
         }
     }

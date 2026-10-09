@@ -277,7 +277,7 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         render { com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {},
             viewModel = loadedVm14) }
         waitForTag("workouts_list")
-        scrollTo("workouts_list", hasTestTag("workouts_week_plan"))
+        scrollTo("workouts_list", hasTestTag("workouts_week_plan_edit"))
         scrollTo("workouts_list", hasTestTag("routine_start_builtin_warmup_board"))
     }
 
