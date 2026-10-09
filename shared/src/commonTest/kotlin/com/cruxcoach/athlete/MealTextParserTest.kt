@@ -34,6 +34,14 @@ class MealTextParserTest {
     }
 
     @Test
+    fun crispbreadSlicesAreLight() {
+        // Device test 2026-10-09: "2 Scheiben Knäckebrot" were 100 g, like bread.
+        assertEquals(listOf("Knäckebrot" to 20, "Vollkornbrot" to 100), items("2 Scheiben Knäckebrot, 2 Scheiben Vollkornbrot"))
+        assertEquals(listOf("Knäckebrot" to 30), items("3 Knäckebrot"))
+        assertEquals(listOf("Eggs" to 120, "Toast" to 50), items("two eggs and toast"))
+    }
+
+    @Test
     fun mealHintsWithZumAndHeute() {
         // Device test 2026-10-09: "Zum Mittag …" was saved without a meal.
         val r = parse("Zum Mittag 2 Scheiben Knäckebrot und ein Glas Milch")
