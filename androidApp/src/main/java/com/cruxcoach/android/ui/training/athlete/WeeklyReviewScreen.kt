@@ -68,8 +68,11 @@ data class WeeklyReviewState(
     /** Average carbohydrate target of the logged days, from each day's training load. */
     val carbsTargetAvg: Int? = null,
     val micros: MicroWatch.Summary? = null,
-    /** Energy-availability signals; only for the current week (they look at the last days). */
-    val redsSignals: List<RedsSignal> = emptyList(),
+    /** Mean energy eaten and mean estimated need on the logged days; need is null without weight or height. */
+    val kcalAvg: Double? = null,
+    val kcalNeedAvg: Int? = null,
+    /** Energy guard with its numbers; only for the current week (it looks at the last days). */
+    val energy: com.cruxcoach.athlete.logic.EnergyReport = com.cruxcoach.athlete.logic.EnergyReport(),
     val checkinAverages: List<Pair<Int, Double>> = emptyList(),
     val pausedDays: Int = 0,
 )
@@ -145,7 +148,11 @@ class WeeklyReviewViewModel @Inject constructor(
             // Carbohydrate targets follow each logged day's training load (FEAT-068).
             val carbTargets = endTrend?.let { w -> loggedDays.map { FuelTargets.compute(w, activities[it], profile.proteinPerKg).carbsG } }.orEmpty()
             val micros = runCatching { micronutrients.upTo(end, profile.sex, profile.birthYear) }.getOrNull()
-            val reds = if (offset == 0) runCatching { service.redsSignals(profile, service.activities(7)) }.getOrDefault(emptyList()) else emptyList()
+            val reds = if (offset == 0) runCatching { service.energyReport(profile, service.activities(7)) }.getOrNull() else null
+            // Energy per logged day against that day's estimated need (training days need more).
+            val kcalByDay = food.groupBy { it.day }.mapValues { (_, list) -> list.mapNotNull { MacroTotals.energy(it)?.kcal }.sum() }
+            val height = service.heightCm()
+            val needs = endTrend?.let { w -> loggedDays.mapNotNull { service.energyNeed(profile, activities[it], w, height)?.totalKcal } }.orEmpty()
             val checkins = repo.checkinsBetween(start.toString(), end.toString())
             fun avg(values: List<Int?>) = values.filterNotNull().takeIf { it.isNotEmpty() }?.average()
 
@@ -171,7 +178,9 @@ class WeeklyReviewViewModel @Inject constructor(
                 carbsAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.carbsG ?: 0.0 } / loggedDays.size else null,
                 carbsTargetAvg = carbTargets.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
                 micros = micros,
-                redsSignals = reds,
+                kcalAvg = kcalByDay.values.takeIf { it.isNotEmpty() }?.average(),
+                kcalNeedAvg = needs.takeIf { it.isNotEmpty() && it.size == loggedDays.size }?.average()?.roundToInt(),
+                energy = reds ?: com.cruxcoach.athlete.logic.EnergyReport(),
                 checkinAverages = listOfNotNull(
                     avg(checkins.map { it.sleep })?.let { R.string.trt_q_sleep to it },
                     avg(checkins.map { it.energy })?.let { R.string.trt_q_energy to it },
@@ -251,7 +260,7 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                     }) else stringResource(R.string.tra_review_weight_change, formatMass(s.weightChangeKg!!, s.profile.units, signed = true)),
                 )
             }
-            if (s.redsSignals.isNotEmpty()) EnergyCareCard(s.redsSignals, "review_reds", Modifier.padding(top = 12.dp))
+            if (s.energy.signals.isNotEmpty()) EnergyCareCard(s.energy, s.profile, "review_reds", Modifier.padding(top = 12.dp))
             if (s.proteinAvg != null) {
                 SectionTitle(stringResource(R.string.tr_nav_fuel))
                 Text(pluralStringResource(R.plurals.tra_review_food_days, s.foodDays, s.foodDays), style = MaterialTheme.typography.bodySmall)
@@ -261,6 +270,11 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                 if (s.carbsAvg != null && s.carbsTargetAvg != null) {
                     Text(stringResource(R.string.tra_review_carbs, s.carbsAvg!!.roundToInt(), s.carbsTargetAvg!!),
                         modifier = Modifier.testTag("review_carbs"))
+                }
+                if (s.profile.showCalories && s.kcalAvg != null) {
+                    Text(s.kcalNeedAvg?.let { stringResource(R.string.trn_review_energy, s.kcalAvg!!.roundToInt(), it) }
+                        ?: stringResource(R.string.trn_review_energy_no_need, s.kcalAvg!!.roundToInt()),
+                        modifier = Modifier.testTag("review_energy"))
                 }
                 s.micros?.let { MicroWeekCard(it, Modifier.padding(top = 8.dp)) }
             }

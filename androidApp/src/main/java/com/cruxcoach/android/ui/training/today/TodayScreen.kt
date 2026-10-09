@@ -46,7 +46,6 @@ import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.ReadinessLevel
 import com.cruxcoach.athlete.logic.ReadinessReason
-import com.cruxcoach.athlete.logic.RedsSignal
 import com.cruxcoach.athlete.logic.SuggestionFocus
 import com.cruxcoach.athlete.logic.SuggestionReason
 import com.cruxcoach.athlete.logic.Units
@@ -90,6 +89,7 @@ fun TodayScreen(
     var moreToday by rememberSaveable(state.today?.toString()) { mutableStateOf(false) }
     var showWeight by rememberSaveable { mutableStateOf(false) }
     var showEquipment by rememberSaveable { mutableStateOf(false) }
+    var showGoal by rememberSaveable { mutableStateOf(false) }
     var showCheckin by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     // The checklist's last tick is celebrated once in place before the card goes.
@@ -189,7 +189,7 @@ fun TodayScreen(
                     item(key = "duration_hint") { DurationHintCard(minutes, onApply = viewModel::applyDurationHint) }
                 }
             }
-            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "today_reds") }
+            if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
             item(key = "day") {
                 DayGrid(
@@ -240,6 +240,14 @@ fun TodayScreen(
             reason = stringResource(R.string.tru_weight_reason_setup),
             onDismiss = { showWeight = false },
             onSave = { kg -> viewModel.logWeight(kg); showWeight = false; tell(weightSavedText) },
+        )
+    }
+    if (showGoal) {
+        com.cruxcoach.android.ui.training.common.WeightGoalSheet(
+            profile = state.profile, weightKg = state.trendKg, heightCm = state.heightCm, need = state.need,
+            onDismiss = { showGoal = false },
+            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); showGoal = false },
+            onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
         )
     }
     if (showEquipment) {
@@ -763,6 +771,7 @@ private fun WeightTile(state: TodayState, onLog: () -> Unit, onOpenBody: () -> U
 @Composable
 private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) {
     val t = state.fuelTargets
+    val energyGoal = com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.energy.plan)
     val protein = state.proteinToday.roundToInt()
     com.cruxcoach.android.ui.training.common.ValueTile(
         icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
@@ -771,6 +780,9 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
         progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
         supporting = when {
             t == null -> stringResource(R.string.tru_tile_food_no_target)
+            // Energy in the open next to protein: eaten of the need, or of the calorie target while losing weight.
+            state.profile.showCalories && energyGoal != null ->
+                stringResource(R.string.trn_tile_kcal, (state.kcalToday ?: 0.0).roundToInt(), energyGoal)
             protein >= t.proteinG -> stringResource(R.string.tru_tile_food_reached)
             else -> stringResource(R.string.tru_tile_food_left, t.proteinG - protein)
         },

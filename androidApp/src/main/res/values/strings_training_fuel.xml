@@ -2,10 +2,10 @@
 <!-- Nutrition / fueling (FEAT-068): always on, "fuel, not diet". -->
 <resources>
     <string name="trf_intro_title">Nutrition: energy for training</string>
-    <string name="trf_intro_p1">Enough energy is the base for strength, skin and recovery. CruxCoach helps you eat to match your training – not less.</string>
+    <string name="trf_intro_p1">Enough energy is the base for strength, skin and recovery. CruxCoach shows what your training needs – also while you lose weight.</string>
     <string name="trf_intro_protein">Protein follows your body weight (about 1.4–2.0 g per kg).</string>
     <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
-    <string name="trf_intro_no_budget">No calorie budget, no “too much”, no good or bad foods.</string>
+    <string name="trf_intro_no_budget" formatted="false">Every value in the open: your estimated energy need, what you ate and, while losing weight, your calorie target. CruxCoach warns when you lose faster than 1 % of your weight per week or your deficit gets large. No good or bad foods.</string>
     <string name="trf_intro_hidden">Calories are shown with every value; you can hide them in the settings.</string>
     <string name="trf_intro_private">Everything stays encrypted on your device – unless you switch on the backup or Health Connect yourself.</string>
     <string name="trf_intro_got_it">Got it</string>
@@ -66,7 +66,7 @@
     <string name="trf_reached">Target reached</string>
     <string name="trf_fat">Fat</string>
     <string name="trf_fat_share">%1$d %% of energy · guideline %2$d–%3$d %%</string>
-    <string name="trf_fat_info">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35 %% of energy from fat; less than 20 %% is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
+    <string name="trf_fat_info" formatted="false">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35 % of energy from fat; less than 20 % is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_quick_add">Quick entry</string>
     <string name="trf_my_foods">My foods</string>

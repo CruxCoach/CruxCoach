@@ -75,11 +75,10 @@
     <string name="trt_sugg_weight_text">Nötig für Prozent des Körpergewichts am Hangboard und für die Ernährungsziele.</string>
     <string name="trt_sugg_weight_action">Eintragen</string>
     <string name="trt_reds_title">Achte auf deine Energie</string>
-    <string name="trt_reds_info">Klettern belohnt Kraft zu Gewicht, und das verleitet manche dazu, zu wenig zu essen. Zu wenig Energie für das Training, das du machst (relatives Energiedefizit im Sport, RED-S), kostet Kraft, Erholung und Gesundheit – Knochen, Hormone, Immunsystem. CruxCoach bemerkt nur Muster und stellt keine Diagnosen. Wenn mehrere Zeichen auf dich passen – anhaltende Müdigkeit, häufig krank, ausbleibende Periode, Schwindel, Stillstand trotz Training –, sprich mit einer Ärztin oder einem Arzt oder mit einer Sport-Ernährungsberatung.</string>
+    <string name="trt_reds_info">Klettern belohnt Kraft zu Gewicht, und das verleitet manche dazu, zu wenig zu essen. Zu wenig Energie für das Training, das du machst (relatives Energiedefizit im Sport, RED-S), kostet Kraft, Erholung und Gesundheit – Knochen, Hormone, Immunsystem. CruxCoach zeigt dir die Zahlen hinter jedem Zeichen und stellt keine Diagnosen; deine Ziele bleiben deine. Wenn mehrere Zeichen auf dich passen – anhaltende Müdigkeit, häufig krank, ausbleibende Periode, Schwindel, Stillstand trotz Training, Gedanken, die ständig um Essen und Gewicht kreisen –, sprich mit einer Ärztin oder einem Arzt, einer Sport-Ernährungsberatung oder einer Beratungsstelle für Essstörungen.</string>
     <string name="trt_reds_low_bmi">Dein Körpergewicht liegt unter dem Bereich, den Kletterverbände für Gesundheitschecks nutzen.</string>
     <string name="trt_reds_rapid_loss">Dein Gewichtstrend fällt schnell.</string>
     <string name="trt_reds_low_carbs">An mehreren Trainingstagen hast du deutlich weniger Kohlenhydrate eingetragen, als das Training braucht.</string>
-    <string name="trt_reds_goal_paused">Dein Abnehmziel ist pausiert, solange diese Zeichen bestehen.</string>
     <string name="trt_spike_title">Belastungssprung: %1$s</string>
     <string name="trt_spike_text">Mehr Belastungstage als in den drei Wochen davor. Kein Verbot – nur gut zu wissen.</string>
     <string name="trt_trend_direction">Trendrichtung</string>

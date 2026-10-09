@@ -345,7 +345,17 @@ data class AthleteProfile(
     val trainingReminderMinutes: Int = 17 * 60,
     /** Also remind on planned board days, not only on off-wall workouts. */
     val trainingReminderOnClimbingDays: Boolean = true,
+    /** Optional target weight while [goal] is [AthleteGoal.LOSE_WEIGHT]; kept when the goal is switched off. */
+    val targetWeightKg: Double? = null,
+    /** Planned loss per week while losing weight; sets the daily calorie target. */
+    val weeklyLossKg: Double = 0.5,
+    /** Everyday life besides training, for the energy estimate. */
+    val everydayActivity: EverydayActivity = EverydayActivity.SEATED,
 )
+
+/** Everyday life besides training: a physical activity level on top of resting energy. */
+@Serializable
+enum class EverydayActivity { SEATED, ON_FEET, PHYSICAL }
 
 // ── Coach profile (FEAT-071) ─────────────────────────────────────────
 

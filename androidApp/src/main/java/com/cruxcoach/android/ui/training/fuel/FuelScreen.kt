@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.training.fuel
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -35,7 +37,6 @@ import com.cruxcoach.athlete.logic.MacroTotals
 import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.logic.Recipe
-import com.cruxcoach.athlete.logic.RedsSignal
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.HydrationEntry
@@ -66,6 +67,8 @@ fun FuelScreen(
     var createFood by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
     var weightOpen by remember { mutableStateOf(false) }
+    var energyOpen by remember { mutableStateOf(false) }
+    var goalOpen by remember { mutableStateOf(false) }
     /** A recipe being written; while [pickingIngredient] the food list chooses its next ingredient. */
     var recipeDraft by remember { mutableStateOf<RecipeDraft?>(null) }
     var pickingIngredient by remember { mutableStateOf(false) }
@@ -158,7 +161,7 @@ fun FuelScreen(
                 // explained once instead of behind an opt-in.
                 if (!state.profile.fuelIntroAccepted) item { FuelIntroCard(onGotIt = viewModel::acceptIntro) }
                 item { DayHeader(state, viewModel::previousDay, viewModel::nextDay, viewModel::goToday) }
-                if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "fuel_reds") }
+                if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "fuel_reds", onAdjustGoal = { goalOpen = true }) }
                 if (state.targets == null) {
                     item(key = "needs_weight") {
                         com.cruxcoach.android.ui.training.common.NeedsDataCard(
@@ -171,7 +174,7 @@ fun FuelScreen(
                         )
                     }
                 }
-                item(key = "summary") { MacroSummaryCard(state) }
+                item(key = "summary") { MacroSummaryCard(state, onOpenEnergy = { energyOpen = true }) }
                 item(key = "water") { WaterCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
                 if (state.entries.isEmpty() && state.previousDayCount > 0) {
                     item(key = "copy") { CopyPreviousCard(state.previousDayCount, onCopy = { copyConfirm = true }) }
@@ -200,6 +203,25 @@ fun FuelScreen(
         }
     }
 
+    if (energyOpen) {
+        com.cruxcoach.android.ui.training.common.EnergySheet(
+            profile = state.profile, need = state.need, weightKg = state.bodyweightKg, heightCm = state.heightCm,
+            plan = state.energy.plan.takeIf { state.isToday }, eatenKcal = MacroTotals.of(state.entries).takeIf { it.entries > 0 }?.kcal,
+            onDismiss = { energyOpen = false },
+            onEditGoal = { energyOpen = false; goalOpen = true },
+            onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight, onUpdateProfile = viewModel::updateProfile,
+        )
+    }
+    if (goalOpen) {
+        com.cruxcoach.android.ui.training.common.WeightGoalSheet(
+            profile = state.profile, weightKg = state.bodyweightKg, heightCm = state.heightCm,
+            // The pace's calorie target is today's: the sheet always plans from today.
+            need = state.need.takeIf { state.isToday },
+            onDismiss = { goalOpen = false },
+            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); goalOpen = false },
+            onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
+        )
+    }
     if (weightOpen) {
         com.cruxcoach.android.ui.training.common.WeightSheet(
             units = units, lastKg = state.bodyweightKg, hideNumbers = state.profile.hideBodyNumbers,
@@ -521,16 +543,26 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
  * fat and calories in one line below. Explanations sit at the info icons.
  */
 @Composable
-private fun MacroSummaryCard(state: FuelState) {
+private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
     val t = state.targets
     val totals = MacroTotals.of(state.entries)
+    // Energy is the third ring while calories are shown: eaten against the need,
+    // or against the calorie target while losing weight (owner 2026-10-09).
+    val showEnergy = state.profile.showCalories
+    val ringSize = if (showEnergy) 84.dp else 92.dp
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 16.dp, bottom = 4.dp)) {
             Row(Modifier.fillMaxWidth().padding(end = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
-                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein")
+                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize)
                 MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
-                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs")
+                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize)
+                if (showEnergy) {
+                    val plan = state.energy.plan
+                    EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
+                        target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
+                        losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy)
+                }
             }
             // Fat and calories in one line under the rings; one info icon explains all targets.
             val share = totals.fatEnergyShare
@@ -543,10 +575,6 @@ private fun MacroSummaryCard(state: FuelState) {
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                 )
-                if (state.profile.showCalories && totals.entries > 0) {
-                    Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(start = 8.dp).testTag("fuel_kcal"))
-                }
                 InfoButton(stringResource(R.string.trf_day_total), listOfNotNull(
                     t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
                     t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
@@ -564,11 +592,12 @@ private fun MacroRing(
     target: Int?,
     color: androidx.compose.ui.graphics.Color,
     tag: String,
+    size: androidx.compose.ui.unit.Dp = 92.dp,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag(tag)) {
         com.cruxcoach.android.ui.training.common.ProgressRing(
             progress = if (target != null && target > 0) (value / target).toFloat() else 0f,
-            size = 92.dp, stroke = 9.dp, color = color,
+            size = size, stroke = 9.dp, color = color,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 // A reached target gets its tick – a small reward, never a "too much".
@@ -587,6 +616,48 @@ private fun MacroRing(
         }
     }
 }
+
+/**
+ * Energy eaten against the need (or the calorie target while losing weight).
+ * A tap opens how the need is made up. Above the target it says by how much,
+ * in the normal text colour – a number, not a verdict.
+ */
+@Composable
+private fun EnergyRing(eaten: Double, estimated: Boolean, target: Int?, losing: Boolean, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    val value = eaten.roundToInt()
+    val openText = stringResource(R.string.trn_open_energy)
+    Column(horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clip(CruxCoachDesign.shapes.medium)
+            .clickable(onClickLabel = openText, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .testTag("fuel_energy")) {
+        com.cruxcoach.android.ui.training.common.ProgressRing(
+            progress = if (target != null && target > 0) (eaten / target).toFloat() else 0f,
+            size = size, stroke = 9.dp, color = EnergyColor,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text((if (estimated) "≈" else "") + value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("fuel_kcal"))
+                Text(if (target != null) stringResource(R.string.trn_of_kcal, target) else "kcal", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(stringResource(R.string.trn_energy), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+        Text(
+            when {
+                target == null -> openText
+                value < target -> stringResource(R.string.trn_to_go, target - value)
+                losing && value > target -> stringResource(R.string.trn_over_target, value - target)
+                losing -> stringResource(R.string.trn_target_met)
+                else -> stringResource(R.string.trn_need_met)
+            },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("fuel_energy_left"),
+        )
+    }
+}
+
+/** Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue). */
+internal val EnergyColor = androidx.compose.ui.graphics.Color(0xFF9C6ADE)
 
 /**
  * Water as glasses: tap the next empty one for another glass, the last full

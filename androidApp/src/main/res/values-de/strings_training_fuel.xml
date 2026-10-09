@@ -2,10 +2,10 @@
 <!-- Ernährung / Fueling (FEAT-068): immer aktiv, „Energie statt Diät“. -->
 <resources>
     <string name="trf_intro_title">Ernährung: Energie fürs Training</string>
-    <string name="trf_intro_p1">Genug Energie ist die Grundlage für Kraft, Haut und Erholung. CruxCoach hilft dir, passend zu deinem Training zu essen – nicht weniger.</string>
+    <string name="trf_intro_p1">Genug Energie ist die Grundlage für Kraft, Haut und Erholung. CruxCoach zeigt dir, was dein Training braucht – auch wenn du abnimmst.</string>
     <string name="trf_intro_protein">Protein richtet sich nach deinem Körpergewicht (etwa 1,4–2,0 g pro kg).</string>
     <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Sessions.</string>
-    <string name="trf_intro_no_budget">Kein Kalorienbudget, kein „zu viel“, keine guten oder schlechten Lebensmittel.</string>
+    <string name="trf_intro_no_budget" formatted="false">Alle Werte offen: dein geschätzter Energiebedarf, was du gegessen hast und beim Abnehmen dein Kalorienziel. CruxCoach warnt, wenn du schneller als 1 % deines Gewichts pro Woche abnimmst oder dein Defizit groß wird. Keine guten oder schlechten Lebensmittel.</string>
     <string name="trf_intro_hidden">Kalorien stehen bei allen Werten dabei; in den Einstellungen kannst du sie ausblenden.</string>
     <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät – außer du schaltest selbst das Backup oder Health Connect ein.</string>
     <string name="trf_intro_got_it">Verstanden</string>
@@ -66,7 +66,7 @@
     <string name="trf_reached">Ziel erreicht</string>
     <string name="trf_fat">Fett</string>
     <string name="trf_fat_share">%1$d %% der Energie · Richtwert %2$d–%3$d %%</string>
-    <string name="trf_fat_info">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35 %% der Energie aus Fett; weniger als 20 %% wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
+    <string name="trf_fat_info" formatted="false">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35 % der Energie aus Fett; weniger als 20 % wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_quick_add">Schnell eintragen</string>
     <string name="trf_my_foods">Meine Lebensmittel</string>

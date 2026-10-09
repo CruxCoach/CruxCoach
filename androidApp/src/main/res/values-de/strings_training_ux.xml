@@ -62,7 +62,7 @@
     <string name="tru_enter_weight">Gewicht eintragen</string>
     <string name="tru_add_scan">Scannen</string>
     <string name="tru_add_quick">Werte</string>
-    <string name="tru_fuel_intro_short">Iss genug für dein Training: Protein richtet sich nach deinem Gewicht, Kohlenhydrate nach deinen Trainingstagen. Kein Kalorienbudget, nichts verlässt dein Handy.</string>
+    <string name="tru_fuel_intro_short">Iss genug für dein Training: Protein richtet sich nach deinem Gewicht, Kohlenhydrate nach deinen Trainingstagen, Energiebedarf und Bilanz siehst du offen. Nichts verlässt dein Handy.</string>
     <string name="tru_carbs_short">Kohlenhydrate</string>
     <string name="tru_of_g">von %1$d g</string>
     <string name="tru_water_remove">Letztes Glas entfernen</string>

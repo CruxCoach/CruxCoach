@@ -229,6 +229,55 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
+    /** The active climber with a height, losing weight at [paceKg] a week. */
+    private fun seedLosing(paceKg: Double) {
+        seedActive()
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, 176.0, "cm", 1))
+        repo.updateProfile { it.copy(sex = com.cruxcoach.athlete.model.Sex.MALE, birthYear = 1994,
+            goal = com.cruxcoach.athlete.model.AthleteGoal.LOSE_WEIGHT, weeklyLossKg = paceKg, targetWeightKg = 64.0) }
+    }
+
+    @Test
+    fun fuelEnergy() {
+        seedLosing(0.5)
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("fuel-energy", { waitForTag("fuel_energy") }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p, tabBar = { TrainingTabBar(TrainingTab.FUEL) {} }) }
+    }
+
+    @Test
+    fun energySheet() {
+        seedLosing(0.5)
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("energy-sheet", { click("fuel_energy"); waitForTag("energy_need"); Thread.sleep(800) }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
+    }
+
+    @Test
+    fun fuelWarning() {
+        seedLosing(1.2)
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("fuel-warning", { waitForTag("fuel_reds") }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p, tabBar = { TrainingTabBar(TrainingTab.FUEL) {} }) }
+    }
+
+    @Test
+    fun goalSheet() {
+        seedLosing(1.2)
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("goal-sheet", { click("fuel_reds_adjust"); waitForTag("goal_result"); Thread.sleep(800) }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
+    }
+
+    @Test
+    fun settingsGoal() {
+        seedLosing(1.2)
+        val vm = AthleteSettingsViewModel(service).tracked()
+        shoot("settings-goal", { compose.waitUntil(WAIT_MS) { vm.state.value.loaded }; waitForTag("goal_summary") }) {
+            AthleteSettingsScreen({}, viewModel = vm, section = com.cruxcoach.android.ui.training.athlete.SettingsSection.PROFILE)
+        }
+    }
+
     @Test
     fun settings() {
         val vm = AthleteSettingsViewModel(service).tracked()

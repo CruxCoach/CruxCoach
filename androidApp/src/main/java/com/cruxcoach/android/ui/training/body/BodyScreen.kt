@@ -148,7 +148,7 @@ fun BodyScreen(
             Modifier.fillMaxSize().padding(padding).testTag("body_list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         ) {
-            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "body_reds", Modifier.padding(vertical = 8.dp)) }
+            if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "body_reds", Modifier.padding(vertical = 8.dp)) }
             // Weight first – it is what most people come here for; the round of measurements after it.
             item { Column { WeightSection(state, onRange = viewModel::setRange) } }
             item { Box(Modifier.padding(top = 12.dp)) { RoundCard(onOpen = { roundOpen = true }) } }
