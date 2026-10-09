@@ -128,9 +128,25 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
         _state.update { it.copy(returnState = ret) }
     }
 
+    /** A start waiting for "continue the open training or end it". */
+    val pendingStart = kotlinx.coroutines.flow.MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingStart?>(null)
+
     fun start(routine: Routine, title: String?) = io {
-        service.startWorkout(routine, title)
-        _events.send(WorkoutsEvent.Started)
+        val begin: suspend (Boolean) -> Unit = { replace ->
+            if (replace) service.closeOpenWorkout()
+            service.startWorkout(routine, title)
+            _events.send(WorkoutsEvent.Started)
+        }
+        val conflict = service.openConflict(routine.id)
+        if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title ?: routine.name, begin)
+        else begin(false)
+    }
+
+    /** true: end the open training and start; false: continue the open one; null: start nothing. */
+    fun resolveStart(replace: Boolean?) = io {
+        val pending = pendingStart.value ?: return@io
+        pendingStart.value = null
+        if (replace != null) pending.start(replace)
     }
 
     fun duplicate(routine: Routine, copySuffix: String) = io {
@@ -188,6 +204,8 @@ fun WorkoutsScreen(
     LaunchedEffect(Unit) { viewModel.refreshWeek() }
     val copySuffix = stringResource(R.string.trwo_copy_suffix)
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is WorkoutsEvent.Started) onWorkoutStarted() } }
+    val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
+    pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
 
     TrainingScaffold(
         title = stringResource(R.string.tr_tab_training),

@@ -418,10 +418,35 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         return null to "draft:" + s.routine.items.joinToString(",") { it.slug }
     }
 
+    /** A start waiting for "continue the open training or end it". */
+    val pendingStart = MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingStart?>(null)
+
+    /** Runs [begin] at once, or after the athlete chose what happens to another open training. */
+    private fun guardedStart(routineId: String?, title: String?, begin: suspend (replace: Boolean) -> Unit) = io {
+        val conflict = service.openConflict(routineId)
+        if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title, begin)
+        else begin(false)
+    }
+
+    /** true: end the open training and start; false: continue the open one; null: start nothing. */
+    fun resolveStart(replace: Boolean?) = io {
+        val pending = pendingStart.value ?: return@io
+        pendingStart.value = null
+        if (replace != null) pending.start(replace)
+    }
+
     /** Starts today's suggestion in the guided player; [title] is the localized focus title. */
-    fun startSuggestion(title: String) = io {
-        val suggestion = _state.value.suggestion ?: return@io
-        val id = service.startWorkout(suggestion.routine.copy(id = "suggestion:${service.today()}", name = title), title)
+    fun startSuggestion(title: String) {
+        val suggestion = _state.value.suggestion ?: return
+        val routine = suggestion.routine.copy(id = "suggestion:${service.today()}", name = title)
+        guardedStart(routine.id, title) { replace ->
+            if (replace) service.closeOpenWorkout()
+            startSuggestionNow(suggestion, routine, title)
+        }
+    }
+
+    private fun startSuggestionNow(suggestion: SessionSuggestion, routine: Routine, title: String) {
+        val id = service.startWorkout(routine, title)
         // Planned work sets, so the summary can tell how much of the suggestion was done.
         val catalog = service.catalog
         val plannedSets = suggestion.routine.items.filter { !it.warmup }.sumOf { item ->
@@ -467,13 +492,17 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         service.repo.savePause(open.copy(endDay = service.today().toString()))
     }
 
-    fun startRoutine(key: String) = io {
-        val routine = BuiltinRoutines.byKey(key) ?: return@io
-        service.startWorkout(routine, null)
-        _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+    fun startRoutine(key: String, title: String? = null) {
+        val routine = BuiltinRoutines.byKey(key) ?: return
+        guardedStart(routine.id, title) { replace ->
+            if (replace) service.closeOpenWorkout()
+            service.startWorkout(routine, null)
+            _state.update { it.copy(startedWorkout = true, startedGuided = true) }
+        }
     }
 
-    fun startEmptyWorkout() = io {
+    fun startEmptyWorkout() = guardedStart(null, null) { replace ->
+        if (replace) service.closeOpenWorkout()
         service.startWorkout(null, null)
         _state.update { it.copy(startedWorkout = true, startedGuided = false) }
     }

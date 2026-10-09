@@ -30,9 +30,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   maximum – and a logged set that proves more raises the value automatically;
   the first session with an exercise sets a starting value. Block lifts and
   pick-ups without any value start with a careful estimated load (from a max
-  hang or pick-up value, else body weight and grade) instead of 0 kg, and a
-  suggested training without a hangboard ramp ramps into its first loaded
-  finger exercise with light sets of it.
+  hang or pick-up value, else body weight and grade) instead of 0 kg. The
+  warm-up fits what follows: the general warm-up is chosen for the session's
+  body parts, the hangboard ramp only comes before hangboard work, and the
+  first finger, pull, push and leg exercise starts with lighter sets of
+  itself (a 50/70/85 % ramp, or one set at half the reps or time). Starting
+  another training while one is open asks whether to continue it or end it.
 - Guided training mode, the default for routines: one big set view with the
   target, % body weight and an inline hang/repeater timer, and a separate rest
   screen with a countdown ring, ±15 s, a side-switch pause, the next set and a

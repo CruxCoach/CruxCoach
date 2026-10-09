@@ -217,9 +217,24 @@ class CoachSetupViewModel @Inject constructor(
         val s = _state.value
         save(s.step, s.draft, s.sessionMinutes, finish = true)
         io {
-            service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.BASELINE_TESTS), title)
-            _state.update { it.copy(testStarted = true) }
+            val routine = BuiltinRoutines.byKey(BuiltinRoutines.BASELINE_TESTS)
+            val begin: suspend (Boolean) -> Unit = { replace ->
+                if (replace) service.closeOpenWorkout()
+                service.startWorkout(routine, title)
+                _state.update { it.copy(testStarted = true) }
+            }
+            val conflict = service.openConflict(routine?.id)
+            if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title, begin) else begin(false)
         }
+    }
+
+    /** A start waiting for "continue the open training or end it". */
+    val pendingStart = kotlinx.coroutines.flow.MutableStateFlow<com.cruxcoach.android.ui.training.workout.PendingStart?>(null)
+
+    fun resolveStart(replace: Boolean?) = io {
+        val pending = pendingStart.value ?: return@io
+        pendingStart.value = null
+        if (replace != null) pending.start(replace)
     }
 
     fun consumeTestStarted() = _state.update { it.copy(testStarted = false) }
@@ -338,6 +353,8 @@ fun CoachSetupScreen(
     viewModel: CoachSetupViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
+    pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
     var estimating by rememberSaveable { mutableStateOf(false) }
     var equipmentOpen by rememberSaveable { mutableStateOf(false) }
     var weightOpen by rememberSaveable { mutableStateOf(false) }
