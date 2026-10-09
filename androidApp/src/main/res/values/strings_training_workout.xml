@@ -137,4 +137,15 @@
     </plurals>
     <string name="trw_open_player">Guided mode</string>
     <string name="trw_timer_released">Let go</string>
+    <string name="trw_open_title">“%1$s” is still open</string>
+    <string name="trw_open_untitled">Training</string>
+    <plurals name="trw_open_done">
+        <item quantity="one">%1$d of %2$d set done.</item>
+        <item quantity="other">%1$d of %2$d sets done.</item>
+    </plurals>
+    <string name="trw_open_dropped">Nothing done yet – ending it drops it.</string>
+    <string name="trw_open_kept">Ending it saves the sets you did.</string>
+    <string name="trw_open_replace">End it, start “%1$s”</string>
+    <string name="trw_open_replace_empty">End it, start a new one</string>
+    <string name="trw_open_continue">Continue “%1$s”</string>
 </resources>

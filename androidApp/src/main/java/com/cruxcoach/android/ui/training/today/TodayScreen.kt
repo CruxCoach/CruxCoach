@@ -229,6 +229,8 @@ fun TodayScreen(
     }
 
     if (showWhy) WhySheet(state, onDismiss = { showWhy = false })
+    val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
+    pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
     if (showCheckin) {
         CheckinSheet(state, onDismiss = { showCheckin = false },
             onSave = { s, e, sk, f, sick -> viewModel.saveCheckin(s, e, sk, f, sick); showCheckin = false },

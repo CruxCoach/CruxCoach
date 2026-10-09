@@ -299,32 +299,51 @@ class AthleteService @Inject constructor(
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
             val modifier = todaysModifier()
             routine?.items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
-            if (routine?.items?.any { it.warmup } == true) addFingerRampIfMissing(id)
+            if (routine?.items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
         id
     }
 
     /**
-     * A training with a warm-up but no loaded finger warm-up (the hangboard
-     * ramp needs a hangboard) ramps into its first loaded finger exercise:
-     * light block lifts before the heavy ones (owner device test 2026-10-09).
+     * The warm-up fits what follows and builds up from lighter versions of it
+     * (owner 2026-10-09): before the first finger, pull, push and leg exercise
+     * come lighter sets of that same exercise – a 50/70/85 % ramp for loaded
+     * work, one set at half the reps or time for body-weight work. A loaded
+     * finger warm-up that is already there (the hangboard ramp before
+     * hangboard work) counts for the fingers.
      */
-    private fun addFingerRampIfMissing(workoutId: String) {
-        fun loadedFinger(slug: String) = catalog.fallbackFor(slug).let { d ->
-            com.cruxcoach.athlete.catalog.LoadDomain.FINGER in d.domains &&
-                (d.load == com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL || d.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS)
-        }
+    private fun addSpecificWarmups(workoutId: String) {
         val sets = repo.setsFor(workoutId)
-        if (sets.any { it.setType == SetType.WARMUP && loadedFinger(it.exerciseSlug) }) return
-        val first = sets.filter { it.setType == SetType.WORK && loadedFinger(it.exerciseSlug) }
-            .minWithOrNull(compareBy({ it.blockIndex }, { it.setIndex })) ?: return
-        addWarmupRamp(first)
+        val ramped = setOf(
+            com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER, com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PULL,
+            com.cruxcoach.athlete.catalog.ExerciseCategoryV2.PUSH, com.cruxcoach.athlete.catalog.ExerciseCategoryV2.LEGS,
+        )
+        val fingerCovered = sets.any { s ->
+            s.setType == SetType.WARMUP && catalog.fallbackFor(s.exerciseSlug).let { d ->
+                com.cruxcoach.athlete.catalog.LoadDomain.FINGER in d.domains && d.load != com.cruxcoach.athlete.catalog.LoadMode.NONE
+            }
+        }
+        sets.filter { it.setType == SetType.WORK }
+            .sortedWith(compareBy({ it.blockIndex }, { it.setIndex }))
+            .groupBy { catalog.fallbackFor(it.exerciseSlug).category }
+            .filterKeys { it in ramped && !(it == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.FINGER && fingerCovered) }
+            .values.forEach { inCategory ->
+                val first = inCategory.first()
+                // Only the first exercise of the area, and not when its block already starts with warm-up sets.
+                if (sets.none { it.blockIndex == first.blockIndex && it.setType == SetType.WARMUP }) addWarmupRamp(first)
+            }
     }
 
-    /** Inserts the 50/70/85 % ramp before [firstWork] for every side of it (negative set indices sort first). */
+    /**
+     * Lighter sets of [firstWork]'s exercise before it, for every side: the
+     * 50/70/85 % ramp for loaded work, else one set at half the reps or time
+     * (body-weight work, or a load still unknown). Negative set indices sort first.
+     */
     fun addWarmupRamp(firstWork: ExerciseSet) {
         val def = catalog.fallbackFor(firstWork.exerciseSlug)
+        if (def.load == com.cruxcoach.athlete.catalog.LoadMode.NONE || def.kind == com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB) return
         val steps = WarmupRamp.build(def, firstWork.loadKg, firstWork.bodyweightKg ?: currentBodyweight(), repo.profile().smallestIncrementKg)
+            .ifEmpty { listOfNotNull(WarmupRamp.lighterSet(def, firstWork.targetReps ?: firstWork.reps, (firstWork.targetDurationS ?: firstWork.durationS)?.toInt(), firstWork.loadKg)) }
         val sides = repo.setsFor(firstWork.workoutId)
             .filter { it.blockIndex == firstWork.blockIndex && it.setIndex == firstWork.setIndex && it.setType == SetType.WORK }
             .map { it.side }
@@ -332,7 +351,8 @@ class AthleteService @Inject constructor(
             sides.forEach { side ->
                 repo.saveSet(firstWork.copy(
                     id = repo.newId(), setType = SetType.WARMUP, setIndex = i - steps.size, side = side,
-                    loadKg = step.loadKg, targetLoadKg = step.loadKg,
+                    // Body-weight work keeps "no load"; loaded work gets the step's load.
+                    loadKg = firstWork.loadKg?.let { step.loadKg }, targetLoadKg = firstWork.loadKg?.let { step.loadKg },
                     reps = step.reps ?: firstWork.reps, targetReps = step.reps ?: firstWork.targetReps,
                     durationS = step.durationS?.toDouble() ?: firstWork.durationS,
                     targetDurationS = step.durationS?.toDouble() ?: firstWork.targetDurationS,
@@ -716,6 +736,27 @@ class AthleteService @Inject constructor(
     }
 
     fun discardWorkout(id: String) = repo.deleteWorkout(id)
+
+    /** A training still open when another one is about to start. */
+    data class OpenConflict(val open: Workout, val doneSets: Int, val totalSets: Int)
+
+    /**
+     * The open training, when starting [routineId] would otherwise silently
+     * reopen it (owner 2026-10-09: "Mobility" opened the finger ramp of an open
+     * finger training). Starting the open training's own routine again is no conflict.
+     */
+    fun openConflict(routineId: String?): OpenConflict? {
+        val open = repo.openWorkout() ?: return null
+        if (routineId != null && open.routineId == routineId) return null
+        val sets = repo.setsFor(open.id)
+        return OpenConflict(open, sets.count { it.isCompleted }, sets.size)
+    }
+
+    /** Ends the open training before another starts: kept with what was done, dropped when nothing was. */
+    fun closeOpenWorkout() {
+        val open = repo.openWorkout() ?: return
+        if (repo.setsFor(open.id).any { it.isCompleted }) finishWorkout(open.id, null, null) else discardWorkout(open.id)
+    }
 
     /** One entry in the recommendation ledger the coach learns preferences from (FEAT-071). */
     fun logSuggestion(

@@ -296,6 +296,16 @@ object WarmupRamp {
         }
     }
 
+    /**
+     * One easy set before body-weight work (or loaded work whose load is not
+     * known yet): half the reps or half the time, at least 3, the same load.
+     */
+    fun lighterSet(def: ExerciseDefinition, reps: Int?, durationS: Int?, loadKg: Double?): Step? = when {
+        reps != null && reps > 0 -> Step(50, loadKg ?: 0.0, maxOf(3, reps / 2), null)
+        durationS != null && durationS > 0 -> Step(50, loadKg ?: 0.0, null, maxOf(3, durationS / 2))
+        else -> null
+    }
+
     private fun repsFor(def: ExerciseDefinition, index: Int): Int? =
         if (def.kind == ExerciseKind.LOAD_REPS) listOf(8, 5, 2)[index] else null
 

@@ -807,7 +807,9 @@ object SessionSuggester {
         val guard = guardrails(input)
         val fingerFocus = focus == SuggestionFocus.FINGER_STRENGTH || focus == SuggestionFocus.INJURY_SAFE
         val result = mutableListOf<RoutineItem>()
-        for (slot in slots) {
+        // The warm-up is chosen last, for what the session then holds (owner 2026-10-09), and goes first.
+        for (slot in slots.filter { it != Slot.WARMUP } + slots.filter { it == Slot.WARMUP }) {
+            val mains = if (slot == Slot.WARMUP) result.map { input.catalog.fallbackFor(it.slug) } else emptyList()
             // "Lieber gar nicht": finger strength comes from the board, not from here.
             if (slot == Slot.FINGER_MAIN && input.coach.fingerPreference == FingerPreference.NONE) continue
             val base = input.catalog.all.filter { def ->
@@ -816,6 +818,7 @@ object SessionSuggester {
                 val allowed = if (focus == SuggestionFocus.INJURY_SAFE) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
                     else verdict != InjuryVerdict.AVOID
                 def.slug !in taken && def.slug !in input.excluded && fits(slot, def, fingerFocus) && filter.matches(def) && allowed &&
+                    (slot != Slot.WARMUP || warmupFits(def, mains)) &&
                     !(guard.restrictFinger && slot != Slot.WARMUP && restrictedByGuard(def)) &&
                     // One progression chain per session: no easier/harder neighbour of a pick.
                     taken.none { t -> def.easier == t || def.harder == t }
@@ -823,10 +826,11 @@ object SessionSuggester {
             // The preferred finger-training family, when the equipment allows it.
             val preferred = if (slot == Slot.FINGER_MAIN) base.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { base } else base
             val withinLevel = preferred.filter { it.difficulty <= level }.ifEmpty { preferred }
-            val choice = withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus) }.thenBy { it.slug })
+            val choice = withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
-            result += WorkoutPlanner.itemFor(choice).let { if (slot == Slot.WARMUP) it.copy(warmup = true, sets = min(it.sets, 4)) else it }
+            if (slot == Slot.WARMUP) result.add(0, WorkoutPlanner.itemFor(choice).copy(warmup = true, sets = min(WorkoutPlanner.itemFor(choice).sets, 4)))
+            else result += WorkoutPlanner.itemFor(choice)
         }
         return result
     }
@@ -856,7 +860,27 @@ object SessionSuggester {
         }
     }
 
-    private fun score(input: SuggestionInput, def: ExerciseDefinition, slot: Slot, focus: SuggestionFocus): Double {
+    /** Equipment a warm-up hangs or lifts on (not the floor or a mat). */
+    private fun gear(def: ExerciseDefinition): Set<EquipmentV2> = def.equipment.toSet() - EquipmentV2.NONE - EquipmentV2.MAT
+
+    /**
+     * A loaded warm-up on equipment (the hangboard ramp, hangs on the bar) is a
+     * lighter version of what follows only when the session uses that
+     * equipment; general warm-ups always fit.
+     */
+    private fun warmupFits(def: ExerciseDefinition, mains: List<ExerciseDefinition>): Boolean {
+        val gear = gear(def)
+        if (def.load == LoadMode.NONE || gear.isEmpty()) return true
+        return mains.any { m -> m.equipment.any { it in gear } }
+    }
+
+    private fun score(
+        input: SuggestionInput,
+        def: ExerciseDefinition,
+        slot: Slot,
+        focus: SuggestionFocus,
+        mains: List<ExerciseDefinition> = emptyList(),
+    ): Double {
         val coach = input.coach
         val variety = (coach.variety ?: 50).coerceIn(0, 100)
         var s = 0.0
@@ -886,7 +910,12 @@ object SessionSuggester {
         }
         if (slot == Slot.PULL && FocusArea.POWER in coach.focus && "power" in def.tags) s += 1.5
         if ("beginner_friendly" in def.tags && level(input) <= 2) s += 0.5
-        if (slot == Slot.WARMUP && focus == SuggestionFocus.FINGER_STRENGTH && def.slug == "warmup.finger_ramp") s += 10.0
+        if (slot == Slot.WARMUP) {
+            // Prepares the body parts the session loads; a lighter version on the same equipment first.
+            val loaded = mains.flatMap { it.domains }.toSet()
+            s += 2.0 * def.domains.count { it in loaded }
+            if (def.load != LoadMode.NONE && gear(def).isNotEmpty() && mains.any { m -> m.equipment.any { it in gear(def) } }) s += 10.0
+        }
         return s + jitter(def.slug, input.today, input.variant) * (0.4 + 1.2 * variety / 100.0)
     }
 

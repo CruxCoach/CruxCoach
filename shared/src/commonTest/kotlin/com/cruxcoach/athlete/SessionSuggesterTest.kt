@@ -157,8 +157,22 @@ class SessionSuggesterTest {
         val s = SessionSuggester.suggest(input())
         assertEquals(SuggestionFocus.FINGER_STRENGTH, s.focus)
         assertTrue(slugs(s).any { catalog[it]!!.category == ExerciseCategoryV2.FINGER })
-        assertEquals("warmup.finger_ramp", slugs(s).first())
         assertTrue(s.routine.items.first().warmup)
+    }
+
+    @Test
+    fun warmupIsALighterVersionOfWhatFollows() {
+        // Owner 2026-10-09: the hangboard ramp only before hangboard work; before block lifts the
+        // block itself ramps up (added when the training starts), not a hangboard.
+        val onlyHangboard = home - EquipmentV2.PICKUP_BLOCK
+        val hang = SessionSuggester.suggest(input(profile = profile.copy(equipment = onlyHangboard)))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, hang.focus)
+        assertEquals("warmup.finger_ramp", slugs(hang).first())
+        val onlyBlock = home - EquipmentV2.HANGBOARD
+        val block = SessionSuggester.suggest(input(profile = profile.copy(equipment = onlyBlock)))
+        assertTrue(slugs(block).any { EquipmentV2.PICKUP_BLOCK in catalog[it]!!.equipment }, "${slugs(block)}")
+        assertTrue("warmup.finger_ramp" !in slugs(block))
+        assertTrue(block.routine.items.first().warmup)
     }
 
     @Test

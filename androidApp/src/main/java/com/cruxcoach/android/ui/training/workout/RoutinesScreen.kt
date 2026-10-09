@@ -69,13 +69,27 @@ class RoutinesViewModel @Inject constructor(private val service: AthleteService)
         }
     }
 
-    /** Starts the routine; with a training already open the athlete simply returns to it. */
+    /** A start waiting for "continue the open training or end it". */
+    val pendingStart = MutableStateFlow<PendingStart?>(null)
+
+    /** Starts the routine; with another training open the athlete chooses first (continue or end it). */
     fun start(routine: Routine, title: String) {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            service.startWorkout(routine, title)
-            _started.emit(Unit)
+            val begin: suspend (Boolean) -> Unit = { replace ->
+                if (replace) service.closeOpenWorkout()
+                service.startWorkout(routine, title)
+                _started.emit(Unit)
+            }
+            val conflict = service.openConflict(routine.id)
+            if (conflict != null) pendingStart.value = PendingStart(conflict, title, begin) else begin(false)
         }
+    }
+
+    fun resolveStart(replace: Boolean?) {
+        val pending = pendingStart.value ?: return
+        pendingStart.value = null
+        if (replace != null) viewModelScope.launch(Dispatchers.IO) { pending.start(replace) }
     }
 
     fun delete(id: String) {
@@ -92,6 +106,8 @@ fun RoutinesScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val language = catalogLanguage()
     LaunchedEffect(Unit) { viewModel.started.collect { onWorkoutStarted() } }
+    val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
+    pendingStart?.let { OpenTrainingDialog(it, viewModel::resolveStart) }
     var preview by remember { mutableStateOf<Routine?>(null) }
     var deleting by remember { mutableStateOf<Routine?>(null) }
 

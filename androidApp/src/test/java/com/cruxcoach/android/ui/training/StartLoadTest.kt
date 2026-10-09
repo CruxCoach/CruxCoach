@@ -74,4 +74,45 @@ class StartLoadTest : AthleteScreenTest() {
         val bare = service.startWorkout(Routine(id = "r3", name = "Finger", items = listOf(pickup)), null)
         assertTrue(repo.setsFor(bare).none { it.setType == SetType.WARMUP })
     }
+
+    @Test
+    fun `pull-ups warm up with an easy set of themselves, mobility not at all`() {
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 68.5, "kg", 1))
+        val circles = RoutineItem("warmup.arm_circles", sets = 1, repsMin = 10, repsMax = 15, warmup = true)
+        val pull = RoutineItem("pull.pull_up", sets = 3, repsMin = 8, repsMax = 8)
+        val id = service.startWorkout(Routine(id = "p", name = "Zug", items = listOf(circles, pull)), null)
+        val warm = repo.setsFor(id).filter { it.exerciseSlug == pull.slug && it.setType == SetType.WARMUP }
+        assertEquals(1, warm.size)
+        assertEquals(4, warm.single().targetReps)
+        service.finishWorkout(id, 5, null)
+        val mobility = service.startWorkout(com.cruxcoach.athlete.logic.BuiltinRoutines.byKey(com.cruxcoach.athlete.logic.BuiltinRoutines.MOBILITY_10), null)
+        assertTrue(repo.setsFor(mobility).none { it.setType == SetType.WARMUP })
+    }
+
+    @Test
+    fun `starting another training asks first, then continues or replaces the open one`() {
+        val finger = service.startWorkout(com.cruxcoach.athlete.logic.BuiltinRoutines.byKey(com.cruxcoach.athlete.logic.BuiltinRoutines.FINGER_BASICS), "Fingerkraft")
+        val mobility = com.cruxcoach.athlete.logic.BuiltinRoutines.byKey(com.cruxcoach.athlete.logic.BuiltinRoutines.MOBILITY_10)!!
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service))
+        vm.start(mobility, "Mobility")
+        val end = System.currentTimeMillis() + WAIT_MS
+        while (vm.pendingStart.value == null) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
+        assertEquals(finger, vm.pendingStart.value!!.conflict.open.id)
+        assertEquals(0, vm.pendingStart.value!!.conflict.doneSets)
+        // Continue: the open finger training stays.
+        vm.resolveStart(false)
+        while (vm.pendingStart.value != null) Thread.sleep(20)
+        Thread.sleep(300)
+        assertEquals(finger, repo.openWorkout()!!.id)
+        // Replace: nothing was done, so the finger training is dropped and mobility starts.
+        vm.start(mobility, "Mobility")
+        while (vm.pendingStart.value == null) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
+        vm.resolveStart(true)
+        while (repo.openWorkout()?.id == finger) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
+        val open = repo.openWorkout()!!
+        assertEquals(mobility.id, open.routineId)
+        assertEquals(null, repo.workout(finger))
+        // Starting the open training's own routine again just continues it.
+        assertEquals(null, service.openConflict(mobility.id))
+    }
 }

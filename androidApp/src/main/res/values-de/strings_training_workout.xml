@@ -131,4 +131,15 @@
     </plurals>
     <string name="trw_open_player">Geführter Modus</string>
     <string name="trw_timer_released">Losgelassen</string>
+    <string name="trw_open_title">„%1$s“ läuft noch</string>
+    <string name="trw_open_untitled">Training</string>
+    <plurals name="trw_open_done">
+        <item quantity="one">%1$d von %2$d Satz erledigt.</item>
+        <item quantity="other">%1$d von %2$d Sätzen erledigt.</item>
+    </plurals>
+    <string name="trw_open_dropped">Noch nichts erledigt – beim Beenden wird es verworfen.</string>
+    <string name="trw_open_kept">Beim Beenden bleiben die erledigten Sätze gespeichert.</string>
+    <string name="trw_open_replace">Beenden, „%1$s“ starten</string>
+    <string name="trw_open_replace_empty">Beenden, neues Training</string>
+    <string name="trw_open_continue">„%1$s“ fortsetzen</string>
 </resources>
