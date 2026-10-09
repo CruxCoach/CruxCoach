@@ -34,6 +34,18 @@ class MealTextParserTest {
     }
 
     @Test
+    fun mealHintsWithZumAndHeute() {
+        // Device test 2026-10-09: "Zum Mittag …" was saved without a meal.
+        val r = parse("Zum Mittag 2 Scheiben Knäckebrot und ein Glas Milch")
+        assertEquals(Meal.LUNCH, r.meal)
+        assertEquals(listOf("Knäckebrot", "Milch"), r.foods.map { it.nameDe })
+        assertEquals(Meal.BREAKFAST, parse("Heute morgen eine Banane").meal)
+        assertEquals(Meal.DINNER, parse("heute Abend 200 g Reis").meal)
+        assertEquals(Meal.LUNCH, parse("Mittag: Linsensuppe").meal)
+        assertNull(parse("Nachmittags ein Apfel").meal)
+    }
+
+    @Test
     fun aFoodNamedTwiceKeepsTheStatedAmount() {
         val r = parse("Abends Reis mit Hähnchencurry, ungefähr halber Teller Reis")
         assertEquals(Meal.DINNER, r.meal)

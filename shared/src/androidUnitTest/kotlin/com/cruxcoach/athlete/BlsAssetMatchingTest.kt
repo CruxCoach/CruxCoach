@@ -45,6 +45,7 @@ class BlsAssetMatchingTest {
 
     private companion object {
         val COOKED_PASTA = setOf("E401032", "X432142")
+        val MILK = setOf("M111300", "M111200", "M113300", "M113200")
         val AUBERGINE = setOf("G510132", "G510152", "G510172", "G510142", "G510162", "G510182", "G510100", "X573012")
     }
 
@@ -70,6 +71,17 @@ class BlsAssetMatchingTest {
             val ranked = matcher.match(DetectedFood(de, en, 100.0)).map { it.food.code }
             assertTrue(ranked.any { it in codes }, "$de: $ranked")
         }
+    }
+
+    @Test
+    fun aFoodNamedAloneIsNotTheIngredientOfAnother() {
+        // Device test 2026-10-09: "… und ein Glas Milch" became "Roggenvollkornknäckebrot mit Milch".
+        listOf(DetectedFood("Milch", "Milch", 200.0), DetectedFood("Milch", "Milk", 200.0)).forEach { food ->
+            val ranked = matcher.match(food)
+            assertTrue(ranked.first().food.code in MILK, "${food.nameEn}: " + ranked.take(3).map { it.food.nameDe })
+        }
+        // Typed in the search field, it had listed "Fleischersatz … milch- und sojahaltig" and "Rotzunge" first.
+        assertTrue(matcher.search("Milch").first().food.code in MILK, matcher.search("Milch").take(3).map { it.food.nameDe }.toString())
     }
 
     @Test
