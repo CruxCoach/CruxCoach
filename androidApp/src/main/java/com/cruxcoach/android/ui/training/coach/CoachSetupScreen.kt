@@ -182,7 +182,12 @@ class CoachSetupViewModel @Inject constructor(
 
     /** "Weiter": stores this card and moves on. */
     fun next() {
-        val s = _state.value
+        var s = _state.value
+        // The week card shows the weekly goal when nothing was chosen; "Weiter" takes what it shows.
+        if (s.step == 1 && s.draft.trainingDaysPerWeek == null) {
+            s = s.copy(draft = s.draft.copy(trainingDaysPerWeek = s.profile.weeklyGoal.coerceIn(1, 7)))
+            _state.value = s
+        }
         save(s.step, s.draft, s.sessionMinutes, finish = false)
         _state.update { it.copy(step = (it.step + 1).coerceAtMost(COACH_STEPS - 1)) }
     }
@@ -573,12 +578,14 @@ private fun WeekCard(state: CoachSetupState, update: ((CoachProfile) -> CoachPro
     CardHeader(stringResource(R.string.trc_week_title), stringResource(R.string.trc_week_why))
     QuestionLabel(stringResource(R.string.trc_training_days))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(d.trainingDaysPerWeek?.let { stringResource(R.string.trc_days_per_week, it) } ?: stringResource(R.string.trc_none),
+        // Starts from the weekly goal (one number for both), so "+" never jumps from "–" to 4.
+        val base = state.profile.weeklyGoal
+        Text(stringResource(R.string.trc_days_per_week, d.trainingDaysPerWeek ?: base),
             style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).testTag("coach_training_days"))
-        OutlinedButton(onClick = { update { it.copy(trainingDaysPerWeek = ((it.trainingDaysPerWeek ?: 3) - 1).coerceAtLeast(1)) } },
+        OutlinedButton(onClick = { update { it.copy(trainingDaysPerWeek = ((it.trainingDaysPerWeek ?: base) - 1).coerceAtLeast(1)) } },
             modifier = Modifier.testTag("coach_training_days_minus")) { Text("−") }
         Spacer(Modifier.width(8.dp))
-        OutlinedButton(onClick = { update { it.copy(trainingDaysPerWeek = ((it.trainingDaysPerWeek ?: 3) + 1).coerceAtMost(7)) } },
+        OutlinedButton(onClick = { update { it.copy(trainingDaysPerWeek = ((it.trainingDaysPerWeek ?: base) + 1).coerceAtMost(7)) } },
             modifier = Modifier.testTag("coach_training_days_plus")) { Text("+") }
     }
     PrefillHint(state.prefill[PrefillField.TRAINING_DAYS])

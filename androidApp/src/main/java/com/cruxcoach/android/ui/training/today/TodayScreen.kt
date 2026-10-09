@@ -93,14 +93,7 @@ fun TodayScreen(
     var showCheckin by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     // The checklist's last tick is celebrated once in place before the card goes.
-    var setupJustDone by rememberSaveable { mutableStateOf(false) }
-    var lastOpenSteps by rememberSaveable { mutableStateOf(-1) }
-    LaunchedEffect(state.loading, state.profile, state.trendKg) {
-        if (state.loading) return@LaunchedEffect
-        val open = setupSteps(state).count { !it.done }
-        if (lastOpenSteps > 0 && open == 0) setupJustDone = true
-        lastOpenSteps = open
-    }
+    val setupJustDone = state.setupJustDone
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -166,7 +159,7 @@ fun TodayScreen(
             val steps = setupSteps(state)
             if (steps.any { !it.done } || setupJustDone) {
                 item(key = "setup") {
-                    SetupChecklistCard(steps, justDone = setupJustDone, onDismissDone = { setupJustDone = false }, onOpen = { step ->
+                    SetupChecklistCard(steps, justDone = setupJustDone, onDismissDone = viewModel::dismissSetupDone, onOpen = { step ->
                         when (step.kind) {
                             SetupKind.COACH -> onOpenCoachSetup()
                             SetupKind.EQUIPMENT -> showEquipment = true

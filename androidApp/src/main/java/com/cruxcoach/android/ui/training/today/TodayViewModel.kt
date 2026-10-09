@@ -76,6 +76,8 @@ data class TodayState(
     val bodyweightKg: Double? = null,
     /** This week's volume per area (weekly plan), empty when it could not be computed. */
     val weekly: List<AreaProgress> = emptyList(),
+    /** The checklist's last step was just done (seen open earlier in this view model's life). */
+    val setupJustDone: Boolean = false,
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -116,6 +118,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     )
 
     private var lastInputs: Inputs? = null
+    /** Open checklist steps at the previous refresh; null before the first. */
+    private var lastOpenSteps: Int? = null
     /** "Another suggestion" counter; resets with the day. */
     private var variant = 0
     private var variantDay: LocalDate? = null
@@ -195,9 +199,16 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 i.profile.sessionMinutes, today)
         }.getOrNull()
 
+        // Counted here, not in the screen: the coach setup opens before Today has drawn once.
+        val coachDone = i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DONE ||
+            i.profile.coach.setupState == com.cruxcoach.athlete.model.SetupState.DISMISSED
+        val openSteps = listOf(coachDone, i.profile.equipmentConfigured, trend.isNotEmpty()).count { !it }
+        val justDone = (lastOpenSteps ?: 0) > 0 && openSteps == 0
+        lastOpenSteps = openSteps
         _state.update {
             it.copy(
                 loading = false,
+                setupJustDone = it.setupJustDone || justDone,
                 suggestion = daily,
                 plannedName = plannedName,
                 block = block,
@@ -423,6 +434,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     fun consumeSuggestionSaved() = _state.update { it.copy(suggestionSaved = false) }
+
+    fun dismissSetupDone() = _state.update { it.copy(setupJustDone = false) }
 
     private fun covers(p: PausePeriod, day: LocalDate, today: LocalDate): Boolean {
         val start = runCatching { LocalDate.parse(p.startDay) }.getOrNull() ?: return false

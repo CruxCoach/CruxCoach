@@ -95,7 +95,6 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
             onWorkoutStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
             tabBar = tabBar(TrainingTab.WORKOUTS),
-            volumeCard = { com.cruxcoach.android.ui.training.workouts.WeeklyVolumeCard() },
             header = { TrainingSwitch(exercises = false, onWorkouts = {}, onExercises = { switchTraining(TrainingRoutes.exercises()) }) },
         )
     }
@@ -109,6 +108,8 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             tabBar = tabBar(TrainingTab.STATS),
             onOpenClimberProfile = { go(TrainingRoutes.CLIMBER_PROFILE) },
             onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
+            // The week's targets per area are progress, not part of the workout library.
+            volumeCard = { com.cruxcoach.android.ui.training.workouts.WeeklyVolumeCard() },
         )
     }
     screen(TrainingRoutes.CLIMBER_PROFILE, "ClimberProfile", back) {

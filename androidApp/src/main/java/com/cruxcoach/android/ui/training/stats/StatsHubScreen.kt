@@ -219,6 +219,8 @@ fun StatsHubScreen(
     tabBar: @Composable () -> Unit = {},
     onOpenClimberProfile: () -> Unit = {},
     onOpenHistory: () -> Unit = {},
+    /** The week's targets per area (integrator slot), right under the hub. */
+    volumeCard: @Composable () -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
     var weightOpen by rememberSaveable { mutableStateOf(false) }
@@ -240,6 +242,7 @@ fun StatsHubScreen(
         ) {
             // Where to go from here: body, the week, start values, the log – each with its value.
             item(key = "hub") { ProgressHub(s, onOpenBody, onLogWeight = { weightOpen = true }, onOpenWeeklyReview, onOpenBenchmarks, onOpenHistory) }
+            item(key = "volume") { volumeCard() }
             item {
                 SectionTitle(stringResource(R.string.tru_progress_training))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -247,14 +250,6 @@ fun StatsHubScreen(
                         FilterChip(selected = s.range == r, onClick = { viewModel.setRange(r) }, label = { Text(rangeLabel(r)) },
                             modifier = Modifier.testTag("stats_range_${r.name.lowercase()}"))
                     }
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(stringResource(R.string.trs_tile_range_days), "${s.trainingDaysInRange}", Modifier.weight(1f),
-                        supporting = rangeLabel(s.range))
-                    StatTile(stringResource(R.string.trs_tile_records), "${s.recordsInRange}", Modifier.weight(1f),
-                        supporting = rangeLabel(s.range))
                 }
             }
             item { ClimberProfileCard(s, onOpenClimberProfile) }
@@ -419,7 +414,8 @@ private fun ProgressHub(
                 icon = Icons.Default.History, tint = MaterialTheme.colorScheme.secondary,
                 label = stringResource(R.string.trt_done_hero_history),
                 value = "${s.trainingDaysInRange}",
-                supporting = stringResource(R.string.tru_hub_history, rangeLabel(s.range)),
+                supporting = stringResource(R.string.tru_hub_history, rangeLabel(s.range)) + " · " +
+                    pluralStringResource(R.plurals.tru_hub_records, s.recordsInRange, s.recordsInRange),
                 tag = "stats_history", onClick = onOpenHistory,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
