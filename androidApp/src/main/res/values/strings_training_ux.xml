@@ -132,4 +132,6 @@
         <item quantity="one">%d personal best</item>
         <item quantity="other">%d personal bests</item>
     </plurals>
+    <string name="tru_set_weight_goal">Weight goal</string>
+    <string name="tru_fat_share_short">%1$d %% of energy</string>
 </resources>
