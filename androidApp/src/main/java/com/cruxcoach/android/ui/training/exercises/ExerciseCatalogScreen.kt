@@ -142,6 +142,15 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
     }
 
     fun toggleMine() = _state.update { it.copy(mineOnly = !it.mineOnly) }
+
+    /** Equipment set up from the "Meine Ausrüstung" hint; the filter then applies at once. */
+    fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            service.ensureReady()
+            service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
+            _state.update { it.copy(mineOnly = true) }
+        }
+    }
     fun toggleFavorites() = _state.update { it.copy(favoritesOnly = !it.favoritesOnly) }
 
     fun toggleWithoutClimbing() {
@@ -188,8 +197,12 @@ fun ExerciseCatalogScreen(
     tabBar: @Composable () -> Unit = {},
     onTrainingStarted: () -> Unit = {},
     onCreateRoutine: (from: String) -> Unit = {},
+    /** The Workouts | Exercises switch of the Training tab (not while picking). */
+    header: @Composable () -> Unit = {},
 ) {
     var addSlug by remember { mutableStateOf<String?>(null) }
+    var equipmentOpen by remember { mutableStateOf(false) }
+    val setUpText = stringResource(R.string.trt_sugg_equipment_action)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val language = catalogLanguage()
     val snackbar = remember { SnackbarHostState() }
@@ -209,9 +222,10 @@ fun ExerciseCatalogScreen(
     }
 
     TrainingScaffold(
-        title = stringResource(if (pickForWorkout != null) R.string.trx_title_pick else R.string.tr_nav_exercises),
+        title = stringResource(if (pickForWorkout != null) R.string.trx_title_pick else R.string.tr_tab_training),
         onBack = onBack,
         bottomBar = { if (pickForWorkout == null) tabBar() },
+        subHeader = { if (pickForWorkout == null) header() },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (pickForWorkout == null) {
@@ -267,7 +281,12 @@ fun ExerciseCatalogScreen(
                     selected = state.mineOnly && state.profile.equipmentConfigured,
                     onClick = {
                         if (state.profile.equipmentConfigured) viewModel.toggleMine()
-                        else scope.launch { snackbar.showSnackbar(mineHint) }
+                        // Not set up yet: say so and offer the equipment right here.
+                        else scope.launch {
+                            if (snackbar.showSnackbar(mineHint, setUpText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                                equipmentOpen = true
+                            }
+                        }
                     },
                     label = { Text(stringResource(R.string.trx_filter_mine)) },
                     modifier = Modifier.testTag("exercise_filter_mine"),
@@ -360,6 +379,13 @@ fun ExerciseCatalogScreen(
             onDismiss = { addSlug = null },
             onTrainingStarted = { addSlug = null; onTrainingStarted() },
             onCreateRoutine = { from -> addSlug = null; onCreateRoutine(from) },
+        )
+    }
+    if (equipmentOpen) {
+        com.cruxcoach.android.ui.training.common.EquipmentSheet(
+            initial = emptySet(),
+            onDismiss = { equipmentOpen = false },
+            onSave = { set -> viewModel.saveEquipment(set); equipmentOpen = false },
         )
     }
 }

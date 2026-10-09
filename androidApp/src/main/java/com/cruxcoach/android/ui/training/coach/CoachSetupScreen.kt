@@ -70,6 +70,8 @@ data class CoachSetupState(
     val finished: Boolean = false,
     /** The baseline test was started; the screen hands over to the guided player. */
     val testStarted: Boolean = false,
+    /** Current body weight; asked on the climbing card, where loads in % body weight start. */
+    val bodyweightKg: Double? = null,
 ) {
     val proposal: Map<Int, String>
         get() = WeekPlanSuggester.suggest(draft, logbook, routines, profile.equipment, injuries)
@@ -157,6 +159,7 @@ class CoachSetupViewModel @Inject constructor(
                 projects = runCatching { projects(logbook.primaryBrand) }.getOrDefault(emptyList()),
                 routines = repo.routines(),
                 injuries = repo.activeInjuries(),
+                bodyweightKg = service.currentBodyweight(),
             )
             // Equipment may change in the settings screen opened from here.
             repo.observeProfile().collect { p -> _state.update { it.copy(profile = p) } }
@@ -165,6 +168,17 @@ class CoachSetupViewModel @Inject constructor(
 
     fun update(transform: (CoachProfile) -> CoachProfile) = _state.update { it.copy(draft = transform(it.draft)) }
     fun setMinutes(minutes: Int) = _state.update { it.copy(sessionMinutes = minutes) }
+
+    /** Equipment from the sheet on the preferences card; stored at once like the settings do. */
+    fun saveEquipment(equipment: Set<EquipmentV2>) = io {
+        service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
+    }
+
+    fun logWeight(kg: Double) = io {
+        service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+            com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+        _state.update { it.copy(bodyweightKg = service.currentBodyweight() ?: kg) }
+    }
 
     /** "Weiter": stores this card and moves on. */
     fun next() {
@@ -231,6 +245,8 @@ class CoachSetupViewModel @Inject constructor(
             p.copy(
                 coach = coach,
                 sessionMinutes = if (step == 1) minutes else p.sessionMinutes,
+                // One number for the week: the streak's goal follows the coach's training days.
+                weeklyGoal = coach.trainingDaysPerWeek?.takeIf { step == 1 }?.coerceIn(1, 7) ?: p.weeklyGoal,
                 goal = coach.goal?.takeIf { step == 0 && p.goal != AthleteGoal.LOSE_WEIGHT }?.let(CoachLogic::athleteGoalFor) ?: p.goal,
             )
         }
@@ -312,13 +328,14 @@ class CoachSetupViewModel @Inject constructor(
 fun CoachSetupScreen(
     onBack: () -> Unit,
     onFinished: () -> Unit,
-    onOpenEquipment: () -> Unit,
     onOpenBenchmarks: () -> Unit,
     onStartTest: () -> Unit,
     viewModel: CoachSetupViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var estimating by rememberSaveable { mutableStateOf(false) }
+    var equipmentOpen by rememberSaveable { mutableStateOf(false) }
+    var weightOpen by rememberSaveable { mutableStateOf(false) }
     var confirmDismiss by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.finished) { if (state.finished) onFinished() }
     LaunchedEffect(state.testStarted) { if (state.testStarted) { viewModel.consumeTestStarted(); onStartTest() } }
@@ -374,8 +391,8 @@ fun CoachSetupScreen(
             when (state.step) {
                 0 -> GoalCard(state, viewModel::update)
                 1 -> WeekCard(state, viewModel::update, viewModel::setMinutes)
-                2 -> ExperienceCard(state, viewModel::update)
-                3 -> PreferencesCard(state, viewModel::update, onOpenEquipment)
+                2 -> ExperienceCard(state, viewModel::update, onLogWeight = { weightOpen = true })
+                3 -> PreferencesCard(state, viewModel::update, onOpenEquipment = { equipmentOpen = true })
                 else -> FinishCard(state, onEstimate = { estimating = true }, onStartTest = { viewModel.startTestSession(testTitle) },
                     onOpenBenchmarks = onOpenBenchmarks, onApplyPlan = viewModel::applyPlan)
             }
@@ -384,6 +401,22 @@ fun CoachSetupScreen(
     }
 
     if (estimating) QuickEstimateSheet(onDismiss = { estimating = false })
+    // Equipment and weight are answered right here, without leaving the setup.
+    if (equipmentOpen) {
+        com.cruxcoach.android.ui.training.common.EquipmentSheet(
+            initial = state.profile.equipment.takeIf { state.profile.equipmentConfigured } ?: emptySet(),
+            onDismiss = { equipmentOpen = false },
+            onSave = { set -> viewModel.saveEquipment(set); equipmentOpen = false },
+        )
+    }
+    if (weightOpen) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = state.profile.units, lastKg = state.bodyweightKg, hideNumbers = state.profile.hideBodyNumbers,
+            reason = stringResource(R.string.tru_weight_reason_setup),
+            onDismiss = { weightOpen = false },
+            onSave = { kg -> viewModel.logWeight(kg); weightOpen = false },
+        )
+    }
     if (confirmDismiss) {
         AlertDialog(
             onDismissRequest = { confirmDismiss = false },
@@ -596,7 +629,7 @@ private fun WeekCard(state: CoachSetupState, update: ((CoachProfile) -> CoachPro
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> CoachProfile) -> Unit) {
+private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> CoachProfile) -> Unit, onLogWeight: () -> Unit = {}) {
     val d = state.draft
     CardHeader(stringResource(R.string.trc_experience_title), stringResource(R.string.trc_experience_why))
     QuestionLabel(stringResource(R.string.trc_contexts))
@@ -638,6 +671,20 @@ private fun ExperienceCard(state: CoachSetupState, update: ((CoachProfile) -> Co
         label = { Text(stringResource(R.string.trc_rope_grade)) },
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("coach_rope_grade"),
     )
+    QuestionLabel(stringResource(R.string.tru_setup_weight))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            when {
+                state.bodyweightKg == null -> stringResource(R.string.tru_setup_weight_text)
+                state.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+                else -> formatMass(state.bodyweightKg, state.profile.units)
+            },
+            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+        )
+        OutlinedButton(onClick = onLogWeight, modifier = Modifier.testTag("coach_weight")) {
+            Text(stringResource(if (state.bodyweightKg == null) R.string.tru_enter_weight else R.string.trt_checkin_change))
+        }
+    }
     EffectPreview(guardrailPreview(d))
 }
 

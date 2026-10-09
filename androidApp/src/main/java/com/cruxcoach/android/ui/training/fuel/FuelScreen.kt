@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.LocalDrink
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +19,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +51,7 @@ fun FuelScreen(
     onOpenSettings: () -> Unit,
     viewModel: FuelViewModel = hiltViewModel(),
     photoViewModel: FoodPhotoViewModel = hiltViewModel(),
+    tabBar: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val photoState by photoViewModel.state.collectAsStateWithLifecycle()
@@ -62,6 +65,7 @@ fun FuelScreen(
     var amountFor by remember { mutableStateOf<FoodItem?>(null) }
     var createFood by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
+    var weightOpen by remember { mutableStateOf(false) }
     /** A recipe being written; while [pickingIngredient] the food list chooses its next ingredient. */
     var recipeDraft by remember { mutableStateOf<RecipeDraft?>(null) }
     var pickingIngredient by remember { mutableStateOf(false) }
@@ -73,7 +77,8 @@ fun FuelScreen(
     var scanMiss by remember { mutableStateOf<String?>(null) }
     var createBarcode by remember { mutableStateOf<String?>(null) }
     var copyConfirm by remember { mutableStateOf(false) }
-    val defaultMeal = remember { FuelViewModel.mealForHour(java.time.LocalTime.now().hour) }
+    /** The meal that "+" or the add button chose; every way of adding starts with it. */
+    var addMeal by remember { mutableStateOf(FuelViewModel.mealForHour(java.time.LocalTime.now().hour)) }
     val units = state.profile.units
     // Review lists after a photo or a typed meal show amounts in the same units.
     LaunchedEffect(units) { photoViewModel.units = units }
@@ -96,6 +101,7 @@ fun FuelScreen(
     val deletedText = stringResource(R.string.trf_deleted)
     val waterRemovedText = stringResource(R.string.trf_water_removed)
     val undoText = stringResource(R.string.trf_undo)
+    val weightSavedText = stringResource(R.string.tru_weight_saved)
 
     fun deleteEntry(entry: FoodLogEntry) {
         viewModel.deleteEntry(entry)
@@ -109,11 +115,14 @@ fun FuelScreen(
     fun deleteWater(entry: HydrationEntry) {
         viewModel.deleteWater(entry)
         scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
             if (snackbar.showSnackbar(waterRemovedText, undoText, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
                 viewModel.addWater(entry.ml)
             }
         }
     }
+
+    fun openAdd(meal: Meal) { addMeal = meal; foodsOpen = true }
 
     TrainingScaffold(
         title = stringResource(R.string.tr_nav_fuel),
@@ -124,58 +133,65 @@ fun FuelScreen(
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        // One way in for every kind of food: search, scan, describe, photo or plain values.
+        floatingActionButton = {
+            if (!state.loading) {
+                ExtendedFloatingActionButton(
+                    onClick = { openAdd(FuelViewModel.mealForHour(java.time.LocalTime.now().hour)) },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text(stringResource(R.string.tru_fuel_add)) },
+                    containerColor = CruxCoachDesign.colors.brandAccent, contentColor = CruxCoachDesign.colors.onBrandAccent,
+                    modifier = Modifier.testTag("fuel_my_foods"),
+                )
+            }
+        },
+        bottomBar = tabBar,
     ) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             else -> LazyColumn(
                 Modifier.fillMaxSize().padding(padding).testTag("fuel_list"),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 // Nutrition is always on (owner 2026-10-05); the guard rails are
                 // explained once instead of behind an opt-in.
                 if (!state.profile.fuelIntroAccepted) item { FuelIntroCard(onGotIt = viewModel::acceptIntro) }
                 item { DayHeader(state, viewModel::previousDay, viewModel::nextDay, viewModel::goToday) }
                 if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "fuel_reds") }
-                item { DaySummaryCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
-                item {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { quickAdd = true }, modifier = Modifier.testTag("fuel_quick_add")) {
-                            Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_quick_add))
-                        }
-                        OutlinedButton(onClick = { foodsOpen = true }, modifier = Modifier.testTag("fuel_my_foods")) {
-                            Icon(Icons.Default.Search, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_find_food))
-                        }
-                        OutlinedButton(onClick = { textOpen = true }, modifier = Modifier.testTag("fuel_describe")) {
-                            Icon(Icons.Default.EditNote, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_describe))
-                        }
-                        FoodPhotoButton(photoState.support, photoState.tooSlow,
-                            onOpen = { photoOpen = true }, onExplain = { photoExplain = true })
+                if (state.targets == null) {
+                    item(key = "needs_weight") {
+                        com.cruxcoach.android.ui.training.common.NeedsDataCard(
+                            icon = Icons.Default.MonitorWeight,
+                            title = stringResource(R.string.tru_fuel_targets_title),
+                            text = stringResource(R.string.trf_needs_weight),
+                            action = stringResource(R.string.tru_enter_weight),
+                            tag = "fuel_needs_weight",
+                            onAction = { weightOpen = true },
+                        )
                     }
                 }
-                if (state.previousDayCount > 0) {
-                    item {
+                item(key = "summary") { MacroSummaryCard(state) }
+                item(key = "water") { WaterCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
+                if (state.entries.isEmpty() && state.previousDayCount > 0) {
+                    item(key = "copy") { CopyPreviousCard(state.previousDayCount, onCopy = { copyConfirm = true }) }
+                }
+                // The four meals always, so "+" is where the food goes; training snacks only once used.
+                val byMeal = MacroTotals.byMeal(state.entries).toMap()
+                val meals = MAIN_MEALS + Meal.entries.filter { it !in MAIN_MEALS && byMeal.containsKey(it) }
+                meals.forEach { meal ->
+                    item(key = "meal_${meal.name}") {
+                        MealCard(meal, byMeal[meal], state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink,
+                            onAdd = { openAdd(meal) }, onEdit = { editing = it }, onDelete = ::deleteEntry)
+                    }
+                }
+                if (state.entries.isNotEmpty() && state.previousDayCount > 0) {
+                    item(key = "copy_link") {
                         TextButton(onClick = { copyConfirm = true }, modifier = Modifier.testTag("fuel_copy_previous")) {
                             Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.trf_copy_previous))
                         }
-                    }
-                }
-                if (state.entries.isEmpty()) {
-                    item { EmptyHint(stringResource(R.string.trf_empty_day)) }
-                }
-                // One card per meal: its subtotal on top, every entry with its values.
-                MacroTotals.byMeal(state.entries).forEach { (meal, totals) ->
-                    item(key = "meal_${meal.name}") {
-                        MealCard(meal, totals, state.entries.filter { it.meal == meal }, state.profile.showCalories, units, isDrink,
-                            onEdit = { editing = it }, onDelete = ::deleteEntry)
                     }
                 }
                 // The week's micronutrients below the day: background, not the day's task.
@@ -184,9 +200,17 @@ fun FuelScreen(
         }
     }
 
+    if (weightOpen) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = units, lastKg = state.bodyweightKg, hideNumbers = state.profile.hideBodyNumbers,
+            reason = stringResource(R.string.tru_weight_reason_fuel),
+            onDismiss = { weightOpen = false },
+            onSave = { kg -> viewModel.logWeight(kg); weightOpen = false; scope.launch { snackbar.showSnackbar(weightSavedText) } },
+        )
+    }
     if (quickAdd) {
         QuickAddSheet(
-            initialMeal = defaultMeal,
+            initialMeal = addMeal,
             onDismiss = { quickAdd = false },
             onSave = { name, meal, nutrients, remember -> viewModel.quickAdd(name, meal, nutrients, remember); quickAdd = false },
         )
@@ -212,12 +236,25 @@ fun FuelScreen(
                 foodsOpen = false
                 scope.launch { viewModel.loadRecipe(item.id)?.let { recipeDraft = RecipeDraft.of(item.id, it, units) } }
             },
+            title = stringResource(R.string.tru_fuel_add),
+            meal = addMeal,
+            onMealChange = { addMeal = it },
+            addActions = {
+                FoodAddActions(
+                    photoAvailable = photoState.support is com.cruxcoach.athlete.logic.VisionSupport.Supported && !photoState.tooSlow,
+                    onScan = { scanning = true; foodsOpen = false },
+                    onDescribe = { textOpen = true; foodsOpen = false },
+                    onPhoto = { photoOpen = true; foodsOpen = false },
+                    onPhotoExplain = { photoExplain = true },
+                    onQuick = { quickAdd = true; foodsOpen = false },
+                )
+            },
         )
     }
     amountFor?.let { item ->
         AmountDialog(
             item = item,
-            initialMeal = defaultMeal,
+            initialMeal = addMeal,
             onDismiss = { amountFor = null },
             onConfirm = { meal, portions, grams -> viewModel.addFood(item, meal, portions, grams); amountFor = null },
             units = units,
@@ -276,7 +313,7 @@ fun FuelScreen(
     ingredientFor?.let { item ->
         AmountDialog(
             item = item,
-            initialMeal = defaultMeal,
+            initialMeal = addMeal,
             onDismiss = { ingredientFor = null },
             onConfirm = { _, portions, grams ->
                 val g = grams ?: portions?.let { p -> item.servingG?.let { it * p } }
@@ -341,7 +378,7 @@ fun FuelScreen(
     if (photoOpen) {
         FoodPhotoSheet(
             day = (state.day ?: state.today)?.toString().orEmpty(),
-            initialMeal = defaultMeal,
+            initialMeal = addMeal,
             onDismiss = { photoOpen = false },
             onSaved = { photoOpen = false },
             viewModel = photoViewModel,
@@ -350,7 +387,7 @@ fun FuelScreen(
     if (textOpen) {
         FoodTextSheet(
             day = (state.day ?: state.today)?.toString().orEmpty(),
-            initialMeal = defaultMeal,
+            initialMeal = addMeal,
             onDismiss = { textOpen = false },
             onSaved = { textOpen = false },
             viewModel = photoViewModel,
@@ -375,36 +412,76 @@ fun FuelScreen(
     }
 }
 
-// ── Intro (shown once) ───────────────────────────────────────────────
+/** Meals that always have a place in the day, each with its own "+". */
+private val MAIN_MEALS = listOf(Meal.BREAKFAST, Meal.LUNCH, Meal.DINNER, Meal.SNACK)
 
+/**
+ * The ways to add food as four big tiles under the search field: scan,
+ * describe, photo, plain values. Photo stays visible on phones that cannot
+ * run the model and explains why instead.
+ */
 @Composable
-private fun FuelIntroCard(onGotIt: () -> Unit) {
-    Card(Modifier.fillMaxWidth().testTag("fuel_intro")) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Restaurant, null, Modifier.size(28.dp), tint = CruxCoachDesign.colors.brandAccent)
-                Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.trf_intro_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            }
-            Text(stringResource(R.string.trf_intro_p1), style = MaterialTheme.typography.bodyMedium)
-            IntroPoint(Icons.Default.FitnessCenter, stringResource(R.string.trf_intro_protein))
-            IntroPoint(Icons.Default.Terrain, stringResource(R.string.trf_intro_carbs))
-            IntroPoint(Icons.Default.Info, stringResource(R.string.trf_intro_no_budget))
-            IntroPoint(Icons.Default.VisibilityOff, stringResource(R.string.trf_intro_hidden))
-            IntroPoint(Icons.Default.Lock, stringResource(R.string.trf_intro_private))
-            TextButton(onClick = onGotIt, modifier = Modifier.align(Alignment.End).testTag("fuel_intro_ok")) {
-                Text(stringResource(R.string.trf_intro_got_it))
-            }
-        }
+internal fun FoodAddActions(
+    photoAvailable: Boolean,
+    onScan: () -> Unit,
+    onDescribe: () -> Unit,
+    onPhoto: () -> Unit,
+    onPhotoExplain: () -> Unit,
+    onQuick: () -> Unit,
+) {
+    val unavailable = stringResource(R.string.fvp_unavailable_short)
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AddAction(Icons.Default.QrCodeScanner, stringResource(R.string.tru_add_scan), "fuel_scan_tile", onScan, Modifier.weight(1f))
+        AddAction(Icons.Default.EditNote, stringResource(R.string.trf_describe), "fuel_describe", onDescribe, Modifier.weight(1f))
+        AddAction(Icons.Default.PhotoCamera, stringResource(R.string.fvp_button), "fuel_photo", if (photoAvailable) onPhoto else onPhotoExplain,
+            Modifier.weight(1f).semantics { if (!photoAvailable) stateDescription = unavailable }, dimmed = !photoAvailable)
+        AddAction(Icons.Default.Bolt, stringResource(R.string.tru_add_quick), "fuel_quick_add", onQuick, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun IntroPoint(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Icon(icon, null, Modifier.size(20.dp).padding(top = 2.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(12.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+private fun AddAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tag: String,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    dimmed: Boolean = false,
+) {
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.heightIn(min = 72.dp).testTag(tag)) {
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Icon(icon, null, tint = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else CruxCoachDesign.colors.brandAccent)
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
+                color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+
+// ── Intro (shown once) ───────────────────────────────────────────────
+
+/** Short on the screen, the full guard rails behind the info icon. */
+@Composable
+private fun FuelIntroCard(onGotIt: () -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("fuel_intro")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Restaurant, null, Modifier.size(24.dp), tint = CruxCoachDesign.colors.brandAccent)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.trf_intro_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trf_intro_title), listOf(
+                    stringResource(R.string.trf_intro_p1), stringResource(R.string.trf_intro_protein), stringResource(R.string.trf_intro_carbs),
+                    stringResource(R.string.trf_intro_no_budget), stringResource(R.string.trf_intro_hidden), stringResource(R.string.trf_intro_private),
+                ).joinToString("\n\n"))
+            }
+            Text(stringResource(R.string.tru_fuel_intro_short), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 6.dp, end = 8.dp))
+            TextButton(onClick = onGotIt, modifier = Modifier.align(Alignment.End).testTag("fuel_intro_ok")) {
+                Text(stringResource(R.string.trf_intro_got_it))
+            }
+        }
     }
 }
 
@@ -424,108 +501,181 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
                         stringResource(R.string.trf_yesterday)
                     else -> state.day?.shortLabel().orEmpty()
                 },
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.testTag("fuel_day_label"),
             )
             Text(dayLoadLabel(state.dayLoad), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        IconButton(onClick = onNext, enabled = !state.isToday, modifier = Modifier.testTag("fuel_next_day")) {
-            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.trf_next_day))
-        }
         if (!state.isToday) {
             TextButton(onClick = onToday) { Text(stringResource(R.string.trf_today)) }
+        }
+        IconButton(onClick = onNext, enabled = !state.isToday, modifier = Modifier.testTag("fuel_next_day")) {
+            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.trf_next_day))
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Protein and carbohydrates as two rings that fill towards the day's target,
+ * fat and calories in one line below. Explanations sit at the info icons.
+ */
 @Composable
-private fun DaySummaryCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater: (HydrationEntry) -> Unit) {
+private fun MacroSummaryCard(state: FuelState) {
     val t = state.targets
     val totals = MacroTotals.of(state.entries)
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trf_day_total), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.trf_day_total), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (state.profile.showCalories && totals.entries > 0) {
                     Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("fuel_kcal"))
+                        modifier = Modifier.padding(end = 8.dp).testTag("fuel_kcal"))
                 }
             }
-            if (t == null) {
-                Text(stringResource(R.string.trf_needs_weight), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp).testTag("fuel_needs_weight"))
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                MacroRing(
+                    label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
+                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein",
+                    info = t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
+                )
+                MacroRing(
+                    label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
+                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs",
+                    info = t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
+                    infoTitle = stringResource(R.string.trf_carbs_info_title),
+                )
             }
-            ProgressRow(
-                label = stringResource(R.string.trf_protein),
-                value = totals.protein, target = t?.proteinG?.toDouble() ?: 0.0,
-                valueText = if (t != null) stringResource(R.string.trf_progress_g, totals.protein.roundToInt(), t.proteinG)
-                    else stringResource(R.string.trf_value_g, totals.protein.roundToInt()),
-                supporting = t?.let { remainingText(totals.protein, it.proteinG) },
-                info = t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
-                tag = "fuel_protein",
-            )
-            ProgressRow(
-                label = stringResource(R.string.trf_carbs),
-                value = totals.carbs, target = t?.carbsG?.toDouble() ?: 0.0,
-                valueText = if (t != null) stringResource(R.string.trf_progress_g, totals.carbs.roundToInt(), t.carbsG)
-                    else stringResource(R.string.trf_value_g, totals.carbs.roundToInt()),
-                supporting = t?.let {
-                    listOf(stringResource(R.string.trf_carbs_per_kg, formatNumber(it.carbsPerKg)) + " · " + dayLoadLabel(it.dayLoad),
-                        remainingText(totals.carbs, it.carbsG)).joinToString(" · ")
-                },
-                infoTitle = stringResource(R.string.trf_carbs_info_title),
-                info = t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
-                tag = "fuel_carbs",
-            )
             val share = totals.fatEnergyShare
-            ProgressRow(
-                label = stringResource(R.string.trf_fat),
-                value = totals.fat, target = 0.0,
-                valueText = stringResource(R.string.trf_value_g, totals.fat.roundToInt()),
-                supporting = share?.let {
-                    stringResource(R.string.trf_fat_share, (it * 100).roundToInt(),
-                        (MacroTotals.FAT_SHARE_MIN * 100).roundToInt(), (MacroTotals.FAT_SHARE_MAX * 100).roundToInt())
-                },
-                info = stringResource(R.string.trf_fat_info),
-                tag = "fuel_fat",
-            )
-            val waterTarget = t?.waterMl
-            val units = state.profile.units
-            // Stored in ml; fl oz in US units.
-            val volume = FuelUnits.unitFor(units, drink = true)
-            ProgressRow(
-                label = stringResource(R.string.trf_water),
-                value = state.waterMl.toDouble(), target = (waterTarget ?: 0).toDouble(),
-                valueText = if (waterTarget != null) {
-                    stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume),
-                        amountText(waterTarget.toDouble(), volume))
-                } else amountText(state.waterMl.toDouble(), volume),
-                tag = "fuel_water",
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                FuelUnits.waterPresetsMl(units).forEachIndexed { i, ml ->
-                    FilledTonalButton(onClick = { onAddWater(ml) }, modifier = Modifier.testTag("fuel_water_$ml")) {
-                        if (i == 0) { Icon(Icons.Default.LocalDrink, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)) }
-                        Text(stringResource(R.string.trf_water_add, amountText(ml.toDouble(), volume)))
-                    }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp).testTag("fuel_fat")) {
+                Text(
+                    listOfNotNull(
+                        stringResource(R.string.trf_fat) + " " + stringResource(R.string.trf_value_g, totals.fat.roundToInt()),
+                        share?.let {
+                            stringResource(R.string.trf_fat_share, (it * 100).roundToInt(),
+                                (MacroTotals.FAT_SHARE_MIN * 100).roundToInt(), (MacroTotals.FAT_SHARE_MAX * 100).roundToInt())
+                        },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+                )
+                InfoButton(stringResource(R.string.trf_fat), stringResource(R.string.trf_fat_info))
             }
-            if (state.water.isNotEmpty()) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    state.water.forEach { w ->
-                        val label = amountText(w.ml.toDouble(), volume)
-                        val desc = stringResource(R.string.trf_water_entry_desc, label)
-                        AssistChip(
-                            onClick = { onRemoveWater(w) },
-                            label = { Text(label) },
-                            leadingIcon = { Icon(Icons.Default.LocalDrink, null, Modifier.size(16.dp)) },
-                            modifier = Modifier.semantics { contentDescription = desc }.testTag("fuel_water_entry_${w.id}"),
+        }
+    }
+}
+
+@Composable
+private fun MacroRing(
+    label: String,
+    value: Double,
+    target: Int?,
+    color: androidx.compose.ui.graphics.Color,
+    tag: String,
+    info: String?,
+    infoTitle: String = label,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag(tag)) {
+        com.cruxcoach.android.ui.training.common.ProgressRing(
+            progress = if (target != null && target > 0) (value / target).toFloat() else 0f,
+            size = 104.dp, stroke = 10.dp, color = color,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${value.roundToInt()}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(if (target != null) stringResource(R.string.tru_of_g, target) else "g", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = if (info != null) 12.dp else 0.dp))
+            if (info != null) InfoButton(infoTitle, info)
+        }
+        if (target != null) {
+            Text(remainingText(value, target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * Water as glasses: tap the next empty one for another glass, the last full
+ * one to take it back. The target comes from the body weight; without one,
+ * eight glasses show.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater: (HydrationEntry) -> Unit) {
+    val units = state.profile.units
+    val volume = FuelUnits.unitFor(units, drink = true)
+    val glass = FuelUnits.waterPresetsMl(units).first()
+    val bottle = FuelUnits.waterPresetsMl(units).getOrNull(1)
+    val target = state.targets?.waterMl
+    val glasses = ((target ?: glass * 8) + glass - 1) / glass
+    val full = (state.waterMl / glass).coerceAtMost(glasses)
+    val blue = com.cruxcoach.android.ui.training.today.WaterBlue
+    Card(Modifier.fillMaxWidth().testTag("fuel_water")) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.WaterDrop, null, tint = blue, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.trf_water), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                Text(
+                    if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume), amountText(target.toDouble(), volume))
+                    else amountText(state.waterMl.toDouble(), volume),
+                    style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag("fuel_water_total"),
+                )
+            }
+            val addText = stringResource(R.string.trf_water_add, amountText(glass.toDouble(), volume))
+            val removeText = stringResource(R.string.tru_water_remove)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 8.dp)) {
+                (0 until glasses).forEach { i ->
+                    val filled = i < full
+                    val isLast = filled && i == full - 1
+                    val isNext = i == full
+                    IconButton(
+                        onClick = {
+                            if (isLast) state.water.maxByOrNull { it.loggedAt }?.let(onRemoveWater) else if (!filled) onAddWater(glass)
+                        },
+                        enabled = isLast || !filled,
+                        modifier = Modifier.size(40.dp).semantics {
+                            contentDescription = when { isLast -> removeText; filled -> ""; else -> addText }
+                        }.testTag(if (isNext) "fuel_water_$glass" else "fuel_glass_$i"),
+                    ) {
+                        Icon(
+                            if (filled) Icons.Default.LocalDrink else Icons.Outlined.LocalDrink, null,
+                            tint = if (filled) blue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isNext) 0.9f else 0.4f),
+                            modifier = Modifier.size(if (isNext) 30.dp else 26.dp),
                         )
                     }
                 }
             }
+            run {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    Text(stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    bottle?.let { ml ->
+                        TextButton(onClick = { onAddWater(ml) }, modifier = Modifier.testTag("fuel_water_$ml")) {
+                            Text(stringResource(R.string.trf_water_add, amountText(ml.toDouble(), volume)))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CopyPreviousCard(count: Int, onCopy: () -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("fuel_copy_card")) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.ContentCopy, null, tint = CruxCoachDesign.colors.brandAccent)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.tru_copy_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(pluralStringResource(R.plurals.tru_copy_text, count, count), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = onCopy, modifier = Modifier.testTag("fuel_copy_previous")) { Text(stringResource(R.string.trf_copy_confirm)) }
         }
     }
 }
@@ -555,18 +705,29 @@ fun macrosText(protein: Double?, carbs: Double?, fat: Double?, energy: MacroTota
 
 @Composable
 private fun MealCard(
-    meal: Meal, totals: MacroTotals, entries: List<FoodLogEntry>, showCalories: Boolean,
-    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit,
+    meal: Meal, totals: MacroTotals?, entries: List<FoodLogEntry>, showCalories: Boolean,
+    units: UnitSystem, isDrink: (FoodLogEntry) -> Boolean,
+    onAdd: () -> Unit, onEdit: (FoodLogEntry) -> Unit, onDelete: (FoodLogEntry) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().testTag("fuel_meal_${meal.name.lowercase()}")) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(mealLabel(meal), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text(macrosText(totals.protein, totals.carbs, totals.fat,
-                    MacroTotals.Energy(totals.kcal, totals.kcalEstimated).takeIf { totals.entries > 0 }, showCalories),
-                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("fuel_meal_total_${meal.name.lowercase()}"))
+        Column(Modifier.padding(vertical = 4.dp)) {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                    Text(mealLabel(meal), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    if (totals != null && totals.entries > 0) {
+                        Text(macrosText(totals.protein, totals.carbs, totals.fat,
+                            MacroTotals.Energy(totals.kcal, totals.kcalEstimated), showCalories),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("fuel_meal_total_${meal.name.lowercase()}"))
+                    }
+                }
+                val addLabel = stringResource(R.string.tru_meal_add, mealLabel(meal))
+                FilledTonalIconButton(onClick = onAdd, modifier = Modifier.testTag("fuel_add_${meal.name.lowercase()}")) {
+                    Icon(Icons.Default.Add, contentDescription = addLabel)
+                }
             }
             entries.forEach { entry ->
+                HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 EntryRow(entry, showCalories, FuelUnits.unitFor(units, isDrink(entry)), onEdit = { onEdit(entry) }, onDelete = { onDelete(entry) })
             }
         }
@@ -617,6 +778,7 @@ private fun EntryRow(entry: FoodLogEntry, showCalories: Boolean, unit: FuelUnits
     }
     val macros = macrosText(entry.proteinG, entry.carbsG, entry.fatG, MacroTotals.energy(entry), showCalories)
     ListItem(
+        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         headlineContent = { Text(entry.name) },
         supportingContent = { Text(listOfNotNull(amount, macros).joinToString(" · ")) },
         trailingContent = {

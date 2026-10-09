@@ -126,9 +126,15 @@ fun BodyScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { dialog = null to BodyMetric.WEIGHT }, modifier = Modifier.testTag("body_add")) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trb_add))
-            }
+            // The frequent action, named: a weigh-in (other values from "Messwert" and the round).
+            ExtendedFloatingActionButton(
+                onClick = { dialog = null to BodyMetric.WEIGHT },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text(stringResource(R.string.tru_enter_weight)) },
+                containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
+                modifier = Modifier.testTag("body_add"),
+            )
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -143,8 +149,9 @@ fun BodyScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
         ) {
             if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "body_reds", Modifier.padding(vertical = 8.dp)) }
-            item { RoundCard(onOpen = { roundOpen = true }) }
+            // Weight first – it is what most people come here for; the round of measurements after it.
             item { Column { WeightSection(state, onRange = viewModel::setRange) } }
+            item { Box(Modifier.padding(top = 12.dp)) { RoundCard(onOpen = { roundOpen = true }) } }
             item {
                 SectionTitle(stringResource(R.string.trb_measurements)) {
                     TextButton(onClick = { dialog = null to BodyMetric.HEIGHT }, modifier = Modifier.testTag("body_add_measurement")) {
@@ -154,7 +161,10 @@ fun BodyScreen(
                     }
                 }
             }
-            item { ApeIndexRow(state.apeIndexCm, units) }
+            item {
+                val hasHeight = state.summaries.any { it.metricKey == BodyMetric.HEIGHT.key }
+                ApeIndexRow(state.apeIndexCm, units, onEnter = { dialog = null to (if (hasHeight) BodyMetric.ARM_SPAN else BodyMetric.HEIGHT) })
+            }
             val summaries = state.summaries.filter { BodyMetric.fromKey(it.metricKey)?.group != MetricGroup.WEIGHT }
             if (summaries.isEmpty()) item { EmptyHint(stringResource(R.string.trb_no_measurements)) }
             MetricGroup.entries.filter { it != MetricGroup.WEIGHT }.forEach { group ->
@@ -175,8 +185,9 @@ fun BodyScreen(
                 }
             }
             item {
-                Text(stringResource(R.string.trb_settings_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp))
+                TextButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp).testTag("body_settings_link")) {
+                    Text(stringResource(R.string.trb_settings_hint), style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -328,7 +339,7 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
 // ── Measurements ─────────────────────────────────────────────────────
 
 @Composable
-private fun ApeIndexRow(apeCm: Double?, units: UnitSystem) {
+private fun ApeIndexRow(apeCm: Double?, units: UnitSystem, onEnter: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("body_ape_index")) {
         Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -340,6 +351,9 @@ private fun ApeIndexRow(apeCm: Double?, units: UnitSystem) {
                     Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 } else {
                     Text(stringResource(R.string.trb_ape_missing), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onEnter, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("body_ape_enter")) {
+                        Text(stringResource(R.string.tru_tile_log))
+                    }
                 }
             }
             InfoButton(stringResource(R.string.trb_ape_index), stringResource(R.string.trb_ape_info_text))

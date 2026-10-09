@@ -177,6 +177,8 @@ fun WorkoutsScreen(
     tabBar: @Composable () -> Unit = {},
     /** Weekly volume per area (integrator slot), shown under the week view. */
     volumeCard: @Composable () -> Unit = {},
+    /** The Workouts | Exercises switch of the Training tab. */
+    header: @Composable () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lang = catalogLanguage()
@@ -188,9 +190,10 @@ fun WorkoutsScreen(
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is WorkoutsEvent.Started) onWorkoutStarted() } }
 
     TrainingScaffold(
-        title = stringResource(R.string.tr_tab_workouts),
+        title = stringResource(R.string.tr_tab_training),
         onBack = onBack,
         bottomBar = tabBar,
+        subHeader = header,
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { onOpenEditor(null, null) },

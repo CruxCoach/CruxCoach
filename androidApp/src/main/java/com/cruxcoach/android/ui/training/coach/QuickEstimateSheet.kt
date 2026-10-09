@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -97,6 +98,16 @@ class QuickEstimateViewModel @Inject constructor(private val service: AthleteSer
         }
     }
 
+    /** Body weight entered on the sheet itself: the percentages below need it. */
+    fun logWeight(kg: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+                com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+            _state.update { it.copy(bodyweight = kg) }
+        }
+    }
+
     fun save(
         pull: PullAnswer?, weightedKg: Double?, weightedReps: Int?,
         hang: HangAnswer?, hangKg: Double?,
@@ -178,6 +189,7 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
     var hangKg by rememberSaveable { mutableStateOf("") }
     var leftKg by rememberSaveable { mutableStateOf("") }
     var rightKg by rememberSaveable { mutableStateOf("") }
+    var bodyText by rememberSaveable { mutableStateOf("") }
     val units = s.units
     fun kg(text: String): Double? = parseDecimal(text)?.let { Units.massFromDisplay(it, units) }
 
@@ -189,6 +201,23 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
             if (s.loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
                 return@Column
+            }
+
+            // 0. Body weight, when it is missing: asked right here instead of a hint to enter it elsewhere.
+            if (s.bodyweight == null) {
+                Text(stringResource(R.string.trc_estimate_no_weight), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(bodyText, { bodyText = it.take(6) }, singleLine = true,
+                        label = { Text(stringResource(R.string.tru_weight_title) + " (" + Units.massUnit(units) + ")") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f).testTag("estimate_bodyweight"))
+                    Spacer(Modifier.width(8.dp))
+                    val bodyKg = kg(bodyText)
+                    FilledTonalButton(onClick = { bodyKg?.let(viewModel::logWeight) },
+                        enabled = bodyKg != null && bodyKg in com.cruxcoach.android.ui.training.common.PLAUSIBLE_WEIGHT_KG,
+                        modifier = Modifier.testTag("estimate_bodyweight_save")) { Text(stringResource(R.string.tr_action_save)) }
+                }
             }
 
             // 1. Pull-ups
@@ -259,10 +288,6 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
                 }
             }
 
-            if (s.bodyweight == null) {
-                Text(stringResource(R.string.trc_estimate_no_weight), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-            }
             Text(stringResource(R.string.trc_estimate_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
 

@@ -11,6 +11,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -78,6 +82,11 @@ data class StatsHubState(
     /** Teaser of the climber profile and the current load per structure. */
     val logbook: LogbookSummary = LogbookSummary(),
     val load: LoadStatus? = null,
+    /** Latest trend weight, whatever the range; null before the first weigh-in. */
+    val latestWeightKg: Double? = null,
+    val weeklyRateKg: Double? = null,
+    /** Start values the athlete has entered or tested. */
+    val benchmarkCount: Int = 0,
 ) {
     val hasAnyData: Boolean get() = weeks.any { it.trainingDays > 0 } || exercises.isNotEmpty() || weight.isNotEmpty()
 }
@@ -99,6 +108,16 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
 
     /** The tab keeps this ViewModel; a return to it recomputes, so a just-finished training shows up. */
     fun reload() = load(_state.value.range)
+
+    /** A weigh-in from the body tile, where the hub asks for it. */
+    fun logWeight(kg: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+                com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+            reload()
+        }
+    }
 
     private fun load(range: StatsRange) {
         _state.value = _state.value.copy(range = range)
@@ -175,6 +194,9 @@ class StatsHubViewModel @Inject constructor(private val service: AthleteService)
                 },
                 recordsInRange = records,
                 weight = service.weightTrend().filter { it.day >= rangeStart },
+                latestWeightKg = service.weightTrend().lastOrNull()?.trend,
+                benchmarkCount = repo.allBenchmarks().size,
+                weeklyRateKg = com.cruxcoach.athlete.logic.TrendWeight.weeklyRate(service.weightTrend()),
                 strength = strength,
                 strengthDefs = strength.keys.mapNotNull { slug -> catalog[slug]?.let { slug to it } }.toMap(),
                 exercises = rows,
@@ -196,15 +218,17 @@ fun StatsHubScreen(
     viewModel: StatsHubViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
     onOpenClimberProfile: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
 ) {
     val s by viewModel.state.collectAsStateWithLifecycle()
+    var weightOpen by rememberSaveable { mutableStateOf(false) }
     var entered by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (entered) viewModel.reload() else entered = true }
     val lang = catalogLanguage()
     val colors = seriesColors()
     val climbColor = colors[0]
     val offBoardColor = colors[1]
-    TrainingScaffold(title = stringResource(R.string.tr_tab_stats), onBack = onBack, bottomBar = tabBar) { padding ->
+    TrainingScaffold(title = stringResource(R.string.tr_tab_progress), onBack = onBack, bottomBar = tabBar) { padding ->
         if (s.loading && s.today == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@TrainingScaffold
@@ -214,7 +238,10 @@ fun StatsHubScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Where to go from here: body, the week, start values, the log – each with its value.
+            item(key = "hub") { ProgressHub(s, onOpenBody, onLogWeight = { weightOpen = true }, onOpenWeeklyReview, onOpenBenchmarks, onOpenHistory) }
             item {
+                SectionTitle(stringResource(R.string.tru_progress_training))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatsRange.entries.forEach { r ->
                         FilterChip(selected = s.range == r, onClick = { viewModel.setRange(r) }, label = { Text(rangeLabel(r)) },
@@ -224,8 +251,6 @@ fun StatsHubScreen(
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(stringResource(R.string.trs_tile_this_week), "${s.daysThisWeek} / ${s.profile.weeklyGoal}", Modifier.weight(1f),
-                        supporting = stringResource(R.string.trs_tile_training_days))
                     StatTile(stringResource(R.string.trs_tile_range_days), "${s.trainingDaysInRange}", Modifier.weight(1f),
                         supporting = rangeLabel(s.range))
                     StatTile(stringResource(R.string.trs_tile_records), "${s.recordsInRange}", Modifier.weight(1f),
@@ -300,6 +325,9 @@ fun StatsHubScreen(
                 if (s.weight.isEmpty()) {
                     Text(stringResource(R.string.trs_body_empty), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FilledTonalButton(onClick = { weightOpen = true }, modifier = Modifier.padding(top = 4.dp).testTag("stats_log_weight")) {
+                        Text(stringResource(R.string.tru_enter_weight))
+                    }
                 } else {
                     TrendChart(s.weight, s.profile.hideBodyNumbers, s.profile.units,
                         stringResource(R.string.trs_weight_cd), Modifier.fillMaxWidth().clickable(onClick = onOpenBody))
@@ -329,16 +357,72 @@ fun StatsHubScreen(
                 ExerciseStatsRow(row, lang, s.profile, climbColor) { onOpenExerciseStats(row.def.slug) }
             }
 
-            // ── Links ───────────────────────────────────────────────
-            item {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = onOpenWeeklyReview, label = { Text(stringResource(R.string.trt_weekly_review)) },
-                        modifier = Modifier.testTag("stats_weekly_review"))
-                    AssistChip(onClick = onOpenBenchmarks, label = { Text(stringResource(R.string.trbm_title)) },
-                        modifier = Modifier.testTag("stats_benchmarks"))
-                }
-            }
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+    if (weightOpen) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = s.profile.units, lastKg = s.latestWeightKg, hideNumbers = s.profile.hideBodyNumbers,
+            onDismiss = { weightOpen = false },
+            onSave = { kg -> viewModel.logWeight(kg); weightOpen = false },
+        )
+    }
+}
+
+/** The four ways into the details of Progress, each with its current value. */
+@Composable
+private fun ProgressHub(
+    s: StatsHubState,
+    onOpenBody: () -> Unit,
+    onLogWeight: () -> Unit,
+    onOpenWeeklyReview: () -> Unit,
+    onOpenBenchmarks: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val w = s.latestWeightKg
+            com.cruxcoach.android.ui.training.common.ValueTile(
+                icon = Icons.Default.MonitorWeight, tint = MaterialTheme.colorScheme.tertiary,
+                label = stringResource(R.string.tr_nav_body),
+                value = when {
+                    w == null -> stringResource(R.string.tru_tile_log)
+                    s.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+                    else -> formatMass(w, s.profile.units)
+                },
+                valueIsAction = w == null,
+                supporting = stringResource(R.string.tru_hub_body),
+                tag = "stats_open_body_tile", onClick = if (w == null) onLogWeight else onOpenBody,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            com.cruxcoach.android.ui.training.common.ValueTile(
+                icon = Icons.Default.CalendarMonth, tint = CruxCoachDesign.colors.brandAccent,
+                label = stringResource(R.string.trt_weekly_review),
+                value = "${s.daysThisWeek} / ${s.profile.weeklyGoal}",
+                supporting = stringResource(R.string.trs_tile_training_days),
+                tag = "stats_weekly_review", onClick = onOpenWeeklyReview,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            com.cruxcoach.android.ui.training.common.ValueTile(
+                icon = Icons.Default.Speed, tint = CruxCoachDesign.colors.positive,
+                label = stringResource(R.string.trbm_title),
+                value = if (s.benchmarkCount > 0) pluralStringResource(R.plurals.tru_hub_values, s.benchmarkCount, s.benchmarkCount)
+                    else stringResource(R.string.tru_tile_log),
+                valueIsAction = s.benchmarkCount == 0,
+                supporting = stringResource(R.string.tru_hub_benchmarks),
+                tag = "stats_benchmarks", onClick = onOpenBenchmarks,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            com.cruxcoach.android.ui.training.common.ValueTile(
+                icon = Icons.Default.History, tint = MaterialTheme.colorScheme.secondary,
+                label = stringResource(R.string.trt_done_hero_history),
+                value = "${s.trainingDaysInRange}",
+                supporting = stringResource(R.string.tru_hub_history, rangeLabel(s.range)),
+                tag = "stats_history", onClick = onOpenHistory,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
         }
     }
 }

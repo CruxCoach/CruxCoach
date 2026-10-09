@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -107,6 +108,13 @@ class BenchmarksViewModel @Inject constructor(private val service: AthleteServic
     }
 
     fun save(b: Benchmark) = io { service.saveBenchmark(b) }
+
+    /** Body weight from the hint on top: values with added weight and % body weight need it. */
+    fun logWeight(kg: Double) = io {
+        service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+            com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+        _state.update { it.copy(bodyweight = service.currentBodyweight() ?: kg) }
+    }
     fun delete(id: String) = io { service.repo.deleteBenchmark(id) }
     fun startTest(slug: String) = io { if (service.startTest(slug) != null) _events.send(BenchmarkEvent.TestStarted) }
     fun newId(): String = service.repo.newId()
@@ -151,6 +159,7 @@ fun BenchmarksScreen(
     val lang = catalogLanguage()
     var entry by remember { mutableStateOf<ExerciseDefinition?>(null) }
     var estimating by rememberSaveable { mutableStateOf(false) }
+    var weightOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.events.collect { if (it is BenchmarkEvent.TestStarted) onTestStarted() } }
 
     TrainingScaffold(
@@ -167,8 +176,15 @@ fun BenchmarksScreen(
             item {
                 Text(stringResource(R.string.trbm_intro), style = MaterialTheme.typography.bodyMedium)
                 if (state.bodyweight == null) {
-                    Text(stringResource(R.string.trbm_needs_weight), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
+                    com.cruxcoach.android.ui.training.common.NeedsDataCard(
+                        icon = androidx.compose.material.icons.Icons.Default.MonitorWeight,
+                        title = stringResource(R.string.tru_setup_weight),
+                        text = stringResource(R.string.trbm_needs_weight),
+                        action = stringResource(R.string.tru_enter_weight),
+                        tag = "benchmarks_needs_weight",
+                        onAction = { weightOpen = true },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                 }
                 OutlinedButton(onClick = { estimating = true }, modifier = Modifier.padding(top = 8.dp).testTag("benchmarks_quick_estimate")) {
                     Text(stringResource(R.string.trc_quick_estimate))
@@ -206,6 +222,14 @@ fun BenchmarksScreen(
             workingDifficulty = state.workingDifficulty)
     }
     if (estimating) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { estimating = false })
+    if (weightOpen) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = state.profile.units, lastKg = null, hideNumbers = state.profile.hideBodyNumbers,
+            reason = stringResource(R.string.trbm_needs_weight),
+            onDismiss = { weightOpen = false },
+            onSave = { kg -> viewModel.logWeight(kg); weightOpen = false },
+        )
+    }
 }
 
 @Composable

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -55,7 +56,10 @@ object TrainingRoutes {
     const val INJURIES = "injuries"
     const val WEEKLY_REVIEW = "weekly_review"
     const val ATHLETE_SETTINGS = "athlete_settings"
-    /** The same settings, scrolled to the nutrition options (gear on the nutrition screen). */
+    /** One page of the settings (overview → page). */
+    const val ATHLETE_SETTINGS_SECTION = "athlete_settings/{section}"
+    fun athleteSettings(section: String) = "athlete_settings/$section"
+    /** The nutrition page (gear on the nutrition screen). */
     const val ATHLETE_SETTINGS_NUTRITION = "athlete_settings/nutrition"
     const val CUSTOM_EXERCISE = "custom_exercise"
     const val WORKOUT_PLAYER = "workout_player"
@@ -79,13 +83,15 @@ object TrainingRoutes {
     const val CLIMBING_DAYS = "climbing_days"
 }
 
-/** The five tabs of the training area. */
+/**
+ * The four tabs of the training area (UX round 2026-10-09): Today, Training
+ * (workouts and exercises), Nutrition and Progress (statistics and body).
+ */
 enum class TrainingTab(val route: String) {
     TODAY(TrainingRoutes.TODAY),
     WORKOUTS(TrainingRoutes.WORKOUTS),
-    EXERCISES("exercises"),
+    FUEL(TrainingRoutes.FUEL),
     STATS(TrainingRoutes.STATS),
-    BODY(TrainingRoutes.BODY),
 }
 
 /** Bottom bar of the training area; the board app keeps its own drawer navigation. */
@@ -95,10 +101,9 @@ fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
         TrainingTab.entries.forEach { tab ->
             val (icon, label) = when (tab) {
                 TrainingTab.TODAY -> androidx.compose.material.icons.Icons.Default.Today to R.string.tr_tab_today
-                TrainingTab.WORKOUTS -> androidx.compose.material.icons.Icons.Default.FitnessCenter to R.string.tr_tab_workouts
-                TrainingTab.EXERCISES -> androidx.compose.material.icons.Icons.AutoMirrored.Filled.List to R.string.tr_tab_exercises
-                TrainingTab.STATS -> androidx.compose.material.icons.Icons.Default.Insights to R.string.tr_tab_stats
-                TrainingTab.BODY -> androidx.compose.material.icons.Icons.Default.MonitorWeight to R.string.tr_tab_body
+                TrainingTab.WORKOUTS -> androidx.compose.material.icons.Icons.Default.FitnessCenter to R.string.tr_tab_training
+                TrainingTab.FUEL -> androidx.compose.material.icons.Icons.Default.Restaurant to R.string.tr_nav_fuel
+                TrainingTab.STATS -> androidx.compose.material.icons.Icons.Default.Insights to R.string.tr_tab_progress
             }
             NavigationBarItem(
                 selected = tab == selected,
@@ -107,6 +112,22 @@ fun TrainingTabBar(selected: TrainingTab, onSelect: (TrainingTab) -> Unit) {
                 label = { Text(stringResource(label), maxLines = 1) },
                 modifier = Modifier.testTag("training_tab_${tab.name.lowercase()}"),
             )
+        }
+    }
+}
+
+/** Workouts and exercises are the two halves of the Training tab. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrainingSwitch(exercises: Boolean, onWorkouts: () -> Unit, onExercises: () -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        SegmentedButton(selected = !exercises, onClick = { if (exercises) onWorkouts() },
+            shape = SegmentedButtonDefaults.itemShape(0, 2), modifier = Modifier.testTag("training_switch_workouts")) {
+            Text(stringResource(R.string.tr_tab_workouts))
+        }
+        SegmentedButton(selected = exercises, onClick = { if (!exercises) onExercises() },
+            shape = SegmentedButtonDefaults.itemShape(1, 2), modifier = Modifier.testTag("training_switch_exercises")) {
+            Text(stringResource(R.string.tr_tab_exercises))
         }
     }
 }
@@ -327,6 +348,8 @@ fun TrainingScaffold(
     /** The guided player shows its own rest screen; the global banner would repeat it. */
     showRestBanner: Boolean = true,
     bottomBar: @Composable () -> Unit = {},
+    /** Fixed under the app bar, e.g. the Workouts | Exercises switch. */
+    subHeader: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -344,6 +367,7 @@ fun TrainingScaffold(
                     },
                     actions = actions,
                 )
+                subHeader()
                 if (showRestBanner) RestTimerBannerSlot()
             }
         },

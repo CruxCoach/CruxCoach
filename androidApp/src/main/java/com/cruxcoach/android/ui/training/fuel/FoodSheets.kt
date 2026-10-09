@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -167,6 +168,11 @@ fun FoodsSheet(
     title: String? = null,
     /** The product database is still being unpacked (first use after install or update). */
     productsPreparing: Boolean = false,
+    /** The meal the food goes to, chosen on top; null hides the choice (recipe ingredients). */
+    meal: Meal? = null,
+    onMealChange: (Meal) -> Unit = {},
+    /** Scan, describe, photo and plain values as tiles under the search field (adding to the log). */
+    addActions: (@Composable () -> Unit)? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     /** A food about to be deleted: one tap on the trash icon used to delete it outright. */
@@ -199,22 +205,9 @@ fun FoodsSheet(
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                onCreateRecipe?.let { create ->
-                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
-                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.trf_recipe_new))
-                    }
-                }
-                onCreate?.let { create ->
-                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
-                        Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.trf_foods_new))
-                    }
-                }
+            Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            if (meal != null) {
+                Box(Modifier.padding(top = 8.dp, bottom = 4.dp)) { MealPicker(meal, onMealChange) }
             }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -229,6 +222,27 @@ fun FoodsSheet(
                 label = { Text(stringResource(R.string.trf_foods_search)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_foods_search"),
             )
+            // The other ways in, while nothing is typed: the list below belongs to the search.
+            if (q.isEmpty()) addActions?.invoke()
+            if (onCreate != null || onCreateRecipe != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    onCreateRecipe?.let { create ->
+                        TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
+                            Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.trf_recipe_new))
+                        }
+                    }
+                    onCreate?.let { create ->
+                        TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
+                            Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.trf_foods_new))
+                        }
+                    }
+                }
+            }
             if (visible.isEmpty() && q.isEmpty()) {
                 EmptyHint(stringResource(R.string.trf_foods_empty))
             }
