@@ -13,11 +13,14 @@ import androidx.compose.ui.test.hasTestTag
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
 import com.cruxcoach.android.foodvision.VisionModelStore
+import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.DetectedFood
+import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.DeviceFacts
 import com.cruxcoach.athlete.logic.VisionSupport
 import com.cruxcoach.athlete.logic.VisionTier
 import com.cruxcoach.athlete.model.Meal
+import com.cruxcoach.athlete.model.UnitSystem
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -123,6 +126,27 @@ class FoodPhotoTest : AthleteScreenTest() {
         assertEquals(listOf(330), repo.hydration(day).map { it.ml })
         // BLS foods become reusable "my foods" (per 100 g).
         assertEquals("bls", repo.foodItem("bls:${rice.choice!!.code}")!!.source)
+    }
+
+    @Test
+    fun `choosing a drink for a line switches its amount to ml and back, keeping the quantity`() {
+        val photo = photoViewModel(pixel6a)
+        runBlocking { photo.showReview(null, listOf(DetectedFood("Knäckebrot", "Crispbread", 200.0)), 5) }
+        fun item() = (photo.state.value.phase as PhotoPhase.Review).items.single()
+        val bread = item().choice
+        assertEquals(FuelUnits.Amount.G, item().unit)
+        val milk = BlsFood("M111300", "Vollmilch frisch, 3,5 % Fett, pasteurisiert", "Whole milk, fresh, 3.5 % fat, pasteurised", 64.0, 3.3, 3.5, 4.8)
+        photo.choose(item().key, milk)
+        assertEquals(FuelUnits.Amount.ML, item().unit)
+        assertEquals("200", item().amountText)
+        photo.choose(item().key, bread)
+        assertEquals(FuelUnits.Amount.G, item().unit)
+        assertEquals("200", item().amountText)
+        // In US units the same glass is 6.8 fl oz.
+        photo.units = UnitSystem.IMPERIAL
+        photo.choose(item().key, milk)
+        assertEquals(FuelUnits.Amount.FL_OZ, item().unit)
+        assertEquals(200.0, FoodPhotoViewModel.amountOf(item())!!, 2.0)
     }
 
     @Test

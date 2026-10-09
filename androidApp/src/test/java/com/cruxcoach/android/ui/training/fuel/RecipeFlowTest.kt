@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
 import androidx.compose.ui.semantics.SemanticsActions
@@ -62,6 +65,8 @@ class RecipeFlowTest : AthleteScreenTest() {
         waitForTag("fuel_recipe_ingredient_0")
         addIngredient(null, "fuel_food_milk", "300")
         waitForTag("fuel_recipe_ingredient_1")
+        // Milk is a drink: ml like everywhere else (device test 2026-10-09 showed "250 g").
+        waitForText("300 ml")
         compose.onNodeWithTag("fuel_recipe_portions").performTextReplacement("2")
         waitForTag("fuel_recipe_summary")
         click("fuel_recipe_save")
@@ -84,6 +89,33 @@ class RecipeFlowTest : AthleteScreenTest() {
         compose.waitUntil(WAIT_MS) { repo.recipe(item.id)?.ingredients?.size == 1 }
         assertEquals(100.0, repo.foodItem(item.id)!!.servingG!!, 1e-9)
         assertEquals(1, repo.foodItems().count { it.source == Recipe.SOURCE })
+    }
+
+    @Test
+    fun `deleting an own food asks first, and the ingredient picker cannot delete`() {
+        repo.saveFoodItem(FoodItem(id = "cheese", name = "Bergkäse", kcalPer100 = 400.0, proteinPer100 = 28.0,
+            carbsPer100 = 0.0, fatPer100 = 32.0, updatedAt = 1))
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context),
+            OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
+        waitForTag("fuel_list")
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        click("fuel_my_foods")
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_delete_cheese")); true }.getOrDefault(false)
+        }
+        click("fuel_food_delete_cheese")
+        waitForTag("fuel_food_delete_dialog")
+        assertTrue(repo.foodItems().any { it.id == "cheese" })
+        click("fuel_food_delete_confirm")
+        compose.waitUntil(WAIT_MS) { repo.foodItems().none { it.id == "cheese" } }
+
+        click("fuel_recipe_new")
+        click("fuel_recipe_add")
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_milk")); true }.getOrDefault(false)
+        }
+        compose.onAllNodesWithTag("fuel_food_delete_milk").assertCountEquals(0)
     }
 
 }

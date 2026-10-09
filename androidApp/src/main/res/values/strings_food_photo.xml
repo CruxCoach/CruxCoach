@@ -11,7 +11,7 @@
     <string name="fvp_unavailable_cpu">This device\'s processor is too old for the recognition model (it needs ARMv8.2 with dot-product instructions).</string>
     <string name="fvp_unavailable_abi">Photo recognition needs a 64-bit ARM device.</string>
     <string name="fvp_unavailable_slow">The test run showed that one photo would take about %d s here. That is too slow, so the feature stays off. You can remove the model to free the space.</string>
-    <string name="fvp_unavailable_alternatives">Quick entries and your own foods work as before.</string>
+    <string name="fvp_unavailable_alternatives">Search, barcode, describe and quick entry work as usual.</string>
 
     <string name="fvp_setup_text">Recognition runs only on your device; your photo never leaves the phone. For that, CruxCoach downloads an AI model once (%1$s, %2$s).</string>
     <string name="fvp_setup_estimate">It recognises foods and estimates grams. Nutrients come from the German food composition database BLS 4.0. Check the suggestions before you log them.</string>

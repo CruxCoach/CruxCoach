@@ -2818,6 +2818,10 @@
         <item quantity="one">%1$d climb note</item>
         <item quantity="other">%1$d climb notes</item>
     </plurals>
+    <plurals name="import_result_athlete">
+        <item quantity="one">%d training, body or nutrition entry</item>
+        <item quantity="other">%d training, body and nutrition entries</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Nobody has put a climb on this board yet, so the dice has nothing to match. Add one climb first.</string>
     <string name="board_layer_color_green">Green</string>
     <string name="board_layer_color_cyan">Cyan</string>

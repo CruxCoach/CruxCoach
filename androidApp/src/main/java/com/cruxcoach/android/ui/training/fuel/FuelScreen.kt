@@ -251,7 +251,7 @@ fun FuelScreen(
                 onDismiss = { pickingIngredient = false },
                 onPick = ::pick,
                 onToggleFavorite = viewModel::toggleFavorite,
-                onDelete = viewModel::deleteFood,
+                onDelete = null,
                 onCreate = null,
                 searchBls = photoViewModel::search,
                 onPickBls = { pick(FoodPhotoViewModel.blsFoodItem(it)) },
@@ -418,7 +418,12 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
         }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                if (state.isToday) stringResource(R.string.trf_today) else state.day?.shortLabel().orEmpty(),
+                when {
+                    state.isToday -> stringResource(R.string.trf_today)
+                    state.day != null && state.today != null && state.day.toEpochDays() == state.today.toEpochDays() - 1 ->
+                        stringResource(R.string.trf_yesterday)
+                    else -> state.day?.shortLabel().orEmpty()
+                },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.testTag("fuel_day_label"),
             )
@@ -591,6 +596,8 @@ private fun ProgressRow(
                 modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 // Passing a target is fine; there is no "over" state to warn about.
                 color = CruxCoachDesign.colors.positive,
+                // No end dot: at 0 % it read like a reached point (device test 2026-10-09).
+                drawStopIndicator = {},
             )
         }
         if (supporting != null) {

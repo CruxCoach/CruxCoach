@@ -374,7 +374,12 @@ class FoodPhotoViewModel @Inject constructor(
 
     fun setAmount(key: Int, text: String) = updateItem(key) { it.copy(amountText = text.take(6)) }
     fun setIncluded(key: Int, included: Boolean) = updateItem(key) { it.copy(included = included) }
-    fun choose(key: Int, food: BlsFood?) = updateItem(key) { it.copy(choice = food, uncertain = false, water = false) }
+    /** Another food for a line; a drink switches the amount to ml/fl oz (and back), keeping the quantity. */
+    fun choose(key: Int, food: BlsFood?) = updateItem(key) { item ->
+        val unit = food?.let { FuelUnits.unitFor(units, FuelUnits.isDrink("bls:${it.code}", it.nameEn)) } ?: item.unit
+        val text = if (unit != item.unit) amountOf(item)?.let { inputText(it, unit) } ?: item.amountText else item.amountText
+        item.copy(choice = food, uncertain = false, water = false, unit = unit, amountText = text)
+    }
 
     /** Adds a food the model missed. */
     fun addFood(food: BlsFood) {

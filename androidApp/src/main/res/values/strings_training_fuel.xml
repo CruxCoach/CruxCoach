@@ -7,10 +7,11 @@
     <string name="trf_intro_carbs">Carbohydrates follow your training: more on board and strength days, less on rest days – automatically from your sessions.</string>
     <string name="trf_intro_no_budget">No calorie budget, no “too much”, no good or bad foods.</string>
     <string name="trf_intro_hidden">Calories are shown with every value; you can hide them in the settings.</string>
-    <string name="trf_intro_private">Everything stays encrypted on your device.</string>
+    <string name="trf_intro_private">Everything stays encrypted on your device – unless you switch on the backup or Health Connect yourself.</string>
     <string name="trf_intro_got_it">Got it</string>
 
     <string name="trf_today">Today</string>
+    <string name="trf_yesterday">Yesterday</string>
     <string name="trf_prev_day">Previous day</string>
     <string name="trf_next_day">Next day</string>
     <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates and water.</string>
@@ -124,6 +125,8 @@
     <string name="trf_food_favorite">Mark as favourite</string>
     <string name="trf_food_unfavorite">Remove from favourites</string>
     <string name="trf_food_delete">Delete food</string>
+    <string name="trf_food_delete_confirm_title">Delete “%1$s”?</string>
+    <string name="trf_food_delete_confirm_text">It disappears from your foods; entries you already logged stay as they are.</string>
 
     <string name="trf_amount_title">How much?</string>
     <string name="trf_amount_portions">Portions</string>

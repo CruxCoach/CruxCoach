@@ -35,7 +35,7 @@
     <string name="trsg_reason_fingers_loaded">Die Finger hatten in den letzten 48 Stunden Last – heute Zug, Druck, Beine oder Rumpf.</string>
     <string name="trsg_reason_fingers_tired">Deine Finger sind müde – heute keine maximale Fingerlast.</string>
     <string name="trsg_reason_skin">Deine Haut braucht Pause – heute keine Finger-Einheit.</string>
-    <string name="trsg_reason_fingers_rested">Deine Finger hatten zwei Tage Pause – ein guter Tag für Fingerkraft.</string>
+    <string name="trsg_reason_fingers_rested">Keine Fingerlast in den letzten 48 Stunden – ein guter Tag für Fingerkraft.</string>
     <string name="trsg_reason_pull_longer_ago">Beine und Rumpf hast du zuletzt trainiert, Zug und Druck ist länger her.</string>
     <string name="trsg_reason_legs_longer_ago">Zug und Druck hast du zuletzt trainiert, Beine und Rumpf ist länger her.</string>
     <string name="trsg_reason_low_energy">Wenig Schlaf oder Energie – die Einheit ist heute kürzer.</string>

@@ -151,7 +151,8 @@ fun FoodsSheet(
     onDismiss: () -> Unit,
     onPick: (FoodItem) -> Unit,
     onToggleFavorite: (FoodItem) -> Unit,
-    onDelete: (FoodItem) -> Unit,
+    /** Null hides the trash icon (picking a recipe ingredient). */
+    onDelete: ((FoodItem) -> Unit)?,
     onCreate: (() -> Unit)?,
     searchBls: suspend (String) -> List<BlsFood> = { emptyList() },
     onPickBls: (BlsFood) -> Unit = {},
@@ -168,6 +169,8 @@ fun FoodsSheet(
     productsPreparing: Boolean = false,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    /** A food about to be deleted: one tap on the trash icon used to delete it outright. */
+    var confirmDelete by remember { mutableStateOf<FoodItem?>(null) }
     val q = query.trim().lowercase()
     // The repository already orders favourites first, then by use count.
     val visible = foods.filter { q.isEmpty() || it.name.lowercase().contains(q) || (it.brand?.lowercase()?.contains(q) == true) }
@@ -254,8 +257,10 @@ fun FoodsSheet(
                                             contentDescription = stringResource(if (item.favorite) R.string.trf_food_unfavorite else R.string.trf_food_favorite),
                                         )
                                     }
-                                    IconButton(onClick = { onDelete(item) }) {
-                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trf_food_delete))
+                                    if (onDelete != null) {
+                                        IconButton(onClick = { confirmDelete = item }, modifier = Modifier.testTag("fuel_food_delete_${item.id}")) {
+                                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trf_food_delete))
+                                        }
                                     }
                                 }
                             },
@@ -337,6 +342,20 @@ fun FoodsSheet(
                     }
             }
         }
+    }
+    confirmDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            modifier = Modifier.testTag("fuel_food_delete_dialog"),
+            title = { Text(stringResource(R.string.trf_food_delete_confirm_title, item.name)) },
+            text = { Text(stringResource(R.string.trf_food_delete_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = { onDelete?.invoke(item); confirmDelete = null }, modifier = Modifier.testTag("fuel_food_delete_confirm")) {
+                    Text(stringResource(R.string.tr_action_delete))
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 }
 

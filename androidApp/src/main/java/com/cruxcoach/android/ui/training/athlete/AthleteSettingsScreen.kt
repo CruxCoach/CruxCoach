@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.athlete
 
+import kotlinx.coroutines.flow.first
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -111,11 +112,15 @@ fun AthleteSettingsScreen(
     val scroll = rememberScrollState()
     var nutritionTop by remember { mutableIntStateOf(-1) }
     var scrolledToNutrition by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(nutritionTop) {
-        if (scrollToNutrition && !scrolledToNutrition && nutritionTop >= 0) {
-            scroll.scrollTo(nutritionTop)
-            scrolledToNutrition = true
-        }
+    // Wait until the column is long enough to reach the section – the coach card above it loads
+    // later and grows the page; scrolling at the first position only hit the top (device test 2026-10-09).
+    LaunchedEffect(scrollToNutrition) {
+        if (!scrollToNutrition || scrolledToNutrition) return@LaunchedEffect
+        snapshotFlow { nutritionTop to scroll.maxValue }.first { (top, max) -> top >= 0 && max >= top }
+        scroll.scrollTo(nutritionTop)
+        kotlinx.coroutines.delay(400)
+        if (scroll.value != nutritionTop && nutritionTop <= scroll.maxValue) scroll.animateScrollTo(nutritionTop)
+        scrolledToNutrition = true
     }
     TrainingScaffold(title = stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
         if (!state.loaded) return@TrainingScaffold

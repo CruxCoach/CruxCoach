@@ -2817,6 +2817,10 @@
         <item quantity="one">%1$d Climb-Notiz</item>
         <item quantity="other">%1$d Climb-Notizen</item>
     </plurals>
+    <plurals name="import_result_athlete">
+        <item quantity="one">%d Eintrag aus Training, Körper oder Ernährung</item>
+        <item quantity="other">%d Einträge aus Training, Körper und Ernährung</item>
+    </plurals>
     <string name="board_playlist_random_board_unknown">Auf diesem Board liegt noch kein Climb, also hat der Würfel nichts zum Abgleichen. Füge zuerst einen Climb hinzu.</string>
     <string name="board_layer_color_green">Grün</string>
     <string name="board_layer_color_cyan">Cyan</string>

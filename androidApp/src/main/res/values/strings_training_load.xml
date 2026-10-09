@@ -120,7 +120,7 @@
 
     <string name="trl_day_title">Log a climbing day</string>
     <string name="trl_day_edit_title">Edit climbing day</string>
-    <string name="trl_day_intro">Gym, rock or another board: so recovery rules, streak, stats and fueling know about it.</string>
+    <string name="trl_day_intro">Gym, rock or another board: so recovery rules, streak, stats and nutrition know about it.</string>
     <string name="trl_day_today">Today</string>
     <string name="trl_day_yesterday">Yesterday</string>
     <string name="trl_day_pick">Pick a date</string>

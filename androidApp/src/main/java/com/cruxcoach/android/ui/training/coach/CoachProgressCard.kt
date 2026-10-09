@@ -76,10 +76,9 @@ class CoachProgressViewModel @Inject constructor(private val service: AthleteSer
  * → Präzise) and the one next step that helps most.
  */
 @Composable
-fun CoachProgressCard(onOpenSetup: () -> Unit, onOpenEstimate: () -> Unit, onAutoOpenSetup: () -> Unit = {}) {
+fun CoachProgressCard(onOpenSetup: () -> Unit, onOpenEstimate: () -> Unit) {
     val viewModel: CoachProgressViewModel = hiltViewModel(key = "coach-progress")
     val s by viewModel.state.collectAsStateWithLifecycle()
-    LaunchedEffect(viewModel) { viewModel.autoOpen.collect { onAutoOpenSetup() } }
     if (!s.visible) return
     val c = s.completeness
     val next = c.next

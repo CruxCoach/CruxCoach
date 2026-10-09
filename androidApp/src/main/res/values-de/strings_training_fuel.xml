@@ -7,10 +7,11 @@
     <string name="trf_intro_carbs">Kohlenhydrate folgen deinem Training: an Board- und Krafttagen mehr, an Ruhetagen weniger – automatisch aus deinen Sessions.</string>
     <string name="trf_intro_no_budget">Kein Kalorienbudget, kein „zu viel“, keine guten oder schlechten Lebensmittel.</string>
     <string name="trf_intro_hidden">Kalorien stehen bei allen Werten dabei; in den Einstellungen kannst du sie ausblenden.</string>
-    <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät.</string>
+    <string name="trf_intro_private">Alles bleibt verschlüsselt auf deinem Gerät – außer du schaltest selbst das Backup oder Health Connect ein.</string>
     <string name="trf_intro_got_it">Verstanden</string>
 
     <string name="trf_today">Heute</string>
+    <string name="trf_yesterday">Gestern</string>
     <string name="trf_prev_day">Vorheriger Tag</string>
     <string name="trf_next_day">Nächster Tag</string>
     <string name="trf_needs_weight">Trag dein Körpergewicht ein, dann berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate und Wasser.</string>
@@ -124,6 +125,8 @@
     <string name="trf_food_favorite">Als Favorit markieren</string>
     <string name="trf_food_unfavorite">Aus Favoriten entfernen</string>
     <string name="trf_food_delete">Lebensmittel löschen</string>
+    <string name="trf_food_delete_confirm_title">„%1$s“ löschen?</string>
+    <string name="trf_food_delete_confirm_text">Es verschwindet aus deinen Lebensmitteln; schon eingetragene Einträge bleiben, wie sie sind.</string>
 
     <string name="trf_amount_title">Wie viel?</string>
     <string name="trf_amount_portions">Portionen</string>

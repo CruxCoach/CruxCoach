@@ -427,6 +427,9 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.climbLists > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_lists, result.climbLists.toInt(), result.climbLists))
                 if (own.restored > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_own_climbs, own.restored, own.restored))
                 if (result.climbNotes > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_notes, result.climbNotes.toInt(), result.climbNotes))
+                // Training, body and nutrition rows (athlete database): imported, but missing from the message
+                // (device test 2026-10-09: "Importiert: 160 Board-Sends, …" after 22 body values and 2 workouts).
+                if (result.athleteRows > 0) parts.add(context.resources.getQuantityString(R.plurals.import_result_athlete, result.athleteRows, result.athleteRows))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val skipped = result.skippedDuplicates + own.skipped

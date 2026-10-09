@@ -905,6 +905,7 @@ private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: 
                     LinearProgressIndicator(
                         progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
+                        drawStopIndicator = {},
                     )
                 }
                 // Water in the athlete's units (stored in ml), next to the "+ glass" quick action;
