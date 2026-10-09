@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The basics on the first visit to Training or Nutrition (owner 2026-10-09). -->
+<resources>
+    <string name="trq_title">Quick start</string>
+    <string name="trq_later">Later</string>
+    <string name="trq_back">Back</string>
+    <string name="trq_next">Next</string>
+    <string name="trq_done">Done</string>
+    <string name="trq_you_title">About you</string>
+    <string name="trq_you_why">For your protein, carbohydrate and water targets, your energy need and loads in % of body weight. Everything optional, changeable any time.</string>
+    <string name="trq_weight">Body weight</string>
+    <string name="trq_height">Height</string>
+    <string name="trq_birth_year">Birth year</string>
+    <string name="trq_sex">Sex (for energy and micronutrient reference values)</string>
+    <string name="trq_sex_none">No answer</string>
+    <string name="trq_private">Stays encrypted on your phone.</string>
+    <string name="trq_climb_title">Your climbing</string>
+    <string name="trq_climb_why">Sets the start loads and keeps finger training safe: no max hangs or campus in your first climbing years.</string>
+    <string name="trq_grade">How hard do you boulder (usual hard sends)?</string>
+    <string name="trq_experience">How long have you been climbing?</string>
+    <string name="trq_equipment">What do you train with?</string>
+</resources>

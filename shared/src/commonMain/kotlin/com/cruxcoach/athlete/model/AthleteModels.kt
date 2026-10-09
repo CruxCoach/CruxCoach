@@ -351,6 +351,8 @@ data class AthleteProfile(
     val weeklyLossKg: Double = 0.5,
     /** Everyday life besides training, for the energy estimate. */
     val everydayActivity: EverydayActivity = EverydayActivity.SEATED,
+    /** The basics were asked once (first visit to Training or Nutrition); they are not pushed again. */
+    val basicsAsked: Boolean = false,
 )
 
 /** Everyday life besides training: a physical activity level on top of resting energy. */

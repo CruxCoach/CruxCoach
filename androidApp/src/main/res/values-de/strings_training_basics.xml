@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Die Basics beim ersten Öffnen von Training oder Ernährung (Owner 2026-10-09). -->
+<resources>
+    <string name="trq_title">Kurzer Start</string>
+    <string name="trq_later">Später</string>
+    <string name="trq_back">Zurück</string>
+    <string name="trq_next">Weiter</string>
+    <string name="trq_done">Fertig</string>
+    <string name="trq_you_title">Über dich</string>
+    <string name="trq_you_why">Für deine Protein-, Kohlenhydrat- und Trinkziele, deinen Energiebedarf und Lasten in % deines Körpergewichts. Alles freiwillig und jederzeit änderbar.</string>
+    <string name="trq_weight">Körpergewicht</string>
+    <string name="trq_height">Größe</string>
+    <string name="trq_birth_year">Geburtsjahr</string>
+    <string name="trq_sex">Geschlecht (für Energie- und Nährstoff-Referenzwerte)</string>
+    <string name="trq_sex_none">Keine Angabe</string>
+    <string name="trq_private">Bleibt verschlüsselt auf deinem Handy.</string>
+    <string name="trq_climb_title">Dein Klettern</string>
+    <string name="trq_climb_why">Damit passen die Startlasten, und das Fingertraining bleibt sicher: keine Max-Hangs und kein Campus in den ersten Kletterjahren.</string>
+    <string name="trq_grade">Wie schwer boulderst du (übliche harte Tops)?</string>
+    <string name="trq_experience">Wie lange kletterst du schon?</string>
+    <string name="trq_equipment">Womit trainierst du?</string>
+</resources>
