@@ -176,7 +176,8 @@ fun ProgressRing(
     size: Dp = 72.dp,
     stroke: Dp = 8.dp,
     color: Color = CruxCoachDesign.colors.positive,
-    trackColor: Color = MaterialTheme.colorScheme.surfaceVariant,
+    // Visible on any card in both themes (surfaceVariant vanished on light cards).
+    trackColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val animated by animateFloatAsState(progress.coerceIn(0f, 1f), label = "ring")

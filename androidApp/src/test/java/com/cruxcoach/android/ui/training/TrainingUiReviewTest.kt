@@ -35,7 +35,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Design review: renders the main training and nutrition screens in the dark
- * theme on a tall German phone and writes them as PNGs into
+ * theme (light with `CRUXCOACH_UI_REVIEW_THEME=light`) on a tall German phone and writes them as PNGs into
  * `CRUXCOACH_UI_REVIEW_DIR`. Skipped unless that variable is set, so CI pays
  * nothing; run it locally to look at a layout change without a device.
  */
@@ -46,6 +46,7 @@ class TrainingUiReviewTest : AthleteScreenTest() {
 
     private val dir: String? = System.getenv("CRUXCOACH_UI_REVIEW_DIR")
     private val prefix: String = System.getenv("CRUXCOACH_UI_REVIEW_PREFIX") ?: ""
+    private val theme = if (System.getenv("CRUXCOACH_UI_REVIEW_THEME") == "light") DarkModeSetting.LIGHT else DarkModeSetting.DARK
 
     @Before
     fun onlyOnRequest() = Assume.assumeTrue(dir != null)
@@ -71,7 +72,7 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         compose.setContent {
             view = LocalView.current
             CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
-                CruxCoachTheme(DarkModeSetting.DARK) { Surface { content() } }
+                CruxCoachTheme(theme) { Surface { content() } }
             }
         }
         ready()
