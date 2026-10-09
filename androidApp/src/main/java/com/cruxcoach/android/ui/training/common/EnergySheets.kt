@@ -84,7 +84,7 @@ fun EnergySheet(
                 KcalRow(stringResource(R.string.trn_everyday), "+" + need.everydayKcal, "energy_everyday")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     EverydayActivity.entries.forEach { e ->
-                        FilterChip(selected = profile.everydayActivity == e, onClick = { onUpdateProfile { it.copy(everydayActivity = e) } },
+                        FilterChip(selected = profile.everydayActivity == e, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(profile.everydayActivity == e), onClick = { onUpdateProfile { it.copy(everydayActivity = e) } },
                             label = { Text(everydayLabel(e)) }, modifier = Modifier.testTag("everyday_${e.name.lowercase()}"))
                     }
                 }
@@ -112,7 +112,7 @@ fun EnergySheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(Sex.FEMALE to R.string.tra_sex_female, Sex.MALE to R.string.tra_sex_male).forEach { (s, label) ->
-                            FilterChip(selected = profile.sex == s, onClick = { onUpdateProfile { it.copy(sex = s) } },
+                            FilterChip(selected = profile.sex == s, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(profile.sex == s), onClick = { onUpdateProfile { it.copy(sex = s) } },
                                 label = { Text(stringResource(label)) }, modifier = Modifier.testTag("energy_sex_${s.name.lowercase()}"))
                         }
                     }

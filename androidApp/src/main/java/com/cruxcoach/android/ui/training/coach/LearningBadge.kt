@@ -49,7 +49,11 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
             service.ensureReady()
             val def = service.catalog[slug]
             // Only exercises whose loads come from a performance value have something to learn.
-            if (def == null || BenchmarkMath.capacityKind(def) == null) { _state.value = LearningState.State.Known; return@launch }
+            // Stretches and warm-ups have nothing to learn ("how many more would have gone" means nothing there).
+            val noValue = def == null || BenchmarkMath.capacityKind(def) == null ||
+                def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.MOBILITY ||
+                def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP
+            if (noValue) { _state.value = LearningState.State.Known; return@launch }
             val learning = LearningState.of(slug, service.repo.benchmarks(slug), workSessionCount(service, slug))
             _guessed.value = learning == LearningState.State.None && service.startEstimate(def) != null
             _state.value = learning

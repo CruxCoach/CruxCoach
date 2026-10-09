@@ -36,6 +36,8 @@ class BasicsTest : AthleteScreenTest() {
         val vm = loaded(BasicsViewModel(service))
         render { BasicsScreen(onDone = { done = true }, viewModel = vm) }
         waitForTag("basics_page_0")
+        // The privacy note heads the page: it is about every value.
+        waitForTag("basics_private")
         compose.onNodeWithTag("basics_weight").performTextReplacement("68,5")
         compose.onNodeWithTag("basics_height").performTextReplacement("176")
         compose.onNodeWithTag("basics_birth_year").performTextReplacement("1990")

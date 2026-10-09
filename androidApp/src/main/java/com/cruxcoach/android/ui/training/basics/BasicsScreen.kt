@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +53,9 @@ data class BasicsState(
     val profile: AthleteProfile = AthleteProfile(),
     val weightKg: Double? = null,
     val heightCm: Double? = null,
+    /** Working grade from the board logbook, suggested for the climbing level. */
+    val logbookGrade: String? = null,
+    val logbookDifficulty: Double? = null,
     /** Saved or put off: the screen closes. */
     val finished: Boolean = false,
 )
@@ -63,7 +68,9 @@ class BasicsViewModel @Inject constructor(private val service: AthleteService) :
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            _state.value = BasicsState(false, service.repo.profile(), service.currentBodyweight(), service.heightCm())
+            val logbook = runCatching { service.logbookSummary() }.getOrNull()?.takeIf { it.hasGrades }
+            _state.value = BasicsState(false, service.repo.profile(), service.currentBodyweight(), service.heightCm(),
+                logbookGrade = logbook?.workingGrade, logbookDifficulty = logbook?.workingDifficulty)
         }
     }
 
@@ -156,7 +163,8 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
     var height by rememberSaveable { mutableStateOf(state.heightCm?.let { formatNumber(Units.lengthToDisplay(it, units)) } ?: "") }
     var year by rememberSaveable { mutableStateOf(p.birthYear?.toString() ?: "") }
     var sex by rememberSaveable { mutableStateOf(p.sex) }
-    var grade by rememberSaveable { mutableStateOf(p.coach.currentGrade) }
+    // The board logbook's working grade is the suggestion when no grade was given yet.
+    var grade by rememberSaveable { mutableStateOf(p.coach.currentGrade ?: state.logbookGrade) }
     var experience by rememberSaveable { mutableStateOf(p.coach.experience) }
     var equipment by rememberSaveable { mutableStateOf(p.equipment.takeIf { p.equipmentConfigured }?.map { it.name }?.toSet() ?: emptySet()) }
 
@@ -202,6 +210,15 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
         ) {
             LinearProgressIndicator(progress = { (page + 1) / 2f }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 color = CruxCoachDesign.colors.brandAccent)
+            // For every value on both pages, so it stands on top, not under the last field.
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CruxCoachDesign.shapes.medium,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("basics_private")) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Lock, null, tint = CruxCoachDesign.colors.brandAccent, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.trq_private), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             if (page == 0) {
                 Header(stringResource(R.string.trq_you_title), stringResource(R.string.trq_you_why))
                 NumberField(weight, { weight = it }, stringResource(R.string.trq_weight), Units.massUnit(units), "basics_weight",
@@ -215,23 +232,28 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
                     listOf(Sex.FEMALE to R.string.tra_sex_female, Sex.MALE to R.string.tra_sex_male, Sex.OTHER to R.string.trq_sex_none)
                         .forEach { (s, label) ->
                             FilterChip(selected = sex == s, onClick = { sex = if (sex == s) null else s }, label = { Text(stringResource(label)) },
+                                leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(sex == s),
                                 modifier = Modifier.testTag("basics_sex_${s.name.lowercase()}"))
                         }
                 }
-                Text(stringResource(R.string.trq_private), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
+                Spacer(Modifier.height(16.dp))
             } else {
                 Header(stringResource(R.string.trq_climb_title), stringResource(R.string.trq_climb_why))
                 Label(stringResource(R.string.trq_grade))
-                GradeStepper(grade, startFrom = null, tag = "basics_grade", onChange = { grade = it })
-                Label(stringResource(R.string.trq_experience))
+                GradeStepper(grade, startFrom = state.logbookDifficulty, tag = "basics_grade", onChange = { grade = it })
+                if (state.logbookGrade != null && grade == state.logbookGrade && p.coach.currentGrade == null) {
+                    Text(stringResource(R.string.trq_grade_from_logbook), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("basics_grade_logbook"))
+                }
+                Label(stringResource(R.string.trc_experience))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ExperienceBand.entries.forEach { e ->
                         FilterChip(selected = experience == e, onClick = { experience = if (experience == e) null else e },
+                            leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(experience == e),
                             label = { Text(experienceLabel(e)) }, modifier = Modifier.testTag("basics_experience_${e.name.lowercase()}"))
                     }
                 }
-                Label(stringResource(R.string.trq_equipment))
+                Spacer(Modifier.height(16.dp))
                 EquipmentEditor(equipment.mapNotNull { n -> EquipmentV2.entries.firstOrNull { it.name == n } }.toSet()) { set ->
                     equipment = set.map { it.name }.toSet()
                 }

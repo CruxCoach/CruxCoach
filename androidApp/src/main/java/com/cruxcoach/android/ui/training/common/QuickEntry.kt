@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,6 +42,10 @@ import kotlin.math.roundToInt
  * a missing body weight or equipment profile is asked right where the app
  * needs it, never by sending the athlete to look for it in the settings.
  */
+
+/** A tick on a selected filter chip: the tint alone is too faint to read on the dark theme (device test 2026-10-09). */
+fun chipCheck(selected: Boolean): (@Composable () -> Unit)? =
+    if (selected) { { Icon(Icons.Default.Check, null, Modifier.size(FilterChipDefaults.IconSize)) } } else null
 
 /** Body weights the app accepts, in kg. */
 val PLAUSIBLE_WEIGHT_KG = 20.0..300.0
@@ -134,6 +139,7 @@ fun EquipmentEditor(selected: Set<EquipmentV2>, onChange: (Set<EquipmentV2>) -> 
             .forEachIndexed { i, (label, preset) ->
                 val active = selected - ALWAYS_THERE == preset
                 FilterChip(selected = active, onClick = { onChange(preset + ALWAYS_THERE) }, label = { Text(stringResource(label)) },
+                    leadingIcon = chipCheck(active),
                     modifier = Modifier.testTag(listOf("preset_home", "preset_gym", "preset_travel")[i]))
             }
     }
@@ -142,6 +148,7 @@ fun EquipmentEditor(selected: Set<EquipmentV2>, onChange: (Set<EquipmentV2>) -> 
         EquipmentV2.entries.filter { it !in ALWAYS_THERE }.forEach { e ->
             val on = e in selected
             FilterChip(selected = on, onClick = { onChange(if (on) selected - e else selected + e + ALWAYS_THERE) },
+                leadingIcon = chipCheck(on),
                 label = { Text(equipmentLabel(e)) }, modifier = Modifier.testTag("equipment_${e.name.lowercase()}"))
         }
     }
