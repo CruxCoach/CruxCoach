@@ -170,6 +170,16 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     }
 
     @Test
+    fun player() {
+        seedActive()
+        service.startWorkout(com.cruxcoach.athlete.logic.BuiltinRoutines.byKey(com.cruxcoach.athlete.logic.BuiltinRoutines.FINGER_BASICS), null)
+        val vm = loaded(com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service))
+        shoot("player", { compose.waitForIdle(); Thread.sleep(500) }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm)
+        }
+    }
+
+    @Test
     fun bodyActive() {
         seedActive()
         val vm = loaded(BodyViewModel(service))
