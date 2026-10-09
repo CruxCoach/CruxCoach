@@ -6,7 +6,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -15,11 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -31,6 +34,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.athlete.AthleteService
 import com.cruxcoach.android.athlete.BodyReminders
 import com.cruxcoach.android.ui.common.InfoButton
+import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.logic.RedsGuard
@@ -51,6 +55,8 @@ data class AthleteSettingsState(
     val completeness: com.cruxcoach.athlete.logic.Completeness? = null,
     /** "Nie vorschlagen" exercises with their definitions (unknown slugs fall back to a stub). */
     val excluded: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
+    /** Latest body weight, shown and entered on "Über dich". */
+    val weightKg: Double? = null,
 )
 
 @HiltViewModel
@@ -66,12 +72,15 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
                 service.repo.observeProfile(),
                 service.repo.observeSeries(BodyMetric.HEIGHT.key),
                 service.repo.observeAllBenchmarks(),
-            ) { profile, heights, benchmarks ->
+                service.repo.observeSeries(BodyMetric.WEIGHT.key),
+            ) { profile, heights, benchmarks, _ ->
                 val height = heights.lastOrNull()?.value
+                val trend = service.weightTrend()
                 AthleteSettingsState(
-                    profile, height, RedsGuard.lossGoalAllowed(profile, height, service.weightTrend()), loaded = true,
+                    profile, height, RedsGuard.lossGoalAllowed(profile, height, trend), loaded = true,
                     completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
+                    weightKg = trend.lastOrNull()?.trend,
                 )
             }.collect { _state.value = it }
         }
@@ -82,6 +91,18 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     /** Lets an excluded exercise be suggested again. */
     fun allow(slug: String) = update { it.copy(excludedExercises = it.excludedExercises - slug) }
 
+    /** Training days per week: the streak's goal and the coach's days are one number. */
+    fun setWeeklyGoal(days: Int) = update {
+        val d = days.coerceIn(1, 7)
+        it.copy(weeklyGoal = d, coach = it.coach.copy(trainingDaysPerWeek = d))
+    }
+
+    fun setBirthYear(year: Int?) = update { it.copy(birthYear = year) }
+
+    fun logWeight(kg: Double) = io {
+        service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+    }
+
     fun setHeight(cm: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.HEIGHT.key, cm, "cm", System.currentTimeMillis()))
     }
@@ -89,12 +110,18 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     private fun io(block: suspend () -> Unit) { viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() } }
 }
 
-private val PRESET_HOME = setOf(EquipmentV2.HANGBOARD, EquipmentV2.PULL_UP_BAR, EquipmentV2.BANDS, EquipmentV2.DUMBBELL)
-private val PRESET_GYM = setOf(EquipmentV2.HANGBOARD, EquipmentV2.PULL_UP_BAR, EquipmentV2.RINGS, EquipmentV2.DUMBBELL,
-    EquipmentV2.KETTLEBELL, EquipmentV2.BARBELL, EquipmentV2.PLATES, EquipmentV2.BANDS, EquipmentV2.BENCH, EquipmentV2.BOX,
-    EquipmentV2.CABLE, EquipmentV2.WALL, EquipmentV2.BOARD, EquipmentV2.CAMPUS_BOARD, EquipmentV2.FOAM_ROLLER, EquipmentV2.DIP_BARS)
-private val PRESET_TRAVEL = setOf(EquipmentV2.BANDS)
+/** The pages of the training settings; the overview lists them with their current value. */
+enum class SettingsSection(val key: String) {
+    PROFILE("profile"), ABOUT("about"), EQUIPMENT("equipment"), NUTRITION("nutrition"),
+    REMINDERS("reminders"), TIMER("timer"), DISPLAY("display"), CONNECTIONS("connections"), EXCLUDED("excluded");
 
+    companion object { fun of(key: String?): SettingsSection? = entries.firstOrNull { it.key == key } }
+}
+
+/**
+ * Training settings as an overview of short rows – each with its current
+ * value – and one page per topic, instead of one long page (UX round 2026-10-09).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AthleteSettingsScreen(
@@ -102,173 +129,272 @@ fun AthleteSettingsScreen(
     viewModel: AthleteSettingsViewModel = hiltViewModel(),
     onOpenBenchmarks: () -> Unit = {},
     onOpenCoachSetup: () -> Unit = {},
-    /** Room for device cards (Health Connect, force gauge) added by the integration. */
+    /** Device cards (Health Connect, force gauge) added by the integration; shown on the connections page. */
     extraSections: @Composable () -> Unit = {},
-    /** Opened from the nutrition screen: start at the nutrition options instead of the coach profile. */
-    scrollToNutrition: Boolean = false,
+    /** One page of the settings; null shows the overview. */
+    section: SettingsSection? = null,
+    onOpenSection: (SettingsSection) -> Unit = {},
+    onOpenClimbingDays: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
-    val scroll = rememberScrollState()
-    var nutritionTop by remember { mutableIntStateOf(-1) }
-    var scrolledToNutrition by rememberSaveable { mutableStateOf(false) }
-    // The coach card above the section loads later and grows the page, so the first position is
-    // too early (it stayed at the top in the device test 2026-10-09): follow the section while the
-    // page settles. Only layout changes move it, never the athlete's own scrolling.
-    LaunchedEffect(scrollToNutrition) {
-        if (!scrollToNutrition || scrolledToNutrition) return@LaunchedEffect
-        snapshotFlow { nutritionTop }.first { it >= 0 }
-        kotlinx.coroutines.withTimeoutOrNull(2_000) {
-            snapshotFlow { nutritionTop to scroll.maxValue }.collect { (top, max) -> scroll.scrollTo(top.coerceAtMost(max)) }
-        }
-        scrolledToNutrition = true
-    }
-    TrainingScaffold(title = stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
+    var weightOpen by rememberSaveable { mutableStateOf(false) }
+    TrainingScaffold(title = section?.let { sectionTitle(it) } ?: stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
         if (!state.loaded) return@TrainingScaffold
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(scroll).padding(horizontal = 16.dp)) {
-            // Coach profile (FEAT-071)
-            CoachProfileSection(p, state.completeness, onOpenCoachSetup)
-
-            // Equipment profile
-            SectionTitle(stringResource(R.string.tra_equipment_title)) {
-                InfoButton(stringResource(R.string.tra_equipment_title), stringResource(R.string.tra_equipment_info))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = { viewModel.update { it.copy(equipment = PRESET_HOME + EquipmentV2.NONE + EquipmentV2.MAT, equipmentConfigured = true) } },
-                    label = { Text(stringResource(R.string.tra_preset_home)) }, modifier = Modifier.testTag("preset_home"))
-                AssistChip(onClick = { viewModel.update { it.copy(equipment = PRESET_GYM + EquipmentV2.NONE + EquipmentV2.MAT, equipmentConfigured = true) } },
-                    label = { Text(stringResource(R.string.tra_preset_gym)) }, modifier = Modifier.testTag("preset_gym"))
-                AssistChip(onClick = { viewModel.update { it.copy(equipment = PRESET_TRAVEL + EquipmentV2.NONE + EquipmentV2.MAT, equipmentConfigured = true) } },
-                    label = { Text(stringResource(R.string.tra_preset_travel)) })
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                EquipmentV2.entries.filter { it != EquipmentV2.NONE && it != EquipmentV2.MAT }.forEach { e ->
-                    val selected = e in p.equipment
-                    FilterChip(
-                        selected = selected,
-                        onClick = { viewModel.update { it.copy(equipment = if (selected) it.equipment - e else it.equipment + e, equipmentConfigured = true) } },
-                        label = { Text(equipmentLabel(e)) },
-                        modifier = Modifier.testTag("equipment_${e.name.lowercase()}"),
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
+                .testTag(section?.let { "settings_${it.key}" } ?: "settings_overview"),
+        ) {
+            when (section) {
+                null -> SettingsOverview(state, onOpenSection, onOpenClimbingDays)
+                SettingsSection.PROFILE -> {
+                    CoachProfileSection(p, state.completeness, onOpenCoachSetup)
+                    // One number for the week: the streak's goal and the coach's training days stay the same.
+                    SectionTitle(stringResource(R.string.tra_plan_title))
+                    Stepper(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), "weekly_goal",
+                        onMinus = { viewModel.setWeeklyGoal(p.weeklyGoal - 1) }, onPlus = { viewModel.setWeeklyGoal(p.weeklyGoal + 1) })
+                    Text(stringResource(R.string.tra_goal), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AthleteGoal.entries.forEach { g ->
+                            val enabled = g != AthleteGoal.LOSE_WEIGHT || state.lossGoalAllowed || p.goal == g
+                            FilterChip(selected = p.goal == g, enabled = enabled, onClick = { viewModel.update { it.copy(goal = g) } },
+                                label = { Text(goalLabel(g)) }, modifier = Modifier.testTag("goal_${g.name.lowercase()}"))
+                        }
+                    }
+                    if (!state.lossGoalAllowed) {
+                        Text(stringResource(R.string.tra_goal_loss_blocked), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    OutlinedCard(onClick = onOpenBenchmarks, modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("open_benchmarks")) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(stringResource(R.string.trr_benchmarks), style = MaterialTheme.typography.titleSmall)
+                            Text(stringResource(R.string.trr_benchmarks_hint), style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                SettingsSection.ABOUT -> {
+                    Text(stringResource(R.string.tra_personal_info), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    SectionTitle(stringResource(R.string.tr_metric_weight))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when {
+                                state.weightKg == null -> stringResource(R.string.tru_set_none)
+                                p.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+                                else -> formatMass(state.weightKg!!, p.units)
+                            },
+                            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
+                        )
+                        FilledTonalButton(onClick = { weightOpen = true }, modifier = Modifier.testTag("settings_weight")) {
+                            Text(stringResource(R.string.tru_enter_weight))
+                        }
+                    }
+                    SectionTitle(stringResource(R.string.tru_set_body_data))
+                    HeightField(state.heightCm, p.units, viewModel::setHeight)
+                    BirthYearField(p.birthYear, viewModel::setBirthYear)
+                    Text(stringResource(R.string.tru_set_sex), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Sex.entries.forEach { s ->
+                            FilterChip(selected = p.sex == s, onClick = { viewModel.update { it.copy(sex = if (it.sex == s) null else s) } },
+                                label = { Text(sexLabel(s)) })
+                        }
+                    }
+                }
+                SettingsSection.EQUIPMENT -> {
+                    Text(stringResource(R.string.tru_equipment_why), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                    com.cruxcoach.android.ui.training.common.EquipmentEditor(p.equipment.takeIf { p.equipmentConfigured } ?: emptySet()) { set ->
+                        viewModel.update { it.copy(equipment = set, equipmentConfigured = true) }
+                    }
+                    Text(stringResource(R.string.tra_increment), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Steps are offered in the athlete's own plates: lb plates for imperial,
+                        // stored in kg so the logger's kg grid lands exactly on them.
+                        val steps = if (p.units == UnitSystem.IMPERIAL) listOf(1.0, 2.5, 5.0).map { it / Units.LB_PER_KG }
+                            else listOf(0.5, 1.0, 1.25, 2.5)
+                        steps.forEach { inc ->
+                            FilterChip(selected = kotlin.math.abs(p.smallestIncrementKg - inc) < 1e-6,
+                                onClick = { viewModel.update { it.copy(smallestIncrementKg = inc) } },
+                                label = { Text(formatMass(inc, p.units)) })
+                        }
+                    }
+                }
+                SettingsSection.NUTRITION -> {
+                    SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
+                    Text(
+                        if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
+                            formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
+                        else stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
-                }
-            }
-            Text(stringResource(R.string.tra_increment), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Steps are offered in the athlete's own plates: lb plates for imperial,
-                // stored in kg so the logger's kg grid lands exactly on them.
-                val steps = if (p.units == UnitSystem.IMPERIAL) listOf(1.0, 2.5, 5.0).map { it / Units.LB_PER_KG }
-                    else listOf(0.5, 1.0, 1.25, 2.5)
-                steps.forEach { inc ->
-                    FilterChip(selected = kotlin.math.abs(p.smallestIncrementKg - inc) < 1e-6,
-                        onClick = { viewModel.update { it.copy(smallestIncrementKg = inc) } },
-                        label = { Text(formatMass(inc, p.units)) })
-                }
-            }
-
-            // Plan
-            SectionTitle(stringResource(R.string.tra_plan_title))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { viewModel.update { it.copy(weeklyGoal = (it.weeklyGoal - 1).coerceAtLeast(1)) } },
-                    modifier = Modifier.testTag("weekly_goal_minus")) { Text("−") }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { viewModel.update { it.copy(weeklyGoal = (it.weeklyGoal + 1).coerceAtMost(7)) } },
-                    modifier = Modifier.testTag("weekly_goal_plus")) { Text("+") }
-            }
-            OutlinedCard(onClick = onOpenBenchmarks, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("open_benchmarks")) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.trr_benchmarks), style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.trr_benchmarks_hint), style = MaterialTheme.typography.bodySmall,
+                    var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
+                    Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
+                        onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
+                    Text(stringResource(R.string.tru_set_nutrition_weight), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-            Text(stringResource(R.string.tra_goal), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AthleteGoal.entries.forEach { g ->
-                    val enabled = g != AthleteGoal.LOSE_WEIGHT || state.lossGoalAllowed || p.goal == g
-                    FilterChip(selected = p.goal == g, enabled = enabled, onClick = { viewModel.update { it.copy(goal = g) } },
-                        label = { Text(goalLabel(g)) }, modifier = Modifier.testTag("goal_${g.name.lowercase()}"))
+                SettingsSection.REMINDERS -> {
+                    ReminderSection(p) { transform -> viewModel.update(transform) }
+                    TrainingReminderSection(p) { transform -> viewModel.update(transform) }
                 }
-            }
-            if (!state.lossGoalAllowed) {
-                Text(stringResource(R.string.tra_goal_loss_blocked), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            // Modules
-            SectionTitle(stringResource(R.string.tra_modules_title))
-            SwitchRow(stringResource(R.string.tra_module_checkin), p.checkinEnabled, "module_checkin") { v -> viewModel.update { it.copy(checkinEnabled = v) } }
-            SwitchRow(stringResource(R.string.tra_module_body), p.bodyEnabled, "module_body") { v -> viewModel.update { it.copy(bodyEnabled = v) } }
-            SwitchRow(stringResource(R.string.tra_hide_numbers), p.hideBodyNumbers, "hide_numbers") { v -> viewModel.update { it.copy(hideBodyNumbers = v) } }
-
-            // Nutrition is always on (owner 2026-10-05); only its options remain.
-            SectionTitle(stringResource(R.string.tra_module_fuel),
-                Modifier.onGloballyPositioned { nutritionTop = it.positionInParent().y.toInt() }.testTag("settings_nutrition"))
-            SwitchRow(stringResource(R.string.tra_show_calories), p.showCalories, "show_calories") { v -> viewModel.update { it.copy(showCalories = v) } }
-            Text(
-                if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
-                    formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
-                else stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)),
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
-            Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
-                onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
-
-            // Units and personal data
-            // The same setting, labels and explanation as in the app settings, next to the language.
-            SectionTitle(stringResource(R.string.settings_units_title))
-            Text(stringResource(R.string.settings_units_desc), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
-                    label = { Text(stringResource(R.string.settings_units_metric)) }, modifier = Modifier.testTag("units_metric"))
-                FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
-                    label = { Text(stringResource(R.string.settings_units_us)) }, modifier = Modifier.testTag("units_us"))
-            }
-            SectionTitle(stringResource(R.string.tra_personal_title)) {
-                InfoButton(stringResource(R.string.tra_personal_title), stringResource(R.string.tra_personal_info))
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Sex.entries.forEach { s ->
-                    FilterChip(selected = p.sex == s, onClick = { viewModel.update { it.copy(sex = if (it.sex == s) null else s) } },
-                        label = { Text(sexLabel(s)) })
+                SettingsSection.TIMER -> {
+                    SwitchRow(stringResource(R.string.tra_auto_rest), p.autoRestTimer, "auto_rest") { v -> viewModel.update { it.copy(autoRestTimer = v) } }
+                    SwitchRow(stringResource(R.string.tra_timer_sound), p.timerSound, "timer_sound") { v -> viewModel.update { it.copy(timerSound = v) } }
+                    SwitchRow(stringResource(R.string.tra_timer_vibration), p.timerVibration, "timer_vibration") { v -> viewModel.update { it.copy(timerVibration = v) } }
+                    SwitchRow(stringResource(R.string.tra_timer_voice), p.timerVoice, "timer_voice") { v -> viewModel.update { it.copy(timerVoice = v) } }
                 }
-            }
-            HeightField(state.heightCm, p.units, viewModel::setHeight)
-
-            // Reminders
-            ReminderSection(p) { transform -> viewModel.update(transform) }
-            TrainingReminderSection(p) { transform -> viewModel.update(transform) }
-
-            // Timer
-            SectionTitle(stringResource(R.string.tra_timer_title))
-            SwitchRow(stringResource(R.string.tra_auto_rest), p.autoRestTimer, "auto_rest") { v -> viewModel.update { it.copy(autoRestTimer = v) } }
-            SwitchRow(stringResource(R.string.tra_timer_sound), p.timerSound, "timer_sound") { v -> viewModel.update { it.copy(timerSound = v) } }
-            SwitchRow(stringResource(R.string.tra_timer_vibration), p.timerVibration, "timer_vibration") { v -> viewModel.update { it.copy(timerVibration = v) } }
-            SwitchRow(stringResource(R.string.tra_timer_voice), p.timerVoice, "timer_voice") { v -> viewModel.update { it.copy(timerVoice = v) } }
-
-            // Exercises the athlete never wants suggested
-            SectionTitle(stringResource(R.string.trc_excluded_title))
-            if (state.excluded.isEmpty()) {
-                Text(stringResource(R.string.trc_excluded_none), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                val lang = catalogLanguage()
-                state.excluded.forEach { def ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                        Text(def.name(lang), modifier = Modifier.weight(1f))
-                        TextButton(onClick = { viewModel.allow(def.slug) }, modifier = Modifier.testTag("excluded_allow_${def.slug}")) {
-                            Text(stringResource(R.string.trc_excluded_allow))
+                SettingsSection.DISPLAY -> {
+                    SwitchRow(stringResource(R.string.tra_module_checkin), p.checkinEnabled, "module_checkin") { v -> viewModel.update { it.copy(checkinEnabled = v) } }
+                    SwitchRow(stringResource(R.string.tra_module_body), p.bodyEnabled, "module_body") { v -> viewModel.update { it.copy(bodyEnabled = v) } }
+                    SwitchRow(stringResource(R.string.tra_hide_numbers), p.hideBodyNumbers, "hide_numbers") { v -> viewModel.update { it.copy(hideBodyNumbers = v) } }
+                    // The same setting, labels and explanation as in the app settings, next to the language.
+                    SectionTitle(stringResource(R.string.settings_units_title))
+                    Text(stringResource(R.string.settings_units_desc), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
+                            label = { Text(stringResource(R.string.settings_units_metric)) }, modifier = Modifier.testTag("units_metric"))
+                        FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
+                            label = { Text(stringResource(R.string.settings_units_us)) }, modifier = Modifier.testTag("units_us"))
+                    }
+                }
+                SettingsSection.CONNECTIONS -> {
+                    Spacer(Modifier.height(8.dp))
+                    extraSections()
+                }
+                SettingsSection.EXCLUDED -> {
+                    if (state.excluded.isEmpty()) {
+                        Text(stringResource(R.string.trc_excluded_none), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    } else {
+                        val lang = catalogLanguage()
+                        state.excluded.forEach { def ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text(def.name(lang), modifier = Modifier.weight(1f))
+                                TextButton(onClick = { viewModel.allow(def.slug) }, modifier = Modifier.testTag("excluded_allow_${def.slug}")) {
+                                    Text(stringResource(R.string.trc_excluded_allow))
+                                }
+                            }
                         }
                     }
                 }
             }
-
-            extraSections()
-
             Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
+        }
+    }
+    if (weightOpen) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = p.units, lastKg = state.weightKg, hideNumbers = p.hideBodyNumbers,
+            onDismiss = { weightOpen = false },
+            onSave = { kg -> viewModel.logWeight(kg); weightOpen = false },
+        )
+    }
+}
+
+@Composable
+private fun sectionTitle(s: SettingsSection): String = stringResource(when (s) {
+    SettingsSection.PROFILE -> R.string.tru_set_profile
+    SettingsSection.ABOUT -> R.string.tru_set_about
+    SettingsSection.EQUIPMENT -> R.string.tru_set_equipment
+    SettingsSection.NUTRITION -> R.string.tra_module_fuel
+    SettingsSection.REMINDERS -> R.string.trr_title
+    SettingsSection.TIMER -> R.string.tra_timer_title
+    SettingsSection.DISPLAY -> R.string.tru_set_display
+    SettingsSection.CONNECTIONS -> R.string.tru_set_connections
+    SettingsSection.EXCLUDED -> R.string.trc_excluded_title
+})
+
+/** Every page as one row with its current value; the most important first. */
+@Composable
+private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSection) -> Unit, onOpenClimbingDays: () -> Unit) {
+    val p = state.profile
+    val on = stringResource(R.string.tru_set_on)
+    val off = stringResource(R.string.tru_set_off)
+    val allOff = stringResource(R.string.tru_set_all_off)
+    @Composable
+    fun row(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, summary: String, tag: String, onClick: () -> Unit) {
+        ListItem(
+            leadingContent = { Icon(icon, null, tint = CruxCoachDesign.colors.brandAccent) },
+            headlineContent = { Text(title) },
+            supportingContent = { Text(summary, maxLines = 2) },
+            trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) },
+            colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            modifier = Modifier.clickable(onClick = onClick).testTag(tag),
+        )
+    }
+    fun open(s: SettingsSection) = { onOpen(s) }
+    Spacer(Modifier.height(4.dp))
+    row(Icons.Default.Flag, sectionTitle(SettingsSection.PROFILE),
+        listOf(p.coach.goal?.let { com.cruxcoach.android.ui.training.coach.coachGoalLabel(it) } ?: stringResource(R.string.trc_settings_no_goal),
+            pluralStringResource(R.plurals.tru_set_days, p.weeklyGoal, p.weeklyGoal)).joinToString(" · "),
+        "settings_row_profile", open(SettingsSection.PROFILE))
+    val aboutParts = listOfNotNull(
+        state.weightKg?.let { if (p.hideBodyNumbers) stringResource(R.string.trt_numbers_hidden_short) else formatMass(it, p.units) },
+        state.heightCm?.let { formatLength(it, p.units) },
+        p.birthYear?.toString(),
+    )
+    row(Icons.Default.Person, sectionTitle(SettingsSection.ABOUT),
+        if (aboutParts.isEmpty()) stringResource(R.string.tru_set_about_empty) else aboutParts.joinToString(" · "),
+        "settings_row_about", open(SettingsSection.ABOUT))
+    val count = (p.equipment - com.cruxcoach.android.ui.training.common.ALWAYS_THERE).size
+    row(Icons.Default.FitnessCenter, sectionTitle(SettingsSection.EQUIPMENT),
+        if (!p.equipmentConfigured) stringResource(R.string.tru_set_not_set_up) else pluralStringResource(R.plurals.tru_set_equipment_count, count, count),
+        "settings_row_equipment", open(SettingsSection.EQUIPMENT))
+    row(Icons.Default.Restaurant, sectionTitle(SettingsSection.NUTRITION),
+        stringResource(R.string.tru_set_nutrition_summary, formatNumber(p.proteinPerKg), if (p.showCalories) on else off),
+        "settings_row_nutrition", open(SettingsSection.NUTRITION))
+    val reminders = listOf(p.weighReminderEnabled, p.measureReminderEnabled, p.trainingReminderEnabled).count { it }
+    row(Icons.Default.Notifications, sectionTitle(SettingsSection.REMINDERS),
+        if (reminders == 0) allOff else pluralStringResource(R.plurals.tru_set_reminders, reminders, reminders),
+        "settings_row_reminders", open(SettingsSection.REMINDERS))
+    row(Icons.Default.Timer, sectionTitle(SettingsSection.TIMER),
+        listOfNotNull(
+            stringResource(R.string.tru_set_timer_auto).takeIf { p.autoRestTimer },
+            stringResource(R.string.tru_set_timer_sound).takeIf { p.timerSound },
+            stringResource(R.string.tru_set_timer_vibration).takeIf { p.timerVibration },
+            stringResource(R.string.tru_set_timer_voice).takeIf { p.timerVoice },
+        ).ifEmpty { listOf(allOff) }.joinToString(" · "),
+        "settings_row_timer", open(SettingsSection.TIMER))
+    row(Icons.Default.Visibility, sectionTitle(SettingsSection.DISPLAY),
+        stringResource(if (p.units == UnitSystem.IMPERIAL) R.string.settings_units_us else R.string.settings_units_metric) +
+            (if (p.hideBodyNumbers) " · " + stringResource(R.string.tru_set_numbers_hidden) else ""),
+        "settings_row_display", open(SettingsSection.DISPLAY))
+    row(Icons.Default.Sync, sectionTitle(SettingsSection.CONNECTIONS), stringResource(R.string.tru_set_connections_summary),
+        "settings_row_connections", open(SettingsSection.CONNECTIONS))
+    row(Icons.Default.Terrain, stringResource(R.string.trl_days_title), stringResource(R.string.tru_set_days_summary),
+        "settings_row_climbing_days", onOpenClimbingDays)
+    row(Icons.Default.Block, sectionTitle(SettingsSection.EXCLUDED),
+        if (state.excluded.isEmpty()) stringResource(R.string.tru_set_none) else pluralStringResource(R.plurals.tru_set_exercises, state.excluded.size, state.excluded.size),
+        "settings_row_excluded", open(SettingsSection.EXCLUDED))
+}
+
+@Composable
+private fun Stepper(label: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = onMinus, modifier = Modifier.testTag("${tag}_minus")) { Text("−") }
+        Spacer(Modifier.width(8.dp))
+        OutlinedButton(onClick = onPlus, modifier = Modifier.testTag("${tag}_plus")) { Text("+") }
+    }
+}
+
+/** Birth year (four digits): age-based reference values for micronutrients and the coach's guard rails. */
+@Composable
+private fun BirthYearField(year: Int?, onSave: (Int?) -> Unit) {
+    var text by rememberSaveable(year) { mutableStateOf(year?.toString() ?: "") }
+    val thisYear = java.time.LocalDate.now().year
+    val parsed = text.trim().toIntOrNull()
+    val valid = text.isBlank() || (parsed != null && parsed in (thisYear - 100)..(thisYear - 8))
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        OutlinedTextField(value = text, onValueChange = { v -> text = v.filter { it.isDigit() }.take(4) }, singleLine = true,
+            label = { Text(stringResource(R.string.tru_set_birth_year)) }, isError = !valid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).testTag("birth_year_input"))
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(onClick = { onSave(parsed) }, enabled = valid && parsed != year && !(text.isBlank() && year == null),
+            modifier = Modifier.testTag("birth_year_save")) {
+            Text(stringResource(R.string.tr_action_save))
         }
     }
 }

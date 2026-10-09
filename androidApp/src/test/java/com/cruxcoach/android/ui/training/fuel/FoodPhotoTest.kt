@@ -63,7 +63,9 @@ class FoodPhotoTest : AthleteScreenTest() {
         assertEquals(VisionSupport.Unsupported(VisionSupport.Reason.CPU_FEATURES), photo.state.value.support)
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_photo"))
+        // Every way of adding sits in the add sheet.
+        click("fuel_my_foods")
+        waitForTag("fuel_photo")
         compose.onNodeWithTag("fuel_photo").assertIsEnabled().performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_photo_unavailable")
         waitForText("too old")
@@ -84,7 +86,9 @@ class FoodPhotoTest : AthleteScreenTest() {
         assertEquals(VisionSupport.Supported(VisionTier.SMALL), photo.state.value.support)
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_photo"))
+        // Every way of adding sits in the add sheet.
+        click("fuel_my_foods")
+        waitForTag("fuel_photo")
         compose.onNodeWithTag("fuel_photo").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_photo_setup")
         waitForText("Qwen3.5 2B")

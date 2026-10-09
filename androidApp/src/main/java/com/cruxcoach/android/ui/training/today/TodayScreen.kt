@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -54,6 +55,7 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun TodayScreen(
     onBack: () -> Unit,
@@ -72,12 +74,12 @@ fun TodayScreen(
     tabBar: @Composable () -> Unit = {},
     /** Opens the workout editor: an own routine id, or `from` = "ex:<slug>,<slug>" to start a new one. */
     onOpenEditor: (routineId: String?, from: String?) -> Unit = { _, _ -> },
-    /** "Ausrüstung fehlt" from the another-suggestion sheet. */
-    onOpenEquipment: () -> Unit = {},
     /** Board day: the playlist generator preset with a [com.cruxcoach.domain.playlist.GeneratorType] name and minutes. */
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
-    /** Integration slot right under the week strip (coach setup progress). */
-    coachCard: @Composable () -> Unit = {},
+    /** Goal and training week: the coach setup (first step of the checklist). */
+    onOpenCoachSetup: () -> Unit = {},
+    /** Start values estimated from a few questions (FEAT-071). */
+    onOpenEstimate: () -> Unit = {},
     /** "Klettertag eintragen": climbing outside the board app. */
     onLogClimbing: () -> Unit = {},
 ) {
@@ -87,12 +89,21 @@ fun TodayScreen(
     // After a finished training the hero says so; another session only on request.
     var moreToday by rememberSaveable(state.today?.toString()) { mutableStateOf(false) }
     var showWeight by rememberSaveable { mutableStateOf(false) }
+    var showEquipment by rememberSaveable { mutableStateOf(false) }
+    var showCheckin by rememberSaveable { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
+    val weightSavedText = stringResource(R.string.tru_weight_saved)
+    val equipmentSavedText = stringResource(R.string.tru_equipment_saved)
+    val undoText = stringResource(R.string.trf_undo)
+    val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
+    val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
     val snackScope = rememberCoroutineScope()
+    fun tell(text: String) { snackScope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(text) } }
     LaunchedEffect(state.suggestionSaved) {
         // Shown outside this effect: consuming the flag restarts the effect and would cancel it.
-        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); snackScope.launch { snackbar.showSnackbar(savedText) } }
+        if (state.suggestionSaved) { viewModel.consumeSuggestionSaved(); tell(savedText) }
     }
     LaunchedEffect(state.startedWorkout) {
         if (state.startedWorkout) {
@@ -110,6 +121,24 @@ fun TodayScreen(
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("today_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
             }
+            // Seldom used: in the menu, not as another row of buttons on the screen.
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.testTag("today_menu")) {
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_weekly_review)) }, leadingIcon = { Icon(Icons.Default.Insights, null) },
+                        onClick = { menu = false; onOpenWeeklyReview() }, modifier = Modifier.testTag("today_weekly_review"))
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_done_hero_history)) }, leadingIcon = { Icon(Icons.Default.History, null) },
+                        onClick = { menu = false; onOpenHistory() }, modifier = Modifier.testTag("today_history"))
+                    if (state.openWorkout == null) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.trt_quick_free)) }, leadingIcon = { Icon(Icons.Default.Add, null) },
+                            onClick = { menu = false; viewModel.startEmptyWorkout() }, modifier = Modifier.testTag("today_start_empty"))
+                    }
+                    DropdownMenuItem(text = { Text(stringResource(R.string.trt_report_injury)) }, leadingIcon = { Icon(Icons.Default.Healing, null) },
+                        onClick = { menu = false; onOpenInjuries() }, modifier = Modifier.testTag("today_report_injury"))
+                }
+            }
         },
     ) { padding ->
         if (state.loading) {
@@ -121,10 +150,22 @@ fun TodayScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // One glance: where the week stands, what needs attention, then today's training.
+            // One glance: where the week stands, what is still missing, today's training, then the day.
             item { WeekHeader(state) }
             state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
             if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
+            val steps = setupSteps(state)
+            if (steps.any { !it.done }) {
+                item(key = "setup") {
+                    SetupChecklistCard(steps, onOpen = { step ->
+                        when (step.kind) {
+                            SetupKind.COACH -> onOpenCoachSetup()
+                            SetupKind.EQUIPMENT -> showEquipment = true
+                            SetupKind.WEIGHT -> showWeight = true
+                        }
+                    })
+                }
+            }
             if (state.openWorkout != null) {
                 item(key = "open_workout") { OpenWorkoutCard(onOpenPlayer) }
             } else if (state.todaysWorkouts.isNotEmpty() && !moreToday) {
@@ -139,57 +180,45 @@ fun TodayScreen(
                         onEdit = { title -> viewModel.editTarget(title).let { (id, from) -> onOpenEditor(id, from) } },
                         onSave = viewModel::saveSuggestion,
                         onOpenPlaylistGenerator = onOpenPlaylistGenerator,
+                        checkin = { CheckinRow(state, onOpen = { showCheckin = true }) },
                     )
                 }
                 state.durationHint?.let { minutes ->
                     item(key = "duration_hint") { DurationHintCard(minutes, onApply = viewModel::applyDurationHint) }
                 }
             }
-            item(key = "checkin") {
-                CheckinCard(state, onSave = viewModel::saveCheckin, onClear = viewModel::clearCheckin)
-            }
-            item(key = "quick") {
-                QuickActions(
+            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "today_reds") }
+            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
+            item(key = "day") {
+                DayGrid(
                     state = state,
                     onLogClimbing = onLogClimbing,
                     onLogWeight = { showWeight = true },
-                    // One glass: 250 ml, or 8 fl oz in US units; stored in ml.
-                    onAddWater = { viewModel.addWater(FuelUnits.waterPresetsMl(state.profile.units).first()) },
+                    onOpenBody = onOpenBody,
                     onOpenFuel = onOpenFuel,
-                    onStartEmpty = viewModel::startEmptyWorkout,
-                    onOpenRoutines = onOpenRoutines,
+                    onAddWater = {
+                        viewModel.addWater(glass)
+                        snackScope.launch {
+                            snackbar.currentSnackbarData?.dismiss()
+                            if (snackbar.showSnackbar(waterAddedText, undoText, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                                viewModel.removeLastWater()
+                            }
+                        }
+                    },
                 )
             }
-            item(key = "coach_card") { coachCard() }
-            // Setup hints one at a time: the next useful step, not a to-do list.
-            state.suggestions.firstOrNull()?.let { s ->
-                item(key = s.name) {
-                    SuggestionCard(s, onAction = {
-                        when (s) {
-                            TodaySuggestion.CONFIGURE_EQUIPMENT -> onOpenSettings()
-                            TodaySuggestion.SET_BENCHMARKS -> onOpenBenchmarks()
-                            TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
-                            TodaySuggestion.LOG_WEIGHT -> onOpenBody()
-                        }
-                    })
-                }
-            }
-            if (state.redsSignals.isNotEmpty()) item { EnergyCareCard(state.redsSignals, "today_reds") }
-            if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
-            val doneSomething = state.todaysWorkouts.isNotEmpty() ||
-                state.activity?.let { it.climbingMinutes > 0 || it.climbingEfforts > 0 } == true
-            if (doneSomething) item(key = "done_today") { DoneTodayCard(state, onOpenHistory) }
-            // Nutrition is always on (owner 2026-10-05), so the tiles always show.
-            item(key = "tiles") { SummaryTiles(state, onOpenBody, onOpenFuel) }
-            item {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(onClick = onOpenWeeklyReview, label = { Text(stringResource(R.string.trt_weekly_review)) },
-                        leadingIcon = { Icon(Icons.Default.Insights, null) }, modifier = Modifier.testTag("today_weekly_review"))
-                    AssistChip(onClick = onOpenExercises, label = { Text(stringResource(R.string.tr_nav_exercises)) },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) }, modifier = Modifier.testTag("today_exercises"))
-                    if (state.injuries.isEmpty()) {
-                        AssistChip(onClick = onOpenInjuries, label = { Text(stringResource(R.string.trt_report_injury)) },
-                            leadingIcon = { Icon(Icons.Default.Healing, null) }, modifier = Modifier.testTag("today_report_injury"))
+            // After the checklist: at most one gentle next step (start values, a re-test).
+            if (steps.all { it.done }) {
+                state.suggestions.firstOrNull { it != TodaySuggestion.CONFIGURE_EQUIPMENT && it != TodaySuggestion.LOG_WEIGHT }?.let { s ->
+                    item(key = s.name) {
+                        SuggestionCard(s, onAction = {
+                            when (s) {
+                                TodaySuggestion.SET_BENCHMARKS -> onOpenEstimate()
+                                TodaySuggestion.BASELINE_TEST -> viewModel.startRoutine(BuiltinRoutines.BASELINE_TESTS)
+                                TodaySuggestion.CONFIGURE_EQUIPMENT -> showEquipment = true
+                                TodaySuggestion.LOG_WEIGHT -> showWeight = true
+                            }
+                        }, onSecondary = if (s == TodaySuggestion.SET_BENCHMARKS) onOpenBenchmarks else null)
                     }
                 }
             }
@@ -198,7 +227,26 @@ fun TodayScreen(
     }
 
     if (showWhy) WhySheet(state, onDismiss = { showWhy = false })
-    if (showWeight) WeightDialog(state, onDismiss = { showWeight = false }, onSave = { kg -> viewModel.logWeight(kg); showWeight = false })
+    if (showCheckin) {
+        CheckinSheet(state, onDismiss = { showCheckin = false },
+            onSave = { s, e, sk, f, sick -> viewModel.saveCheckin(s, e, sk, f, sick); showCheckin = false },
+            onClear = { viewModel.clearCheckin(); showCheckin = false })
+    }
+    if (showWeight) {
+        com.cruxcoach.android.ui.training.common.WeightSheet(
+            units = state.profile.units, lastKg = state.trendKg, hideNumbers = state.profile.hideBodyNumbers,
+            reason = stringResource(R.string.tru_weight_reason_setup),
+            onDismiss = { showWeight = false },
+            onSave = { kg -> viewModel.logWeight(kg); showWeight = false; tell(weightSavedText) },
+        )
+    }
+    if (showEquipment) {
+        com.cruxcoach.android.ui.training.common.EquipmentSheet(
+            initial = state.profile.equipment.takeIf { state.profile.equipmentConfigured } ?: emptySet(),
+            onDismiss = { showEquipment = false },
+            onSave = { set -> viewModel.saveEquipment(set); showEquipment = false; tell(equipmentSavedText) },
+        )
+    }
     if (askWhy) {
         NextSuggestionSheet(
             state = state,
@@ -207,12 +255,91 @@ fun TodayScreen(
                 askWhy = false
                 viewModel.nextSuggestion(feedback, slug)
                 when (feedback) {
-                    com.cruxcoach.athlete.model.SuggestionFeedback.MISSING_EQUIPMENT -> onOpenEquipment()
+                    // Answered right here: the sheet with the equipment, not a trip to the settings.
+                    com.cruxcoach.athlete.model.SuggestionFeedback.MISSING_EQUIPMENT -> showEquipment = true
                     com.cruxcoach.athlete.model.SuggestionFeedback.HURTS -> onOpenInjuries()
                     else -> Unit
                 }
             },
         )
+    }
+}
+
+// ── "Startklar": the minimum, as a checklist ───────────────────────
+
+internal enum class SetupKind { COACH, EQUIPMENT, WEIGHT }
+
+internal data class SetupStep(val kind: SetupKind, val done: Boolean)
+
+/**
+ * What a new athlete has to do at least: goal and week (coach), equipment and
+ * body weight. A coach setup the athlete declined counts as done – the
+ * checklist never nags about something they said no to.
+ */
+internal fun setupSteps(state: TodayState): List<SetupStep> {
+    val coach = state.profile.coach.setupState
+    return listOf(
+        SetupStep(SetupKind.COACH, coach == com.cruxcoach.athlete.model.SetupState.DONE || coach == com.cruxcoach.athlete.model.SetupState.DISMISSED),
+        SetupStep(SetupKind.EQUIPMENT, state.profile.equipmentConfigured),
+        SetupStep(SetupKind.WEIGHT, state.trendKg != null),
+    )
+}
+
+@Composable
+private fun SetupChecklistCard(steps: List<SetupStep>, onOpen: (SetupStep) -> Unit) {
+    val done = steps.count { it.done }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth().testTag("today_setup"),
+    ) {
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.RocketLaunch, null, tint = CruxCoachDesign.colors.brandAccent)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.tru_setup_title), style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.tru_setup_progress, done, steps.size), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            LinearProgressIndicator(
+                progress = { done.toFloat() / steps.size },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                color = CruxCoachDesign.colors.brandAccent, drawStopIndicator = {},
+            )
+            steps.forEachIndexed { i, step ->
+                val (title, text) = when (step.kind) {
+                    SetupKind.COACH -> R.string.tru_setup_coach to R.string.tru_setup_coach_text
+                    SetupKind.EQUIPMENT -> R.string.tru_setup_equipment to R.string.tru_setup_equipment_text
+                    SetupKind.WEIGHT -> R.string.tru_setup_weight to R.string.tru_setup_weight_text
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                        .clickable(enabled = !step.done) { onOpen(step) }
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("today_setup_${step.kind.name.lowercase()}"),
+                ) {
+                    Box(
+                        Modifier.size(32.dp).clip(CircleShape)
+                            .background(if (step.done) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.surface),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (step.done) Icon(Icons.Default.Check, contentDescription = stringResource(R.string.tru_setup_done),
+                            tint = CruxCoachDesign.colors.positiveContainer, modifier = Modifier.size(20.dp))
+                        else Text("${i + 1}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(title), style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (step.done) FontWeight.Normal else FontWeight.SemiBold,
+                            color = if (step.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(if (step.done) R.string.tru_setup_done else text), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!step.done) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+                }
+            }
+        }
     }
 }
 
@@ -367,43 +494,47 @@ private fun InjuryBanner(state: TodayState, onManage: () -> Unit) {
 // ── Readiness check-in ──────────────────────────────────────────────
 
 /**
- * The check-in as one line: a prompt until answered (it opens in place),
- * afterwards the day's verdict with the answers in a few characters.
+ * The check-in as one line inside today's training: a prompt until answered,
+ * afterwards the day's verdict in a few characters. The questions open in a sheet.
  */
 @Composable
-private fun CheckinCard(
+private fun CheckinRow(state: TodayState, onOpen: () -> Unit) {
+    val checkin = state.checkin
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f), shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp).testTag("today_readiness"),
+    ) {
+        Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)) {
+            if (checkin == null && state.profile.checkinEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Mood, null, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onOpen, modifier = Modifier.testTag("today_checkin_open")) { Text(stringResource(R.string.tru_checkin_action)) }
+                }
+            } else {
+                ReadinessResult(state, onEdit = if (state.profile.checkinEnabled) onOpen else null)
+            }
+        }
+    }
+}
+
+/** The four questions in a sheet; tapping the selected value clears it (every question is optional). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CheckinSheet(
     state: TodayState,
+    onDismiss: () -> Unit,
     onSave: (Int?, Int?, Int?, Int?, Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
     val checkin = state.checkin
-    var expanded by rememberSaveable(checkin?.createdAt) { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth().testTag("today_readiness")) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            when {
-                expanded -> {
-                    CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false) { s, e, sk, f, sick ->
-                        onSave(s, e, sk, f, sick); expanded = false
-                    }
-                    Row {
-                        TextButton(onClick = { expanded = false }) { Text(stringResource(R.string.tr_action_cancel)) }
-                        if (checkin != null) TextButton(onClick = { onClear(); expanded = false }) { Text(stringResource(R.string.trt_checkin_reset)) }
-                    }
-                }
-                checkin == null && state.profile.checkinEnabled -> Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { expanded = true }.testTag("today_checkin_open"),
-                ) {
-                    Icon(Icons.Default.Mood, null)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.trt_checkin_title), style = MaterialTheme.typography.titleSmall)
-                        Text(stringResource(R.string.trt_checkin_prompt_hint), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.Default.ExpandMore, contentDescription = stringResource(R.string.trt_checkin_title))
-                }
-                else -> ReadinessResult(state, onEdit = if (state.profile.checkinEnabled) ({ expanded = true }) else null)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_checkin_sheet")) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).verticalScroll(rememberScrollState())) {
+            CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false, onSave)
+            if (checkin != null) {
+                TextButton(onClick = onClear, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.trt_checkin_reset)) }
             }
         }
     }
@@ -527,86 +658,141 @@ private fun ScaleRow(label: String, value: Int?, tag: String, onChange: (Int?) -
     }
 }
 
-// ── Quick actions and today's log ───────────────────────────────────
+// ── "Dein Tag": what is logged often, with today's value ──────────
 
-/** Everything logged often, always in the same place. */
+/**
+ * Climbing, weight, food and water as four tiles, each with today's value and
+ * one tap to log: the values and the quick actions are the same thing.
+ */
 @Composable
-private fun QuickActions(
+private fun DayGrid(
     state: TodayState,
     onLogClimbing: () -> Unit,
     onLogWeight: () -> Unit,
-    onAddWater: () -> Unit,
+    onOpenBody: () -> Unit,
     onOpenFuel: () -> Unit,
-    onStartEmpty: () -> Unit,
-    onOpenRoutines: () -> Unit,
+    onAddWater: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("today_quick"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickAction(Icons.Default.Terrain, stringResource(R.string.trt_quick_climbing), "today_log_climbing", onLogClimbing)
-        if (state.profile.bodyEnabled) QuickAction(Icons.Default.MonitorWeight, stringResource(R.string.trt_quick_weight), "today_weight", onLogWeight)
-        val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
-        QuickAction(Icons.Default.WaterDrop,
-            stringResource(R.string.trf_water_add, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true))),
-            "today_water_add", onAddWater)
-        QuickAction(Icons.Default.Restaurant, stringResource(R.string.trt_quick_food), "today_food", onOpenFuel)
-        if (state.openWorkout == null) QuickAction(Icons.Default.Add, stringResource(R.string.trt_quick_free), "today_start_empty", onStartEmpty)
-        QuickAction(Icons.AutoMirrored.Filled.List, stringResource(R.string.trt_routines), "today_routines", onOpenRoutines)
+    val units = state.profile.units
+    val tiles = buildList<@Composable (Modifier) -> Unit> {
+        add { m -> ClimbingTile(state, onLogClimbing, m) }
+        if (state.profile.bodyEnabled) add { m -> WeightTile(state, onLogWeight, onOpenBody, m) }
+        add { m -> FoodTile(state, onOpenFuel, m) }
+        add { m -> WaterTile(state, units, onAddWater, m) }
     }
-}
-
-@Composable
-private fun QuickAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, onClick: () -> Unit) {
-    FilledTonalButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-        modifier = Modifier.heightIn(min = 48.dp).testTag(tag)) {
-        Icon(icon, null, Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, maxLines = 1)
-    }
-}
-
-/** What is already done today — only shown once there is something. */
-@Composable
-private fun DoneTodayCard(state: TodayState, onOpenHistory: () -> Unit) {
-    val a = state.activity
-    val climbed = a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0)
-    if (!climbed && state.todaysWorkouts.isEmpty()) return
-    OutlinedCard(onClick = onOpenHistory, modifier = Modifier.fillMaxWidth().testTag("today_train")) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trt_done_today), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Text(dayLoadLabel(state.dayLoad), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (climbed && a != null) {
-                Text(
-                    if (a.climbingMinutes > 0) pluralStringResource(R.plurals.trt_board_minutes, a.climbingMinutes, a.climbingMinutes)
-                    else pluralStringResource(R.plurals.trt_board_efforts, a.climbingEfforts, a.climbingEfforts),
-                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            state.todaysWorkouts.forEach { w ->
-                Text("• " + com.cruxcoach.android.ui.training.workout.workoutTitle(w) +
-                    (w.durationMinutes?.let { " · " + pluralStringResource(R.plurals.trt_minutes, it, it) } ?: ""),
-                    style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.fillMaxWidth().testTag("today_quick"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.tru_day_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 4.dp))
+        tiles.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { tile -> tile(Modifier.weight(1f).fillMaxHeight()) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit) {
+private fun ClimbingTile(state: TodayState, onLog: () -> Unit, modifier: Modifier) {
+    val a = state.activity
+    val climbed = a != null && (a.climbingMinutes > 0 || a.climbingEfforts > 0)
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.Terrain, tint = CruxCoachDesign.colors.brandAccent,
+        label = stringResource(R.string.tru_tile_climbing),
+        value = when {
+            !climbed || a == null -> stringResource(R.string.tru_tile_log)
+            a.climbingMinutes > 0 -> pluralStringResource(R.plurals.trt_minutes, a.climbingMinutes, a.climbingMinutes)
+            else -> pluralStringResource(R.plurals.tru_tile_efforts, a.climbingEfforts, a.climbingEfforts)
+        },
+        valueIsAction = !climbed,
+        supporting = if (climbed) dayLoadLabel(state.dayLoad) else stringResource(R.string.tru_tile_climbing_hint),
+        tag = "today_log_climbing", onClick = onLog, modifier = modifier,
+    )
+}
+
+@Composable
+private fun WeightTile(state: TodayState, onLog: () -> Unit, onOpenBody: () -> Unit, modifier: Modifier) {
+    val trend = state.trendKg
+    val loggedToday = state.lastWeighDay != null && state.lastWeighDay == state.today?.toString()
+    val rate = state.weeklyRateKg
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.MonitorWeight, tint = MaterialTheme.colorScheme.tertiary,
+        label = stringResource(R.string.tru_tile_weight),
+        value = when {
+            trend == null -> stringResource(R.string.tru_tile_log)
+            state.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
+            else -> formatMass(trend, state.profile.units)
+        },
+        valueIsAction = trend == null,
+        supporting = when {
+            loggedToday -> stringResource(R.string.tru_tile_weight_today)
+            trend != null && rate != null && !state.profile.hideBodyNumbers ->
+                stringResource(R.string.tru_tile_weight_rate, formatMass(rate, state.profile.units, signed = true))
+            else -> stringResource(R.string.tru_tile_weight_tap)
+        },
+        tag = "today_weight", onClick = onLog, modifier = modifier,
+        trailing = if (trend != null) ({
+            IconButton(onClick = onOpenBody, modifier = Modifier.size(36.dp).testTag("today_body")) {
+                Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = stringResource(R.string.tru_open_body), modifier = Modifier.size(20.dp))
+            }
+        }) else null,
+    )
+}
+
+@Composable
+private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) {
+    val t = state.fuelTargets
+    val protein = state.proteinToday.roundToInt()
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
+        label = stringResource(R.string.tru_tile_food),
+        value = if (t != null) stringResource(R.string.trf_progress_g, protein, t.proteinG) else stringResource(R.string.trf_value_g, protein),
+        progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
+        supporting = when {
+            t == null -> stringResource(R.string.tru_tile_food_no_target)
+            protein >= t.proteinG -> stringResource(R.string.tru_tile_food_reached)
+            else -> stringResource(R.string.tru_tile_food_left, t.proteinG - protein)
+        },
+        tag = "today_fuel", onClick = onOpen, modifier = modifier,
+    )
+}
+
+@Composable
+private fun WaterTile(state: TodayState, units: com.cruxcoach.athlete.model.UnitSystem, onAdd: () -> Unit, modifier: Modifier) {
+    val volume = FuelUnits.unitFor(units, drink = true)
+    val target = state.fuelTargets?.waterMl
+    val glass = FuelUnits.waterPresetsMl(units).first()
+    com.cruxcoach.android.ui.training.common.ValueTile(
+        icon = Icons.Default.WaterDrop, tint = WaterBlue,
+        label = stringResource(R.string.tru_tile_water),
+        value = if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterTodayMl.toDouble(), volume),
+            amountText(target.toDouble(), volume)) else amountText(state.waterTodayMl.toDouble(), volume),
+        progress = target?.let { state.waterTodayMl.toFloat() / it },
+        supporting = stringResource(R.string.tru_tile_water_tap, amountText(glass.toDouble(), volume)),
+        tag = "today_water_add", onClick = onAdd, modifier = modifier,
+        trailing = { Icon(Icons.Default.AddCircle, null, tint = WaterBlue, modifier = Modifier.padding(end = 8.dp).size(24.dp)) },
+    )
+}
+
+/** Water's own colour, the same on Today and in the nutrition log. */
+internal val WaterBlue = androidx.compose.ui.graphics.Color(0xFF4FA3F7)
+
+@Composable
+private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary: (() -> Unit)? = null) {
     val (title, text, action) = when (s) {
         TodaySuggestion.CONFIGURE_EQUIPMENT -> Triple(R.string.trt_sugg_equipment_title, R.string.trt_sugg_equipment_text, R.string.trt_sugg_equipment_action)
-        TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.trt_sugg_benchmarks_action)
+        TodaySuggestion.SET_BENCHMARKS -> Triple(R.string.trt_sugg_benchmarks_title, R.string.trt_sugg_benchmarks_text, R.string.tru_estimate)
         TodaySuggestion.BASELINE_TEST -> Triple(R.string.trt_sugg_test_title, R.string.trt_sugg_test_text, R.string.tr_action_start)
         TodaySuggestion.LOG_WEIGHT -> Triple(R.string.trt_sugg_weight_title, R.string.trt_sugg_weight_text, R.string.trt_sugg_weight_action)
     }
     OutlinedCard(Modifier.fillMaxWidth().testTag("today_suggestion_${s.name.lowercase()}")) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp)) {
+            Text(stringResource(title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.End) {
+                onSecondary?.let { TextButton(onClick = it) { Text(stringResource(R.string.tru_enter_exact)) } }
+                FilledTonalButton(onClick = onAction, modifier = Modifier.testTag("today_suggestion_action")) { Text(stringResource(action)) }
             }
-            TextButton(onClick = onAction) { Text(stringResource(action)) }
         }
     }
 }
@@ -687,8 +873,9 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
 
 /**
  * Today's training as the one big thing on the screen: what, how long, the
- * first exercises and one big button. Reasons, evidence and confidence sit
- * behind "Warum?"; another suggestion, adapt and save are small actions.
+ * first exercises, the check-in and one big button. Reasons, evidence and
+ * confidence sit behind "Warum?"; another suggestion is the one small action
+ * next to it, adapt and save are in the menu.
  */
 @Composable
 private fun DailySuggestionCard(
@@ -699,6 +886,7 @@ private fun DailySuggestionCard(
     onEdit: (String) -> Unit,
     onSave: (String) -> Unit,
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
+    checkin: @Composable () -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     val language = catalogLanguage()
@@ -711,7 +899,7 @@ private fun DailySuggestionCard(
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
         modifier = Modifier.fillMaxWidth().testTag("today_suggestion_card"),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -735,13 +923,22 @@ private fun DailySuggestionCard(
                 }
             }
             s.reasons.firstOrNull()?.let {
-                Text(suggestionReasonText(it), style = MaterialTheme.typography.bodySmall, maxLines = 2,
-                    modifier = Modifier.padding(top = 8.dp).testTag("today_suggestion_reason"))
+                // The reason with "Warum?" right behind it: the details are one tap away, not another row of icons.
+                val why = stringResource(R.string.tru_why)
+                val accent = CruxCoachDesign.colors.brandAccent
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        append(suggestionReasonText(it))
+                        append("  ")
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontWeight = FontWeight.SemiBold))
+                        append(why)
+                        pop()
+                    },
+                    style = MaterialTheme.typography.bodySmall, maxLines = 3,
+                    modifier = Modifier.padding(top = 8.dp).clickable(onClickLabel = why, onClick = onWhy).testTag("today_suggestion_reason"),
+                )
             }
-            if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {
-                Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = onWhy).testTag("today_suggestion_confidence"))
-            }
+            checkin()
             val plan = s.boardPlan
             if (plan != null) {
                 // Board day: the session on the board is the main thing, the warm-up comes with it.
@@ -761,19 +958,28 @@ private fun DailySuggestionCard(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) { Text(stringResource(R.string.trsg_next)) }
+                TextButton(onClick = onNext, modifier = Modifier.testTag("today_suggestion_next")) {
+                    Icon(Icons.Default.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trsg_next))
+                }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { onEdit(title) }, enabled = s.routine.items.isNotEmpty(), modifier = Modifier.testTag("today_suggestion_edit")) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.trsg_edit))
-                }
-                IconButton(onClick = onWhy, modifier = Modifier.testTag("today_suggestion_why")) {
-                    Icon(Icons.Default.Info, contentDescription = stringResource(R.string.trsg_why_title))
-                }
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.testTag("today_suggestion_more")) {
                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trt_more_actions))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.trsg_why_title)) },
+                            onClick = { menu = false; onWhy() },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
+                            modifier = Modifier.testTag("today_suggestion_why"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.trsg_edit)) },
+                            onClick = { menu = false; onEdit(title) },
+                            enabled = s.routine.items.isNotEmpty(),
+                            leadingIcon = { Icon(Icons.Default.Edit, null) },
+                            modifier = Modifier.testTag("today_suggestion_edit"),
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.trsg_save)) },
                             onClick = { menu = false; onSave(title) },
@@ -806,36 +1012,16 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
             }
             Text(stringResource(R.string.tre_conf_info_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
             Text(confidenceLabel(s.confidence) + " – " + stringResource(R.string.tre_conf_info_text), style = MaterialTheme.typography.bodySmall)
+            if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {
+                Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_confidence"))
+            }
             state.block?.let {
                 Text(blockLabel(it), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
                 Text(stringResource(R.string.tre_block_info_text), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
-}
-
-@Composable
-private fun WeightDialog(state: TodayState, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
-    val units = state.profile.units
-    var input by rememberSaveable { mutableStateOf("") }
-    val parsed = parseDecimal(input)?.let { Units.massFromDisplay(it, units) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.trt_weight_today, Units.massUnit(units))) },
-        text = {
-            OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                supportingText = state.trendKg?.takeIf { !state.profile.hideBodyNumbers }?.let { t ->
-                    { Text(stringResource(R.string.trt_trend_weight, formatMass(t, units))) }
-                },
-                modifier = Modifier.testTag("today_weight_input"))
-        },
-        confirmButton = {
-            TextButton(onClick = { parsed?.let(onSave) }, enabled = parsed != null && parsed in 20.0..300.0,
-                modifier = Modifier.testTag("today_weight_save")) { Text(stringResource(R.string.tr_action_save)) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.tr_action_cancel)) } },
-    )
 }
 
 // ── Safety cards ────────────────────────────────────────────────────
@@ -850,73 +1036,6 @@ private fun LoadSpikeCard(state: TodayState) {
                 Text(stringResource(R.string.trt_spike_title, state.loadSpikes.map { domainLabel(it) }.joinToString(", ")),
                     style = MaterialTheme.typography.titleSmall)
                 Text(stringResource(R.string.trt_spike_text), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
-
-// ── Body and fueling summaries ──────────────────────────────────────
-
-/** Body and fueling as two small tiles; the screens behind them hold the details. */
-@Composable
-private fun SummaryTiles(state: TodayState, onOpenBody: () -> Unit, onOpenFuel: () -> Unit) {
-    val units = state.profile.units
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (state.profile.bodyEnabled) {
-            Card(onClick = onOpenBody, modifier = Modifier.weight(1f).testTag("today_body")) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.tr_nav_body), style = MaterialTheme.typography.labelLarge)
-                    val trend = state.trendKg
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            when {
-                                trend == null -> "–"
-                                state.profile.hideBodyNumbers -> stringResource(R.string.trt_numbers_hidden_short)
-                                else -> formatMass(trend, units)
-                            },
-                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                        )
-                        state.weeklyRateKg?.let { rate ->
-                            Spacer(Modifier.width(6.dp))
-                            Icon(when {
-                                abs(rate) < 0.1 -> Icons.AutoMirrored.Filled.TrendingFlat
-                                rate > 0 -> Icons.AutoMirrored.Filled.TrendingUp
-                                else -> Icons.AutoMirrored.Filled.TrendingDown
-                            }, contentDescription = stringResource(R.string.trt_trend_direction), modifier = Modifier.size(18.dp))
-                        }
-                    }
-                    Text(stringResource(R.string.trt_tile_trend), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        // Nutrition is always on (owner 2026-10-05).
-        val t = state.fuelTargets
-        Card(onClick = onOpenFuel, modifier = Modifier.weight(1f).testTag("today_fuel")) {
-            Column(Modifier.padding(12.dp)) {
-                Text(stringResource(R.string.tr_nav_fuel), style = MaterialTheme.typography.labelLarge)
-                if (t == null) {
-                    Text(stringResource(R.string.trt_fuel_needs_weight), style = MaterialTheme.typography.bodySmall)
-                } else {
-                    Text(stringResource(R.string.trf_progress_g, state.proteinToday.roundToInt(), t.proteinG),
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.trt_protein), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LinearProgressIndicator(
-                        progress = { if (t.proteinG > 0) (state.proteinToday / t.proteinG).toFloat().coerceIn(0f, 1f) else 0f },
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = CruxCoachDesign.colors.positive,
-                        drawStopIndicator = {},
-                    )
-                }
-                // Water in the athlete's units (stored in ml), next to the "+ glass" quick action;
-                // against the target once a body weight gives one.
-                val volume = FuelUnits.unitFor(state.profile.units, drink = true)
-                val water = if (t != null) stringResource(R.string.trf_progress_volume,
-                    inputText(state.waterTodayMl.toDouble(), volume), amountText(t.waterMl.toDouble(), volume))
-                    else amountText(state.waterTodayMl.toDouble(), volume)
-                Text(stringResource(R.string.trt_tile_water, water),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp).testTag("today_fuel_water"))
             }
         }
     }

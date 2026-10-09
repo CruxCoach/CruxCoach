@@ -460,6 +460,16 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     fun addWater(ml: Int) = io { service.repo.addHydration(service.today().toString(), ml) }
 
+    /** Undo for the water tile: the newest glass of today goes again. */
+    fun removeLastWater() = io {
+        service.repo.hydration(service.today().toString()).maxByOrNull { it.loggedAt }?.let { service.repo.deleteHydration(it.id) }
+    }
+
+    /** From the checklist's equipment sheet: what the athlete has, and that it was asked. */
+    fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io {
+        service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
+    }
+
     fun logWeight(kg: Double) = io {
         val now = System.currentTimeMillis()
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", now))

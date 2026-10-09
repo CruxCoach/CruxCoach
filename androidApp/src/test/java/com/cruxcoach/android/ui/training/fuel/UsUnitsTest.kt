@@ -81,13 +81,16 @@ class UsUnitsTest : AthleteScreenTest() {
         waitForTag("fuel_list")
 
         // A US cup of water: 8 fl oz, stored as 237 ml.
-        waitForTag("fuel_water_237")
+        // The next empty glass of the water card (below the day's rings).
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_water_237")); true }.getOrDefault(false)
+        }
         compose.onNodeWithTag("fuel_water_237").performSemanticsAction(SemanticsActions.OnClick)
         val day = service.today().toString()
         compose.waitUntil(WAIT_MS) { repo.hydration(day).isNotEmpty() }
         assertEquals(237, repo.hydration(day).single().ml)
 
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_food_juice")
         compose.onNodeWithTag("fuel_food_juice").performSemanticsAction(SemanticsActions.OnClick)

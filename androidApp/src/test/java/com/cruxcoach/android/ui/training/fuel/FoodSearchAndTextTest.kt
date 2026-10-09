@@ -46,7 +46,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
     @Test
     fun `search finds a BLS food and logs it by grams`() {
         render()
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("haferflocken")
@@ -77,7 +77,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
             assetVersion = { "t" }
         }
         render(products)
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("skyr")
@@ -104,7 +104,7 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
     fun `a USDA food is logged by the cup and feeds the weekly micronutrients`() {
         repo.updateProfile { com.cruxcoach.athlete.logic.Units.withUnits(it, com.cruxcoach.athlete.model.UnitSystem.IMPERIAL) }
         render()
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("oats regular quick")
@@ -133,7 +133,9 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
     @Test
     fun `typed meal becomes a review list and is logged to the named meal`() {
         render()
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_describe"))
+        // Every way of adding sits in the add sheet.
+        click("fuel_my_foods")
+        waitForTag("fuel_describe")
         compose.onNodeWithTag("fuel_describe").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_text_input")
         compose.onNodeWithTag("fuel_text_input").performTextInput("Zum Frühstück 80 g Haferflocken und eine Banane")

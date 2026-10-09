@@ -71,7 +71,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                     repo.observeFoodLog(d),
                     repo.observeHydration(d),
                     repo.observeFoodItems(),
-                ) { profile, entries, water, foods -> Snapshot(day ?: service.today(), profile, entries, water, foods) }
+                    // A weight entered right here (targets need it) updates the targets at once.
+                    repo.observeSeries(com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key),
+                ) { profile, entries, water, foods, _ -> Snapshot(day ?: service.today(), profile, entries, water, foods) }
             }.collect { refresh(it) }
         }
     }
@@ -196,6 +198,12 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     fun restoreEntry(entry: FoodLogEntry) = io { service.repo.saveFoodLog(entry) }
 
     fun addWater(ml: Int) = io { service.repo.addHydration(currentDay(), ml) }
+
+    /** Today's body weight, entered where the targets ask for it. */
+    fun logWeight(kg: Double) = io {
+        service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+            com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
+    }
     fun deleteWater(entry: HydrationEntry) = io { service.repo.deleteHydration(entry.id) }
 
     /** "Same as yesterday": copies the previous day's entries into the selected day. */

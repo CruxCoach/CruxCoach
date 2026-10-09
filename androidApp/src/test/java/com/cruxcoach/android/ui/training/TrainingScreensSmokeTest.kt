@@ -8,6 +8,8 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.ui.training.athlete.*
 import com.cruxcoach.android.ui.training.body.BodyScreen
 import com.cruxcoach.android.ui.training.body.BodyViewModel
@@ -159,18 +161,43 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `athlete settings render`() {
+    fun `athlete settings show an overview with the current values`() {
         val loadedVm9 = loaded(AthleteSettingsViewModel(service))
-        render { AthleteSettingsScreen({}, viewModel = loadedVm9) }
-        waitForTag("preset_home")
+        var opened: SettingsSection? = null
+        render { AthleteSettingsScreen({}, viewModel = loadedVm9, onOpenSection = { opened = it }) }
+        waitForTag("settings_overview")
+        // The injured climber's equipment: four pieces, shown on the row without opening it.
+        compose.onNodeWithText("4 pieces of equipment", substring = true).assertExists()
+        click("settings_row_equipment")
+        compose.waitUntil(WAIT_MS) { opened == SettingsSection.EQUIPMENT }
     }
 
     @Test
-    fun `settings opened from nutrition start at the nutrition options`() {
+    fun `equipment page edits the equipment and settings from nutrition open its page`() {
         val vm = loaded(AthleteSettingsViewModel(service))
-        render { AthleteSettingsScreen({}, viewModel = vm, scrollToNutrition = true) }
-        waitForTag("settings_nutrition")
-        compose.waitUntil(WAIT_MS) { runCatching { compose.onNodeWithTag("settings_nutrition").assertIsDisplayed() }.isSuccess }
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.EQUIPMENT) }
+        waitForTag("preset_home")
+        click("equipment_rings")
+        compose.waitUntil(WAIT_MS) { com.cruxcoach.athlete.catalog.EquipmentV2.RINGS in repo.profile().equipment }
+    }
+
+    @Test
+    fun `about you takes the birth year that nutrition and the coach read`() {
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.ABOUT) }
+        waitForTag("birth_year_input")
+        compose.onNodeWithTag("birth_year_input").performTextReplacement("1990")
+        click("birth_year_save")
+        compose.waitUntil(WAIT_MS) { repo.profile().birthYear == 1990 }
+    }
+
+    @Test
+    fun `weekly goal and coach training days are one number`() {
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.PROFILE) }
+        click("weekly_goal_plus")
+        compose.waitUntil(WAIT_MS) { repo.profile().weeklyGoal == 4 }
+        assertEquals(4, repo.profile().coach.trainingDaysPerWeek)
     }
 
     @Test
@@ -316,7 +343,7 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     @Test
     fun `coach setup renders its first card`() {
         val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, mockk(relaxed = true), mockk(relaxed = true)))
-        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, {}, viewModel = vm) }
+        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }
         waitForTag("coach_next")
     }
 

@@ -56,7 +56,7 @@ class RecipeFlowTest : AthleteScreenTest() {
             OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         click("fuel_my_foods")
         click("fuel_recipe_new")
         waitForTag("fuel_recipe_name")
@@ -81,6 +81,10 @@ class RecipeFlowTest : AthleteScreenTest() {
 
         // Changing it keeps the id: one ingredient less, one portion.
         waitForTag("fuel_foods_sheet")
+        // The sheet starts with the meal and the ways of adding; the recipe sits further down its list.
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_recipe_edit_${item.id}")); true }.getOrDefault(false)
+        }
         click("fuel_recipe_edit_${item.id}")
         waitForTag("fuel_recipe_ingredient_1")
         click("fuel_recipe_remove_1")
@@ -99,7 +103,7 @@ class RecipeFlowTest : AthleteScreenTest() {
             OffRepository(context).apply { source = { "".reader().buffered() }; assetVersion = { "t" } }).tracked()
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_my_foods"))
+        waitForTag("fuel_my_foods")
         click("fuel_my_foods")
         compose.waitUntil(WAIT_MS) {
             runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_food_delete_cheese")); true }.getOrDefault(false)

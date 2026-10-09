@@ -124,6 +124,7 @@ import com.cruxcoach.android.ui.settings.KeyImportScreen
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.payment.ui.PaymentViewModel
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.android.ui.training.openTrainingArea
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -306,15 +307,10 @@ fun CruxCoachNavHost(
             route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
                 navController.navigate(route) { launchSingleTop = true }
             route == com.cruxcoach.android.ui.training.TrainingRoutes.BODY -> {
-                // Body reminder: open the Body tab the way the drawer would, with Today
-                // underneath, so the tab bar's pop-to-Today works and back leaves the area.
+                // Body reminder: the body screen above Today, so Back leads into the training area.
                 val today = com.cruxcoach.android.ui.training.TrainingRoutes.TODAY
                 if (runCatching { navController.getBackStackEntry(today) }.isFailure) navController.navigate(today)
-                navController.navigate(route) {
-                    popUpTo(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
+                navController.navigate(route) { launchSingleTop = true }
             }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
@@ -593,8 +589,12 @@ fun CruxCoachNavHost(
                     drawerContent = {
                         BrowserMainDrawer() { route ->
                             drawerScope.launch { drawerState.close() }
-                            if (route != Routes.BOARD_BROWSER) {
-                                navController.navigate(route) { launchSingleTop = true }
+                            when {
+                                route == Routes.BOARD_BROWSER -> Unit
+                                // Nutrition is a tab of the training area now: Today underneath.
+                                route == com.cruxcoach.android.ui.training.TrainingRoutes.FUEL ->
+                                    navController.openTrainingArea(route)
+                                else -> navController.navigate(route) { launchSingleTop = true }
                             }
                         }
                     },

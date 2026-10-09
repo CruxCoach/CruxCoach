@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Training and nutrition UX round (2026-10-09): checklist, day tiles, inline entry sheets. -->
+<resources>
+    <string name="tru_done">Done</string>
+    <string name="tru_why">Why?</string>
+    <string name="tru_estimate">Quick estimate</string>
+    <string name="tru_enter_exact">Enter exactly</string>
+
+    <!-- Weight sheet -->
+    <string name="tru_weight_title">Today\'s weight</string>
+    <string name="tru_weight_less">Less</string>
+    <string name="tru_weight_more">More</string>
+    <string name="tru_weight_last">Last: %1$s</string>
+    <string name="tru_weight_reason_setup">For your nutrition targets and for loads as a share of your body weight.</string>
+    <string name="tru_weight_reason_fuel">CruxCoach works out your protein, carb and water targets from it.</string>
+    <string name="tru_weight_saved">Weight saved</string>
+
+    <!-- Equipment sheet -->
+    <string name="tru_equipment_where">Where do you usually train?</string>
+    <string name="tru_equipment_what">What do you have there?</string>
+    <string name="tru_equipment_why">CruxCoach then only suggests exercises you can actually do.</string>
+    <string name="tru_equipment_saved">Equipment saved</string>
+
+    <!-- Checklist -->
+    <string name="tru_setup_title">Ready in 3 steps</string>
+    <string name="tru_setup_progress">%1$d of %2$d</string>
+    <string name="tru_setup_coach">Goal and training week</string>
+    <string name="tru_setup_coach_text">1 minute – so the suggestions fit you</string>
+    <string name="tru_setup_equipment">Your equipment</string>
+    <string name="tru_setup_equipment_text">Only exercises you can do</string>
+    <string name="tru_setup_weight">Your body weight</string>
+    <string name="tru_setup_weight_text">For nutrition targets and loads</string>
+    <string name="tru_setup_done">Done</string>
+
+    <!-- Check-in inside today's training -->
+    <string name="tru_checkin_action">Check in</string>
+
+    <!-- Your day -->
+    <string name="tru_day_title">Your day</string>
+    <string name="tru_tile_log">Log it</string>
+    <string name="tru_tile_climbing">Climbing</string>
+    <string name="tru_tile_climbing_hint">Gym, rock or board</string>
+    <plurals name="tru_tile_efforts">
+        <item quantity="one">%d attempt</item>
+        <item quantity="other">%d attempts</item>
+    </plurals>
+    <string name="tru_tile_weight">Weight</string>
+    <string name="tru_tile_weight_today">Logged today</string>
+    <string name="tru_tile_weight_rate">%1$s per week</string>
+    <string name="tru_tile_weight_tap">Tap to log</string>
+    <string name="tru_open_body">Weight trend and measurements</string>
+    <string name="tru_tile_food">Food</string>
+    <string name="tru_tile_food_left">Protein · %1$d g to go</string>
+    <string name="tru_tile_food_reached">Protein · target reached</string>
+    <string name="tru_tile_food_no_target">Protein · the target needs your weight</string>
+    <string name="tru_tile_water">Water</string>
+    <string name="tru_tile_water_tap">Tap: + %1$s</string>
+    <string name="tru_water_added">%1$s of water logged</string>
+    <!-- Nutrition -->
+    <string name="tru_fuel_add">Log food</string>
+    <string name="tru_fuel_targets_title">Your targets are still missing</string>
+    <string name="tru_enter_weight">Enter weight</string>
+    <string name="tru_add_scan">Scan</string>
+    <string name="tru_add_quick">Values</string>
+    <string name="tru_fuel_intro_short">Eat enough for your training: protein follows your body weight, carbs follow your training days. No calorie budget, nothing leaves your phone.</string>
+    <string name="tru_carbs_short">Carbs</string>
+    <string name="tru_of_g">of %1$d g</string>
+    <string name="tru_water_remove">Remove the last glass</string>
+    <string name="tru_water_glass_hint">One glass = %1$s</string>
+    <string name="tru_copy_title">Same as yesterday?</string>
+    <plurals name="tru_copy_text">
+        <item quantity="one">Take over yesterday\'s %d entry with one tap.</item>
+        <item quantity="other">Take over yesterday\'s %d entries with one tap.</item>
+    </plurals>
+    <string name="tru_meal_add">Add to %1$s</string>
+    <!-- Tabs and progress -->
+    <string name="tr_tab_training">Training</string>
+    <string name="tr_tab_progress">Progress</string>
+    <string name="tru_progress_training">Training</string>
+    <string name="tru_hub_body">Weight trend and measurements</string>
+    <string name="tru_hub_benchmarks">Max hang, pull-up and co.</string>
+    <string name="tru_hub_history">Training days · %1$s</string>
+    <plurals name="tru_hub_values">
+        <item quantity="one">%d value</item>
+        <item quantity="other">%d values</item>
+    </plurals>
+    <!-- Settings overview -->
+    <string name="tru_set_profile">Goal and week</string>
+    <string name="tru_set_about">About you</string>
+    <string name="tru_set_equipment">Equipment</string>
+    <string name="tru_set_display">Display and units</string>
+    <string name="tru_set_connections">Health Connect and devices</string>
+    <string name="tru_set_on">on</string>
+    <string name="tru_set_off">off</string>
+    <string name="tru_set_all_off">Off</string>
+    <plurals name="tru_set_days">
+        <item quantity="one">%d training day a week</item>
+        <item quantity="other">%d training days a week</item>
+    </plurals>
+    <string name="tru_set_about_empty">Weight, height, year of birth – optional</string>
+    <string name="tru_set_not_set_up">Not set up yet</string>
+    <plurals name="tru_set_equipment_count">
+        <item quantity="one">%d piece of equipment</item>
+        <item quantity="other">%d pieces of equipment</item>
+    </plurals>
+    <string name="tru_set_nutrition_summary">Protein %1$s g/kg · calories %2$s</string>
+    <plurals name="tru_set_reminders">
+        <item quantity="one">%d reminder on</item>
+        <item quantity="other">%d reminders on</item>
+    </plurals>
+    <string name="tru_set_timer_auto">Automatic rest</string>
+    <string name="tru_set_timer_sound">Sound</string>
+    <string name="tru_set_timer_vibration">Vibration</string>
+    <string name="tru_set_timer_voice">Voice</string>
+    <string name="tru_set_numbers_hidden">numbers hidden</string>
+    <string name="tru_set_connections_summary">Sleep, climbing days and meals; force gauge</string>
+    <string name="tru_set_days_summary">Climbing outside the board app</string>
+    <string name="tru_set_none">None</string>
+    <plurals name="tru_set_exercises">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
+    </plurals>
+    <string name="tru_set_body_data">Body data</string>
+    <string name="tru_set_sex">Sex</string>
+    <string name="tru_set_birth_year">Year of birth</string>
+    <string name="tru_set_nutrition_weight">The targets use your body weight (under “About you”).</string>
+</resources>

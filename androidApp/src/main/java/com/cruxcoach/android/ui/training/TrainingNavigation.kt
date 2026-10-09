@@ -42,6 +42,11 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     /** Leaving the training area from a tab returns to the board browser. */
     val leave: () -> Unit = { if (!nav.popBackStack(TrainingRoutes.TODAY, inclusive = true)) nav.popBackStack() }
     fun tabBar(tab: TrainingTab): @Composable () -> Unit = { TrainingTabBar(tab) { goTab(it) } }
+    /** Workouts ⇄ exercises inside the Training tab: replaces the half, keeps one entry on the stack. */
+    fun switchTraining(route: String) = nav.navigate(route) {
+        nav.currentDestination?.route?.let { popUpTo(it) { inclusive = true } }
+        launchSingleTop = true
+    }
     fun openEditor(routineId: String?, from: String?) = go(TrainingRoutes.routineEditor(routineId, from))
 
     screen(TrainingRoutes.TODAY, "Today", back) {
@@ -59,12 +64,12 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         }
         TodayScreen(
             onBack = leave,
-            onOpenExercises = { goTab(TrainingTab.EXERCISES) },
+            onOpenExercises = { go(TrainingRoutes.exercises()) },
             onOpenRoutines = { goTab(TrainingTab.WORKOUTS) },
             onOpenWorkout = { go(TrainingRoutes.WORKOUT) },
             onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
-            onOpenBody = { goTab(TrainingTab.BODY) },
-            onOpenFuel = { go(TrainingRoutes.FUEL) },
+            onOpenBody = { go(TrainingRoutes.BODY) },
+            onOpenFuel = { goTab(TrainingTab.FUEL) },
             onOpenInjuries = { go(TrainingRoutes.INJURIES) },
             onOpenWeeklyReview = { go(TrainingRoutes.WEEKLY_REVIEW) },
             onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) },
@@ -72,16 +77,11 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
             tabBar = tabBar(TrainingTab.TODAY),
             onOpenEditor = ::openEditor,
-            onOpenEquipment = { go(TrainingRoutes.ATHLETE_SETTINGS) },
             onOpenPlaylistGenerator = { type, minutes ->
                 nav.navigate(com.cruxcoach.android.ui.navigation.Routes.playlistGenerator(type, minutes)) { launchSingleTop = true }
             },
-            coachCard = {
-                com.cruxcoach.android.ui.training.coach.CoachProgressCard(
-                    onOpenSetup = { go(TrainingRoutes.COACH_SETUP) },
-                    onOpenEstimate = { showEstimate = true },
-                )
-            },
+            onOpenCoachSetup = { go(TrainingRoutes.COACH_SETUP) },
+            onOpenEstimate = { showEstimate = true },
             onLogClimbing = { showClimbingDay = true },
         )
         if (showEstimate) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { showEstimate = false })
@@ -96,17 +96,19 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onWorkoutStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
             tabBar = tabBar(TrainingTab.WORKOUTS),
             volumeCard = { com.cruxcoach.android.ui.training.workouts.WeeklyVolumeCard() },
+            header = { TrainingSwitch(exercises = false, onWorkouts = {}, onExercises = { switchTraining(TrainingRoutes.exercises()) }) },
         )
     }
     screen(TrainingRoutes.STATS, "TrainingStats", back) {
         com.cruxcoach.android.ui.training.stats.StatsHubScreen(
             onBack = leave,
             onOpenExerciseStats = { go(TrainingRoutes.exerciseStats(it)) },
-            onOpenBody = { goTab(TrainingTab.BODY) },
+            onOpenBody = { go(TrainingRoutes.BODY) },
             onOpenWeeklyReview = { go(TrainingRoutes.WEEKLY_REVIEW) },
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
             tabBar = tabBar(TrainingTab.STATS),
             onOpenClimberProfile = { go(TrainingRoutes.CLIMBER_PROFILE) },
+            onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
         )
     }
     screen(TrainingRoutes.CLIMBER_PROFILE, "ClimberProfile", back) {
@@ -123,7 +125,6 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         com.cruxcoach.android.ui.training.coach.CoachSetupScreen(
             onBack = back,
             onFinished = back,
-            onOpenEquipment = { go(TrainingRoutes.ATHLETE_SETTINGS) },
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
             onStartTest = {
                 nav.navigate(TrainingRoutes.WORKOUT_PLAYER) {
@@ -176,7 +177,8 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
                 onExercisePicked = back,
                 onCreateCustom = { go(TrainingRoutes.CUSTOM_EXERCISE) },
-                tabBar = tabBar(TrainingTab.EXERCISES),
+                tabBar = tabBar(TrainingTab.WORKOUTS),
+                header = { TrainingSwitch(exercises = true, onWorkouts = { switchTraining(TrainingRoutes.WORKOUTS) }, onExercises = {}) },
                 onTrainingStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
                 onCreateRoutine = { from -> openEditor(null, from) },
             )
@@ -267,17 +269,17 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         TrainingHistoryScreen(onBack = back, onOpenWorkout = { go(TrainingRoutes.workoutSummary(it)) })
     }
     screen(TrainingRoutes.BODY, "Body", back) {
-        BodyScreen(onBack = leave, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) }, tabBar = tabBar(TrainingTab.BODY))
+        BodyScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) })
     }
     screen(TrainingRoutes.FUEL, "Fuel", back) {
-        FuelScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION) })
+        FuelScreen(onBack = leave, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION) }, tabBar = tabBar(TrainingTab.FUEL))
     }
     screen(TrainingRoutes.INJURIES, "Injuries", back) {
         InjuriesScreen(onBack = back, onOpenRoutines = { goTab(TrainingTab.WORKOUTS) })
     }
     screen(TrainingRoutes.WEEKLY_REVIEW, "WeeklyReview", back) { WeeklyReviewScreen(onBack = back) }
     @Composable
-    fun athleteSettings(scrollToNutrition: Boolean) {
+    fun athleteSettings(section: com.cruxcoach.android.ui.training.athlete.SettingsSection?) {
         AthleteSettingsScreen(
             onBack = back,
             onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) },
@@ -286,18 +288,34 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 com.cruxcoach.android.athlete.health.HealthConnectSettingsCard()
                 androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.height(12.dp))
                 com.cruxcoach.android.athlete.force.ForceGaugeSettingsCard(onOpenForceGauge = { go(TrainingRoutes.FORCE_GAUGE) })
-                androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.height(12.dp))
-                androidx.compose.material3.OutlinedButton(onClick = { go(TrainingRoutes.CLIMBING_DAYS) }) {
-                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(com.cruxcoach.android.R.string.trl_days_title))
-                }
             },
-            scrollToNutrition = scrollToNutrition,
+            section = section,
+            onOpenSection = { go(TrainingRoutes.athleteSettings(it.key)) },
+            onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
         )
     }
-    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) { athleteSettings(scrollToNutrition = false) }
-    screen(TrainingRoutes.ATHLETE_SETTINGS_NUTRITION, "AthleteSettings", back) { athleteSettings(scrollToNutrition = true) }
+    screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) { athleteSettings(null) }
+    composable(TrainingRoutes.ATHLETE_SETTINGS_SECTION) { entry ->
+        ScreenErrorBoundary(screenName = "AthleteSettings", onNavigateBack = back) {
+            athleteSettings(com.cruxcoach.android.ui.training.athlete.SettingsSection.of(entry.arguments?.getString("section")))
+        }
+    }
 }
 
 private fun NavGraphBuilder.screen(route: String, name: String, back: () -> Unit, content: @Composable () -> Unit) {
     composable(route) { ScreenErrorBoundary(screenName = name, onNavigateBack = back) { content() } }
+}
+
+/**
+ * Opens a tab of the training area from outside (main menu, notification) with
+ * Today underneath, so the tab bar's pop-to-Today works and Back leaves the area.
+ */
+fun NavHostController.openTrainingArea(route: String) {
+    if (route == TrainingRoutes.TODAY) { navigate(route) { launchSingleTop = true }; return }
+    if (runCatching { getBackStackEntry(TrainingRoutes.TODAY) }.isFailure) navigate(TrainingRoutes.TODAY)
+    navigate(route) {
+        popUpTo(TrainingRoutes.TODAY) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
 }

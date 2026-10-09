@@ -47,9 +47,8 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
         waitForTag("fuel_list")
         waitForTag("fuel_intro")
-        // The intro card pushes the buttons below the small test screen.
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_quick_add"))
-        compose.onNodeWithTag("fuel_quick_add").assertExists()
+        // Adding is the floating button, reachable with the intro card still open.
+        waitForTag("fuel_my_foods")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_intro_ok"))
         compose.onNodeWithTag("fuel_intro_ok").performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(WAIT_MS) { repo.profile().fuelIntroAccepted }
@@ -71,13 +70,13 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         waitForTag("fuel_list")
         waitForTag("fuel_targets")
         // 70 kg × 1.6 g/kg protein = 112 g; 15 g logged.
-        compose.onNodeWithText("15 / 112 g").assertExists()
+        compose.onNodeWithText("of 112 g").assertExists()
         compose.onNodeWithText("97 g to go", substring = true).assertExists()
         compose.onNodeWithText("of energy", substring = true).assertExists()
-        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))
         // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
-        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g · ≈ 470 kcal")
         compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈ 470 kcal")
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))
+        compose.onNodeWithTag("fuel_meal_total_lunch", useUnmergedTree = true).assertTextEquals("P 15 · C 80 · F 10 g · ≈ 470 kcal")
 
         // The day before is "Yesterday", not a bare date (device test 2026-10-09).
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_prev_day"))

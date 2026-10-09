@@ -70,58 +70,6 @@ class CoachProgressViewModel @Inject constructor(private val service: AthleteSer
     }
 }
 
-/**
- * "Coach einrichten – 1 Minute" on Today until the setup is done or the
- * athlete says no: how personal the suggestions are now (Basis → Persönlich
- * → Präzise) and the one next step that helps most.
- */
-@Composable
-fun CoachProgressCard(onOpenSetup: () -> Unit, onOpenEstimate: () -> Unit) {
-    val viewModel: CoachProgressViewModel = hiltViewModel(key = "coach-progress")
-    val s by viewModel.state.collectAsStateWithLifecycle()
-    if (!s.visible) return
-    val c = s.completeness
-    val next = c.next
-    val isValueStep = next == CoachStep.START_VALUE_PULL || next == CoachStep.START_VALUE_FINGER
-    OutlinedCard(Modifier.fillMaxWidth().testTag("coach_progress_card")) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = { c.score / 100f },
-                    modifier = Modifier.size(56.dp),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
-                Text("${c.score}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(if (s.setupState == SetupState.NOT_STARTED) R.string.trc_card_title else R.string.trc_card_title_continue),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                )
-                Text(stringResource(R.string.trc_card_level, levelLabel(c.level)), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("coach_progress_level"))
-                if (next != null) {
-                    Text(stepText(next), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { viewModel.dismiss() }, modifier = Modifier.testTag("coach_progress_dismiss")) {
-                Text(stringResource(R.string.trc_dont_ask))
-            }
-            Spacer(Modifier.width(4.dp))
-            FilledTonalButton(onClick = if (isValueStep) onOpenEstimate else onOpenSetup, modifier = Modifier.testTag("coach_progress_action")) {
-                Text(stringResource(when {
-                    isValueStep -> R.string.trc_card_action_estimate
-                    s.setupState == SetupState.NOT_STARTED -> R.string.trc_card_action_start
-                    else -> R.string.trc_card_action_continue
-                }))
-            }
-        }
-    }
-}
-
 @Composable
 internal fun levelLabel(l: CoachLevel): String = stringResource(when (l) {
     CoachLevel.BASIS -> R.string.trc_level_basis

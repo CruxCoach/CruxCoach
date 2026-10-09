@@ -1,0 +1,151 @@
+package com.cruxcoach.android.ui.training
+
+import android.app.Application
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalView
+import com.cruxcoach.android.data.DarkModeSetting
+import com.cruxcoach.android.foodvision.BlsRepository
+import com.cruxcoach.android.foodvision.DeviceFactsReader
+import com.cruxcoach.android.foodvision.VisionModelStore
+import com.cruxcoach.android.ui.common.LocalBoardSessionManager
+import com.cruxcoach.android.ui.theme.CruxCoachTheme
+import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
+import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
+import com.cruxcoach.android.ui.training.body.BodyScreen
+import com.cruxcoach.android.ui.training.body.BodyViewModel
+import com.cruxcoach.android.ui.training.fuel.FoodPhotoViewModel
+import com.cruxcoach.android.ui.training.fuel.FuelScreen
+import com.cruxcoach.android.ui.training.fuel.FuelViewModel
+import com.cruxcoach.android.ui.training.today.TodayScreen
+import com.cruxcoach.android.ui.training.today.TodayViewModel
+import com.cruxcoach.athlete.model.BodyMeasurement
+import com.cruxcoach.athlete.model.BodyMetric
+import com.cruxcoach.athlete.model.FoodLogEntry
+import com.cruxcoach.athlete.model.Meal
+import kotlinx.datetime.minus
+import org.junit.Assume
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Design review: renders the main training and nutrition screens in the dark
+ * theme on a tall German phone and writes them as PNGs into
+ * `CRUXCOACH_UI_REVIEW_DIR`. Skipped unless that variable is set, so CI pays
+ * nothing; run it locally to look at a layout change without a device.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, qualifiers = "de-w411dp-h1500dp-xhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class TrainingUiReviewTest : AthleteScreenTest() {
+
+    private val dir: String? = System.getenv("CRUXCOACH_UI_REVIEW_DIR")
+    private val prefix: String = System.getenv("CRUXCOACH_UI_REVIEW_PREFIX") ?: ""
+
+    @Before
+    fun onlyOnRequest() = Assume.assumeTrue(dir != null)
+
+    /** A climber who uses the app: weight, a breakfast and lunch, two glasses of water. */
+    private fun seedActive() {
+        val today = service.today()
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, equipmentConfigured = true) }
+        (0..6).forEach { d ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = d * 3)).toString()
+            repo.saveMeasurement(BodyMeasurement(day, BodyMetric.WEIGHT.key, 68.0 + d * 0.3, "kg", 1L + d))
+        }
+        val t = today.toString()
+        repo.saveFoodLog(FoodLogEntry("f1", t, 1, Meal.BREAKFAST, name = "Haferflocken", amountG = 80.0, proteinG = 11.0, carbsG = 47.0, fatG = 5.6))
+        repo.saveFoodLog(FoodLogEntry("f2", t, 2, Meal.BREAKFAST, name = "Skyr", amountG = 150.0, proteinG = 16.0, carbsG = 6.0, fatG = 0.3))
+        repo.saveFoodLog(FoodLogEntry("f3", t, 3, Meal.LUNCH, name = "Reis mit Gemüse", amountG = 350.0, proteinG = 12.0, carbsG = 85.0, fatG = 9.0))
+        repo.addHydration(t, 250)
+        repo.addHydration(t, 250)
+    }
+
+    private fun shoot(name: String, ready: () -> Unit, content: @Composable () -> Unit) {
+        var view: android.view.View? = null
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalBoardSessionManager provides sessionManager) {
+                CruxCoachTheme(DarkModeSetting.DARK) { Surface { content() } }
+            }
+        }
+        ready()
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val root = requireNotNull(view)
+            val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(bitmap))
+            java.io.File(dir!!).mkdirs()
+            java.io.File(dir, "$prefix$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+    }
+
+    private fun photo() = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
+
+    @Test
+    fun todayNew() {
+        val vm = loaded(TodayViewModel(service))
+        shoot("today-new", { waitForTag("today_list") }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm, tabBar = { TrainingTabBar(TrainingTab.TODAY) {} }) }
+    }
+
+    @Test
+    fun todayActive() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        shoot("today-active", { waitForTag("today_list") }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm, tabBar = { TrainingTabBar(TrainingTab.TODAY) {} }) }
+    }
+
+    @Test
+    fun fuelNew() {
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("fuel-new", { waitForTag("fuel_list") }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p, tabBar = { TrainingTabBar(TrainingTab.FUEL) {} }) }
+    }
+
+    @Test
+    fun fuelActive() {
+        seedActive()
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("fuel-active", { waitForTag("fuel_list") }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p, tabBar = { TrainingTabBar(TrainingTab.FUEL) {} }) }
+    }
+
+    @Test
+    fun bodyActive() {
+        seedActive()
+        val vm = loaded(BodyViewModel(service))
+        shoot("body-active", { compose.waitForIdle() }) { BodyScreen({}, {}, viewModel = vm) }
+    }
+
+    @Test
+    fun progressActive() {
+        seedActive()
+        val vm = com.cruxcoach.android.ui.training.stats.StatsHubViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
+        shoot("progress-active", { waitForTag("stats_list") }) {
+            com.cruxcoach.android.ui.training.stats.StatsHubScreen({}, {}, {}, {}, {}, viewModel = vm,
+                tabBar = { TrainingTabBar(TrainingTab.STATS) {} })
+        }
+    }
+
+    @Test
+    fun workouts() {
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.WorkoutsViewModel(service))
+        shoot("workouts", { compose.waitForIdle() }) {
+            com.cruxcoach.android.ui.training.workouts.WorkoutsScreen({}, { _, _ -> }, {}, {}, {}, viewModel = vm,
+                tabBar = { TrainingTabBar(TrainingTab.WORKOUTS) {} }, header = { TrainingSwitch(false, {}, {}) })
+        }
+    }
+
+    @Test
+    fun settings() {
+        val vm = AthleteSettingsViewModel(service).tracked()
+        shoot("settings", { compose.waitUntil(WAIT_MS) { vm.state.value.loaded } }) { AthleteSettingsScreen({}, viewModel = vm) }
+    }
+}
