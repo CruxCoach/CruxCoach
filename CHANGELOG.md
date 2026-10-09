@@ -36,6 +36,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first finger, pull, push and leg exercise starts with lighter sets of
   itself (a 50/70/85 % ramp, or one set at half the reps or time). Starting
   another training while one is open asks whether to continue it or end it.
+- Quick start: the first visit to Training or Nutrition asks the basics once
+  (body weight, height, birth year, sex; climbing grade, years of climbing,
+  equipment) – all optional, "Later" puts it off; the longer coach setup
+  stays a step of Today's checklist.
+- Exercise pictograms: every exercise row and the player show the movement
+  – hanging on a hangboard or bar, pull-up, block lift, push-up, squat,
+  hollow body, climbing on a wall … – with its equipment on a tile in its
+  category's colour, instead of a body map shrunk to 48 dp.
 - Guided training mode, the default for routines: one big set view with the
   target, % body weight and an inline hang/repeater timer, and a separate rest
   screen with a countdown ring, ±15 s, a side-switch pause, the next set and a

@@ -1,7 +1,12 @@
 package com.cruxcoach.android.ui.training
 
 import android.app.Application
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalView
@@ -277,6 +282,29 @@ class TrainingUiReviewTest : AthleteScreenTest() {
             AthleteSettingsScreen({}, viewModel = vm, section = com.cruxcoach.android.ui.training.athlete.SettingsSection.PROFILE)
         }
     }
+
+    /** Every catalogue exercise's thumbnail with its slug, for checking the pictograms at a glance (three pages). */
+    @OptIn(ExperimentalLayoutApi::class)
+    private fun iconPage(page: Int) {
+        val defs = service.catalog.all.sortedWith(compareBy({ it.category.ordinal }, { it.slug })).chunked(70).getOrNull(page) ?: return
+        shoot("icons-$page", { Thread.sleep(300) }) {
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(8.dp)) {
+                defs.forEach { def ->
+                    androidx.compose.foundation.layout.Column(Modifier.width(80.dp).padding(2.dp),
+                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                        com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def)
+                        androidx.compose.material3.Text(def.slug.substringAfter('.'), maxLines = 2,
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            fontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun exerciseIcons0() = iconPage(0)
+    @Test fun exerciseIcons1() = iconPage(1)
+    @Test fun exerciseIcons2() = iconPage(2)
 
     @Test
     fun settings() {

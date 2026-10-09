@@ -78,6 +78,7 @@ object TrainingRoutes {
     const val WEEK_PLAN = "training_week_plan"
     // FEAT-071 coach
     const val COACH_SETUP = "coach_setup"
+    const val BASICS = "training_basics"
     const val CLIMBER_PROFILE = "climber_profile"
     const val FORCE_GAUGE = "force_gauge"
     const val CLIMBING_DAYS = "climbing_days"
