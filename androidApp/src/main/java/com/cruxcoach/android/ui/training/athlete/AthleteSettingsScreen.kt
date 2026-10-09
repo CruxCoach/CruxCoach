@@ -212,7 +212,7 @@ fun AthleteSettingsScreen(
                     Text(stringResource(R.string.tru_set_sex), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Sex.entries.forEach { s ->
-                            FilterChip(selected = p.sex == s, onClick = { viewModel.update { it.copy(sex = if (it.sex == s) null else s) } },
+                            FilterChip(selected = p.sex == s, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(p.sex == s), onClick = { viewModel.update { it.copy(sex = if (it.sex == s) null else s) } },
                                 label = { Text(sexLabel(s)) })
                         }
                     }
@@ -241,7 +241,7 @@ fun AthleteSettingsScreen(
                     Text(stringResource(R.string.trn_set_everyday), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         EverydayActivity.entries.forEach { e ->
-                            FilterChip(selected = p.everydayActivity == e, onClick = { viewModel.update { it.copy(everydayActivity = e) } },
+                            FilterChip(selected = p.everydayActivity == e, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(p.everydayActivity == e), onClick = { viewModel.update { it.copy(everydayActivity = e) } },
                                 label = { Text(com.cruxcoach.android.ui.training.common.everydayLabel(e)) },
                                 modifier = Modifier.testTag("settings_everyday_${e.name.lowercase()}"))
                         }

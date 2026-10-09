@@ -302,6 +302,12 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         }
     }
 
+    @Test
+    fun basics() {
+        val vm = loaded(com.cruxcoach.android.ui.training.basics.BasicsViewModel(service))
+        shoot("basics-0", { waitForTag("basics_private") }) { com.cruxcoach.android.ui.training.basics.BasicsScreen(onDone = {}, viewModel = vm) }
+    }
+
     @Test fun exerciseIcons0() = iconPage(0)
     @Test fun exerciseIcons1() = iconPage(1)
     @Test fun exerciseIcons2() = iconPage(2)
