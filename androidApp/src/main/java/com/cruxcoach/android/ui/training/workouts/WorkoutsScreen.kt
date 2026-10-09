@@ -214,7 +214,10 @@ fun WorkoutsScreen(
         ) {
             state.returnState?.let { r -> item(key = "return") { ReturnBanner(r) } }
             if (state.week.isNotEmpty()) {
-                item(key = "week") { WeekCalendarCard(state.week, state.routines, onDayClick = { dayCell = it }) }
+                item(key = "week") {
+                    WeekCalendarCard(state.week, state.routines, onDayClick = { dayCell = it },
+                        onEditPlan = onOpenWeekPlan, planEmpty = state.profile.weekPlan.isEmpty())
+                }
             }
             item(key = "volume") { volumeCard() }
             state.openWorkout?.let {
@@ -250,9 +253,6 @@ fun WorkoutsScreen(
                     onDelete = { deleting = routine },
                 )
             }
-
-            item { SectionTitle(stringResource(R.string.trwo_week_plan)) }
-            item { WeekPlanCard(state.profile.weekPlan, state.routines, onOpenWeekPlan) }
 
             item { SectionTitle(stringResource(R.string.trwo_templates)) }
             items(BuiltinRoutines.all, key = { "b-" + it.builtinKey }) { routine ->
@@ -382,12 +382,13 @@ private fun RoutineCard(
                     modifier = Modifier.padding(top = 4.dp))
             }
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onStart, modifier = Modifier.testTag("routine_start_$tag")) {
+                // A list of many cards: tonal start buttons, so no card shouts louder than the others.
+                FilledTonalButton(onClick = onStart, modifier = Modifier.testTag("routine_start_$tag")) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.tr_action_start))
                 }
-                onEdit?.let { OutlinedButton(onClick = it) { Text(stringResource(R.string.tr_action_edit)) } }
+                onEdit?.let { TextButton(onClick = it) { Text(stringResource(R.string.tr_action_edit)) } }
                 onCopy?.let {
-                    OutlinedButton(onClick = it, modifier = Modifier.testTag("routine_copy_$tag")) {
+                    TextButton(onClick = it, modifier = Modifier.testTag("routine_copy_$tag")) {
                         Text(stringResource(R.string.trwo_copy_adjust))
                     }
                 }
@@ -396,25 +397,3 @@ private fun RoutineCard(
     }
 }
 
-@Composable
-private fun WeekPlanCard(plan: Map<Int, String>, routines: List<Routine>, onEdit: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth().testTag("workouts_week_plan")) {
-        Column(Modifier.padding(16.dp)) {
-            if (plan.isEmpty()) {
-                Text(stringResource(R.string.trwo_week_plan_empty), style = MaterialTheme.typography.bodyMedium)
-            } else {
-                (1..7).forEach { day ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                        Text(weekdayName(day, TextStyle.SHORT), style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold, modifier = Modifier.width(56.dp))
-                        Text(planEntryLabel(plan[day], routines), style = MaterialTheme.typography.bodyMedium,
-                            color = if (plan[day] == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-                    }
-                }
-            }
-            TextButton(onClick = onEdit, modifier = Modifier.testTag("workouts_week_plan_edit")) {
-                Text(stringResource(R.string.trwo_week_plan_edit))
-            }
-        }
-    }
-}
