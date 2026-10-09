@@ -91,7 +91,9 @@ fun WeightSheet(
                     suffix = { Text(Units.massUnit(units), style = MaterialTheme.typography.titleMedium) },
                     placeholder = { Text(if (units == UnitSystem.IMPERIAL) "150" else "70", style = MaterialTheme.typography.headlineMedium,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    // "Fertig" on the keyboard saves, like the button.
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (valid) kg?.let(onSave) }),
                     modifier = Modifier.width(170.dp).padding(horizontal = 12.dp).testTag("weight_input"),
                 )
                 FilledTonalIconButton(onClick = { nudge(step) }, modifier = Modifier.size(56.dp).testTag("weight_plus")) {

@@ -531,21 +531,21 @@ private fun MacroSummaryCard(state: FuelState) {
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (state.profile.showCalories && totals.entries > 0) {
                     Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(end = 8.dp).testTag("fuel_kcal"))
+                        modifier = Modifier.testTag("fuel_kcal"))
+                }
+                // How the targets come about: one info icon for both rings instead of one per ring.
+                t?.let {
+                    InfoButton(stringResource(R.string.trf_day_total), listOf(
+                        stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last),
+                        stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)),
+                    ).joinToString("\n\n"))
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp, end = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MacroRing(
-                    label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
-                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein",
-                    info = t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
-                )
-                MacroRing(
-                    label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
-                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs",
-                    info = t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
-                    infoTitle = stringResource(R.string.trf_carbs_info_title),
-                )
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
+                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein")
+                MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
+                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs")
             }
             val share = totals.fatEnergyShare
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp).testTag("fuel_fat")) {
@@ -572,13 +572,11 @@ private fun MacroRing(
     target: Int?,
     color: androidx.compose.ui.graphics.Color,
     tag: String,
-    info: String?,
-    infoTitle: String = label,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag(tag)) {
         com.cruxcoach.android.ui.training.common.ProgressRing(
             progress = if (target != null && target > 0) (value / target).toFloat() else 0f,
-            size = 104.dp, stroke = 10.dp, color = color,
+            size = 92.dp, stroke = 9.dp, color = color,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 // A reached target gets its tick – a small reward, never a "too much".
@@ -591,10 +589,7 @@ private fun MacroRing(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = if (info != null) 12.dp else 0.dp))
-            if (info != null) InfoButton(infoTitle, info)
-        }
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
         if (target != null) {
             Text(remainingText(value, target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -632,7 +627,8 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
             }
             val addText = stringResource(R.string.trf_water_add, amountText(glass.toDouble(), volume))
             val removeText = stringResource(R.string.tru_water_remove)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 8.dp)) {
+            // Ten glasses fit one row on a 360 dp phone; a bigger target wraps.
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(top = 8.dp)) {
                 (0 until glasses).forEach { i ->
                     val filled = i < full
                     val isLast = filled && i == full - 1
@@ -642,14 +638,14 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                             if (isLast) state.water.maxByOrNull { it.loggedAt }?.let(onRemoveWater) else if (!filled) onAddWater(glass)
                         },
                         enabled = isLast || !filled,
-                        modifier = Modifier.size(40.dp).semantics {
+                        modifier = Modifier.size(32.dp).semantics {
                             contentDescription = when { isLast -> removeText; filled -> ""; else -> addText }
                         }.testTag(if (isNext) "fuel_water_$glass" else "fuel_glass_$i"),
                     ) {
                         Icon(
                             if (filled) Icons.Default.LocalDrink else Icons.Outlined.LocalDrink, null,
                             tint = if (filled) blue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isNext) 0.9f else 0.4f),
-                            modifier = Modifier.size(if (isNext) 30.dp else 26.dp),
+                            modifier = Modifier.size(if (isNext) 28.dp else 24.dp),
                         )
                     }
                 }

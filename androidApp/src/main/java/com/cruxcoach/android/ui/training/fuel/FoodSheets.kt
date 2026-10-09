@@ -10,6 +10,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -46,18 +48,30 @@ import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.Meal
 import com.cruxcoach.athlete.model.UnitSystem
 
-/** Meal choice as a wrapping row of chips. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The meal as one small choice ("Abendessen ▾") instead of six chips: the
+ * time of day already picked the likely one, changing it is the exception.
+ */
 @Composable
 fun MealPicker(selected: Meal, onSelect: (Meal) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Meal.entries.forEach { meal ->
-            FilterChip(
-                selected = selected == meal,
-                onClick = { onSelect(meal) },
-                label = { Text(mealLabel(meal)) },
-                modifier = Modifier.testTag("fuel_meal_${meal.name.lowercase()}"),
-            )
+    var open by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = { Text(mealLabel(selected)) },
+            leadingIcon = { Icon(Icons.Default.Restaurant, null, Modifier.size(18.dp)) },
+            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+            modifier = Modifier.heightIn(min = 48.dp).testTag("fuel_meal_choice"),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Meal.entries.forEach { meal ->
+                DropdownMenuItem(
+                    text = { Text(mealLabel(meal)) },
+                    onClick = { onSelect(meal); open = false },
+                    leadingIcon = if (meal == selected) ({ Icon(Icons.Default.Check, null) }) else null,
+                    modifier = Modifier.testTag("fuel_pick_meal_${meal.name.lowercase()}"),
+                )
+            }
         }
     }
 }
@@ -210,19 +224,7 @@ fun FoodsSheet(
                 Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f))
                 // The meal as one small choice next to the title, not six chips above the search.
-                if (meal != null) {
-                    var mealMenu by remember { mutableStateOf(false) }
-                    Box {
-                        AssistChip(onClick = { mealMenu = true }, label = { Text(mealLabel(meal)) },
-                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) }, modifier = Modifier.testTag("fuel_add_meal"))
-                        DropdownMenu(expanded = mealMenu, onDismissRequest = { mealMenu = false }) {
-                            Meal.entries.forEach { m ->
-                                DropdownMenuItem(text = { Text(mealLabel(m)) }, onClick = { onMealChange(m); mealMenu = false },
-                                    modifier = Modifier.testTag("fuel_add_meal_${m.name.lowercase()}"))
-                            }
-                        }
-                    }
-                }
+                if (meal != null) MealPicker(meal, onMealChange)
             }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },

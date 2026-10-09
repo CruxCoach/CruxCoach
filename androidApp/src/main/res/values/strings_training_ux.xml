@@ -22,7 +22,7 @@
     <string name="tru_equipment_saved">Equipment saved</string>
 
     <!-- Checklist -->
-    <string name="tru_setup_title">Ready in 3 steps</string>
+    <string name="tru_setup_title">Set up in 3 steps</string>
     <string name="tru_setup_progress">%1$d of %2$d</string>
     <string name="tru_setup_coach">Goal and training week</string>
     <string name="tru_setup_coach_text">1 minute – so the suggestions fit you</string>
@@ -125,7 +125,11 @@
     <string name="tru_set_birth_year">Year of birth</string>
     <string name="tru_set_nutrition_weight">The targets use your body weight (under “About you”).</string>
     <string name="tru_water_reached">Drinking target reached</string>
-    <string name="tru_setup_ready_title">Ready to go!</string>
+    <string name="tru_setup_ready_title">All set!</string>
     <string name="tru_setup_ready_text">Your coach now knows the basics. Every logged day makes the suggestions more personal.</string>
     <string name="tru_new_food">New</string>
+    <plurals name="tru_hub_records">
+        <item quantity="one">%d personal best</item>
+        <item quantity="other">%d personal bests</item>
+    </plurals>
 </resources>

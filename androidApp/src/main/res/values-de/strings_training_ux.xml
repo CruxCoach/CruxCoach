@@ -22,7 +22,7 @@
     <string name="tru_equipment_saved">Ausrüstung gespeichert</string>
 
     <!-- Checkliste -->
-    <string name="tru_setup_title">Startklar in 3 Schritten</string>
+    <string name="tru_setup_title">In 3 Schritten einrichten</string>
     <string name="tru_setup_progress">%1$d von %2$d</string>
     <string name="tru_setup_coach">Ziel und Trainingswoche</string>
     <string name="tru_setup_coach_text">1 Minute – damit die Vorschläge zu dir passen</string>
@@ -125,7 +125,11 @@
     <string name="tru_set_birth_year">Geburtsjahr</string>
     <string name="tru_set_nutrition_weight">Die Ziele rechnen mit deinem Körpergewicht (unter „Über dich“).</string>
     <string name="tru_water_reached">Trinkziel erreicht</string>
-    <string name="tru_setup_ready_title">Startklar!</string>
+    <string name="tru_setup_ready_title">Alles eingerichtet!</string>
     <string name="tru_setup_ready_text">Dein Coach kennt jetzt das Wichtigste. Jeder eingetragene Tag macht die Vorschläge persönlicher.</string>
     <string name="tru_new_food">Neu</string>
+    <plurals name="tru_hub_records">
+        <item quantity="one">%d Bestwert</item>
+        <item quantity="other">%d Bestwerte</item>
+    </plurals>
 </resources>

@@ -78,7 +78,7 @@ Quelle: [PlaylistGeneratorScreen.kt](androidApp/src/main/java/com/cruxcoach/andr
 
 **Bestand (Quellcode, Branch `feat/0.2.4-training-nutrition`, Geräteabnahme ausstehend):** Der Trainingsbereich hat vier Tabs – Heute, Training (Workouts | Übungen), Ernährung, Fortschritt (Statistik, Körper, Wochenrückblick, Startwerte, Verlauf). Jeder Screen hat eine Hauptaufgabe mit einem großen Button; Seltenes liegt im Menü mit vertikalen drei Punkten, nicht als weitere Chip-Reihe. Hauptaktionen scrollen nie horizontal weg.
 
-- **Mindest-Setup sichtbar:** „Startklar in 3 Schritten“ auf Heute (Ziel und Woche, Ausrüstung, Körpergewicht) mit Fortschritt; jeder Schritt öffnet seine Eingabe direkt, erledigte Schritte bekommen ein Häkchen, die Karte verschwindet danach. Ein abgelehnter Coach zählt als erledigt.
+- **Mindest-Setup sichtbar:** „In 3 Schritten einrichten“ auf Heute (Ziel und Woche, Ausrüstung, Körpergewicht) mit Fortschritt; jeder Schritt öffnet seine Eingabe direkt, erledigte Schritte bekommen ein Häkchen, die Karte verschwindet danach. Ein abgelehnter Coach zählt als erledigt.
 - **Kein Hinweis ohne Handlung:** Meldungen wie „braucht dein Gewicht“ oder „Ausrüstung fehlt“ öffnen die Eingabe an Ort und Stelle (gemeinsame Sheets für Gewicht und Ausrüstung), nie einen Verweis auf die Einstellungen. Dasselbe gilt im Coach-Setup, bei Startwerten und in der Übungsliste.
 - **Wert neben der Aktion:** „Dein Tag“ zeigt Klettern, Gewicht, Essen und Wasser als Kacheln mit dem heutigen Wert; ein fehlender Wert zeigt seine Aktion („Eintragen“) in Akzentfarbe.
 - **Check-in im Training:** Der Kurz-Check ist eine Zeile in der Trainingskarte und öffnet ein Sheet; die Begründung trägt „Warum?“ direkt im Text.
