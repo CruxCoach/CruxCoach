@@ -78,7 +78,8 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
     }
 }
 
-private val SESSION_MINUTES = listOf(20, 30, 45, 60, 90)
+// The same steps as the coach setup asks (15 … 90 min).
+private val SESSION_MINUTES = listOf(15, 30, 45, 60, 90)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
