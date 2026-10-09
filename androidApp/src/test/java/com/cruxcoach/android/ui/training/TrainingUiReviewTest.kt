@@ -79,12 +79,25 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         compose.runOnIdle {
             val root = requireNotNull(view)
             val bitmap = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
-            root.draw(android.graphics.Canvas(bitmap))
+            val canvas = android.graphics.Canvas(bitmap)
+            root.draw(canvas)
+            // Sheets and dialogs live in windows of their own: draw them on top, in order.
+            windows().filter { it !== root.rootView && it.width > 0 }.forEach { w ->
+                val at = IntArray(2).also { w.getLocationOnScreen(it) }
+                canvas.save(); canvas.translate(at[0].toFloat(), at[1].toFloat()); w.draw(canvas); canvas.restore()
+            }
             java.io.File(dir!!).mkdirs()
             java.io.File(dir, "$prefix$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
         }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun windows(): List<android.view.View> = runCatching {
+        val global = Class.forName("android.view.WindowManagerGlobal")
+        val instance = global.getMethod("getInstance").invoke(null)
+        (global.getDeclaredField("mViews").apply { isAccessible = true }.get(instance) as List<android.view.View>).toList()
+    }.getOrDefault(emptyList())
 
     private fun photo() = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
 
@@ -114,6 +127,45 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         val vm = loaded(FuelViewModel(service))
         val p = photo()
         shoot("fuel-active", { waitForTag("fuel_list") }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p, tabBar = { TrainingTabBar(TrainingTab.FUEL) {} }) }
+    }
+
+    @Test
+    fun fuelAddSheet() {
+        seedActive()
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("fuel-add-sheet", {
+            waitForTag("fuel_my_foods"); click("fuel_my_foods"); waitForTag("fuel_foods_sheet")
+            Thread.sleep(800)
+        }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
+    }
+
+    @Test
+    fun weightSheet() {
+        val vm = loaded(FuelViewModel(service))
+        val p = photo()
+        shoot("weight-sheet", {
+            waitForTag("fuel_needs_weight_action"); click("fuel_needs_weight_action"); waitForTag("weight_sheet")
+            Thread.sleep(800)
+        }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
+    }
+
+    @Test
+    fun todayChecklistEquipment() {
+        val vm = loaded(TodayViewModel(service))
+        shoot("equipment-sheet", {
+            scrollTo("today_list", "today_setup_equipment"); click("today_setup_equipment"); waitForTag("equipment_sheet")
+            Thread.sleep(800)
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    fun exercises() {
+        val vm = loaded(com.cruxcoach.android.ui.training.exercises.ExerciseCatalogViewModel(service))
+        shoot("exercises", { compose.waitForIdle() }) {
+            com.cruxcoach.android.ui.training.exercises.ExerciseCatalogScreen(null, {}, {}, {}, {}, viewModel = vm,
+                tabBar = { TrainingTabBar(TrainingTab.WORKOUTS) {} }, header = { TrainingSwitch(true, {}, {}) })
+        }
     }
 
     @Test
