@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MenuBook
@@ -205,9 +206,23 @@ fun FoodsSheet(
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("fuel_foods_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            if (meal != null) {
-                Box(Modifier.padding(top = 8.dp, bottom = 4.dp)) { MealPicker(meal, onMealChange) }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Text(title ?: stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                // The meal as one small choice next to the title, not six chips above the search.
+                if (meal != null) {
+                    var mealMenu by remember { mutableStateOf(false) }
+                    Box {
+                        AssistChip(onClick = { mealMenu = true }, label = { Text(mealLabel(meal)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) }, modifier = Modifier.testTag("fuel_add_meal"))
+                        DropdownMenu(expanded = mealMenu, onDismissRequest = { mealMenu = false }) {
+                            Meal.entries.forEach { m ->
+                                DropdownMenuItem(text = { Text(mealLabel(m)) }, onClick = { onMealChange(m); mealMenu = false },
+                                    modifier = Modifier.testTag("fuel_add_meal_${m.name.lowercase()}"))
+                            }
+                        }
+                    }
+                }
             }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -219,14 +234,14 @@ fun FoodsSheet(
                         }
                     }
                 },
-                label = { Text(stringResource(R.string.trf_foods_search)) }, singleLine = true,
+                placeholder = { Text(stringResource(R.string.trf_find_food)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("fuel_foods_search"),
             )
             // The other ways in, while nothing is typed: the list below belongs to the search.
             if (q.isEmpty()) addActions?.invoke()
             if (onCreate != null || onCreateRecipe != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                    Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
                     onCreateRecipe?.let { create ->
                         TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
                             Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
@@ -238,7 +253,7 @@ fun FoodsSheet(
                         TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
                             Icon(Icons.Default.Add, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_foods_new))
+                            Text(stringResource(R.string.tru_new_food))
                         }
                     }
                 }

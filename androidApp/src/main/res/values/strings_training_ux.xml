@@ -127,4 +127,5 @@
     <string name="tru_water_reached">Drinking target reached</string>
     <string name="tru_setup_ready_title">Ready to go!</string>
     <string name="tru_setup_ready_text">Your coach now knows the basics. Every logged day makes the suggestions more personal.</string>
+    <string name="tru_new_food">New</string>
 </resources>

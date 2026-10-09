@@ -89,6 +89,8 @@ fun WeightSheet(
                     value = input, onValueChange = { input = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.headlineMedium.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
                     suffix = { Text(Units.massUnit(units), style = MaterialTheme.typography.titleMedium) },
+                    placeholder = { Text(if (units == UnitSystem.IMPERIAL) "150" else "70", style = MaterialTheme.typography.headlineMedium,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.width(170.dp).padding(horizontal = 12.dp).testTag("weight_input"),
                 )
@@ -151,7 +153,7 @@ fun EquipmentSheet(initial: Set<EquipmentV2>, onDismiss: () -> Unit, onSave: (Se
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("equipment_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Text(stringResource(R.string.tra_equipment_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.tru_setup_equipment), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.tru_equipment_why), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { EquipmentEditor(draft) { draft = it } }
