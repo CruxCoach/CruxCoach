@@ -16,10 +16,14 @@ created: 2026-10-04
 ## 1. Organisation
 
 - One main-menu entry **Training** (replaces "Heute" and "Übungen").
-- Inside it a bottom tab bar: **Heute · Workouts · Übungen · Statistik · Körper**.
-  Tabs keep their state (`popUpTo(TODAY){saveState}`, `restoreState`); back from
-  a tab leaves the training area. Detail screens (exercise, player, editor,
-  week plan, settings, fueling, injuries) open above the tabs without a tab bar.
+- Inside it a bottom tab bar: **Heute · Training · Ernährung · Fortschritt**
+  (UX round 2026-10-09; before: Heute · Workouts · Übungen · Statistik · Körper).
+  "Training" switches between Workouts and Übungen at the top; "Fortschritt" is
+  the stats hub with body, weekly review, start values, history and weekly
+  targets; the main menu's "Ernährung" opens its tab with Today underneath.
+  Tabs keep their state (`popUpTo(TODAY){saveState}`, `restoreState`); the app
+  bar's back leaves the training area. Detail screens (exercise, player, editor,
+  week plan, settings, body, injuries) open above the tabs without a tab bar.
 
 ## 2. Stats (`ProgressStats`, shared)
 
