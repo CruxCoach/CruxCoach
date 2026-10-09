@@ -84,6 +84,37 @@ class BlsAssetMatchingTest {
         assertTrue(matcher.search("Milch").first().food.code in MILK, matcher.search("Milch").take(3).map { it.food.nameDe }.toString())
     }
 
+    /**
+     * Bare everyday words, typed in the search or the meal description (device test 2026-10-09:
+     * "Brot" had found "Russisch-Brot", "Käse" "Käse-Grießnockerl", "Joghurt" "Joghurt-Dip",
+     * "Frischkäse" "Fleischkäse", "Egg" "Eierlikör").
+     */
+    @Test
+    fun everydayWordsFindTheUsualFood() {
+        val expected = mapOf(
+            "Brot" to setOf("B251000", "B271000", "B311000"), "Bread" to setOf("B251000", "B271000", "B311000"),
+            "Brötchen" to setOf("B511000"), "Toast" to setOf("B314000", "B254000"), "Knäckebrot" to setOf("B6A2100", "B6A2000"),
+            "Butter" to setOf("Q630000"), "Käse" to setOf("M402600"), "Cheese" to setOf("M402600"),
+            "Joghurt" to setOf("M141300", "M141200"), "Yogurt" to setOf("M141300", "M141200"), "Magerquark" to setOf("M713100"),
+            "Frischkäse" to setOf("M710700", "M710800"), "Sahne" to setOf("M173800", "M173900"),
+            "Ei" to setOf("E111132", "Y740162"), "Eier" to setOf("E111132", "Y740162"), "Egg" to setOf("E111132", "Y740162"),
+            "Milch" to MILK, "Milk" to MILK, "Hafermilch" to setOf("C660000"), "Oat milk" to setOf("C660000"),
+            "Schinken" to setOf("W424000"), "Ham" to setOf("W424000"), "Hähnchen" to setOf("Y562032", "V416172"),
+            "Kartoffeln" to setOf("K110132", "K120134"), "Paprika" to setOf("G543100", "G541100", "G542100"),
+            "Müsli" to setOf("C512000", "C512300"), "Oats" to setOf("C133000"), "Haferflocken" to setOf("C133000"),
+            "Erdbeeren" to setOf("F301100"), "Kiwi" to setOf("F514100"), "Apple" to setOf("F110100"), "Banane" to setOf("F503100"),
+            "Tee" to setOf("N630000"), "Bier" to setOf("P163000", "P161000"), "Beer" to setOf("P163000", "P161000"),
+            "Wasser" to setOf("N110000", "N120000", "N128000"), "Apfelschorle" to setOf("N256000"),
+            "Pizza" to setOf("X912033"), "Döner" to setOf("Y921162", "Y921062"),
+        )
+        val misses = expected.mapNotNull { (word, codes) ->
+            val matched = matcher.match(DetectedFood(word, word, 100.0)).first().food
+            val searched = matcher.search(word).first().food
+            if (matched.code in codes && searched.code in codes) null else "$word → ${matched.nameDe} / ${searched.nameDe}"
+        }
+        assertEquals(emptyList(), misses)
+    }
+
     @Test
     fun searchingACompoundFindsItsSplitBlsName() {
         // Device test 2026-10-07: "Haferflocken" listed oat cookies before "Hafer Flocken".

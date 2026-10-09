@@ -201,6 +201,7 @@ object MealTextParser {
 
     /** Normalised word prefix → grams of one piece. */
     private val PIECES = linkedMapOf(
+        "knaeckebrot" to 10.0, "crispbread" to 10.0, "zwieback" to 10.0, "rusk" to 10.0, "reiswaffel" to 8.0,
         "eier" to 60.0, "ei" to 60.0, "egg" to 60.0, "banane" to 120.0, "banana" to 120.0, "apfel" to 150.0, "aepfel" to 150.0,
         "apple" to 150.0, "birne" to 160.0, "pear" to 160.0, "orange" to 150.0, "mandarine" to 70.0, "kiwi" to 75.0,
         "pfirsich" to 130.0, "peach" to 130.0, "broetchen" to 60.0, "semmel" to 60.0, "roll" to 60.0,
@@ -215,13 +216,15 @@ object MealTextParser {
 
     /** Normalised word prefix → grams of one slice. */
     private val SLICES = linkedMapOf(
-        "brot" to 50.0, "bread" to 50.0, "vollkornbrot" to 50.0, "toast" to 25.0, "kaese" to 20.0,
+        // Before "brot": a crispbread slice weighs a fifth of a bread slice.
+        "knaeckebrot" to 10.0, "crispbread" to 10.0, "brot" to 50.0, "bread" to 50.0, "vollkornbrot" to 50.0, "toast" to 25.0, "kaese" to 20.0,
         "cheese" to 20.0, "schinken" to 20.0, "ham" to 20.0, "wurst" to 15.0, "salami" to 10.0, "pizza" to 110.0,
         "bacon" to 10.0, "speck" to 10.0,
     )
 
     /** Normalised word prefix → typical portion when no amount is given. */
     private val PORTIONS = linkedMapOf(
+        "knaeckebrot" to 20.0, "crispbread" to 20.0, "toast" to 50.0,
         "doener" to 400.0, "kebab" to 400.0, "pizza" to 450.0, "burger" to 250.0, "kaffee" to 150.0,
         "coffee" to 150.0, "tee" to 250.0, "tea" to 250.0, "salat" to 150.0, "salad" to 150.0,
         "spaghetti" to 350.0, "nudeln" to 350.0, "pasta" to 350.0, "reis" to 200.0, "rice" to 200.0,
