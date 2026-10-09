@@ -81,12 +81,15 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
         compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_foods_search")
         compose.onNodeWithTag("fuel_foods_search").performTextInput("skyr")
-        // BLS, USDA and products answer in any order; scroll to the product once it is listed.
+        // BLS, USDA and products answer in any order and can re-sort the list after the scroll:
+        // scroll and tap in one attempt until the tap lands (failed on a loaded CI runner, 2026-10-09).
         compose.waitUntil(WAIT_MS) {
-            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_off_4025500000001")); true }
-                .getOrDefault(false)
+            runCatching {
+                compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_off_4025500000001"))
+                compose.onNodeWithTag("fuel_off_4025500000001").performSemanticsAction(SemanticsActions.OnClick)
+                true
+            }.getOrDefault(false)
         }
-        compose.onNodeWithTag("fuel_off_4025500000001").performSemanticsAction(SemanticsActions.OnClick)
         waitForTag("fuel_amount_dialog")
         // A product with a serving size starts on "1 portion".
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
