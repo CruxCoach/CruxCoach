@@ -180,6 +180,29 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     }
 
     @Test
+    fun benchmarks() {
+        seedActive()
+        val vm = loaded(com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service))
+        shoot("benchmarks", { compose.waitForIdle() }) {
+            com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen({}, {}, {}, viewModel = vm)
+        }
+    }
+
+    @Test
+    fun weekPlan() {
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service))
+        shoot("week-plan", { compose.waitForIdle() }) { com.cruxcoach.android.ui.training.workouts.WeekPlanScreen({}, viewModel = vm) }
+    }
+
+    @Test
+    fun weeklyReview() {
+        seedActive()
+        val vm = loaded(com.cruxcoach.android.ui.training.athlete.WeeklyReviewViewModel(service,
+            com.cruxcoach.android.foodvision.MicronutrientWeek(service, BlsRepository(context), com.cruxcoach.android.foodvision.UsdaRepository(context))))
+        shoot("weekly-review", { compose.waitForIdle() }) { com.cruxcoach.android.ui.training.athlete.WeeklyReviewScreen({}, viewModel = vm) }
+    }
+
+    @Test
     fun bodyActive() {
         seedActive()
         val vm = loaded(BodyViewModel(service))
