@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import androidx.compose.ui.test.hasText
 import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
@@ -100,8 +101,11 @@ class UsUnitsTest : AthleteScreenTest() {
         val entry = repo.foodLog(day).single()
         assertEquals(354.9, entry.amountG!!, 0.1)
         assertEquals(45.0 * 3.549, entry.kcal!!, 0.1)
+        // The entry sits above the "my foods" button the list was scrolled to: scroll back to it,
+        // a lazy list composes only what is on screen (timed out on CI otherwise).
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodesWithText("12 fl oz", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            runCatching { compose.onNodeWithTag("fuel_list").performScrollToNode(hasText("12 fl oz", substring = true)); true }
+                .getOrDefault(false)
         }
     }
 
