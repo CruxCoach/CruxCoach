@@ -124,4 +124,7 @@
     <string name="tru_set_sex">Geschlecht</string>
     <string name="tru_set_birth_year">Geburtsjahr</string>
     <string name="tru_set_nutrition_weight">Die Ziele rechnen mit deinem Körpergewicht (unter „Über dich“).</string>
+    <string name="tru_water_reached">Trinkziel erreicht</string>
+    <string name="tru_setup_ready_title">Startklar!</string>
+    <string name="tru_setup_ready_text">Dein Coach kennt jetzt das Wichtigste. Jeder eingetragene Tag macht die Vorschläge persönlicher.</string>
 </resources>

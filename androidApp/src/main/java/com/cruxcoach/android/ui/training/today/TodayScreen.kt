@@ -92,6 +92,15 @@ fun TodayScreen(
     var showEquipment by rememberSaveable { mutableStateOf(false) }
     var showCheckin by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    // The checklist's last tick is celebrated once in place before the card goes.
+    var setupJustDone by rememberSaveable { mutableStateOf(false) }
+    var lastOpenSteps by rememberSaveable { mutableStateOf(-1) }
+    LaunchedEffect(state.loading, state.profile, state.trendKg) {
+        if (state.loading) return@LaunchedEffect
+        val open = setupSteps(state).count { !it.done }
+        if (lastOpenSteps > 0 && open == 0) setupJustDone = true
+        lastOpenSteps = open
+    }
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -155,9 +164,9 @@ fun TodayScreen(
             state.openPause?.let { item(key = "pause") { PauseBanner(onEndPause = viewModel::endPause) } }
             if (state.injuries.isNotEmpty()) item(key = "injury") { InjuryBanner(state, onOpenInjuries) }
             val steps = setupSteps(state)
-            if (steps.any { !it.done }) {
+            if (steps.any { !it.done } || setupJustDone) {
                 item(key = "setup") {
-                    SetupChecklistCard(steps, onOpen = { step ->
+                    SetupChecklistCard(steps, justDone = setupJustDone, onDismissDone = { setupJustDone = false }, onOpen = { step ->
                         when (step.kind) {
                             SetupKind.COACH -> onOpenCoachSetup()
                             SetupKind.EQUIPMENT -> showEquipment = true
@@ -286,8 +295,27 @@ internal fun setupSteps(state: TodayState): List<SetupStep> {
 }
 
 @Composable
-private fun SetupChecklistCard(steps: List<SetupStep>, onOpen: (SetupStep) -> Unit) {
+private fun SetupChecklistCard(steps: List<SetupStep>, justDone: Boolean, onDismissDone: () -> Unit, onOpen: (SetupStep) -> Unit) {
     val done = steps.count { it.done }
+    if (justDone && done == steps.size) {
+        // All three ticked: a short "ready", then the card is gone for good.
+        Card(
+            colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.positiveContainer,
+                contentColor = CruxCoachDesign.colors.onPositiveContainer),
+            modifier = Modifier.fillMaxWidth().testTag("today_setup_done"),
+        ) {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CheckCircle, null)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.tru_setup_ready_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.tru_setup_ready_text), style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(onClick = onDismissDone) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.tru_done)) }
+            }
+        }
+        return
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier.fillMaxWidth().testTag("today_setup"),
