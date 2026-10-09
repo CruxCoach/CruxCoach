@@ -33,8 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   target, % body weight and an inline hang/repeater timer, and a separate rest
   screen with a countdown ring, ±15 s, a side-switch pause, the next set and a
   reps-in-reserve question. The list view stays available as the overview.
-- A clearer training area: one "Training" entry in the main menu and a tab bar
-  inside – Today, Workouts, Exercises, Stats, Body.
+- A simple training area: four tabs – Today, Training (workouts and exercises),
+  Nutrition and Progress (statistics, body, weekly review, start values). Today
+  shows what to do at least ("Set up in 3 steps": goal and week, equipment, body
+  weight), today's training with a one-line check-in, and "Your day" tiles that
+  log climbing, weight, food and water with one tap. Whenever something is
+  missing, it is asked right there – a hint never sends you looking for it in
+  the settings. The training settings are an overview with the current value of
+  each topic.
 - Stats: training days and minutes per week (board and off-board), a calendar
   heatmap, load per structure, personal bests, body weight and strength to
   weight; per exercise a chart of the estimated maximum over time (left and
