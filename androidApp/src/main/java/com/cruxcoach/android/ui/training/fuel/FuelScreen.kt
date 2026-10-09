@@ -525,41 +525,33 @@ private fun MacroSummaryCard(state: FuelState) {
     val t = state.targets
     val totals = MacroTotals.of(state.entries)
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
-        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trf_day_total), style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (state.profile.showCalories && totals.entries > 0) {
-                    Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("fuel_kcal"))
-                }
-                // How the targets come about: one info icon for both rings instead of one per ring.
-                t?.let {
-                    InfoButton(stringResource(R.string.trf_day_total), listOf(
-                        stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last),
-                        stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)),
-                    ).joinToString("\n\n"))
-                }
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 16.dp, bottom = 4.dp)) {
+            Row(Modifier.fillMaxWidth().padding(end = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
                     color = CruxCoachDesign.colors.positive, tag = "fuel_protein")
                 MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
                     color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs")
             }
+            // Fat and calories in one line under the rings; one info icon explains all targets.
             val share = totals.fatEnergyShare
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp).testTag("fuel_fat")) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp).testTag("fuel_fat")) {
                 Text(
                     listOfNotNull(
                         stringResource(R.string.trf_fat) + " " + stringResource(R.string.trf_value_g, totals.fat.roundToInt()),
-                        share?.let {
-                            stringResource(R.string.trf_fat_share, (it * 100).roundToInt(),
-                                (MacroTotals.FAT_SHARE_MIN * 100).roundToInt(), (MacroTotals.FAT_SHARE_MAX * 100).roundToInt())
-                        },
+                        // The 20–35 % reference is in the info text; the line stays one line.
+                        share?.let { stringResource(R.string.tru_fat_share_short, (it * 100).roundToInt()) },
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                 )
-                InfoButton(stringResource(R.string.trf_fat), stringResource(R.string.trf_fat_info))
+                if (state.profile.showCalories && totals.entries > 0) {
+                    Text(kcalText(totals.kcal, totals.kcalEstimated), style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(start = 8.dp).testTag("fuel_kcal"))
+                }
+                InfoButton(stringResource(R.string.trf_day_total), listOfNotNull(
+                    t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
+                    t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
+                    stringResource(R.string.trf_fat_info),
+                ).joinToString("\n\n"))
             }
         }
     }
@@ -607,18 +599,26 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
     val units = state.profile.units
     val volume = FuelUnits.unitFor(units, drink = true)
     val glass = FuelUnits.waterPresetsMl(units).first()
-    val bottle = FuelUnits.waterPresetsMl(units).getOrNull(1)
     val target = state.targets?.waterMl
     val glasses = ((target ?: glass * 8) + glass - 1) / glass
     val full = (state.waterMl / glass).coerceAtMost(glasses)
     val blue = com.cruxcoach.android.ui.training.today.WaterBlue
+    val reached = target != null && state.waterMl >= target
     Card(Modifier.fillMaxWidth().testTag("fuel_water")) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.WaterDrop, null, tint = blue, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.trf_water), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.trf_water), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (reached) stringResource(R.string.tru_water_reached) else stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (reached) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (reached) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.testTag("fuel_water_hint"),
+                    )
+                }
                 Text(
                     if (target != null) stringResource(R.string.trf_progress_volume, inputText(state.waterMl.toDouble(), volume), amountText(target.toDouble(), volume))
                     else amountText(state.waterMl.toDouble(), volume),
@@ -647,23 +647,6 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
                             tint = if (filled) blue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (isNext) 0.9f else 0.4f),
                             modifier = Modifier.size(if (isNext) 28.dp else 24.dp),
                         )
-                    }
-                }
-            }
-            run {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    val reached = target != null && state.waterMl >= target
-                    Text(
-                        if (reached) stringResource(R.string.tru_water_reached) else stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (reached) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (reached) FontWeight.SemiBold else FontWeight.Normal,
-                        modifier = Modifier.weight(1f).testTag("fuel_water_hint"),
-                    )
-                    bottle?.let { ml ->
-                        TextButton(onClick = { onAddWater(ml) }, modifier = Modifier.testTag("fuel_water_$ml")) {
-                            Text(stringResource(R.string.trf_water_add, amountText(ml.toDouble(), volume)))
-                        }
                     }
                 }
             }

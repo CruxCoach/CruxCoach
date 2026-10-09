@@ -161,6 +161,20 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `finishing the last setup step is celebrated once, a returning athlete is not`() {
+        // Equipment and weight are set (setUp); only the coach is open.
+        val vm = loaded(TodayViewModel(service))
+        assertEquals(false, vm.state.value.setupJustDone)
+        repo.updateProfile { it.copy(coach = it.coach.copy(setupState = SetupState.DONE)) }
+        compose.waitUntil(WAIT_MS) { vm.state.value.setupJustDone }
+        vm.dismissSetupDone()
+        assertEquals(false, vm.state.value.setupJustDone)
+        // Opening Today again with everything done shows no celebration.
+        val again = loaded(TodayViewModel(service))
+        assertEquals(false, again.state.value.setupJustDone)
+    }
+
+    @Test
     fun `athlete settings show an overview with the current values`() {
         val loadedVm9 = loaded(AthleteSettingsViewModel(service))
         var opened: SettingsSection? = null

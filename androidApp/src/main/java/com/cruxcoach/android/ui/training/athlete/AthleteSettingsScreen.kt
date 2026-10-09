@@ -153,12 +153,14 @@ fun AthleteSettingsScreen(
                     SectionTitle(stringResource(R.string.tra_plan_title))
                     Stepper(stringResource(R.string.tra_weekly_goal, p.weeklyGoal), "weekly_goal",
                         onMinus = { viewModel.setWeeklyGoal(p.weeklyGoal - 1) }, onPlus = { viewModel.setWeeklyGoal(p.weeklyGoal + 1) })
-                    Text(stringResource(R.string.tra_goal), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        AthleteGoal.entries.forEach { g ->
-                            val enabled = g != AthleteGoal.LOSE_WEIGHT || state.lossGoalAllowed || p.goal == g
-                            FilterChip(selected = p.goal == g, enabled = enabled, onClick = { viewModel.update { it.copy(goal = g) } },
-                                label = { Text(goalLabel(g)) }, modifier = Modifier.testTag("goal_${g.name.lowercase()}"))
+                    // The training goal is the coach's (card above); only losing weight is a choice of its own,
+                    // guarded against too little energy.
+                    SectionTitle(stringResource(R.string.tru_set_weight_goal))
+                    val losing = p.goal == AthleteGoal.LOSE_WEIGHT
+                    SwitchRow(stringResource(R.string.tra_goal_lose), losing, "goal_lose_weight", enabled = state.lossGoalAllowed || losing) { on ->
+                        viewModel.update {
+                            it.copy(goal = if (on) AthleteGoal.LOSE_WEIGHT
+                                else it.coach.goal?.let(com.cruxcoach.athlete.logic.CoachLogic::athleteGoalFor) ?: AthleteGoal.PERFORM)
                         }
                     }
                     if (!state.lossGoalAllowed) {
@@ -620,20 +622,13 @@ private fun HeightField(heightCm: Double?, units: UnitSystem, onSave: (Double) -
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(label: String, checked: Boolean, tag: String, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("switch_$tag"))
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled, modifier = Modifier.testTag("switch_$tag"))
     }
 }
 
-@Composable
-private fun goalLabel(g: AthleteGoal): String = stringResource(when (g) {
-    AthleteGoal.PERFORM -> R.string.tra_goal_perform
-    AthleteGoal.MAINTAIN -> R.string.tra_goal_maintain
-    AthleteGoal.BUILD_STRENGTH -> R.string.tra_goal_strength
-    AthleteGoal.LOSE_WEIGHT -> R.string.tra_goal_lose
-})
 
 @Composable
 private fun sexLabel(s: Sex): String = stringResource(when (s) {
