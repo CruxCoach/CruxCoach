@@ -581,6 +581,11 @@ private fun MacroRing(
             size = 104.dp, stroke = 10.dp, color = color,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // A reached target gets its tick – a small reward, never a "too much".
+                if (target != null && target > 0 && value >= target) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = stringResource(R.string.trf_reached), tint = color,
+                        modifier = Modifier.size(18.dp))
+                }
                 Text("${value.roundToInt()}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(if (target != null) stringResource(R.string.tru_of_g, target) else "g", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -651,8 +656,14 @@ private fun WaterCard(state: FuelState, onAddWater: (Int) -> Unit, onRemoveWater
             }
             run {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Text(stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    val reached = target != null && state.waterMl >= target
+                    Text(
+                        if (reached) stringResource(R.string.tru_water_reached) else stringResource(R.string.tru_water_glass_hint, amountText(glass.toDouble(), volume)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (reached) CruxCoachDesign.colors.positive else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (reached) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.weight(1f).testTag("fuel_water_hint"),
+                    )
                     bottle?.let { ml ->
                         TextButton(onClick = { onAddWater(ml) }, modifier = Modifier.testTag("fuel_water_$ml")) {
                             Text(stringResource(R.string.trf_water_add, amountText(ml.toDouble(), volume)))

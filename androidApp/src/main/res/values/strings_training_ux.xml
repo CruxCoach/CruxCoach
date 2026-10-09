@@ -124,4 +124,7 @@
     <string name="tru_set_sex">Sex</string>
     <string name="tru_set_birth_year">Year of birth</string>
     <string name="tru_set_nutrition_weight">The targets use your body weight (under “About you”).</string>
+    <string name="tru_water_reached">Drinking target reached</string>
+    <string name="tru_setup_ready_title">Ready to go!</string>
+    <string name="tru_setup_ready_text">Your coach now knows the basics. Every logged day makes the suggestions more personal.</string>
 </resources>
