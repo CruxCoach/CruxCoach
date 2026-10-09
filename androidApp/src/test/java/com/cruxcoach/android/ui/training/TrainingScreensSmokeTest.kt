@@ -275,7 +275,11 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         service.saveBenchmark(Benchmark("b1", "finger.one_arm_pickup", Side.RIGHT, 20.0, null, 32.0, null, 10.0, 68.0,
             BenchmarkSource.MANUAL, System.currentTimeMillis()))
         val pickups = repo.setsFor(id).filter { it.exerciseSlug == "finger.one_arm_pickup" }
-        assert(pickups.isNotEmpty() && pickups.all { it.loadKg == 29.0 && it.targetLoadKg == 29.0 }) { pickups.map { it.loadKg } }
+        val work = pickups.filter { it.setType == SetType.WORK }
+        assert(work.isNotEmpty() && work.all { it.loadKg == 29.0 && it.targetLoadKg == 29.0 }) { work.map { it.loadKg } }
+        // Without a hangboard ramp the pick-up ramps up itself, and the ramp follows the entered value.
+        val ramp = pickups.filter { it.setType == SetType.WARMUP }.sortedBy { it.setIndex }.map { it.loadKg!! }
+        assert(ramp.size == 3 && ramp.zipWithNext().all { (a, b) -> a < b } && ramp.last() < 29.0 && ramp.last() >= 20.0) { ramp }
     }
 
     @Test

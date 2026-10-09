@@ -37,6 +37,9 @@ internal fun workSessionCount(service: AthleteService, slug: String): Int {
 class LearningBadgeViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
     private val _state = MutableStateFlow<LearningState.State?>(null)
     val state: StateFlow<LearningState.State?> = _state.asStateFlow()
+    /** Nothing known, and the load is a careful start guess ([com.cruxcoach.athlete.logic.StartEstimate]). */
+    private val _guessed = MutableStateFlow(false)
+    val guessed: StateFlow<Boolean> = _guessed.asStateFlow()
     private var loaded: String? = null
 
     fun load(slug: String) {
@@ -47,7 +50,9 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
             val def = service.catalog[slug]
             // Only exercises whose loads come from a performance value have something to learn.
             if (def == null || BenchmarkMath.capacityKind(def) == null) { _state.value = LearningState.State.Known; return@launch }
-            _state.value = LearningState.of(slug, service.repo.benchmarks(slug), workSessionCount(service, slug))
+            val learning = LearningState.of(slug, service.repo.benchmarks(slug), workSessionCount(service, slug))
+            _guessed.value = learning == LearningState.State.None && service.startEstimate(def) != null
+            _state.value = learning
         }
     }
 }
@@ -62,9 +67,10 @@ fun LearningBadge(slug: String, modifier: Modifier = Modifier) {
     val viewModel: LearningBadgeViewModel = hiltViewModel(key = "learning-$slug")
     LaunchedEffect(slug) { viewModel.load(slug) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val guessed by viewModel.guessed.collectAsStateWithLifecycle()
     val text = when (val s = state) {
         null, LearningState.State.Known -> return
-        LearningState.State.None -> stringResource(R.string.trc_learning_none)
+        LearningState.State.None -> stringResource(if (guessed) R.string.trc_learning_guess else R.string.trc_learning_none)
         LearningState.State.Estimated -> stringResource(R.string.trc_learning_estimated)
         is LearningState.State.Learning -> stringResource(R.string.trc_learning_progress, s.sessions, s.needed)
     }
