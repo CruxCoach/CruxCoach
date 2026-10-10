@@ -223,7 +223,10 @@ fun WorkoutPlayerScreen(
         )
     }
 
-    if (finishing) {
+    if (finishing && state.sets.none { it.isCompleted }) {
+        com.cruxcoach.android.ui.training.workout.NothingDoneDialog(
+            onKeep = { finishing = false }, onDiscard = { finishing = false; viewModel.discard() })
+    } else if (finishing) {
         PlayerFinishDialog(
             hasOpenSets = state.sets.any { !it.isCompleted },
             onDismiss = { finishing = false },

@@ -62,6 +62,9 @@
     <string name="trw_discard">Discard</string>
     <string name="trw_discard_title">Discard training?</string>
     <string name="trw_discard_text">All sets of this training will be deleted.</string>
+    <string name="trw_nothing_done_title">No set done yet</string>
+    <string name="trw_nothing_done_text">Without a completed set nothing is saved.</string>
+    <string name="trw_keep_training">Keep training</string>
     <string name="trw_unfinished_hint">Sets you did not tick off are not saved.</string>
 
     <!-- Hang / interval timer -->
