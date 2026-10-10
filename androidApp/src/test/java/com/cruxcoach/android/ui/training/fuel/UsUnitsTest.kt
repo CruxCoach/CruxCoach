@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.fuel
 
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import com.cruxcoach.android.ui.training.AthleteScreenTest
 import android.app.Application
@@ -98,6 +99,8 @@ class UsUnitsTest : AthleteScreenTest() {
         // A drink offers fl oz and cups; one and a half cups are 355 ml.
         compose.onNodeWithTag("fuel_amount_unit_cup").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag("fuel_amount_grams").performTextReplacement("1.5")
+        // The dialog shows what that amount brings before it is logged.
+        compose.onNodeWithTag("fuel_amount_preview").assertTextContains("160 kcal", substring = true)
         compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
 
         compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }

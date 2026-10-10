@@ -91,6 +91,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             onOpenWeekPlan = { go(TrainingRoutes.WEEK_PLAN) },
             onOpenHistory = { go(TrainingRoutes.TRAINING_HISTORY) },
             onWorkoutStarted = { go(TrainingRoutes.WORKOUT_PLAYER) },
+            onFreeWorkoutStarted = { go(TrainingRoutes.WORKOUT) },
             tabBar = tabBar(TrainingTab.WORKOUTS),
             header = { TrainingSwitch(exercises = false, onWorkouts = {}, onExercises = { switchTraining(TrainingRoutes.exercises()) }) },
         )

@@ -8,6 +8,7 @@
     <string name="trn_target_met">Ziel erreicht</string>
     <string name="trn_over_target">%1$d über Ziel</string>
     <string name="trn_open_energy">Energiebedarf anzeigen</string>
+    <string name="trn_energy_need_short">Bedarf zeigen</string>
 
     <string name="trn_sheet_title">Energie heute</string>
     <string name="trn_resting">Grundumsatz</string>

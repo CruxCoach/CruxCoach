@@ -255,7 +255,7 @@ fun FuelScreen(
             onPickBls = { amountFor = FoodPhotoViewModel.blsFoodItem(it); foodsOpen = false },
             searchProducts = photoViewModel::searchProducts,
             onPickProduct = { amountFor = FoodPhotoViewModel.offFoodItem(it); foodsOpen = false },
-            onScan = { scanning = true; foodsOpen = false },
+            // Scanning is the "Scannen" tile below the field; no second scan icon inside the search field.
             searchUsda = photoViewModel::searchUsda,
             onPickUsda = { amountFor = FoodPhotoViewModel.usdaFoodItem(it); foodsOpen = false },
             productsPreparing = productsState is OffRepository.State.Preparing,
@@ -286,6 +286,7 @@ fun FuelScreen(
             onDismiss = { amountFor = null },
             onConfirm = { meal, portions, grams -> viewModel.addFood(item, meal, portions, grams); amountFor = null },
             units = units,
+            showCalories = state.profile.showCalories,
         )
     }
     if (createFood) {
@@ -352,6 +353,7 @@ fun FuelScreen(
             },
             units = units,
             forRecipe = true,
+            showCalories = state.profile.showCalories,
         )
     }
     editing?.let { entry ->
@@ -364,6 +366,7 @@ fun FuelScreen(
                 onConfirm = { meal, portions, grams -> viewModel.updateEntry(entry, item, meal, portions, grams); editing = null },
                 units = units,
                 editing = entry,
+                showCalories = state.profile.showCalories,
             )
         } else {
             QuickAddSheet(
@@ -740,7 +743,8 @@ private fun EnergyRing(
         RingLabel(stringResource(R.string.trn_energy))
         FitText(
             when {
-                target == null -> openText
+                // Short enough for a quarter of a narrow phone; the click label keeps the full wording.
+                target == null -> stringResource(R.string.trn_energy_need_short)
                 value < target -> stringResource(R.string.trn_to_go, target - value)
                 losing && value > target -> stringResource(R.string.trn_over_target, value - target)
                 losing -> stringResource(R.string.trn_target_met)

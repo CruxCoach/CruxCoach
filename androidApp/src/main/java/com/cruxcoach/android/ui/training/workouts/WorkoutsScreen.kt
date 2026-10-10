@@ -61,7 +61,11 @@ data class WorkoutsState(
     val returnState: com.cruxcoach.athlete.logic.ReturnState? = null,
 )
 
-sealed interface WorkoutsEvent { data object Started : WorkoutsEvent }
+sealed interface WorkoutsEvent {
+    data object Started : WorkoutsEvent
+    /** A free training without a routine: it opens in the list, where exercises are added. */
+    data object StartedFree : WorkoutsEvent
+}
 
 @HiltViewModel
 class WorkoutsViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
@@ -142,6 +146,18 @@ class WorkoutsViewModel @Inject constructor(private val service: AthleteService)
         else begin(false)
     }
 
+    /** A training without a routine (device test 2026-10-10: it was only in Today's menu). */
+    fun startFree(title: String) = io {
+        val begin: suspend (Boolean) -> Unit = { replace ->
+            if (replace) service.closeOpenWorkout()
+            service.startWorkout(null, null)
+            _events.send(WorkoutsEvent.StartedFree)
+        }
+        val conflict = service.openConflict(null)
+        if (conflict != null) pendingStart.value = com.cruxcoach.android.ui.training.workout.PendingStart(conflict, title, begin)
+        else begin(false)
+    }
+
     /** true: end the open training and start; false: continue the open one; null: start nothing. */
     fun resolveStart(replace: Boolean?) = io {
         val pending = pendingStart.value ?: return@io
@@ -190,6 +206,8 @@ fun WorkoutsScreen(
     onOpenHistory: () -> Unit,
     onWorkoutStarted: () -> Unit,
     viewModel: WorkoutsViewModel = hiltViewModel(),
+    /** A free training opens in the list view, not the guided player (it has no sets yet). */
+    onFreeWorkoutStarted: () -> Unit = onWorkoutStarted,
     tabBar: @Composable () -> Unit = {},
     /** Weekly volume per area (integrator slot), shown under the week view. */
     volumeCard: @Composable () -> Unit = {},
@@ -203,7 +221,15 @@ fun WorkoutsScreen(
     var logClimbing by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.refreshWeek() }
     val copySuffix = stringResource(R.string.trwo_copy_suffix)
-    LaunchedEffect(Unit) { viewModel.events.collect { if (it is WorkoutsEvent.Started) onWorkoutStarted() } }
+    LaunchedEffect(Unit) {
+        viewModel.events.collect {
+            when (it) {
+                WorkoutsEvent.Started -> onWorkoutStarted()
+                WorkoutsEvent.StartedFree -> onFreeWorkoutStarted()
+            }
+        }
+    }
+    val freeTitle = stringResource(R.string.trt_quick_free)
     val pendingStart by viewModel.pendingStart.collectAsStateWithLifecycle()
     pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
 
@@ -217,6 +243,8 @@ fun WorkoutsScreen(
                 onClick = { onOpenEditor(null, null) },
                 icon = { Icon(Icons.Default.Add, null) },
                 text = { Text(stringResource(R.string.trwo_new)) },
+                containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
                 modifier = Modifier.testTag("workouts_new"),
             )
         },
@@ -255,7 +283,16 @@ fun WorkoutsScreen(
                 }
             }
 
-            item { SectionTitle(stringResource(R.string.trwo_mine)) }
+            // "Freies Training" next to the athlete's own workouts: start without a plan, add exercises while training.
+            item {
+                SectionTitle(stringResource(R.string.trwo_mine)) {
+                    TextButton(onClick = { viewModel.startFree(freeTitle) }, modifier = Modifier.testTag("workouts_free")) {
+                        Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(freeTitle)
+                    }
+                }
+            }
             if (state.routines.isEmpty()) {
                 item { EmptyHint(stringResource(R.string.trwo_mine_empty)) }
             }

@@ -24,6 +24,7 @@
     <string name="trs_tile_range_days">Training days</string>
     <string name="trs_tile_records">New bests</string>
     <string name="trs_empty">No data yet. Board sessions count automatically, logged trainings and body weight appear here as soon as you enter them.</string>
+    <string name="trs_no_training">No training days in this period yet. Board sessions and trainings count automatically.</string>
     <string name="trs_days_per_week">Training days per week</string>
     <string name="trs_days_chart_cd">Training days per week over %1$d weeks, %2$d days in total.</string>
     <string name="trs_legend_climbing">Climbing</string>

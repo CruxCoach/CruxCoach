@@ -410,16 +410,12 @@ private fun SetView(
                 Text(stringResource(R.string.trp_done_set), style = MaterialTheme.typography.titleLarge)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        // The overview is the list icon in the app bar, there in every state; no second button here.
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
             TextButton(onClick = onSkip, enabled = state.upcoming != null, modifier = Modifier.heightIn(min = 48.dp).testTag("player_skip")) {
                 Icon(Icons.Default.SkipNext, null)
                 Spacer(Modifier.width(4.dp))
                 Text(stringResource(R.string.trp_skip))
-            }
-            TextButton(onClick = onOverview, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(Icons.AutoMirrored.Filled.FormatListBulleted, null)
-                Spacer(Modifier.width(4.dp))
-                Text(stringResource(R.string.trp_overview))
             }
         }
 

@@ -440,4 +440,13 @@ class SessionSuggesterTest {
         assertEquals(SuggestionFocus.PLANNED, deload.focus)
         assertTrue(mainSets(deload) < mainSets(build))
     }
+
+    @Test
+    fun withoutEquipmentSetUpOnlyExercisesWithoutGearAreSuggested() {
+        // Render test 2026-10-10: a new athlete got a hangboard and dumbbell rows before saying what they own.
+        val s = SessionSuggester.suggest(input(profile = AthleteProfile(sessionMinutes = 60)))
+        val gear = s.routine.items.flatMap { catalog[it.slug]!!.equipment }.toSet() - EquipmentV2.NONE - EquipmentV2.MAT
+        assertTrue(gear.isEmpty(), "${slugs(s)} need $gear")
+        assertTrue(s.routine.items.isNotEmpty())
+    }
 }

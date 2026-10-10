@@ -92,6 +92,8 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
     private val _state = MutableStateFlow(CatalogState())
     val state: StateFlow<CatalogState> = _state.asStateFlow()
     private var userTouchedSafetyFilters = false
+    /** "My equipment" starts on once equipment is set up, so the list shows what the athlete can do; a tap is theirs. */
+    private var userTouchedMine = false
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -120,6 +122,7 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
                             profile = profile,
                             injuries = injuries,
                             favorites = favorites,
+                            mineOnly = if (userTouchedMine) s.mineOnly else profile.equipmentConfigured,
                             withoutClimbing = if (applyDefaults) pauseClimbing else s.withoutClimbing,
                             fingerFree = if (applyDefaults) fingerInjury else s.fingerFree,
                             injuryDefaultsApplied = applyDefaults || (s.injuryDefaultsApplied && !userTouchedSafetyFilters),
@@ -141,7 +144,7 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
         })
     }
 
-    fun toggleMine() = _state.update { it.copy(mineOnly = !it.mineOnly) }
+    fun toggleMine() { userTouchedMine = true; _state.update { it.copy(mineOnly = !it.mineOnly) } }
 
     /** Equipment set up from the "Meine Ausrüstung" hint; the filter then applies at once. */
     fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) {
@@ -233,6 +236,8 @@ fun ExerciseCatalogScreen(
                     onClick = onCreateCustom,
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text(stringResource(R.string.trx_create_custom)) },
+                    containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                    contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
                     modifier = Modifier.testTag("exercise_create_custom"),
                 )
             }
@@ -254,92 +259,97 @@ fun ExerciseCatalogScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("exercise_search"),
             )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = state.categories.isEmpty(),
-                    onClick = { viewModel.toggleCategory(null) },
-                    label = { Text(stringResource(R.string.trx_filter_all_categories)) },
-                    modifier = Modifier.testTag("exercise_category_all"),
-                )
-                ExerciseCategoryV2.entries.forEach { c ->
-                    FilterChip(
-                        selected = c in state.categories,
-                        onClick = { viewModel.toggleCategory(c) },
-                        label = { Text(categoryLabel(c)) },
-                        modifier = Modifier.testTag("exercise_category_${c.name.lowercase()}"),
-                    )
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = state.mineOnly && state.profile.equipmentConfigured,
-                    onClick = {
-                        if (state.profile.equipmentConfigured) viewModel.toggleMine()
-                        // Not set up yet: say so and offer the equipment right here.
-                        else scope.launch {
-                            if (snackbar.showSnackbar(mineHint, setUpText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
-                                equipmentOpen = true
-                            }
-                        }
-                    },
-                    // With several places the filter names the one it uses: where the athlete trains today.
-                    label = { Text(com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile) ?: stringResource(R.string.trx_filter_mine)) },
-                    modifier = Modifier.testTag("exercise_filter_mine"),
-                )
-                FilterChip(
-                    selected = state.withoutClimbing,
-                    onClick = viewModel::toggleWithoutClimbing,
-                    label = { Text(stringResource(R.string.trx_filter_no_climbing)) },
-                    modifier = Modifier.testTag("exercise_filter_no_climbing"),
-                )
-                FilterChip(
-                    selected = state.fingerFree,
-                    onClick = viewModel::toggleFingerFree,
-                    label = { Text(stringResource(R.string.trx_filter_finger_free)) },
-                    modifier = Modifier.testTag("exercise_filter_finger_free"),
-                )
-                FilterChip(
-                    selected = state.favoritesOnly,
-                    onClick = viewModel::toggleFavorites,
-                    label = { Text(stringResource(R.string.trx_filter_favorites)) },
-                    modifier = Modifier.testTag("exercise_filter_favorites"),
-                )
-            }
-            if (state.injuryDefaultsApplied) {
-                Text(
-                    stringResource(R.string.trx_filters_injury_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = CruxCoachDesign.colors.caution,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-            }
             if (state.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
                 return@Column
             }
-            Text(
-                pluralStringResource(R.plurals.trx_count, results.size, results.size),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("exercise_count"),
-            )
-            if (results.isEmpty()) {
-                EmptyHint(stringResource(R.string.trx_no_results))
-                return@Column
-            }
             LazyColumn(
                 Modifier.fillMaxSize().testTag("exercise_list"),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
+                contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Filters and the count scroll away with the list; only the search stays on top
+                // (device test 2026-10-10: the fixed header took half of the Nokia's screen).
+                item(key = "filters") {
+                    Column {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilterChip(
+                                selected = state.categories.isEmpty(),
+                                onClick = { viewModel.toggleCategory(null) },
+                                label = { Text(stringResource(R.string.trx_filter_all_categories)) },
+                                modifier = Modifier.testTag("exercise_category_all"),
+                            )
+                            ExerciseCategoryV2.entries.forEach { c ->
+                                FilterChip(
+                                    selected = c in state.categories,
+                                    onClick = { viewModel.toggleCategory(c) },
+                                    label = { Text(categoryLabel(c)) },
+                                    modifier = Modifier.testTag("exercise_category_${c.name.lowercase()}"),
+                                )
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FilterChip(
+                                selected = state.mineOnly && state.profile.equipmentConfigured,
+                                onClick = {
+                                    if (state.profile.equipmentConfigured) viewModel.toggleMine()
+                                    // Not set up yet: say so and offer the equipment right here.
+                                    else scope.launch {
+                                        if (snackbar.showSnackbar(mineHint, setUpText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                                            equipmentOpen = true
+                                        }
+                                    }
+                                },
+                                // With several places the filter names the one it uses: where the athlete trains today.
+                                label = { Text(com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile) ?: stringResource(R.string.trx_filter_mine)) },
+                                modifier = Modifier.testTag("exercise_filter_mine"),
+                            )
+                            FilterChip(
+                                selected = state.withoutClimbing,
+                                onClick = viewModel::toggleWithoutClimbing,
+                                label = { Text(stringResource(R.string.trx_filter_no_climbing)) },
+                                modifier = Modifier.testTag("exercise_filter_no_climbing"),
+                            )
+                            FilterChip(
+                                selected = state.fingerFree,
+                                onClick = viewModel::toggleFingerFree,
+                                label = { Text(stringResource(R.string.trx_filter_finger_free)) },
+                                modifier = Modifier.testTag("exercise_filter_finger_free"),
+                            )
+                            FilterChip(
+                                selected = state.favoritesOnly,
+                                onClick = viewModel::toggleFavorites,
+                                label = { Text(stringResource(R.string.trx_filter_favorites)) },
+                                modifier = Modifier.testTag("exercise_filter_favorites"),
+                            )
+                        }
+                        if (state.injuryDefaultsApplied) {
+                            Text(
+                                stringResource(R.string.trx_filters_injury_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CruxCoachDesign.colors.caution,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        Text(
+                            pluralStringResource(R.plurals.trx_count, results.size, results.size),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("exercise_count"),
+                        )
+                    }
+                }
+                if (results.isEmpty()) {
+                    item(key = "empty") { EmptyHint(stringResource(R.string.trx_no_results)) }
+                }
                 // Favourites first: the exercises the athlete actually uses are one tap away.
                 // Safety and equipment filters do not hide the athlete's own picks; the row
                 // still shows the injury advice. Category chips do apply.
@@ -366,11 +376,11 @@ fun ExerciseCatalogScreen(
                     onToggleExcluded = { viewModel.toggleExcluded(def.slug) },
                 )
                 if (showSections) {
-                    item(key = "h-fav") { SectionTitle(stringResource(R.string.trx_section_favorites)) }
-                    items(favs, key = { "fav-" + it.slug }) { row(it) }
-                    item(key = "h-all") { SectionTitle(stringResource(R.string.trx_section_all)) }
+                    item(key = "h-fav") { SectionTitle(stringResource(R.string.trx_section_favorites), Modifier.padding(horizontal = 16.dp)) }
+                    items(favs, key = { "fav-" + it.slug }) { Box(Modifier.padding(horizontal = 16.dp)) { row(it) } }
+                    item(key = "h-all") { SectionTitle(stringResource(R.string.trx_section_all), Modifier.padding(horizontal = 16.dp)) }
                 }
-                items(rest, key = { it.slug }) { row(it) }
+                items(rest, key = { it.slug }) { Box(Modifier.padding(horizontal = 16.dp)) { row(it) } }
             }
         }
     }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Terrain
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,22 +196,15 @@ fun ClimbingDaySheet(onDismiss: () -> Unit, editId: String? = null) {
                 }
             }
 
-            // Minutes
+            // Minutes: one control (device test 2026-10-10 found a stepper and chips for the same value).
+            // A duration that is not a chip (a watch import, an edited day) stays as it is and shows as its own chip.
             Text(stringResource(R.string.trl_day_minutes), style = MaterialTheme.typography.labelLarge)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                FilledTonalIconButton(onClick = { viewModel.setMinutes(s.minutes - 15) }, modifier = Modifier.testTag("climbing_day_minus")) {
-                    Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trl_day_minutes_less))
-                }
-                Text(stringResource(R.string.trl_day_minutes_value, s.minutes), style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 16.dp).testTag("climbing_day_minutes"))
-                FilledTonalIconButton(onClick = { viewModel.setMinutes(s.minutes + 15) }, modifier = Modifier.testTag("climbing_day_plus")) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trl_day_minutes_more))
-                }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(45, 60, 90, 120, 180).forEach { m ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("climbing_day_minutes")) {
+                (listOf(30, 45, 60, 90, 120, 180) + listOf(s.minutes)).distinct().sorted().forEach { m ->
                     FilterChip(selected = s.minutes == m, onClick = { viewModel.setMinutes(m) },
-                        label = { Text(stringResource(R.string.trl_day_minutes_value, m)) })
+                        leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(s.minutes == m),
+                        label = { Text(stringResource(R.string.trl_day_minutes_value, m)) },
+                        modifier = Modifier.testTag("climbing_day_minutes_$m"))
                 }
             }
 
@@ -319,6 +311,8 @@ fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hi
                 onClick = { adding = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 text = { Text(stringResource(R.string.trl_action_log_climbing)) },
+                containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
                 modifier = Modifier.testTag("climbing_days_add"),
             )
         },

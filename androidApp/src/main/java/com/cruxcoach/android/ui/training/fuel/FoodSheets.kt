@@ -41,6 +41,7 @@ import com.cruxcoach.android.ui.training.mealLabel
 import com.cruxcoach.android.ui.training.parseDecimal
 import com.cruxcoach.athlete.logic.BlsFood
 import com.cruxcoach.athlete.logic.FuelUnits
+import com.cruxcoach.athlete.logic.MacroTotals
 import com.cruxcoach.athlete.logic.OffProduct
 import com.cruxcoach.athlete.logic.Recipe
 import com.cruxcoach.athlete.model.FoodItem
@@ -402,6 +403,8 @@ fun AmountDialog(
     editing: FoodLogEntry? = null,
     /** Picking a recipe ingredient: no meal, "Add" instead of "Log". */
     forRecipe: Boolean = false,
+    /** The athlete's calorie setting: the live preview names kcal only when calories are shown. */
+    showCalories: Boolean = false,
 ) {
     val perPortion = FuelViewModel.isPerPortion(item)
     val gramsPossible = !perPortion
@@ -472,6 +475,15 @@ fun AmountDialog(
                         }
                         Text(stringResource(R.string.trf_amount_serving, text), style = MaterialTheme.typography.bodySmall)
                     }
+                }
+                // What this amount brings, while typing (device test 2026-10-10: the dialog showed only the number).
+                FuelViewModel.scale(item, p.takeUnless { useGrams }, g.takeIf { useGrams })?.let { n ->
+                    val energy = n.kcal?.let { MacroTotals.Energy(it, estimated = false) }
+                        ?: if (n.protein == null && n.carbs == null && n.fat == null) null
+                        else MacroTotals.Energy(4 * (n.protein ?: 0.0) + 4 * (n.carbs ?: 0.0) + 9 * (n.fat ?: 0.0), estimated = true)
+                    Text(macrosText(n.protein, n.carbs, n.fat, energy, showCalories),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("fuel_amount_preview"))
                 }
                 if (!forRecipe) {
                     Text(stringResource(R.string.trf_qa_meal), style = MaterialTheme.typography.labelLarge)

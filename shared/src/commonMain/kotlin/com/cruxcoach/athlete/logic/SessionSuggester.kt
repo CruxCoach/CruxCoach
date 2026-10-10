@@ -799,8 +799,10 @@ object SessionSuggester {
     ): List<RoutineItem> {
         val input = ctx.input
         val profile = input.profile
+        // Equipment not set up yet: suggest only what needs none (floor and mat), not a hangboard
+        // or dumbbells the athlete may not have (device/render test 2026-10-10).
         val filter = CatalogFilter(
-            ownedEquipment = if (profile.equipmentConfigured) profile.equipment else null,
+            ownedEquipment = if (profile.equipmentConfigured) profile.equipment else setOf(EquipmentV2.NONE, EquipmentV2.MAT),
             withoutClimbing = !allowWall,
         )
         val level = level(input)

@@ -258,60 +258,67 @@ fun StatsHubScreen(
             if (!s.hasAnyData) {
                 item { EmptyHint(stringResource(R.string.trs_empty)) }
             }
+            // Without a training day in the range, one line instead of empty charts and an empty calendar.
+            val trained = s.weeks.any { it.trainingDays > 0 }
+            if (!trained && s.hasAnyData) {
+                item { EmptyHint(stringResource(R.string.trs_no_training)) }
+            }
+            if (trained) {
+                // ── Training days and minutes per week ───────────────────
+                item { SectionTitle(stringResource(R.string.trs_days_per_week)) }
+                item {
+                    val bars = s.weeks.map { w ->
+                        WeekBar(w.weekStart, listOf(climbColor to w.climbingDays.toDouble(),
+                            offBoardColor to (w.trainingDays - w.climbingDays).coerceAtLeast(0).toDouble()))
+                    }
+                    WeeklyBarChart(bars, stringResource(R.string.trs_days_chart_cd, s.weeks.size, s.weeks.sumOf { it.trainingDays }),
+                        Modifier.fillMaxWidth().testTag("stats_days_chart"))
+                    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Legend(climbColor, stringResource(R.string.trs_legend_climbing))
+                        Legend(offBoardColor, stringResource(R.string.trs_legend_off_board))
+                    }
+                }
+                item { SectionTitle(stringResource(R.string.trs_minutes_per_week)) }
+                item {
+                    val bars = s.weeks.map { w ->
+                        WeekBar(w.weekStart, listOf(climbColor to w.climbingMinutes.toDouble(), offBoardColor to w.workoutMinutes.toDouble()))
+                    }
+                    WeeklyBarChart(bars, stringResource(R.string.trs_minutes_chart_cd, s.weeks.sumOf { it.climbingMinutes + it.workoutMinutes }),
+                        Modifier.fillMaxWidth().testTag("stats_minutes_chart"))
+                }
 
-            // ── Training days and minutes per week ───────────────────
-            item { SectionTitle(stringResource(R.string.trs_days_per_week)) }
-            item {
-                val bars = s.weeks.map { w ->
-                    WeekBar(w.weekStart, listOf(climbColor to w.climbingDays.toDouble(),
-                        offBoardColor to (w.trainingDays - w.climbingDays).coerceAtLeast(0).toDouble()))
+                // ── Calendar ────────────────────────────────────────────
+                // How to read a chart is behind the info icon at its title (design.md), not a line under it.
+                item {
+                    SectionTitle(stringResource(R.string.trs_calendar)) {
+                        InfoButton(stringResource(R.string.trs_calendar), stringResource(R.string.trs_calendar_hint))
+                    }
                 }
-                WeeklyBarChart(bars, stringResource(R.string.trs_days_chart_cd, s.weeks.size, s.weeks.sumOf { it.trainingDays }),
-                    Modifier.fillMaxWidth().testTag("stats_days_chart"))
-                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Legend(climbColor, stringResource(R.string.trs_legend_climbing))
-                    Legend(offBoardColor, stringResource(R.string.trs_legend_off_board))
+                item {
+                    s.today?.let { today ->
+                        CalendarHeatmap(s.calendar, today,
+                            stringResource(R.string.trs_calendar_cd, s.calendar.count { it.value > 0 }),
+                            Modifier.testTag("stats_calendar"))
+                    }
                 }
-            }
-            item { SectionTitle(stringResource(R.string.trs_minutes_per_week)) }
-            item {
-                val bars = s.weeks.map { w ->
-                    WeekBar(w.weekStart, listOf(climbColor to w.climbingMinutes.toDouble(), offBoardColor to w.workoutMinutes.toDouble()))
-                }
-                WeeklyBarChart(bars, stringResource(R.string.trs_minutes_chart_cd, s.weeks.sumOf { it.climbingMinutes + it.workoutMinutes }),
-                    Modifier.fillMaxWidth().testTag("stats_minutes_chart"))
-            }
 
-            // ── Calendar ────────────────────────────────────────────
-            // How to read a chart is behind the info icon at its title (design.md), not a line under it.
-            item {
-                SectionTitle(stringResource(R.string.trs_calendar)) {
-                    InfoButton(stringResource(R.string.trs_calendar), stringResource(R.string.trs_calendar_hint))
+                // ── Load per structure ──────────────────────────────────
+                item {
+                    SectionTitle(stringResource(R.string.trs_load_title)) {
+                        InfoButton(stringResource(R.string.trs_load_title), stringResource(R.string.trs_load_hint))
+                    }
                 }
-            }
-            item {
-                s.today?.let { today ->
-                    CalendarHeatmap(s.calendar, today,
-                        stringResource(R.string.trs_calendar_cd, s.calendar.count { it.value > 0 }),
-                        Modifier.testTag("stats_calendar"))
+                val domains = listOf(LoadDomain.FINGER, LoadDomain.SHOULDER, LoadDomain.ELBOW, LoadDomain.SKIN)
+                items(domains, key = { "dom-" + it.name }) { domain ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(domainLabel(domain), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(110.dp))
+                        val bars = s.domainWeeks.map { WeekBar(it.weekStart, listOf(climbColor to (it.days[domain] ?: 0).toDouble())) }
+                        WeeklyBarChart(bars, stringResource(R.string.trs_load_cd, domainLabel(domain),
+                            s.domainWeeks.lastOrNull()?.days?.get(domain) ?: 0), Modifier.weight(1f), height = 48.dp,
+                            showDates = domain == domains.last())
+                    }
                 }
-            }
 
-            // ── Load per structure ──────────────────────────────────
-            item {
-                SectionTitle(stringResource(R.string.trs_load_title)) {
-                    InfoButton(stringResource(R.string.trs_load_title), stringResource(R.string.trs_load_hint))
-                }
-            }
-            val domains = listOf(LoadDomain.FINGER, LoadDomain.SHOULDER, LoadDomain.ELBOW, LoadDomain.SKIN)
-            items(domains, key = { "dom-" + it.name }) { domain ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(domainLabel(domain), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(110.dp))
-                    val bars = s.domainWeeks.map { WeekBar(it.weekStart, listOf(climbColor to (it.days[domain] ?: 0).toDouble())) }
-                    WeeklyBarChart(bars, stringResource(R.string.trs_load_cd, domainLabel(domain),
-                        s.domainWeeks.lastOrNull()?.days?.get(domain) ?: 0), Modifier.weight(1f), height = 48.dp,
-                        showDates = domain == domains.last())
-                }
             }
 
             // ── Body ────────────────────────────────────────────────

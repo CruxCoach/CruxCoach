@@ -87,6 +87,7 @@
     <string name="tra_review_protein">Protein on logged days: %1$d g (target about %2$d g)</string>
     <string name="tra_review_protein_no_target">Protein on logged days: %1$d g</string>
     <string name="tra_review_carbs">Carbohydrate on logged days: %1$d g (target about %2$d g for that training load)</string>
+    <string name="tra_review_fat">Fat on logged days: %1$d g (%2$d %% of energy)</string>
     <plurals name="tra_review_food_days">
         <item quantity="one">Food logged on %d day</item>
         <item quantity="other">Food logged on %d days</item>
