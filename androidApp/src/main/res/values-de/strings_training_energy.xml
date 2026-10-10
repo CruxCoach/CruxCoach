@@ -44,6 +44,7 @@
     <string name="trn_goal_start">Abnehmen starten</string>
     <!-- Eigene Ziele (Owner 2026-10-10) -->
     <string name="trn_targets_title">Deine Ziele</string>
+    <string name="trn_target_heading">Dein Ziel</string>
     <string name="trn_target_recommended">Empfohlen (%1$d %2$s)</string>
     <string name="trn_target_recommended_plain">Empfohlen</string>
     <string name="trn_target_own">Eigenes Ziel</string>

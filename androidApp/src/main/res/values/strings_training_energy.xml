@@ -44,6 +44,7 @@
     <string name="trn_goal_start">Start losing weight</string>
     <!-- Own targets (owner 2026-10-10) -->
     <string name="trn_targets_title">Your targets</string>
+    <string name="trn_target_heading">Your target</string>
     <string name="trn_target_recommended">Recommended (%1$d %2$s)</string>
     <string name="trn_target_recommended_plain">Recommended</string>
     <string name="trn_target_own">Own target</string>
