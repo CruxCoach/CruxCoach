@@ -11,7 +11,7 @@
     <string name="trl_tile_pull">Zug 1RM</string>
     <string name="trl_tile_pull_sub">Klimmzug mit Zusatzgewicht, Gesamtlast pro Körpergewicht</string>
     <string name="trl_empty_title">Dein Profil beginnt mit ein paar Zahlen</string>
-    <string name="trl_empty_text">Logge Boulder am Board oder einen Klettertag und trag einen Startwert für Max-Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
+    <string name="trl_empty_text">Logge Boulder am Board oder einen Klettertag und trag einen Leistungswert für Max-Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
     <string name="trl_action_values">Leistungswerte eintragen</string>
     <string name="trl_action_log_climbing">Klettertag eintragen</string>
 
@@ -127,8 +127,6 @@
     <string name="trl_day_kind">Wo</string>
     <string name="trl_day_minutes">Wie lange</string>
     <string name="trl_day_minutes_value">%1$d min</string>
-    <string name="trl_day_minutes_less">15 Minuten weniger</string>
-    <string name="trl_day_minutes_more">15 Minuten mehr</string>
     <string name="trl_day_intensity">Wie hart</string>
     <string name="trl_day_note">Notiz (freiwillig)</string>
     <string name="trl_day_from_health">Aus Health Connect übernommen.</string>

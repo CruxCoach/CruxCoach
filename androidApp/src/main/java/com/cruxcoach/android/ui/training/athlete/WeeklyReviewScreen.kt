@@ -65,6 +65,9 @@ data class WeeklyReviewState(
     /** Days of the week with logged food. */
     val foodDays: Int = 0,
     val carbsAvg: Double? = null,
+    /** Mean fat on the logged days and its share of the macro energy (the 20–35 % guideline). */
+    val fatAvg: Double? = null,
+    val fatShare: Double? = null,
     /** Average carbohydrate target of the logged days, from each day's training load. */
     val carbsTargetAvg: Int? = null,
     val micros: MicroWatch.Summary? = null,
@@ -173,9 +176,11 @@ class WeeklyReviewViewModel @Inject constructor(
                 domainDays = domainDays,
                 weightChangeKg = if (startTrend != null && endTrend != null) endTrend - startTrend else null,
                 proteinAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.proteinG ?: 0.0 } / loggedDays.size else null,
-                proteinTarget = endTrend?.let { (it * profile.proteinPerKg).roundToInt() },
+                proteinTarget = profile.ownProteinG ?: endTrend?.let { (it * profile.proteinPerKg).roundToInt() },
                 foodDays = loggedDays.size,
                 carbsAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.carbsG ?: 0.0 } / loggedDays.size else null,
+                fatAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.fatG ?: 0.0 } / loggedDays.size else null,
+                fatShare = com.cruxcoach.athlete.logic.MacroTotals.of(food).fatEnergyShare,
                 carbsTargetAvg = carbTargets.takeIf { it.isNotEmpty() }?.average()?.roundToInt(),
                 micros = micros,
                 kcalAvg = kcalByDay.values.takeIf { it.isNotEmpty() }?.average(),
@@ -266,15 +271,21 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                 Text(pluralStringResource(R.plurals.tra_review_food_days, s.foodDays, s.foodDays), style = MaterialTheme.typography.bodySmall)
                 // Without a body weight there is no target to name.
                 Text(s.proteinTarget?.let { stringResource(R.string.tra_review_protein, s.proteinAvg!!.roundToInt(), it) }
-                    ?: stringResource(R.string.tra_review_protein_no_target, s.proteinAvg!!.roundToInt()))
+                    ?: stringResource(R.string.tra_review_protein_no_target, s.proteinAvg!!.roundToInt()),
+                    style = MaterialTheme.typography.bodyMedium)
                 if (s.carbsAvg != null && s.carbsTargetAvg != null) {
                     Text(stringResource(R.string.tra_review_carbs, s.carbsAvg!!.roundToInt(), s.carbsTargetAvg!!),
-                        modifier = Modifier.testTag("review_carbs"))
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_carbs"))
+                }
+                // Fat like the fourth ring in Nutrition: grams and the share of energy the 20–35 % guideline talks about.
+                if (s.fatAvg != null && s.fatShare != null) {
+                    Text(stringResource(R.string.tra_review_fat, s.fatAvg!!.roundToInt(), (s.fatShare!! * 100).roundToInt()),
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_fat"))
                 }
                 if (s.profile.showCalories && s.kcalAvg != null) {
                     Text(s.kcalNeedAvg?.let { stringResource(R.string.trn_review_energy, s.kcalAvg!!.roundToInt(), it) }
                         ?: stringResource(R.string.trn_review_energy_no_need, s.kcalAvg!!.roundToInt()),
-                        modifier = Modifier.testTag("review_energy"))
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_energy"))
                 }
                 s.micros?.let { MicroWeekCard(it, Modifier.padding(top = 8.dp)) }
             }

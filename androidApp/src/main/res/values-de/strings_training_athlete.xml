@@ -84,6 +84,7 @@
     <string name="tra_review_protein">Protein an erfassten Tagen: %1$d g (Ziel etwa %2$d g)</string>
     <string name="tra_review_protein_no_target">Protein an erfassten Tagen: %1$d g</string>
     <string name="tra_review_carbs">Kohlenhydrate an erfassten Tagen: %1$d g (Ziel etwa %2$d g für diese Trainingslast)</string>
+    <string name="tra_review_fat">Fett an erfassten Tagen: %1$d g (%2$d %% der Energie)</string>
     <plurals name="tra_review_food_days">
         <item quantity="one">Ernährung an %d Tag erfasst</item>
         <item quantity="other">Ernährung an %d Tagen erfasst</item>

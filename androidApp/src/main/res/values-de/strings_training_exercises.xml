@@ -41,7 +41,6 @@
     <string name="trx_progression_hint">Links leichter, rechts schwerer.</string>
     <string name="trx_current">aktuell</string>
     <string name="trx_history">Deine Historie</string>
-    <string name="trx_history_empty">Du hast diese Übung noch nicht geloggt.</string>
     <string name="trx_bests">Bestwerte</string>
     <string name="trx_best_any">Beliebige Leiste</string>
     <string name="trx_e1rm">geschätztes Max. %1$s</string>

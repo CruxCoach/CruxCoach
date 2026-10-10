@@ -86,7 +86,7 @@
     <string name="trt_weight_today">Weight today (%1$s)</string>
     <string name="trt_fuel_needs_weight">Log your body weight to see protein and carbohydrate targets.</string>
     <string name="trt_protein">Protein</string>
-    <string name="trt_sugg_benchmarks_title">Enter your starting values</string>
+    <string name="trt_sugg_benchmarks_title">Enter your performance values</string>
     <string name="trt_sugg_benchmarks_text">Max hang, pick-up, weighted pull-up: from what you can do, CruxCoach plans your loads.</string>
     <string name="trt_sugg_benchmarks_action">Enter</string>
     <string name="trt_today_hero">Your training today</string>

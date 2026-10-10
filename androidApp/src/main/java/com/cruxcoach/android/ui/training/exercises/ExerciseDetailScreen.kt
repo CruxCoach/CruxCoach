@@ -535,13 +535,10 @@ private fun bestValue(def: ExerciseDefinition, best: BestEntry, profile: Athlete
 
 @Composable
 private fun History(def: ExerciseDefinition, sessions: List<HistorySession>, profile: AthleteProfile) {
+    // Nothing logged yet: the progress card above already says so; no second empty section.
+    if (sessions.isEmpty()) return
     Column(Modifier.testTag("exercise_detail_history")) {
         SectionTitle(stringResource(R.string.trx_history))
-        if (sessions.isEmpty()) {
-            Text(stringResource(R.string.trx_history_empty), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return@Column
-        }
         val formatter = remember { DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM) }
         sessions.forEach { session ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {

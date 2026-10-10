@@ -942,8 +942,12 @@ private fun DailySuggestionCard(
                 Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.trt_today_hero), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                // "Einstiegswoche" explains itself like every value: a tap opens the "Why?" sheet with the block.
                 state.block?.let {
-                    Text(blockLabel(it), style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("today_block"))
+                    Text(blockLabel(it), style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.clip(CruxCoachDesign.shapes.small)
+                            .clickable(onClickLabel = stringResource(R.string.tru_why), onClick = onWhy)
+                            .padding(horizontal = 4.dp, vertical = 2.dp).testTag("today_block"))
                 }
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
@@ -1052,21 +1056,27 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).verticalScroll(rememberScrollState())) {
             Text(stringResource(R.string.trsg_why_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
+            // The reasons first; what they rest on in one line; how well the coach knows you and the block as
+            // headings whose long explanations sit behind their info icons (device test 2026-10-10: the sheet
+            // said "Einstiegswoche" three times and "Basis – Basis").
             s.reasons.forEach { Text("• " + suggestionReasonText(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
-            val evidence = s.basedOn.map { evidenceText(it, state, language) }.filter { it.isNotBlank() }
+            val block = state.block?.let { blockLabel(it) }
+            val evidence = s.basedOn.map { evidenceText(it, state, language) }.filter { it.isNotBlank() && it != block }
             if (evidence.isNotEmpty()) {
-                Text(stringResource(R.string.trt_based_on_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-                evidence.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
+                Text(stringResource(R.string.trt_based_on_title) + ": " + evidence.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp).testTag("today_why_evidence"))
             }
-            Text(stringResource(R.string.tre_conf_info_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-            Text(confidenceLabel(s.confidence) + " – " + stringResource(R.string.tre_conf_info_text), style = MaterialTheme.typography.bodySmall)
+            val confidenceTitle = stringResource(R.string.tre_conf_info_title)
+            SectionTitle(confidenceTitle + ": " + confidenceLabel(s.confidence)) {
+                InfoButton(confidenceTitle, stringResource(R.string.tre_conf_info_text))
+            }
             if (s.confidence == com.cruxcoach.athlete.logic.Confidence.LOW) {
                 Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_confidence"))
+                    modifier = Modifier.testTag("today_suggestion_confidence"))
             }
-            state.block?.let {
-                Text(blockLabel(it), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-                Text(stringResource(R.string.tre_block_info_text), style = MaterialTheme.typography.bodySmall)
+            block?.let { label ->
+                SectionTitle(label) { InfoButton(label, stringResource(R.string.tre_block_info_text)) }
             }
         }
     }

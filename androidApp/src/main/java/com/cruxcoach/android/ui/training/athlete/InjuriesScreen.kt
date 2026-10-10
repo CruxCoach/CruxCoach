@@ -105,7 +105,10 @@ fun InjuriesScreen(onBack: () -> Unit, onOpenRoutines: () -> Unit, viewModel: In
         actions = { InfoButton(stringResource(R.string.tra_injuries_info_title), stringResource(R.string.tra_injuries_info_text)) },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(Icons.Default.Add, null) },
-                text = { Text(stringResource(R.string.tra_injury_add)) }, modifier = Modifier.testTag("injury_add"))
+                text = { Text(stringResource(R.string.tra_injury_add)) },
+                containerColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent,
+                contentColor = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.onBrandAccent,
+                modifier = Modifier.testTag("injury_add"))
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp),

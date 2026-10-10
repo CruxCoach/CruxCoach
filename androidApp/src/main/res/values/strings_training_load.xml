@@ -11,7 +11,7 @@
     <string name="trl_tile_pull">Pull 1RM</string>
     <string name="trl_tile_pull_sub">weighted pull-up, total load per body weight</string>
     <string name="trl_empty_title">Your profile starts with a few numbers</string>
-    <string name="trl_empty_text">Log boulders on the board or a climbing day, and add a starting value for max hangs or weighted pull-ups. Then you will see where you stand and how grade and strength move together.</string>
+    <string name="trl_empty_text">Log boulders on the board or a climbing day, and add a performance value for max hangs or weighted pull-ups. Then you will see where you stand and how grade and strength move together.</string>
     <string name="trl_action_values">Add performance values</string>
     <string name="trl_action_log_climbing">Log a climbing day</string>
 
@@ -127,8 +127,6 @@
     <string name="trl_day_kind">Where</string>
     <string name="trl_day_minutes">How long</string>
     <string name="trl_day_minutes_value">%1$d min</string>
-    <string name="trl_day_minutes_less">15 minutes less</string>
-    <string name="trl_day_minutes_more">15 minutes more</string>
     <string name="trl_day_intensity">How hard</string>
     <string name="trl_day_note">Note (optional)</string>
     <string name="trl_day_from_health">Imported from Health Connect.</string>

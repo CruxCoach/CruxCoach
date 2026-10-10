@@ -104,10 +104,13 @@ fun WeekCalendarCard(
     onEditPlan: (() -> Unit)? = null,
     planEmpty: Boolean = false,
 ) {
+    // Without a standard week the seven empty days would only repeat Today's week strip: one line and the button instead.
+    val compact = onEditPlan != null && planEmpty
     Card(Modifier.fillMaxWidth().testTag("week_calendar")) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.trw_week_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(if (compact) R.string.trwo_week_plan else R.string.trw_week_title),
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 val done = cells.count { it.status == WeekDayStatus.DONE }
                 val planned = cells.count { it.planned != null && it.planned != PLAN_REST }
                 if (planned > 0) {
@@ -115,9 +118,11 @@ fun WeekCalendarCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth()) {
-                cells.forEach { cell -> DayCell(cell, routines, Modifier.weight(1f), onClick = { onDayClick(cell) }) }
+            if (!compact) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    cells.forEach { cell -> DayCell(cell, routines, Modifier.weight(1f), onClick = { onDayClick(cell) }) }
+                }
             }
             if (onEditPlan != null) {
                 if (planEmpty) {

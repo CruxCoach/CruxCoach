@@ -42,7 +42,6 @@
     <string name="trx_progression_hint">Easier on the left, harder on the right.</string>
     <string name="trx_current">current</string>
     <string name="trx_history">Your history</string>
-    <string name="trx_history_empty">You have not logged this exercise yet.</string>
     <string name="trx_bests">Best values</string>
     <string name="trx_best_any">Any edge</string>
     <string name="trx_e1rm">est. max %1$s</string>
