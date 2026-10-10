@@ -147,7 +147,7 @@ class ExerciseCatalogViewModel @Inject constructor(private val service: AthleteS
     fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             service.ensureReady()
-            service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
+            service.savePlaceEquipment(null, equipment)
             _state.update { it.copy(mineOnly = true) }
         }
     }
@@ -288,7 +288,8 @@ fun ExerciseCatalogScreen(
                             }
                         }
                     },
-                    label = { Text(stringResource(R.string.trx_filter_mine)) },
+                    // With several places the filter names the one it uses: where the athlete trains today.
+                    label = { Text(com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile) ?: stringResource(R.string.trx_filter_mine)) },
                     modifier = Modifier.testTag("exercise_filter_mine"),
                 )
                 FilterChip(
@@ -385,7 +386,7 @@ fun ExerciseCatalogScreen(
         com.cruxcoach.android.ui.training.common.EquipmentSheet(
             initial = emptySet(),
             onDismiss = { equipmentOpen = false },
-            onSave = { set -> viewModel.saveEquipment(set); equipmentOpen = false },
+            onSave = viewModel::saveEquipment,
         )
     }
 }

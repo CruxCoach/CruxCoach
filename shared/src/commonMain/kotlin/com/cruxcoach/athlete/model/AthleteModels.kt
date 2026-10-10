@@ -300,6 +300,11 @@ data class AthleteProfile(
     val units: UnitSystem = UnitSystem.METRIC,
     val sex: Sex? = null,
     val birthYear: Int? = null,
+    /**
+     * Equipment where the athlete trains today: the place picked for today,
+     * else the default place ([com.cruxcoach.athlete.logic.TrainingPlaces]).
+     * Suggestions and filters read this; edits go through the places.
+     */
     val equipment: Set<EquipmentV2> = setOf(EquipmentV2.NONE, EquipmentV2.MAT),
     val equipmentConfigured: Boolean = false,
     val smallestIncrementKg: Double = 1.0,
@@ -353,6 +358,26 @@ data class AthleteProfile(
     val everydayActivity: EverydayActivity = EverydayActivity.SEATED,
     /** The basics were asked once (first visit to Training or Nutrition); they are not pushed again. */
     val basicsAsked: Boolean = false,
+    /** Places with their own equipment (owner 2026-10-10); empty in profiles from before. */
+    val places: List<TrainingPlace> = emptyList(),
+    val defaultPlaceId: String? = null,
+    /** A place picked for one day ([placeDay], ISO date); other days use the default. */
+    val placeToday: String? = null,
+    val placeDay: String? = null,
+)
+
+/** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */
+@Serializable
+enum class PlaceKind { HOME, GYM, TRAVEL, OTHER }
+
+/** Where the athlete trains, with what is there. */
+@Serializable
+data class TrainingPlace(
+    val id: String,
+    val kind: PlaceKind = PlaceKind.OTHER,
+    /** The athlete's own name; null shows the kind's name. */
+    val name: String? = null,
+    val equipment: Set<EquipmentV2> = setOf(EquipmentV2.NONE, EquipmentV2.MAT),
 )
 
 /** Everyday life besides training: a physical activity level on top of resting energy. */

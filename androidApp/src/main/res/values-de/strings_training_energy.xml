@@ -3,7 +3,7 @@
 <resources>
     <string name="trn_energy">Energie</string>
     <string name="trn_of_kcal">von %1$d kcal</string>
-    <string name="trn_to_go">noch %1$d</string>
+    <string name="trn_to_go">noch %1$d kcal</string>
     <string name="trn_need_met">Bedarf gedeckt</string>
     <string name="trn_target_met">Ziel erreicht</string>
     <string name="trn_over_target">%1$d über Ziel</string>
@@ -41,7 +41,7 @@
     <string name="trn_goal_target_math">Bedarf %1$d − %2$d kcal. Trainingstage bekommen mehr.</string>
     <string name="trn_goal_weeks">Zielgewicht in etwa %1$d Wochen</string>
     <string name="trn_goal_reached">Zielgewicht erreicht: Dein Kalorienziel ist dein Bedarf.</string>
-    <string name="trn_goal_save">Speichern</string>
+    <string name="trn_goal_start">Abnehmen starten</string>
     <string name="trn_goal_stop">Abnehmen beenden</string>
     <string name="trn_goal_pace_minus">Langsamer</string>
     <string name="trn_goal_pace_plus">Schneller</string>

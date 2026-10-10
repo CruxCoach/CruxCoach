@@ -161,6 +161,8 @@ class AthleteService @Inject constructor(
         readyMutex.withLock {
             if (ready) return@withLock
             setFirstStartUnits()
+            // Places: an older profile gets its one equipment set as its first place; a place picked yesterday ends.
+            runCatching { usePlaceOfToday() }
             // The coach learns from the last months; older ledger rows only cost space.
             runCatching { repo.pruneSuggestionEvents(System.currentTimeMillis() - LEDGER_KEEP_DAYS * 86_400_000L) }
             importLegacyBodyStats()
@@ -829,11 +831,43 @@ class AthleteService @Inject constructor(
         return Routine(repo.newId(), name, items = items, createdAt = now, updatedAt = now).also(repo::saveRoutine)
     }
 
+    // ── Places ───────────────────────────────────────────────────────
+
+    /** Puts today's place in use (picked today, else the default); writes only when that changes something. */
+    fun usePlaceOfToday() {
+        val day = today().toString()
+        val profile = repo.profile()
+        if (TrainingPlaces.inUse(profile, day) != profile) repo.updateProfile { TrainingPlaces.inUse(it, day) }
+    }
+
+    fun pickPlace(placeId: String) = repo.updateProfile { TrainingPlaces.pick(it, placeId, today().toString()) }
+
+    /** New equipment for a place; null is where the athlete trains today. */
+    fun savePlaceEquipment(placeId: String?, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) =
+        repo.updateProfile { TrainingPlaces.withEquipment(it, placeId, equipment, today().toString()) }
+
+    /** Adds a place filled with [equipment] and returns its id. */
+    fun addPlace(kind: PlaceKind, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>): String {
+        var id = ""
+        repo.updateProfile { p -> TrainingPlaces.add(p, kind, equipment, today().toString()).also { id = it.second }.first }
+        return id
+    }
+
+    fun renamePlace(placeId: String, name: String?) = repo.updateProfile { TrainingPlaces.rename(it, placeId, name, today().toString()) }
+    fun makeDefaultPlace(placeId: String) = repo.updateProfile { TrainingPlaces.makeDefault(it, placeId, today().toString()) }
+    fun removePlace(placeId: String) = repo.updateProfile { TrainingPlaces.remove(it, placeId, today().toString()) }
+
     // ── Fueling ──────────────────────────────────────────────────────
 
+    /** The day's macro targets; fat comes from the energy target (need, minus the deficit while losing) when it is known. */
     fun fuelTargets(dayActivity: DayActivity?, profile: AthleteProfile): FuelTargets.Targets? {
         val weight = currentBodyweight() ?: return null
-        return FuelTargets.compute(weight, dayActivity, profile.proteinPerKg)
+        val height = heightCm()
+        val need = energyNeed(profile, dayActivity, weight, height)
+        val deficit = if (profile.goal == AthleteGoal.LOSE_WEIGHT) {
+            WeightPlan.plan(profile.weeklyLossKg, profile.targetWeightKg, weight, height, profile.sex, need).dailyDeficitKcal
+        } else 0
+        return FuelTargets.compute(weight, dayActivity, profile.proteinPerKg, need?.let { it.totalKcal - deficit })
     }
 
     /** The day's estimated energy need; null without weight or height. */

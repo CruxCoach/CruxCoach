@@ -67,6 +67,8 @@
     <string name="trf_fat">Fett</string>
     <string name="trf_fat_share">%1$d %% der Energie · Richtwert %2$d–%3$d %%</string>
     <string name="trf_fat_info" formatted="false">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35 % der Energie aus Fett; weniger als 20 % wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
+    <string name="trf_fat_target_energy">Fettziel: Fett füllt auf, was Protein und Kohlenhydrate von deinem Energieziel übrig lassen – mindestens 20 %% und höchstens 35 %% davon (heute %1$d–%2$d g).</string>
+    <string name="trf_fat_target_weight">Fettziel: etwa 1 g pro kg Körpergewicht (%1$d–%2$d g). Mit Größe und Geburtsjahr richtet es sich nach deinem Energieziel.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_quick_add">Schnell eintragen</string>
     <string name="trf_my_foods">Meine Lebensmittel</string>

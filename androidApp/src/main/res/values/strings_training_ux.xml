@@ -19,7 +19,6 @@
     <string name="tru_equipment_where">Where do you usually train?</string>
     <string name="tru_equipment_what">What do you have there?</string>
     <string name="tru_equipment_why">CruxCoach then only suggests exercises you can actually do.</string>
-    <string name="tru_equipment_saved">Equipment saved</string>
 
     <!-- Checklist -->
     <string name="tru_setup_title">Set up in 3 steps</string>
@@ -65,6 +64,7 @@
     <string name="tru_fuel_intro_short">Eat enough for your training: protein follows your body weight, carbs follow your training days, energy need and balance in the open. Nothing leaves your phone.</string>
     <string name="tru_carbs_short">Carbs</string>
     <string name="tru_of_g">of %1$d g</string>
+    <string name="tru_of_short">of %1$d</string>
     <string name="tru_water_remove">Remove the last glass</string>
     <string name="tru_water_glass_hint">One glass = %1$s</string>
     <string name="tru_copy_title">Same as yesterday?</string>
@@ -87,7 +87,7 @@
     <!-- Settings overview -->
     <string name="tru_set_profile">Goal and week</string>
     <string name="tru_set_about">About you</string>
-    <string name="tru_set_equipment">Equipment</string>
+    <string name="tru_set_equipment">Places and equipment</string>
     <string name="tru_set_display">Display and units</string>
     <string name="tru_set_connections">Health Connect and devices</string>
     <string name="tru_set_on">on</string>

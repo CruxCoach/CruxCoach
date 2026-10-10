@@ -19,7 +19,6 @@
     <string name="tru_equipment_where">Wo trainierst du meistens?</string>
     <string name="tru_equipment_what">Was hast du dort?</string>
     <string name="tru_equipment_why">CruxCoach schlägt dann nur Übungen vor, die du wirklich machen kannst.</string>
-    <string name="tru_equipment_saved">Ausrüstung gespeichert</string>
 
     <!-- Checkliste -->
     <string name="tru_setup_title">In 3 Schritten einrichten</string>
@@ -65,6 +64,7 @@
     <string name="tru_fuel_intro_short">Iss genug für dein Training: Protein richtet sich nach deinem Gewicht, Kohlenhydrate nach deinen Trainingstagen, Energiebedarf und Bilanz siehst du offen. Nichts verlässt dein Handy.</string>
     <string name="tru_carbs_short">Kohlenhydrate</string>
     <string name="tru_of_g">von %1$d g</string>
+    <string name="tru_of_short">von %1$d</string>
     <string name="tru_water_remove">Letztes Glas entfernen</string>
     <string name="tru_water_glass_hint">Ein Glas = %1$s</string>
     <string name="tru_copy_title">Wie gestern?</string>
@@ -87,7 +87,7 @@
     <!-- Einstellungen: Übersicht -->
     <string name="tru_set_profile">Ziel und Woche</string>
     <string name="tru_set_about">Über dich</string>
-    <string name="tru_set_equipment">Ausrüstung</string>
+    <string name="tru_set_equipment">Orte und Ausrüstung</string>
     <string name="tru_set_display">Anzeige und Einheiten</string>
     <string name="tru_set_connections">Health Connect und Geräte</string>
     <string name="tru_set_on">an</string>

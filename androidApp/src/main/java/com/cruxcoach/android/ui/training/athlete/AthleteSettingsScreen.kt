@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -102,6 +101,13 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     }
 
     fun setBirthYear(year: Int?) = update { it.copy(birthYear = year) }
+
+    // Places with their own equipment; every change is kept at once.
+    fun savePlaceEquipment(placeId: String, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.savePlaceEquipment(placeId, equipment) }
+    fun renamePlace(placeId: String, name: String?) = io { service.renamePlace(placeId, name) }
+    fun makeDefaultPlace(placeId: String) = io { service.makeDefaultPlace(placeId) }
+    fun removePlace(placeId: String) = io { service.removePlace(placeId) }
+    fun addPlace(kind: com.cruxcoach.athlete.model.PlaceKind, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.addPlace(kind, equipment) }
 
     fun logWeight(kg: Double) = io {
         service.repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, kg, "kg", System.currentTimeMillis()))
@@ -218,10 +224,26 @@ fun AthleteSettingsScreen(
                     }
                 }
                 SettingsSection.EQUIPMENT -> {
-                    Text(stringResource(R.string.tru_equipment_why), style = MaterialTheme.typography.bodySmall,
+                    Text(stringResource(R.string.tro_places_intro), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
-                    com.cruxcoach.android.ui.training.common.EquipmentEditor(p.equipment.takeIf { p.equipmentConfigured } ?: emptySet()) { set ->
-                        viewModel.update { it.copy(equipment = set, equipmentConfigured = true) }
+                    val day = java.time.LocalDate.now().toString()
+                    val places = com.cruxcoach.athlete.logic.TrainingPlaces.of(p)
+                    if (places.isEmpty()) {
+                        // Nothing set up yet: the first equipment becomes the first place (at home).
+                        com.cruxcoach.android.ui.training.common.EquipmentEditor(emptySet()) { set ->
+                            viewModel.addPlace(com.cruxcoach.athlete.model.PlaceKind.HOME, set)
+                        }
+                    } else {
+                        com.cruxcoach.android.ui.training.common.PlacesEditor(
+                            places = places,
+                            defaultId = com.cruxcoach.athlete.logic.TrainingPlaces.default(p)?.id,
+                            todayId = com.cruxcoach.athlete.logic.TrainingPlaces.current(p, day)?.id,
+                            onEquipment = viewModel::savePlaceEquipment,
+                            onRename = viewModel::renamePlace,
+                            onMakeDefault = viewModel::makeDefaultPlace,
+                            onRemove = viewModel::removePlace,
+                            onAdd = { kind -> viewModel.addPlace(kind, com.cruxcoach.android.ui.training.common.placeTemplate(kind)) },
+                        )
                     }
                     Text(stringResource(R.string.tra_increment), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -230,7 +252,8 @@ fun AthleteSettingsScreen(
                         val steps = if (p.units == UnitSystem.IMPERIAL) listOf(1.0, 2.5, 5.0).map { it / Units.LB_PER_KG }
                             else listOf(0.5, 1.0, 1.25, 2.5)
                         steps.forEach { inc ->
-                            FilterChip(selected = kotlin.math.abs(p.smallestIncrementKg - inc) < 1e-6,
+                            val on = kotlin.math.abs(p.smallestIncrementKg - inc) < 1e-6
+                            FilterChip(selected = on, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(on),
                                 onClick = { viewModel.update { it.copy(smallestIncrementKg = inc) } },
                                 label = { Text(formatMass(inc, p.units)) })
                         }
@@ -277,9 +300,11 @@ fun AthleteSettingsScreen(
                     Text(stringResource(R.string.settings_units_desc), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected = p.units == UnitSystem.METRIC, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
+                        FilterChip(selected = p.units == UnitSystem.METRIC, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(p.units == UnitSystem.METRIC),
+                            onClick = { viewModel.update { Units.withUnits(it, UnitSystem.METRIC) } },
                             label = { Text(stringResource(R.string.settings_units_metric)) }, modifier = Modifier.testTag("units_metric"))
-                        FilterChip(selected = p.units == UnitSystem.IMPERIAL, onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
+                        FilterChip(selected = p.units == UnitSystem.IMPERIAL, leadingIcon = com.cruxcoach.android.ui.training.common.chipCheck(p.units == UnitSystem.IMPERIAL),
+                            onClick = { viewModel.update { Units.withUnits(it, UnitSystem.IMPERIAL) } },
                             label = { Text(stringResource(R.string.settings_units_us)) }, modifier = Modifier.testTag("units_us"))
                     }
                 }
@@ -312,7 +337,7 @@ fun AthleteSettingsScreen(
         com.cruxcoach.android.ui.training.common.WeightGoalSheet(
             profile = p, weightKg = state.weightKg, heightCm = state.heightCm, need = state.need,
             onDismiss = { goalOpen = false },
-            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); goalOpen = false },
+            onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::setHeight,
         )
     }
@@ -370,9 +395,20 @@ private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSecti
     row(Icons.Default.Person, sectionTitle(SettingsSection.ABOUT),
         if (aboutParts.isEmpty()) stringResource(R.string.tru_set_about_empty) else aboutParts.joinToString(" · "),
         "settings_row_about", open(SettingsSection.ABOUT))
-    val count = (p.equipment - com.cruxcoach.android.ui.training.common.ALWAYS_THERE).size
+    // One place: its name and how much is there; several: their names, the default marked.
+    val places = com.cruxcoach.athlete.logic.TrainingPlaces.of(p)
+    val defaultPlace = com.cruxcoach.athlete.logic.TrainingPlaces.default(p)
+    val placeNames = places.map { place ->
+        val name = com.cruxcoach.android.ui.training.common.placeLabel(place)
+        if (places.size > 1 && place.id == defaultPlace?.id) stringResource(R.string.tro_summary_default, name) else name
+    }
+    val count = ((defaultPlace?.equipment ?: p.equipment) - com.cruxcoach.android.ui.training.common.ALWAYS_THERE).size
     row(Icons.Default.FitnessCenter, sectionTitle(SettingsSection.EQUIPMENT),
-        if (!p.equipmentConfigured) stringResource(R.string.tru_set_not_set_up) else pluralStringResource(R.plurals.tru_set_equipment_count, count, count),
+        when {
+            places.isEmpty() -> stringResource(R.string.tru_set_not_set_up)
+            places.size == 1 -> placeNames.single() + " · " + pluralStringResource(R.plurals.tru_set_equipment_count, count, count)
+            else -> placeNames.joinToString(" · ")
+        },
         "settings_row_equipment", open(SettingsSection.EQUIPMENT))
     row(Icons.Default.Restaurant, sectionTitle(SettingsSection.NUTRITION),
         stringResource(R.string.tru_set_nutrition_summary, formatNumber(p.proteinPerKg), if (p.showCalories) on else off),
@@ -415,20 +451,16 @@ private fun Stepper(label: String, tag: String, onMinus: () -> Unit, onPlus: () 
 /** Birth year (four digits): age-based reference values for micronutrients and the coach's guard rails. */
 @Composable
 private fun BirthYearField(year: Int?, onSave: (Int?) -> Unit) {
-    var text by rememberSaveable(year) { mutableStateOf(year?.toString() ?: "") }
     val thisYear = java.time.LocalDate.now().year
-    val parsed = text.trim().toIntOrNull()
-    val valid = text.isBlank() || (parsed != null && parsed in (thisYear - 100)..(thisYear - 8))
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-        OutlinedTextField(value = text, onValueChange = { v -> text = v.filter { it.isDigit() }.take(4) }, singleLine = true,
-            label = { Text(stringResource(R.string.tru_set_birth_year)) }, isError = !valid,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f).testTag("birth_year_input"))
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(onClick = { onSave(parsed) }, enabled = valid && parsed != year && !(text.isBlank() && year == null),
-            modifier = Modifier.testTag("birth_year_save")) {
-            Text(stringResource(R.string.tr_action_save))
-        }
-    }
+    // Saves itself; an emptied field removes the year.
+    com.cruxcoach.android.ui.training.common.AutoSaveTextField(
+        stored = year?.toString() ?: "",
+        isValid = { t -> t.isBlank() || t.toIntOrNull()?.let { it in (thisYear - 100)..(thisYear - 8) } == true },
+        onSave = { t -> onSave(t.toIntOrNull()) },
+        label = stringResource(R.string.tru_set_birth_year),
+        keyboardType = KeyboardType.Number,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("birth_year_input"),
+    )
 }
 
 /**
@@ -529,7 +561,7 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
                 TextButton(onClick = {
                     applyChange { it.copy(weighReminderMinutes = state.hour * 60 + state.minute) }
                     picking = false
-                }, modifier = Modifier.testTag("reminder_time_save")) { Text(stringResource(R.string.tr_action_save)) }
+                }, modifier = Modifier.testTag("reminder_time_save")) { Text(stringResource(android.R.string.ok)) }
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
@@ -602,7 +634,7 @@ private fun TrainingReminderSection(p: AthleteProfile, update: ((AthleteProfile)
                 TextButton(onClick = {
                     applyChange { it.copy(trainingReminderMinutes = state.hour * 60 + state.minute) }
                     picking = false
-                }, modifier = Modifier.testTag("training_reminder_time_save")) { Text(stringResource(R.string.tr_action_save)) }
+                }, modifier = Modifier.testTag("training_reminder_time_save")) { Text(stringResource(android.R.string.ok)) }
             },
             dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
@@ -636,19 +668,14 @@ private fun CoachProfileSection(p: AthleteProfile, completeness: com.cruxcoach.a
 
 @Composable
 private fun HeightField(heightCm: Double?, units: UnitSystem, onSave: (Double) -> Unit) {
-    var text by rememberSaveable(heightCm, units) {
-        mutableStateOf(heightCm?.let { formatNumber(Units.lengthToDisplay(it, units)) } ?: "")
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-        OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true,
-            label = { Text(stringResource(R.string.tra_height, Units.lengthUnit(units))) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f).testTag("height_input"))
-        Spacer(Modifier.width(8.dp))
-        val cm = parseDecimal(text)?.let { Units.lengthFromDisplay(it, units) }
-        FilledTonalButton(onClick = { cm?.let(onSave) }, enabled = cm != null && cm in 100.0..250.0 && cm != heightCm) {
-            Text(stringResource(R.string.tr_action_save))
-        }
-    }
+    fun cm(text: String) = parseDecimal(text)?.let { Units.lengthFromDisplay(it, units) }
+    com.cruxcoach.android.ui.training.common.AutoSaveTextField(
+        stored = heightCm?.let { formatNumber(Units.lengthToDisplay(it, units)) } ?: "",
+        isValid = { t -> cm(t)?.let { it in com.cruxcoach.android.ui.training.common.PLAUSIBLE_HEIGHT_CM } == true },
+        onSave = { t -> cm(t)?.let(onSave) },
+        label = stringResource(R.string.tra_height, Units.lengthUnit(units)),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("height_input"),
+    )
 }
 
 @Composable

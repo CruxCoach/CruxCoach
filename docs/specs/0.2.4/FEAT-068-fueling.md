@@ -23,13 +23,18 @@ settings; entries without kcal show the energy of their macros (Atwater
   intensity (light 4, volume 6, hard 8, limit 9; 7 when unrated, FEAT-071)
   plus logged trainings (session RPE × minutes). Board sessions count
   automatically.
+- Fat (owner 2026-10-10: "a target for fat, with its own ring"): fills the
+  day's energy target (need, minus the deficit while losing weight) after
+  protein and carbohydrate, kept within 20–35 % of that energy (ACSM/AND/DC
+  2016); without an energy target 1 g/kg (0.8–1.2). The rings read energy,
+  carbohydrate, protein, fat; energy only while calories are shown.
 - Water: 35 ml/kg + 500 ml per training hour.
 - Logging: quick entries (every nutrient optional), own foods (per 100 g or per
   portion), favourites, "same as yesterday", hydration taps; logged entries
   can be edited. Calories shown unless hidden; no red "over" states, no
   good/bad food labels.
 - Energy in the open (owner 2026-10-09: "show the values transparently and
-  warn, reducing functions is not the way"): a third ring shows energy eaten
+  warn, reducing functions is not the way"): an energy ring shows energy eaten
   against the day's estimated need – resting energy (Mifflin-St Jeor),
   everyday life (activity level 1.4 / 1.6 / 1.8, chosen in the sheet or the
   nutrition settings) and the day's training as net MET energy (climbing

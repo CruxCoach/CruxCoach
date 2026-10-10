@@ -3,7 +3,7 @@
 <resources>
     <string name="trn_energy">Energy</string>
     <string name="trn_of_kcal">of %1$d kcal</string>
-    <string name="trn_to_go">%1$d to go</string>
+    <string name="trn_to_go">%1$d kcal to go</string>
     <string name="trn_need_met">Need covered</string>
     <string name="trn_target_met">Target reached</string>
     <string name="trn_over_target">%1$d over target</string>
@@ -41,7 +41,7 @@
     <string name="trn_goal_target_math">Need %1$d − %2$d kcal. Training days get more.</string>
     <string name="trn_goal_weeks">Target weight in about %1$d weeks</string>
     <string name="trn_goal_reached">Target weight reached: the calorie target is your need.</string>
-    <string name="trn_goal_save">Save</string>
+    <string name="trn_goal_start">Start losing weight</string>
     <string name="trn_goal_stop">Stop losing weight</string>
     <string name="trn_goal_pace_minus">Slower</string>
     <string name="trn_goal_pace_plus">Faster</string>

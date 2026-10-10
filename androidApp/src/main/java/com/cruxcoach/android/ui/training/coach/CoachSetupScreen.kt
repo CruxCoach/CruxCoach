@@ -170,9 +170,7 @@ class CoachSetupViewModel @Inject constructor(
     fun setMinutes(minutes: Int) = _state.update { it.copy(sessionMinutes = minutes) }
 
     /** Equipment from the sheet on the preferences card; stored at once like the settings do. */
-    fun saveEquipment(equipment: Set<EquipmentV2>) = io {
-        service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
-    }
+    fun saveEquipment(equipment: Set<EquipmentV2>) = io { service.savePlaceEquipment(null, equipment) }
 
     fun logWeight(kg: Double) = io {
         service.repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
@@ -428,7 +426,8 @@ fun CoachSetupScreen(
         com.cruxcoach.android.ui.training.common.EquipmentSheet(
             initial = state.profile.equipment.takeIf { state.profile.equipmentConfigured } ?: emptySet(),
             onDismiss = { equipmentOpen = false },
-            onSave = { set -> viewModel.saveEquipment(set); equipmentOpen = false },
+            onSave = viewModel::saveEquipment,
+            placeName = com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile),
         )
     }
     if (weightOpen) {

@@ -36,6 +36,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   first finger, pull, push and leg exercise starts with lighter sets of
   itself (a 50/70/85 % ramp, or one set at half the reps or time). Starting
   another training while one is open asks whether to continue it or end it.
+  The equipment tells one pick-up block from a second one (or an edge for both
+  hands): most lifting edges take one hand, so one block gets one-arm lifts,
+  and two-arm lifts show what goes on each block ("19 kg per block").
+- Places: home, gym, travelling or your own – each with what is there. One is
+  the default; Today's training suggests at the default place and offers the
+  others for the day ("At: Home ▾"), and the exercises follow that place's
+  equipment. With a single place there is nothing to pick.
 - Quick start: the first visit to Training or Nutrition asks the basics once
   (body weight, height, birth year, sex; climbing grade, years of climbing,
   equipment) – all optional, "Later" puts it off; the longer coach setup
@@ -55,7 +62,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   log climbing, weight, food and water with one tap. Whenever something is
   missing, it is asked right there – a hint never sends you looking for it in
   the settings. The training settings are an overview with the current value of
-  each topic.
+  each topic. Settings in Training and Nutrition save themselves – a typed
+  value once typing pauses, a tap at once – without save buttons; the weight
+  goal and the equipment sheet keep every change and only close with "Done".
 - Stats: training days and minutes per week (board and off-board), a calendar
   heatmap, load per structure, personal bests, body weight and strength to
   weight; per exercise a chart of the estimated maximum over time (left and
@@ -131,7 +140,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ambiguous.
 - Nutrition (FEAT-068) with its own entry in the main menu: protein by body weight and carbohydrate
   targets that follow the training day – board sessions and logged climbing
-  days count automatically, a light day less than a limit session –
+  days count automatically, a light day less than a limit session – and a fat
+  target that fills the energy left, kept within 20–35 % of it (1 g per kg
+  without an energy target); energy, carbohydrate, protein and fat each have
+  a ring, in that order,
   plus water, quick entries, own foods, favourites and "same as yesterday".
   Every value is in the open: an energy ring shows what you ate against your
   estimated need (resting energy, everyday life and the day's training, each
