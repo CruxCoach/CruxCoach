@@ -45,6 +45,7 @@ import com.cruxcoach.android.ui.training.fuel.inputText
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.FuelUnits
 import com.cruxcoach.athlete.logic.ReadinessLevel
+import com.cruxcoach.athlete.logic.TrainingPlaces
 import com.cruxcoach.athlete.logic.ReadinessReason
 import com.cruxcoach.athlete.logic.SuggestionFocus
 import com.cruxcoach.athlete.logic.SuggestionReason
@@ -97,7 +98,6 @@ fun TodayScreen(
     val snackbar = remember { SnackbarHostState() }
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
-    val equipmentSavedText = stringResource(R.string.tru_equipment_saved)
     val undoText = stringResource(R.string.trf_undo)
     val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
     val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
@@ -183,6 +183,7 @@ fun TodayScreen(
                         onSave = viewModel::saveSuggestion,
                         onOpenPlaylistGenerator = onOpenPlaylistGenerator,
                         checkin = { CheckinRow(state, onOpen = { showCheckin = true }) },
+                        onPickPlace = viewModel::pickPlace,
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -248,7 +249,7 @@ fun TodayScreen(
         com.cruxcoach.android.ui.training.common.WeightGoalSheet(
             profile = state.profile, weightKg = state.trendKg, heightCm = state.heightCm, need = state.need,
             onDismiss = { showGoal = false },
-            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); showGoal = false },
+            onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
         )
     }
@@ -256,7 +257,8 @@ fun TodayScreen(
         com.cruxcoach.android.ui.training.common.EquipmentSheet(
             initial = state.profile.equipment.takeIf { state.profile.equipmentConfigured } ?: emptySet(),
             onDismiss = { showEquipment = false },
-            onSave = { set -> viewModel.saveEquipment(set); showEquipment = false; tell(equipmentSavedText) },
+            onSave = viewModel::saveEquipment,
+            placeName = com.cruxcoach.android.ui.training.common.todaysPlaceName(state.profile),
         )
     }
     if (askWhy) {
@@ -922,6 +924,7 @@ private fun DailySuggestionCard(
     onSave: (String) -> Unit,
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
     checkin: @Composable () -> Unit = {},
+    onPickPlace: (String) -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     val language = catalogLanguage()
@@ -947,6 +950,16 @@ private fun DailySuggestionCard(
                 modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
             Text(pluralStringResource(R.plurals.trsg_meta, s.routine.items.size, s.routine.items.size, s.estimatedMinutes),
                 style = MaterialTheme.typography.bodyMedium)
+            // Where today's training happens: the default place, another one for today in the menu.
+            // With one place there is nothing to pick (owner 2026-10-10).
+            val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
+            com.cruxcoach.android.ui.training.common.PlacePicker(
+                places = TrainingPlaces.of(state.profile),
+                currentId = TrainingPlaces.current(state.profile, day)?.id,
+                defaultId = TrainingPlaces.default(state.profile)?.id,
+                onPick = onPickPlace,
+                modifier = Modifier.padding(top = 4.dp),
+            )
             if (shown.isNotEmpty()) {
                 Column(Modifier.padding(top = 8.dp)) {
                     shown.forEach { item ->

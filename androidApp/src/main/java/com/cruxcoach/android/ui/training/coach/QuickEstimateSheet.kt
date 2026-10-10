@@ -88,7 +88,8 @@ class QuickEstimateViewModel @Inject constructor(private val service: AthleteSer
                 loading = false,
                 units = profile.units,
                 bodyweight = service.currentBodyweight(),
-                hasPickup = EquipmentV2.satisfied(EquipmentV2.PICKUP_BLOCK, profile.equipment),
+                // A block at any place counts: values are entered once, wherever they were measured.
+                hasPickup = EquipmentV2.satisfied(EquipmentV2.PICKUP_BLOCK, com.cruxcoach.athlete.logic.TrainingPlaces.allEquipment(profile)),
                 hangAllowed = hang?.verdict != InjuryVerdict.AVOID,
                 pickupSide = pickup?.takeIf { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }?.allowedSide,
                 pickupAllowed = pickup?.verdict != InjuryVerdict.AVOID,

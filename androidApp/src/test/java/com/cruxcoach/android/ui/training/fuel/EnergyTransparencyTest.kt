@@ -6,7 +6,9 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.foodvision.BlsRepository
@@ -56,7 +58,8 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         // Need 1649 + 659/660 everyday (rest day) = 2308/2309, minus 550 for 0.5 kg a week.
         waitForTag("fuel_energy")
         compose.waitUntil(WAIT_MS) {
-            compose.onAllNodes(androidx.compose.ui.test.hasText("of 1758 kcal").or(androidx.compose.ui.test.hasText("of 1759 kcal")), useUnmergedTree = true)
+            // Four rings on a narrow screen: "of 1758", the unit is in the line under the ring.
+            compose.onAllNodes(androidx.compose.ui.test.hasText("of 1758", substring = true).or(androidx.compose.ui.test.hasText("of 1759", substring = true)), useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
         }
         click("fuel_energy")
@@ -77,8 +80,9 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         fuel()
         click("fuel_energy")
         waitForTag("energy_height_input")
+        // The keyboard's "Fertig" keeps it; there is no save button.
         compose.onNodeWithTag("energy_height_input").performTextReplacement("178")
-        click("energy_height_save")
+        compose.onNodeWithTag("energy_height_input").performImeAction()
         compose.waitUntil(WAIT_MS) { repo.latest(BodyMetric.HEIGHT.key)?.value == 178.0 }
         // With the height the need appears, with its assumptions named and answerable in place.
         waitForTag("energy_need")
@@ -104,7 +108,7 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         waitForTag("goal_warning_low_target_bmi")
         // The pace line and the warning both say it.
         assertEquals(2, compose.onAllNodesWithText("1.8 % of your weight", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
-        click("goal_save")
+        click("goal_start")
         compose.waitUntil(WAIT_MS) { repo.profile().goal == AthleteGoal.LOSE_WEIGHT }
         assertEquals(1.0, repo.profile().weeklyLossKg, 1e-9)
         assertEquals(50.0, repo.profile().targetWeightKg!!, 1e-9)
@@ -128,5 +132,11 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         click("fuel_reds_adjust")
         waitForTag("goal_sheet")
         waitForTag("goal_stop")
+        // While the goal runs, a change is kept at once; "Fertig" only closes the sheet.
+        repeat(2) { click("goal_pace_minus") }
+        compose.waitUntil(WAIT_MS) { kotlin.math.abs(repo.profile().weeklyLossKg - 1.0) < 1e-9 }
+        click("goal_done")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("goal_sheet").fetchSemanticsNodes().isEmpty() }
+        assertEquals(AthleteGoal.LOSE_WEIGHT, repo.profile().goal)
     }
 }

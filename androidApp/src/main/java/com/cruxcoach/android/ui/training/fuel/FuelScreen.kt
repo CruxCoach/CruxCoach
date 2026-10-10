@@ -23,7 +23,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
@@ -218,7 +220,7 @@ fun FuelScreen(
             // The pace's calorie target is today's: the sheet always plans from today.
             need = state.need.takeIf { state.isToday },
             onDismiss = { goalOpen = false },
-            onSave = { lose, target, pace -> viewModel.saveWeightGoal(lose, target, pace); goalOpen = false },
+            onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
         )
     }
@@ -539,50 +541,96 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
 }
 
 /**
- * Protein and carbohydrates as two rings that fill towards the day's target,
- * fat and calories in one line below. Explanations sit at the info icons.
+ * Energy, carbohydrates, protein and fat as rings that fill towards the day's
+ * targets, in that order (owner 2026-10-10). Energy shows while calories are
+ * shown. The fat share sits below with one info icon for all targets.
  */
 @Composable
 private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
     val t = state.targets
     val totals = MacroTotals.of(state.entries)
-    // Energy is the third ring while calories are shown: eaten against the need,
+    // Energy is a ring while calories are shown: eaten against the need,
     // or against the calorie target while losing weight (owner 2026-10-09).
     val showEnergy = state.profile.showCalories
-    val ringSize = if (showEnergy) 84.dp else 92.dp
+    val rings = if (showEnergy) 4 else 3
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
-        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 16.dp, bottom = 4.dp)) {
-            Row(Modifier.fillMaxWidth().padding(end = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
-                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize)
-                MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
-                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize)
-                if (showEnergy) {
-                    val plan = state.energy.plan
-                    EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
-                        target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
-                        losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy)
+        Column(Modifier.padding(start = 8.dp, end = 4.dp, top = 16.dp, bottom = 4.dp)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(end = 4.dp)) {
+                // The rings share the width; four still fit side by side on a narrow phone.
+                val ringSize = ((maxWidth - 12.dp * rings) / rings).coerceIn(60.dp, 92.dp)
+                Row(Modifier.fillMaxWidth()) {
+                    val cell = Modifier.weight(1f)
+                    if (showEnergy) {
+                        val plan = state.energy.plan
+                        EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
+                            target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
+                            losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
+                    }
+                    MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
+                        color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell)
+                    MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
+                        color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize, modifier = cell)
+                    MacroRing(label = stringResource(R.string.trf_fat), value = totals.fat, target = t?.fatG,
+                        color = FatColor, tag = "fuel_fat", size = ringSize, modifier = cell)
                 }
             }
-            // Fat and calories in one line under the rings; one info icon explains all targets.
+            // The fat share under the rings; one info icon explains all targets.
             val share = totals.fatEnergyShare
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp).testTag("fuel_fat")) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, top = 4.dp).testTag("fuel_fat_share")) {
                 Text(
-                    listOfNotNull(
-                        stringResource(R.string.trf_fat) + " " + stringResource(R.string.trf_value_g, totals.fat.roundToInt()),
-                        // The 20–35 % reference is in the info text; the line stays one line.
-                        share?.let { stringResource(R.string.tru_fat_share_short, (it * 100).roundToInt()) },
-                    ).joinToString(" · "),
+                    // The 20–35 % reference is in the info text; the line stays one line.
+                    share?.let { stringResource(R.string.trf_fat) + " " + stringResource(R.string.tru_fat_share_short, (it * 100).roundToInt()) } ?: "",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                 )
                 InfoButton(stringResource(R.string.trf_day_total), listOfNotNull(
-                    t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
                     t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
+                    t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
+                    t?.let {
+                        stringResource(if (it.fatFromEnergy) R.string.trf_fat_target_energy else R.string.trf_fat_target_weight,
+                            it.fatRangeG.first, it.fatRangeG.last)
+                    },
                     stringResource(R.string.trf_fat_info),
                 ).joinToString("\n\n"))
             }
         }
     }
+}
+
+/** A ring's label: one line, shrinking a little for long words like "Kohlenhydrate" on narrow phones. */
+@Composable
+private fun RingLabel(text: String) {
+    androidx.compose.foundation.text.BasicText(
+        text, maxLines = 1, softWrap = false,
+        style = MaterialTheme.typography.labelLarge.copy(color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center),
+        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 14.sp),
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 2.dp, end = 2.dp),
+    )
+}
+
+/**
+ * Inside a ring: the value big, the target small below, sized to the ring. A
+ * small ring drops the unit from the target ("von 206"); the line under the
+ * ring carries it ("noch 68 g").
+ */
+@Composable
+private fun RingCenter(value: String, target: String, compactTarget: String, size: androidx.compose.ui.unit.Dp, valueTag: String? = null) {
+    val compact = size < 84.dp
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(max = size - 18.dp)) {
+        Text(value, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold, maxLines = 1, modifier = valueTag?.let { Modifier.testTag(it) } ?: Modifier)
+        FitText(if (compact) compactTarget else target, MaterialTheme.typography.labelSmall, MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One centred line that shrinks a little instead of wrapping or clipping. */
+@Composable
+private fun FitText(text: String, style: androidx.compose.ui.text.TextStyle, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.text.BasicText(
+        text, maxLines = 1, softWrap = false,
+        style = style.copy(color = color, textAlign = TextAlign.Center),
+        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = style.fontSize),
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -593,26 +641,27 @@ private fun MacroRing(
     color: androidx.compose.ui.graphics.Color,
     tag: String,
     size: androidx.compose.ui.unit.Dp = 92.dp,
+    modifier: Modifier = Modifier,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.testTag(tag)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.testTag(tag)) {
         com.cruxcoach.android.ui.training.common.ProgressRing(
             progress = if (target != null && target > 0) (value / target).toFloat() else 0f,
-            size = size, stroke = 9.dp, color = color,
+            size = size, stroke = if (size < 84.dp) 8.dp else 9.dp, color = color,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 // A reached target gets its tick – a small reward, never a "too much".
                 if (target != null && target > 0 && value >= target) {
                     Icon(Icons.Default.CheckCircle, contentDescription = stringResource(R.string.trf_reached), tint = color,
-                        modifier = Modifier.size(18.dp))
+                        modifier = Modifier.size(if (size < 84.dp) 14.dp else 18.dp))
                 }
-                Text("${value.roundToInt()}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(if (target != null) stringResource(R.string.tru_of_g, target) else "g", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                RingCenter("${value.roundToInt()}", if (target != null) stringResource(R.string.tru_of_g, target) else "g",
+                    if (target != null) stringResource(R.string.tru_of_short, target) else "g", size)
             }
         }
-        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+        RingLabel(label)
         if (target != null) {
-            Text(remainingText(value, target), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FitText(remainingText(value, target), MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.fillMaxWidth())
         }
     }
 }
@@ -623,26 +672,32 @@ private fun MacroRing(
  * in the normal text colour – a number, not a verdict.
  */
 @Composable
-private fun EnergyRing(eaten: Double, estimated: Boolean, target: Int?, losing: Boolean, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+private fun EnergyRing(
+    eaten: Double,
+    estimated: Boolean,
+    target: Int?,
+    losing: Boolean,
+    size: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val value = eaten.roundToInt()
     val openText = stringResource(R.string.trn_open_energy)
     Column(horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clip(CruxCoachDesign.shapes.medium)
+        modifier = modifier.clip(CruxCoachDesign.shapes.medium)
             .clickable(onClickLabel = openText, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
             .testTag("fuel_energy")) {
         com.cruxcoach.android.ui.training.common.ProgressRing(
             progress = if (target != null && target > 0) (eaten / target).toFloat() else 0f,
-            size = size, stroke = 9.dp, color = EnergyColor,
+            size = size, stroke = if (size < 84.dp) 8.dp else 9.dp, color = EnergyColor,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text((if (estimated) "≈" else "") + value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag("fuel_kcal"))
-                Text(if (target != null) stringResource(R.string.trn_of_kcal, target) else "kcal", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            RingCenter((if (estimated) "≈" else "") + value, if (target != null) stringResource(R.string.trn_of_kcal, target) else "kcal",
+                if (target != null) stringResource(R.string.tru_of_short, target) else "kcal",
+                // Four digits need a step smaller than grams.
+                size - 8.dp, valueTag = "fuel_kcal")
         }
-        Text(stringResource(R.string.trn_energy), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
-        Text(
+        RingLabel(stringResource(R.string.trn_energy))
+        FitText(
             when {
                 target == null -> openText
                 value < target -> stringResource(R.string.trn_to_go, target - value)
@@ -650,14 +705,17 @@ private fun EnergyRing(eaten: Double, estimated: Boolean, target: Int?, losing: 
                 losing -> stringResource(R.string.trn_target_met)
                 else -> stringResource(R.string.trn_need_met)
             },
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.testTag("fuel_energy_left"),
+            MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant,
+            Modifier.fillMaxWidth().testTag("fuel_energy_left"),
         )
     }
 }
 
 /** Energy's own ring colour, distinct from protein (green), carbs (accent) and water (blue). */
 internal val EnergyColor = androidx.compose.ui.graphics.Color(0xFF9C6ADE)
+
+/** Fat's ring colour: gold, next to energy (violet), carbs (orange) and protein (green). */
+internal val FatColor = androidx.compose.ui.graphics.Color(0xFFD9A400)
 
 /**
  * Water as glasses: tap the next empty one for another glass, the last full

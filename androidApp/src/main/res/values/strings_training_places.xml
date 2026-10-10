@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Places with their own equipment (owner 2026-10-10) -->
+    <string name="tro_kind_home">Home</string>
+    <string name="tro_kind_gym">Gym</string>
+    <string name="tro_kind_travel">Travelling</string>
+    <string name="tro_kind_other">Other place</string>
+    <string name="tro_places_intro">Set up every place you train with what is there. Training suggests your default place; you can pick another one for the day.</string>
+    <string name="tro_default">Default</string>
+    <string name="tro_today">Today</string>
+    <string name="tro_make_default">Make default</string>
+    <string name="tro_remove">Remove place</string>
+    <string name="tro_name">Name (optional)</string>
+    <string name="tro_add">Add a place</string>
+    <string name="tro_at">At: %1$s</string>
+    <string name="tro_pick_title">Where do you train today?</string>
+    <string name="tro_equipment_at">Equipment · %1$s</string>
+    <string name="tro_summary_default">%1$s (default)</string>
+    <string name="tro_open">Show equipment</string>
+</resources>

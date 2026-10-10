@@ -90,11 +90,13 @@ class BasicsViewModel @Inject constructor(private val service: AthleteService) :
             repo.saveMeasurement(BodyMeasurement(today.toString(), BodyMetric.HEIGHT.key, heightCm, "cm", now))
         }
         repo.updateProfile { p ->
-            p.copy(
+            // The equipment asked here is the default place's (usually at home).
+            val placed = equipment?.let {
+                com.cruxcoach.athlete.logic.TrainingPlaces.withEquipment(p, com.cruxcoach.athlete.logic.TrainingPlaces.default(p)?.id, it, today.toString())
+            } ?: p
+            placed.copy(
                 birthYear = birthYear ?: p.birthYear,
                 sex = sex ?: p.sex,
-                equipment = equipment ?: p.equipment,
-                equipmentConfigured = p.equipmentConfigured || equipment != null,
                 basicsAsked = true,
                 coach = p.coach.copy(
                     currentGrade = grade ?: p.coach.currentGrade,
@@ -166,7 +168,9 @@ fun BasicsScreen(onDone: () -> Unit, viewModel: BasicsViewModel = hiltViewModel(
     // The board logbook's working grade is the suggestion when no grade was given yet.
     var grade by rememberSaveable { mutableStateOf(p.coach.currentGrade ?: state.logbookGrade) }
     var experience by rememberSaveable { mutableStateOf(p.coach.experience) }
-    var equipment by rememberSaveable { mutableStateOf(p.equipment.takeIf { p.equipmentConfigured }?.map { it.name }?.toSet() ?: emptySet()) }
+    var equipment by rememberSaveable {
+        mutableStateOf(com.cruxcoach.athlete.logic.TrainingPlaces.default(p)?.equipment?.map { it.name }?.toSet() ?: emptySet())
+    }
 
     val weightKg = parseDecimal(weight)?.let { Units.massFromDisplay(it, units) }?.takeIf { it in PLAUSIBLE_WEIGHT_KG }
     val heightCm = parseDecimal(height)?.let { Units.lengthFromDisplay(it, units) }?.takeIf { it in PLAUSIBLE_HEIGHT_CM }

@@ -130,7 +130,9 @@ fun EnergySheet(
 /**
  * "Abnehmen": optional target weight and the pace in 0.1 kg steps, with the
  * resulting calorie target, the weeks to the target and every warning that
- * applies – shown live while choosing, never blocking the choice.
+ * applies – shown live while choosing, never blocking the choice. While the
+ * goal runs every change is kept at once (owner 2026-10-10: no save
+ * buttons); before, one button starts it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,6 +155,27 @@ fun WeightGoalSheet(
     val targetKg = parseDecimal(targetText)?.let { Units.massFromDisplay(it, units) }
     val targetValid = targetText.isBlank() || (targetKg != null && targetKg in PLAUSIBLE_WEIGHT_KG)
     val plan = weightKg?.let { WeightPlan.plan(pace, targetKg?.takeIf { targetValid }, it, heightCm, profile.sex, need) }
+    val choice = Triple(true, targetKg?.takeIf { targetValid }, pace)
+    val changed = losing && targetValid && weightKg != null &&
+        (pace != WeightPlan.clampPace(profile.weeklyLossKg) || !sameKg(choice.second, profile.targetWeightKg))
+    // What was handed over last; stopping the goal ends the auto-save, so leaving the sheet cannot restart it.
+    val handedOver = remember { arrayOfNulls<Triple<Boolean, Double?, Double>>(1) }
+    val stopped = remember { booleanArrayOf(false) }
+    val latestChanged by rememberUpdatedState(changed)
+    val latestChoice by rememberUpdatedState(choice)
+    val latestSave by rememberUpdatedState(onSave)
+    fun keep() {
+        if (!latestChanged || stopped[0] || handedOver[0] == latestChoice) return
+        handedOver[0] = latestChoice
+        latestSave(latestChoice.first, latestChoice.second, latestChoice.third)
+    }
+    LaunchedEffect(targetText, pace, losing) {
+        if (changed) {
+            kotlinx.coroutines.delay(AUTOSAVE_DELAY_MS)
+            keep()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { keep() } }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("goal_sheet")) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
@@ -228,14 +251,19 @@ fun WeightGoalSheet(
                     }
                 }
             }
-            Button(onClick = { onSave(true, targetKg?.takeIf { targetValid }, pace) }, enabled = targetValid && weightKg != null,
-                modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("goal_save")) {
-                Text(stringResource(R.string.trn_goal_save))
-            }
             if (losing) {
-                TextButton(onClick = { onSave(false, profile.targetWeightKg, profile.weeklyLossKg) },
+                Button(onClick = { keep(); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("goal_done")) {
+                    Text(stringResource(R.string.tru_done))
+                }
+                TextButton(onClick = { stopped[0] = true; onSave(false, profile.targetWeightKg, profile.weeklyLossKg); onDismiss() },
                     modifier = Modifier.fillMaxWidth().testTag("goal_stop")) {
                     Text(stringResource(R.string.trn_goal_stop))
+                }
+            } else {
+                Button(onClick = { onSave(true, targetKg?.takeIf { targetValid }, pace); onDismiss() }, enabled = targetValid && weightKg != null,
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp).heightIn(min = 52.dp).testTag("goal_start")) {
+                    Text(stringResource(R.string.trn_goal_start))
                 }
             }
         }
@@ -259,7 +287,7 @@ private fun KcalRow(label: String, value: String, tag: String, bold: Boolean = f
     }
 }
 
-/** One missing value entered in place: field, unit, "Speichern". */
+/** One missing value entered in place: field and unit; it saves itself once it is plausible. */
 @Composable
 internal fun NumberEntry(
     label: String,
@@ -270,19 +298,15 @@ internal fun NumberEntry(
     valid: (Double) -> Boolean,
     onSave: (Double) -> Unit,
 ) {
-    var text by rememberSaveable { mutableStateOf("") }
-    val value = parseDecimal(text)?.let(toCanonical)
-    val ok = value != null && valid(value)
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-        OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, label = { Text(label) },
-            suffix = suffix?.let { s -> { Text(s) } },
-            keyboardOptions = KeyboardOptions(keyboardType = if (decimals) KeyboardType.Decimal else KeyboardType.Number),
-            modifier = Modifier.weight(1f).testTag("${tag}_input"))
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(onClick = { value?.let(onSave); text = "" }, enabled = ok, modifier = Modifier.testTag("${tag}_save")) {
-            Text(stringResource(R.string.tr_action_save))
-        }
-    }
+    fun value(text: String) = parseDecimal(text)?.let(toCanonical)
+    AutoSaveTextField(
+        stored = "",
+        isValid = { t -> value(t)?.let(valid) == true },
+        onSave = { t -> value(t)?.let(onSave) },
+        label = label, suffix = suffix,
+        keyboardType = if (decimals) KeyboardType.Decimal else KeyboardType.Number,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("${tag}_input"),
+    )
 }
 
 /** Short summary of the goal for settings rows: "0,5 kg pro Woche · heute etwa 1950 kcal · Ziel 65 kg". */
@@ -295,6 +319,9 @@ fun weightGoalSummary(profile: AthleteProfile, plan: WeightPlan.Plan?): String {
     val goal = profile.targetWeightKg?.takeIf { !profile.hideBodyNumbers }?.let { stringResource(R.string.trn_goal_summary_target, formatMass(it, profile.units)) }
     return listOfNotNull(head, goal).joinToString(" · ")
 }
+
+/** Two optional weights are the same to the gram that matters (lb round trips). */
+private fun sameKg(a: Double?, b: Double?): Boolean = if (a == null || b == null) a == b else kotlin.math.abs(a - b) < 0.05
 
 /** The energy target of a day: the need, minus the plan's deficit while losing weight. */
 fun energyTarget(need: EnergyBalance.Need?, plan: WeightPlan.Plan?): Int? = need?.let { it.totalKcal - (plan?.dailyDeficitKcal ?: 0) }

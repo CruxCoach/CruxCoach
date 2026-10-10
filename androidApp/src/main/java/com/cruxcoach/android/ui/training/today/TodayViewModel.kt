@@ -142,9 +142,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** One refresh at a time, so "another suggestion" and the data collector never overwrite each other with older inputs. */
     private fun refresh(i: Inputs) = synchronized(refreshLock) { refreshUnlocked(i) }
 
-    private fun refreshUnlocked(i: Inputs) {
-        lastInputs = i
+    private fun refreshUnlocked(input: Inputs) {
         val today = service.today()
+        // The day's place decides the equipment: a place picked yesterday falls back to the default.
+        val placed = TrainingPlaces.inUse(input.profile, today.toString())
+        if (placed != input.profile) runCatching { service.usePlaceOfToday() }
+        val i = input.copy(profile = placed)
+        lastInputs = i
         if (variantDay != today) {
             variant = 0; variantDay = today
             budgetFactor = 1.0; levelShift = 0; dislikedToday.clear(); shownToday.clear()
@@ -517,9 +521,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     /** From the checklist's equipment sheet: what the athlete has, and that it was asked. */
-    fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io {
-        service.repo.updateProfile { it.copy(equipment = equipment, equipmentConfigured = true) }
-    }
+    /** The equipment of the place the athlete trains at today. */
+    fun saveEquipment(equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.savePlaceEquipment(null, equipment) }
+
+    /** Train somewhere else today; the suggestion follows that place's equipment. */
+    fun pickPlace(placeId: String) = io { service.pickPlace(placeId) }
 
     fun logWeight(kg: Double) = io {
         val now = System.currentTimeMillis()

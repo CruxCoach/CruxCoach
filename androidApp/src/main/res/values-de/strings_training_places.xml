@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Orte mit eigener Ausrüstung (Owner 2026-10-10) -->
+    <string name="tro_kind_home">Zuhause</string>
+    <string name="tro_kind_gym">Halle</string>
+    <string name="tro_kind_travel">Unterwegs</string>
+    <string name="tro_kind_other">Anderer Ort</string>
+    <string name="tro_places_intro">Leg jeden Ort an, an dem du trainierst, mit dem, was dort ist. Training schlägt deinen Standard-Ort vor; für den Tag kannst du einen anderen wählen.</string>
+    <string name="tro_default">Standard</string>
+    <string name="tro_today">Heute</string>
+    <string name="tro_make_default">Als Standard</string>
+    <string name="tro_remove">Ort entfernen</string>
+    <string name="tro_name">Name (optional)</string>
+    <string name="tro_add">Ort hinzufügen</string>
+    <string name="tro_at">Ort: %1$s</string>
+    <string name="tro_pick_title">Wo trainierst du heute?</string>
+    <string name="tro_equipment_at">Ausrüstung · %1$s</string>
+    <string name="tro_summary_default">%1$s (Standard)</string>
+    <string name="tro_open">Ausrüstung zeigen</string>
+</resources>

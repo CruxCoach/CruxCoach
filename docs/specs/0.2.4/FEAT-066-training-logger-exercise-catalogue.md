@@ -51,7 +51,7 @@ No third-party text or media; wger was used only as a reference for coverage.
 |---|---|
 | target vs result sets, RIR | target_* columns, RIR chips, ghost values = last session |
 | progression chains, too easy/hard | chain stepper; double progression → "+step" or harder/easier variant |
-| equipment profiles, real increments | "What do you have?" presets, smallest weight step |
+| equipment profiles, real increments | places (home, gym, travelling, own name) each with its equipment, a default place and a place picked for the day (owner 2026-10-10); presets fill a new place; one pick-up block vs. a second block for two-arm lifts; smallest weight step |
 | warm-up sets | % ramp of the effective load; assisted hangs when needed |
 | rest timer, side switch | shared board rest timer (AlarmManager); hang/repeater timer |
 | strength test, e1RM | baseline routine (max hang, pull-ups, hollow), Epley e1RM, % body weight |

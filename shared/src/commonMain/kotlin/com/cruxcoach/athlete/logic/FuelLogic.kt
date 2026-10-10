@@ -35,7 +35,9 @@ enum class DayLoad { REST, LIGHT, MODERATE, HARD, VERY_HARD }
  * Protein follows body weight (ISSN range 1.4–2.0 g/kg). Carbohydrate follows
  * the day's training load inside the 3–7 g/kg range reported for climbers —
  * which CruxCoach can set automatically because board sessions are logged
- * anyway. Energy (need, and the calorie target while losing weight) is
+ * anyway. Fat fills the energy that protein and carbohydrate leave, kept
+ * inside 20–35 % of the energy (owner 2026-10-10: a fat target with its own
+ * ring). Energy (need, and the calorie target while losing weight) is
  * [EnergyBalance] and [WeightPlan].
  */
 object FuelTargets {
@@ -50,6 +52,11 @@ object FuelTargets {
         val carbsPerKg: Double,
         val carbsG: Int,
         val waterMl: Int,
+        val fatG: Int,
+        /** 20–35 % of the energy target, or 0.8–1.2 g/kg without one. */
+        val fatRangeG: IntRange,
+        /** The fat target comes from the day's energy target, not from body weight alone. */
+        val fatFromEnergy: Boolean,
     )
 
     /**
@@ -98,18 +105,36 @@ object FuelTargets {
         DayLoad.VERY_HARD -> 7.0
     }
 
-    fun compute(weightKg: Double, activity: DayActivity?, proteinPerKg: Double): Targets {
+    /** Fat per kg body weight when no energy target is known (sports-nutrition rule of thumb). */
+    const val FAT_PER_KG = 1.0
+
+    /**
+     * [energyKcal] is the day's energy target (the need, minus the deficit
+     * while losing weight); without it fat follows body weight.
+     */
+    fun compute(weightKg: Double, activity: DayActivity?, proteinPerKg: Double, energyKcal: Int? = null): Targets {
         val load = dayLoad(activity)
         val ppk = proteinPerKg.coerceIn(1.2, 2.4)
         val cpk = carbsPerKg(load)
         val water = weightKg * 35 + trainingMinutes(activity) / 60.0 * 500
+        val proteinG = (weightKg * ppk).roundToInt()
+        val carbsG = (weightKg * cpk).roundToInt()
+        val energy = energyKcal?.takeIf { it > 0 }
+        val fatRange = if (energy != null) {
+            (energy * MacroTotals.FAT_SHARE_MIN / 9).roundToInt()..(energy * MacroTotals.FAT_SHARE_MAX / 9).roundToInt()
+        } else (weightKg * 0.8).roundToInt()..(weightKg * 1.2).roundToInt()
+        val fatG = if (energy != null) ((energy - 4 * proteinG - 4 * carbsG) / 9.0).roundToInt().coerceIn(fatRange)
+            else (weightKg * FAT_PER_KG).roundToInt()
         return Targets(
             dayLoad = load,
-            proteinG = (weightKg * ppk).roundToInt(),
+            proteinG = proteinG,
             proteinRangeG = (weightKg * 1.4).roundToInt()..(weightKg * 2.0).roundToInt(),
             carbsPerKg = cpk,
-            carbsG = (weightKg * cpk).roundToInt(),
+            carbsG = carbsG,
             waterMl = (water / 50).roundToInt() * 50,
+            fatG = fatG,
+            fatRangeG = fatRange,
+            fatFromEnergy = energy != null,
         )
     }
 }

@@ -128,22 +128,26 @@ internal val ALWAYS_THERE = setOf(EquipmentV2.NONE, EquipmentV2.MAT)
 
 /**
  * Where you train (presets) and then what you have, as wrapping chips. The
- * same editor sits in the settings and in the sheet that Today's checklist opens.
+ * same editor sits in the quick start, in each place of the settings (without
+ * presets: a place is already one) and in the sheet that Today's checklist opens.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun EquipmentEditor(selected: Set<EquipmentV2>, onChange: (Set<EquipmentV2>) -> Unit) {
-    Text(stringResource(R.string.tru_equipment_where), style = MaterialTheme.typography.labelLarge)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-        listOf(R.string.tra_preset_home to PRESET_HOME, R.string.tra_preset_gym to PRESET_GYM, R.string.tra_preset_travel to PRESET_TRAVEL)
-            .forEachIndexed { i, (label, preset) ->
-                val active = selected - ALWAYS_THERE == preset
-                FilterChip(selected = active, onClick = { onChange(preset + ALWAYS_THERE) }, label = { Text(stringResource(label)) },
-                    leadingIcon = chipCheck(active),
-                    modifier = Modifier.testTag(listOf("preset_home", "preset_gym", "preset_travel")[i]))
-            }
+fun EquipmentEditor(selected: Set<EquipmentV2>, presets: Boolean = true, onChange: (Set<EquipmentV2>) -> Unit) {
+    if (presets) {
+        Text(stringResource(R.string.tru_equipment_where), style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            listOf(R.string.tra_preset_home to PRESET_HOME, R.string.tra_preset_gym to PRESET_GYM, R.string.tra_preset_travel to PRESET_TRAVEL)
+                .forEachIndexed { i, (label, preset) ->
+                    val active = selected - ALWAYS_THERE == preset
+                    FilterChip(selected = active, onClick = { onChange(preset + ALWAYS_THERE) }, label = { Text(stringResource(label)) },
+                        leadingIcon = chipCheck(active),
+                        modifier = Modifier.testTag(listOf("preset_home", "preset_gym", "preset_travel")[i]))
+                }
+        }
     }
-    Text(stringResource(R.string.tru_equipment_what), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp))
+    Text(stringResource(R.string.tru_equipment_what), style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = if (presets) 12.dp else 0.dp))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
         EquipmentV2.entries.filter { it !in ALWAYS_THERE }.forEach { e ->
             val on = e in selected
@@ -162,19 +166,40 @@ internal fun toggleEquipment(selected: Set<EquipmentV2>, e: EquipmentV2): Set<Eq
     else -> selected + e + ALWAYS_THERE
 }
 
-/** The equipment editor as a sheet with one "Fertig"; changes are a draft until then. */
+/**
+ * The equipment editor as a sheet. Every tap is kept at once (owner
+ * 2026-10-10: no save buttons); "Fertig" only closes it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EquipmentSheet(initial: Set<EquipmentV2>, onDismiss: () -> Unit, onSave: (Set<EquipmentV2>) -> Unit) {
+fun EquipmentSheet(initial: Set<EquipmentV2>, onDismiss: () -> Unit, onSave: (Set<EquipmentV2>) -> Unit, placeName: String? = null) {
     var draft by remember { mutableStateOf(initial) }
+    // Quick taps are kept as one save, in order; closing the sheet keeps the last one.
+    val handedOver = remember { arrayOf(initial) }
+    val latestDraft by rememberUpdatedState(draft)
+    val latestSave by rememberUpdatedState(onSave)
+    fun keep() {
+        if (latestDraft == handedOver[0]) return
+        handedOver[0] = latestDraft
+        latestSave(latestDraft + ALWAYS_THERE)
+    }
+    LaunchedEffect(draft) {
+        kotlinx.coroutines.delay(300)
+        keep()
+    }
+    DisposableEffect(Unit) { onDispose { keep() } }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("equipment_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            Text(stringResource(R.string.tru_setup_equipment), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            // With several places the sheet says which one it edits: the place of today's training.
+            Text(placeName?.let { stringResource(R.string.tro_equipment_at, it) } ?: stringResource(R.string.tru_setup_equipment),
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.tru_equipment_why), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { EquipmentEditor(draft) { draft = it } }
-            Button(onClick = { onSave(draft + ALWAYS_THERE) }, enabled = (draft - ALWAYS_THERE).isNotEmpty(),
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                EquipmentEditor(draft) { draft = it }
+            }
+            Button(onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp).heightIn(min = 52.dp).testTag("equipment_save")) {
                 Text(stringResource(R.string.tru_done))
             }

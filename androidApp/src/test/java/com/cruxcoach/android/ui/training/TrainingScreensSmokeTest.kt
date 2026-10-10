@@ -190,7 +190,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     fun `equipment page edits the equipment and settings from nutrition open its page`() {
         val vm = loaded(AthleteSettingsViewModel(service))
         render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.EQUIPMENT) }
-        waitForTag("preset_home")
+        // The one place of an older profile, open with its equipment.
+        waitForTag("place_${com.cruxcoach.athlete.logic.TrainingPlaces.FIRST_ID}")
         click("equipment_rings")
         compose.waitUntil(WAIT_MS) { com.cruxcoach.athlete.catalog.EquipmentV2.RINGS in repo.profile().equipment }
     }
@@ -200,8 +201,8 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val vm = loaded(AthleteSettingsViewModel(service))
         render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.ABOUT) }
         waitForTag("birth_year_input")
+        // No save button: the year is kept once typing pauses (owner 2026-10-10).
         compose.onNodeWithTag("birth_year_input").performTextReplacement("1990")
-        click("birth_year_save")
         compose.waitUntil(WAIT_MS) { repo.profile().birthYear == 1990 }
     }
 

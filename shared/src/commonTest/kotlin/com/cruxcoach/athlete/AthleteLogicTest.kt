@@ -258,6 +258,25 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun fatFillsTheEnergyLeftWithinTwentyToThirtyFivePercent() {
+        // 70 kg, rest day: protein 112 g (448 kcal) + carbs 210 g (840 kcal).
+        val rest = FuelTargets.compute(70.0, null, 1.6, energyKcal = 1900)
+        assertTrue(rest.fatFromEnergy)
+        assertEquals(42..74, rest.fatRangeG)
+        assertEquals(68, rest.fatG) // (1900 − 448 − 840) / 9
+        // A hard day on a deficit leaves almost nothing for fat: it stays at 20 % of the energy.
+        val hard = FuelTargets.compute(70.0, DayActivity("d", climbingMinutes = 150, climbIntensity = ClimbIntensity.LIMIT), 1.6, energyKcal = 2200)
+        assertEquals(hard.fatRangeG.first, hard.fatG)
+        // A generous target with few carbs: fat stops at 35 %.
+        val generous = FuelTargets.compute(70.0, null, 1.6, energyKcal = 3200)
+        assertEquals(generous.fatRangeG.last, generous.fatG)
+        // Without an energy target: 1 g per kg.
+        val plain = FuelTargets.compute(70.0, null, 1.6)
+        assertEquals(70, plain.fatG)
+        assertTrue(!plain.fatFromEnergy)
+    }
+
+    @Test
     fun carbsFollowTheRatedClimbingIntensity() {
         // Two hours in the gym: an easy technique day needs less than a limit session.
         val light = DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.LIGHT)
