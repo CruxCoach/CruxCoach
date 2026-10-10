@@ -168,7 +168,9 @@ fun WorkoutScreen(
         }
     }
 
-    if (showFinish && workout != null) {
+    if (showFinish && workout != null && state.blocks.none { b -> b.sets.any { it.isCompleted } }) {
+        NothingDoneDialog(onKeep = { showFinish = false }, onDiscard = { showFinish = false; viewModel.discard() })
+    } else if (showFinish && workout != null) {
         FinishDialog(
             hasOpenSets = state.blocks.any { b -> b.sets.any { !it.isCompleted } },
             onDismiss = { showFinish = false },
@@ -700,6 +702,26 @@ private fun FinishDialog(
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
         )
     }
+}
+
+/**
+ * Ending a training without a single completed set: nothing would be saved, so there is no effort to rate and no
+ * second "delete all sets?" step – one question (device test 2026-10-10: an empty free training took three dialogs).
+ */
+@Composable
+internal fun NothingDoneDialog(onKeep: () -> Unit, onDiscard: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onKeep,
+        modifier = Modifier.testTag("workout_nothing_done"),
+        title = { Text(stringResource(R.string.trw_nothing_done_title)) },
+        text = { Text(stringResource(R.string.trw_nothing_done_text)) },
+        confirmButton = {
+            TextButton(onClick = onDiscard, modifier = Modifier.testTag("nothing_done_discard")) {
+                Text(stringResource(R.string.trw_discard), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onKeep) { Text(stringResource(R.string.trw_keep_training)) } },
+    )
 }
 
 // ── Text helpers shared with the summary and history ────────────────

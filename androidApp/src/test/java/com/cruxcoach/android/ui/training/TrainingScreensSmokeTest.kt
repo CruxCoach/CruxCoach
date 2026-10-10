@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.ui.training.athlete.*
 import com.cruxcoach.android.ui.training.body.BodyScreen
@@ -102,6 +103,18 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val loadedVm3 = loaded(WorkoutViewModel(service))
         render { WorkoutScreen({}, {}, {}, {}, viewModel = loadedVm3) }
         scrollTo("workout_list", hasText("One-Arm Edge Pick-Up", substring = true))
+    }
+
+    @Test
+    fun `ending a training without a done set asks once and discards it`() {
+        service.startWorkout(null, null)
+        val vm = loaded(WorkoutViewModel(service))
+        render { WorkoutScreen({}, {}, {}, {}, viewModel = vm) }
+        waitForTag("workout_finish")
+        compose.onNodeWithTag("workout_finish").performClick()
+        waitForTag("workout_nothing_done")
+        compose.onNodeWithTag("nothing_done_discard").performClick()
+        compose.waitUntil(WAIT_MS) { repo.openWorkout() == null }
     }
 
     @Test

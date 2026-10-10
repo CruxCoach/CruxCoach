@@ -60,6 +60,9 @@
     <string name="trw_discard">Verwerfen</string>
     <string name="trw_discard_title">Training verwerfen?</string>
     <string name="trw_discard_text">Alle Sätze dieses Trainings werden gelöscht.</string>
+    <string name="trw_nothing_done_title">Noch kein Satz erledigt</string>
+    <string name="trw_nothing_done_text">Ohne erledigten Satz wird nichts gespeichert.</string>
+    <string name="trw_keep_training">Weiter trainieren</string>
     <string name="trw_unfinished_hint">Nicht abgehakte Sätze werden nicht gespeichert.</string>
 
     <string name="trw_phase_prepare">Bereit machen</string>
