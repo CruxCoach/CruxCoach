@@ -73,6 +73,13 @@ created: 2026-10-05
   legs, core, antagonist, mobility) in hard sets per ISO week, scaled by goal,
   focus, experience, age, block phase and training days; board days credit
   finger and pull work; the suggestion fills the largest remaining deficit.
+  Own targets (owner 2026-10-10): `ownWeeklyTargets` per area replaces the
+  range with an exact number of hard sets (finger: sessions a week); 0 switches
+  the area off; the recommendation stays named in the editor (tap a row).
+- First session with a guessed start load (`StartEstimate`, owner 2026-10-10):
+  work sets from 85 % of the careful guess; `SetAutoregulation` feelOut moves
+  the next sets by about 10 % of the load on the reserve answer, both ways and
+  past the guess, until the athlete's own value exists.
 - In-session autoregulation (`SetAutoregulation`): the remaining sets of a
   block follow the last set (missed reps, RIR 0, big reserve, a hang let go
   early via the "let go" button).

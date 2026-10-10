@@ -98,6 +98,19 @@ class SetAutoregulationTest {
     }
 
     @Test
+    fun feelingOutAGuessMovesTenPercentBothWaysAndPastTheGuess() {
+        // Owner 2026-10-10: a guessed start load is felt out – 32 kg held easily goes to 35, a hold that ends early to 29.
+        val next = set(load = 32.0, target = 10.0, done = false)
+        val easy = SetAutoregulation.adjust(pickup, set(load = 32.0, duration = 10.0, target = 10.0, rir = 3), next, 1.0, ceilingKg = 33.0, feelOut = true)
+        assertEquals(3.0, easy?.loadDeltaKg)
+        val failed = SetAutoregulation.adjust(pickup, set(load = 32.0, duration = 6.0, target = 10.0), next, 1.0, feelOut = true)
+        assertEquals(-3.0, failed?.loadDeltaKg)
+        // Outside the first session the old small step and the ceiling stay.
+        assertNull(SetAutoregulation.adjust(pickup, set(load = 32.0, duration = 10.0, target = 10.0, rir = 3), next, 1.0, ceilingKg = 32.5))
+        assertEquals(-2.0, SetAutoregulation.adjust(pickup, set(load = 32.0, duration = 6.0, target = 10.0), next, 1.0)?.loadDeltaKg)
+    }
+
+    @Test
     fun differenceAppliesOnlyWhatIsNew() {
         val first = SetAdjustment(loadDeltaKg = -2.5, reason = AdjustReason.MISSED_REPS)
         // Same answer again: nothing more to apply.

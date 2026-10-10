@@ -604,10 +604,24 @@ class AthleteService @Inject constructor(
             LoadPrescriber.prescribe(def, item, capacityFor(def, next.side, next.edgeMm, next.grip, bodyweight), bodyweight, increment)
                 ?.loadKg?.plus(increment)
         }.getOrNull()
-        val adjustment = SetAutoregulation.adjust(def, done.copy(bodyweightKg = bodyweight), next, increment, ceiling)
+        // The first session with a block lift or pick-up feels out its guessed start load in bigger steps.
+        val adjustment = SetAutoregulation.adjust(def, done.copy(bodyweightKg = bodyweight), next, increment, ceiling,
+            feelOut = feelingOut(def, workoutId))
         val delta = SetAutoregulation.difference(adjustment, previous) ?: return adjustment
         repo.transaction { open.forEach { repo.saveSet(SetAutoregulation.apply(def, it, delta)) } }
         adjustment
+    }
+
+    /**
+     * True in the first session with an exercise whose start load is a guess
+     * ([StartEstimate]): no own value from before this training and no earlier
+     * training with it. The value the first set leaves does not count.
+     */
+    private fun feelingOut(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, workoutId: String): Boolean {
+        if (!StartEstimate.applies(def)) return false
+        val started = repo.workout(workoutId)?.startedAt ?: return false
+        return repo.benchmarks(def.slug).none { it.measuredAt < started } &&
+            repo.history(def.slug, HISTORY_LIMIT).none { it.isCompleted && it.setType != SetType.WARMUP && it.workoutId != workoutId }
     }
 
     /** What "it hurts" changed in the open training. */

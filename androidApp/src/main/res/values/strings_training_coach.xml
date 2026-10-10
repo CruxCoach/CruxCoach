@@ -169,7 +169,7 @@
     <string name="trc_next_preferences">Next: what suits you – focus and style.</string>
     <string name="trc_next_grade">Next: your grade – to place your strength.</string>
     <string name="trc_learning_none">First time: the coach starts careful. After the set, say how many more would have gone.</string>
-    <string name="trc_learning_guess">Starting load estimated carefully from your body weight and level – change it if it does not fit. After the set, say how many more seconds or reps would have gone.</string>
+    <string name="trc_learning_guess">Starting load estimated carefully from your body weight and level – change it if it does not fit. After each set, say how much more would have gone: today the next sets move in bigger steps until the load fits.</string>
     <string name="trc_learning_estimated">Starting value estimated – after the set, say how many more would have gone.</string>
     <string name="trc_learning_progress">Starting value is being learnt (%1$d/%2$d) – after the set, say how many more would have gone.</string>
     <string name="trc_badge_estimated">estimated</string>

@@ -41,11 +41,16 @@ data class Capacity(
  * value when there is one (two-arm pick-up, a max hang at 70 %, a one-arm
  * pick-up at 45 % of two hands), else from body weight and the climbing grade:
  * the low end of [GradeStrengthNorms]' max-hang band (6a without a grade) at
- * 70 %. The result is taken at 80 % – the first set starts on the easy side,
- * and the reps-in-reserve answer after it teaches the real value.
+ * 70 %. The result is taken at 80 %, and the first session feels out from
+ * 85 % of that (owner 2026-10-10: "38 kg sounds like a lot for 6b+"): the
+ * sets after it move by about 10 % on the reserve answer
+ * ([SetAutoregulation] feelOut), so a guess that is too high or too low is
+ * found within two sets.
  */
 object StartEstimate {
     const val CAUTION = 0.8
+    /** The first session starts this far under the careful guess and feels its way from there. */
+    const val FEEL_OUT_START = 0.85
     /** A two-arm pick-up on an edge against a two-arm hang on the same edge. */
     const val PICKUP_OF_HANG = 0.7
     /** One hand's share of the two-hand total. */
@@ -73,7 +78,7 @@ object StartEstimate {
         val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
         val twoHand = twoHandTotalKg?.takeIf { it > 0 } ?: twoHandFromGrade(bw, difficulty)
         val own = if (def.unilateral) twoHand * ONE_ARM_SHARE else twoHand
-        return Capacity(CapacityKind.TEN_SECOND_MAX, own * CAUTION, bw, estimated = true)
+        return Capacity(CapacityKind.TEN_SECOND_MAX, own * CAUTION * FEEL_OUT_START, bw, estimated = true)
     }
 }
 

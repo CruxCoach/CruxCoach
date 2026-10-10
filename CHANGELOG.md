@@ -30,7 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   maximum – and a logged set that proves more raises the value automatically;
   the first session with an exercise sets a starting value. Block lifts and
   pick-ups without any value start with a careful estimated load (from a max
-  hang or pick-up value, else body weight and grade) instead of 0 kg. The
+  hang or pick-up value, else body weight and grade) instead of 0 kg; that
+  first session feels its way from 85 % of the guess, and each set's reserve
+  answer moves the next sets by about 10 % – up past the guess or down. The
   warm-up fits what follows: the general warm-up is chosen for the session's
   body parts, the hangboard ramp only comes before hangboard work, and the
   first finger, pull, push and leg exercise starts with lighter sets of
@@ -104,7 +106,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the block and your focus.
 - Weekly volume plan per area (fingers, pull, push, legs, core, antagonists,
   mobility); board days count; the daily suggestion fills what the week still
-  needs. A "this week" view shows planned, done and missed days.
+  needs. Each area follows its recommended range or a target of your own
+  (tap the area; 0 switches it off). A "this week" view shows planned, done and missed days.
 - During training the next sets follow the last one: missed reps or no
   reserve make them lighter, a big reserve heavier; "let go" in a hang records
   the time actually held. "It hurts" swaps, lightens or ends the exercise.
