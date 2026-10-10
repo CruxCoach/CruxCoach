@@ -13,6 +13,8 @@ data class BoardCleaningState(
     val holdCount: Int = 0,
     val active: Boolean = false,
     val busy: Boolean = false,
+    val holdLimit: Int = Int.MAX_VALUE,
+    val displayedHoldCount: Int = 0,
 )
 
 /** Daily physical LED positions, independent of catalogue, outcome, angle and
@@ -28,15 +30,19 @@ internal class BoardCleaningSession(
     private var generation = 0L
     private var previous: List<ByteArray>? = null
     private var cleaningDate: String? = null
+    private var displayedPositions = emptySet<Int>()
+    private var encodeCleaning: ((Set<Int>) -> List<ByteArray>)? = null
     private val mutableState = MutableStateFlow(BoardCleaningState())
     val state = mutableState.asStateFlow()
 
-    @Synchronized fun attach(key: String?) {
+    @Synchronized fun attach(key: String?, holdLimit: Int = Int.MAX_VALUE) {
         generation++
         target = key
         previous = null
         cleaningDate = null
-        mutableState.value = BoardCleaningState(available = key != null)
+        displayedPositions = emptySet()
+        encodeCleaning = null
+        mutableState.value = BoardCleaningState(available = key != null, holdLimit = holdLimit.coerceAtLeast(1))
         refresh()
     }
 
@@ -77,11 +83,14 @@ internal class BoardCleaningSession(
             val day = days[target] ?: return false
             if (!state.value.available || state.value.busy || day.positions.isEmpty() ||
                 (!state.value.active && day.date != today())) return false
-            val chunks = encode(day.positions)
+            val batch = day.positions.sorted().take(state.value.holdLimit).toSet()
+            val chunks = encode(batch)
+            encodeCleaning = encode
+            displayedPositions = batch
             cleaningDate = day.date
             // Fence other producers before the first write, including a partial
             // failed send. Stop/retry stays available until restoration succeeds.
-            mutableState.value = state.value.copy(active = true, busy = true)
+            mutableState.value = state.value.copy(active = true, busy = true, displayedHoldCount = batch.size)
             generation to chunks
         }
         try {
@@ -99,22 +108,40 @@ internal class BoardCleaningSession(
         clear: () -> List<ByteArray>,
         write: suspend (List<ByteArray>) -> Boolean,
     ): Boolean {
+        var remaining = emptySet<Int>()
+        var nextBatch = emptySet<Int>()
         val operation = synchronized(this) {
             if (!state.value.active || state.value.busy) return false
+            if (markCleaned) {
+                remaining = days[target]?.positions.orEmpty() - displayedPositions
+                nextBatch = remaining.sorted().take(state.value.holdLimit).toSet()
+            }
+            val chunks = if (nextBatch.isNotEmpty()) {
+                encodeCleaning?.invoke(nextBatch) ?: return false
+            } else previous ?: clear()
             mutableState.value = state.value.copy(busy = true)
-            generation to (previous ?: clear())
+            generation to chunks
         }
         try {
             val success = write(operation.second)
             return synchronized(this) {
                 if (!success || operation.first != generation) return@synchronized false
                 if (markCleaned && days[target]?.date == cleaningDate) {
-                    days.remove(target)
+                    val key = target ?: return@synchronized false
+                    if (remaining.isEmpty()) days.remove(key)
+                    else days[key] = CleaningDay(cleaningDate!!, remaining)
                     save(days.toMap())
                 }
-                cleaningDate = null
-                mutableState.value = state.value.copy(active = false)
-                refresh()
+                displayedPositions = nextBatch
+                if (nextBatch.isNotEmpty()) {
+                    mutableState.value = state.value.copy(
+                        holdCount = remaining.size, displayedHoldCount = nextBatch.size,
+                    )
+                } else {
+                    cleaningDate = null
+                    mutableState.value = state.value.copy(active = false, displayedHoldCount = 0)
+                    refresh()
+                }
                 true
             }
         } finally {
