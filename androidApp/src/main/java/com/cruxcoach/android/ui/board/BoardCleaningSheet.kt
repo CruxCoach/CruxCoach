@@ -87,18 +87,32 @@ internal fun BoardCleaningContent(
             !state.available -> Text(stringResource(R.string.board_cleaning_unsupported))
             else -> {
                 Text(
-                    pluralStringResource(R.plurals.board_cleaning_count, state.holdCount, state.holdCount),
+                    pluralStringResource(
+                        if (state.active) R.plurals.board_cleaning_remaining else R.plurals.board_cleaning_count,
+                        state.holdCount, state.holdCount,
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (state.holdCount == 0) Text(stringResource(R.string.board_cleaning_empty))
                 if (relayEnabled) Text(stringResource(R.string.board_cleaning_relay))
+                if (state.holdCount > state.holdLimit) {
+                    Text(stringResource(R.string.board_cleaning_sections, state.holdLimit))
+                }
                 if (state.active) {
+                    if (state.holdCount > state.displayedHoldCount) {
+                        Text(stringResource(R.string.board_cleaning_section_count, state.displayedHoldCount, state.holdCount))
+                    }
                     Text(stringResource(R.string.board_cleaning_active_hint))
                     Button(
                         onClick = { onFinish(true) },
                         enabled = ready && !state.busy,
                         modifier = Modifier.fillMaxWidth().testTag("board_cleaning_done"),
-                    ) { Text(stringResource(R.string.board_cleaning_done)) }
+                    ) {
+                        Text(stringResource(
+                            if (state.holdCount > state.displayedHoldCount) R.string.board_cleaning_next
+                            else R.string.board_cleaning_done,
+                        ))
+                    }
                     OutlinedButton(
                         onClick = { onFinish(false) },
                         enabled = ready && !state.busy,
