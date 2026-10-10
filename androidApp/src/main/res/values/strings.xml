@@ -3227,4 +3227,11 @@
         <item quantity="one">%d hold collected today</item>
         <item quantity="other">%d holds collected today</item>
     </plurals>
+    <string name="board_cleaning_sections">This older controller lights up to %d holds per section. Mark each section as cleaned to show the next one.</string>
+    <string name="board_cleaning_section_count">%1$d of %2$d remaining holds in this section</string>
+    <string name="board_cleaning_next">These holds are clean · next section</string>
+    <plurals name="board_cleaning_remaining">
+        <item quantity="one">%d hold left in this cleaning round</item>
+        <item quantity="other">%d holds left in this cleaning round</item>
+    </plurals>
 </resources>

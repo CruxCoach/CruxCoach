@@ -45,7 +45,7 @@ class BoardCleaningContentTest {
         compose.setContent {
             MaterialTheme {
                 BoardCleaningContent(
-                    BoardCleaningState(available = true, holdCount = 42, active = true),
+                    BoardCleaningState(available = true, holdCount = 42, active = true, displayedHoldCount = 42),
                     "MoonBoard", true, true, false, null,
                     onConnect = {}, onStart = {}, onFinish = { finishes += it }, onClose = {},
                 )
@@ -60,7 +60,7 @@ class BoardCleaningContentTest {
         compose.setContent {
             MaterialTheme {
                 BoardCleaningContent(
-                    BoardCleaningState(available = true, holdCount = 42, active = true, busy = true),
+                    BoardCleaningState(available = true, holdCount = 42, active = true, displayedHoldCount = 42, busy = true),
                     "Kilter", true, true, false, null,
                     onConnect = {}, onStart = {}, onFinish = {}, onClose = {},
                 )
@@ -78,7 +78,7 @@ class BoardCleaningContentTest {
                 MaterialTheme {
                     Box(Modifier.size(width = 320.dp, height = 600.dp)) {
                         BoardCleaningContent(
-                            BoardCleaningState(available = true, holdCount = 198, active = true),
+                            BoardCleaningState(available = true, holdCount = 198, active = true, displayedHoldCount = 198),
                             "MoonBoard", true, true, false, null,
                             onConnect = {}, onStart = {}, onFinish = {}, onClose = {},
                         )

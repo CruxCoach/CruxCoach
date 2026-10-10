@@ -22,7 +22,7 @@ class BoardCleaningEncoderTest {
     @Test fun accumulatedDayLargerThanSinglePacketRetainsEveryPosition() {
         for (api in listOf(2, 3)) {
             val encoder = BoardPacketEncoder(api)
-            val chunks = encoder.encodeClimb((0 until 200).map { it to BoardPacketEncoder.COLOR_HAND })
+            val chunks = encoder.encodeClimb((0 until 200).map { it to BoardPacketEncoder.COLOR_CLEANING })
             assertTrue(chunks.all { it.size <= BoardPacketEncoder.BLE_MTU })
             val stream = chunks.flatMap { it.toList() }
             val positions = mutableListOf<Int>()
@@ -37,10 +37,34 @@ class BoardCleaningEncoderTest {
                 for (index in offset + 5 until offset + 4 + length step width) {
                     val highMask = if (api == 3) 255 else 3
                     positions += (stream[index].toInt() and 255) or ((stream[index + 1].toInt() and highMask) shl 8)
+                    val color = if (api == 3) stream[index + 2].toInt() and 255 else stream[index + 1].toInt() and 252
+                    assertTrue(color != 0, "An encoded position must remain visibly lit")
                 }
                 offset += length + 5
             }
             assertEquals((0 until 200).toList(), positions)
         }
+    }
+
+    @Test fun legacyCleaningLimitKeepsEveryHoldVisibleAtMinimumBrightness() {
+        for (ledsPerHold in listOf(1, 2)) {
+            val count = BoardPacketEncoder.cleaningHoldLimit(2, ledsPerHold)
+            assertEquals(500 / ledsPerHold, count)
+            val encoder = BoardPacketEncoder(2, ledsPerHold)
+            val stream = encoder.encodeClimb((0 until count).map { it to BoardPacketEncoder.COLOR_CLEANING })
+                .flatMap { it.toList() }
+            var offset = 0
+            var lit = 0
+            while (offset < stream.size) {
+                val length = stream[offset + 1].toInt() and 255
+                for (index in offset + 5 until offset + 4 + length step 2) {
+                    assertTrue(stream[index + 1].toInt() and 252 != 0)
+                    lit++
+                }
+                offset += length + 5
+            }
+            assertEquals(count, lit)
+        }
+        assertEquals(Int.MAX_VALUE, BoardPacketEncoder.cleaningHoldLimit(3, 2))
     }
 }

@@ -1498,7 +1498,12 @@ class BoardBleConnection(
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
-        cleaning.attach(BoardCleaningStorage.key(board))
+        cleaning.attach(
+            BoardCleaningStorage.key(board),
+            if (board.boardBrand.usesAuroraProtocol)
+                BoardPacketEncoder.cleaningHoldLimit(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
+            else Int.MAX_VALUE,
+        )
         _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
@@ -2150,7 +2155,7 @@ class BoardBleConnection(
                         MoonBoardFrameEncoder.encodeCleaning(positions).toList()
                             .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
                     } else {
-                        encoder.encodeClimb(positions.sorted().map { it to BoardPacketEncoder.COLOR_HAND })
+                        encoder.encodeClimb(positions.sorted().map { it to BoardPacketEncoder.COLOR_CLEANING })
                     }
                 },
                 write = { writeCleaningChunks(it) },
