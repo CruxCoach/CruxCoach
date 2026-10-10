@@ -533,6 +533,11 @@ class BoardBleConnection(
     private var writePacingMs = 0L
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
+    private val cleaningStorage = BoardCleaningStorage(context)
+    private val cleaning = BoardCleaningSession(cleaningStorage.load(), cleaningStorage::save)
+    val cleaningState: StateFlow<BoardCleaningState> = cleaning.state
+    fun refreshCleaningDay() = cleaning.refresh()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var linkWatchdogJob: Job? = null
@@ -811,7 +816,7 @@ class BoardBleConnection(
         // a replacement for the old Quick-Send macro) could fire mid-
         // send on long climbs.
         val profile = BoardControllerProfiles.forBoard(currentBoard)
-        val suppressed = isKeepAliveHeld()
+        val suppressed = isKeepAliveHeld() || cleaningState.value.active
         val arm = BoardProjectionPolicy.shouldArmIdleDisconnect(
             seconds = seconds,
             connectionState = _connectionState.value,
@@ -1444,6 +1449,7 @@ class BoardBleConnection(
         _connectedBoardBrand.value = null
         _connectedQuantumModel.value = null
         currentBoard = null
+        cleaning.attach(null)
         _connectedBoardDescriptor.value = null
         gatt = null
         writeCharacteristic = null
@@ -1525,6 +1531,7 @@ class BoardBleConnection(
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
+        cleaning.attach(BoardCleaningStorage.key(board))
         _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
@@ -1621,6 +1628,7 @@ class BoardBleConnection(
             _connectedBoardBrand.value = null
             _connectedQuantumModel.value = null
             currentBoard = null
+            cleaning.attach(null)
             _connectedBoardDescriptor.value = null
             return
         }
@@ -1665,6 +1673,7 @@ class BoardBleConnection(
                 _connectedBoardBrand.value = null
                 _connectedQuantumModel.value = null
                 currentBoard = null
+                cleaning.attach(null)
                 _connectedBoardDescriptor.value = null
                 onRestartScannersAfterConnect?.invoke()
             }
@@ -1704,6 +1713,9 @@ class BoardBleConnection(
         characteristic: BluetoothGattCharacteristic,
         chunk: ByteArray
     ): Boolean {
+        // A long cleaning frame may span a disconnect/reconnect. Never write
+        // remaining chunks to a retired link or let its timeout retire a new one.
+        if (gatt !== currentGatt || writeCharacteristic !== characteristic) return false
         val deferred = CompletableDeferred<Int>()
         val pending = PendingGattWrite(currentGatt, characteristic, deferred)
         pendingWrite = pending
@@ -1725,10 +1737,10 @@ class BoardBleConnection(
             // Android does not give write callbacks an operation token. Retire
             // this GATT so a late callback cannot acknowledge a later write on
             // the same characteristic.
-            disconnect()
+            if (gatt === currentGatt) disconnect()
             return false
         }
-        return status == BluetoothGatt.GATT_SUCCESS
+        return status == BluetoothGatt.GATT_SUCCESS && gatt === currentGatt
     }
 
     /**
@@ -1770,7 +1782,10 @@ class BoardBleConnection(
         expectedQuantumPlayers: List<QuantumActivePlayer>? = null,
         expectedQuantumBoard: BoardLayerBoardIdentity? = null,
         expectedBrand: BoardBrand? = null,
+        collectForCleaning: Boolean = true,
     ): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
+        val cleaningTicket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED) return false
         if (!boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)) {
             Log.w(TAG, "Refusing projection for $expectedBrand on ${_connectedBoardBrand.value}")
@@ -1896,7 +1911,15 @@ class BoardBleConnection(
                 encoder.encodeClimbFromHolds(holds, placementToLed)
             }
 
-            return writeChunks(chunks)
+            val success = writeChunks(chunks)
+            if (success) cleaning.projected(
+                cleaningTicket,
+                if (collectForCleaning) holds.mapNotNull { placementToLed[it.placementId] }
+                    .filter { it >= 0 && it <= if ((currentBoard?.apiLevel ?: 3) < 3) 1023 else 65535 }.toSet()
+                else emptySet(),
+                chunks,
+            )
+            return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -2147,24 +2170,74 @@ class BoardBleConnection(
         quantumControllerState.first { it.revision > afterRevision && predicate(it) }
     }
 
+    /** Cleaning owns the projection until explicitly finished. Both operations
+     * share the ordinary send mutex and are fenced to the UI's physical board.
+     * They never enter projection history or the daily hold collection. */
+    suspend fun startCleaning(expectedAddress: String): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED ||
+            currentBoard?.address != expectedAddress || !cleaningState.value.available) return false
+        disconnectJob?.cancel()
+        try {
+            cleaning.start(
+                encode = { positions ->
+                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
+                        MoonBoardFrameEncoder.encodeCleaning(positions).toList()
+                            .chunked(BoardPacketEncoder.BLE_MTU).map { it.toByteArray() }
+                    } else {
+                        encoder.encodeClimb(positions.sorted().map { it to BoardPacketEncoder.COLOR_HAND })
+                    }
+                },
+                write = { writeCleaningChunks(it) },
+            )
+        } finally {
+            resetIdleTimer()
+        }
+    }
+
+    suspend fun finishCleaning(expectedAddress: String, markCleaned: Boolean): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED || currentBoard?.address != expectedAddress) return false
+        try {
+            cleaning.finish(
+                markCleaned = markCleaned,
+                clear = {
+                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) listOf("l##".encodeToByteArray())
+                    else encoder.encodeClear()
+                },
+                write = { writeCleaningChunks(it) },
+            )
+        } finally {
+            resetIdleTimer()
+        }
+    }
+
+    private suspend fun writeCleaningChunks(chunks: List<ByteArray>): Boolean = writeChunks(
+        chunks,
+        interChunkDelayMs = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD)
+            MOONBOARD_UART_INTER_CHUNK_DELAY_MS else 0L,
+    )
+
     suspend fun resendWithColors(roleColors: Map<Int, Int>): Boolean {
         val holds = lastHolds ?: return false
         val ledMap = lastPlacementToLed ?: return false
         if (lastSendBoardBrand != _connectedBoardBrand.value ||
             lastSendBoardAddress?.equals(currentBoard?.address, ignoreCase = true) != true
         ) return false
-        return sendClimb(holds, ledMap, roleColors)
+        return sendClimb(holds, ledMap, roleColors, collectForCleaning = false)
     }
 
     suspend fun sendRawChunks(
         chunks: List<ByteArray>,
         expectedBrand: BoardBrand? = null,
     ): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
+        val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             _connectedBoardBrand.value == BoardBrand.QUANTUM ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
-        return writeChunks(chunks)
+        val success = writeChunks(chunks)
+        if (success) cleaning.forgetProjection(ticket)
+        return success
     }
 
     /**
@@ -2177,11 +2250,16 @@ class BoardBleConnection(
         leds: List<Pair<Int, Int>>,
         expectedBrand: BoardBrand? = null,
     ): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
+        val ticket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             _connectedBoardBrand.value == BoardBrand.QUANTUM ||
             !boardScopedCommandAllowed(_connectedBoardBrand.value, expectedBrand)
         ) return false
-        return writeChunks(encoder.encodeClimb(leds))
+        val chunks = encoder.encodeClimb(leds)
+        val success = writeChunks(chunks)
+        if (success) cleaning.projected(ticket, emptySet(), chunks)
+        return success
     }
 
     /**
@@ -2204,7 +2282,10 @@ class BoardBleConnection(
         frames: String,
         variant: com.cruxcoach.domain.board.MoonBoardVariant,
         ledMode: MoonBoardLedMode = MoonBoardLedMode.BELOW,
+        collectForCleaning: Boolean = true,
     ): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
+        val cleaningTicket = cleaning.ticket()
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !moonBoardCommandAllowed(_connectedBoardBrand.value)
         ) return false
@@ -2221,6 +2302,11 @@ class BoardBleConnection(
             val success = writeChunks(
                 chunks,
                 interChunkDelayMs = MOONBOARD_UART_INTER_CHUNK_DELAY_MS,
+            )
+            if (success) cleaning.projected(
+                cleaningTicket,
+                if (collectForCleaning) MoonBoardFrameEncoder.cleaningPositions(frames, variant) else emptySet(),
+                chunks,
             )
             return success
         } finally {
@@ -2239,6 +2325,7 @@ class BoardBleConnection(
      * named explicit API below may authorize it. [expectedBrand] fences
      * long-running producers such as Kilter animations across board swaps. */
     suspend fun clearBoard(expectedBrand: BoardBrand? = null): Boolean = writeMutex.withLock {
+        if (cleaningState.value.active) return false
         val connectedBrand = _connectedBoardBrand.value
         if (_connectionState.value != ConnectionState.CONNECTED ||
             !boardScopedCommandAllowed(connectedBrand, expectedBrand) ||
@@ -2299,7 +2386,13 @@ class BoardBleConnection(
                 if (!requestQuantumRouteListLocked(expectedQuantumBoard)) return false
                 return _quantumControllerState.value.players.isEmpty()
             }
-            return writeChunks(encoder.encodeClear())
+            val ticket = cleaning.ticket()
+            val chunks = if (_connectedBoardBrand.value == BoardBrand.MOONBOARD) {
+                listOf(MoonBoardFrameEncoder.encodeCleaning(emptySet()))
+            } else encoder.encodeClear()
+            val success = writeChunks(chunks)
+            if (success) cleaning.projected(ticket, emptySet(), chunks)
+            return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -2355,6 +2448,7 @@ class BoardBleConnection(
         writeCharacteristic = null
         writePacingMs = 0L
         currentBoard = null
+        cleaning.attach(null)
         _connectedBoardDescriptor.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
