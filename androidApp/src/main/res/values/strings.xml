@@ -3151,4 +3151,25 @@
     <string name="import_moon_mail_short">Paste the copied request into the email.</string>
     <string name="account_amber_restore_summary">Choose your backup’s account in Amber. Your private key stays in Amber.</string>
     <string name="account_restore_key_method">With a key</string>
+
+    <!-- Board cleaning (0.2.4) -->
+    <string name="board_cleaning_title">Clean holds</string>
+    <string name="board_cleaning_logbook_options">Logbook options</string>
+    <string name="board_cleaning_description">Highlights the holds from problems sent to this board today using CruxCoach on this phone, including attempts without a top. Group sessions count when this phone controls the board.</string>
+    <string name="board_cleaning_connect_hint">Connect to the board you want to clean.</string>
+    <string name="board_cleaning_connect">Connect board</string>
+    <string name="board_cleaning_unsupported">Cleaning mode requires a direct connection to Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone or MoonBoard.</string>
+    <string name="board_cleaning_empty">No holds collected for this board today. Send a problem to the board to start collecting.</string>
+    <string name="board_cleaning_relay">Stop board sharing before starting cleaning mode. Problems sent through other apps are not included.</string>
+    <string name="board_cleaning_active_hint">Problem changes from this phone are paused. Closing this dialog keeps the lights on. Finish to restore the last known display, or turn off the LEDs if it is no longer known. “Cleaned” also resets this collection.</string>
+    <string name="board_cleaning_done">Cleaned · reset collection</string>
+    <string name="board_cleaning_stop">Stop · keep collection</string>
+    <string name="board_cleaning_start">Highlight holds on board</string>
+    <string name="board_cleaning_retry">Highlight again</string>
+    <string name="board_cleaning_active">Cleaning mode active · open controls</string>
+    <string name="board_cleaning_error">The board could not be updated. Check the connection and try again. The collection has been kept.</string>
+    <plurals name="board_cleaning_count">
+        <item quantity="one">%d hold collected today</item>
+        <item quantity="other">%d holds collected today</item>
+    </plurals>
 </resources>

@@ -60,6 +60,7 @@ fun BleStatusArea(
     onAddToQueue: (() -> Unit)? = null,
     onRandomToQueue: (() -> Unit)? = null,
 ) {
+    if (com.cruxcoach.android.ui.board.BoardCleaningBanner()) return
     val bleShareManager = LocalBleShareManager.current
     // A screen may override where a tap goes; otherwise navigate to the detail screen.
     val openClimbDetail = LocalOpenClimbDetail.current

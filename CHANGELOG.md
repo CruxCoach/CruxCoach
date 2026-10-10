@@ -4,6 +4,15 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.4] - Unreleased
+
+### Added
+- “Clean holds” in the logbook menu lights the combined holds of today's
+  problems sent from this phone to the connected Kilter/Aurora or MoonBoard.
+  Collections survive app restarts and stay separate per physical board.
+  Finish cleaning to restore the previous display and optionally reset the
+  collection; an active-mode button keeps the controls accessible.
+
 ## [0.2.3] - 2026-09-26
 
 ### Changed

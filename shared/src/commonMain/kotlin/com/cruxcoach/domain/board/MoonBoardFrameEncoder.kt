@@ -41,6 +41,18 @@ enum class MoonBoardLedMode {
 
 object MoonBoardFrameEncoder {
 
+    /** One below-hold position per displayed hold, regardless of dual LEDs.
+     * Cleaning uses these canonical positions so a finish hold and a hand hold
+     * at the same location are counted once and marked consistently. */
+    fun cleaningPositions(frames: String, variant: MoonBoardVariant): Set<Int> =
+        parseHolds(frames).mapNotNull { (hold, role) ->
+            if (roleToken(role) == null || hold !in 1..(COLS * variant.gridRows)) null
+            else serialPosition(hold, variant)
+        }.toSet()
+
+    fun encodeCleaning(positions: Set<Int>): ByteArray =
+        (FRAME_PREFIX + positions.sorted().joinToString(",") { "P$it" } + FRAME_SUFFIX).encodeToByteArray()
+
     // Aurora-aligned role codes as stored in the `frames` column
     // (p{holdId}r{roleCode}). Match HOLD_STATE_CODES in the board-DB
     // MoonBoard importer.
