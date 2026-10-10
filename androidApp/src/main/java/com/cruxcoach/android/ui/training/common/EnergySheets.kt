@@ -104,7 +104,7 @@ fun EnergySheet(
                 }
                 // Recommended (the line above) or an own calorie target; a low one is named right here, never refused.
                 OwnTargetChoice(com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY, profile, energyTarget(need, plan),
-                    onChange = onUpdateProfile, modifier = Modifier.padding(top = 4.dp))
+                    onChange = onUpdateProfile, modifier = Modifier.padding(top = 4.dp), heading = stringResource(R.string.trn_target_heading))
                 profile.ownKcal?.let { kcal ->
                     val own = com.cruxcoach.athlete.logic.OwnEnergyTarget(kcal, need.totalKcal, need.restingKcal)
                     if (own.large) {

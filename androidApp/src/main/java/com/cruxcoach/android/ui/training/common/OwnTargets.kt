@@ -49,6 +49,7 @@ fun TargetChoice(
     modifier: Modifier = Modifier,
     toDisplay: (Int) -> Int = { it },
     fromDisplay: (Int) -> Int = { it },
+    fieldLabel: String? = null,
 ) {
     Column(modifier.fillMaxWidth().testTag(tag)) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
@@ -73,7 +74,7 @@ fun TargetChoice(
                 stored = toDisplay(own).toString(),
                 isValid = { t -> t.toIntOrNull()?.let { fromDisplay(it) in range } == true },
                 onSave = { t -> t.toIntOrNull()?.let { onOwn(fromDisplay(it)) } },
-                label = stringResource(R.string.trn_target_own_label, label), suffix = unit,
+                label = fieldLabel ?: stringResource(R.string.trn_target_own_label, label), suffix = unit,
                 keyboardType = KeyboardType.Number,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("${tag}_input"),
             )
@@ -110,6 +111,8 @@ fun OwnTargetChoice(
     recommended: Int?,
     onChange: ((AthleteProfile) -> AthleteProfile) -> Unit,
     modifier: Modifier = Modifier,
+    /** Where the nutrient is already the title (its ring's dialog, the energy sheet): "Dein Ziel" instead of its name. */
+    heading: String? = null,
 ) {
     val g = stringResource(R.string.trn_unit_g)
     val (label, unit, range, fallback) = when (kind) {
@@ -122,10 +125,11 @@ fun OwnTargetChoice(
     }
     val imperialWater = kind == FuelTargets.TargetKind.WATER && profile.units == UnitSystem.IMPERIAL
     TargetChoice(
-        label = label, unit = unit, recommended = recommended, own = ownTarget(profile, kind), range = range, fallback = fallback,
+        label = heading ?: label, unit = unit, recommended = recommended, own = ownTarget(profile, kind), range = range, fallback = fallback,
         tag = "own_${kind.name.lowercase()}", onOwn = { v -> onChange { withOwnTarget(it, kind, v) } }, modifier = modifier,
         toDisplay = { if (imperialWater) (it / FuelUnits.ML_PER_FL_OZ).roundToInt() else it },
         fromDisplay = { if (imperialWater) (it * FuelUnits.ML_PER_FL_OZ).roundToInt() else it },
+        fieldLabel = stringResource(R.string.trn_target_own_label, label),
     )
 }
 

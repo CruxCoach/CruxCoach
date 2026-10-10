@@ -625,7 +625,7 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     com.cruxcoach.android.ui.common.InfoText(text.joinToString("\n\n"))
                     com.cruxcoach.android.ui.training.common.OwnTargetChoice(kind, state.profile, recommended, onChange = onUpdateProfile,
-                        modifier = Modifier.padding(top = 12.dp))
+                        modifier = Modifier.padding(top = 12.dp), heading = stringResource(R.string.trn_target_heading))
                 }
             },
             confirmButton = { TextButton(onClick = { explained = null }) { Text(stringResource(R.string.action_close)) } },
