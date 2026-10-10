@@ -176,7 +176,7 @@ object WeekPlanSuggester {
     ): List<String> {
         if (climbingPaused) {
             val fingerHurt = injuries.any { it.region == InjuryRegion.FINGER || it.region == InjuryRegion.WRIST }
-            return listOfNotNull(INJURY.takeIf { fingerHurt || EquipmentV2.PICKUP_BLOCK in equipment }, PULL, LEGS, CORE)
+            return listOfNotNull(INJURY.takeIf { fingerHurt || EquipmentV2.satisfied(EquipmentV2.PICKUP_BLOCK, equipment) }, PULL, LEGS, CORE)
                 .distinct()
         }
         val fingerOk = CoachLogic.fingerMaxAllowed(coach) && coach.fingerPreference != FingerPreference.NONE &&

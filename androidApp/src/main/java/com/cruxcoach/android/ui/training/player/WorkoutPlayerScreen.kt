@@ -45,6 +45,7 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.*
 import com.cruxcoach.android.ui.training.workout.HangTimerContent
 import com.cruxcoach.android.ui.training.workout.workoutTitle
+import com.cruxcoach.athlete.catalog.EquipmentV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
@@ -307,8 +308,9 @@ private fun SetView(
                     Text(load, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.testTag("player_target_load"))
                 }
-                percentText(set, def, state.bodyweight)?.let {
-                    Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                listOfNotNull(perBlockText(set, def, units), percentText(set, def, state.bodyweight)).takeIf { it.isNotEmpty() }?.let {
+                    Text(it.joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("player_target_detail"))
                 }
                 edgeGripText(set)?.let {
                     Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -637,6 +639,14 @@ internal fun loadText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSyst
         LoadMode.EXTERNAL -> formatMass(load ?: 0.0, units)
         else -> null
     }
+}
+
+/** Two-arm pick-ups log the total of both hands; this says what goes on each block. */
+@Composable
+internal fun perBlockText(set: ExerciseSet, def: ExerciseDefinition, units: UnitSystem): String? {
+    if (def.load != LoadMode.EXTERNAL || def.unilateral || EquipmentV2.PICKUP_BLOCK_PAIR !in def.equipment) return null
+    val total = set.loadKg?.takeIf { it > 0 } ?: return null
+    return stringResource(R.string.trw_load_per_block, formatMass(total / 2, units))
 }
 
 /** Effective load in % body weight for loaded hangs and lifts. */

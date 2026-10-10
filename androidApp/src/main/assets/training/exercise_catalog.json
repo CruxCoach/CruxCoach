@@ -923,7 +923,7 @@
    "load": "EXTERNAL",
    "unilateral": false,
    "equipment": [
-    "PICKUP_BLOCK",
+    "PICKUP_BLOCK_PAIR",
     "PLATES"
    ],
    "domains": [
@@ -973,9 +973,9 @@
      ],
      "why": "Trainiert Fingerkraft ohne zu hängen, fein dosierbar mit kleinen Gewichtssprüngen.",
      "steps": [
-      "Belade einen Block pro Hand mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
-      "Stell dich zwischen die Blöcke, greif halb aufgestellt und heb sie mit geradem Rücken an.",
-      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht ein."
+      "Belade zwei Blöcke (einen pro Hand) oder einen Block mit Leiste für beide Hände mit Hantelscheiben oder einer Kettlebell, Leiste 20 mm.",
+      "Stell dich mittig davor, greif halb aufgestellt und heb mit geradem Rücken an.",
+      "Halte 10 s knapp über dem Boden, setz kontrolliert ab und trag das Gesamtgewicht beider Hände ein."
      ],
      "cues": [
       "Aus den Beinen heben, nicht aus dem Rücken"
@@ -993,9 +993,9 @@
      ],
      "why": "Trains finger strength without hanging, with small, precise load jumps.",
      "steps": [
-      "Load one block per hand with plates or a kettlebell; use a 20 mm edge.",
-      "Stand between the blocks, half crimp, and lift with a neutral back.",
-      "Hold 10 s just off the floor, lower under control and log the total weight."
+      "Load two blocks (one per hand) or one block with an edge for both hands with plates or a kettlebell; use a 20 mm edge.",
+      "Stand centred over them, half crimp, and lift with a neutral back.",
+      "Hold 10 s just off the floor, lower under control and log the total for both hands."
      ],
      "cues": [
       "Lift with your legs, not your back"
