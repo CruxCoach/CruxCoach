@@ -74,11 +74,11 @@ class PlaylistPlaybackCoordinatorTest {
 
     /** combine() funnels through internal coroutines whose resumption
      *  isn't strictly synchronous even on the unconfined dispatcher —
-     *  poll briefly instead of racing it. */
+     *  poll instead of racing it; up to 2 s for a loaded CI runner. */
     private fun awaitState(
         predicate: (PlaylistPlaybackState) -> Boolean,
     ): PlaylistPlaybackState {
-        repeat(100) {
+        repeat(400) {
             testDispatcher.scheduler.advanceUntilIdle()
             val s = coordinator.state.value
             if (predicate(s)) return s
@@ -105,7 +105,8 @@ class PlaylistPlaybackCoordinatorTest {
         queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40), QueueItem("b", 40)))
         sessionState.value = BoardSessionState(isActive = true, elapsedSeconds = 90)
 
-        val s = awaitState { it.isActive && it.queue.size == 2 }
+        // Queue and session time come through separate flows: wait for both (publisher run of 1b9f49409 saw 0 s).
+        val s = awaitState { it.isActive && it.queue.size == 2 && it.elapsedSeconds == 90 }
         assertTrue(s.isActive)
         assertTrue(s.isHost)
         assertEquals(2, s.queue.size)
