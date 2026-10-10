@@ -138,7 +138,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (any language, comma or dot decimals, kg/lb/st, cm/in), with a preview,
   keep-or-overwrite for existing days and a day/month choice when dates are
   ambiguous.
-- Nutrition (FEAT-068) with its own entry in the main menu: protein by body weight and carbohydrate
+- Nutrition (FEAT-068), a tab next to training under one main-menu entry "Training & nutrition": protein by body weight and carbohydrate
   targets that follow the training day – board sessions and logged climbing
   days count automatically, a light day less than a limit session – and a fat
   target that fills the energy left, kept within 20–35 % of it (1 g per kg

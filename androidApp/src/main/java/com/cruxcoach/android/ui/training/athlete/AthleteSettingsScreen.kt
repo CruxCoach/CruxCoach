@@ -103,7 +103,8 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     fun setBirthYear(year: Int?) = update { it.copy(birthYear = year) }
 
     // Places with their own equipment; every change is kept at once.
-    fun savePlaceEquipment(placeId: String, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.savePlaceEquipment(placeId, equipment) }
+    /** [placeId] null: today's place, created as the first place when there is none yet. */
+    fun savePlaceEquipment(placeId: String?, equipment: Set<com.cruxcoach.athlete.catalog.EquipmentV2>) = io { service.savePlaceEquipment(placeId, equipment) }
     fun renamePlace(placeId: String, name: String?) = io { service.renamePlace(placeId, name) }
     fun makeDefaultPlace(placeId: String) = io { service.makeDefaultPlace(placeId) }
     fun removePlace(placeId: String) = io { service.removePlace(placeId) }
@@ -229,10 +230,8 @@ fun AthleteSettingsScreen(
                     val day = java.time.LocalDate.now().toString()
                     val places = com.cruxcoach.athlete.logic.TrainingPlaces.of(p)
                     if (places.isEmpty()) {
-                        // Nothing set up yet: the first equipment becomes the first place (at home).
-                        com.cruxcoach.android.ui.training.common.EquipmentEditor(emptySet()) { set ->
-                            viewModel.addPlace(com.cruxcoach.athlete.model.PlaceKind.HOME, set)
-                        }
+                        // Nothing set up yet: the first equipment becomes the first place (at home), once.
+                        com.cruxcoach.android.ui.training.common.EquipmentEditor(emptySet()) { set -> viewModel.savePlaceEquipment(null, set) }
                     } else {
                         com.cruxcoach.android.ui.training.common.PlacesEditor(
                             places = places,

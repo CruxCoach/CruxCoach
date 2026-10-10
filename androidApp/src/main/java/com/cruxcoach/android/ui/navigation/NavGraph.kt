@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.*
 import android.Manifest
 import android.content.pm.PackageManager
@@ -591,8 +590,8 @@ fun CruxCoachNavHost(
                             drawerScope.launch { drawerState.close() }
                             when {
                                 route == Routes.BOARD_BROWSER -> Unit
-                                // Nutrition is a tab of the training area now: Today underneath.
-                                route == com.cruxcoach.android.ui.training.TrainingRoutes.FUEL ->
+                                // Training & nutrition: the area opens at Today; Nutrition is one of its tabs.
+                                route == com.cruxcoach.android.ui.training.TrainingRoutes.TODAY ->
                                     navController.openTrainingArea(route)
                                 else -> navController.navigate(route) { launchSingleTop = true }
                             }
@@ -1167,10 +1166,9 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
             val entries = listOf(
                 Triple(Routes.BOARD_BROWSER, com.cruxcoach.android.R.string.board_browser_nav_board, "menu_board"),
                 Triple(Routes.BOARD_MAP, com.cruxcoach.android.R.string.main_menu_board_map, "menu_board_map"),
-                // One entry for the whole training area; its own tab bar organises the rest.
-                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training, "menu_today"),
-                // Nutrition has its own entry and is always on (owner 2026-10-05).
-                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.FUEL, com.cruxcoach.android.R.string.tr_nav_fuel, "menu_nutrition"),
+                // One entry for training and nutrition (owner 2026-10-10): both lead into the same area,
+                // whose tab bar (Today, Training, Nutrition, Progress) organises the rest.
+                Triple(com.cruxcoach.android.ui.training.TrainingRoutes.TODAY, com.cruxcoach.android.R.string.tr_nav_training_nutrition, "menu_today"),
             )
             entries.forEach { (route, label, tag) ->
                 NavigationDrawerItem(
@@ -1178,7 +1176,6 @@ internal fun BrowserMainDrawer(onSelect: (String) -> Unit) {
                         Icon(when (route) {
                             Routes.BOARD_MAP -> Icons.Default.Map
                             com.cruxcoach.android.ui.training.TrainingRoutes.TODAY -> Icons.Default.FitnessCenter
-                            com.cruxcoach.android.ui.training.TrainingRoutes.FUEL -> Icons.Default.Restaurant
                             Routes.BOARD_BROWSER -> Icons.Default.DeveloperBoard
                             else -> Icons.Default.FitnessCenter
                         }, null)

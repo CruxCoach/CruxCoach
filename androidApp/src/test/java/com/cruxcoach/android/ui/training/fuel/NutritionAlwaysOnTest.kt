@@ -19,6 +19,7 @@ import com.cruxcoach.android.ui.navigation.BrowserMainDrawer
 import com.cruxcoach.android.ui.training.TrainingRoutes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,16 +96,17 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `main menu has nutrition next to training`() {
+    fun `main menu has one entry for training and nutrition`() {
         var selected: String? = null
         compose.setContent { MaterialTheme { BrowserMainDrawer { selected = it } } }
-        compose.onNodeWithTag("menu_today").assertExists()
-        compose.onNodeWithText("Nutrition").assertExists()
+        // One entry, not two that lead into the same area (owner 2026-10-10).
+        compose.onNodeWithText("Training & nutrition").assertExists()
+        assertTrue(compose.onAllNodesWithTag("menu_nutrition").fetchSemanticsNodes().isEmpty())
         // The drawer sheet sits outside the small Robolectric window, so a
         // synthetic touch misses it; trigger the item's own click action.
-        compose.onNodeWithTag("menu_nutrition").performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag("menu_today").performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
-        assertEquals(TrainingRoutes.FUEL, selected)
+        assertEquals(TrainingRoutes.TODAY, selected)
     }
 
 }
