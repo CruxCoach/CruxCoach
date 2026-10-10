@@ -182,7 +182,6 @@
     <string name="trc_settings_info">Ziel, Woche, Erfahrung und was dir liegt. Jede Antwort ist optional und bleibt auf diesem Gerät; sie formt nur die Vorschläge.</string>
     <string name="trc_settings_no_goal">Noch kein Ziel</string>
     <string name="trc_settings_score">zu %1$d %% vollständig</string>
-    <string name="trc_settings_local">Nur auf diesem Gerät gespeichert.</string>
     <string name="trc_excluded_title">Nie vorgeschlagen</string>
     <string name="trc_excluded_none">Keine Übungen ausgeschlossen. Mit „Nie vorschlagen“ an einer Übung bleibt sie aus den Vorschlägen.</string>
     <string name="trc_excluded_allow">Wieder erlauben</string>

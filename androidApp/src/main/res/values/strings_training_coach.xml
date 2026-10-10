@@ -182,7 +182,6 @@
     <string name="trc_settings_info">Goal, week, experience and what suits you. Every answer is optional and stays on this device; it only shapes the suggestions.</string>
     <string name="trc_settings_no_goal">No goal yet</string>
     <string name="trc_settings_score">%1$d %% complete</string>
-    <string name="trc_settings_local">Stored only on this device.</string>
     <string name="trc_excluded_title">Never suggested</string>
     <string name="trc_excluded_none">No exercises excluded. Use “Never suggest” on an exercise to keep it out of suggestions.</string>
     <string name="trc_excluded_allow">Allow again</string>

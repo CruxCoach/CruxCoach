@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.training.stats
 
+import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.ensureActive
 import androidx.compose.foundation.clickable
@@ -282,22 +283,25 @@ fun StatsHubScreen(
             }
 
             // ── Calendar ────────────────────────────────────────────
-            item { SectionTitle(stringResource(R.string.trs_calendar)) }
+            // How to read a chart is behind the info icon at its title (design.md), not a line under it.
+            item {
+                SectionTitle(stringResource(R.string.trs_calendar)) {
+                    InfoButton(stringResource(R.string.trs_calendar), stringResource(R.string.trs_calendar_hint))
+                }
+            }
             item {
                 s.today?.let { today ->
                     CalendarHeatmap(s.calendar, today,
                         stringResource(R.string.trs_calendar_cd, s.calendar.count { it.value > 0 }),
                         Modifier.testTag("stats_calendar"))
                 }
-                Text(stringResource(R.string.trs_calendar_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             // ── Load per structure ──────────────────────────────────
-            item { SectionTitle(stringResource(R.string.trs_load_title)) }
             item {
-                Text(stringResource(R.string.trs_load_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionTitle(stringResource(R.string.trs_load_title)) {
+                    InfoButton(stringResource(R.string.trs_load_title), stringResource(R.string.trs_load_hint))
+                }
             }
             val domains = listOf(LoadDomain.FINGER, LoadDomain.SHOULDER, LoadDomain.ELBOW, LoadDomain.SKIN)
             items(domains, key = { "dom-" + it.name }) { domain ->
@@ -329,7 +333,11 @@ fun StatsHubScreen(
                 }
             }
             if (s.strength.isNotEmpty()) {
-                item { SectionTitle(stringResource(R.string.trs_strength_title)) }
+                item {
+                    SectionTitle(stringResource(R.string.trs_strength_title)) {
+                        InfoButton(stringResource(R.string.trs_strength_title), stringResource(R.string.trs_strength_hint))
+                    }
+                }
                 item {
                     val series = s.strength.entries.mapIndexed { i, (slug, points) ->
                         ChartSeries(label = s.strengthDefs[slug]?.name(lang) ?: slug,
@@ -337,8 +345,6 @@ fun StatsHubScreen(
                     }
                     DateLineChart(series, { "${it.roundToInt()} %" }, stringResource(R.string.trs_strength_cd),
                         Modifier.fillMaxWidth().testTag("stats_strength_chart"))
-                    Text(stringResource(R.string.trs_strength_hint), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 

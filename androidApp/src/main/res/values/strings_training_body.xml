@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Body tracking (FEAT-067). -->
 <resources>
-    <string name="trb_trend_info_title">Why a trend?</string>
     <string name="trb_trend_info_text">Your weight swings by 1–2 kg from day to day, mostly water, salt, food and training. The trend smooths those swings out – each reading pulls it only a tenth of the way – so you see what really changes. Gaps are fine; weighing now and then is enough.</string>
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Per week</string>
@@ -28,7 +27,6 @@
     <string name="trb_ape_info_text">Arm span minus height. A positive value means your arms reach further than you are tall, which helps on long moves. It describes your build, not a training goal. Enter height and arm span once.</string>
     <string name="trb_ape_missing">Enter height and arm span to see your ape index.</string>
     <string name="trb_strength_title">Strength to weight</string>
-    <string name="trb_strength_subtitle">Progress through strength, not through the scale.</string>
     <string name="trb_strength_info_text">Shown is the best load per training day as a percentage of your body weight: for hangs body weight plus added weight, for block lifts the lifted weight, for weighted pull-ups the estimated maximum. Each set remembers the body weight of its day.</string>
     <string name="trb_strength_empty">No data yet. The baseline test on the Today screen gives you a starting value.</string>
     <string name="trb_strength_best">Best: %1$d %%</string>

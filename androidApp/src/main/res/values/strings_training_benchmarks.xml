@@ -3,11 +3,9 @@
     <string name="trbm_title">Performance values</string>
     <string name="trbm_card_title">Your performance value</string>
     <string name="trbm_info" formatted="false">Enter what you can do – e.g. a pull-up with +20 kg for 5 reps, or a 32 kg pick-up on 20 mm for 10 s with the right hand – or run a short test. CruxCoach turns it into today\'s loads: loaded reps with two in reserve, max hangs at about 90 %, repeaters at about 65 % of your 10-second maximum, bodyweight reps and holds at about 70 % of your maximum. When a logged set shows you are stronger, the value rises by itself and the next session plans more. Your first session with an exercise also sets a starting value.</string>
-    <string name="trbm_intro">What can you do? Enter it or test it – CruxCoach plans your loads from these values and raises them when your logs show progress.</string>
     <string name="trbm_needs_weight" formatted="false">Log your body weight first: added-weight values and % body weight need it.</string>
     <string name="trbm_key_title">Key starting values</string>
     <string name="trbm_other_title">Other exercises</string>
-    <string name="trbm_more_hint">Every exercise with load, reps or a hold has this card on its detail page.</string>
     <string name="trbm_none">not set yet</string>
     <string name="trbm_meta">%1$s · %2$s</string>
     <string name="trbm_source_manual">entered</string>

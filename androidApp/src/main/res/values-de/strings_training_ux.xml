@@ -12,7 +12,7 @@
     <string name="tru_weight_more">Mehr</string>
     <string name="tru_weight_last">Zuletzt: %1$s</string>
     <string name="tru_weight_reason_setup">Für deine Ernährungsziele und für Lasten in Prozent deines Körpergewichts.</string>
-    <string name="tru_weight_reason_fuel">Daraus berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate und Wasser.</string>
+    <string name="tru_weight_reason_fuel">Daraus berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate, Fett und Wasser.</string>
     <string name="tru_weight_saved">Gewicht gespeichert</string>
 
     <!-- Ausrüstung -->
@@ -123,7 +123,6 @@
     <string name="tru_set_body_data">Körperdaten</string>
     <string name="tru_set_sex">Geschlecht</string>
     <string name="tru_set_birth_year">Geburtsjahr</string>
-    <string name="tru_set_nutrition_weight">Die Ziele rechnen mit deinem Körpergewicht (unter „Über dich“).</string>
     <string name="tru_water_reached">Trinkziel erreicht</string>
     <string name="tru_setup_ready_title">Alles eingerichtet!</string>
     <string name="tru_setup_ready_text">Dein Coach kennt jetzt das Wichtigste. Jeder eingetragene Tag macht die Vorschläge persönlicher.</string>

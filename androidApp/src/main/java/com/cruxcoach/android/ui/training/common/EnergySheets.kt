@@ -67,7 +67,12 @@ fun EnergySheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("energy_sheet")) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text(stringResource(R.string.trn_sheet_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            // How the estimate works sits at the title's info icon, as in the goal sheet (design.md).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.trn_sheet_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                InfoButton(stringResource(R.string.trn_sheet_title), stringResource(R.string.trn_estimate_note))
+            }
             if (weightKg == null) {
                 Text(stringResource(R.string.trn_needs_weight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
                 NumberEntry(stringResource(R.string.tru_weight_title), Units.massUnit(profile.units), "energy_weight",
@@ -117,8 +122,6 @@ fun EnergySheet(
                         }
                     }
                 }
-                Text(stringResource(R.string.trn_estimate_note), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
             }
             OutlinedButton(onClick = onEditGoal, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("energy_goal")) {
                 Text(stringResource(if (profile.goal == AthleteGoal.LOSE_WEIGHT) R.string.trn_edit_goal else R.string.trn_set_goal))

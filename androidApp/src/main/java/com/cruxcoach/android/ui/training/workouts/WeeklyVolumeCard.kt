@@ -128,7 +128,7 @@ fun WeeklyVolumeCard(modifier: Modifier = Modifier) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.trv_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trv_info_title), stringResource(R.string.trv_info_text))
+                InfoButton(stringResource(R.string.trv_title), stringResource(R.string.trv_info_text))
             }
             when {
                 s.loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))

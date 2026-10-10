@@ -3,11 +3,9 @@
     <string name="trbm_title">Leistungswerte</string>
     <string name="trbm_card_title">Dein Leistungswert</string>
     <string name="trbm_info" formatted="false">Trag ein, was du schaffst – zum Beispiel Klimmzug mit +20 kg für 5 Wiederholungen oder Blockheben mit 32 kg an 20 mm für 10 s rechts – oder mach einen kurzen Test. CruxCoach macht daraus die Lasten von heute: Wiederholungen mit Zusatzlast mit zwei in Reserve, Max Hangs bei etwa 90 %, Repeater bei etwa 65 % deines 10-Sekunden-Maximums, Körpergewichtsübungen und Halteübungen bei etwa 70 % deines Maximums. Zeigt ein geloggter Satz, dass du stärker bist, steigt der Wert von selbst und die nächste Einheit plant mehr. Auch dein erstes Training mit einer Übung legt einen Startwert fest.</string>
-    <string name="trbm_intro">Was schaffst du? Trag es ein oder teste es – CruxCoach plant deine Lasten aus diesen Werten und hebt sie an, wenn deine Logs Fortschritt zeigen.</string>
     <string name="trbm_needs_weight" formatted="false">Trag zuerst dein Körpergewicht ein: Werte mit Zusatzgewicht und % Körpergewicht brauchen es.</string>
     <string name="trbm_key_title">Wichtige Startwerte</string>
     <string name="trbm_other_title">Weitere Übungen</string>
-    <string name="trbm_more_hint">Jede Übung mit Last, Wiederholungen oder Haltezeit hat diese Karte auf ihrer Detailseite.</string>
     <string name="trbm_none">noch nicht eingetragen</string>
     <string name="trbm_meta">%1$s · %2$s</string>
     <string name="trbm_source_manual">eingetragen</string>

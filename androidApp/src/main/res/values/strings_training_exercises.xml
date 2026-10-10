@@ -5,7 +5,7 @@
     <string name="trx_search_hint">Search exercises</string>
     <string name="trx_search_clear">Clear search</string>
     <string name="trx_filter_mine">My equipment</string>
-    <string name="trx_filter_mine_hint">Set up your equipment in the training settings first.</string>
+    <string name="trx_filter_mine_hint">Tell CruxCoach first what you have.</string>
     <string name="trx_filter_no_climbing">No climbing</string>
     <string name="trx_filter_finger_free">Finger-friendly</string>
     <string name="trx_filter_favorites">Favourites</string>

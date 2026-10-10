@@ -134,6 +134,8 @@ fun FuelScreen(
         title = stringResource(R.string.tr_nav_fuel),
         onBack = onBack,
         actions = {
+            // Once the intro card is gone, its full explanation stays one tap away in the app bar.
+            if (!state.loading && state.profile.fuelIntroAccepted) InfoButton(stringResource(R.string.trf_intro_title), fuelGuideText())
             IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("fuel_settings")) {
                 Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.tr_action_settings))
             }
@@ -486,6 +488,13 @@ private fun AddAction(
 
 // ── Intro (shown once) ───────────────────────────────────────────────
 
+/** How nutrition works and its guard rails: in the intro card's info, later in the app bar's. */
+@Composable
+private fun fuelGuideText(): String = listOf(
+    stringResource(R.string.trf_intro_p1), stringResource(R.string.trf_intro_protein), stringResource(R.string.trf_intro_carbs),
+    stringResource(R.string.trf_intro_no_budget), stringResource(R.string.trf_intro_hidden), stringResource(R.string.trf_intro_private),
+).joinToString("\n\n")
+
 /** Short on the screen, the full guard rails behind the info icon. */
 @Composable
 private fun FuelIntroCard(onGotIt: () -> Unit) {
@@ -496,10 +505,7 @@ private fun FuelIntroCard(onGotIt: () -> Unit) {
                 Spacer(Modifier.width(10.dp))
                 Text(stringResource(R.string.trf_intro_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f))
-                InfoButton(stringResource(R.string.trf_intro_title), listOf(
-                    stringResource(R.string.trf_intro_p1), stringResource(R.string.trf_intro_protein), stringResource(R.string.trf_intro_carbs),
-                    stringResource(R.string.trf_intro_no_budget), stringResource(R.string.trf_intro_hidden), stringResource(R.string.trf_intro_private),
-                ).joinToString("\n\n"))
+                InfoButton(stringResource(R.string.trf_intro_title), fuelGuideText())
             }
             Text(stringResource(R.string.tru_fuel_intro_short), style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 6.dp, end = 8.dp))
@@ -877,14 +883,11 @@ private fun ProgressRow(
     valueText: String,
     tag: String,
     supporting: String? = null,
-    info: String? = null,
-    infoTitle: String = label,
 ) {
     Column(Modifier.padding(top = 8.dp).testTag(tag)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text(valueText, style = MaterialTheme.typography.bodySmall)
-            if (info != null) InfoButton(infoTitle, info)
         }
         if (target > 0) {
             LinearProgressIndicator(
