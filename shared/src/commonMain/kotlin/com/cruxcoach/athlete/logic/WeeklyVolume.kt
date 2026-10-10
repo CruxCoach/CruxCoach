@@ -32,7 +32,15 @@ enum class VolumeArea { FINGER, PULL, PUSH, LEGS, CORE, ANTAGONIST, MOBILITY }
  * [VolumeArea.FINGER] the session count is the target (board climbing counts)
  * and [maxSets] caps the off-wall finger sets.
  */
-data class AreaTarget(val area: VolumeArea, val minSets: Int, val maxSets: Int, val minSessions: Int) {
+data class AreaTarget(
+    val area: VolumeArea,
+    val minSets: Int,
+    val maxSets: Int,
+    val minSessions: Int,
+    /** The athlete set this area's target themselves (owner 2026-10-10); [recommended] is what it replaced. */
+    val own: Boolean = false,
+    val recommended: AreaTarget? = null,
+) {
     val isOff: Boolean get() = minSets == 0 && maxSets == 0 && minSessions == 0
 }
 
@@ -212,6 +220,24 @@ object WeeklyVolume {
                 if (minSets == 0) sessions = 0
             }
             AreaTarget(area, minSets, maxSets, sessions)
+        }.map { withOwn(it, profile) }
+    }
+
+    /** Sessions a week an own finger target may ask for, and hard sets a week for the other areas. */
+    val OWN_FINGER_SESSIONS = 0..5
+    val OWN_SETS = 0..60
+
+    /**
+     * The athlete's own target in place of the recommended range: finger in
+     * sessions a week, the other areas as an exact number of hard sets.
+     */
+    fun withOwn(t: AreaTarget, p: AthleteProfile): AreaTarget {
+        val own = p.ownWeeklyTargets[t.area.name] ?: return t
+        if (own <= 0) return AreaTarget(t.area, 0, 0, 0, own = true, recommended = t)
+        return if (t.area == VolumeArea.FINGER) {
+            t.copy(minSessions = own, maxSets = t.maxSets.takeIf { it > 0 } ?: BASE.getValue(t.area).max, own = true, recommended = t)
+        } else {
+            t.copy(minSets = own, maxSets = own, minSessions = max(1, t.minSessions), own = true, recommended = t)
         }
     }
 

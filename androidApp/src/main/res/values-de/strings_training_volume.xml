@@ -2,7 +2,7 @@
 <resources>
     <!-- Wochenvolumen (MCI-Parität Punkt 2) -->
     <string name="trv_title">Wochenziele</string>
-    <string name="trv_info_text">Jeder Bereich hat eine Spanne harter Sätze pro Woche (Finger: Einheiten mit mindestens 48 h Abstand). Ziel, Fokus, Erfahrung, Trainingstage und der aktuelle Block bestimmen die Spanne. Harte Board-Tage zählen für Finger, Zug und Rumpf. Der Vorschlag für heute füllt, was noch fehlt – nie auf Kosten der Erholung oder einer Verletzung.</string>
+    <string name="trv_info_text">Jeder Bereich hat eine Spanne harter Sätze pro Woche (Finger: Einheiten mit mindestens 48 h Abstand). Ziel, Fokus, Erfahrung, Trainingstage und der aktuelle Block bestimmen die Spanne. Harte Board-Tage zählen für Finger, Zug und Rumpf. Der Vorschlag für heute füllt, was noch fehlt – nie auf Kosten der Erholung oder einer Verletzung. Tippe auf einen Bereich, um ein eigenes Ziel zu setzen.</string>
     <string name="trv_empty">Gerade keine Wochenziele – Entlastung, Taper oder Wettkampftag halten die Woche frei.</string>
     <string name="trv_legend">Volle Farbe: geloggt · hell: aus dem Klettern · Striche: Wochenspanne</string>
     <string name="trv_area_finger">Finger</string>
@@ -14,6 +14,13 @@
     <string name="trv_area_mobility">Mobilität</string>
     <string name="trv_value_sets">%1$s / %2$d–%3$d Sätze</string>
     <string name="trv_value_sessions">%1$s / %2$d Einheiten</string>
+    <string name="trv_value_sets_exact">%1$s / %2$d Sätze</string>
+    <string name="trv_unit_sets">Sätze</string>
+    <string name="trv_unit_sessions">Einheiten</string>
+    <string name="trv_recommended_sets">Empfohlen (%1$d–%2$d Sätze)</string>
+    <string name="trv_recommended_sessions">Empfohlen (%1$d Einheiten)</string>
+    <string name="trv_own_field">Pro Woche (%1$s)</string>
+    <string name="trv_edit_target">Ziel ändern</string>
     <string name="trv_status_below">im Rückstand</string>
     <string name="trv_status_on_track">im Plan</string>
     <string name="trv_status_done">erreicht</string>

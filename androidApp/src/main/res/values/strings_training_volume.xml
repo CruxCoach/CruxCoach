@@ -2,7 +2,7 @@
 <resources>
     <!-- Weekly volume plan (MCI-parity point 2) -->
     <string name="trv_title">Weekly targets</string>
-    <string name="trv_info_text">Each area has a range of hard sets per week (fingers: sessions at least 48 h apart). Your goal, focus, experience, training days and the current block set the range. Hard board days count towards fingers, pulling and core. Today\'s suggestion fills what is still missing — never at the cost of recovery or an injury.</string>
+    <string name="trv_info_text">Each area has a range of hard sets per week (fingers: sessions at least 48 h apart). Your goal, focus, experience, training days and the current block set the range. Hard board days count towards fingers, pulling and core. Today\'s suggestion fills what is still missing — never at the cost of recovery or an injury. Tap an area to set your own target.</string>
     <string name="trv_empty">No weekly targets right now – a deload, taper or competition day keeps the week free.</string>
     <string name="trv_legend">Full colour: logged · light: counted from climbing · lines: weekly range</string>
     <string name="trv_area_finger">Fingers</string>
@@ -14,6 +14,13 @@
     <string name="trv_area_mobility">Mobility</string>
     <string name="trv_value_sets">%1$s / %2$d–%3$d sets</string>
     <string name="trv_value_sessions">%1$s / %2$d sessions</string>
+    <string name="trv_value_sets_exact">%1$s / %2$d sets</string>
+    <string name="trv_unit_sets">sets</string>
+    <string name="trv_unit_sessions">sessions</string>
+    <string name="trv_recommended_sets">Recommended (%1$d–%2$d sets)</string>
+    <string name="trv_recommended_sessions">Recommended (%1$d sessions)</string>
+    <string name="trv_own_field">Per week (%1$s)</string>
+    <string name="trv_edit_target">Change target</string>
     <string name="trv_status_below">behind</string>
     <string name="trv_status_on_track">on track</string>
     <string name="trv_status_done">done</string>

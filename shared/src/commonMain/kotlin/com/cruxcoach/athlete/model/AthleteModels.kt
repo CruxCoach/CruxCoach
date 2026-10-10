@@ -373,6 +373,12 @@ data class AthleteProfile(
     val ownProteinG: Int? = null,
     val ownFatG: Int? = null,
     val ownWaterMl: Int? = null,
+    /**
+     * Own weekly targets per training area ([com.cruxcoach.athlete.logic.VolumeArea]
+     * name → hard sets a week; finger: sessions a week). Missing areas follow
+     * the recommendation; 0 switches an area off.
+     */
+    val ownWeeklyTargets: Map<String, Int> = emptyMap(),
 )
 
 /** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */

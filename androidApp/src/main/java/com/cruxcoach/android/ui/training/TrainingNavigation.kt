@@ -267,7 +267,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         TrainingHistoryScreen(onBack = back, onOpenWorkout = { go(TrainingRoutes.workoutSummary(it)) })
     }
     screen(TrainingRoutes.BODY, "Body", back) {
-        BodyScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) })
+        BodyScreen(onBack = back, onOpenSettings = { go(TrainingRoutes.ATHLETE_SETTINGS) }, onOpenBenchmarks = { go(TrainingRoutes.BENCHMARKS) })
     }
     screen(TrainingRoutes.BASICS, "Basics", back) {
         com.cruxcoach.android.ui.training.basics.BasicsScreen(onDone = back)
@@ -294,6 +294,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             section = section,
             onOpenSection = { go(TrainingRoutes.athleteSettings(it.key)) },
             onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
+            onOpenWeekPlan = { go(TrainingRoutes.WEEK_PLAN) },
         )
     }
     screen(TrainingRoutes.ATHLETE_SETTINGS, "AthleteSettings", back) { athleteSettings(null) }

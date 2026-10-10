@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.training.workouts
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -8,6 +9,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -15,7 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,6 +52,8 @@ data class WeeklyVolumeState(
     val progress: List<AreaProgress> = emptyList(),
     /** An open pause (illness, injury, holiday): the week's targets rest. */
     val paused: Boolean = false,
+    /** The athlete's own targets per area (sets; finger: sessions). */
+    val own: Map<String, Int> = emptyMap(),
 )
 
 @HiltViewModel
@@ -70,6 +74,15 @@ class WeeklyVolumeViewModel @Inject constructor(private val service: AthleteServ
             ) { profile, _, injuries, _ -> profile to injuries }
                 .collect { (profile, injuries) -> runCatching { compute(profile, injuries) } }
         }
+    }
+
+    /** An own weekly target for [area] (sets, finger: sessions), or back to the recommendation with null. */
+    fun setOwn(area: VolumeArea, value: Int?) = viewModelScope.launch(Dispatchers.IO) {
+        service.ensureReady()
+        service.repo.updateProfile { p ->
+            p.copy(ownWeeklyTargets = if (value == null) p.ownWeeklyTargets - area.name else p.ownWeeklyTargets + (area.name to value))
+        }
+        runCatching { compute(service.repo.profile(), service.repo.activeInjuries()) }
     }
 
     /** Logged sets do not touch the observed tables; the tab recomputes when it is shown again. */
@@ -99,6 +112,7 @@ class WeeklyVolumeViewModel @Inject constructor(private val service: AthleteServ
             loading = false,
             progress = WeeklyVolume.progress(sets, activities, service.catalog, weekStart, targets, today),
             paused = repo.openPause() != null,
+            own = profile.ownWeeklyTargets,
         )
     }
 }
@@ -123,7 +137,9 @@ fun WeeklyVolumeCard(modifier: Modifier = Modifier) {
     val viewModel: WeeklyVolumeViewModel = hiltViewModel(key = "weekly-volume")
     val s by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.refresh() }
-    val rows = s.progress.filter { !it.target.isOff }
+    // Areas the athlete switched off themselves stay listed, so they can be switched on again.
+    val rows = s.progress.filter { !it.target.isOff || it.target.own }
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
     Card(modifier.fillMaxWidth().testTag("weekly_volume_card")) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -138,7 +154,7 @@ fun WeeklyVolumeCard(modifier: Modifier = Modifier) {
                 rows.isEmpty() -> Text(stringResource(R.string.trv_empty), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> {
-                    rows.forEach { VolumeRow(it) }
+                    rows.forEach { row -> VolumeRow(row, onClick = { editing = row.area.name }) }
                     if (rows.any { it.climbingCredit > 0.0 }) {
                         Text(stringResource(R.string.trv_legend), style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
@@ -147,14 +163,50 @@ fun WeeklyVolumeCard(modifier: Modifier = Modifier) {
             }
         }
     }
+    editing?.let { key ->
+        s.progress.firstOrNull { it.area.name == key }?.let { p ->
+            OwnVolumeTargetDialog(p, s.own[key], onOwn = { viewModel.setOwn(p.area, it) }, onDismiss = { editing = null })
+        }
+    }
+}
+
+/**
+ * One area's target: the recommended range or an own number (owner
+ * 2026-10-10: "define your targets yourself"); 0 switches the area off.
+ */
+@Composable
+private fun OwnVolumeTargetDialog(p: AreaProgress, ownValue: Int?, onOwn: (Int?) -> Unit, onDismiss: () -> Unit) {
+    val finger = p.area == VolumeArea.FINGER
+    val rec = p.target.recommended ?: p.target
+    val unit = stringResource(if (finger) R.string.trv_unit_sessions else R.string.trv_unit_sets)
+    AlertDialog(
+        modifier = Modifier.testTag("weekly_volume_edit"),
+        onDismissRequest = onDismiss,
+        title = { Text(volumeAreaLabel(p.area)) },
+        text = {
+            com.cruxcoach.android.ui.training.common.TargetChoice(
+                label = stringResource(R.string.trn_target_heading), unit = unit,
+                recommended = if (finger) rec.minSessions else rec.maxSets, own = ownValue,
+                range = if (finger) WeeklyVolume.OWN_FINGER_SESSIONS else WeeklyVolume.OWN_SETS,
+                fallback = if (finger) 2 else 8, tag = "own_volume_${p.area.name.lowercase()}", onOwn = onOwn,
+                recommendedLabel = if (finger) stringResource(R.string.trv_recommended_sessions, rec.minSessions)
+                    else stringResource(R.string.trv_recommended_sets, rec.minSets, rec.maxSets),
+                fieldLabel = stringResource(R.string.trv_own_field, unit),
+            )
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) } },
+    )
 }
 
 @Composable
-private fun VolumeRow(p: AreaProgress) {
+private fun VolumeRow(p: AreaProgress, onClick: () -> Unit = {}) {
     val finger = p.area == VolumeArea.FINGER
     val label = volumeAreaLabel(p.area)
-    val value = if (finger) stringResource(R.string.trv_value_sessions, formatNumber(p.effective), p.goal)
-        else stringResource(R.string.trv_value_sets, formatNumber(p.effective), p.target.minSets, p.target.maxSets)
+    val value = when {
+        finger -> stringResource(R.string.trv_value_sessions, formatNumber(p.effective), p.goal)
+        p.target.minSets == p.target.maxSets -> stringResource(R.string.trv_value_sets_exact, formatNumber(p.effective), p.target.minSets)
+        else -> stringResource(R.string.trv_value_sets, formatNumber(p.effective), p.target.minSets, p.target.maxSets)
+    }
     val statusText = stringResource(when (p.status) {
         AreaStatus.BELOW -> R.string.trv_status_below
         AreaStatus.ON_TRACK -> R.string.trv_status_on_track
@@ -173,8 +225,9 @@ private fun VolumeRow(p: AreaProgress) {
     val marker = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("weekly_volume_${p.area.name.lowercase()}")
-            .clearAndSetSemantics { contentDescription = "$label: $value, $statusText" },
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = stringResource(R.string.trv_edit_target), onClick = onClick)
+            .padding(vertical = 4.dp).testTag("weekly_volume_${p.area.name.lowercase()}")
+            .semantics(mergeDescendants = true) { contentDescription = "$label: $value, $statusText" },
     ) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))

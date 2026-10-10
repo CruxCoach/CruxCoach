@@ -50,6 +50,8 @@ fun TargetChoice(
     toDisplay: (Int) -> Int = { it },
     fromDisplay: (Int) -> Int = { it },
     fieldLabel: String? = null,
+    /** The recommendation's chip text when it is not one number, e.g. "Empfohlen (6–12 Sätze)". */
+    recommendedLabel: String? = null,
 ) {
     Column(modifier.fillMaxWidth().testTag(tag)) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
@@ -57,7 +59,7 @@ fun TargetChoice(
             FilterChip(
                 selected = own == null, leadingIcon = chipCheck(own == null), onClick = { onOwn(null) },
                 label = {
-                    Text(recommended?.let { stringResource(R.string.trn_target_recommended, toDisplay(it), unit) }
+                    Text(recommendedLabel ?: recommended?.let { stringResource(R.string.trn_target_recommended, toDisplay(it), unit) }
                         ?: stringResource(R.string.trn_target_recommended_plain))
                 },
                 modifier = Modifier.testTag("${tag}_auto"),

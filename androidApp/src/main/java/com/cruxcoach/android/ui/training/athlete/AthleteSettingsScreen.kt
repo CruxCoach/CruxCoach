@@ -151,6 +151,7 @@ fun AthleteSettingsScreen(
     section: SettingsSection? = null,
     onOpenSection: (SettingsSection) -> Unit = {},
     onOpenClimbingDays: () -> Unit = {},
+    onOpenWeekPlan: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val p = state.profile
@@ -306,7 +307,7 @@ fun AthleteSettingsScreen(
                 }
                 SettingsSection.REMINDERS -> {
                     ReminderSection(p) { transform -> viewModel.update(transform) }
-                    TrainingReminderSection(p) { transform -> viewModel.update(transform) }
+                    TrainingReminderSection(p, onOpenWeekPlan) { transform -> viewModel.update(transform) }
                 }
                 SettingsSection.TIMER -> {
                     SwitchRow(stringResource(R.string.tra_auto_rest), p.autoRestTimer, "auto_rest") { v -> viewModel.update { it.copy(autoRestTimer = v) } }
@@ -580,6 +581,7 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
         if (!allowed) {
             Text(stringResource(R.string.trr_permission_denied), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("reminder_permission_hint"))
+            NotificationSettingsButton()
         }
     }
     if (picking) {
@@ -610,7 +612,7 @@ private fun ReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> Athl
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TrainingReminderSection(p: AthleteProfile, update: ((AthleteProfile) -> AthleteProfile) -> Unit) {
+private fun TrainingReminderSection(p: AthleteProfile, onOpenWeekPlan: () -> Unit, update: ((AthleteProfile) -> AthleteProfile) -> Unit) {
     val context = LocalContext.current
     fun applyChange(transform: (AthleteProfile) -> AthleteProfile) {
         update(transform)
@@ -646,13 +648,18 @@ private fun TrainingReminderSection(p: AthleteProfile, update: ((AthleteProfile)
         SwitchRow(stringResource(R.string.trw_reminder_board_days), p.trainingReminderOnClimbingDays, "training_reminder_board") { v ->
             applyChange { it.copy(trainingReminderOnClimbingDays = v) }
         }
+        // A hint brings its action (design.md): plan the week, allow notifications.
         if (p.weekPlan.isEmpty()) {
             Text(stringResource(R.string.trw_reminder_no_plan), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("training_reminder_no_plan"))
+            TextButton(onClick = onOpenWeekPlan, modifier = Modifier.testTag("training_reminder_plan_week")) {
+                Text(stringResource(R.string.trwo_week_plan_edit))
+            }
         }
         if (!allowed) {
             Text(stringResource(R.string.trr_permission_denied), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error)
+            NotificationSettingsButton()
         }
     }
     if (picking) {
@@ -709,6 +716,22 @@ private fun HeightField(heightCm: Double?, units: UnitSystem, onSave: (Double) -
         label = stringResource(R.string.tra_height, Units.lengthUnit(units)),
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("height_input"),
     )
+}
+
+/** Opens this app's notification settings, where a denied permission is allowed again. */
+@Composable
+private fun NotificationSettingsButton() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    TextButton(
+        onClick = {
+            runCatching {
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        },
+        modifier = Modifier.testTag("reminder_open_notification_settings"),
+    ) { Text(stringResource(R.string.trr_open_notification_settings)) }
 }
 
 @Composable

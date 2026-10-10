@@ -60,6 +60,7 @@ fun BodyScreen(
     onOpenSettings: () -> Unit,
     viewModel: BodyViewModel = hiltViewModel(),
     tabBar: @Composable () -> Unit = {},
+    onOpenBenchmarks: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -175,7 +176,7 @@ fun BodyScreen(
                     }
                 }
             }
-            item { Column { StrengthSection(state) } }
+            item { Column { StrengthSection(state, onOpenBenchmarks) } }
             if (state.recent.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trb_recent)) }
                 items(state.recent, key = { "rec_" + it.day + it.metric }) { entry ->
@@ -416,12 +417,16 @@ private fun RecentRow(entry: BodyMeasurement, units: UnitSystem, hidden: Boolean
 // ── Strength to weight ───────────────────────────────────────────────
 
 @Composable
-private fun StrengthSection(state: BodyState) {
+private fun StrengthSection(state: BodyState, onOpenBenchmarks: () -> Unit = {}) {
     SectionTitle(stringResource(R.string.trb_strength_title)) {
         InfoButton(stringResource(R.string.trb_strength_title), stringResource(R.string.trb_strength_info_text))
     }
     if (state.strength.isEmpty()) {
+        // The empty state brings its action instead of pointing to another tab.
         EmptyHint(stringResource(R.string.trb_strength_empty))
+        TextButton(onClick = onOpenBenchmarks, modifier = Modifier.testTag("body_strength_enter")) {
+            Text(stringResource(R.string.trt_sugg_benchmarks_title))
+        }
         return
     }
     val palette = listOf(CruxCoachDesign.colors.brandAccent, MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.secondary)

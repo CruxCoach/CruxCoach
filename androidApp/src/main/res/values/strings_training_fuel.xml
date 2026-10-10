@@ -16,7 +16,7 @@
     <string name="trf_next_day">Next day</string>
     <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates, fat and water.</string>
     <string name="trf_protein">Protein</string>
-    <string name="trf_protein_info">For climbers 1.4–2.0 g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d g. You can change the target per kg in the settings.</string>
+    <string name="trf_protein_info">For climbers 1.4–2.0 g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d g.</string>
     <string name="trf_carbs">Carbohydrates – matched to training</string>
     <string name="trf_carbs_info_title">Why more on training days?</string>
     <string name="trf_carbs_info">Carbohydrates fuel hard moves and recovery. For your day (%1$s) CruxCoach suggests %2$s g per kg. For climbers the literature names 3–7 g per kg depending on load.</string>
