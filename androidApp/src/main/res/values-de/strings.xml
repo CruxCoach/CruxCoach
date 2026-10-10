@@ -3171,4 +3171,11 @@
         <item quantity="one">%d Griff heute gesammelt</item>
         <item quantity="other">%d Griffe heute gesammelt</item>
     </plurals>
+    <string name="board_cleaning_sections">Dieser ältere Controller markiert bis zu %d Griffe pro Abschnitt. Bestätige jeden Abschnitt als geputzt, um den nächsten anzuzeigen.</string>
+    <string name="board_cleaning_section_count">%1$d von %2$d verbleibenden Griffen in diesem Abschnitt</string>
+    <string name="board_cleaning_next">Diese Griffe geputzt · weiter</string>
+    <plurals name="board_cleaning_remaining">
+        <item quantity="one">%d Griff in diesem Putzgang übrig</item>
+        <item quantity="other">%d Griffe in diesem Putzgang übrig</item>
+    </plurals>
 </resources>

@@ -137,4 +137,43 @@ class BoardCleaningSessionTest {
         assertArrayEquals(clear.single(), restored.single())
         assertEquals(1, session.state.value.holdCount)
     }
+
+    @Test fun `legacy sections advance only after confirmation and restore after the final section`() = runTest {
+        var date = "2026-10-10"
+        val session = BoardCleaningSession(today = { date })
+        session.attach("legacy", holdLimit = 2)
+        session.project(1, 2, 3, 4, 5)
+        val sections = mutableListOf<Set<Int>>()
+        session.start({ sections += it; cleaningClimb }) { true }
+        assertEquals(2, session.state.value.displayedHoldCount)
+        assertEquals(5, session.state.value.holdCount)
+        date = "2026-10-11" // An active round keeps all its unfinished sections.
+        assertTrue(session.stop(true))
+        assertTrue(session.state.value.active)
+        assertEquals(3, session.state.value.holdCount)
+        assertTrue(session.stop(true))
+        assertEquals(1, session.state.value.displayedHoldCount)
+        assertEquals(1, session.state.value.holdCount)
+        var restored = emptyList<ByteArray>()
+        assertTrue(session.finish(true, { clear }) { restored = it; true })
+        assertArrayEquals(oldClimb.single(), restored.single())
+        assertFalse(session.state.value.active)
+        assertEquals(0, session.state.value.holdCount)
+        assertEquals(listOf(setOf(1, 2), setOf(3, 4), setOf(5)), sections)
+    }
+
+    @Test fun `failed next section retains the entire pending collection`() = runTest {
+        val session = session()
+        session.attach("legacy", holdLimit = 2)
+        session.project(1, 2, 3)
+        session.light()
+        assertFalse(session.finish(true, { clear }) { false })
+        assertEquals(3, session.state.value.holdCount)
+        assertEquals(2, session.state.value.displayedHoldCount)
+        assertTrue(session.stop(true))
+        assertEquals(1, session.state.value.holdCount)
+        assertEquals(1, session.state.value.displayedHoldCount)
+        session.stop(false)
+        assertEquals(1, session.state.value.holdCount)
+    }
 }

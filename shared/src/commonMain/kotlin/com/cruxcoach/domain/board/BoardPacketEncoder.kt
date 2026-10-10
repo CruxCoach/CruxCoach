@@ -35,6 +35,14 @@ class BoardPacketEncoder(
     companion object {
         const val BLE_MTU = 20
 
+        // Single-channel blue keeps API-2 cleaning visible within its 18 W
+        // budget. Cyan consumes two channels and can quantize entirely to black
+        // for a large day. At minimum nonzero brightness each LED costs 1/30 W;
+        // cap at 500 physical LEDs (16.67 W) to leave budget/rounding headroom.
+        const val COLOR_CLEANING: Int = 0x03
+        fun cleaningHoldLimit(apiLevel: Int, ledsPerHold: Int): Int =
+            if (apiLevel >= 3) Int.MAX_VALUE else 500 / ledsPerHold.coerceAtLeast(1)
+
         // Max hold data bytes per packet payload (254 = 255 max - 1 type byte)
         // 254 / 3 bytes per hold = 84 holds per packet
         private const val MAX_HOLDS_PER_PACKET = 84
