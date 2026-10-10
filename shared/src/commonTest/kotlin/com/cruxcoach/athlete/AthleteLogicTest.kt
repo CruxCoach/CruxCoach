@@ -546,19 +546,20 @@ class BenchmarkLogicTest {
 
     @Test
     fun startEstimateGivesACarefulLoadInsteadOfZero() {
-        // 68.5 kg, no grade: 6a max-hang band low 94.75 % → 64.9 kg → pick-up 70 % = 45.4 kg → careful 80 % = 36.3 kg.
+        // 68.5 kg, no grade: 6a max-hang band low 94.75 % → 64.9 kg → pick-up 70 % = 45.4 kg → careful 80 % = 36.3 kg
+        // → the first session feels out from 85 % of that = 30.9 kg (owner 2026-10-10).
         val cap = StartEstimate.capacity(twoArmPickup, 68.5, null, null)!!
-        assertEquals(36.3, cap.value, 0.1)
+        assertEquals(30.9, cap.value, 0.1)
         assertTrue(cap.estimated)
         val item = RoutineItem(twoArmPickup.slug, sets = 4, durationS = 10, edgeMm = 20)
         val load = LoadPrescriber.prescribe(twoArmPickup, item, cap, 68.5, 1.0)!!.loadKg!!
-        assertTrue(load in 30.0..35.0, "two-arm $load")
+        assertTrue(load in 25.0..30.0, "two-arm $load")
         val oneArm = twoArmPickup.copy(slug = "finger.one_arm_pickup", unilateral = true)
         val oneLoad = LoadPrescriber.prescribe(oneArm, item.copy(slug = oneArm.slug), StartEstimate.capacity(oneArm, 68.5, null, null), 68.5, 1.0)!!.loadKg!!
-        assertTrue(oneLoad in 13.0..17.0, "one-arm $oneLoad")
+        assertTrue(oneLoad in 10.0..15.0, "one-arm $oneLoad")
         // A higher grade gives more; a related value wins over the grade.
         assertTrue(StartEstimate.capacity(twoArmPickup, 68.5, null, 22.0)!!.value > cap.value)
-        assertEquals(40.0, StartEstimate.capacity(twoArmPickup, 68.5, 50.0, null)!!.value, 1e-9)
+        assertEquals(34.0, StartEstimate.capacity(twoArmPickup, 68.5, 50.0, null)!!.value, 1e-9)
         // Hangs on body weight, non-finger work and an unknown body weight keep their own rules.
         assertNull(StartEstimate.capacity(twoArmPickup.copy(load = LoadMode.BODYWEIGHT_PLUS), 68.5, null, null))
         assertNull(StartEstimate.capacity(twoArmPickup.copy(domains = emptyList()), 68.5, null, null))
