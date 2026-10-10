@@ -14,7 +14,7 @@
     <string name="trf_yesterday">Gestern</string>
     <string name="trf_prev_day">Vorheriger Tag</string>
     <string name="trf_next_day">Nächster Tag</string>
-    <string name="trf_needs_weight">Trag dein Körpergewicht ein, dann berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate und Wasser.</string>
+    <string name="trf_needs_weight">Trag dein Körpergewicht ein, dann berechnet CruxCoach deine Ziele für Protein, Kohlenhydrate, Fett und Wasser.</string>
     <string name="trf_protein">Protein</string>
     <string name="trf_protein_info">Für Kletternde reichen meist 1,4–2,0 g Protein pro kg Körpergewicht am Tag, verteilt auf mehrere Mahlzeiten. Dein Bereich: %1$d–%2$d g. Den Zielwert pro kg kannst du in den Einstellungen anpassen.</string>
     <string name="trf_carbs">Kohlenhydrate – passend zum Training</string>
@@ -58,7 +58,6 @@
     <string name="trf_unit_floz">fl oz</string>
     <string name="trf_unit_cups">Cups (US)</string>
     <string name="trf_water_entry_desc">%1$s, tippen zum Entfernen</string>
-    <string name="trf_day_total">Tagessumme</string>
     <string name="trf_kcal_value">%1$d kcal</string>
     <string name="trf_kcal_estimated">≈ %1$d kcal</string>
     <string name="trf_value_g">%1$d g</string>
@@ -69,6 +68,7 @@
     <string name="trf_fat_info" formatted="false">Fett transportiert die Vitamine A, D, E und K und wird für Hormone gebraucht. Sporternährungs-Empfehlungen für Athletinnen und Athleten nennen etwa 20–35 % der Energie aus Fett; weniger als 20 % wird nicht empfohlen. Der Anteil wird aus deinen eingetragenen Werten für Protein, Kohlenhydrate und Fett berechnet.</string>
     <string name="trf_fat_target_energy">Fettziel: Fett füllt auf, was Protein und Kohlenhydrate von deinem Energieziel übrig lassen – mindestens 20 %% und höchstens 35 %% davon (heute %1$d–%2$d g).</string>
     <string name="trf_fat_target_weight">Fettziel: etwa 1 g pro kg Körpergewicht (%1$d–%2$d g). Mit Größe und Geburtsjahr richtet es sich nach deinem Energieziel.</string>
+    <string name="trf_fat_share_today">Heute stammen %1$d %% deiner Energie aus Fett.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_quick_add">Schnell eintragen</string>
     <string name="trf_my_foods">Meine Lebensmittel</string>

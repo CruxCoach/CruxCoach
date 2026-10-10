@@ -74,7 +74,6 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         // Four rings on a narrow screen: the unit sits in the line under the ring.
         compose.onNodeWithText("of 112", substring = true).assertExists()
         compose.onNodeWithText("97 g to go", substring = true).assertExists()
-        compose.onNodeWithText("of energy", substring = true).assertExists()
         // Fat has its own ring: without a height, 1 g per kg = 70 g; 10 g logged.
         compose.onNodeWithText("of 70", substring = true).assertExists()
         compose.onNodeWithText("60 g to go", substring = true).assertExists()
@@ -82,6 +81,12 @@ class NutritionAlwaysOnTest : AthleteScreenTest() {
         val left = listOf("fuel_energy", "fuel_carbs", "fuel_protein", "fuel_fat")
             .map { compose.onNodeWithTag(it).fetchSemanticsNode().boundsInRoot.left }
         assertEquals(left.sorted(), left)
+        // A ring explains its own target when tapped; the fat share is in the fat explanation.
+        compose.onNodeWithTag("fuel_fat").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_explain_fat")
+        compose.onNodeWithText("of your energy comes from fat", substring = true).assertExists()
+        compose.onNodeWithText("Close").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_fat").fetchSemanticsNodes().isEmpty() }
         // No kcal logged: calories are on by default and estimated from the macros (4/4/9).
         compose.onNodeWithTag("fuel_kcal", useUnmergedTree = true).assertTextEquals("≈470")
         compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_meal_lunch"))

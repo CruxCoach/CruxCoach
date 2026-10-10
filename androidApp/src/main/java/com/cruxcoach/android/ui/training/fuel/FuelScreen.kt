@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.LocalDrink
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -543,7 +544,8 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
 /**
  * Energy, carbohydrates, protein and fat as rings that fill towards the day's
  * targets, in that order (owner 2026-10-10). Energy shows while calories are
- * shown. The fat share sits below with one info icon for all targets.
+ * shown. Every ring explains itself when tapped – energy its breakdown, the
+ * others how their target comes about – so no info line hangs under the rings.
  */
 @Composable
 private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
@@ -553,46 +555,56 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
     // or against the calorie target while losing weight (owner 2026-10-09).
     val showEnergy = state.profile.showCalories
     val rings = if (showEnergy) 4 else 3
+    var explained by rememberSaveable { mutableStateOf<String?>(null) }
     Card(Modifier.fillMaxWidth().testTag("fuel_targets")) {
-        Column(Modifier.padding(start = 8.dp, end = 4.dp, top = 16.dp, bottom = 4.dp)) {
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(end = 4.dp)) {
-                // The rings share the width; four still fit side by side on a narrow phone.
-                val ringSize = ((maxWidth - 12.dp * rings) / rings).coerceIn(60.dp, 92.dp)
-                Row(Modifier.fillMaxWidth()) {
-                    val cell = Modifier.weight(1f)
-                    if (showEnergy) {
-                        val plan = state.energy.plan
-                        EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
-                            target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
-                            losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
-                    }
-                    MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
-                        color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell)
-                    MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
-                        color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize, modifier = cell)
-                    MacroRing(label = stringResource(R.string.trf_fat), value = totals.fat, target = t?.fatG,
-                        color = FatColor, tag = "fuel_fat", size = ringSize, modifier = cell)
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 12.dp)) {
+            // The rings share the width; four still fit side by side on a narrow phone.
+            val ringSize = ((maxWidth - 12.dp * rings) / rings).coerceIn(60.dp, 92.dp)
+            Row(Modifier.fillMaxWidth()) {
+                val cell = Modifier.weight(1f)
+                if (showEnergy) {
+                    val plan = state.energy.plan
+                    EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
+                        target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
+                        losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
                 }
-            }
-            // The fat share under the rings; one info icon explains all targets.
-            val share = totals.fatEnergyShare
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp, top = 4.dp).testTag("fuel_fat_share")) {
-                Text(
-                    // The 20–35 % reference is in the info text; the line stays one line.
-                    share?.let { stringResource(R.string.trf_fat) + " " + stringResource(R.string.tru_fat_share_short, (it * 100).roundToInt()) } ?: "",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
-                )
-                InfoButton(stringResource(R.string.trf_day_total), listOfNotNull(
-                    t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
-                    t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) },
-                    t?.let {
-                        stringResource(if (it.fatFromEnergy) R.string.trf_fat_target_energy else R.string.trf_fat_target_weight,
-                            it.fatRangeG.first, it.fatRangeG.last)
-                    },
-                    stringResource(R.string.trf_fat_info),
-                ).joinToString("\n\n"))
+                MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
+                    color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell,
+                    onClick = { explained = "carbs" })
+                MacroRing(label = stringResource(R.string.trf_protein), value = totals.protein, target = t?.proteinG,
+                    color = CruxCoachDesign.colors.positive, tag = "fuel_protein", size = ringSize, modifier = cell,
+                    onClick = { explained = "protein" })
+                MacroRing(label = stringResource(R.string.trf_fat), value = totals.fat, target = t?.fatG,
+                    color = FatColor, tag = "fuel_fat", size = ringSize, modifier = cell,
+                    onClick = { explained = "fat" })
             }
         }
+    }
+    explained?.let { which ->
+        val title = stringResource(when (which) {
+            "carbs" -> R.string.tru_carbs_short
+            "protein" -> R.string.trf_protein
+            else -> R.string.trf_fat
+        })
+        val text = when (which) {
+            "carbs" -> listOfNotNull(t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) })
+            "protein" -> listOfNotNull(t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) })
+            else -> listOfNotNull(
+                t?.let {
+                    stringResource(if (it.fatFromEnergy) R.string.trf_fat_target_energy else R.string.trf_fat_target_weight,
+                        it.fatRangeG.first, it.fatRangeG.last)
+                },
+                totals.fatEnergyShare?.let { stringResource(R.string.trf_fat_share_today, (it * 100).roundToInt()) },
+                stringResource(R.string.trf_fat_info),
+            )
+        }.ifEmpty { listOf(stringResource(R.string.trf_needs_weight)) }
+        AlertDialog(
+            modifier = Modifier.testTag("fuel_explain_$which"),
+            onDismissRequest = { explained = null },
+            title = { Text(title) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { com.cruxcoach.android.ui.common.InfoText(text.joinToString("\n\n")) } },
+            confirmButton = { TextButton(onClick = { explained = null }) { Text(stringResource(R.string.action_close)) } },
+        )
     }
 }
 
@@ -642,8 +654,12 @@ private fun MacroRing(
     tag: String,
     size: androidx.compose.ui.unit.Dp = 92.dp,
     modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.testTag(tag)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.clip(CruxCoachDesign.shapes.medium)
+            .clickable(onClickLabel = stringResource(R.string.action_show_info, label), role = androidx.compose.ui.semantics.Role.Button, onClick = onClick)
+            .testTag(tag)) {
         com.cruxcoach.android.ui.training.common.ProgressRing(
             progress = if (target != null && target > 0) (value / target).toFloat() else 0f,
             size = size, stroke = if (size < 84.dp) 8.dp else 9.dp, color = color,

@@ -14,7 +14,7 @@
     <string name="trf_yesterday">Yesterday</string>
     <string name="trf_prev_day">Previous day</string>
     <string name="trf_next_day">Next day</string>
-    <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates and water.</string>
+    <string name="trf_needs_weight">Log your body weight and CruxCoach works out your targets for protein, carbohydrates, fat and water.</string>
     <string name="trf_protein">Protein</string>
     <string name="trf_protein_info">For climbers 1.4–2.0 g of protein per kg body weight a day, spread over several meals, is usually enough. Your range: %1$d–%2$d g. You can change the target per kg in the settings.</string>
     <string name="trf_carbs">Carbohydrates – matched to training</string>
@@ -58,7 +58,6 @@
     <string name="trf_unit_floz">fl oz</string>
     <string name="trf_unit_cups">cups</string>
     <string name="trf_water_entry_desc">%1$s, tap to remove</string>
-    <string name="trf_day_total">Day total</string>
     <string name="trf_kcal_value">%1$d kcal</string>
     <string name="trf_kcal_estimated">≈ %1$d kcal</string>
     <string name="trf_value_g">%1$d g</string>
@@ -69,6 +68,7 @@
     <string name="trf_fat_info" formatted="false">Fat carries the vitamins A, D, E and K and is needed for hormones. Sports nutrition guidance for athletes recommends about 20–35 % of energy from fat; less than 20 % is not advised. The share is calculated from the protein, carbohydrate and fat you logged.</string>
     <string name="trf_fat_target_energy">Fat target: fat fills the energy that protein and carbohydrates leave of your energy target, at least 20 %% and at most 35 %% of it (today %1$d–%2$d g).</string>
     <string name="trf_fat_target_weight">Fat target: about 1 g per kg body weight (%1$d–%2$d g). With your height and birth year it follows your energy target instead.</string>
+    <string name="trf_fat_share_today">Today %1$d %% of your energy comes from fat.</string>
     <string name="trf_progress_g">%1$d / %2$d g</string>
     <string name="trf_quick_add">Quick entry</string>
     <string name="trf_my_foods">My foods</string>
