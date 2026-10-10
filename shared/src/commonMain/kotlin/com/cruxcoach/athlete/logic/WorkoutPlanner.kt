@@ -156,15 +156,26 @@ object WorkoutSummarizer {
                 ?.takeIf { it.verdict != ProgressionVerdict.ON_TRACK }
                 ?.let { suggestions += slug to it }
         }
-        val sideLoad = done.filter { it.side != null && catalog.fallbackFor(it.exerciseSlug).kind == ExerciseKind.HANG }
-            .groupBy { it.side!! }
-            .mapValues { (_, list) ->
-                list.sumOf { set ->
-                    val def = catalog.fallbackFor(set.exerciseSlug)
-                    // Total load (body weight ± added, or the lifted block), so +0 vs +2 kg is not "half".
-                    val load = StrengthMath.effectiveLoad(def.load, set.loadKg, set.bodyweightKg) ?: set.loadKg ?: 1.0
-                    (set.durationS ?: 0.0) * load.coerceAtLeast(1.0)
-                }
+        // Like with like: per exercise the same number of sets on each side (work sets when both sides have
+        // some), so a training ended before the last right-hand set does not read "right 30 % weaker".
+        fun work(set: ExerciseSet): Double {
+            val def = catalog.fallbackFor(set.exerciseSlug)
+            // Total load (body weight ± added, or the lifted block), so +0 vs +2 kg is not "half".
+            val load = StrengthMath.effectiveLoad(def.load, set.loadKg, set.bodyweightKg) ?: set.loadKg ?: 1.0
+            return (set.durationS ?: 0.0) * load.coerceAtLeast(1.0)
+        }
+        val sideLoad = mutableMapOf<Side, Double>()
+        done.filter { it.side != null && catalog.fallbackFor(it.exerciseSlug).kind == ExerciseKind.HANG }
+            .groupBy { it.exerciseSlug }
+            .forEach { (_, slugSets) ->
+                val bothWork = Side.entries.all { side -> slugSets.any { it.side == side && it.setType == SetType.WORK } }
+                val pool = if (bothWork) slugSets.filter { it.setType == SetType.WORK } else slugSets
+                val left = pool.filter { it.side == Side.LEFT }.sortedBy { it.setIndex }
+                val right = pool.filter { it.side == Side.RIGHT }.sortedBy { it.setIndex }
+                val n = minOf(left.size, right.size)
+                if (n == 0) return@forEach
+                sideLoad[Side.LEFT] = (sideLoad[Side.LEFT] ?: 0.0) + left.take(n).sumOf(::work)
+                sideLoad[Side.RIGHT] = (sideLoad[Side.RIGHT] ?: 0.0) + right.take(n).sumOf(::work)
             }
         return WorkoutSummary(done.size, bySlug.size, durationMinutes, records, suggestions, sideLoad)
     }

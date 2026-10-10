@@ -50,7 +50,7 @@
     <string name="trwo_field_rounds">Rounds</string>
     <string name="trwo_field_rest">Rest after set</string>
     <string name="trwo_field_edge">Edge (mm)</string>
-    <string name="trwo_field_warmup">Warm-up sets</string>
+    <string name="trwo_field_warmup">Counts as warm-up</string>
     <string name="trwo_side_both">Both sides</string>
     <string name="trwo_side_left">Left only</string>
     <string name="trwo_side_right">Right only</string>

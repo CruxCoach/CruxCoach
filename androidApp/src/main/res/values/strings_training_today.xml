@@ -63,7 +63,7 @@
     <string name="trt_injury_mode_paused">Injury mode – climbing paused</string>
     <string name="trt_injury_manage">Manage</string>
     <string name="trt_workout_untitled">Training</string>
-    <string name="trt_routines">Routines</string>
+    <string name="trt_routines">Workouts</string>
     <string name="trt_weekly_review">Weekly review</string>
     <string name="trt_report_injury">Report injury</string>
     <string name="trt_sugg_equipment_title">What do you have?</string>

@@ -68,7 +68,7 @@
     </plurals>
     <string name="tra_review_climb_days">Klettertage</string>
     <string name="tra_review_workout_days">Trainingstage</string>
-    <string name="tra_review_sets">Sätze</string>
+    <string name="tra_review_sets">Arbeitssätze</string>
     <string name="tra_review_records">Neue Bestwerte</string>
     <string name="tra_review_no_records">Diese Woche keine neuen Bestwerte – Konstanz baut sie auf.</string>
     <string name="tra_review_load">Belastung pro Struktur</string>

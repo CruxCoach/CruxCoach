@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -77,6 +78,8 @@ data class SummaryState(
     val volumeKg: Double = 0.0,
     val hangSeconds: Int = 0,
     val streak: com.cruxcoach.athlete.logic.StreakState? = null,
+    /** The training was deleted: the screen leaves. */
+    val deleted: Boolean = false,
 )
 
 @HiltViewModel
@@ -197,6 +200,15 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             _state.update { it.copy(routineSaved = true) }
         }
     }
+
+    /** A training logged by mistake can go again, with its sets (device test 2026-10-10: there was no way). */
+    fun delete() {
+        val id = _state.value.workout?.id ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.discardWorkout(id)
+            _state.update { it.copy(deleted = true) }
+        }
+    }
 }
 
 @Composable
@@ -224,11 +236,20 @@ fun WorkoutSummaryScreen(
         snackScope.launch { snackbar.showSnackbar(if (m < 0) deloadText else swapText) }
     }
     var confirmSwap by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
 
     TrainingScaffold(
         title = stringResource(R.string.trw_summary_title),
         onBack = onBack,
         snackbarHost = { SnackbarHost(snackbar) },
+        actions = {
+            if (state.workout != null) {
+                IconButton(onClick = { confirmDelete = true }, modifier = Modifier.testTag("summary_delete")) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = stringResource(R.string.trw_delete_training))
+                }
+            }
+        },
     ) { padding ->
         val workout = state.workout
         val summary = state.summary
@@ -328,6 +349,20 @@ fun WorkoutSummaryScreen(
         }
     }
 
+    if (confirmDelete) {
+        val w = state.workout
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.trw_delete_training_title)) },
+            text = { if (w != null) Text(stringResource(R.string.trw_delete_training_text, workoutTitle(w), formatDay(w.day))) },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; viewModel.delete() }, modifier = Modifier.testTag("summary_delete_confirm")) {
+                    Text(stringResource(R.string.tr_action_delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
+    }
     confirmSwap?.let { (from, to) ->
         val count = state.routineCounts[from] ?: 0
         AlertDialog(

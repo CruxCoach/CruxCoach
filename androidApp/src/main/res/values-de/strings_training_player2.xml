@@ -7,6 +7,9 @@
     <string name="trp2_adj_hold_failed">Zu früh losgelassen</string>
     <string name="trp2_adj_hold_easy">Locker gehalten</string>
     <string name="trp2_adj_line">%1$s → nächste Sätze %2$s</string>
+    <string name="trp2_adj_line_side">%1$s → nächste Sätze %2$s: %3$s</string>
+    <string name="trp2_side_left_lower">links</string>
+    <string name="trp2_side_right_lower">rechts</string>
     <string name="trp2_adj_reps">%1$+d Wdh.</string>
     <string name="trp2_adj_seconds">%1$+d s</string>
 

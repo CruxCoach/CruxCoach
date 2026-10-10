@@ -779,7 +779,8 @@ private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) 
     val protein = state.proteinToday.roundToInt()
     com.cruxcoach.android.ui.training.common.ValueTile(
         icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,
-        label = stringResource(R.string.tru_tile_food),
+        // The grams are protein: the label says so (device test 2026-10-10: "0 / 111 g" of what?).
+        label = stringResource(R.string.tru_tile_food_protein),
         value = if (t != null) stringResource(R.string.trf_progress_g, protein, t.proteinG) else stringResource(R.string.trf_value_g, protein),
         progress = t?.let { if (it.proteinG > 0) protein.toFloat() / it.proteinG else 0f },
         supporting = when {
@@ -1075,8 +1076,10 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
                 Text(stringResource(R.string.trt_low_data), style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.testTag("today_suggestion_confidence"))
             }
-            block?.let { label ->
-                SectionTitle(label) { InfoButton(label, stringResource(R.string.tre_block_info_text)) }
+            // Intro, deload, taper and event weeks already have their own reason line above.
+            val blockNamed = s.reasons.any { it.name.startsWith("BLOCK_") }
+            if (block != null && !blockNamed) {
+                SectionTitle(block) { InfoButton(block, stringResource(R.string.tre_block_info_text)) }
             }
         }
     }

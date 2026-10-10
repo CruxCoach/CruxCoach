@@ -138,6 +138,34 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a finished training can be deleted from its summary`() {
+        val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.CORE_CLIMBER), null)
+        repo.setsFor(id).take(2).forEach { service.completeSet(it, startRest = false) }
+        service.finishWorkout(id, 6, null)
+        var left = false
+        val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
+        render { WorkoutSummaryScreen(id, { left = true }, {}, viewModel = vm) }
+        waitForTag("summary_delete")
+        compose.onNodeWithTag("summary_delete").performClick()
+        waitForTag("summary_delete_confirm")
+        compose.onNodeWithTag("summary_delete_confirm").performClick()
+        compose.waitUntil(WAIT_MS) { repo.workout(id) == null && repo.setsFor(id).isEmpty() && left }
+    }
+
+    @Test
+    fun `deleting a training takes back the values it raised and keeps entered ones`() {
+        val slug = "finger.one_arm_pickup"
+        repo.saveBenchmark(Benchmark("manual", slug, side = Side.LEFT, loadKg = 10.0, durationS = 10.0, edgeMm = 20.0,
+            bodyweightKg = 70.0, source = BenchmarkSource.MANUAL, measuredAt = 1))
+        val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.INJURY_ONE_ARM), null)
+        val work = repo.setsFor(id).first { it.exerciseSlug == slug && it.setType == SetType.WORK }
+        service.completeSet(work.copy(loadKg = 30.0, durationS = 10.0, edgeMm = 20.0), startRest = false)
+        assert(repo.benchmarks(slug).any { it.source == BenchmarkSource.AUTO }) { "the set raised no value" }
+        service.discardWorkout(id)
+        assertEquals(listOf("manual"), repo.benchmarks(slug).map { it.id })
+    }
+
+    @Test
     fun `training history renders`() {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.MOBILITY_10), null)
         repo.setsFor(id).take(1).forEach { service.completeSet(it, startRest = false) }

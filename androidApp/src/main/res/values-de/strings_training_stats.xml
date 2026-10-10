@@ -26,7 +26,10 @@
     <string name="trs_empty">Noch keine Daten. Board-Sessions zählen automatisch, geloggte Trainings und dein Körpergewicht erscheinen hier, sobald du sie einträgst.</string>
     <string name="trs_no_training">In diesem Zeitraum noch keine Trainingstage. Board-Sessions und Trainings zählen automatisch.</string>
     <string name="trs_days_per_week">Trainingstage pro Woche</string>
-    <string name="trs_days_chart_cd">Trainingstage pro Woche über %1$d Wochen, insgesamt %2$d Tage.</string>
+    <plurals name="trs_days_chart_cd">
+        <item quantity="one">Trainingstage pro Woche über %1$d Wochen, insgesamt %2$d Tag.</item>
+        <item quantity="other">Trainingstage pro Woche über %1$d Wochen, insgesamt %2$d Tage.</item>
+    </plurals>
     <string name="trs_legend_climbing">Klettern</string>
     <string name="trs_legend_off_board">Ohne Wand</string>
     <string name="trs_minutes_per_week">Minuten pro Woche</string>

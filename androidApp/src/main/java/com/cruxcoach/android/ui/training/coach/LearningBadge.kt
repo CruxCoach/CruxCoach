@@ -1,9 +1,11 @@
 package com.cruxcoach.android.ui.training.coach
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -72,19 +74,25 @@ fun LearningBadge(slug: String, modifier: Modifier = Modifier) {
     LaunchedEffect(slug) { viewModel.load(slug) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val guessed by viewModel.guessed.collectAsStateWithLifecycle()
-    val text = when (val s = state) {
+    // One line on every work set, the explanation behind the info icon (device test 2026-10-10: five lines above each set).
+    val (short, text) = when (val s = state) {
         null, LearningState.State.Known -> return
-        LearningState.State.None -> stringResource(if (guessed) R.string.trc_learning_guess else R.string.trc_learning_none)
-        LearningState.State.Estimated -> stringResource(R.string.trc_learning_estimated)
-        is LearningState.State.Learning -> stringResource(R.string.trc_learning_progress, s.sessions, s.needed)
+        LearningState.State.None -> if (guessed) stringResource(R.string.trc_learning_guess_short) to stringResource(R.string.trc_learning_guess)
+            else stringResource(R.string.trc_learning_none_short) to stringResource(R.string.trc_learning_none)
+        LearningState.State.Estimated -> stringResource(R.string.trc_learning_estimated_short) to stringResource(R.string.trc_learning_estimated)
+        is LearningState.State.Learning -> stringResource(R.string.trc_learning_progress_short, s.sessions, s.needed) to
+            stringResource(R.string.trc_learning_progress, s.sessions, s.needed)
     }
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer,
         shape = MaterialTheme.shapes.small,
         modifier = modifier.fillMaxWidth().testTag("player_learning_badge"),
     ) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+            Text(short, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.weight(1f))
+            com.cruxcoach.android.ui.common.InfoButton(short, text)
+        }
     }
 }
 

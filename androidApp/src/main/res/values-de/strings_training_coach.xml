@@ -172,6 +172,10 @@
     <string name="trc_learning_guess">Startlast vorsichtig geschätzt aus Körpergewicht und Kletterniveau – ändere sie, wenn sie nicht passt. Sag nach jedem Satz, wie viel noch gegangen wäre: Heute passen sich die nächsten Sätze in größeren Schritten an, bis die Last stimmt.</string>
     <string name="trc_learning_estimated">Leistungswert geschätzt – sag nach dem Satz, wie viele noch gegangen wären.</string>
     <string name="trc_learning_progress">Leistungswert wird gelernt (%1$d/%2$d) – sag nach dem Satz, wie viele noch gegangen wären.</string>
+    <string name="trc_learning_guess_short">Startlast geschätzt – nach jedem Satz Reserve angeben</string>
+    <string name="trc_learning_none_short">Erster Durchgang – nach dem Satz Reserve angeben</string>
+    <string name="trc_learning_estimated_short">Leistungswert geschätzt</string>
+    <string name="trc_learning_progress_short">Leistungswert wird gelernt (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">geschätzt</string>
     <string name="trc_badge_learning">wird gelernt %1$d/%2$d</string>
     <string name="trc_badge_known">bekannt</string>

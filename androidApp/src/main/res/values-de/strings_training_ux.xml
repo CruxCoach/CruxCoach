@@ -48,10 +48,10 @@
     <string name="tru_tile_weight_rate">%1$s pro Woche</string>
     <string name="tru_tile_weight_tap">Antippen zum Eintragen</string>
     <string name="tru_open_body">Gewichtsverlauf und Maße</string>
-    <string name="tru_tile_food">Essen</string>
-    <string name="tru_tile_food_left">Protein · noch %1$d g</string>
-    <string name="tru_tile_food_reached">Protein · Ziel erreicht</string>
-    <string name="tru_tile_food_no_target">Protein · Ziel braucht dein Gewicht</string>
+    <string name="tru_tile_food_protein">Essen · Protein</string>
+    <string name="tru_tile_food_left">noch %1$d g</string>
+    <string name="tru_tile_food_reached">Ziel erreicht</string>
+    <string name="tru_tile_food_no_target">Ziel braucht dein Gewicht</string>
     <string name="tru_tile_water">Wasser</string>
     <string name="tru_tile_water_tap">Tippen: + %1$s</string>
     <string name="tru_water_added">%1$s Wasser eingetragen</string>
@@ -79,7 +79,10 @@
     <string name="tru_progress_training">Training</string>
     <string name="tru_hub_body">Gewichtsverlauf und Maße</string>
     <string name="tru_hub_benchmarks">Max Hang, Klimmzug und Co.</string>
-    <string name="tru_hub_history">Trainingstage · %1$s</string>
+    <plurals name="tru_hub_history_days">
+        <item quantity="one">Trainingstag · %1$s</item>
+        <item quantity="other">Trainingstage · %1$s</item>
+    </plurals>
     <plurals name="tru_hub_values">
         <item quantity="one">%d Wert</item>
         <item quantity="other">%d Werte</item>

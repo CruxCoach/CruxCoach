@@ -50,7 +50,7 @@
     <string name="trwo_field_rounds">Runden</string>
     <string name="trwo_field_rest">Pause nach dem Satz</string>
     <string name="trwo_field_edge">Leiste (mm)</string>
-    <string name="trwo_field_warmup">Aufwärmsätze</string>
+    <string name="trwo_field_warmup">Zählt als Aufwärmen</string>
     <string name="trwo_side_both">Beide Seiten</string>
     <string name="trwo_side_left">Nur links</string>
     <string name="trwo_side_right">Nur rechts</string>
