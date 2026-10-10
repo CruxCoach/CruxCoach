@@ -28,7 +28,7 @@
     <string name="trb_ape_missing">Trag Größe und Spannweite ein, um deinen Ape-Index zu sehen.</string>
     <string name="trb_strength_title">Kraft zu Gewicht</string>
     <string name="trb_strength_info_text">Gezeigt wird die beste Last pro Trainingstag in Prozent deines Körpergewichts: beim Hängen Körpergewicht plus Zusatzlast, beim Blockheben das gehobene Gewicht, bei Klimmzügen mit Zusatzgewicht das geschätzte Maximum. Jeder Satz merkt sich das Körpergewicht seines Tages.</string>
-    <string name="trb_strength_empty">Noch keine Daten. Der Leistungstest unter „Heute“ liefert dir einen Startwert.</string>
+    <string name="trb_strength_empty">Noch keine Kraftwerte. Ein Startwert oder ein kurzer Test reicht für den ersten Punkt.</string>
     <string name="trb_strength_best">Bestwert: %1$d %%</string>
     <string name="trb_strength_chart_description">Kraft zu Gewicht im Verlauf</string>
     <string name="trb_recent">Letzte Einträge</string>

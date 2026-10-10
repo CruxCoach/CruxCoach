@@ -28,7 +28,7 @@
     <string name="trb_ape_missing">Enter height and arm span to see your ape index.</string>
     <string name="trb_strength_title">Strength to weight</string>
     <string name="trb_strength_info_text">Shown is the best load per training day as a percentage of your body weight: for hangs body weight plus added weight, for block lifts the lifted weight, for weighted pull-ups the estimated maximum. Each set remembers the body weight of its day.</string>
-    <string name="trb_strength_empty">No data yet. The baseline test on the Today screen gives you a starting value.</string>
+    <string name="trb_strength_empty">No strength values yet. A starting value or a short test gives the first point.</string>
     <string name="trb_strength_best">Best: %1$d %%</string>
     <string name="trb_strength_chart_description">Strength to weight over time</string>
     <string name="trb_recent">Recent entries</string>

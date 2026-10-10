@@ -11,6 +11,7 @@
     <string name="trr_time">Time: %1$s</string>
     <string name="trr_time_pick">Choose time</string>
     <string name="trr_permission_denied">Notifications are off for CruxCoach. The reminders stay saved but cannot appear – you can allow notifications in the Android settings.</string>
+    <string name="trr_open_notification_settings">Allow notifications</string>
     <string name="trr_notify_weigh_title">Time to weigh in</string>
     <string name="trr_notify_weigh_text">The trend counts, not the single value. Tap to log it.</string>
     <string name="trr_notify_measure_title">Monthly measuring round</string>

@@ -11,6 +11,7 @@
     <string name="trr_time">Uhrzeit: %1$s</string>
     <string name="trr_time_pick">Uhrzeit wählen</string>
     <string name="trr_permission_denied">Benachrichtigungen sind für CruxCoach aus. Die Erinnerungen bleiben gespeichert, können aber nicht erscheinen – du kannst Benachrichtigungen in den Android-Einstellungen erlauben.</string>
+    <string name="trr_open_notification_settings">Benachrichtigungen erlauben</string>
     <string name="trr_notify_weigh_title">Zeit fürs Wiegen</string>
     <string name="trr_notify_weigh_text">Der Trend zählt, nicht der einzelne Wert. Tippe zum Eintragen.</string>
     <string name="trr_notify_measure_title">Monatliche Messrunde</string>

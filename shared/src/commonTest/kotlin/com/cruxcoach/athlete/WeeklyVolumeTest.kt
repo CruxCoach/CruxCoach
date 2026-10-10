@@ -220,4 +220,19 @@ class WeeklyVolumeTest {
         val slugs = s.routine.items.map { it.slug }
         assertTrue("finger.one_arm_pickup" !in slugs && "finger.max_hang" !in slugs && "power.limit_bouldering" !in slugs, "$slugs")
     }
+
+    @Test
+    fun ownTargetsReplaceTheRecommendedRange() {
+        // Owner 2026-10-10: own weekly targets next to the recommendation; 0 switches an area off.
+        val own = profile.copy(ownWeeklyTargets = mapOf(VolumeArea.PULL.name to 10, VolumeArea.FINGER.name to 1, VolumeArea.MOBILITY.name to 0))
+        val rec = WeeklyVolume.targets(profile, null, emptyList(), 3)
+        val t = WeeklyVolume.targets(own, null, emptyList(), 3).associateBy { it.area }
+        assertEquals(10, t.getValue(VolumeArea.PULL).minSets)
+        assertEquals(10, t.getValue(VolumeArea.PULL).maxSets)
+        assertTrue(t.getValue(VolumeArea.PULL).own)
+        assertEquals(rec.first { it.area == VolumeArea.PULL }, t.getValue(VolumeArea.PULL).recommended)
+        assertEquals(1, t.getValue(VolumeArea.FINGER).minSessions)
+        assertTrue(t.getValue(VolumeArea.MOBILITY).isOff)
+        assertEquals(rec.first { it.area == VolumeArea.CORE }, t.getValue(VolumeArea.CORE))
+    }
 }
