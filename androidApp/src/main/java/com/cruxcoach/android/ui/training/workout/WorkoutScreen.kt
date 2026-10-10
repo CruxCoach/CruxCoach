@@ -365,6 +365,7 @@ private fun SetRow(
                     ?.let { add(stringResource(R.string.trw_target_reps, it)) }
                 set.targetDurationS?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG }
                     ?.let { add(stringResource(R.string.trw_target_seconds, it.roundToInt())) }
+                com.cruxcoach.android.ui.training.player.perBlockText(set, def, profile.units)?.let(::add)
                 if (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL || def.kind == ExerciseKind.LOAD_REPS) {
                     StrengthMath.percentBodyweight(def.load, set.loadKg, set.bodyweightKg ?: bodyweight)
                         ?.takeIf { def.load != LoadMode.NONE }

@@ -25,6 +25,7 @@
     <string name="tr_eq_mat">Mat</string>
     <string name="tr_eq_hangboard">Hangboard</string>
     <string name="tr_eq_pickup_block">Pick-up block</string>
+    <string name="tr_eq_pickup_block_pair">Second block (two-arm)</string>
     <string name="tr_eq_pull_up_bar">Pull-up bar</string>
     <string name="tr_eq_rings">Rings</string>
     <string name="tr_eq_dumbbell">Dumbbells</string>

@@ -120,15 +120,20 @@ enum class LoadMode {
 
 @Serializable
 enum class EquipmentV2 {
-    NONE, MAT, HANGBOARD, PICKUP_BLOCK, PULL_UP_BAR, RINGS, DUMBBELL, KETTLEBELL, BARBELL,
+    NONE, MAT, HANGBOARD,
+    /** One pick-up block: most lifting edges take one hand. */
+    PICKUP_BLOCK,
+    /** A second block, or an edge wide enough for both hands: two-arm pick-ups. */
+    PICKUP_BLOCK_PAIR,
+    PULL_UP_BAR, RINGS, DUMBBELL, KETTLEBELL, BARBELL,
     PLATES, BANDS, BENCH, BOX, CABLE, WALL, BOARD, CAMPUS_BOARD, FOAM_ROLLER, PULLEY, DIP_BARS;
 
     companion object {
         /**
          * Gear that can stand in for a required piece: a kettlebell loads a
          * pick-up block as well as plates do, bands replace a cable, rings
-         * make dip bars. Keeps the "what do you own" filter from hiding
-         * exercises over a technicality.
+         * make dip bars, two blocks include one. Keeps the "what do you own"
+         * filter from hiding exercises over a technicality.
          */
         val SUBSTITUTES: Map<EquipmentV2, Set<EquipmentV2>> = mapOf(
             PLATES to setOf(KETTLEBELL, DUMBBELL, BARBELL),
@@ -138,6 +143,7 @@ enum class EquipmentV2 {
             DIP_BARS to setOf(RINGS),
             PULL_UP_BAR to setOf(HANGBOARD, RINGS),
             BOARD to setOf(WALL),
+            PICKUP_BLOCK to setOf(PICKUP_BLOCK_PAIR),
         )
 
         fun satisfied(required: EquipmentV2, owned: Set<EquipmentV2>): Boolean =

@@ -56,7 +56,8 @@ fun gripFor(def: ExerciseDefinition, grip: Grip?): GripType? {
     grip?.let { return it.toGripType() }
     val s = def.slug.lowercase()
     val fingerWork = def.category == ExerciseCategoryV2.FINGER || def.kind == ExerciseKind.HANG ||
-        EquipmentV2.HANGBOARD in def.equipment || EquipmentV2.PICKUP_BLOCK in def.equipment
+        EquipmentV2.HANGBOARD in def.equipment || EquipmentV2.PICKUP_BLOCK in def.equipment ||
+        EquipmentV2.PICKUP_BLOCK_PAIR in def.equipment
     return when {
         "pinch" in s -> GripType.PINCH
         "sloper" in s -> GripType.SLOPER

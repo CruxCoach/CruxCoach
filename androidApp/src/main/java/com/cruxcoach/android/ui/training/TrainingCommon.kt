@@ -163,6 +163,7 @@ fun equipmentLabel(e: EquipmentV2): String = stringResource(when (e) {
     EquipmentV2.MAT -> R.string.tr_eq_mat
     EquipmentV2.HANGBOARD -> R.string.tr_eq_hangboard
     EquipmentV2.PICKUP_BLOCK -> R.string.tr_eq_pickup_block
+    EquipmentV2.PICKUP_BLOCK_PAIR -> R.string.tr_eq_pickup_block_pair
     EquipmentV2.PULL_UP_BAR -> R.string.tr_eq_pull_up_bar
     EquipmentV2.RINGS -> R.string.tr_eq_rings
     EquipmentV2.DUMBBELL -> R.string.tr_eq_dumbbell

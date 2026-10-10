@@ -45,7 +45,7 @@ object ExercisePictograms {
         val eq = def.equipment.toSet()
         return when (def.category) {
             ExerciseCategoryV2.FINGER -> when {
-                has("two_arm_pickup") -> Pictogram.PICKUP_TWO
+                has("two_arm_pickup") || EquipmentV2.PICKUP_BLOCK_PAIR in eq -> Pictogram.PICKUP_TWO
                 EquipmentV2.PICKUP_BLOCK in eq -> Pictogram.PICKUP
                 has("extension", "roll") -> Pictogram.HAND
                 has("one_arm", "offset") -> Pictogram.HANG_ONE_ARM

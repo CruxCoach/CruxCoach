@@ -147,11 +147,19 @@ fun EquipmentEditor(selected: Set<EquipmentV2>, onChange: (Set<EquipmentV2>) -> 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
         EquipmentV2.entries.filter { it !in ALWAYS_THERE }.forEach { e ->
             val on = e in selected
-            FilterChip(selected = on, onClick = { onChange(if (on) selected - e else selected + e + ALWAYS_THERE) },
+            FilterChip(selected = on, onClick = { onChange(toggleEquipment(selected, e)) },
                 leadingIcon = chipCheck(on),
                 label = { Text(equipmentLabel(e)) }, modifier = Modifier.testTag("equipment_${e.name.lowercase()}"))
         }
     }
+}
+
+/** Toggles [e]; the second pick-up block comes with the first, and dropping the first drops both. */
+internal fun toggleEquipment(selected: Set<EquipmentV2>, e: EquipmentV2): Set<EquipmentV2> = when {
+    e in selected && e == EquipmentV2.PICKUP_BLOCK -> selected - e - EquipmentV2.PICKUP_BLOCK_PAIR
+    e in selected -> selected - e
+    e == EquipmentV2.PICKUP_BLOCK_PAIR -> selected + e + EquipmentV2.PICKUP_BLOCK + ALWAYS_THERE
+    else -> selected + e + ALWAYS_THERE
 }
 
 /** The equipment editor as a sheet with one "Fertig"; changes are a draft until then. */

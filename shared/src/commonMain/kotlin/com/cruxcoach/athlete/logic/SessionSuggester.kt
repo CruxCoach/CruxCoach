@@ -838,7 +838,7 @@ object SessionSuggester {
     private fun fitsPreference(def: ExerciseDefinition, pref: FingerPreference?): Boolean = when (pref) {
         null -> true
         FingerPreference.HANGBOARD -> EquipmentV2.HANGBOARD in def.equipment && !def.unilateral
-        FingerPreference.PICKUP -> EquipmentV2.PICKUP_BLOCK in def.equipment
+        FingerPreference.PICKUP -> EquipmentV2.PICKUP_BLOCK in def.equipment || EquipmentV2.PICKUP_BLOCK_PAIR in def.equipment
         FingerPreference.ONE_ARM -> def.unilateral
         FingerPreference.NONE -> false
     }

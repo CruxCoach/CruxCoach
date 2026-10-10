@@ -22,6 +22,7 @@
     <string name="trw_grip_none">Griff wählen</string>
     <string name="trw_load_label">Last</string>
     <string name="trw_load_assisted">%1$s entlastet</string>
+    <string name="trw_load_per_block">%1$s pro Block</string>
     <string name="trw_load_input">Last in %1$s</string>
     <string name="trw_load_input_hint">Negativ = Entlastung (z. B. −10 mit Umlenkrolle), 0 = Körpergewicht.</string>
     <string name="trw_minus">%1$s verringern</string>

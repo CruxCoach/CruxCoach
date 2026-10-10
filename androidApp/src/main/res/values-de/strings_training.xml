@@ -22,6 +22,7 @@
     <string name="tr_eq_mat">Matte</string>
     <string name="tr_eq_hangboard">Hangboard</string>
     <string name="tr_eq_pickup_block">Pick-up-Block</string>
+    <string name="tr_eq_pickup_block_pair">Zweiter Block (beidarmig)</string>
     <string name="tr_eq_pull_up_bar">Klimmzugstange</string>
     <string name="tr_eq_rings">Ringe</string>
     <string name="tr_eq_dumbbell">Kurzhanteln</string>

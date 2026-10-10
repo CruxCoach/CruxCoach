@@ -23,6 +23,7 @@
     <string name="trw_grip_none">Choose grip</string>
     <string name="trw_load_label">Load</string>
     <string name="trw_load_assisted">%1$s assisted</string>
+    <string name="trw_load_per_block">%1$s per block</string>
     <string name="trw_load_input">Load in %1$s</string>
     <string name="trw_load_input_hint">Negative = assistance (e.g. −10 with a pulley), 0 = bodyweight.</string>
     <string name="trw_minus">Decrease %1$s</string>

@@ -88,7 +88,7 @@ class QuickEstimateViewModel @Inject constructor(private val service: AthleteSer
                 loading = false,
                 units = profile.units,
                 bodyweight = service.currentBodyweight(),
-                hasPickup = EquipmentV2.PICKUP_BLOCK in profile.equipment,
+                hasPickup = EquipmentV2.satisfied(EquipmentV2.PICKUP_BLOCK, profile.equipment),
                 hangAllowed = hang?.verdict != InjuryVerdict.AVOID,
                 pickupSide = pickup?.takeIf { it.verdict == InjuryVerdict.ONE_SIDE_ONLY }?.allowedSide,
                 pickupAllowed = pickup?.verdict != InjuryVerdict.AVOID,
