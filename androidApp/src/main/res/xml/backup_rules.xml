@@ -35,6 +35,8 @@
          Restoring these onto another phone could rename that device to the
          previous phone's identity. -->
     <exclude domain="sharedpref" path="cruxrelay.xml"/>
+    <!-- Daily hold collection belongs to this installation and controller. -->
+    <exclude domain="sharedpref" path="board_cleaning.xml"/>
     <!-- local_share_resume_v1 is intentionally portable: it contains only
          self-clearing cache-relative resume paths, never peer credentials. -->
 
