@@ -108,7 +108,8 @@ class StartLoadTest : AthleteScreenTest() {
         vm.start(mobility, "Mobility")
         while (vm.pendingStart.value == null) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
         vm.resolveStart(true)
-        while (repo.openWorkout()?.id == finger) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
+        // Replacing ends the old training and then starts the new one: wait for the new one, not just for the old to go.
+        while (repo.openWorkout()?.routineId != mobility.id) { check(System.currentTimeMillis() < end); Thread.sleep(20) }
         val open = repo.openWorkout()!!
         assertEquals(mobility.id, open.routineId)
         assertEquals(null, repo.workout(finger))
