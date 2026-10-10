@@ -169,7 +169,7 @@ renumbering those is likely cheaper than renumbering the shipped side.
 
 ## Next free
 
-**FEAT-072** is the next unallocated ID (FEAT-066–071 together on `feat/0.2.4-training-nutrition`, which merges the training line `feat/0.2.4-training-body` and the nutrition line `feat/0.2.4-food-photo`). FEAT-060 and FEAT-061 are reserved in
+**FEAT-072** is the next unallocated ID (FEAT-066–071 together on `feat/0.2.4-training-nutrition`, which merges the training line `feat/0.2.4-training-body` and the nutrition line `feat/0.2.4-food-photo` and, as the 0.2.4 release line since 2026-10-10, the Kilter logbook upload fixes of `feat/0.2.4-kilter-upload` – see `docs/research/2026-09-29-kilter-upload-500.md` – and the hold cleaning of `feat/0.2.4-board-cleaning` – see `docs/releases/0.2.4-board-cleaning.md`; neither has a FEAT number). FEAT-060 and FEAT-061 are reserved in
 the parallel `social-layer-specs` worktree; FEAT-062 is reserved by the
 personal-sharing worktrees. Verify against unmerged branches before allocating
 — a branch this worktree cannot see may still hold the next apparent gap.
