@@ -40,6 +40,7 @@ import com.cruxcoach.athlete.logic.MacroTotals
 import com.cruxcoach.athlete.logic.MicroWatch
 import com.cruxcoach.athlete.logic.OffTable
 import com.cruxcoach.athlete.logic.Recipe
+import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
 import com.cruxcoach.athlete.model.HydrationEntry
@@ -179,7 +180,7 @@ fun FuelScreen(
                         )
                     }
                 }
-                item(key = "summary") { MacroSummaryCard(state, onOpenEnergy = { energyOpen = true }) }
+                item(key = "summary") { MacroSummaryCard(state, onOpenEnergy = { energyOpen = true }, onUpdateProfile = viewModel::updateProfile) }
                 item(key = "water") { WaterCard(state, onAddWater = viewModel::addWater, onRemoveWater = ::deleteWater) }
                 if (state.entries.isEmpty() && state.previousDayCount > 0) {
                     item(key = "copy") { CopyPreviousCard(state.previousDayCount, onCopy = { copyConfirm = true }) }
@@ -554,7 +555,7 @@ private fun DayHeader(state: FuelState, onPrevious: () -> Unit, onNext: () -> Un
  * others how their target comes about – so no info line hangs under the rings.
  */
 @Composable
-private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
+private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdateProfile: ((AthleteProfile) -> AthleteProfile) -> Unit = {}) {
     val t = state.targets
     val totals = MacroTotals.of(state.entries)
     // Energy is a ring while calories are shown: eaten against the need,
@@ -571,7 +572,7 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
                 if (showEnergy) {
                     val plan = state.energy.plan
                     EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
-                        target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan),
+                        target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan, state.profile),
                         losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
                 }
                 MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
@@ -604,11 +605,29 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit) {
                 stringResource(R.string.trf_fat_info),
             )
         }.ifEmpty { listOf(stringResource(R.string.trf_needs_weight)) }
+        // How the target comes about, and right under it the choice: recommended or an own target (owner 2026-10-10).
+        val kind = when (which) {
+            "carbs" -> com.cruxcoach.athlete.logic.FuelTargets.TargetKind.CARBS
+            "protein" -> com.cruxcoach.athlete.logic.FuelTargets.TargetKind.PROTEIN
+            else -> com.cruxcoach.athlete.logic.FuelTargets.TargetKind.FAT
+        }
+        val rec = t?.let { it.recommended ?: it }
+        val recommended = when (kind) {
+            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.CARBS -> rec?.carbsG
+            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.PROTEIN -> rec?.proteinG
+            else -> rec?.fatG
+        }
         AlertDialog(
             modifier = Modifier.testTag("fuel_explain_$which"),
             onDismissRequest = { explained = null },
             title = { Text(title) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) { com.cruxcoach.android.ui.common.InfoText(text.joinToString("\n\n")) } },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    com.cruxcoach.android.ui.common.InfoText(text.joinToString("\n\n"))
+                    com.cruxcoach.android.ui.training.common.OwnTargetChoice(kind, state.profile, recommended, onChange = onUpdateProfile,
+                        modifier = Modifier.padding(top = 12.dp))
+                }
+            },
             confirmButton = { TextButton(onClick = { explained = null }) { Text(stringResource(R.string.action_close)) } },
         )
     }

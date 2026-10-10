@@ -42,6 +42,14 @@
     <string name="trn_goal_weeks">Target weight in about %1$d weeks</string>
     <string name="trn_goal_reached">Target weight reached: the calorie target is your need.</string>
     <string name="trn_goal_start">Start losing weight</string>
+    <!-- Own targets (owner 2026-10-10) -->
+    <string name="trn_targets_title">Your targets</string>
+    <string name="trn_target_recommended">Recommended (%1$d %2$s)</string>
+    <string name="trn_target_recommended_plain">Recommended</string>
+    <string name="trn_target_own">Own target</string>
+    <string name="trn_target_own_label">Your target: %1$s</string>
+    <string name="trn_unit_g">g</string>
+    <string name="trn_set_summary_own">Own targets: %1$s</string>
     <string name="trn_goal_stop">Stop losing weight</string>
     <string name="trn_goal_pace_minus">Slower</string>
     <string name="trn_goal_pace_plus">Faster</string>

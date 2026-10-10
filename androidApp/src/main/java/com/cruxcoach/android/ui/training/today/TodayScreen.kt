@@ -775,7 +775,7 @@ private fun WeightTile(state: TodayState, onLog: () -> Unit, onOpenBody: () -> U
 @Composable
 private fun FoodTile(state: TodayState, onOpen: () -> Unit, modifier: Modifier) {
     val t = state.fuelTargets
-    val energyGoal = com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.energy.plan)
+    val energyGoal = com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.energy.plan, state.profile)
     val protein = state.proteinToday.roundToInt()
     com.cruxcoach.android.ui.training.common.ValueTile(
         icon = Icons.Default.Restaurant, tint = CruxCoachDesign.colors.positive,

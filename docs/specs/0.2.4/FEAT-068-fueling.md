@@ -29,6 +29,14 @@ settings; entries without kcal show the energy of their macros (Atwater
   2016); without an energy target 1 g/kg (0.8–1.2). The rings read energy,
   carbohydrate, protein, fat; energy only while calories are shown.
 - Water: 35 ml/kg + 500 ml per training hour.
+- Own targets (owner 2026-10-10: "define them yourself next to the
+  recommendation"): energy, carbohydrate, protein, fat and water each follow
+  the recommendation or an own value (`ownKcal`, `ownCarbsG`, …; null =
+  recommended), set in the nutrition settings, at the ring's explanation or in
+  the energy sheet; the recommendation stays named next to it. An own energy
+  target feeds the fat recommendation and is weighed by the energy guard like
+  the plan's target (> 25 % under the need or under resting energy → warning
+  with numbers, nothing refused).
 - Logging: quick entries (every nutrient optional), own foods (per 100 g or per
   portion), favourites, "same as yesterday", hydration taps; logged entries
   can be edited. Calories shown unless hidden; no red "over" states, no

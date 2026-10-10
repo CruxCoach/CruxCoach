@@ -277,6 +277,25 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun ownTargetsReplaceTheRecommendationAndALowOwnCalorieTargetWarns() {
+        // Owner 2026-10-10: targets can be set by hand; the recommendation stays visible next to them.
+        val rec = FuelTargets.compute(70.0, null, 1.6, energyKcal = 2300)
+        val own = FuelTargets.withOwn(rec, AthleteProfile(ownCarbsG = 250, ownFatG = 60, ownWaterMl = 3000))
+        assertEquals(250, own.carbsG)
+        assertEquals(60, own.fatG)
+        assertEquals(3000, own.waterMl)
+        assertEquals(rec.proteinG, own.proteinG)
+        assertEquals(setOf(FuelTargets.TargetKind.CARBS, FuelTargets.TargetKind.FAT, FuelTargets.TargetKind.WATER), own.own)
+        assertEquals(rec, own.recommended)
+        // An own calorie target 30 % under the need is named like the plan's large deficit – never refused.
+        val low = RedsGuard.evaluate(AthleteProfile(), 176.0, emptyList(), emptyList(), ownTarget = OwnEnergyTarget(1600, 2300, 1650))
+        assertTrue(RedsSignal.LARGE_DEFICIT in low.signals)
+        assertTrue(low.ownTarget!!.belowResting)
+        val fine = RedsGuard.evaluate(AthleteProfile(), 176.0, emptyList(), emptyList(), ownTarget = OwnEnergyTarget(2100, 2300, 1650))
+        assertTrue(RedsSignal.LARGE_DEFICIT !in fine.signals)
+    }
+
+    @Test
     fun carbsFollowTheRatedClimbingIntensity() {
         // Two hours in the gym: an easy technique day needs less than a limit session.
         val light = DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.LIGHT)

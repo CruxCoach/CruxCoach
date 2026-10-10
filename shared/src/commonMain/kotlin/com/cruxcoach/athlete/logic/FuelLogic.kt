@@ -57,6 +57,35 @@ object FuelTargets {
         val fatRangeG: IntRange,
         /** The fat target comes from the day's energy target, not from body weight alone. */
         val fatFromEnergy: Boolean,
+        /** Targets the athlete set themselves ([withOwn]); the others follow the recommendation. */
+        val own: Set<TargetKind> = emptySet(),
+        /** The recommendation behind own targets, to show next to them. */
+        val recommended: Targets? = null,
+    )
+
+    enum class TargetKind { ENERGY, CARBS, PROTEIN, FAT, WATER }
+
+    /** Plausible own targets: typos are refused, choices are not. */
+    val OWN_KCAL = 800..6000
+    val OWN_CARBS_G = 0..1000
+    val OWN_PROTEIN_G = 20..400
+    val OWN_FAT_G = 10..300
+    val OWN_WATER_ML = 500..8000
+
+    /** [t] with the athlete's own targets in place of the recommended ones. */
+    fun withOwn(t: Targets, p: AthleteProfile): Targets = t.copy(
+        proteinG = p.ownProteinG ?: t.proteinG,
+        carbsG = p.ownCarbsG ?: t.carbsG,
+        fatG = p.ownFatG ?: t.fatG,
+        waterMl = p.ownWaterMl ?: t.waterMl,
+        own = buildSet {
+            if (p.ownKcal != null) add(TargetKind.ENERGY)
+            if (p.ownCarbsG != null) add(TargetKind.CARBS)
+            if (p.ownProteinG != null) add(TargetKind.PROTEIN)
+            if (p.ownFatG != null) add(TargetKind.FAT)
+            if (p.ownWaterMl != null) add(TargetKind.WATER)
+        },
+        recommended = t,
     )
 
     /**
@@ -224,6 +253,13 @@ enum class RedsSignal {
     LOW_TARGET_BMI,
 }
 
+/** An own calorie target with today's need and resting energy, so a warning can name them. */
+data class OwnEnergyTarget(val kcal: Int, val needKcal: Int, val restingKcal: Int) {
+    val deficitShare: Double get() = if (needKcal > 0) (needKcal - kcal).toDouble() / needKcal else 0.0
+    val belowResting: Boolean get() = kcal < restingKcal
+    val large: Boolean get() = belowResting || deficitShare > WeightPlan.LARGE_DEFICIT_SHARE
+}
+
 /** What the energy guard noticed, with the numbers behind it, so the app can show them. */
 data class EnergyReport(
     val signals: List<RedsSignal> = emptyList(),
@@ -241,6 +277,8 @@ data class EnergyReport(
     val lowCarbDays: Int = 0,
     /** The weight-loss plan, while one is active. */
     val plan: WeightPlan.Plan? = null,
+    /** The athlete's own calorie target against today's need, when one is set. */
+    val ownTarget: OwnEnergyTarget? = null,
 ) {
     /** Mean deficit as a share of the need (0.3 = 30 % under it); null without compared days. */
     val deficitShare: Double?
@@ -280,6 +318,7 @@ object RedsGuard {
         trend: List<TrendWeight.Point>,
         fuelDays: List<FuelDay>,
         plan: WeightPlan.Plan? = null,
+        ownTarget: OwnEnergyTarget? = null,
     ): EnergyReport {
         val signals = mutableListOf<RedsSignal>()
         val currentTrend = trend.lastOrNull()?.trend
@@ -306,13 +345,15 @@ object RedsGuard {
             if (lowDays >= 3) signals += RedsSignal.LOW_CARBS_ON_TRAINING_DAYS
         }
 
-        plan?.let { signals += it.warnings }
+        // An own calorie target replaces the plan's: its deficit is weighed instead, with the same thresholds.
+        plan?.let { p -> signals += if (ownTarget != null) p.warnings - RedsSignal.LARGE_DEFICIT else p.warnings }
+        if (ownTarget?.large == true) signals += RedsSignal.LARGE_DEFICIT
         return EnergyReport(
             signals = signals, bmi = bmi, bmiThreshold = threshold,
             weeklyRateKg = weekly, weeklyRateShare = weeklyShare, fourWeekShare = fourWeeks,
             avgIntakeKcal = avgIntake?.roundToInt(), avgNeedKcal = avgNeed?.roundToInt(),
             comparedDays = if (avgIntake != null) compared.size else 0,
-            lowCarbDays = lowDays, plan = plan,
+            lowCarbDays = lowDays, plan = plan, ownTarget = ownTarget,
         )
     }
 }

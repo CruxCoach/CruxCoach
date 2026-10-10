@@ -37,7 +37,8 @@ fun EnergyCareCard(
     onAdjustGoal: (() -> Unit)? = null,
 ) {
     if (report.signals.isEmpty()) return
-    val adjust = onAdjustGoal?.takeIf { report.signals.any { it in PLAN_SIGNALS } }
+    // "Adjust weight-loss goal" only for what the goal causes; a low own calorie target is changed at the energy ring.
+    val adjust = onAdjustGoal?.takeIf { report.signals.any { it in PLAN_SIGNALS && !(it == RedsSignal.LARGE_DEFICIT && report.ownTarget != null) } }
     Card(
         colors = CardDefaults.cardColors(containerColor = CruxCoachDesign.colors.cautionContainer,
             contentColor = CruxCoachDesign.colors.onCautionContainer),
@@ -101,7 +102,11 @@ fun energyWarningText(signal: RedsSignal, report: EnergyReport, profile: Athlete
         RedsSignal.FAST_PACE ->
             if (hide || plan == null) stringResource(R.string.trn_w_fast_pace_plain)
             else stringResource(R.string.trn_w_fast_pace, formatMass(plan.paceKgPerWeek, profile.units), formatNumber(plan.paceShare * 100))
-        RedsSignal.LARGE_DEFICIT -> {
+        RedsSignal.LARGE_DEFICIT -> report.ownTarget?.let { own ->
+            // The athlete's own calorie target is weighed with the same thresholds as the plan's.
+            if (own.belowResting && profile.showCalories) stringResource(R.string.trn_w_below_resting, own.kcal, own.restingKcal)
+            else stringResource(R.string.trn_w_large_deficit, (own.deficitShare * 100).roundToInt())
+        } ?: run {
             val target = plan?.targetKcal
             val resting = plan?.restingKcal
             if (plan != null && plan.belowResting && profile.showCalories && target != null && resting != null)

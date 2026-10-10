@@ -364,6 +364,15 @@ data class AthleteProfile(
     /** A place picked for one day ([placeDay], ISO date); other days use the default. */
     val placeToday: String? = null,
     val placeDay: String? = null,
+    /**
+     * Own nutrition targets (owner 2026-10-10: "define them yourself"); null
+     * follows the recommendation. Energy in kcal, macros in g, water in ml.
+     */
+    val ownKcal: Int? = null,
+    val ownCarbsG: Int? = null,
+    val ownProteinG: Int? = null,
+    val ownFatG: Int? = null,
+    val ownWaterMl: Int? = null,
 )
 
 /** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */

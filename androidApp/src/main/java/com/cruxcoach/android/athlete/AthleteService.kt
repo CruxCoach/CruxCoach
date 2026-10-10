@@ -859,7 +859,11 @@ class AthleteService @Inject constructor(
 
     // ── Fueling ──────────────────────────────────────────────────────
 
-    /** The day's macro targets; fat comes from the energy target (need, minus the deficit while losing) when it is known. */
+    /**
+     * The day's macro targets: recommended, with the athlete's own targets in
+     * their place. Fat comes from the energy target – the own one, else the
+     * need minus the deficit while losing – when it is known.
+     */
     fun fuelTargets(dayActivity: DayActivity?, profile: AthleteProfile): FuelTargets.Targets? {
         val weight = currentBodyweight() ?: return null
         val height = heightCm()
@@ -867,7 +871,8 @@ class AthleteService @Inject constructor(
         val deficit = if (profile.goal == AthleteGoal.LOSE_WEIGHT) {
             WeightPlan.plan(profile.weeklyLossKg, profile.targetWeightKg, weight, height, profile.sex, need).dailyDeficitKcal
         } else 0
-        return FuelTargets.compute(weight, dayActivity, profile.proteinPerKg, need?.let { it.totalKcal - deficit })
+        val energy = profile.ownKcal ?: need?.let { it.totalKcal - deficit }
+        return FuelTargets.withOwn(FuelTargets.compute(weight, dayActivity, profile.proteinPerKg, energy), profile)
     }
 
     /** The day's estimated energy need; null without weight or height. */
@@ -903,7 +908,9 @@ class AthleteService @Inject constructor(
                 needKcal = energyNeed(profile, activities[day], weight, height)?.totalKcal,
                 complete = day != today.toString() && entries.map { it.meal }.distinct().size >= 2)
         }
-        return RedsGuard.evaluate(profile, height, weightTrend(), fuelDays, weightPlan(profile, activities[today.toString()]))
+        val todayNeed = energyNeed(profile, activities[today.toString()], weight, height)
+        val own = profile.ownKcal?.let { kcal -> todayNeed?.let { OwnEnergyTarget(kcal, it.totalKcal, it.restingKcal) } }
+        return RedsGuard.evaluate(profile, height, weightTrend(), fuelDays, weightPlan(profile, activities[today.toString()]), own)
     }
 
     /** Turns the weight-loss goal on with its target and pace, or off (target and pace stay for next time). */

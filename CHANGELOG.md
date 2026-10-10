@@ -143,7 +143,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   days count automatically, a light day less than a limit session – and a fat
   target that fills the energy left, kept within 20–35 % of it (1 g per kg
   without an energy target); energy, carbohydrate, protein and fat each have
-  a ring, in that order,
+  a ring, in that order, and every target – energy, carbohydrate, protein, fat,
+  water – can follow the recommendation or be set by hand (in the settings, at
+  its ring, in the energy sheet; a low own calorie target is warned about with
+  its numbers),
   plus water, quick entries, own foods, favourites and "same as yesterday".
   Every value is in the open: an energy ring shows what you ate against your
   estimated need (resting energy, everyday life and the day's training, each
