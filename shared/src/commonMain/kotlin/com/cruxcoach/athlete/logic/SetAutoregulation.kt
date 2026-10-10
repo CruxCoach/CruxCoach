@@ -51,6 +51,11 @@ data class SetAdjustment(
  *
  * Increases never go beyond the performance-value prescription plus one step
  * ([ceilingKg]); warm-ups, tests, intervals and climbing never change.
+ *
+ * Feeling out ([feelOut], the first session with an exercise whose start load
+ * is only a guess): loads move by about 10 % instead of one step, both ways,
+ * and a big reserve may go beyond the guess – two sets find the real load
+ * whether the guess was too high or too low.
  */
 object SetAutoregulation {
 
@@ -60,6 +65,8 @@ object SetAutoregulation {
     private const val HOLD_LOAD_SHARE = 0.05
     private const val MIN_HOLD_S = 3.0
     private const val EASY_HOLD_STEP_S = 2.0
+    /** Share of the load one feeling-out step moves. */
+    const val FEEL_OUT_SHARE = 0.10
 
     fun adjust(
         def: ExerciseDefinition,
@@ -67,13 +74,18 @@ object SetAutoregulation {
         nextPlanned: ExerciseSet?,
         incrementKg: Double,
         ceilingKg: Double? = null,
+        feelOut: Boolean = false,
     ): SetAdjustment? {
         if (!done.isCompleted || done.setType != SetType.WORK) return null
-        val step = incrementKg.takeIf { it > 0 } ?: 1.0
+        val increment = incrementKg.takeIf { it > 0 } ?: 1.0
         val loaded = def.load == LoadMode.EXTERNAL || def.load == LoadMode.BODYWEIGHT_PLUS
+        // Feeling out a guessed start load: about 10 % of the lifted load per set, never less than one step.
+        val feel = feelOut && loaded && done.loadKg != null
+        val step = if (feel) max(increment, StrengthMath.roundTo(abs(done.loadKg!!) * FEEL_OUT_SHARE, increment)) else increment
+        val ceiling = if (feel) null else ceilingKg
         return when (def.kind) {
-            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> reps(done, nextPlanned, loaded, step, ceilingKg)
-            ExerciseKind.HANG -> hold(def, done, nextPlanned, loaded, step, ceilingKg)
+            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> reps(done, nextPlanned, loaded, step, ceiling)
+            ExerciseKind.HANG -> hold(def, done, nextPlanned, loaded, step, ceiling, feel)
             ExerciseKind.TIME, ExerciseKind.INTERVAL, ExerciseKind.CLIMB -> null
         }
     }
@@ -100,7 +112,7 @@ object SetAutoregulation {
         }
     }
 
-    private fun hold(def: ExerciseDefinition, done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?): SetAdjustment? {
+    private fun hold(def: ExerciseDefinition, done: ExerciseSet, next: ExerciseSet?, loaded: Boolean, step: Double, ceilingKg: Double?, feel: Boolean = false): SetAdjustment? {
         val target = done.targetDurationS ?: return null
         val held = done.durationS ?: return null
         val failed = held < target * HOLD_TOLERANCE
@@ -108,7 +120,8 @@ object SetAutoregulation {
         return when {
             failed && loaded && done.loadKg != null -> {
                 val total = StrengthMath.effectiveLoad(def.load, done.loadKg, done.bodyweightKg) ?: done.loadKg
-                val drop = max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
+                // Feeling out drops the full step (about 10 %); otherwise about 5 % of the total load.
+                val drop = if (feel) step else max(step, StrengthMath.roundTo(total * HOLD_LOAD_SHARE, step))
                 // Lifted weight cannot go below zero; added weight may turn into assistance.
                 val limited = if (def.load == LoadMode.EXTERNAL) minOf(drop, max(0.0, (next?.targetLoadKg ?: done.loadKg))) else drop
                 if (limited <= 0.0) null else SetAdjustment(loadDeltaKg = -limited, reason = AdjustReason.HOLD_FAILED)

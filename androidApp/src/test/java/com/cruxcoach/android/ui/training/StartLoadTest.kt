@@ -43,14 +43,29 @@ class StartLoadTest : AthleteScreenTest() {
     @Test
     fun `a known max hang sets the pick-up estimate, a routine's own load wins`() {
         repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
-        // Max hang 20 mm +30 kg for 10 s: 100 kg total → pick-up 70 kg → careful 56 kg → 90 % for 10 s ≈ 50 kg.
+        // Max hang 20 mm +30 kg for 10 s: 100 kg total → pick-up 70 kg → careful 56 kg → first session from 85 % → 90 % for 10 s ≈ 43 kg.
         service.saveBenchmark(Benchmark(id = "b", exerciseSlug = "finger.max_hang", loadKg = 30.0, durationS = 10.0, edgeMm = 20.0,
             source = BenchmarkSource.MANUAL, measuredAt = 1, bodyweightKg = 70.0))
         val fromHang = plannedWork(listOf(RoutineItem("finger.two_arm_pickup", sets = 1, durationS = 10, edgeMm = 20)))
-        assertEquals(50.0, fromHang.single().loadKg!!, 1.0)
+        assertEquals(43.0, fromHang.single().loadKg!!, 1.0)
         service.finishWorkout(repo.openWorkout()!!.id, 5, null)
         val own = plannedWork(listOf(RoutineItem("finger.two_arm_pickup", sets = 1, durationS = 10, edgeMm = 20, loadKg = 20.0)))
         assertEquals(20.0, own.single().loadKg!!, 1e-9)
+    }
+
+    @Test
+    fun `the first session feels out a guessed load in ten percent steps`() {
+        // Owner 2026-10-10: "38 kg sounds like a lot" – start lower and find the load within two sets.
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 68.5, "kg", 1))
+        val id = service.startWorkout(Routine(id = "f", name = "Finger", items = listOf(RoutineItem("finger.two_arm_pickup", sets = 3, durationS = 10, edgeMm = 20))), null)
+        val work = repo.setsFor(id).filter { it.setType == SetType.WORK }.sortedBy { it.setIndex }
+        val start = work.first().loadKg!!
+        // Held easily with "3+" in reserve: the next sets go up by about 10 %, past the guess.
+        val done = service.completeSetDetailed(work.first().copy(durationS = 10.0, rir = 3), startRest = false)
+        service.adjustUpcomingSets(id, repo.setsFor(id).first { it.id == work.first().id })
+        val next = repo.setsFor(id).first { it.id == work[1].id }.loadKg!!
+        assertEquals(start + Math.max(1.0, Math.round(start * 0.1).toDouble()), next, 1e-9)
+        assertTrue(done.raisedBenchmark != null)
     }
 
     @Test
