@@ -172,5 +172,5 @@
     <string name="tr_tab_exercises">Exercises</string>
     <string name="tr_tab_stats">Stats</string>
     <string name="tr_tab_body">Body</string>
-    <string name="tr_nav_training">Training</string>
+    <string name="tr_nav_training_nutrition">Training &amp; nutrition</string>
 </resources>
