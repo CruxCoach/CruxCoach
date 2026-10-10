@@ -13,6 +13,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
@@ -69,6 +71,9 @@ fun BoardLogbookScreen(
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var showCleaning by rememberSaveable { mutableStateOf(false) }
+    if (showCleaning) BoardCleaningSheet(onDismiss = { showCleaning = false })
 
     // Own-Kilter-climb publish feedback (same outcome mapping as the
     // climb-detail surface).
@@ -209,25 +214,6 @@ fun BoardLogbookScreen(
                                     ) OrangeAccent else MaterialTheme.colorScheme.onSurface,
                                 )
                             }
-                            val allSelected = state.ascents.isNotEmpty() &&
-                                state.selectedUuids.size == state.ascents.size
-                            IconButton(onClick = { viewModel.selectAll() }) {
-                                Icon(
-                                    Icons.Default.SelectAll,
-                                    contentDescription = stringResource(if (allSelected) R.string.cd_deselect_all else R.string.cd_select_all),
-                                    tint = if (allSelected) OrangeAccent else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.requestBatchDelete() },
-                                enabled = hasSelection
-                            ) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.cd_delete_selected),
-                                    tint = if (hasSelection) ErrorRed else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                                )
-                            }
                             IconButton(
                                 onClick = { viewModel.toggleStatsSheet() },
                                 modifier = Modifier.testTag("logbook_stats_button")
@@ -237,6 +223,33 @@ fun BoardLogbookScreen(
                                     contentDescription = stringResource(R.string.board_stats_title),
                                     tint = OrangeAccent
                                 )
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { showMenu = true }, modifier = Modifier.testTag("logbook_menu")) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.board_cleaning_logbook_options))
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.board_cleaning_title)) },
+                                    leadingIcon = { Icon(Icons.Default.CleaningServices, contentDescription = null) },
+                                    onClick = { showMenu = false; showCleaning = true },
+                                    modifier = Modifier.testTag("logbook_clean_holds"),
+                                )
+                                if (state.hasData) {
+                                    val allSelected = state.ascents.isNotEmpty() && state.selectedUuids.size == state.ascents.size
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(if (allSelected) R.string.cd_deselect_all else R.string.cd_select_all)) },
+                                        leadingIcon = { Icon(Icons.Default.SelectAll, contentDescription = null) },
+                                        onClick = { showMenu = false; viewModel.selectAll() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.cd_delete_selected)) },
+                                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                        enabled = hasSelection,
+                                        onClick = { showMenu = false; viewModel.requestBatchDelete() },
+                                    )
+                                }
                             }
                         }
                     }

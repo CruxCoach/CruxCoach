@@ -3205,4 +3205,25 @@
     <string name="import_moon_mail_short">Den kopierten Anfragetext in die E-Mail einfügen.</string>
     <string name="account_amber_restore_summary">Wähle in Amber das Konto deines Backups. Dein privater Schlüssel bleibt in Amber.</string>
     <string name="account_restore_key_method">Mit Schlüssel</string>
+
+    <!-- Board cleaning (0.2.4) -->
+    <string name="board_cleaning_title">Griffe putzen</string>
+    <string name="board_cleaning_logbook_options">Logbuch-Optionen</string>
+    <string name="board_cleaning_description">Markiert die Griffe der heute mit CruxCoach auf diesem Handy ans Board gesendeten Probleme, auch ohne Top. Gruppen-Sessions zählen mit, wenn dieses Handy das Board steuert.</string>
+    <string name="board_cleaning_connect_hint">Verbinde dich mit dem Board, das du putzen möchtest.</string>
+    <string name="board_cleaning_connect">Board verbinden</string>
+    <string name="board_cleaning_unsupported">Der Putzmodus benötigt eine direkte Verbindung zu Kilter, Tension, Grasshopper, Decoy, So iLL, Touchstone oder MoonBoard.</string>
+    <string name="board_cleaning_empty">Für dieses Board sind heute keine Griffe gesammelt. Sende ein Problem ans Board, um Griffe zu sammeln.</string>
+    <string name="board_cleaning_relay">Beende die Board-Freigabe, bevor du den Putzmodus startest. Probleme aus anderen Apps werden nicht mitgezählt.</string>
+    <string name="board_cleaning_active_hint">Problemwechsel von diesem Handy sind pausiert. Beim Schließen des Dialogs bleibt die Markierung an. Beenden stellt die letzte bekannte Anzeige wieder her oder schaltet die LEDs aus, falls sie nicht mehr bekannt ist. „Geputzt“ setzt zusätzlich diese Sammlung zurück.</string>
+    <string name="board_cleaning_done">Geputzt · Sammlung zurücksetzen</string>
+    <string name="board_cleaning_stop">Beenden · Sammlung behalten</string>
+    <string name="board_cleaning_start">Griffe am Board markieren</string>
+    <string name="board_cleaning_retry">Erneut markieren</string>
+    <string name="board_cleaning_active">Putzmodus aktiv · Steuerung öffnen</string>
+    <string name="board_cleaning_error">Das Board konnte nicht aktualisiert werden. Prüfe die Verbindung und versuche es erneut. Die Sammlung bleibt erhalten.</string>
+    <plurals name="board_cleaning_count">
+        <item quantity="one">%d Griff heute gesammelt</item>
+        <item quantity="other">%d Griffe heute gesammelt</item>
+    </plurals>
 </resources>
