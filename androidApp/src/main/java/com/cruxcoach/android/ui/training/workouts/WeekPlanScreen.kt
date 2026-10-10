@@ -86,7 +86,9 @@ private val SESSION_MINUTES = listOf(15, 30, 45, 60, 90)
 fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var choosing by remember { mutableStateOf<Int?>(null) }
-    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack) { padding ->
+    // What the standard week is for: the app bar's info icon, not a paragraph above the days (design.md).
+    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack,
+        actions = { com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trwo_week_plan), stringResource(R.string.trwo_week_plan_intro)) }) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             return@TrainingScaffold
@@ -96,10 +98,6 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item {
-                Text(stringResource(R.string.trwo_week_plan_intro), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             if (state.proposal.isNotEmpty()) {
                 item(key = "proposal") { ProposalCard(state, onApply = viewModel::applyProposal) }
             }
@@ -118,10 +116,12 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
                     }
                 }
             }
-            item { SectionTitle(stringResource(R.string.trwo_session_minutes)) }
             item {
-                Text(stringResource(R.string.trwo_session_minutes_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionTitle(stringResource(R.string.trwo_session_minutes)) {
+                    com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trwo_session_minutes), stringResource(R.string.trwo_session_minutes_hint))
+                }
+            }
+            item {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                     SESSION_MINUTES.forEach { m ->
                         FilterChip(

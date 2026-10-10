@@ -12,7 +12,7 @@
     <string name="tru_weight_more">More</string>
     <string name="tru_weight_last">Last: %1$s</string>
     <string name="tru_weight_reason_setup">For your nutrition targets and for loads as a share of your body weight.</string>
-    <string name="tru_weight_reason_fuel">CruxCoach works out your protein, carb and water targets from it.</string>
+    <string name="tru_weight_reason_fuel">CruxCoach works out your protein, carb, fat and water targets from it.</string>
     <string name="tru_weight_saved">Weight saved</string>
 
     <!-- Equipment sheet -->
@@ -123,7 +123,6 @@
     <string name="tru_set_body_data">Body data</string>
     <string name="tru_set_sex">Sex</string>
     <string name="tru_set_birth_year">Year of birth</string>
-    <string name="tru_set_nutrition_weight">The targets use your body weight (under “About you”).</string>
     <string name="tru_water_reached">Drinking target reached</string>
     <string name="tru_setup_ready_title">All set!</string>
     <string name="tru_setup_ready_text">Your coach now knows the basics. Every logged day makes the suggestions more personal.</string>

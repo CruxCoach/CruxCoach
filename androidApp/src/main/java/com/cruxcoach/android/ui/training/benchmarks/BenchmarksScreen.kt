@@ -174,7 +174,7 @@ fun BenchmarksScreen(
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("benchmarks_list"),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                Text(stringResource(R.string.trbm_intro), style = MaterialTheme.typography.bodyMedium)
+                // What the page is for is behind the info icon in the app bar; here only what to do.
                 if (state.bodyweight == null) {
                     com.cruxcoach.android.ui.training.common.NeedsDataCard(
                         icon = androidx.compose.material.icons.Icons.Default.MonitorWeight,
@@ -206,10 +206,6 @@ fun BenchmarksScreen(
                         onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge)
                 }
             }
-            item {
-                Text(stringResource(R.string.trbm_more_hint), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-            }
         }
     }
     entry?.let { def ->
@@ -225,7 +221,7 @@ fun BenchmarksScreen(
     if (weightOpen) {
         com.cruxcoach.android.ui.training.common.WeightSheet(
             units = state.profile.units, lastKg = null, hideNumbers = state.profile.hideBodyNumbers,
-            reason = stringResource(R.string.trbm_needs_weight),
+            reason = stringResource(R.string.tru_weight_reason_setup),
             onDismiss = { weightOpen = false },
             onSave = { kg -> viewModel.logWeight(kg); weightOpen = false },
         )
@@ -562,7 +558,7 @@ fun BenchmarkCard(
                 com.cruxcoach.android.ui.training.coach.learningLabel(s.learning)?.let { label ->
                     SuggestionChip(onClick = {}, label = { Text(label) }, modifier = Modifier.testTag("exercise_benchmark_learning"))
                 }
-                InfoButton(stringResource(R.string.trbm_title), stringResource(R.string.trbm_info))
+                InfoButton(stringResource(R.string.trbm_card_title), stringResource(R.string.trbm_info))
             }
             val sides: List<Side?> = if (def.unilateral) listOf(Side.LEFT, Side.RIGHT) else listOf(null)
             sides.forEach { side ->

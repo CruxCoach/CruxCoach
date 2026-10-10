@@ -153,7 +153,14 @@ fun AthleteSettingsScreen(
     val p = state.profile
     var weightOpen by rememberSaveable { mutableStateOf(false) }
     var goalOpen by rememberSaveable { mutableStateOf(false) }
-    TrainingScaffold(title = section?.let { sectionTitle(it) } ?: stringResource(R.string.tr_action_settings), onBack = onBack) { padding ->
+    val pageTitle = section?.let { sectionTitle(it) } ?: stringResource(R.string.tr_action_settings)
+    // A page's explanation sits behind the info icon in the app bar, not as a paragraph on the page (design.md).
+    val pageInfo = when (section) {
+        SettingsSection.ABOUT -> stringResource(R.string.tra_personal_info)
+        SettingsSection.EQUIPMENT -> stringResource(R.string.tro_places_intro)
+        else -> null
+    }
+    TrainingScaffold(title = pageTitle, onBack = onBack, actions = { pageInfo?.let { InfoButton(pageTitle, it) } }) { padding ->
         if (!state.loaded) return@TrainingScaffold
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
@@ -197,8 +204,6 @@ fun AthleteSettingsScreen(
                     }
                 }
                 SettingsSection.ABOUT -> {
-                    Text(stringResource(R.string.tra_personal_info), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                     SectionTitle(stringResource(R.string.tr_metric_weight))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -225,8 +230,7 @@ fun AthleteSettingsScreen(
                     }
                 }
                 SettingsSection.EQUIPMENT -> {
-                    Text(stringResource(R.string.tro_places_intro), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                    Spacer(Modifier.height(8.dp))
                     val day = java.time.LocalDate.now().toString()
                     val places = com.cruxcoach.athlete.logic.TrainingPlaces.of(p)
                     if (places.isEmpty()) {
@@ -277,8 +281,6 @@ fun AthleteSettingsScreen(
                     var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
                     Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
                         onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
-                    Text(stringResource(R.string.tru_set_nutrition_weight), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 SettingsSection.REMINDERS -> {
                     ReminderSection(p) { transform -> viewModel.update(transform) }
@@ -328,8 +330,13 @@ fun AthleteSettingsScreen(
                     }
                 }
             }
-            Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
+            // Said once, on the overview – not again on every page.
+            if (section == null) {
+                Text(stringResource(R.string.tra_privacy_note), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 24.dp))
+            } else {
+                Spacer(Modifier.height(24.dp))
+            }
         }
     }
     if (goalOpen) {
@@ -659,8 +666,6 @@ private fun CoachProfileSection(p: AthleteProfile, completeness: com.cruxcoach.a
                         color = MaterialTheme.colorScheme.primary)
                 }
             }
-            Text(stringResource(R.string.trc_settings_local), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

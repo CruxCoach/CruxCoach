@@ -289,7 +289,7 @@ private fun WeightSection(state: BodyState, onRange: (BodyRange) -> Unit) {
         else -> R.string.trb_direction_down
     })
     SectionTitle(stringResource(R.string.tr_metric_weight)) {
-        InfoButton(stringResource(R.string.trb_trend_info_title), stringResource(R.string.trb_trend_info_text))
+        InfoButton(stringResource(R.string.tr_metric_weight), stringResource(R.string.trb_trend_info_text))
     }
     val trend = state.weight.lastOrNull()?.trend
     if (trend == null) {
@@ -420,8 +420,6 @@ private fun StrengthSection(state: BodyState) {
     SectionTitle(stringResource(R.string.trb_strength_title)) {
         InfoButton(stringResource(R.string.trb_strength_title), stringResource(R.string.trb_strength_info_text))
     }
-    Text(stringResource(R.string.trb_strength_subtitle), style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (state.strength.isEmpty()) {
         EmptyHint(stringResource(R.string.trb_strength_empty))
         return

@@ -97,6 +97,15 @@ Quellen: [TodayScreen.kt](androidApp/src/main/java/com/cruxcoach/android/ui/trai
 
 Titel, aktueller Wert und Handlung geben die erste Orientierung. Kurze Statusmeldungen sagen, was gerade geschieht und was als Nächstes möglich ist. Detailerklärungen öffnen sich über Info-Aktionen oder aufklappbare Bereiche. Hilfe zu öffnen verändert keine Einstellung. Fehler, fehlende Voraussetzungen und Warnungen vor Datenverlust bleiben direkt an der betroffenen Handlung sichtbar.
 
+**Wo welche Beschreibung steht (Owner 2026-10-10: „glattziehen, welche Beschreibungen wo und wann stehen“):**
+
+1. **Immer sichtbar** sind nur Titel, Wert, Handlung und Zustand: leerer Zustand, fehlende Voraussetzung mit ihrer Eingabe an Ort und Stelle, Warnungen mit Zahl, Sicherheits- und Medizinhinweise. Kein Absatz, der erklärt, was etwas ist oder wie es berechnet wird.
+2. **Erklärungen auf Abruf, an genau einer Stelle:** Ist der Wert selbst antippbar (Ringe, Kacheln), erklärt er sich beim Antippen. Sonst sitzt ein Info-Symbol rechts neben der Überschrift, zu der es gehört – Seite: App-Leiste; Abschnitt, Karte, Sheet: deren Titel (`SectionTitle { InfoButton(…) }`). Nicht am Ende einer Wertezeile, nicht zusätzlich als Text darunter. Der Dialogtitel ist die sichtbare Überschrift.
+3. **Einführungen einmal:** beim ersten Besuch als Karte mit „Verstanden“; danach bleibt derselbe Text über das Info-Symbol des Bereichs erreichbar.
+4. **Sheets und Formulare:** höchstens ein kurzer Satz unter dem Titel, warum gefragt wird; Hinweise zu einem Feld direkt darunter; am Ende nur Sicherheitshinweise.
+5. **Datenschutz einmal pro Kontext:** dort, wo Daten zuerst eingegeben werden (Kurzer Start oben), und einmal auf der Einstellungsübersicht – nicht auf jeder Seite. Funktionen mit Kamera oder Modell sagen kurz, dass nichts das Gerät verlässt.
+6. **Kein Verweis ins Leere:** ein Hinweis, der irgendwohin schickt, hat seine Handlung dabei; Texte sagen nicht „in den Einstellungen“, wenn der Button die Eingabe direkt öffnet.
+
 Bestehende Muster sind [SettingsLayout.kt](androidApp/src/main/java/com/cruxcoach/android/ui/settings/SettingsLayout.kt) und [InfoButton.kt](androidApp/src/main/java/com/cruxcoach/android/ui/common/InfoButton.kt). Neue Oberflächen sollen diese Muster weiterverwenden. Ein Upload ist erst nach bestätigtem Abschluss erfolgreich; eine gestartete Hintergrundaufgabe rechtfertigt keine Erfolgsmeldung.
 
 ## Kontozugang sichern und Daten sichern sind verschiedene Aufgaben

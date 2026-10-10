@@ -197,8 +197,9 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), modifier = Modifier.testTag("quick_estimate_sheet")) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             Text(stringResource(R.string.trc_estimate_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.trc_estimate_intro), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // What the sheet asks and what becomes of the answers: together under the title, nothing at the bottom.
+            Text(stringResource(R.string.trc_estimate_intro) + " " + stringResource(R.string.trc_estimate_note),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (s.loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
                 return@Column
@@ -288,9 +289,6 @@ fun QuickEstimateSheet(onDismiss: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
-            Text(stringResource(R.string.trc_estimate_note), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
 
             val anything = (pull != null && pull != PullAnswer.NONE) || (hang != null && hang != HangAnswer.CANNOT) ||
                 (kg(leftKg) ?: 0.0) > 0 || (kg(rightKg) ?: 0.0) > 0

@@ -5,7 +5,7 @@
     <string name="trx_search_hint">Übungen suchen</string>
     <string name="trx_search_clear">Suche leeren</string>
     <string name="trx_filter_mine">Meine Ausrüstung</string>
-    <string name="trx_filter_mine_hint">Lege zuerst in den Trainingseinstellungen fest, was du hast.</string>
+    <string name="trx_filter_mine_hint">Leg zuerst fest, was du hast.</string>
     <string name="trx_filter_no_climbing">Ohne Klettern</string>
     <string name="trx_filter_finger_free">Fingerschonend</string>
     <string name="trx_filter_favorites">Favoriten</string>

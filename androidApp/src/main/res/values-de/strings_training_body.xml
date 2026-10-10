@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Körper-Tracking (FEAT-067). -->
 <resources>
-    <string name="trb_trend_info_title">Warum ein Trend?</string>
     <string name="trb_trend_info_text">Dein Gewicht schwankt von Tag zu Tag um 1–2 kg, vor allem durch Wasser, Salz, Essen und Training. Der Trend glättet diese Schwankungen – jede Messung zieht ihn nur ein Zehntel mit –, so siehst du, was sich wirklich verändert. Lücken sind kein Problem, gelegentliches Wiegen reicht.</string>
     <string name="trb_tile_trend">Trend</string>
     <string name="trb_tile_rate">Pro Woche</string>
@@ -28,7 +27,6 @@
     <string name="trb_ape_info_text">Spannweite minus Körpergröße. Ein positiver Wert heißt: Deine Arme reichen weiter, als du groß bist – das hilft bei weiten Zügen. Er beschreibt deinen Körperbau, kein Trainingsziel. Trag Größe und Spannweite einmal ein.</string>
     <string name="trb_ape_missing">Trag Größe und Spannweite ein, um deinen Ape-Index zu sehen.</string>
     <string name="trb_strength_title">Kraft zu Gewicht</string>
-    <string name="trb_strength_subtitle">Fortschritt über Kraft, nicht über die Waage.</string>
     <string name="trb_strength_info_text">Gezeigt wird die beste Last pro Trainingstag in Prozent deines Körpergewichts: beim Hängen Körpergewicht plus Zusatzlast, beim Blockheben das gehobene Gewicht, bei Klimmzügen mit Zusatzgewicht das geschätzte Maximum. Jeder Satz merkt sich das Körpergewicht seines Tages.</string>
     <string name="trb_strength_empty">Noch keine Daten. Der Leistungstest unter „Heute“ liefert dir einen Startwert.</string>
     <string name="trb_strength_best">Bestwert: %1$d %%</string>
