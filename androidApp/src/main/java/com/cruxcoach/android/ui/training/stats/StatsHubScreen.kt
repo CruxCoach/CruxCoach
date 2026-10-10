@@ -271,7 +271,7 @@ fun StatsHubScreen(
                         WeekBar(w.weekStart, listOf(climbColor to w.climbingDays.toDouble(),
                             offBoardColor to (w.trainingDays - w.climbingDays).coerceAtLeast(0).toDouble()))
                     }
-                    WeeklyBarChart(bars, stringResource(R.string.trs_days_chart_cd, s.weeks.size, s.weeks.sumOf { it.trainingDays }),
+                    WeeklyBarChart(bars, s.weeks.sumOf { it.trainingDays }.let { total -> pluralStringResource(R.plurals.trs_days_chart_cd, total, s.weeks.size, total) },
                         Modifier.fillMaxWidth().testTag("stats_days_chart"))
                     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Legend(climbColor, stringResource(R.string.trs_legend_climbing))
@@ -427,7 +427,7 @@ private fun ProgressHub(
                 icon = Icons.Default.History, tint = MaterialTheme.colorScheme.secondary,
                 label = stringResource(R.string.trt_done_hero_history),
                 value = "${s.trainingDaysInRange}",
-                supporting = stringResource(R.string.tru_hub_history, rangeLabel(s.range)) + " · " +
+                supporting = pluralStringResource(R.plurals.tru_hub_history_days, s.trainingDaysInRange, rangeLabel(s.range)) + " · " +
                     pluralStringResource(R.plurals.tru_hub_records, s.recordsInRange, s.recordsInRange),
                 tag = "stats_history", onClick = onOpenHistory,
                 modifier = Modifier.weight(1f).fillMaxHeight(),

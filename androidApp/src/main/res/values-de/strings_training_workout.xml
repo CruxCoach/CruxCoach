@@ -31,7 +31,7 @@
     <string name="trw_reopen_set">Satz wieder öffnen</string>
     <string name="trw_rir_label">Wdh. in Reserve</string>
     <string name="trw_rir_3plus">3+</string>
-    <string name="trw_rir_short">RIR %1$d</string>
+    <string name="trw_rir_short">Reserve %1$d</string>
     <string name="trw_rest_start">Pause starten</string>
     <string name="trw_timer_open">Timer öffnen</string>
     <string name="trw_interval_format">%1$d s an / %2$d s Pause × %3$d</string>
@@ -101,20 +101,23 @@
     <string name="trw_side_diff">%1$s ist %2$d %% schwächer</string>
     <string name="trw_sets_title">Sätze</string>
     <string name="trw_no_sets">Keine Sätze abgehakt.</string>
-    <string name="trw_save_routine">Als Routine speichern</string>
-    <string name="trw_routine_name">Name der Routine</string>
-    <string name="trw_routine_saved">Routine gespeichert</string>
+    <string name="trw_save_routine">Als Workout speichern</string>
+    <string name="trw_routine_name">Name des Workouts</string>
+    <string name="trw_routine_saved">Workout gespeichert</string>
+    <string name="trw_delete_training">Training löschen</string>
+    <string name="trw_delete_training_title">Training löschen?</string>
+    <string name="trw_delete_training_text">„%1$s“ vom %2$s wird mit allen Sätzen gelöscht.</string>
 
-    <string name="trw_routines_title">Routinen</string>
+    <string name="trw_routines_title">Workouts</string>
     <string name="trw_builtin_section">Startvorlagen</string>
-    <string name="trw_own_section">Deine Routinen</string>
-    <string name="trw_own_empty">Noch keine eigenen Routinen. Speichere ein Training in seiner Zusammenfassung als Routine.</string>
+    <string name="trw_own_section">Deine Workouts</string>
+    <string name="trw_own_empty">Noch keine eigenen Workouts. Speichere ein Training in seiner Zusammenfassung als Workout.</string>
     <plurals name="trw_exercise_count">
         <item quantity="one">%d Übung</item>
         <item quantity="other">%d Übungen</item>
     </plurals>
     <string name="trw_est_minutes">ca. %1$d Min.</string>
-    <string name="trw_delete_routine_title">Routine löschen?</string>
+    <string name="trw_delete_routine_title">Workout löschen?</string>
     <string name="trw_delete_routine_text">„%1$s“ wird gelöscht.</string>
     <string name="trw_open_running">Es läuft schon ein Training. Du kommst direkt dorthin zurück.</string>
     <string name="trw_go_to_workout">Zum Training</string>

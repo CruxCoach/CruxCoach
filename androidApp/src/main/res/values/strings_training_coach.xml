@@ -172,6 +172,10 @@
     <string name="trc_learning_guess">Starting load estimated carefully from your body weight and level – change it if it does not fit. After each set, say how much more would have gone: today the next sets move in bigger steps until the load fits.</string>
     <string name="trc_learning_estimated">Performance value estimated – after the set, say how many more would have gone.</string>
     <string name="trc_learning_progress">Performance value is being learnt (%1$d/%2$d) – after the set, say how many more would have gone.</string>
+    <string name="trc_learning_guess_short">Start load estimated – say the reserve after each set</string>
+    <string name="trc_learning_none_short">First time – say the reserve after the set</string>
+    <string name="trc_learning_estimated_short">Performance value estimated</string>
+    <string name="trc_learning_progress_short">Performance value being learnt (%1$d/%2$d)</string>
     <string name="trc_badge_estimated">estimated</string>
     <string name="trc_badge_learning">learning %1$d/%2$d</string>
     <string name="trc_badge_known">known</string>

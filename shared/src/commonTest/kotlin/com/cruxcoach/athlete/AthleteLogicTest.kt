@@ -164,6 +164,19 @@ class AthleteLogicTest {
     }
 
     @Test
+    fun sideBalanceComparesTheSameNumberOfSets() {
+        // Device test 2026-10-10: ended before the last right-hand set, the summary said "right 30 % weaker".
+        val catalog = ExerciseCatalog(1, listOf(maxHang.copy(unilateral = true)))
+        val sets = listOf(
+            set(maxHang.slug, index = 0, side = Side.LEFT, duration = 10.0, load = 15.0, bw = 70.0),
+            set(maxHang.slug, index = 0, side = Side.RIGHT, duration = 10.0, load = 15.0, bw = 70.0),
+            set(maxHang.slug, index = 1, side = Side.LEFT, duration = 10.0, load = 15.0, bw = 70.0),
+        )
+        val summary = WorkoutSummarizer.summarize(sets, 30, catalog, { emptyList() }, 1.0)
+        assertEquals(summary.sideLoad.getValue(Side.LEFT), summary.sideLoad.getValue(Side.RIGHT), 1e-9)
+    }
+
+    @Test
     fun warmupForAddedWeightHangStartsAssisted() {
         val steps = WarmupRamp.build(maxHang, workingLoadKg = 10.0, bodyweightKg = 70.0, incrementKg = 1.0)
         assertEquals(listOf(50, 70, 85), steps.map { it.percent })

@@ -71,7 +71,7 @@
     </plurals>
     <string name="tra_review_climb_days">Climbing days</string>
     <string name="tra_review_workout_days">Training days</string>
-    <string name="tra_review_sets">Sets</string>
+    <string name="tra_review_sets">Work sets</string>
     <string name="tra_review_records">New personal bests</string>
     <string name="tra_review_no_records">No new bests this week – consistency is what builds them.</string>
     <string name="tra_review_load">Load per structure</string>

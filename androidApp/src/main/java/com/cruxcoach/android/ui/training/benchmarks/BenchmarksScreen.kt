@@ -336,7 +336,9 @@ private fun sourceLabel(s: BenchmarkSource): String = stringResource(when (s) {
 })
 
 private fun formatDay(epochMs: Long): String =
-    java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
+    // Localised like every other date in the app (it showed "2026-10-11").
+    java.time.Instant.ofEpochMilli(epochMs).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        .format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM))
 
 // ── Entry dialog ─────────────────────────────────────────────────────
 

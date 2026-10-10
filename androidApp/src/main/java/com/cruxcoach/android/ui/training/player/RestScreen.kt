@@ -36,6 +36,7 @@ import com.cruxcoach.android.ui.training.workout.recordValueText
 import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.UnitSystem
+import kotlin.math.roundToInt
 
 /**
  * The rest between two sets — its own screen, deliberately unlike the board
@@ -96,8 +97,13 @@ fun RestScreen(
         // Countdown ring. TalkBack hears the remainder in 10-s steps, not every tick.
         val announced = if (remaining <= 10) remaining else (remaining / 10) * 10
         val ringDescription = stringResource(R.string.trp_rest_remaining_cd, formatClock(announced))
+        // Smaller while there is feedback or the reserve question: on the Nokia the answer chips were cut off.
+        val asksReserve = state.lastDone?.let { done ->
+            done.set.setType != SetType.WARMUP && done.def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)
+        } == true && !state.restFinished
+        val compact = asksReserve || state.feedback != null || state.adjustment != null
         Box(
-            Modifier.size(240.dp).semantics {
+            Modifier.size(if (compact) 180.dp else 240.dp).semantics {
                 contentDescription = ringDescription
                 liveRegion = LiveRegionMode.Polite
             },
@@ -113,7 +119,7 @@ fun RestScreen(
             }
             Text(
                 if (state.restFinished) "✓" else if (armed) formatClock(remaining) else "…",
-                fontSize = 64.sp, fontWeight = FontWeight.Bold,
+                fontSize = if (compact) 52.sp else 64.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.testTag("player_rest_countdown"),
             )
         }
@@ -191,7 +197,7 @@ fun RestScreen(
         state.adjustment?.let { adj ->
             Spacer(Modifier.height(12.dp))
             Text(
-                adjustmentText(adj, units),
+                adjustmentText(adj, units, state.lastDone?.set?.side),
                 style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("player_adjustment"),
@@ -231,7 +237,8 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
         }
         com.cruxcoach.athlete.logic.CapacityKind.TEN_SECOND_MAX -> {
             val mass = com.cruxcoach.android.ui.training.formatMass(capacity.value, units)
-            val pct = bw?.takeIf { it > 0 }?.let { (capacity.value / it * 100).toInt() }
+            // Rounded like the set's own "% BW" line (15 kg at 69.5 kg showed 22 % there and 21 % here).
+            val pct = bw?.takeIf { it > 0 }?.let { (capacity.value / it * 100).roundToInt() }
             if (pct != null) stringResource(R.string.trp_capacity_ten_pct, mass, stringResource(R.string.tr_format_percent_bw, pct))
             else stringResource(R.string.trp_capacity_ten, mass)
         }
@@ -243,7 +250,12 @@ internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition,
 
 /** "Keine Reserve → nächste Sätze −2,5 kg", "Wiederholungen verpasst → nächste Sätze −1 Wdh.". */
 @Composable
-internal fun adjustmentText(adj: com.cruxcoach.athlete.logic.SetAdjustment, units: UnitSystem): String {
+internal fun adjustmentText(
+    adj: com.cruxcoach.athlete.logic.SetAdjustment,
+    units: UnitSystem,
+    /** One-arm work adjusts only that hand's sets: the line names it (it read "next sets +2 kg" while the other hand stayed). */
+    side: com.cruxcoach.athlete.model.Side? = null,
+): String {
     val reason = stringResource(when (adj.reason) {
         com.cruxcoach.athlete.logic.AdjustReason.MISSED_REPS -> R.string.trp2_adj_missed
         com.cruxcoach.athlete.logic.AdjustReason.NO_RESERVE -> R.string.trp2_adj_no_reserve
@@ -256,5 +268,7 @@ internal fun adjustmentText(adj: com.cruxcoach.athlete.logic.SetAdjustment, unit
         if (adj.repsDelta != 0) add(stringResource(R.string.trp2_adj_reps, adj.repsDelta))
         if (kotlin.math.abs(adj.durationDeltaS) > 1e-9) add(stringResource(R.string.trp2_adj_seconds, kotlin.math.round(adj.durationDeltaS).toInt()))
     }.joinToString(" · ")
-    return stringResource(R.string.trp2_adj_line, reason, change)
+    return if (side != null) stringResource(R.string.trp2_adj_line_side, reason, stringResource(
+        if (side == com.cruxcoach.athlete.model.Side.LEFT) R.string.trp2_side_left_lower else R.string.trp2_side_right_lower), change)
+    else stringResource(R.string.trp2_adj_line, reason, change)
 }

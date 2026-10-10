@@ -10,7 +10,7 @@
     <string name="trbm_meta">%1$s · %2$s</string>
     <string name="trbm_source_manual">entered</string>
     <string name="trbm_source_test">test</string>
-    <string name="trbm_source_auto">from your logs</string>
+    <string name="trbm_source_auto">from your training</string>
     <string name="trbm_paused_injury">Paused while the injury heals.</string>
     <string name="trbm_enter">Enter</string>
     <string name="trbm_test">Test</string>

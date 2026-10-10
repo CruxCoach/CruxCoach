@@ -171,7 +171,8 @@ class WeeklyReviewViewModel @Inject constructor(
                 workoutMinutes = workouts.sumOf { it.durationMinutes ?: 0 },
                 sets = weekSets.count { it.setType != SetType.WARMUP },
                 records = records,
-                setsByCategory = weekSets.groupBy { catalog.fallbackFor(it.exerciseSlug).category }
+                // The same sets as the tile above: work sets, warm-ups not counted (it read "3 sets" over "9 + 2").
+                setsByCategory = weekSets.filter { it.setType != SetType.WARMUP }.groupBy { catalog.fallbackFor(it.exerciseSlug).category }
                     .map { it.key to it.value.size }.sortedByDescending { it.second },
                 domainDays = domainDays,
                 weightChangeKg = if (startTrend != null && endTrend != null) endTrend - startTrend else null,

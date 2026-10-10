@@ -751,7 +751,22 @@ class AthleteService @Inject constructor(
             smallestIncrementKg = repo.profile().smallestIncrementKg)
     }
 
-    fun discardWorkout(id: String) = repo.deleteWorkout(id)
+    /**
+     * Deletes a training with its sets, and the performance values its sets raised (training or test values
+     * recorded while it ran): a training logged by mistake must not leave a higher start load behind.
+     * Values the athlete entered stay.
+     */
+    fun discardWorkout(id: String) {
+        val workout = repo.workout(id)
+        if (workout != null) {
+            val slugs = repo.setsFor(id).map { it.exerciseSlug }.toSet()
+            val until = (workout.endedAt ?: System.currentTimeMillis()) + 60_000L
+            slugs.flatMap { repo.benchmarks(it) }
+                .filter { (it.source == BenchmarkSource.AUTO || it.source == BenchmarkSource.TEST) && it.measuredAt in workout.startedAt..until }
+                .forEach { repo.deleteBenchmark(it.id) }
+        }
+        repo.deleteWorkout(id)
+    }
 
     /** A training still open when another one is about to start. */
     data class OpenConflict(val open: Workout, val doneSets: Int, val totalSets: Int)
