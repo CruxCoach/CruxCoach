@@ -102,6 +102,21 @@ fun EnergySheet(
                         "−" + plan.dailyDeficitKcal, "energy_deficit")
                     KcalRow(stringResource(R.string.trn_target), plan.targetKcal.toString(), "energy_target", bold = true)
                 }
+                // Recommended (the line above) or an own calorie target; a low one is named right here, never refused.
+                OwnTargetChoice(com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY, profile, energyTarget(need, plan),
+                    onChange = onUpdateProfile, modifier = Modifier.padding(top = 4.dp))
+                profile.ownKcal?.let { kcal ->
+                    val own = com.cruxcoach.athlete.logic.OwnEnergyTarget(kcal, need.totalKcal, need.restingKcal)
+                    if (own.large) {
+                        val preview = EnergyReport(signals = listOf(com.cruxcoach.athlete.logic.RedsSignal.LARGE_DEFICIT), ownTarget = own)
+                        Row(Modifier.padding(top = 8.dp).testTag("energy_own_warning")) {
+                            Icon(Icons.Default.Warning, null, tint = CruxCoachDesign.colors.caution, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(energyWarningText(com.cruxcoach.athlete.logic.RedsSignal.LARGE_DEFICIT, preview, profile),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
                 eatenKcal?.let { KcalRow(stringResource(R.string.trn_eaten), it.roundToInt().toString(), "energy_eaten") }
                 if (need.ageAssumed) {
                     Text(stringResource(R.string.trn_age_assumed, EnergyBalance.age(profile, java.time.LocalDate.now().year)),
@@ -326,5 +341,6 @@ fun weightGoalSummary(profile: AthleteProfile, plan: WeightPlan.Plan?): String {
 /** Two optional weights are the same to the gram that matters (lb round trips). */
 private fun sameKg(a: Double?, b: Double?): Boolean = if (a == null || b == null) a == b else kotlin.math.abs(a - b) < 0.05
 
-/** The energy target of a day: the need, minus the plan's deficit while losing weight. */
-fun energyTarget(need: EnergyBalance.Need?, plan: WeightPlan.Plan?): Int? = need?.let { it.totalKcal - (plan?.dailyDeficitKcal ?: 0) }
+/** The energy target of a day: the athlete's own, else the need minus the plan's deficit while losing weight. */
+fun energyTarget(need: EnergyBalance.Need?, plan: WeightPlan.Plan?, profile: AthleteProfile? = null): Int? =
+    profile?.ownKcal ?: need?.let { it.totalKcal - (plan?.dailyDeficitKcal ?: 0) }

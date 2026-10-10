@@ -146,7 +146,7 @@ class WeeklyReviewViewModel @Inject constructor(
             val food = repo.foodLogBetween(start.toString(), end.toString())
             val loggedDays = food.map { it.day }.toSet()
             // Carbohydrate targets follow each logged day's training load (FEAT-068).
-            val carbTargets = endTrend?.let { w -> loggedDays.map { FuelTargets.compute(w, activities[it], profile.proteinPerKg).carbsG } }.orEmpty()
+            val carbTargets = endTrend?.let { w -> loggedDays.map { (profile.ownCarbsG ?: FuelTargets.compute(w, activities[it], profile.proteinPerKg).carbsG) } }.orEmpty()
             val micros = runCatching { micronutrients.upTo(end, profile.sex, profile.birthYear) }.getOrNull()
             val reds = if (offset == 0) runCatching { service.energyReport(profile, service.activities(7)) }.getOrNull() else null
             // Energy per logged day against that day's estimated need (training days need more).

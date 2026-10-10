@@ -57,6 +57,8 @@ data class AthleteSettingsState(
     /** Today's estimated energy need and, while losing weight, the plan with its warnings. */
     val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
     val plan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
+    /** Today's nutrition targets with the recommendation behind own ones. */
+    val targets: com.cruxcoach.athlete.logic.FuelTargets.Targets? = null,
 )
 
 @HiltViewModel
@@ -81,6 +83,7 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
                     profile, height, loaded = true,
                     need = service.energyNeed(profile, todayActivity),
                     plan = service.weightPlan(profile, todayActivity),
+                    targets = service.fuelTargets(todayActivity, profile),
                     completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
                     weightKg = trend.lastOrNull()?.trend,
@@ -272,15 +275,34 @@ fun AthleteSettingsScreen(
                                 modifier = Modifier.testTag("settings_everyday_${e.name.lowercase()}"))
                         }
                     }
-                    Text(
-                        if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
-                            formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
-                        else stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)),
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
-                    Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
-                        onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
+                    // Every target follows the recommendation or the athlete's own value (owner 2026-10-10).
+                    SectionTitle(stringResource(R.string.trn_targets_title))
+                    val rec = state.targets?.let { it.recommended ?: it }
+                    val kinds = com.cruxcoach.athlete.logic.FuelTargets.TargetKind.entries
+                        .filter { it != com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY || p.showCalories }
+                    kinds.forEach { kind ->
+                        val recommended = when (kind) {
+                            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY ->
+                                com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.plan)
+                            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.CARBS -> rec?.carbsG
+                            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.PROTEIN -> rec?.proteinG
+                            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.FAT -> rec?.fatG
+                            com.cruxcoach.athlete.logic.FuelTargets.TargetKind.WATER -> rec?.waterMl
+                        }
+                        com.cruxcoach.android.ui.training.common.OwnTargetChoice(kind, p, recommended, onChange = viewModel::update)
+                        // The protein recommendation per kg, while protein follows it.
+                        if (kind == com.cruxcoach.athlete.logic.FuelTargets.TargetKind.PROTEIN && p.ownProteinG == null) {
+                            Text(
+                                if (p.units == UnitSystem.IMPERIAL) stringResource(R.string.tra_protein_per_kg_lb, formatNumber(p.proteinPerKg),
+                                    formatNumber(p.proteinPerKg / Units.LB_PER_KG, 2))
+                                else stringResource(R.string.tra_protein_per_kg, formatNumber(p.proteinPerKg)),
+                                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp),
+                            )
+                            var ppk by remember(p.proteinPerKg) { mutableFloatStateOf(p.proteinPerKg.toFloat()) }
+                            Slider(value = ppk, onValueChange = { ppk = it }, valueRange = 1.4f..2.0f, steps = 5,
+                                onValueChangeFinished = { viewModel.update { it.copy(proteinPerKg = (ppk * 10).toInt() / 10.0) } })
+                        }
+                    }
                 }
                 SettingsSection.REMINDERS -> {
                     ReminderSection(p) { transform -> viewModel.update(transform) }
@@ -416,8 +438,15 @@ private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSecti
             else -> placeNames.joinToString(" · ")
         },
         "settings_row_equipment", open(SettingsSection.EQUIPMENT))
+    // Own targets are named in the row, so the overview says which ones are not the recommendation.
+    val ownNames = listOfNotNull(
+        p.ownKcal?.let { stringResource(R.string.trn_energy) }, p.ownCarbsG?.let { stringResource(R.string.tru_carbs_short) },
+        p.ownProteinG?.let { stringResource(R.string.trf_protein) }, p.ownFatG?.let { stringResource(R.string.trf_fat) },
+        p.ownWaterMl?.let { stringResource(R.string.trf_water) },
+    )
     row(Icons.Default.Restaurant, sectionTitle(SettingsSection.NUTRITION),
-        stringResource(R.string.tru_set_nutrition_summary, formatNumber(p.proteinPerKg), if (p.showCalories) on else off),
+        if (ownNames.isEmpty()) stringResource(R.string.tru_set_nutrition_summary, formatNumber(p.proteinPerKg), if (p.showCalories) on else off)
+        else stringResource(R.string.trn_set_summary_own, ownNames.joinToString(", ")),
         "settings_row_nutrition", open(SettingsSection.NUTRITION))
     val reminders = listOf(p.weighReminderEnabled, p.measureReminderEnabled, p.trainingReminderEnabled).count { it }
     row(Icons.Default.Notifications, sectionTitle(SettingsSection.REMINDERS),
