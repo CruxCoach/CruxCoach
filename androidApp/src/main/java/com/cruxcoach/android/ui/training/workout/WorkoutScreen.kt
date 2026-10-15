@@ -75,6 +75,9 @@ fun WorkoutScreen(
                 )
                 is WorkoutEvent.Finished -> onFinished(event.workoutId)
                 WorkoutEvent.Discarded -> onBack()
+                is WorkoutEvent.SkippedForInjury -> snackbar.showSnackbar(
+                    resources.getString(R.string.trw_typed_skipped,
+                        event.slugs.joinToString(", ") { viewModel.catalog().fallbackFor(it).name(language) }))
             }
         }
     }
@@ -182,6 +185,7 @@ fun WorkoutScreen(
         com.cruxcoach.android.ui.training.workouts.WorkoutTextSheet(
             catalog = catalog,
             units = state.profile.units,
+            title = stringResource(R.string.trw_typed_title),
             onDismiss = { typing = false },
             onApply = { result -> typing = false; viewModel.addTyped(result) },
         )

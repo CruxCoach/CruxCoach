@@ -64,6 +64,9 @@
     <!-- Custom exercise -->
     <string name="trx_custom_title">Own exercise</string>
     <string name="trx_custom_name">Name</string>
+    <string name="trx_custom_delete">Delete exercise</string>
+    <string name="trx_custom_delete_title">Delete „%1$s“?</string>
+    <string name="trx_custom_delete_text">It leaves the library, your workouts and its performance value. Sets you logged stay in your history.</string>
     <string name="trx_custom_guessed">Area, kind and load are filled in from the name; tap below to change them.</string>
     <string name="trx_custom_name_required">Please enter a name.</string>
     <string name="trx_custom_category">Category</string>

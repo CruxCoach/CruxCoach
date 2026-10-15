@@ -94,11 +94,12 @@ class SessionSuggesterTest {
         val tired = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, fingers = 1)).copy(wish = SuggestionFocus.FINGER_STRENGTH))
         assertEquals(SuggestionFocus.PULL_PUSH, tired.focus)
         assertTrue(SuggestionReason.FINGERS_TIRED in tired.reasons, "${tired.reasons}")
-        // At a place without hangboard or block: no finger day, and it says why.
+        // At a place without hangboard or block: no finger day, and the first reason says why.
         val bare = profile.copy(equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT))
         val noGear = SessionSuggester.suggest(input(profile = bare).copy(wish = SuggestionFocus.FINGER_STRENGTH))
         assertEquals(SuggestionFocus.PULL_PUSH, noGear.focus)
-        assertTrue(SuggestionReason.NO_FINGER_EQUIPMENT in noGear.reasons, "${noGear.reasons}")
+        assertEquals(SuggestionReason.NO_FINGER_EQUIPMENT, noGear.reasons.first(), "${noGear.reasons}")
+        assertEquals(SuggestionReason.FINGERS_TIRED, tired.reasons.first(), "${tired.reasons}")
     }
 
     @Test
@@ -107,6 +108,8 @@ class SessionSuggesterTest {
         val sore = Soreness.injuries(checkin)
         assertEquals(1, sore.size)
         val s = SessionSuggester.suggest(input(checkin = checkin, injuries = sore).copy(wish = SuggestionFocus.PULL_PUSH))
+        // Said first: the short list is the spared shoulder, not a whim of the coach.
+        assertEquals(SuggestionReason.SPARED_TODAY, s.reasons.first(), "${s.reasons}")
         // Push-ups and the band rotation load the shoulder: left out today.
         assertTrue(s.routine.items.none { catalog[it.slug]?.domains?.contains(LoadDomain.SHOULDER) == true }, "${slugs(s)}")
         // Sore fingers keep the day off the wall and away from finger load.

@@ -395,7 +395,9 @@ class AthleteService @Inject constructor(
         val adjusted = ReadinessModifiers.applyToItem(item, def, modifier)
         val history = repo.history(item.slug, 60)
         val planned = WorkoutPlanner.plan(
-            workoutId, blockIndex, adjusted, catalog, history, injuriesToday(),
+            // Real injuries only: what the check-in says hurts today shapes the suggestion, but never
+            // takes exercises out of a workout the athlete chose (device test 2026-10-16).
+            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries(),
             bodyweight,
             capacityFor = { side ->
                 capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
@@ -879,6 +881,24 @@ class AthleteService @Inject constructor(
     }
 
     /**
+     * Removes a user-made exercise: from the library, the athlete's workouts and its
+     * performance values. Logged sets stay in the history under the exercise's name.
+     */
+    suspend fun deleteCustomExercise(slug: String) {
+        if (catalog[slug]?.custom != true) return
+        repo.transaction {
+            repo.routines().filter { r -> r.items.any { it.slug == slug } }.forEach { r ->
+                val items = r.items.filterNot { it.slug == slug }
+                if (items.isEmpty()) repo.deleteRoutine(r.id)
+                else repo.saveRoutine(r.copy(items = items, updatedAt = System.currentTimeMillis()))
+            }
+            repo.benchmarks(slug).forEach { repo.deleteBenchmark(it.id) }
+            repo.deleteCustomExercise(slug)
+        }
+        catalogStore.refresh()
+    }
+
+    /**
      * Items for typed lines ([com.cruxcoach.athlete.logic.WorkoutTextParser]): catalogue
      * exercises as they are, unknown names as new exercises of their own, one per name.
      */
@@ -896,14 +916,19 @@ class AthleteService @Inject constructor(
         }
     }
 
-    /** Typed exercises appended to the open training, each with what the text said. */
-    suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>) {
+    /**
+     * Typed exercises appended to the open training, each with what the text said. Returns
+     * the slugs an open injury ruled out, so the screen can say so instead of dropping them silently.
+     */
+    suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>): List<String> {
         val items = resolveTyped(lines)
+        val skipped = mutableListOf<String>()
         synchronized(structureLock) {
             val modifier = todaysModifier()
             var next = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
-            repo.transaction { items.forEach { item -> if (addItem(workoutId, next, item, modifier)) next++ } }
+            repo.transaction { items.forEach { item -> if (addItem(workoutId, next, item, modifier)) next++ else skipped += item.slug } }
         }
+        return skipped
     }
 
     fun saveRoutineFromWorkout(workoutId: String, name: String): Routine {

@@ -286,15 +286,19 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         show(next)
     }
 
-    /** "Not done after all": the completed set opens again and what it changed in its block is taken back. */
+    /**
+     * "Not done after all": the completed set opens again with its planned reps and time and
+     * no reserve answer, and what it changed in its block is taken back. The load stays: it is
+     * the athlete's choice.
+     */
     fun reopen() {
         val set = _state.value.current?.set?.takeIf { it.isCompleted } ?: return
-        val open = set.copy(completedAt = null)
+        val open = set.copy(completedAt = null, rir = null, reps = set.targetReps ?: set.reps, durationS = set.targetDurationS ?: set.durationS)
         replaceLocal(open)
         show(open)
         enqueue {
-            service.reopenSet(set)
-            if (applied.containsKey(set.id)) readjust(open)
+            service.updateSet(open)
+            if (applied.containsKey(set.id) && set.id !in manualAfter) readjust(open)
         }
     }
 
@@ -372,8 +376,10 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             val startRest = next != null && rest > 0
             val outcome = service.completeSetDetailed(current.set, startRest = startRest, restSeconds = rest)
             // Missed reps or a hold that ended early move the next sets at once; the reserve answer may refine it.
-            val adjustment = runCatching { service.adjustUpcomingSets(doneLocal.workoutId, doneLocal, applied[doneLocal.id]) }.getOrNull()
-            applied[doneLocal.id] = adjustment
+            // Not when the athlete already set the next load by hand after this set (a set done again after "not done").
+            val adjustment = if (doneLocal.id in manualAfter) null
+                else runCatching { service.adjustUpcomingSets(doneLocal.workoutId, doneLocal, applied[doneLocal.id]) }.getOrNull()
+            if (doneLocal.id !in manualAfter) applied[doneLocal.id] = adjustment
             val now = _state.value
             if (startRest && (now.phase != PlayerPhase.REST || now.lastDone?.set?.id != current.set.id)) {
                 // The athlete already ended this rest while the write was queued.

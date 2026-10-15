@@ -56,6 +56,8 @@ sealed interface WorkoutEvent {
     data class Record(val def: ExerciseDefinition, val record: PersonalRecord) : WorkoutEvent
     data class Finished(val workoutId: String) : WorkoutEvent
     data object Discarded : WorkoutEvent
+    /** Typed exercises an open injury ruled out. */
+    data class SkippedForInjury(val slugs: List<String>) : WorkoutEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -136,7 +138,10 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
     fun addTyped(result: com.cruxcoach.athlete.logic.WorkoutTextParser.Result) {
         val id = workoutId ?: return
         if (result.lines.isEmpty()) return
-        io { service.addTyped(id, result.lines) }
+        io {
+            val skipped = service.addTyped(id, result.lines)
+            if (skipped.isNotEmpty()) _events.emit(WorkoutEvent.SkippedForInjury(skipped))
+        }
     }
 
     fun addSet(blockIndex: Int) {

@@ -234,4 +234,61 @@ class OverridesTest : AthleteScreenTest() {
             service.catalog[it.slug]?.equipment?.contains(com.cruxcoach.athlete.catalog.EquipmentV2.HANGBOARD) == true
         })
     }
+
+    private fun idle() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    @Test
+    fun `what hurts today spares the suggestion but never empties an own workout`() {
+        // Device test 2026-10-16: a sore shoulder took pull-ups, bench press and plank out of the athlete's own workout.
+        val day = service.today().toString()
+        repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(day, 1, sore = setOf(InjuryRegion.SHOULDER)))
+        val id = service.startWorkout(Routine("r", "Own", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5),
+            RoutineItem("legs.back_squat", sets = 3, repsMin = 5, repsMax = 5, loadKg = 40.0))), null)
+        assertEquals(setOf("pull.weighted_pull_up", "legs.back_squat"), repo.setsFor(id).map { it.exerciseSlug }.toSet())
+    }
+
+    @Test
+    fun `a set done again after not done keeps the athlete's next load and reopens at the plan`() {
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 60))))
+        vm.completeCurrent()
+        until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        vm.updateNext(vm.state.value.next!!.set.copy(loadKg = 18.0))
+        until { work(id).drop(1).all { it.loadKg == 18.0 } }
+        vm.setReserve(0)
+        until { work(id).first().rir == 0 }
+        vm.endRest()
+        until { vm.state.value.phase == PlayerPhase.SET }
+        vm.back()
+        until { vm.state.value.current?.set?.isCompleted == true }
+        vm.update(vm.state.value.current!!.set.copy(reps = 3))
+        until { work(id).first().reps == 3 }
+        vm.reopen()
+        // Open again at the plan: 5 reps, no reserve answer.
+        until { !work(id).first().isCompleted && work(id).first().reps == 5 && work(id).first().rir == null }
+        vm.update(vm.state.value.current!!.set.copy(reps = 3))
+        vm.completeCurrent()
+        until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
+        Thread.sleep(300); idle()
+        // Missed reps would take a step off – the athlete already chose 18 kg for the next sets.
+        assertTrue(work(id).drop(1).all { it.loadKg == 18.0 }, "${work(id).map { it.loadKg }}")
+    }
+
+    @Test
+    fun `an own exercise can be deleted and leaves workouts and history readable`() {
+        val slug = kotlinx.coroutines.runBlocking { service.createCustomExercise("Russian Twists", com.cruxcoach.athlete.catalog.ExerciseCategoryV2.CORE,
+            com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS, com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL, false, emptyList(), emptyList()) }
+        repo.saveRoutine(Routine("r", "Mixed", items = listOf(RoutineItem(slug), RoutineItem("push.push_up"))))
+        repo.saveRoutine(Routine("o", "Only", items = listOf(RoutineItem(slug))))
+        val vm = com.cruxcoach.android.ui.training.exercises.ExerciseDetailViewModel(service).tracked()
+        var left = false
+        render { com.cruxcoach.android.ui.training.exercises.ExerciseDetailScreen(slug, onBack = { left = true }, onOpenExercise = {}, onOpenWorkout = {}, viewModel = vm) }
+        click("exercise_detail_more")
+        click("exercise_detail_delete")
+        click("exercise_detail_delete_confirm")
+        until { left }
+        assertNull(service.catalog[slug])
+        assertEquals(listOf("push.push_up"), repo.routines().single { it.id == "r" }.items.map { it.slug })
+        assertTrue(repo.routines().none { it.id == "o" })
+        assertEquals("Russian twists", service.catalog.fallbackFor(slug).name("de"))
+    }
 }

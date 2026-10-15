@@ -64,6 +64,8 @@ fun WorkoutTextSheet(
     units: UnitSystem,
     onDismiss: () -> Unit,
     onApply: (WorkoutTextParser.Result) -> Unit,
+    /** "Workout per Text" in the editor, "Übungen per Text" in an open training. */
+    title: String = stringResource(R.string.trwo_text_title),
 ) {
     var text by rememberSaveable { mutableStateOf("") }
     val result = remember(text, catalog) { WorkoutTextParser.parse(text, catalog) }
@@ -77,7 +79,7 @@ fun WorkoutTextSheet(
             Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(stringResource(R.string.trwo_text_title), style = MaterialTheme.typography.titleLarge)
+            Text(title, style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it.take(WorkoutTextParser.MAX_CHARS) },
