@@ -94,6 +94,8 @@ enum class SuggestionReason {
     RETURN_FINGER,
     /** The athlete picked today's kind of training ([SuggestionInput.wish]). */
     CHOSEN_TODAY,
+    /** What hurts today (check-in) is spared: exercises loading it stay out ([Soreness]). */
+    SPARED_TODAY,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -108,6 +110,8 @@ sealed interface Evidence {
     data class WeekPlan(val entry: String) : Evidence
     data class CheckIn(val reason: ReadinessReason) : Evidence
     data class InjuryActive(val region: InjuryRegion, val side: InjurySide?) : Evidence
+    /** Hurts today according to the check-in – spared, not an injury. */
+    data class SoreToday(val region: InjuryRegion) : Evidence
     data class LoadTrendNote(val structure: LoadStructure, val trend: LoadTrend) : Evidence
     data class PerformanceValue(val benchmark: Benchmark) : Evidence
     data class BlockNote(val state: BlockState) : Evidence
@@ -222,6 +226,17 @@ object SessionSuggester {
     }
 
     fun suggest(input: SuggestionInput): SessionSuggestion {
+        val s = suggestByRules(input)
+        // What hurts today explains a short or unusual list: it comes first, after the reason a
+        // chosen kind of training had to be replaced (that one explains the title).
+        if (s.focus == SuggestionFocus.REST || input.injuries.none { Soreness.isSore(it) }) return s
+        val reasons = s.reasons.toMutableList()
+        val replaced = input.wish != null && reasons.firstOrNull().let { it != null && it != SuggestionReason.CHOSEN_TODAY }
+        reasons.add(if (replaced) 1 else 0, SuggestionReason.SPARED_TODAY)
+        return s.copy(reasons = reasons)
+    }
+
+    private fun suggestByRules(input: SuggestionInput): SessionSuggestion {
         val ctx = Ctx(input)
         val reasons = ctx.reasons
         val readiness = input.readiness
@@ -466,22 +481,22 @@ object SessionSuggester {
             withFocusAreas(listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS), SuggestionFocus.INJURY_SAFE, areas, ctx), budget, planned)
         return when (wish) {
             SuggestionFocus.BOARD_DAY -> when {
-                climbingPaused -> { reasons += SuggestionReason.PLAN_REPLACED_FOR_INJURY; safe() }
+                climbingPaused -> { reasons.add(0, SuggestionReason.PLAN_REPLACED_FOR_INJURY); safe() }
                 readiness.avoidClimbing || fingerBlock != null || skinSpike -> {
-                    reasons += fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY
+                    reasons.add(0, fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY)
                     pullPush()
                 }
                 else -> boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
             }
             SuggestionFocus.FINGER_STRENGTH -> when {
-                climbingPaused -> { reasons += SuggestionReason.INJURY_CLIMBING_PAUSED; safe() }
-                fingerBlock != null -> { reasons += fingerBlock; pullPush() }
+                climbingPaused -> { reasons.add(0, SuggestionReason.INJURY_CLIMBING_PAUSED); safe() }
+                fingerBlock != null -> { reasons.add(0, fingerBlock); pullPush() }
                 else -> {
                     val result = build(ctx, SuggestionFocus.FINGER_STRENGTH,
                         withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned)
                     val hasFingerMain = result.routine.items.any { !it.warmup && ctx.input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
                     // No hangboard or block at this place: say so and train the rest.
-                    if (hasFingerMain) result else { reasons += SuggestionReason.NO_FINGER_EQUIPMENT; pullPush() }
+                    if (hasFingerMain) result else { reasons.add(0, SuggestionReason.NO_FINGER_EQUIPMENT); pullPush() }
                 }
             }
             SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE ->
@@ -527,7 +542,9 @@ object SessionSuggester {
         input.readiness.reasons.firstOrNull {
             it != ReadinessReason.ALL_GOOD && it != ReadinessReason.INJURY_ACTIVE && it != ReadinessReason.INJURY_CLIMBING_PAUSED
         }?.let { ctx.evidence += Evidence.CheckIn(it) }
-        input.injuries.filter { it.isActive }.forEach { ctx.evidence += Evidence.InjuryActive(it.region, it.side) }
+        input.injuries.filter { it.isActive }.forEach {
+            ctx.evidence += if (Soreness.isSore(it)) Evidence.SoreToday(it.region) else Evidence.InjuryActive(it.region, it.side)
+        }
         input.block?.let { ctx.evidence += Evidence.BlockNote(it) }
         input.coach.goal?.let { ctx.evidence += Evidence.GoalNote(it) }
         if (input.historyWeeks > 0 || input.logbookSends > 0) ctx.evidence += Evidence.History(input.historyWeeks, input.logbookSends)

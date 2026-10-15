@@ -34,8 +34,10 @@ class ExerciseCatalog(
         category = ExerciseCategoryV2.PULL,
         kind = ExerciseKind.LOAD_REPS,
         load = LoadMode.EXTERNAL,
-        i18n = mapOf("en" to ExerciseText(name = slug.substringAfter('.').replace('_', ' ')
-            .replaceFirstChar { it.uppercase() })),
+        i18n = mapOf("en" to ExerciseText(name = slug.substringAfter('.')
+            // A deleted own exercise: "user.russian_twists_ab12cd" reads "Russian twists".
+            .let { if (slug.startsWith("user.")) it.replace(Regex("_[a-z0-9]{6}$"), "") else it }
+            .replace('_', ' ').replaceFirstChar { it.uppercase() })),
     )
 
     fun withCustom(custom: List<ExerciseDefinition>): ExerciseCatalog =

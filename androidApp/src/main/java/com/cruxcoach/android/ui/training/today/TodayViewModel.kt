@@ -97,13 +97,17 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private val _state = MutableStateFlow(TodayState())
     val state: StateFlow<TodayState> = _state.asStateFlow()
 
+    /** Bumped to re-read the day now instead of at the next minute (device test 2026-10-16, 00:00). */
+    private val dayCheck = MutableStateFlow(0)
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
             // The day the hub shows follows the clock, so a screen left open
             // over midnight switches to the new day's check-in, food and water.
-            val days = flow { while (true) { emit(service.today().toString()); delay(60_000) } }.distinctUntilChanged()
+            // A check-in saved just after midnight belongs to the new day: saving re-reads the day at once.
+            val days = dayCheck.flatMapLatest { flow { while (true) { emit(service.today().toString()); delay(60_000) } } }.distinctUntilChanged()
             // Any change in these tables re-derives the whole hub; it is cheap.
             days.flatMapLatest { today -> combine(
                 repo.observeProfile(),
@@ -513,11 +517,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val old = service.repo.checkin(day)
         service.repo.saveCheckin((old ?: Checkin(day, System.currentTimeMillis()))
             .copy(createdAt = System.currentTimeMillis(), energy = strength ?: old?.energy, sore = sore))
+        dayCheck.update { it + 1 }
     }
 
     fun saveCheckin(sleep: Int?, energy: Int?, skin: Int?, fingers: Int?, sick: Boolean, sore: Set<com.cruxcoach.athlete.model.InjuryRegion> = emptySet()) = io {
         val day = service.today().toString()
         service.repo.saveCheckin(Checkin(day, System.currentTimeMillis(), sleep, energy, skin, fingers, sick = sick, sore = sore))
+        dayCheck.update { it + 1 }
         if (sick && service.repo.openPause() == null) {
             service.repo.savePause(PausePeriod(service.repo.newId(), PauseReason.ILLNESS, day))
         }

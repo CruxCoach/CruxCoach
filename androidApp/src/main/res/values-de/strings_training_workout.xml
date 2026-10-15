@@ -21,6 +21,8 @@
     <string name="trw_edge_label">Leiste</string>
     <string name="trw_grip_none">Griff wählen</string>
     <string name="trw_load_label">Last</string>
+    <string name="trw_typed_title">Übungen per Text</string>
+    <string name="trw_typed_skipped">Wegen deiner Verletzung ausgelassen: %1$s</string>
     <string name="trw_load_assisted">%1$s entlastet</string>
     <string name="trw_load_per_block">%1$s pro Block</string>
     <string name="trw_load_input">Last in %1$s</string>

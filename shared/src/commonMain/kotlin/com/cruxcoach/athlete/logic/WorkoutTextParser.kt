@@ -99,7 +99,9 @@ object WorkoutTextParser {
         val merged = mutableListOf<String>()
         for (segment in segments) {
             val previous = merged.lastOrNull()
-            val numbersOnly = Numbers.extract(segment.trimEnd(':')).let { it.any && it.rest.isBlank() } &&
+            val numbers = Numbers.extract(segment.trimEnd(':'))
+            // "…, Pause 2 min" and a line with nothing but numbers belong to the exercise before.
+            val numbersOnly = numbers.any && (numbers.rest.isBlank() || REST_FIRST.containsMatchIn(segment.lowercase())) &&
                 ExerciseMatcher.wholeMatch(catalog, segment) == null
             if (numbersOnly && previous != null && !previous.endsWith(":")) merged[merged.lastIndex] = "$previous $segment"
             else merged += segment
@@ -209,6 +211,7 @@ object WorkoutTextParser {
             private val BARE = Regex("$B(\\d{1,3})$E")
             private val ADDED = Regex("$B(?:mit\\s+)?(?:zusatzgewicht|zusatz|extra|added|additional|weighted|gewichtet\\w*)$E")
             private val ASSISTED = Regex("$B(?:entlastet|entlastung|assisted|assistiert|unterstützt|unterstuetzt)$E")
+            private val UNIT_FRAGMENTS = setOf("m", "mi", "mn", "s", "se", "sek", "k", "kg", "ki", "l", "lb", "w", "wd", "wdh", "r", "re", "rep", "mm")
             private val FILLER = Regex("(?:à|a|je|mit|with|of|at|@|für|fuer|for|und|and|x|ca\\.?|circa|about|bei|an|on|-|/)")
             private val SIDE_LEFT = Regex("$B(?:nur\\s+)?(?:links|left|linke|linker|linken)(?:\\s+(?:hand|arm|bein|seite|side|only))?$E")
             private val SIDE_RIGHT = Regex("$B(?:nur\\s+)?(?:rechts|right|rechte|rechter|rechten)(?:\\s+(?:hand|arm|bein|seite|side|only))?$E")
@@ -307,8 +310,10 @@ object WorkoutTextParser {
                 var rest = t.replace(Regex("[^\\p{L}\\p{N}'/&()-]+"), " ").replace(Regex("\\s+"), " ").trim()
                 // Words left over around the numbers: "à", "mit", "x", "je" …
                 var words = rest.split(' ').filter { it.isNotEmpty() }
-                while (words.isNotEmpty() && FILLER.matches(words.first())) words = words.drop(1)
-                while (words.isNotEmpty() && FILLER.matches(words.last())) words = words.dropLast(1)
+                // ... and cut-off units ("2 mi", "20 k") when the line had numbers.
+                fun leftover(w: String) = FILLER.matches(w) || (w.lowercase() in UNIT_FRAGMENTS && words.size > 1)
+                while (words.isNotEmpty() && leftover(words.first())) words = words.drop(1)
+                while (words.isNotEmpty() && leftover(words.last())) words = words.dropLast(1)
                 rest = words.joinToString(" ").trim('-', '/', '(', ')').trim()
                 if (warmup) {
                     val stripped = WARMUP_WORDS.replace(rest, " ").replace(Regex("\\s+"), " ").trim()
@@ -326,6 +331,8 @@ object WorkoutTextParser {
             }
         }
     }
+
+    private val REST_FIRST = Regex("^(?:pause|rest|ruhe|erholung)(?![\\p{L}])")
 
     internal val WARMUP_WORDS = Regex("(?<![\\p{L}])(?:aufw(?:ä|ae|a)rm\\p{L}*|einw(?:ä|ae|a)rm\\p{L}*|warm[\\s-]?ups?)(?![\\p{L}])")
 }

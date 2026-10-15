@@ -73,9 +73,14 @@ object Soreness {
     /** High enough that [InjuryAdvisor] leaves exercises loading the area out. */
     const val SEVERITY = 4
 
+    private const val PREFIX = "sore-"
+
+    /** True for the stand-in injuries of [injuries]. */
+    fun isSore(injury: Injury): Boolean = injury.id.startsWith(PREFIX)
+
     fun injuries(checkin: Checkin?): List<Injury> = checkin?.sore.orEmpty().map { region ->
         Injury(
-            id = "sore-${checkin!!.day}-${region.name}", region = region, severity = SEVERITY,
+            id = "$PREFIX${checkin!!.day}-${region.name}", region = region, severity = SEVERITY,
             climbingPaused = region == com.cruxcoach.athlete.model.InjuryRegion.FINGER || region == com.cruxcoach.athlete.model.InjuryRegion.SKIN,
             startedOn = checkin.day,
         )

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -85,6 +86,8 @@ data class ExerciseDetailState(
     val addRejected: Boolean = false,
     /** "Nie vorschlagen": never part of a suggestion (FEAT-071). */
     val excluded: Boolean = false,
+    /** An own exercise was deleted: the screen closes. */
+    val deleted: Boolean = false,
 )
 
 @HiltViewModel
@@ -173,6 +176,17 @@ class ExerciseDetailViewModel @Inject constructor(private val service: AthleteSe
     }
 
     fun consumeEvents() = _state.update { it.copy(navigateToWorkout = false, addRejected = false) }
+
+    /** Deletes an own exercise (a typo from typed workouts, an idea that did not stick). */
+    fun deleteCustom() {
+        val slug = loadedSlug ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            job?.cancel()
+            service.deleteCustomExercise(slug)
+            _state.update { it.copy(deleted = true) }
+        }
+    }
 }
 
 @Composable
@@ -188,7 +202,9 @@ fun ExerciseDetailScreen(
 ) {
     LaunchedEffect(slug) { viewModel.load(slug) }
     var addSheet by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.deleted) { if (state.deleted) onBack() }
     val language = catalogLanguage()
     val snackbar = remember { SnackbarHostState() }
     val rejectedText = stringResource(R.string.trx_pick_rejected)
@@ -226,11 +242,31 @@ fun ExerciseDetailScreen(
                             onClick = { menu = false; viewModel.toggleExcluded() },
                             modifier = Modifier.testTag("exercise_detail_exclude"),
                         )
+                        if (def.custom) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.trx_custom_delete)) },
+                                leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                onClick = { menu = false; confirmDelete = true },
+                                modifier = Modifier.testTag("exercise_detail_delete"),
+                            )
+                        }
                     }
                 }
             }
         },
     ) { padding ->
+        if (confirmDelete && def != null) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text(stringResource(R.string.trx_custom_delete_title, def.name(language))) },
+                text = { Text(stringResource(R.string.trx_custom_delete_text)) },
+                confirmButton = {
+                    TextButton(onClick = { confirmDelete = false; viewModel.deleteCustom() },
+                        modifier = Modifier.testTag("exercise_detail_delete_confirm")) { Text(stringResource(R.string.tr_action_delete)) }
+                },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.tr_action_cancel)) } },
+            )
+        }
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()

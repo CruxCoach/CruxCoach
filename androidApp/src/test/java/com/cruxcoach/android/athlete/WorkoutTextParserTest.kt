@@ -118,6 +118,16 @@ class WorkoutTextParserTest {
     }
 
     @Test
+    fun `a rest after a comma and cut-off units stay with the exercise`() {
+        // Device test 2026-10-16: "Bankdruecken 3x8, Pause 2 mi" made a new exercise "Mi".
+        val r = WorkoutTextParser.parse("Bankdruecken 3x8, Pause 2 mi\nPlank 3x60s", catalog)
+        assertEquals(listOf("push.dumbbell_bench_press", "core.front_plank"), r.lines.map { it.item.slug })
+        assertEquals(120, r.lines[0].item.restS)
+        assertEquals("core.front_plank", one("Plank 3x60 se").item.slug)
+        assertEquals(60, one("Plank 3x60 se").item.durationS)
+    }
+
+    @Test
     fun `a warm-up heading marks the lines below it`() {
         val r = WorkoutTextParser.parse("Aufwärmen:\nArmkreisen 2x10\nHauptteil:\nKlimmzüge 3x5", catalog)
         assertNull(r.title)

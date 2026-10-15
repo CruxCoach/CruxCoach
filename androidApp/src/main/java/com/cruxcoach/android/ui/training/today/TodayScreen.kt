@@ -997,7 +997,17 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.RETURN_FINGER -> R.string.tre_reason_return_finger
     SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
     SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
+    SuggestionReason.SPARED_TODAY -> R.string.trt_reason_spared_generic
 })
+
+/** A reason with today's details where it has them ("Heute geschont: Schulter …"). */
+@Composable
+private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): String {
+    val sore = state.checkin?.sore.orEmpty()
+    if (reason != SuggestionReason.SPARED_TODAY || sore.isEmpty()) return suggestionReasonText(reason)
+    val areas = sore.map { regionLabel(it) }.joinToString(", ")
+    return stringResource(R.string.trt_reason_spared, areas)
+}
 
 /**
  * Today's training as the one big thing on the screen: what, how long, the
@@ -1078,7 +1088,7 @@ private fun DailySuggestionCard(
                 val accent = CruxCoachDesign.colors.brandAccent
                 Text(
                     androidx.compose.ui.text.buildAnnotatedString {
-                        append(suggestionReasonText(it))
+                        append(suggestionReasonText(it, state))
                         append("  ")
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = accent, fontWeight = FontWeight.SemiBold))
                         append(why)
@@ -1157,7 +1167,7 @@ private fun WhySheet(state: TodayState, onDismiss: () -> Unit) {
             // The reasons first; what they rest on in one line; how well the coach knows you and the block as
             // headings whose long explanations sit behind their info icons (device test 2026-10-10: the sheet
             // said "Einstiegswoche" three times and "Basis – Basis").
-            s.reasons.forEach { Text("• " + suggestionReasonText(it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
+            s.reasons.forEach { Text("• " + suggestionReasonText(it, state), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 2.dp)) }
             val block = state.block?.let { blockLabel(it) }
             val evidence = s.basedOn.map { evidenceText(it, state, language) }.filter { it.isNotBlank() && it != block }
             if (evidence.isNotEmpty()) {
@@ -1286,6 +1296,7 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
     }
     is com.cruxcoach.athlete.logic.Evidence.WeekPlan -> stringResource(R.string.tre_ev_week_plan)
     is com.cruxcoach.athlete.logic.Evidence.CheckIn -> stringResource(R.string.tre_ev_checkin, readinessReasonShort(e.reason))
+    is com.cruxcoach.athlete.logic.Evidence.SoreToday -> stringResource(R.string.trt_ev_sore, regionLabel(e.region))
     is com.cruxcoach.athlete.logic.Evidence.InjuryActive -> stringResource(R.string.tre_ev_injury,
         regionLabel(e.region) + (e.side?.let { " " + injurySideLabel(it) } ?: ""))
     is com.cruxcoach.athlete.logic.Evidence.LoadTrendNote -> stringResource(R.string.tre_ev_trend, structureLabel(e.structure), trendLabel(e.trend))
