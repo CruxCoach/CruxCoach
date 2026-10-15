@@ -64,6 +64,7 @@
     <!-- Custom exercise -->
     <string name="trx_custom_title">Own exercise</string>
     <string name="trx_custom_name">Name</string>
+    <string name="trx_custom_guessed">Area, kind and load are filled in from the name; tap below to change them.</string>
     <string name="trx_custom_name_required">Please enter a name.</string>
     <string name="trx_custom_category">Category</string>
     <string name="trx_custom_kind">How you log it</string>

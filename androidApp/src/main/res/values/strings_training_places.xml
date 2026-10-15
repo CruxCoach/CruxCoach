@@ -13,6 +13,7 @@
     <string name="tro_name">Name (optional)</string>
     <string name="tro_add">Add a place</string>
     <string name="tro_at">At: %1$s</string>
+    <string name="tro_no_gear">No equipment</string>
     <string name="tro_pick_title">Where do you train today?</string>
     <string name="tro_equipment_at">Equipment · %1$s</string>
     <string name="tro_summary_default">%1$s (default)</string>

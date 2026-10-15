@@ -623,6 +623,27 @@ class BenchmarkLogicTest {
     }
 
     @Test
+    fun workingSetsAreReadBackAsWhatThePlanWouldPrescribe() {
+        // Owner 2026-10-15: "I don't know my max with +20 kg, but I can do 5×5 with 20 kg."
+        val cap = assertNotNull(BenchmarkMath.capacity(weightedPullUp, bench(weightedPullUp.slug, load = 20.0, reps = 5).copy(sets = 5), null))
+        assertEquals(90.0 * (1 + 7.0 / 30), cap.value, 1e-9)    // five reps with two in reserve
+        val t = assertNotNull(LoadPrescriber.prescribe(weightedPullUp, WorkoutPlanner.itemFor(weightedPullUp).copy(repsMin = 5, repsMax = 5), cap, 70.0, 0.5))
+        assertEquals(20.0, t.loadKg)
+        // The same numbers as a maximal set mean less: 5 reps were all there was.
+        val max = assertNotNull(BenchmarkMath.capacity(weightedPullUp, bench(weightedPullUp.slug, load = 20.0, reps = 5), null))
+        assertTrue(max.value < cap.value)
+
+        val hang = assertNotNull(BenchmarkMath.capacity(pickup, bench(pickup.slug, load = 27.0, duration = 10.0).copy(sets = 5), 70.0))
+        assertEquals(30.0, hang.value, 1e-9)                    // 27 kg is 90 % of the 10-s maximum
+        assertEquals(27.0, LoadPrescriber.prescribe(pickup, WorkoutPlanner.itemFor(pickup), hang, 70.0, 1.0)?.loadKg)
+
+        val reps = assertNotNull(BenchmarkMath.capacity(pullUp, bench(pullUp.slug, reps = 7).copy(sets = 3), 70.0))
+        assertEquals(10.0, reps.value, 1e-9)                    // 7 reps are 70 % of 10
+        val repeat = assertNotNull(BenchmarkMath.capacity(repeaters, bench(repeaters.slug, load = -5.0, duration = 7.0).copy(sets = 6), 70.0))
+        assertEquals(100.0, repeat.value, 1e-9)                 // 65 kg total is 65 % of 100
+    }
+
+    @Test
     fun longerHoldIsConvertedToTheTenSecondMaximum() {
         val cap = assertNotNull(BenchmarkMath.capacity(pickup, bench(pickup.slug, load = 28.2, duration = 20.0), 70.0))
         assertTrue(cap.value > 31.0 && cap.value < 32.5, "was ${cap.value}")

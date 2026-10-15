@@ -63,6 +63,9 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     fun `today shows readiness and injury mode`() {
         val loadedVm1 = loaded(TodayViewModel(service))
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = loadedVm1) }
+        // The two questions come first; afterwards the day's readiness sits in the suggestion.
+        scrollTo("today_list", hasTestTag("today_quick_checkin"))
+        click("today_quick_show")
         scrollTo("today_list", hasTestTag("today_readiness"))
         scrollTo("today_list", hasTestTag("today_injury"))
         scrollTo("today_list", hasTestTag("today_fuel"))

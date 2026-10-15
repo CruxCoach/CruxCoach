@@ -23,6 +23,16 @@
     <string name="trbm_hint_hang">The most you can hold: load, hold time and edge. 10 s is the reference; other times are converted.</string>
     <string name="trbm_hint_reps">Your maximum number of clean reps in one set.</string>
     <string name="trbm_hint_seconds">Your longest clean hold.</string>
+    <string name="trbm_mode_sets">Several sets</string>
+    <string name="trbm_mode_max">My maximum</string>
+    <string name="trbm_sets">Sets</string>
+    <string name="trbm_hint_sets_e1rm">What you manage in training without failing, e.g. 5 × 5 at +20 kg. CruxCoach plans exactly that and finds your limit from your sets.</string>
+    <string name="trbm_hint_sets_hang">Hangs you manage cleanly for several sets, e.g. 5 × 10 s at +10 kg on 20 mm. CruxCoach plans exactly that and learns from every set.</string>
+    <string name="trbm_hint_sets_reps">Reps you manage in every one of several sets, e.g. 3 × 8.</string>
+    <string name="trbm_hint_sets_seconds">How long you hold in every one of several sets, e.g. 3 × 45 s.</string>
+    <string name="trbm_sets_reps">%1$d × %2$d reps</string>
+    <string name="trbm_max_reps_about">max. about %1$d reps</string>
+    <string name="trbm_max_seconds_about">max. about %1$d s</string>
     <string name="trbm_load_added">Added weight (%1$s)</string>
     <string name="trbm_load_total">Load (%1$s)</string>
     <string name="trbm_load_added_hint">0 = body weight, negative = assisted (pulley, band)</string>

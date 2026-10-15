@@ -29,6 +29,7 @@ import com.cruxcoach.athlete.catalog.ExerciseText
 import com.cruxcoach.athlete.catalog.LoadDomain
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.catalog.Prescription
+import com.cruxcoach.athlete.logic.ExerciseGuess
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +51,8 @@ data class CustomExerciseState(
     val showNameError: Boolean = false,
     val saving: Boolean = false,
     val savedSlug: String? = null,
+    /** The fields below the name were filled in from it ([ExerciseGuess]); the athlete may change each. */
+    val guessed: Boolean = false,
 )
 
 @HiltViewModel
@@ -58,17 +61,41 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
     private val _state = MutableStateFlow(CustomExerciseState())
     val state: StateFlow<CustomExerciseState> = _state.asStateFlow()
 
-    fun setName(v: String) = _state.update { it.copy(name = v.take(60), showNameError = false) }
-    fun setCategory(c: ExerciseCategoryV2) = _state.update { it.copy(category = c) }
-    fun setKind(k: ExerciseKind) = _state.update { it.copy(kind = k, load = defaultLoad(k)) }
-    fun setLoad(l: LoadMode) = _state.update { it.copy(load = l) }
-    fun setUnilateral(v: Boolean) = _state.update { it.copy(unilateral = v) }
-    fun setNote(v: String) = _state.update { it.copy(note = v.take(300)) }
-    fun toggleEquipment(e: EquipmentV2) = _state.update { s ->
-        s.copy(equipment = if (e in s.equipment) s.equipment - e else s.equipment + e)
+    private enum class Field { CATEGORY, KIND, LOAD, SIDE, EQUIPMENT, DOMAINS }
+    /** Fields the athlete set by hand; the name's guess leaves them alone. */
+    private val touched = mutableSetOf<Field>()
+
+    /**
+     * Typing the name fills in the rest (owner 2026-10-15: new exercises by
+     * typing, like the food entry): "Ringdips mit Zusatzgewicht" → push, reps
+     * with added load, rings.
+     */
+    fun setName(v: String) = _state.update { s ->
+        val name = v.take(60)
+        val guess = name.takeIf { it.isNotBlank() }?.let { ExerciseGuess.fromText(it) }
+            ?: return@update s.copy(name = name, showNameError = false, guessed = false)
+        s.copy(
+            name = name, showNameError = false, guessed = true,
+            category = if (Field.CATEGORY in touched) s.category else guess.category,
+            kind = if (Field.KIND in touched) s.kind else guess.kind,
+            load = if (Field.LOAD in touched || Field.KIND in touched) s.load else guess.load,
+            unilateral = if (Field.SIDE in touched) s.unilateral else guess.unilateral,
+            equipment = if (Field.EQUIPMENT in touched) s.equipment else guess.equipment.filterNot { it == EquipmentV2.NONE }.toSet(),
+            domains = if (Field.DOMAINS in touched) s.domains else guess.domains.toSet(),
+        )
     }
-    fun toggleDomain(d: LoadDomain) = _state.update { s ->
-        s.copy(domains = if (d in s.domains) s.domains - d else s.domains + d)
+    fun setCategory(c: ExerciseCategoryV2) { touched += Field.CATEGORY; _state.update { it.copy(category = c) } }
+    fun setKind(k: ExerciseKind) { touched += Field.KIND; _state.update { it.copy(kind = k, load = defaultLoad(k)) } }
+    fun setLoad(l: LoadMode) { touched += Field.LOAD; _state.update { it.copy(load = l) } }
+    fun setUnilateral(v: Boolean) { touched += Field.SIDE; _state.update { it.copy(unilateral = v) } }
+    fun setNote(v: String) = _state.update { it.copy(note = v.take(300)) }
+    fun toggleEquipment(e: EquipmentV2) {
+        touched += Field.EQUIPMENT
+        _state.update { s -> s.copy(equipment = if (e in s.equipment) s.equipment - e else s.equipment + e) }
+    }
+    fun toggleDomain(d: LoadDomain) {
+        touched += Field.DOMAINS
+        _state.update { s -> s.copy(domains = if (d in s.domains) s.domains - d else s.domains + d) }
     }
 
     fun save() {
@@ -79,32 +106,7 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
         _state.update { it.copy(saving = true) }
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
-            val repo = service.repo
-            val slug = "user." + slugify(name) + "_" + repo.newId().filter { it.isLetterOrDigit() }.take(6).lowercase()
-            val text = ExerciseText(name = name, why = s.note.trim())
-            val equipment = s.equipment.toList().ifEmpty { listOf(EquipmentV2.NONE) }
-            val needsWall = s.kind == ExerciseKind.CLIMB ||
-                equipment.any { it == EquipmentV2.WALL || it == EquipmentV2.BOARD || it == EquipmentV2.CAMPUS_BOARD }
-            val tags = buildList {
-                if (!needsWall) add(ExerciseDefinition.TAG_NO_CLIMBING)
-                if (LoadDomain.FINGER !in s.domains) add(ExerciseDefinition.TAG_FINGER_FREE)
-            }
-            val def = ExerciseDefinition(
-                slug = slug,
-                category = s.category,
-                kind = s.kind,
-                load = s.load,
-                unilateral = s.unilateral,
-                equipment = equipment,
-                domains = s.domains.toList(),
-                difficulty = 2,
-                defaults = defaultPrescription(s.kind),
-                tags = tags,
-                i18n = mapOf("de" to text, "en" to text),
-                custom = true,
-            )
-            repo.saveCustomExercise(def)
-            service.catalogStore.refresh()
+            val slug = service.createCustomExercise(name, s.category, s.kind, s.load, s.unilateral, s.equipment, s.domains, s.note)
             _state.update { it.copy(saving = false, savedSlug = slug) }
         }
     }
@@ -112,21 +114,9 @@ class CustomExerciseViewModel @Inject constructor(private val service: AthleteSe
     fun consumeSaved() = _state.update { it.copy(savedSlug = null) }
 
     companion object {
-        fun defaultLoad(kind: ExerciseKind): LoadMode = when (kind) {
-            ExerciseKind.REPS -> LoadMode.BODYWEIGHT
-            ExerciseKind.LOAD_REPS -> LoadMode.EXTERNAL
-            ExerciseKind.TIME -> LoadMode.NONE
-            ExerciseKind.HANG, ExerciseKind.INTERVAL -> LoadMode.BODYWEIGHT_PLUS
-            ExerciseKind.CLIMB -> LoadMode.NONE
-        }
+        fun defaultLoad(kind: ExerciseKind): LoadMode = ExerciseGuess.defaultLoad(kind)
 
-        fun defaultPrescription(kind: ExerciseKind): Prescription = when (kind) {
-            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> Prescription(sets = 3, repsMin = 8, repsMax = 12, restS = 90)
-            ExerciseKind.TIME -> Prescription(sets = 3, durationS = 30, restS = 60)
-            ExerciseKind.HANG -> Prescription(sets = 5, durationS = 10, restS = 120, edgeMm = 20)
-            ExerciseKind.INTERVAL -> Prescription(sets = 4, workS = 7, restBetweenS = 3, repsPerSet = 6, restS = 180)
-            ExerciseKind.CLIMB -> Prescription(rounds = 4, restS = 120)
-        }
+        fun defaultPrescription(kind: ExerciseKind): Prescription = ExerciseGuess.defaultPrescription(kind)
 
         /** ASCII slug part: "Einarmige Blöcke!" → "einarmige_bloecke". */
         fun slugify(name: String): String {
@@ -166,6 +156,10 @@ fun CustomExerciseScreen(
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier.fillMaxWidth().testTag("custom_exercise_name"),
             )
+            if (state.guessed && !state.showNameError) {
+                Text(stringResource(R.string.trx_custom_guessed), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp).testTag("custom_exercise_guessed"))
+            }
 
             SectionTitle(stringResource(R.string.trx_custom_category))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -235,7 +229,7 @@ fun CustomExerciseScreen(
 }
 
 @Composable
-private fun kindLabel(k: ExerciseKind): String = stringResource(when (k) {
+internal fun kindLabel(k: ExerciseKind): String = stringResource(when (k) {
     ExerciseKind.REPS -> R.string.trx_kind_reps
     ExerciseKind.LOAD_REPS -> R.string.trx_kind_load_reps
     ExerciseKind.TIME -> R.string.trx_kind_time
@@ -245,7 +239,7 @@ private fun kindLabel(k: ExerciseKind): String = stringResource(when (k) {
 })
 
 @Composable
-private fun loadLabel(l: LoadMode): String = stringResource(when (l) {
+internal fun loadLabel(l: LoadMode): String = stringResource(when (l) {
     LoadMode.NONE -> R.string.trx_load_none
     LoadMode.BODYWEIGHT -> R.string.trx_load_bodyweight
     LoadMode.BODYWEIGHT_PLUS -> R.string.trx_load_bodyweight_plus

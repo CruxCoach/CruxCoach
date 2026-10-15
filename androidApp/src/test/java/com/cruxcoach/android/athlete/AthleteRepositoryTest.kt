@@ -158,4 +158,24 @@ class AthleteRepositoryTest {
         assertEquals(1, repo.allSuggestionEvents().size)
         old.close()
     }
+
+    @Test
+    fun `schema 3 database migrates to 4 with working-set values and soreness`() {
+        // Feature builds up to 1000036 had schema 3: no sets on a value, no soreness in the check-in.
+        val old = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        old.execute(null, "ALTER TABLE exercise_benchmark DROP COLUMN sets", 0)
+        old.execute(null, "ALTER TABLE checkin DROP COLUMN sore", 0)
+        AthleteDatabase.Schema.migrate(old, 3, 4)
+        val migrated = AthleteRepository(AthleteDatabase(old), Dispatchers.IO) { 1_000L }
+        migrated.saveBenchmark(Benchmark("b1", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, measuredAt = 1, sets = 5))
+        migrated.saveCheckin(Checkin("2026-10-15", 1, energy = 4, sore = setOf(InjuryRegion.SHOULDER, InjuryRegion.KNEE)))
+        assertEquals(5, migrated.benchmarks("pull.weighted_pull_up").single().sets)
+        assertEquals(setOf(InjuryRegion.SHOULDER, InjuryRegion.KNEE), migrated.checkin("2026-10-15")?.sore)
+        // A value entered as a maximum keeps no sets; a check-in without soreness reads back empty.
+        migrated.saveBenchmark(Benchmark("b2", "pull.weighted_pull_up", loadKg = 30.0, reps = 3, measuredAt = 2))
+        migrated.saveCheckin(Checkin("2026-10-16", 2, energy = 3))
+        assertEquals(null, migrated.benchmarks("pull.weighted_pull_up").first { it.id == "b2" }.sets)
+        assertTrue(migrated.checkin("2026-10-16")!!.sore.isEmpty())
+        old.close()
+    }
 }

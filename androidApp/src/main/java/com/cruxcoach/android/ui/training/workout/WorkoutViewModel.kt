@@ -109,6 +109,9 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
 
     private val workoutId: String? get() = _state.value.workout?.id
 
+    /** The catalogue with the athlete's own exercises, for typed lines. */
+    fun catalog(): com.cruxcoach.athlete.catalog.ExerciseCatalog = service.catalog
+
     /** Optimistic: the row changes on screen at once, the database follows. */
     fun update(set: ExerciseSet) {
         replaceLocal(set)
@@ -127,6 +130,13 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
     fun reopen(set: ExerciseSet) {
         replaceLocal(set.copy(completedAt = null))
         io { service.reopenSet(set) }
+    }
+
+    /** "Klimmzüge 5x5 +20 kg" typed into the open training (owner 2026-10-15). */
+    fun addTyped(result: com.cruxcoach.athlete.logic.WorkoutTextParser.Result) {
+        val id = workoutId ?: return
+        if (result.lines.isEmpty()) return
+        io { service.addTyped(id, result.lines) }
     }
 
     fun addSet(blockIndex: Int) {

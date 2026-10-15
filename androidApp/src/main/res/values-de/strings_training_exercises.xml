@@ -62,6 +62,7 @@
 
     <string name="trx_custom_title">Eigene Übung</string>
     <string name="trx_custom_name">Name</string>
+    <string name="trx_custom_guessed">Bereich, Art und Last sind aus dem Namen erkannt. Tippe unten, um sie zu ändern.</string>
     <string name="trx_custom_name_required">Bitte gib einen Namen ein.</string>
     <string name="trx_custom_category">Kategorie</string>
     <string name="trx_custom_kind">So wird geloggt</string>

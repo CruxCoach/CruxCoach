@@ -92,6 +92,8 @@ enum class SuggestionReason {
     RETURN_AFTER_BREAK,
     /** A finger injury healed recently: finger work stays light for a few weeks. */
     RETURN_FINGER,
+    /** The athlete picked today's kind of training ([SuggestionInput.wish]). */
+    CHOSEN_TODAY,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -171,6 +173,11 @@ data class SuggestionInput(
     val weekStart: LocalDate? = null,
     /** Re-entry after a break or a healed finger injury (see [ReturnToTraining]); null when training normally. */
     val returnState: ReturnState? = null,
+    /**
+     * What the athlete wants today ("rather pull and push", owner 2026-10-15): wins over the week
+     * plan and the rotation, never over illness, an injury or fingers that need their recovery.
+     */
+    val wish: SuggestionFocus? = null,
 )
 
 data class SessionSuggestion(
@@ -259,6 +266,11 @@ object SessionSuggester {
         val trend = trendBlock(input)
         trend.evidence.forEach { ctx.evidence += it }
         val fingerBlock = recovery.reason ?: (if (fingersTired) SuggestionReason.FINGERS_TIRED else null) ?: trend.fingerReason
+
+        // The athlete's own choice for today comes before the plan and the rotation.
+        input.wish?.let { wish ->
+            chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike)?.let { return it }
+        }
 
         // Climbing already done today on a climbing day: a short block after it instead of a
         // second session — unless the athlete said no to add-ons.
@@ -435,6 +447,49 @@ object SessionSuggester {
             weeklyEvidence(ctx, top)
         }
         return list
+    }
+
+    /**
+     * Today's training as the athlete chose it. Safety still decides: fingers that need
+     * their recovery or an injury pause turn a finger or board wish into pull and push
+     * (or the injury-safe session), with the reason why.
+     */
+    private fun chosen(
+        ctx: Ctx, wish: SuggestionFocus, planned: String?, budget: Int, fingerBlock: SuggestionReason?,
+        climbingPaused: Boolean, readiness: Readiness, skinSpike: Boolean,
+    ): SessionSuggestion? {
+        val reasons = ctx.reasons
+        val areas = ctx.input.coach.focus
+        reasons.add(0, SuggestionReason.CHOSEN_TODAY)
+        fun pullPush() = build(ctx, SuggestionFocus.PULL_PUSH, withFocusAreas(slotsFor(SuggestionFocus.PULL_PUSH), SuggestionFocus.PULL_PUSH, areas, ctx), budget, planned)
+        fun safe() = build(ctx, SuggestionFocus.INJURY_SAFE,
+            withFocusAreas(listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS), SuggestionFocus.INJURY_SAFE, areas, ctx), budget, planned)
+        return when (wish) {
+            SuggestionFocus.BOARD_DAY -> when {
+                climbingPaused -> { reasons += SuggestionReason.PLAN_REPLACED_FOR_INJURY; safe() }
+                readiness.avoidClimbing || fingerBlock != null || skinSpike -> {
+                    reasons += fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY
+                    pullPush()
+                }
+                else -> boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
+            }
+            SuggestionFocus.FINGER_STRENGTH -> when {
+                climbingPaused -> { reasons += SuggestionReason.INJURY_CLIMBING_PAUSED; safe() }
+                fingerBlock != null -> { reasons += fingerBlock; pullPush() }
+                else -> {
+                    val result = build(ctx, SuggestionFocus.FINGER_STRENGTH,
+                        withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned)
+                    val hasFingerMain = result.routine.items.any { !it.warmup && ctx.input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
+                    // No hangboard or block at this place: say so and train the rest.
+                    if (hasFingerMain) result else { reasons += SuggestionReason.NO_FINGER_EQUIPMENT; pullPush() }
+                }
+            }
+            SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE ->
+                build(ctx, wish, withFocusAreas(slotsFor(wish), wish, areas, ctx), budget, planned)
+            SuggestionFocus.MOBILITY_RECOVERY, SuggestionFocus.REST ->
+                build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(6) { Slot.MOBILITY }, budget, planned)
+            SuggestionFocus.PLANNED, SuggestionFocus.INJURY_SAFE -> { reasons.remove(SuggestionReason.CHOSEN_TODAY); null }
+        }
     }
 
     private fun slotsFor(focus: SuggestionFocus): List<Slot> = when (focus) {

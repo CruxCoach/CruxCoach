@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Healing
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -67,6 +68,10 @@ fun WorkoutPlayerScreen(
     onOpenExercise: (String) -> Unit,
     onFinished: (workoutId: String) -> Unit,
     viewModel: WorkoutPlayerViewModel = hiltViewModel(),
+    /** The "still learning this value" line on work sets (a slot: it has a view model of its own). */
+    learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit = { slug, m ->
+        com.cruxcoach.android.ui.training.coach.LearningBadge(slug, m)
+    },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val timer by viewModel.restTimer.collectAsStateWithLifecycle()
@@ -188,10 +193,14 @@ fun WorkoutPlayerScreen(
                         onUpdate = viewModel::update,
                         onDone = completeSet,
                         onStartTimer = viewModel::startTimer,
-                        onSkip = viewModel::skip,
+                        onSkip = viewModel::forward,
+                        onBack = viewModel::back,
+                        onResume = viewModel::resume,
+                        onReopen = viewModel::reopen,
                         onOverview = onOverview,
                         onOpenExercise = onOpenExercise,
                         onPain = { reportingPain = true },
+                        learningBadge = learningBadge,
                     )
                 }
                 PlayerPhase.REST -> RestScreen(
@@ -202,6 +211,8 @@ fun WorkoutPlayerScreen(
                     onMinus = { viewModel.adjustRest(-15) },
                     onEnd = viewModel::endRest,
                     onReserve = viewModel::setReserve,
+                    onNextChange = viewModel::updateNext,
+                    onCorrectDone = viewModel::update,
                 )
                 PlayerPhase.COMPLETE -> CompleteView(state, onFinish = { finishing = true }, onOverview = onOverview)
             }
@@ -250,10 +261,17 @@ private fun SetView(
     onOverview: () -> Unit,
     onOpenExercise: (String) -> Unit,
     onPain: () -> Unit = {},
+    onBack: () -> Unit = {},
+    onResume: () -> Unit = {},
+    onReopen: () -> Unit = {},
+    learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit = { _, _ -> },
 ) {
     val set = item.set
     val def = item.def
     val units = state.profile.units
+    // A completed set the athlete went back to: its logged values, editable; no timer, no pain stop.
+    val done = set.isCompleted
+    val index = state.sets.indexOfFirst { it.id == set.id }
     // The values scroll, the action stays: on a small phone "Start"/"Set done" was below the fold (device test 2026-10-10).
     Column(Modifier.fillMaxSize().testTag("player_set_view")) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -271,12 +289,23 @@ private fun SetView(
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                AssistChip(
-                    onClick = onPain,
-                    label = { Text(stringResource(R.string.trp2_pain_button)) },
-                    leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
-                    modifier = Modifier.testTag("player_pain"),
-                )
+                if (done) {
+                    Surface(color = CruxCoachDesign.colors.positiveContainer, shape = MaterialTheme.shapes.small) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, Modifier.size(18.dp), tint = CruxCoachDesign.colors.onPositiveContainer)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trp_set_done_label), style = MaterialTheme.typography.labelLarge,
+                                color = CruxCoachDesign.colors.onPositiveContainer, modifier = Modifier.testTag("player_done_label"))
+                        }
+                    }
+                } else {
+                    AssistChip(
+                        onClick = onPain,
+                        label = { Text(stringResource(R.string.trp2_pain_button)) },
+                        leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag("player_pain"),
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(def, Modifier.size(56.dp))
@@ -300,8 +329,12 @@ private fun SetView(
             }
 
             // While a starting value is still being learnt, say how the athlete teaches it.
-            if (set.setType == SetType.WORK) {
-                com.cruxcoach.android.ui.training.coach.LearningBadge(def.slug, Modifier.padding(top = 8.dp))
+            if (set.setType == SetType.WORK && !done) {
+                learningBadge(def.slug, Modifier.padding(top = 8.dp))
+            }
+            if (done) {
+                Text(stringResource(R.string.trp_review_hint), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
 
             // What the steppers below do not show: share of body weight, per block, grip, interval rhythm.
@@ -323,58 +356,31 @@ private fun SetView(
             }
 
             // The values of this set, big enough to read from the mat; tap a value to type it.
-            Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) {
-                    val step = state.profile.smallestIncrementKg.coerceAtLeast(0.25)
-                    val minLoad = if (def.load == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
-                    val load = set.loadKg ?: 0.0
-                    PlayerStepper(
-                        label = stringResource(R.string.trw_load_label),
-                        value = loadText(set, def, units) ?: formatMass(load, units),
-                        tag = "player_load",
-                        onMinus = { onUpdate(set.copy(loadKg = (snap(load - step, step)).coerceAtLeast(minLoad))) },
-                        onPlus = { onUpdate(set.copy(loadKg = (snap(load + step, step)).coerceAtMost(500.0))) },
-                        edit = StepperEdit(
-                            title = stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units)),
-                            initial = formatNumber(com.cruxcoach.athlete.logic.Units.massToDisplay(load, units), 2),
-                            decimal = true, allowNegative = def.load == LoadMode.BODYWEIGHT_PLUS,
-                        ) { v -> onUpdate(set.copy(loadKg = com.cruxcoach.athlete.logic.Units.massFromDisplay(v, units).coerceIn(minLoad, 500.0))) },
-                    )
+            SetSteppers(set, def, units, state.profile.smallestIncrementKg, onUpdate, Modifier.padding(top = 16.dp)) {
+                // The athlete's own load carries over (the view model moves the later sets with it).
+                val carried = if (done || set.loadKg == set.targetLoadKg) 0 else state.sets.count {
+                    !it.isCompleted && it.blockIndex == set.blockIndex && it.side == set.side && it.setType == set.setType &&
+                        it.setIndex > set.setIndex && it.loadKg == set.loadKg
                 }
-                when (def.kind) {
-                    ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
-                        val reps = set.reps ?: 0
-                        PlayerStepper(stringResource(R.string.trw_reps_label), reps.toString(), "player_reps",
-                            onMinus = { onUpdate(set.copy(reps = (reps - 1).coerceAtLeast(0))) },
-                            onPlus = { onUpdate(set.copy(reps = (reps + 1).coerceAtMost(999))) },
-                            edit = StepperEdit(stringResource(R.string.trw_reps_label), reps.toString()) { v ->
-                                onUpdate(set.copy(reps = v.roundToInt().coerceIn(0, 999)))
-                            })
-                    }
-                    ExerciseKind.TIME, ExerciseKind.HANG -> {
-                        val seconds = (set.durationS ?: set.targetDurationS ?: def.defaults.durationS?.toDouble() ?: 10.0).roundToInt()
-                        val step = if (seconds >= 30) 5 else 1
-                        PlayerStepper(stringResource(R.string.trw_seconds_label), stringResource(R.string.tr_format_seconds, seconds), "player_seconds",
-                            onMinus = { onUpdate(set.copy(durationS = (seconds - step).coerceAtLeast(1).toDouble())) },
-                            onPlus = { onUpdate(set.copy(durationS = (seconds + step).coerceAtMost(3600).toDouble())) },
-                            edit = StepperEdit(stringResource(R.string.trw_seconds_label), seconds.toString()) { v ->
-                                onUpdate(set.copy(durationS = v.roundToInt().coerceIn(1, 3600).toDouble()))
-                            })
-                    }
-                    ExerciseKind.CLIMB -> {
-                        val rounds = set.reps ?: 0
-                        PlayerStepper(stringResource(R.string.trw_rounds_label), rounds.toString(), "player_rounds",
-                            onMinus = { onUpdate(set.copy(reps = (rounds - 1).coerceAtLeast(0))) },
-                            onPlus = { onUpdate(set.copy(reps = (rounds + 1).coerceAtMost(999))) })
-                    }
-                    ExerciseKind.INTERVAL -> Unit
+                if (carried > 0) {
+                    Text(pluralStringResource(R.plurals.trp_load_carried, carried, carried), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth().testTag("player_load_carried"))
                 }
-                if (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) {
-                    set.edgeMm?.let { edge ->
-                        val mm = edge.roundToInt()
-                        PlayerStepper(stringResource(R.string.trw_edge_label), stringResource(R.string.tr_format_mm, mm.toString()), "player_edge",
-                            onMinus = { onUpdate(set.copy(edgeMm = (mm - 1).coerceAtLeast(3).toDouble())) },
-                            onPlus = { onUpdate(set.copy(edgeMm = (mm + 1).coerceAtMost(80).toDouble())) })
+            }
+
+            // Going back to a set also corrects its reserve answer.
+            if (done && set.setType != SetType.WARMUP && def.kind in setOf(ExerciseKind.REPS, ExerciseKind.LOAD_REPS, ExerciseKind.HANG)) {
+                Text(stringResource(if (def.kind == ExerciseKind.HANG) R.string.trp_rir_question_seconds else R.string.trp_rir_question_reps),
+                    style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 1, 2, 3).forEach { value ->
+                        FilterChip(
+                            selected = set.rir == value,
+                            onClick = { onUpdate(set.copy(rir = value)) },
+                            label = { Text(if (value == 3) stringResource(R.string.trw_rir_3plus) else value.toString()) },
+                            modifier = Modifier.heightIn(min = 48.dp).testTag("player_review_rir_$value"),
+                        )
                     }
                 }
             }
@@ -392,44 +398,128 @@ private fun SetView(
             }
             Spacer(Modifier.height(16.dp))
         }
-        // Primary action, always in reach; skip and "done without timer" share one row below it.
+        // Primary action, always in reach, between "previous set" and "skip" like a player's controls.
         Surface(tonalElevation = 2.dp) {
-            Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
-                val timed = def.kind == ExerciseKind.INTERVAL || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.TIME
-                if (timed) {
-                    Button(
-                        onClick = onStartTimer,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("player_start_timer"),
-                    ) {
-                        Icon(Icons.Default.PlayArrow, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.trp_start_timer), style = MaterialTheme.typography.titleLarge)
+            Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                val timed = !done && (def.kind == ExerciseKind.INTERVAL || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.TIME)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalIconButton(onClick = onBack, enabled = index > 0, modifier = Modifier.size(56.dp).testTag("player_prev")) {
+                        Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(R.string.trp_prev_set))
                     }
-                } else {
-                    Button(
-                        onClick = onDone,
-                        colors = ButtonDefaults.buttonColors(containerColor = CruxCoachDesign.colors.positive),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag("player_done"),
+                    val primaryPadding = PaddingValues(horizontal = 12.dp)
+                    when {
+                        done -> Button(
+                            onClick = onResume, contentPadding = primaryPadding,
+                            modifier = Modifier.weight(1f).heightIn(min = 64.dp).testTag("player_resume"),
+                        ) {
+                            Text(stringResource(R.string.trp_resume), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                        timed -> Button(
+                            onClick = onStartTimer, contentPadding = primaryPadding,
+                            modifier = Modifier.weight(1f).heightIn(min = 64.dp).testTag("player_start_timer"),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trp_start_timer), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                        else -> Button(
+                            onClick = onDone, contentPadding = primaryPadding,
+                            colors = ButtonDefaults.buttonColors(containerColor = CruxCoachDesign.colors.positive),
+                            modifier = Modifier.weight(1f).heightIn(min = 64.dp).testTag("player_done"),
+                        ) {
+                            Icon(Icons.Default.CheckCircle, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trp_done_set), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                    }
+                    FilledTonalIconButton(
+                        onClick = onSkip,
+                        enabled = if (done) true else state.upcoming != null,
+                        modifier = Modifier.size(56.dp).testTag("player_skip"),
                     ) {
-                        Icon(Icons.Default.CheckCircle, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.trp_done_set), style = MaterialTheme.typography.titleLarge)
+                        Icon(Icons.Default.SkipNext, contentDescription = stringResource(if (done) R.string.trp_next_set else R.string.trp_skip))
                     }
                 }
                 // The overview is the list icon in the app bar, there in every state; no second button here.
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onSkip, enabled = state.upcoming != null, modifier = Modifier.heightIn(min = 48.dp).testTag("player_skip")) {
-                        Icon(Icons.Default.SkipNext, null)
-                        Spacer(Modifier.width(4.dp))
-                        Text(stringResource(R.string.trp_skip))
+                when {
+                    timed -> TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp).testTag("player_done")) {
+                        Text(stringResource(R.string.trp_done_without_timer))
                     }
-                    Spacer(Modifier.weight(1f))
-                    if (timed) {
-                        TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp).testTag("player_done")) {
-                            Text(stringResource(R.string.trp_done_without_timer))
-                        }
+                    done -> TextButton(onClick = onReopen, modifier = Modifier.heightIn(min = 48.dp).testTag("player_reopen")) {
+                        Text(stringResource(R.string.trp_reopen))
                     }
+                    else -> Spacer(Modifier.height(8.dp))
                 }
+            }
+        }
+    }
+}
+
+/** The editable values of one set: load, reps or seconds, edge. Also used to correct a set from the rest screen. */
+@Composable
+internal fun SetSteppers(
+    set: ExerciseSet,
+    def: ExerciseDefinition,
+    units: UnitSystem,
+    incrementKg: Double,
+    onUpdate: (ExerciseSet) -> Unit,
+    modifier: Modifier = Modifier,
+    belowLoad: @Composable () -> Unit = {},
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) {
+            val step = incrementKg.coerceAtLeast(0.25)
+            val minLoad = if (def.load == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
+            val load = set.loadKg ?: 0.0
+            PlayerStepper(
+                label = stringResource(R.string.trw_load_label),
+                value = loadText(set, def, units) ?: formatMass(load, units),
+                tag = "player_load",
+                onMinus = { onUpdate(set.copy(loadKg = (snap(load - step, step)).coerceAtLeast(minLoad))) },
+                onPlus = { onUpdate(set.copy(loadKg = (snap(load + step, step)).coerceAtMost(500.0))) },
+                edit = StepperEdit(
+                    title = stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units)),
+                    initial = formatNumber(com.cruxcoach.athlete.logic.Units.massToDisplay(load, units), 2),
+                    decimal = true, allowNegative = def.load == LoadMode.BODYWEIGHT_PLUS,
+                ) { v -> onUpdate(set.copy(loadKg = com.cruxcoach.athlete.logic.Units.massFromDisplay(v, units).coerceIn(minLoad, 500.0))) },
+            )
+            belowLoad()
+        }
+        when (def.kind) {
+            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
+                val reps = set.reps ?: 0
+                PlayerStepper(stringResource(R.string.trw_reps_label), reps.toString(), "player_reps",
+                    onMinus = { onUpdate(set.copy(reps = (reps - 1).coerceAtLeast(0))) },
+                    onPlus = { onUpdate(set.copy(reps = (reps + 1).coerceAtMost(999))) },
+                    edit = StepperEdit(stringResource(R.string.trw_reps_label), reps.toString()) { v ->
+                        onUpdate(set.copy(reps = v.roundToInt().coerceIn(0, 999)))
+                    })
+            }
+            ExerciseKind.TIME, ExerciseKind.HANG -> {
+                val seconds = (set.durationS ?: set.targetDurationS ?: def.defaults.durationS?.toDouble() ?: 10.0).roundToInt()
+                val step = if (seconds >= 30) 5 else 1
+                PlayerStepper(stringResource(R.string.trw_seconds_label), stringResource(R.string.tr_format_seconds, seconds), "player_seconds",
+                    onMinus = { onUpdate(set.copy(durationS = (seconds - step).coerceAtLeast(1).toDouble())) },
+                    onPlus = { onUpdate(set.copy(durationS = (seconds + step).coerceAtMost(3600).toDouble())) },
+                    edit = StepperEdit(stringResource(R.string.trw_seconds_label), seconds.toString()) { v ->
+                        onUpdate(set.copy(durationS = v.roundToInt().coerceIn(1, 3600).toDouble()))
+                    })
+            }
+            ExerciseKind.CLIMB -> {
+                val rounds = set.reps ?: 0
+                PlayerStepper(stringResource(R.string.trw_rounds_label), rounds.toString(), "player_rounds",
+                    onMinus = { onUpdate(set.copy(reps = (rounds - 1).coerceAtLeast(0))) },
+                    onPlus = { onUpdate(set.copy(reps = (rounds + 1).coerceAtMost(999))) })
+            }
+            ExerciseKind.INTERVAL -> Unit
+        }
+        if (def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) {
+            set.edgeMm?.let { edge ->
+                val mm = edge.roundToInt()
+                PlayerStepper(stringResource(R.string.trw_edge_label), stringResource(R.string.tr_format_mm, mm.toString()), "player_edge",
+                    onMinus = { onUpdate(set.copy(edgeMm = (mm - 1).coerceAtLeast(3).toDouble())) },
+                    onPlus = { onUpdate(set.copy(edgeMm = (mm + 1).coerceAtMost(80).toDouble())) })
             }
         }
     }
@@ -445,7 +535,7 @@ internal class StepperEdit(
 )
 
 @Composable
-private fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit, edit: StepperEdit? = null) {
+internal fun PlayerStepper(label: String, value: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit, edit: StepperEdit? = null) {
     var editing by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -482,7 +572,7 @@ private fun PlayerStepper(label: String, value: String, tag: String, onMinus: ()
     }
 }
 
-private fun snap(value: Double, step: Double): Double = (value / step).roundToInt() * step
+internal fun snap(value: Double, step: Double): Double = (value / step).roundToInt() * step
 
 // ── Timer phase (full screen) ────────────────────────────────────────
 

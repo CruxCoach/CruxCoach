@@ -169,7 +169,7 @@ class AthleteRepository(
 
     fun saveBenchmark(b: Benchmark) = benchmarkQueries.upsertBenchmark(
         b.id, b.exerciseSlug, b.side?.name, b.edgeMm, b.grip?.name, b.loadKg, b.reps?.toLong(), b.durationS,
-        b.bodyweightKg, b.source.name, b.measuredAt, b.note,
+        b.bodyweightKg, b.source.name, b.measuredAt, b.note, b.sets?.toLong(),
     )
 
     /** Newest first. */
@@ -303,7 +303,7 @@ class AthleteRepository(
 
     fun saveCheckin(c: Checkin) = wellbeing.upsertCheckin(
         c.day, c.createdAt, c.sleep?.toLong(), c.energy?.toLong(), c.skin?.toLong(), c.fingers?.toLong(),
-        c.motivation?.toLong(), if (c.sick) 1 else 0, c.note,
+        c.motivation?.toLong(), if (c.sick) 1 else 0, c.note, c.sore.takeIf { it.isNotEmpty() }?.joinToString(",") { it.name },
     )
 
     fun checkin(day: String): Checkin? = wellbeing.getCheckin(day).executeAsOneOrNull()?.toModel()
@@ -462,6 +462,7 @@ private fun Hydration_log.toModel() = HydrationEntry(id, day, logged_at, ml.toIn
 
 private fun CheckinRow.toModel() = Checkin(
     day, created_at, sleep?.toInt(), energy?.toInt(), skin?.toInt(), fingers?.toInt(), motivation?.toInt(), sick != 0L, note,
+    sore = sore.orEmpty().split(',').mapNotNull { enumOrNull<InjuryRegion>(it.trim()) }.toSet(),
 )
 
 private fun InjuryRow.toModel(): Injury? {
@@ -492,6 +493,7 @@ private fun com.cruxcoach.db.athlete.Exercise_benchmark.toModel() = Benchmark(
     id = id, exerciseSlug = exercise_slug, side = enumOrNull<Side>(side), edgeMm = edge_mm, grip = enumOrNull<Grip>(grip),
     loadKg = load_kg, reps = reps?.toInt(), durationS = duration_s, bodyweightKg = bodyweight_kg,
     source = enumOrNull<BenchmarkSource>(source) ?: BenchmarkSource.MANUAL, measuredAt = measured_at, note = note,
+    sets = sets?.toInt(),
 )
 
 private fun Pause_period.toModel(): PausePeriod? {

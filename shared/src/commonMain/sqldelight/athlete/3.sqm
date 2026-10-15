@@ -1,0 +1,8 @@
+-- Migration 3 → 4: a performance value can be entered as several sets with
+-- reserve ("5 × 5 at +20 kg") instead of one maximal effort, and the check-in
+-- before today's suggestion records what hurts today. Feature builds up to
+-- 1000036 shipped schema 3.
+
+ALTER TABLE exercise_benchmark ADD COLUMN sets INTEGER;
+
+ALTER TABLE checkin ADD COLUMN sore TEXT;

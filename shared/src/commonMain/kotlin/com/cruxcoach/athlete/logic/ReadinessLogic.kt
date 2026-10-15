@@ -62,6 +62,26 @@ object ReadinessEvaluator {
     }
 }
 
+/**
+ * What the check-in says hurts today, as injuries for today only (owner
+ * 2026-10-15: "ask before the suggestion whether anything does not feel
+ * good, and what"): the areas are spared like an injury that rules out
+ * loading them – sore fingers or skin also keep the day off the wall – but
+ * nothing lands in the injury list.
+ */
+object Soreness {
+    /** High enough that [InjuryAdvisor] leaves exercises loading the area out. */
+    const val SEVERITY = 4
+
+    fun injuries(checkin: Checkin?): List<Injury> = checkin?.sore.orEmpty().map { region ->
+        Injury(
+            id = "sore-${checkin!!.day}-${region.name}", region = region, severity = SEVERITY,
+            climbingPaused = region == com.cruxcoach.athlete.model.InjuryRegion.FINGER || region == com.cruxcoach.athlete.model.InjuryRegion.SKIN,
+            startedOn = checkin.day,
+        )
+    }
+}
+
 enum class InjuryVerdict { OK, CAUTION, AVOID, ONE_SIDE_ONLY }
 
 data class InjuryAdvice(val verdict: InjuryVerdict, val allowedSide: Side? = null, val injury: Injury? = null)

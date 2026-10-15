@@ -18,6 +18,13 @@ object TrainingPlaces {
     /** Id of the one place a profile from before places gets for its equipment. */
     const val FIRST_ID = "place-1"
 
+    /**
+     * "Nothing here today" (travel, a park, a hotel room; owner 2026-10-15): a
+     * place for one day that is never in the list, with body weight and a mat only.
+     */
+    const val NO_GEAR_ID = "no-gear"
+    val NO_GEAR = TrainingPlace(NO_GEAR_ID, PlaceKind.TRAVEL, null, setOf(EquipmentV2.NONE, EquipmentV2.MAT))
+
     /** The places; an older profile with one configured equipment set has it as its only place. */
     fun of(p: AthleteProfile): List<TrainingPlace> = p.places.ifEmpty {
         if (p.equipmentConfigured) listOf(TrainingPlace(FIRST_ID, PlaceKind.HOME, null, p.equipment)) else emptyList()
@@ -27,7 +34,8 @@ object TrainingPlaces {
 
     /** Where the athlete trains on [day]: the place picked for that day, else the default. */
     fun current(p: AthleteProfile, day: String): TrainingPlace? =
-        of(p).firstOrNull { p.placeDay == day && it.id == p.placeToday } ?: default(p)
+        if (p.placeDay == day && p.placeToday == NO_GEAR_ID && of(p).isNotEmpty()) NO_GEAR
+        else of(p).firstOrNull { p.placeDay == day && it.id == p.placeToday } ?: default(p)
 
     /** Everything at any place: what the athlete can test or log at all. */
     fun allEquipment(p: AthleteProfile): Set<EquipmentV2> = of(p).flatMap { it.equipment }.toSet().ifEmpty { p.equipment }
@@ -40,8 +48,12 @@ object TrainingPlaces {
     }
 
     /** Train at [placeId] on [day]; the default stays as it is. */
-    fun pick(p: AthleteProfile, placeId: String, day: String): AthleteProfile =
-        if (of(p).none { it.id == placeId }) p else inUse(p.copy(placeToday = placeId, placeDay = day), day)
+    fun pick(p: AthleteProfile, placeId: String, day: String): AthleteProfile = when {
+        // Without a place of its own there is no default to come back to tomorrow.
+        placeId == NO_GEAR_ID -> if (of(p).isEmpty()) p else inUse(p.copy(placeToday = placeId, placeDay = day), day)
+        of(p).none { it.id == placeId } -> p
+        else -> inUse(p.copy(placeToday = placeId, placeDay = day), day)
+    }
 
     /**
      * New equipment for a place, the place in use when [placeId] is null. The
@@ -49,7 +61,8 @@ object TrainingPlaces {
      */
     fun withEquipment(p: AthleteProfile, placeId: String?, equipment: Set<EquipmentV2>, day: String): AthleteProfile {
         val list = of(p)
-        val id = placeId ?: current(p, day)?.id
+        // A day without equipment has none to edit: the change goes to the default place.
+        val id = placeId ?: current(p, day)?.id?.takeIf { it != NO_GEAR_ID } ?: default(p)?.id
         val places = if (id != null && list.any { it.id == id }) list.map { if (it.id == id) it.copy(equipment = equipment) else it }
             else list + TrainingPlace(id ?: nextId(list), PlaceKind.HOME, null, equipment)
         return inUse(p.copy(places = places, equipmentConfigured = true), day)

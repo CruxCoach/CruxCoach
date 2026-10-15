@@ -36,7 +36,29 @@
     <string name="trt_continue_workout">Training läuft – weitermachen</string>
     <string name="trt_pause_end">Pause beenden</string>
     <string name="trt_checkin_title">Wie geht\'s dir heute?</string>
-    <string name="trt_checkin_hint">Freiwillig, vier Tipps. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
+    <string name="trt_quick_title">Kurz vorab</string>
+    <string name="trt_quick_text">Zwei Fragen, damit der Vorschlag zu heute passt.</string>
+    <string name="trt_quick_strength">Wie stark fühlst du dich heute?</string>
+    <string name="trt_quick_weak">schwach</string>
+    <string name="trt_quick_strong">stark</string>
+    <string name="trt_quick_hurts">Tut etwas weh oder fühlt sich nicht gut an?</string>
+    <string name="trt_quick_no">Nein</string>
+    <string name="trt_quick_yes">Ja</string>
+    <string name="trt_quick_where">Wo? Das wird heute geschont.</string>
+    <string name="trt_quick_show">Vorschlag zeigen</string>
+    <string name="trt_quick_more">Weitere Fragen (Schlaf, Haut, Finger)</string>
+    <string name="trt_q_sore">Tut heute weh</string>
+    <string name="trt_short_sore">tut weh: %1$s</string>
+    <string name="trt_next_kind">Worauf hast du heute Lust?</string>
+    <string name="trt_kind_finger">Finger</string>
+    <string name="trt_kind_pull_push">Zug &amp; Druck</string>
+    <string name="trt_kind_legs_core">Beine &amp; Rumpf</string>
+    <string name="trt_kind_board">Board</string>
+    <string name="trt_kind_mobility">Dehnen</string>
+    <string name="trt_kind_coach">Wie der Coach vorschlägt</string>
+    <string name="trt_next_place">Wo trainierst du?</string>
+    <string name="trt_reason_chosen">Heute nach deiner Wahl.</string>
+    <string name="trt_checkin_hint">Freiwillig. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
     <string name="trt_q_sleep">Schlaf</string>
     <string name="trt_q_energy">Energie</string>
     <string name="trt_q_skin">Haut</string>

@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.foodvision.BlsRepository
 import com.cruxcoach.android.foodvision.DeviceFactsReader
@@ -316,5 +318,116 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     fun settings() {
         val vm = AthleteSettingsViewModel(service).tracked()
         shoot("settings", { compose.waitUntil(WAIT_MS) { vm.state.value.loaded } }) { AthleteSettingsScreen({}, viewModel = vm) }
+    }
+
+    // ── 2026-10-15: the athlete's word wins (player, editor, values, today) – at a small phone's width ──
+
+    private fun idleMain() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    private fun pullPlayer(): com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel {
+        seedActive()
+        service.startWorkout(com.cruxcoach.athlete.model.Routine("r", "Zugkraft", items = listOf(
+            com.cruxcoach.athlete.model.RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 150),
+            com.cruxcoach.athlete.model.RoutineItem("push.push_up", sets = 3, repsMin = 12, repsMax = 12))), null)
+        val vm = com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel(service).tracked()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        return vm
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun playerOwnLoad() {
+        val vm = pullPlayer()
+        val first = vm.state.value.current!!.set
+        vm.update(first.copy(loadKg = 22.5))
+        shoot("player-own-load", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.sets.count { it.loadKg == 22.5 } == 4 } }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun playerRestNextLoad() {
+        val vm = pullPlayer()
+        vm.completeCurrent()
+        shoot("player-rest-next-load", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed }; Thread.sleep(300) }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun playerBackToDoneSet() {
+        val vm = pullPlayer()
+        vm.completeCurrent()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.restArmed }
+        vm.endRest()
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.phase == com.cruxcoach.android.ui.training.player.PlayerPhase.SET }
+        vm.back()
+        shoot("player-back-done-set", { compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.current?.set?.isCompleted == true } }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun editorTyped() {
+        seedActive()
+        val vm = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()
+        shoot("editor-typed", {
+            click("routine_editor_type")
+            compose.onNodeWithTag("workout_text_input").performTextReplacement(
+                "Oberkörper\nKlimmzüge 5x5 +20 kg\nBankdrücken 3x8 60kg, Pause 2 min\nPlank 3x60s\nRussian Twists 3x20 8kg")
+            waitForTag("workout_text_line_3")
+        }) { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, null, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun editorLoadField() {
+        seedActive()
+        val vm = com.cruxcoach.android.ui.training.workouts.RoutineEditorViewModel(service).tracked()
+        shoot("editor-load", {
+            compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
+            val result = com.cruxcoach.athlete.logic.WorkoutTextParser.parse("Push\nKlimmzüge 5x5 +20 kg\nDips 3x8", service.catalog)
+            vm.addFromText(result, "Push")
+            compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.items.size == 2 }
+        }) { com.cruxcoach.android.ui.training.workouts.RoutineEditorScreen(null, null, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayQuickCheckin() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        shoot("today-quick-checkin", {
+            scrollTo("today_list", "today_quick_checkin")
+            click("today_quick_strength_4"); click("today_quick_hurts_yes"); click("today_sore_finger")
+            scrollTo("today_list", "today_quick_show")
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayNextSheet() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        shoot("today-next-sheet", {
+            scrollTo("today_list", "today_suggestion_next")
+            click("today_suggestion_next")
+            waitForTag("today_next_place_no-gear")
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun customExerciseGuess() {
+        val vm = com.cruxcoach.android.ui.training.exercises.CustomExerciseViewModel(service).tracked()
+        vm.setName("Ringdips mit Zusatzgewicht")
+        shoot("custom-exercise-guess", { waitForTag("custom_exercise_guessed") }) {
+            com.cruxcoach.android.ui.training.exercises.CustomExerciseScreen({}, {}, viewModel = vm)
+        }
     }
 }

@@ -66,7 +66,9 @@ fun placeKindLabel(kind: PlaceKind): String = stringResource(when (kind) {
 
 /** The athlete's name for a place, else its kind's. */
 @Composable
-fun placeLabel(place: TrainingPlace): String = place.name ?: placeKindLabel(place.kind)
+fun placeLabel(place: TrainingPlace): String =
+    if (place.id == com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR_ID) stringResource(R.string.tro_no_gear)
+    else place.name ?: placeKindLabel(place.kind)
 
 fun placeIcon(kind: PlaceKind): ImageVector = when (kind) {
     PlaceKind.HOME -> Icons.Default.Home
@@ -178,12 +180,15 @@ fun todaysPlaceName(profile: com.cruxcoach.athlete.model.AthleteProfile, day: St
 
 /**
  * "Ort: Zuhause ▾" on Today's training: the default place, or the one picked
- * for today; the menu picks another. Only shown with two places or more.
+ * for today; the menu picks another, or "no equipment" for today (owner
+ * 2026-10-15: where the athlete is decides what makes sense today).
  */
 @Composable
 fun PlacePicker(places: List<TrainingPlace>, currentId: String?, defaultId: String?, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
-    if (places.size < 2) return
-    val current = places.firstOrNull { it.id == currentId } ?: places.first()
+    // "No equipment today" is always there next to the athlete's own places.
+    if (places.isEmpty()) return
+    val all = places + com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR
+    val current = all.firstOrNull { it.id == currentId } ?: all.first()
     var menu by remember { mutableStateOf(false) }
     Box(modifier) {
         AssistChip(
@@ -194,7 +199,7 @@ fun PlacePicker(places: List<TrainingPlace>, currentId: String?, defaultId: Stri
             modifier = Modifier.testTag("today_place"),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            places.forEach { place ->
+            all.forEach { place ->
                 DropdownMenuItem(
                     text = {
                         Text(if (place.id == defaultId) stringResource(R.string.tro_summary_default, placeLabel(place)) else placeLabel(place))
