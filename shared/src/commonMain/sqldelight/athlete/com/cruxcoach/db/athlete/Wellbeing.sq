@@ -1,5 +1,6 @@
 -- Readiness check-ins, injuries and pauses. A check-in is optional and at most
 -- one per day; an open injury (resolved_on IS NULL) drives the injury mode.
+-- checkin.sore: InjuryRegion names, comma-separated – what hurts today.
 
 CREATE TABLE checkin (
     day TEXT NOT NULL PRIMARY KEY,
@@ -10,7 +11,8 @@ CREATE TABLE checkin (
     fingers INTEGER,
     motivation INTEGER,
     sick INTEGER NOT NULL DEFAULT 0,
-    note TEXT
+    note TEXT,
+    sore TEXT
 );
 
 CREATE TABLE injury (
@@ -35,8 +37,8 @@ CREATE TABLE pause_period (
 );
 
 upsertCheckin:
-INSERT OR REPLACE INTO checkin(day, created_at, sleep, energy, skin, fingers, motivation, sick, note)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO checkin(day, created_at, sleep, energy, skin, fingers, motivation, sick, note, sore)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getCheckin:
 SELECT * FROM checkin WHERE day = ?;

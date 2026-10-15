@@ -1,7 +1,8 @@
 -- Performance values per exercise (FEAT-066 §8): what the athlete can do,
 -- entered by hand, measured in a test, or raised automatically when a logged
 -- set proves more. Prescriptions in the logger are derived from the newest
--- value per exercise, side, edge and grip.
+-- value per exercise, side, edge and grip. `sets` marks a value entered as
+-- several sets with reserve ("5 × 5 at +20 kg") instead of one maximal effort.
 
 CREATE TABLE exercise_benchmark (
     id TEXT NOT NULL PRIMARY KEY,
@@ -15,14 +16,15 @@ CREATE TABLE exercise_benchmark (
     bodyweight_kg REAL,
     source TEXT NOT NULL,
     measured_at INTEGER NOT NULL,
-    note TEXT
+    note TEXT,
+    sets INTEGER
 );
 
 CREATE INDEX exercise_benchmark_slug ON exercise_benchmark(exercise_slug, measured_at);
 
 upsertBenchmark:
-INSERT OR REPLACE INTO exercise_benchmark(id, exercise_slug, side, edge_mm, grip, load_kg, reps, duration_s, bodyweight_kg, source, measured_at, note)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO exercise_benchmark(id, exercise_slug, side, edge_mm, grip, load_kg, reps, duration_s, bodyweight_kg, source, measured_at, note, sets)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getBenchmarksForExercise:
 SELECT * FROM exercise_benchmark WHERE exercise_slug = ? ORDER BY measured_at DESC;

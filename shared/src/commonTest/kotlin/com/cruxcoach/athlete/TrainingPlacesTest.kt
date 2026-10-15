@@ -46,6 +46,23 @@ class TrainingPlacesTest {
     }
 
     @Test
+    fun noEquipmentIsADayOfItsOwn() {
+        // Owner 2026-10-15: travelling or in a park there is no hangboard – say so for today.
+        val atHome = TrainingPlaces.withEquipment(AthleteProfile(), null, home, today)
+        val bare = TrainingPlaces.pick(atHome, TrainingPlaces.NO_GEAR_ID, today)
+        assertEquals(base, bare.equipment)
+        assertEquals(TrainingPlaces.NO_GEAR_ID, TrainingPlaces.current(bare, today)?.id)
+        assertEquals(1, TrainingPlaces.of(bare).size)          // never in the list
+        assertEquals(home, TrainingPlaces.inUse(bare, tomorrow).equipment)
+        // An equipment edit on such a day goes to the default place, not to a new "no-gear" place.
+        val edited = TrainingPlaces.withEquipment(bare, null, home + EquipmentV2.HANGBOARD, today)
+        assertEquals(1, TrainingPlaces.of(edited).size)
+        assertTrue(EquipmentV2.HANGBOARD in TrainingPlaces.of(edited).single().equipment)
+        // Without any place there is no default to come back to: nothing changes.
+        assertEquals(AthleteProfile(), TrainingPlaces.pick(AthleteProfile(), TrainingPlaces.NO_GEAR_ID, today))
+    }
+
+    @Test
     fun editsGoToThePlaceInUseAndTheLastPlaceStays() {
         val (two, gymId) = TrainingPlaces.add(TrainingPlaces.withEquipment(AthleteProfile(), null, home, today), PlaceKind.GYM, gym, today)
         val atGym = TrainingPlaces.pick(two, gymId, today)

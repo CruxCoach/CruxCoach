@@ -36,7 +36,29 @@
     <string name="trt_continue_workout">Training in progress – continue</string>
     <string name="trt_pause_end">End pause</string>
     <string name="trt_checkin_title">How are you today?</string>
-    <string name="trt_checkin_hint">Optional, four taps. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
+    <string name="trt_quick_title">Quick check first</string>
+    <string name="trt_quick_text">Two questions, so today\'s suggestion fits how you are.</string>
+    <string name="trt_quick_strength">How strong do you feel today?</string>
+    <string name="trt_quick_weak">weak</string>
+    <string name="trt_quick_strong">strong</string>
+    <string name="trt_quick_hurts">Does anything hurt or not feel right?</string>
+    <string name="trt_quick_no">No</string>
+    <string name="trt_quick_yes">Yes</string>
+    <string name="trt_quick_where">Where? That area is spared today.</string>
+    <string name="trt_quick_show">Show suggestion</string>
+    <string name="trt_quick_more">More questions (sleep, skin, fingers)</string>
+    <string name="trt_q_sore">Hurts today</string>
+    <string name="trt_short_sore">hurts: %1$s</string>
+    <string name="trt_next_kind">What do you feel like today?</string>
+    <string name="trt_kind_finger">Fingers</string>
+    <string name="trt_kind_pull_push">Pull &amp; push</string>
+    <string name="trt_kind_legs_core">Legs &amp; core</string>
+    <string name="trt_kind_board">Board</string>
+    <string name="trt_kind_mobility">Stretching</string>
+    <string name="trt_kind_coach">As the coach suggests</string>
+    <string name="trt_next_place">Where are you training?</string>
+    <string name="trt_reason_chosen">Your choice for today.</string>
+    <string name="trt_checkin_hint">Optional. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
     <string name="trt_q_sleep">Sleep</string>
     <string name="trt_q_energy">Energy</string>
     <string name="trt_q_skin">Skin</string>

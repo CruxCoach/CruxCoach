@@ -184,6 +184,8 @@ fun TodayScreen(
                         onOpenPlaylistGenerator = onOpenPlaylistGenerator,
                         checkin = { CheckinRow(state, onOpen = { showCheckin = true }) },
                         onPickPlace = viewModel::pickPlace,
+                        onQuickCheckin = viewModel::saveQuickCheckin,
+                        onMoreCheckin = { showCheckin = true },
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -234,7 +236,7 @@ fun TodayScreen(
     pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
     if (showCheckin) {
         CheckinSheet(state, onDismiss = { showCheckin = false },
-            onSave = { s, e, sk, f, sick -> viewModel.saveCheckin(s, e, sk, f, sick); showCheckin = false },
+            onSave = { s, e, sk, f, sick, sore -> viewModel.saveCheckin(s, e, sk, f, sick, sore); showCheckin = false },
             onClear = { viewModel.clearCheckin(); showCheckin = false })
     }
     if (showWeight) {
@@ -265,6 +267,8 @@ fun TodayScreen(
         NextSuggestionSheet(
             state = state,
             onDismiss = { askWhy = false },
+            onFocus = { focus -> askWhy = false; viewModel.chooseFocus(focus) },
+            onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
             onChoose = { feedback, slug ->
                 askWhy = false
                 viewModel.nextSuggestion(feedback, slug)
@@ -558,14 +562,14 @@ private fun CheckinRow(state: TodayState, onOpen: () -> Unit) {
 private fun CheckinSheet(
     state: TodayState,
     onDismiss: () -> Unit,
-    onSave: (Int?, Int?, Int?, Int?, Boolean) -> Unit,
+    onSave: (Int?, Int?, Int?, Int?, Boolean, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
     onClear: () -> Unit,
 ) {
     val checkin = state.checkin
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("today_checkin_sheet")) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).verticalScroll(rememberScrollState())) {
-            CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false, onSave)
+            CheckinForm(checkin?.sleep, checkin?.energy, checkin?.skin, checkin?.fingers, checkin?.sick ?: false, checkin?.sore.orEmpty(), onSave)
             if (checkin != null) {
                 TextButton(onClick = onClear, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text(stringResource(R.string.trt_checkin_reset)) }
             }
@@ -589,6 +593,7 @@ private fun ReadinessResult(state: TodayState, onEdit: (() -> Unit)?) {
         c?.skin?.let { stringResource(R.string.trt_q_skin) + " " + it },
         c?.fingers?.let { stringResource(R.string.trt_q_fingers) + " " + it },
         if (c?.sick == true) stringResource(R.string.trt_short_sick) else null,
+        c?.sore?.takeIf { it.isNotEmpty() }?.let { set -> stringResource(R.string.trt_short_sore, set.map { regionLabel(it) }.joinToString(", ")) },
     )
     val factor = r.reasons.firstOrNull { it != ReadinessReason.INJURY_CLIMBING_PAUSED && it != ReadinessReason.INJURY_ACTIVE && it != ReadinessReason.ALL_GOOD }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -643,8 +648,10 @@ private fun readinessReasonShort(reason: ReadinessReason): String = stringResour
 @Composable
 private fun CheckinForm(
     sleep0: Int?, energy0: Int?, skin0: Int?, fingers0: Int?, sick0: Boolean,
-    onSave: (Int?, Int?, Int?, Int?, Boolean) -> Unit,
+    sore0: Set<com.cruxcoach.athlete.model.InjuryRegion>,
+    onSave: (Int?, Int?, Int?, Int?, Boolean, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
 ) {
+    var sore by rememberSaveable { mutableStateOf(sore0.map { it.name }) }
     var sleep by rememberSaveable { mutableStateOf(sleep0) }
     var energy by rememberSaveable { mutableStateOf(energy0) }
     var skin by rememberSaveable { mutableStateOf(skin0) }
@@ -667,11 +674,93 @@ private fun CheckinForm(
         Checkbox(checked = sick, onCheckedChange = { sick = it }, modifier = Modifier.testTag("checkin_sick"))
         Text(stringResource(R.string.trt_q_sick))
     }
+    Text(stringResource(R.string.trt_q_sore), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+    SoreChips(sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()) { set ->
+        sore = set.map { it.name }
+    }
+    val soreSet = sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()
     Button(
-        onClick = { onSave(sleep, energy, skin, fingers, sick) },
-        enabled = sick || listOf(sleep, energy, skin, fingers).any { it != null },
+        onClick = { onSave(sleep, energy, skin, fingers, sick, soreSet) },
+        enabled = sick || soreSet.isNotEmpty() || listOf(sleep, energy, skin, fingers).any { it != null },
         modifier = Modifier.fillMaxWidth().testTag("checkin_save"),
     ) { Text(stringResource(R.string.tr_action_save)) }
+}
+
+/**
+ * Before today's suggestion: how strong the athlete feels and whether anything
+ * hurts – and what. Both are optional; "Show suggestion" works with or
+ * without answers. What hurts is spared today without becoming an injury.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun QuickCheckin(onSave: (Int?, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit, onMore: () -> Unit) {
+    val chipColors = answerChipColors()
+    var strength by rememberSaveable { mutableStateOf<Int?>(null) }
+    var hurts by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var sore by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val soreSet = sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("today_quick_checkin")) {
+        Text(stringResource(R.string.trt_quick_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.trt_quick_text), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.trt_quick_strength), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            (1..5).forEach { v ->
+                FilterChip(
+                    selected = strength == v,
+                    onClick = { strength = if (strength == v) null else v },
+                    label = { Text("$v", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+                    colors = chipColors,
+                    modifier = Modifier.weight(1f).testTag("today_quick_strength_$v"),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.trt_quick_weak), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.trt_quick_strong), style = MaterialTheme.typography.bodySmall)
+        }
+        Text(stringResource(R.string.trt_quick_hurts), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = hurts == false, onClick = { hurts = false; sore = emptyList() },
+                label = { Text(stringResource(R.string.trt_quick_no)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_no"))
+            FilterChip(selected = hurts == true, onClick = { hurts = true },
+                label = { Text(stringResource(R.string.trt_quick_yes)) }, colors = chipColors, modifier = Modifier.testTag("today_quick_hurts_yes"))
+        }
+        if (hurts == true) {
+            Text(stringResource(R.string.trt_quick_where), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            SoreChips(soreSet) { set -> sore = set.map { it.name } }
+        }
+        Button(
+            onClick = { onSave(strength, if (hurts == true) soreSet else emptySet()) },
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = 52.dp).testTag("today_quick_show"),
+        ) { Text(stringResource(R.string.trt_quick_show)) }
+        TextButton(onClick = onMore, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("today_quick_more")) {
+            Text(stringResource(R.string.trt_quick_more))
+        }
+    }
+}
+
+/** An answer stands out on the suggestion card, whose colour the default selected chip shares. */
+@Composable
+private fun answerChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = CruxCoachDesign.colors.brandAccent,
+    selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
+)
+
+/** Body areas as chips, several at once; the same ones as for an injury. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SoreChips(selected: Set<com.cruxcoach.athlete.model.InjuryRegion>, onChange: (Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        com.cruxcoach.athlete.model.InjuryRegion.entries.forEach { r ->
+            FilterChip(
+                selected = r in selected,
+                onClick = { onChange(if (r in selected) selected - r else selected + r) },
+                label = { Text(regionLabel(r)) },
+                colors = answerChipColors(),
+                modifier = Modifier.testTag("today_sore_${r.name.lowercase()}"),
+            )
+        }
+    }
 }
 
 /** 1–5 as five tappable dots; tapping the selected value clears it (every question is optional). */
@@ -907,6 +996,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.RETURN_AFTER_BREAK -> R.string.tre_reason_return_break
     SuggestionReason.RETURN_FINGER -> R.string.tre_reason_return_finger
     SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
+    SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
 })
 
 /**
@@ -926,6 +1016,8 @@ private fun DailySuggestionCard(
     onOpenPlaylistGenerator: (type: String, minutes: Int) -> Unit = { _, _ -> },
     checkin: @Composable () -> Unit = {},
     onPickPlace: (String) -> Unit = {},
+    onQuickCheckin: (Int?, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit = { _, _ -> },
+    onMoreCheckin: () -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     val language = catalogLanguage()
@@ -950,6 +1042,11 @@ private fun DailySuggestionCard(
                             .clickable(onClickLabel = stringResource(R.string.tru_why), onClick = onWhy)
                             .padding(horizontal = 4.dp, vertical = 2.dp).testTag("today_block"))
                 }
+            }
+            if (state.asksBeforeSuggestion) {
+                // Two questions first, then the suggestion that fits them (owner 2026-10-15).
+                QuickCheckin(onSave = onQuickCheckin, onMore = onMoreCheckin)
+                return@Column
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
@@ -1233,17 +1330,63 @@ private fun NextSuggestionSheet(
     state: TodayState,
     onDismiss: () -> Unit,
     onChoose: (com.cruxcoach.athlete.model.SuggestionFeedback?, String?) -> Unit,
+    onFocus: (SuggestionFocus?) -> Unit = {},
+    onPlace: (String) -> Unit = {},
 ) {
     val language = catalogLanguage()
     var pickDislike by remember { mutableStateOf(false) }
     val main = state.suggestion?.routine?.items?.filter { !it.warmup }.orEmpty()
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("today_next_sheet")) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-            Text(stringResource(R.string.tre_next_title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.tre_next_subtitle), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(12.dp))
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("today_next_sheet")) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             if (!pickDislike) {
+                // What the athlete feels like today (owner 2026-10-15: "rather push and pull than fingers").
+                Text(stringResource(R.string.trt_next_kind), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(SuggestionFocus.FINGER_STRENGTH, SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE,
+                        SuggestionFocus.BOARD_DAY, SuggestionFocus.MOBILITY_RECOVERY).forEach { f ->
+                        FilterChip(
+                            selected = state.wish == f,
+                            onClick = { onFocus(if (state.wish == f) null else f) },
+                            label = { Text(stringResource(when (f) {
+                                SuggestionFocus.FINGER_STRENGTH -> R.string.trt_kind_finger
+                                SuggestionFocus.PULL_PUSH -> R.string.trt_kind_pull_push
+                                SuggestionFocus.LEGS_CORE -> R.string.trt_kind_legs_core
+                                SuggestionFocus.BOARD_DAY -> R.string.trt_kind_board
+                                else -> R.string.trt_kind_mobility
+                            })) },
+                            modifier = Modifier.testTag("today_kind_${f.name.lowercase()}"),
+                        )
+                    }
+                    if (state.wish != null) {
+                        SuggestionChip(onClick = { onFocus(null) }, label = { Text(stringResource(R.string.trt_kind_coach)) },
+                            modifier = Modifier.testTag("today_kind_coach"))
+                    }
+                }
+                // Where: a place without a hangboard makes no finger day (owner 2026-10-15).
+                val places = TrainingPlaces.of(state.profile)
+                if (places.isNotEmpty()) {
+                    val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
+                    val currentId = TrainingPlaces.current(state.profile, day)?.id
+                    Text(stringResource(R.string.trt_next_place), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (places + TrainingPlaces.NO_GEAR).forEach { place ->
+                            FilterChip(
+                                selected = place.id == currentId,
+                                onClick = { if (place.id != currentId) onPlace(place.id) },
+                                label = { Text(com.cruxcoach.android.ui.training.common.placeLabel(place)) },
+                                leadingIcon = { Icon(com.cruxcoach.android.ui.training.common.placeIcon(place.kind), null, Modifier.size(18.dp)) },
+                                modifier = Modifier.testTag("today_next_place_${place.id}"),
+                            )
+                        }
+                    }
+                }
+                Text(stringResource(R.string.tre_next_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+                Text(stringResource(R.string.tre_next_subtitle), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     val fb = com.cruxcoach.athlete.model.SuggestionFeedback.entries
                     fb.forEach { f ->

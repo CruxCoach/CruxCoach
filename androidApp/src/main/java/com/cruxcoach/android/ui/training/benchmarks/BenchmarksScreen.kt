@@ -294,9 +294,11 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
     val units = profile.units
     val cap = BenchmarkMath.capacity(def, b, bodyweight)
     val pieces = mutableListOf<String>()
+    val sets = b.sets
     when (BenchmarkMath.capacityKind(def)) {
         CapacityKind.E1RM_TOTAL -> {
-            pieces += loadText(def, b.loadKg ?: 0.0, units) + " × " + (b.reps ?: 0)
+            pieces += if (sets != null) "$sets × ${b.reps ?: 0} · " + loadText(def, b.loadKg ?: 0.0, units)
+                else loadText(def, b.loadKg ?: 0.0, units) + " × " + (b.reps ?: 0)
             if (cap != null) {
                 val bw = b.bodyweightKg ?: bodyweight
                 val shown = if (def.load == LoadMode.BODYWEIGHT_PLUS && bw != null) cap.value - bw else cap.value
@@ -304,7 +306,9 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
             }
         }
         CapacityKind.TEN_SECOND_MAX -> {
-            pieces += loadText(def, b.loadKg ?: 0.0, units) + " · " + stringResource(R.string.tr_format_seconds, (b.durationS ?: 10.0).roundToInt())
+            val seconds = stringResource(R.string.tr_format_seconds, (b.durationS ?: 10.0).roundToInt())
+            pieces += if (sets != null) "$sets × $seconds · " + loadText(def, b.loadKg ?: 0.0, units)
+                else loadText(def, b.loadKg ?: 0.0, units) + " · " + seconds
             b.edgeMm?.let { pieces += stringResource(R.string.tr_format_mm, formatNumber(it)) }
             b.grip?.let { pieces += gripLabel(it) }
             val bw = b.bodyweightKg ?: bodyweight
@@ -312,8 +316,14 @@ fun benchmarkSummary(def: ExerciseDefinition, b: Benchmark, profile: AthleteProf
                 pieces += stringResource(R.string.trbm_ten_second_max, formatMass(cap.value, units), (cap.value / bw * 100).roundToInt())
             }
         }
-        CapacityKind.MAX_REPS -> pieces += stringResource(R.string.trbm_max_reps, b.reps ?: 0)
-        CapacityKind.MAX_SECONDS -> pieces += stringResource(R.string.trbm_max_seconds, (b.durationS ?: 0.0).roundToInt())
+        CapacityKind.MAX_REPS -> if (sets != null) {
+            pieces += stringResource(R.string.trbm_sets_reps, sets, b.reps ?: 0)
+            cap?.let { pieces += stringResource(R.string.trbm_max_reps_about, it.value.roundToInt()) }
+        } else pieces += stringResource(R.string.trbm_max_reps, b.reps ?: 0)
+        CapacityKind.MAX_SECONDS -> if (sets != null) {
+            pieces += "$sets × " + stringResource(R.string.tr_format_seconds, (b.durationS ?: 0.0).roundToInt())
+            cap?.let { pieces += stringResource(R.string.trbm_max_seconds_about, it.value.roundToInt()) }
+        } else pieces += stringResource(R.string.trbm_max_seconds, (b.durationS ?: 0.0).roundToInt())
         null -> Unit
     }
     return pieces.joinToString(" · ")
@@ -362,6 +372,9 @@ fun BenchmarkEntryDialog(
 ) {
     val units = profile.units
     val kind = BenchmarkMath.capacityKind(def) ?: run { onDismiss(); return }
+    // Owner 2026-10-15: "I don't know my max with +20 kg, but I can do 5×5 with 20 kg" – sets with reserve are the default.
+    var several by rememberSaveable { mutableStateOf(true) }
+    var setsText by rememberSaveable { mutableStateOf("3") }
     var loadText by rememberSaveable { mutableStateOf("") }
     var repsText by rememberSaveable { mutableStateOf("") }
     var secondsText by rememberSaveable { mutableStateOf(if (kind == CapacityKind.TEN_SECOND_MAX) "10" else "") }
@@ -371,6 +384,7 @@ fun BenchmarkEntryDialog(
 
     val loadKg = parseDecimal(loadText)?.let { Units.massFromDisplay(it, units) }
     val reps = repsText.trim().toIntOrNull()
+    val sets = setsText.trim().toIntOrNull()?.takeIf { several }
     val seconds = parseDecimal(secondsText)
     val edge = parseDecimal(edgeText)
     val needsLoad = kind == CapacityKind.E1RM_TOTAL || kind == CapacityKind.TEN_SECOND_MAX
@@ -382,8 +396,9 @@ fun BenchmarkEntryDialog(
         reps = reps.takeIf { kind == CapacityKind.E1RM_TOTAL || kind == CapacityKind.MAX_REPS },
         durationS = seconds.takeIf { kind == CapacityKind.TEN_SECOND_MAX || kind == CapacityKind.MAX_SECONDS },
         bodyweightKg = bodyweight, source = BenchmarkSource.MANUAL, measuredAt = System.currentTimeMillis(),
+        sets = sets,
     )
-    val valid = when (kind) {
+    val valid = (!several || (sets ?: 0) in 1..20) && when (kind) {
         CapacityKind.E1RM_TOTAL -> draft.loadKg != null && (reps ?: 0) in 1..30
         CapacityKind.TEN_SECOND_MAX -> draft.loadKg != null && (seconds ?: 0.0) in 3.0..60.0
         CapacityKind.MAX_REPS -> (reps ?: 0) in 1..500
@@ -396,12 +411,30 @@ fun BenchmarkEntryDialog(
         title = { Text(def.name(catalogLanguage())) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(stringResource(when (kind) {
+                // What the athlete knows: several sets in training, or one maximal effort.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                    FilterChip(selected = several, onClick = { several = true }, label = { Text(stringResource(R.string.trbm_mode_sets)) },
+                        modifier = Modifier.testTag("benchmark_mode_sets"))
+                    FilterChip(selected = !several, onClick = { several = false }, label = { Text(stringResource(R.string.trbm_mode_max)) },
+                        modifier = Modifier.testTag("benchmark_mode_max"))
+                }
+                Text(stringResource(if (several) when (kind) {
+                    CapacityKind.E1RM_TOTAL -> R.string.trbm_hint_sets_e1rm
+                    CapacityKind.TEN_SECOND_MAX -> R.string.trbm_hint_sets_hang
+                    CapacityKind.MAX_REPS -> R.string.trbm_hint_sets_reps
+                    CapacityKind.MAX_SECONDS -> R.string.trbm_hint_sets_seconds
+                } else when (kind) {
                     CapacityKind.E1RM_TOTAL -> R.string.trbm_hint_e1rm
                     CapacityKind.TEN_SECOND_MAX -> R.string.trbm_hint_hang
                     CapacityKind.MAX_REPS -> R.string.trbm_hint_reps
                     CapacityKind.MAX_SECONDS -> R.string.trbm_hint_seconds
                 }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (several) {
+                    OutlinedTextField(value = setsText, onValueChange = { setsText = it.filter(Char::isDigit).take(2) }, singleLine = true,
+                        label = { Text(stringResource(R.string.trbm_sets)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("benchmark_sets"))
+                }
                 if (def.unilateral) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                         listOf(Side.LEFT, Side.RIGHT).forEach { s ->

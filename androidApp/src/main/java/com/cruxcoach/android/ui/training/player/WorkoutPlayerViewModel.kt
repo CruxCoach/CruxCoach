@@ -105,6 +105,10 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     /** Set the athlete moved to by skipping; null = the first open set. */
     private var focusId: String? = null
+    /** A completed set the athlete went back to, to look at or correct it. */
+    private var reviewId: String? = null
+    /** Sets after which the athlete changed the next load by hand: their reserve answer no longer moves it. */
+    private val manualAfter = mutableSetOf<String>()
     /** What autoregulation already applied per completed set, so a changed reserve answer never stacks steps. */
     private val applied = mutableMapOf<String, SetAdjustment?>()
     private var advanceJob: Job? = null
@@ -144,10 +148,12 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),
                 current = null, upcoming = null, profile = profile)
             val ordered = PlayerQueue.ordered(sets)
+            val review = reviewId?.let { id -> ordered.firstOrNull { it.id == id && it.isCompleted } }
+            if (review == null) reviewId = null
             val focus = focusId?.let { id -> ordered.firstOrNull { it.id == id && !it.isCompleted } }
             if (focus == null) focusId = null
-            val currentSet = focus ?: PlayerQueue.current(ordered)
-            val upcomingSet = currentSet?.let { PlayerQueue.nextAfter(ordered, it) }?.takeIf { it.id != currentSet.id }
+            val currentSet = review ?: focus ?: PlayerQueue.current(ordered)
+            val upcomingSet = currentSet?.takeIf { review == null }?.let { PlayerQueue.nextAfter(ordered, it) }?.takeIf { it.id != currentSet.id }
             val phase = when {
                 st.phase == PlayerPhase.REST || st.phase == PlayerPhase.TIMER -> st.phase
                 currentSet == null && ordered.isNotEmpty() -> PlayerPhase.COMPLETE
@@ -185,14 +191,125 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     // ── Set view actions ─────────────────────────────────────────────
 
-    /** Optimistic: the value changes on screen at once, the database follows in order. */
+    /**
+     * Optimistic: the value changes on screen at once, the database follows in order.
+     * A load the athlete changes on an open set carries over to the sets after it
+     * (owner 2026-10-15: the recommendation must be overridable – "too heavy" for
+     * one set is too heavy for the next one too). A completed set changed
+     * afterwards moves the rest of its block like a fresh answer would.
+     */
     fun update(set: ExerciseSet) {
+        val before = _state.value.sets.firstOrNull { it.id == set.id }
+        val carried = carryLoad(before, set)
         replaceLocal(set)
-        enqueue { service.updateSet(set) }
+        carried.forEach(::replaceLocal)
+        enqueue {
+            service.updateSet(set)
+            carried.forEach { service.updateSet(it) }
+            // Only for sets done in this training session: an older one's step is unknown and would stack.
+            if (set.isCompleted && set.setType == SetType.WORK && set.id !in manualAfter && applied.containsKey(set.id)) {
+                readjust(set)
+                withContext(Dispatchers.Main) {
+                    _state.update { s -> if (s.lastDone?.set?.id == set.id) s.copy(adjustment = applied[set.id]) else s }
+                }
+            }
+        }
+    }
+
+    /**
+     * During a rest: the athlete sets the next load by hand. It carries over like
+     * [update], and the reserve answer for the set just done no longer moves it.
+     */
+    fun updateNext(set: ExerciseSet) {
+        val done = _state.value.lastDone?.set
+        if (done != null) manualAfter += done.id
+        _state.update { st -> st.copy(next = st.next?.let { if (it.set.id == set.id) it.copy(set = set) else it }, adjustment = null) }
+        update(set)
+    }
+
+    /** The open sets after [after] in its block and side that followed its old load, moved by the same step. */
+    private fun carryLoad(before: ExerciseSet?, after: ExerciseSet): List<ExerciseSet> {
+        if (before == null || before.isCompleted || after.isCompleted) return emptyList()
+        val def = service.catalog.fallbackFor(after.exerciseSlug)
+        if (def.load != com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS && def.load != com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL) return emptyList()
+        // No load yet means body weight (or nothing on the block): the first "+" starts from zero.
+        val old = before.loadKg ?: 0.0
+        val new = after.loadKg ?: return emptyList()
+        val delta = new - old
+        if (kotlin.math.abs(delta) < 1e-9) return emptyList()
+        val min = if (def.load == com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL) 0.0 else Double.NEGATIVE_INFINITY
+        return _state.value.sets.filter {
+            val load = it.loadKg ?: 0.0
+            it.id != after.id && !it.isCompleted && it.blockIndex == after.blockIndex && it.side == after.side &&
+                it.setType == after.setType && it.setIndex > after.setIndex &&
+                // Untouched by the athlete, or already following the old value.
+                (load == (it.targetLoadKg ?: load) || load == old)
+        }.map { s ->
+            val moved = ((s.loadKg ?: 0.0) + delta).coerceAtLeast(min)
+            // Target and value move together: autoregulation keeps working from the athlete's load.
+            s.copy(loadKg = moved, targetLoadKg = moved)
+        }
+    }
+
+    private suspend fun readjust(done: ExerciseSet) {
+        val adjustment = runCatching { service.adjustUpcomingSets(done.workoutId, done, applied[done.id]) }.getOrNull()
+        applied[done.id] = adjustment
+    }
+
+    // ── Moving between sets ──────────────────────────────────────────
+
+    /** The set before the shown one, done or not (owner 2026-10-15: "you cannot go back between sets"). */
+    fun back() {
+        val st = _state.value
+        val shown = st.current?.set ?: return
+        val index = st.sets.indexOfFirst { it.id == shown.id }
+        st.sets.getOrNull(index - 1)?.let(::show)
+    }
+
+    /** From a completed set: the next one in order; from an open one this is [skip]. */
+    fun forward() {
+        val st = _state.value
+        val shown = st.current?.set ?: return
+        if (!shown.isCompleted) return skip()
+        val index = st.sets.indexOfFirst { it.id == shown.id }
+        val next = st.sets.getOrNull(index + 1)
+        if (next != null) show(next) else resume()
+    }
+
+    /** Leaves a completed set and goes on with the next open one. */
+    fun resume() {
+        val st = _state.value
+        val shown = st.current?.set
+        reviewId = null
+        val next = shown?.let { s -> PlayerQueue.nextAfter(st.sets, s)?.takeIf { !it.isCompleted } } ?: PlayerQueue.current(st.sets)
+        if (next == null) { _state.update { it.copy(phase = PlayerPhase.COMPLETE) }; return }
+        show(next)
+    }
+
+    /** "Not done after all": the completed set opens again and what it changed in its block is taken back. */
+    fun reopen() {
+        val set = _state.value.current?.set?.takeIf { it.isCompleted } ?: return
+        val open = set.copy(completedAt = null)
+        replaceLocal(open)
+        show(open)
+        enqueue {
+            service.reopenSet(set)
+            if (applied.containsKey(set.id)) readjust(open)
+        }
+    }
+
+    private fun show(target: ExerciseSet) {
+        if (target.isCompleted) reviewId = target.id else { reviewId = null; focusId = target.id }
+        advanceJob?.cancel()
+        _state.update { s ->
+            val upcoming = if (target.isCompleted) null else PlayerQueue.nextAfter(s.sets, target)?.takeIf { it.id != target.id }
+            s.copy(phase = PlayerPhase.SET, current = item(s.sets, target), upcoming = upcoming?.let { item(s.sets, it) },
+                lastDone = null, next = null, restArmed = false, restFinished = false, feedback = null, adjustment = null, sideSwitch = false)
+        }
     }
 
     fun startTimer() {
-        if (_state.value.current != null) _state.update { it.copy(phase = PlayerPhase.TIMER) }
+        if (_state.value.current?.set?.isCompleted == false) _state.update { it.copy(phase = PlayerPhase.TIMER) }
     }
 
     fun cancelTimer() {
@@ -202,7 +319,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     /** Leaves the shown set open and moves to the next one. */
     fun skip() {
         val st = _state.value
-        val current = st.current ?: return
+        val current = st.current?.takeIf { !it.set.isCompleted } ?: return
         val next = PlayerQueue.nextAfter(st.sets, current.set)?.takeIf { it.id != current.set.id } ?: return
         focusId = next.id
         // A skipped set tells the coach something about the exercise (FEAT-071 ledger).
@@ -223,7 +340,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     fun completeCurrent(heldSeconds: Double? = null) {
         val st = _state.value
         val current0 = st.current ?: return
-        if (st.phase == PlayerPhase.REST) return
+        if (st.phase == PlayerPhase.REST || current0.set.isCompleted) return
         val current = if (heldSeconds == null) current0 else current0.copy(set = current0.set.copy(durationS = heldSeconds))
         val doneLocal = current.set.copy(completedAt = System.currentTimeMillis())
         val setsAfter = st.sets.map { if (it.id == doneLocal.id) doneLocal else it }
@@ -283,6 +400,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         _state.update { it.copy(lastDone = it.lastDone?.copy(set = updated)) }
         enqueue {
             service.updateSet(updated)
+            // The athlete set the next load by hand: that wins over the answer.
+            if (updated.id in manualAfter) return@enqueue
             // The answer arrives during the rest, before the next set starts: adjust what is still planned.
             val adjustment = runCatching { service.adjustUpcomingSets(updated.workoutId, updated, applied[updated.id]) }.getOrNull()
             applied[updated.id] = adjustment
@@ -373,9 +492,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     private fun replaceLocal(set: ExerciseSet) {
         _state.update { st ->
+            fun PlayerItem.fresh() = if (this.set.id == set.id) copy(set = set) else this
             st.copy(
                 sets = st.sets.map { if (it.id == set.id) set else it },
-                current = st.current?.let { if (it.set.id == set.id) it.copy(set = set) else it },
+                current = st.current?.fresh(),
+                upcoming = st.upcoming?.fresh(),
+                lastDone = st.lastDone?.fresh(),
+                next = st.next?.fresh(),
             )
         }
     }

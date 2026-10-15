@@ -80,6 +80,7 @@ fun WorkoutScreen(
     }
 
     var showFinish by rememberSaveable { mutableStateOf(false) }
+    var typing by rememberSaveable { mutableStateOf(false) }
     var timerFor by remember { mutableStateOf<Pair<ExerciseSet, ExerciseDefinition>?>(null) }
     val workout = state.workout
 
@@ -139,6 +140,14 @@ fun WorkoutScreen(
                             onTimer = { set -> timerFor = set to block.def },
                         )
                     }
+                    // Quicker than the catalogue for a free training: "Klimmzüge 5x5 +20 kg, Plank 3x60s".
+                    item {
+                        TextButton(onClick = { typing = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("workout_type")) {
+                            Icon(Icons.Default.EditNote, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.trwo_text_open))
+                        }
+                    }
                     item { Spacer(Modifier.height(8.dp)) }
                 }
                 Surface(tonalElevation = 3.dp) {
@@ -168,6 +177,15 @@ fun WorkoutScreen(
         }
     }
 
+    if (typing) {
+        val catalog by produceState(com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY) { value = viewModel.catalog() }
+        com.cruxcoach.android.ui.training.workouts.WorkoutTextSheet(
+            catalog = catalog,
+            units = state.profile.units,
+            onDismiss = { typing = false },
+            onApply = { result -> typing = false; viewModel.addTyped(result) },
+        )
+    }
     if (showFinish && workout != null && state.blocks.none { b -> b.sets.any { it.isCompleted } }) {
         NothingDoneDialog(onKeep = { showFinish = false }, onDiscard = { showFinish = false; viewModel.discard() })
     } else if (showFinish && workout != null) {

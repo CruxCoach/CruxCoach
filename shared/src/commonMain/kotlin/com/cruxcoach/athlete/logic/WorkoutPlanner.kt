@@ -67,6 +67,8 @@ object WorkoutPlanner {
         val itemReps = item.repsMax ?: item.repsMin
         // With a performance value the prescription wins over last time's
         // numbers: that is what makes loads progress instead of repeating.
+        // A load the athlete wrote into the workout wins over both (owner
+        // 2026-10-15: recommendations must be overridable).
         val targets = sides.associateWith { side -> LoadPrescriber.prescribe(def, item, capacityFor(side), bodyweightKg, incrementKg) }
         val rows = (0 until item.sets.coerceIn(1, 20)).flatMap { setIndex ->
             sides.map { side ->
@@ -84,7 +86,7 @@ object WorkoutPlanner {
                     side = side,
                     targetReps = targetReps.takeIf { def.kind == ExerciseKind.REPS || def.kind == ExerciseKind.LOAD_REPS },
                     targetDurationS = targetDuration?.toDouble()?.takeIf { def.kind == ExerciseKind.TIME || def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.CLIMB },
-                    targetLoadKg = target?.loadKg ?: item.loadKg,
+                    targetLoadKg = item.loadKg ?: target?.loadKg,
                     reps = when (def.kind) {
                         ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> target?.reps ?: ghost?.reps ?: targetReps
                         ExerciseKind.CLIMB -> ghost?.reps ?: item.repsPerSet
@@ -95,7 +97,7 @@ object WorkoutPlanner {
                         else -> null
                     },
                     loadKg = if (def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL)
-                        target?.loadKg ?: ghost?.loadKg ?: item.loadKg else null,
+                        item.loadKg ?: target?.loadKg ?: ghost?.loadKg else null,
                     edgeMm = (ghost?.edgeMm ?: item.edgeMm?.toDouble())
                         .takeIf { def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL },
                     grip = ghost?.grip ?: item.grip,

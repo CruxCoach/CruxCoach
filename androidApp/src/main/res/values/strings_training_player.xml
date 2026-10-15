@@ -9,6 +9,18 @@
     <string name="trp_done_without_timer">Done without timer</string>
     <string name="trp_done_set">Set done</string>
     <string name="trp_skip">Skip</string>
+    <string name="trp_prev_set">Previous set</string>
+    <string name="trp_next_set">Next set</string>
+    <string name="trp_resume">Continue</string>
+    <string name="trp_reopen">Not done after all</string>
+    <string name="trp_set_done_label">Done</string>
+    <string name="trp_review_hint">Logged like this. Change a value if it was different.</string>
+    <plurals name="trp_load_carried">
+        <item quantity="one">Also for the next set</item>
+        <item quantity="other">Also for the next %1$d sets</item>
+    </plurals>
+    <string name="trp_correct_done">Correct the last set</string>
+    <string name="trp_correct_title">Correct %1$s</string>
     <string name="trp_next_after">After this: %1$s</string>
     <plurals name="trp_reps_big">
         <item quantity="one">%d rep</item>

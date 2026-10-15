@@ -74,6 +74,47 @@ class SessionSuggesterTest {
 
     private fun slugs(s: SessionSuggestion) = s.routine.items.map { it.slug }
 
+    // ── The athlete's choice for today (owner 2026-10-15) ──
+
+    @Test
+    fun aChosenKindWinsOverTheRotation() {
+        val fresh = SessionSuggester.suggest(input())
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, fresh.focus)
+        val pull = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.PULL_PUSH))
+        assertEquals(SuggestionFocus.PULL_PUSH, pull.focus)
+        assertEquals(SuggestionReason.CHOSEN_TODAY, pull.reasons.first())
+        assertTrue(pull.routine.items.none { catalog[it.slug]?.category == ExerciseCategoryV2.FINGER })
+        val stretch = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.MOBILITY_RECOVERY))
+        assertEquals(SuggestionFocus.MOBILITY_RECOVERY, stretch.focus)
+        assertTrue(stretch.routine.items.isNotEmpty() && stretch.routine.items.all { catalog[it.slug]?.category == ExerciseCategoryV2.MOBILITY })
+    }
+
+    @Test
+    fun aChosenFingerDayStillRespectsTiredFingersAndTheEquipment() {
+        val tired = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, fingers = 1)).copy(wish = SuggestionFocus.FINGER_STRENGTH))
+        assertEquals(SuggestionFocus.PULL_PUSH, tired.focus)
+        assertTrue(SuggestionReason.FINGERS_TIRED in tired.reasons, "${tired.reasons}")
+        // At a place without hangboard or block: no finger day, and it says why.
+        val bare = profile.copy(equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT))
+        val noGear = SessionSuggester.suggest(input(profile = bare).copy(wish = SuggestionFocus.FINGER_STRENGTH))
+        assertEquals(SuggestionFocus.PULL_PUSH, noGear.focus)
+        assertTrue(SuggestionReason.NO_FINGER_EQUIPMENT in noGear.reasons, "${noGear.reasons}")
+    }
+
+    @Test
+    fun whatHurtsTodayIsSparedWithoutBecomingAnInjury() {
+        val checkin = Checkin(monday.toString(), 0, sore = setOf(InjuryRegion.SHOULDER))
+        val sore = Soreness.injuries(checkin)
+        assertEquals(1, sore.size)
+        val s = SessionSuggester.suggest(input(checkin = checkin, injuries = sore).copy(wish = SuggestionFocus.PULL_PUSH))
+        // Push-ups and the band rotation load the shoulder: left out today.
+        assertTrue(s.routine.items.none { catalog[it.slug]?.domains?.contains(LoadDomain.SHOULDER) == true }, "${slugs(s)}")
+        // Sore fingers keep the day off the wall and away from finger load.
+        val fingers = Checkin(monday.toString(), 0, sore = setOf(InjuryRegion.FINGER))
+        val f = SessionSuggester.suggest(input(checkin = fingers, injuries = Soreness.injuries(fingers)))
+        assertTrue(f.routine.items.none { catalog[it.slug]?.category == ExerciseCategoryV2.FINGER && it.warmup.not() }, "${slugs(f)}")
+    }
+
     @Test
     fun restWhenSick() {
         val s = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, sick = true)))

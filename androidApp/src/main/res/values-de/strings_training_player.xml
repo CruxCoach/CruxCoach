@@ -9,6 +9,18 @@
     <string name="trp_done_without_timer">Ohne Timer erledigt</string>
     <string name="trp_done_set">Satz erledigt</string>
     <string name="trp_skip">Überspringen</string>
+    <string name="trp_prev_set">Vorheriger Satz</string>
+    <string name="trp_next_set">Nächster Satz</string>
+    <string name="trp_resume">Weiter</string>
+    <string name="trp_reopen">Doch nicht erledigt</string>
+    <string name="trp_set_done_label">Erledigt</string>
+    <string name="trp_review_hint">So eingetragen. Ändere einen Wert, wenn es anders war.</string>
+    <plurals name="trp_load_carried">
+        <item quantity="one">Gilt auch für den nächsten Satz</item>
+        <item quantity="other">Gilt auch für die nächsten %1$d Sätze</item>
+    </plurals>
+    <string name="trp_correct_done">Letzten Satz korrigieren</string>
+    <string name="trp_correct_title">%1$s korrigieren</string>
     <string name="trp_next_after">Danach: %1$s</string>
     <plurals name="trp_reps_big">
         <item quantity="one">%d Wdh.</item>

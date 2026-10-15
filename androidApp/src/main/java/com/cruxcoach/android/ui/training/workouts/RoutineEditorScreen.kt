@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Remove
@@ -40,6 +41,7 @@ import com.cruxcoach.athlete.catalog.ExerciseCatalog
 import com.cruxcoach.athlete.catalog.ExerciseCategoryV2
 import com.cruxcoach.athlete.catalog.ExerciseDefinition
 import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.BuiltinRoutines
 import com.cruxcoach.athlete.logic.WorkoutPlanner
 import com.cruxcoach.athlete.model.Routine
@@ -66,6 +68,8 @@ data class RoutineEditorState(
     val catalog: ExerciseCatalog = ExerciseCatalog.EMPTY,
     val favorites: Set<String> = emptySet(),
     val saving: Boolean = false,
+    val units: com.cruxcoach.athlete.model.UnitSystem = com.cruxcoach.athlete.model.UnitSystem.METRIC,
+    val incrementKg: Double = 1.0,
 )
 
 @HiltViewModel
@@ -110,6 +114,8 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
                 items = items.map { EditorItem(nextKey++, it) },
                 catalog = catalog,
                 favorites = repo.favorites(),
+                units = repo.profile().units,
+                incrementKg = repo.profile().smallestIncrementKg,
             )
             repo.observeFavorites().collect { fav -> _state.update { it.copy(favorites = fav) } }
         }
@@ -137,6 +143,28 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
     fun addSlugs(slugs: List<String>) = _state.update { s ->
         val added = slugs.mapNotNull { slug -> s.catalog[slug]?.let { EditorItem(nextKey++, WorkoutPlanner.itemFor(it)) } }
         s.copy(items = s.items + added, dirty = s.dirty || added.isNotEmpty())
+    }
+
+    /**
+     * Adds what was typed: catalogue exercises as they are, unknown names as
+     * new exercises of their own (created once per name). A title from the
+     * text names a workout that has no name yet.
+     */
+    fun addFromText(result: com.cruxcoach.athlete.logic.WorkoutTextParser.Result, fallbackName: String) {
+        if (result.lines.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            val items = service.resolveTyped(result.lines)
+            val catalog = service.catalogStore.catalog.value
+            _state.update { s ->
+                s.copy(
+                    items = s.items + items.map { EditorItem(nextKey++, it) },
+                    catalog = catalog,
+                    name = s.name.ifBlank { result.title ?: fallbackName },
+                    dirty = true,
+                )
+            }
+        }
     }
 
     fun toggleFavorite(slug: String) {
@@ -182,6 +210,7 @@ fun RoutineEditorScreen(
     LaunchedEffect(saved) { if (saved) onSaved() }
     val lang = catalogLanguage()
     var picking by remember { mutableStateOf(false) }
+    var typing by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     val leave = { if (state.dirty) confirmLeave = true else onBack() }
     BackHandler(enabled = state.dirty) { confirmLeave = true }
@@ -233,6 +262,8 @@ fun RoutineEditorScreen(
                     row = row,
                     def = state.catalog.fallbackFor(row.item.slug),
                     lang = lang,
+                    units = state.units,
+                    incrementKg = state.incrementKg,
                     isFirst = index == 0,
                     isLast = index == state.items.lastIndex,
                     onChange = { t -> viewModel.updateItem(row.key, t) },
@@ -247,6 +278,13 @@ fun RoutineEditorScreen(
                 ) {
                     Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trwo_editor_add))
                 }
+                // Typing is often quicker than picking: "Klimmzüge 5x5 +20 kg, Plank 3x60s".
+                TextButton(
+                    onClick = { typing = true },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(top = 4.dp).testTag("routine_editor_type"),
+                ) {
+                    Icon(Icons.Default.EditNote, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.trwo_text_open))
+                }
             }
             item { Spacer(Modifier.height(32.dp)) }
         }
@@ -260,6 +298,18 @@ fun RoutineEditorScreen(
             onToggleFavorite = viewModel::toggleFavorite,
             onDismiss = { picking = false },
             onConfirm = { slugs -> viewModel.addSlugs(slugs); picking = false },
+        )
+    }
+    if (typing) {
+        val joiner = stringResource(R.string.trwo_text_name_join)
+        WorkoutTextSheet(
+            catalog = state.catalog,
+            units = state.units,
+            onDismiss = { typing = false },
+            onApply = { result ->
+                typing = false
+                viewModel.addFromText(result, result.lines.map { it.match?.name(lang) ?: it.name }.distinct().take(2).joinToString(joiner))
+            },
         )
     }
     if (confirmLeave) {
@@ -283,6 +333,8 @@ private fun ItemCard(
     row: EditorItem,
     def: ExerciseDefinition,
     lang: String,
+    units: com.cruxcoach.athlete.model.UnitSystem,
+    incrementKg: Double,
     isFirst: Boolean,
     isLast: Boolean,
     onChange: ((RoutineItem) -> RoutineItem) -> Unit,
@@ -344,6 +396,9 @@ private fun ItemCard(
                         }
                     }
                 }
+                if ((def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && def.kind != ExerciseKind.CLIMB && !item.test) {
+                    LoadField(item.loadKg, def.load, units, incrementKg, "load_${row.key}") { v -> onChange { it.copy(loadKg = v) } }
+                }
                 EditorStepper(stringResource(R.string.trwo_field_rest), item.restS ?: def.defaults.restS ?: 90, 15, 0, 1800, "rest_${row.key}",
                     format = { formatClock(it) }) { v -> onChange { it.copy(restS = v) } }
                 if ((def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) && (item.edgeMm != null || def.defaults.edgeMm != null)) {
@@ -374,6 +429,75 @@ private fun ItemCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * The workout's own load (owner 2026-10-15: recommendations must be
+ * overridable). "Automatic" plans it from the performance value and last time;
+ * a value set here wins. Tapping the value types it or goes back to automatic.
+ */
+@Composable
+private fun LoadField(
+    loadKg: Double?,
+    mode: LoadMode,
+    units: com.cruxcoach.athlete.model.UnitSystem,
+    incrementKg: Double,
+    tag: String,
+    onChange: (Double?) -> Unit,
+) {
+    val label = stringResource(R.string.trwo_field_load)
+    val step = incrementKg.coerceAtLeast(0.25)
+    val min = if (mode == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
+    var editing by remember { mutableStateOf(false) }
+    val shown = when {
+        loadKg == null -> stringResource(R.string.trwo_load_auto_short)
+        mode == LoadMode.BODYWEIGHT_PLUS && loadKg < 0 -> stringResource(R.string.trw_load_assisted, formatMass(-loadKg, units))
+        mode == LoadMode.BODYWEIGHT_PLUS && loadKg == 0.0 -> stringResource(R.string.tr_bodyweight)
+        else -> formatMass(loadKg, units, signed = mode == LoadMode.BODYWEIGHT_PLUS)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) - step).coerceAtLeast(min)) }, modifier = Modifier.size(44.dp).testTag("${tag}_minus")) {
+            Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trwo_minus, label))
+        }
+        Text(
+            shown, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, maxLines = 1,
+            color = if (loadKg == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.width(76.dp).clickable(role = Role.Button) { editing = true }.testTag("${tag}_value"),
+        )
+        FilledTonalIconButton(onClick = { onChange(((loadKg ?: 0.0) + step).coerceAtMost(500.0)) }, modifier = Modifier.size(44.dp).testTag("${tag}_plus")) {
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trwo_plus, label))
+        }
+    }
+    if (editing) {
+        var text by remember { mutableStateOf(loadKg?.let { formatNumber(com.cruxcoach.athlete.logic.Units.massToDisplay(it, units), 2) } ?: "") }
+        val parsed = parseDecimal(text)?.takeIf { mode == LoadMode.BODYWEIGHT_PLUS || it >= 0 }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(stringResource(R.string.trw_load_input, com.cruxcoach.athlete.logic.Units.massUnit(units))) },
+            text = {
+                Column {
+                    OutlinedTextField(value = text, onValueChange = { text = it.take(8) }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.testTag("${tag}_input"))
+                    Text(stringResource(if (mode == LoadMode.BODYWEIGHT_PLUS) R.string.trwo_load_hint_added else R.string.trwo_load_hint),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    parsed?.let { onChange(com.cruxcoach.athlete.logic.Units.massFromDisplay(it, units).coerceIn(min, 500.0)) }
+                    editing = false
+                }, enabled = parsed != null, modifier = Modifier.testTag("${tag}_ok")) { Text(stringResource(R.string.tr_action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { onChange(null); editing = false }, modifier = Modifier.testTag("${tag}_auto")) {
+                    Text(stringResource(R.string.trwo_load_auto))
+                }
+            },
+        )
     }
 }
 

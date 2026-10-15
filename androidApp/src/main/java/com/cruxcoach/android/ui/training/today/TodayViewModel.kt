@@ -83,7 +83,12 @@ data class TodayState(
     val weekly: List<AreaProgress> = emptyList(),
     /** The checklist's last step was just done (seen open earlier in this view model's life). */
     val setupJustDone: Boolean = false,
-)
+    /** What the athlete chose to train today ("another suggestion"); null = the coach decides. */
+    val wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null,
+) {
+    /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
+    val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
+}
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -133,6 +138,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** Today's answers from the "another suggestion" sheet; reset with the day. */
     private var budgetFactor = 1.0
     private var levelShift = 0
+    private var wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null
     private val dislikedToday = mutableSetOf<String>()
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
     private val shownToday = mutableSetOf<String>()
@@ -151,7 +157,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         lastInputs = i
         if (variantDay != today) {
             variant = 0; variantDay = today
-            budgetFactor = 1.0; levelShift = 0; dislikedToday.clear(); shownToday.clear()
+            budgetFactor = 1.0; levelShift = 0; wish = null; dislikedToday.clear(); shownToday.clear()
             runCatching {
                 service.repo.suggestionEventsForDay(today.toString())
                     .filter { it.kind == SuggestionEventKind.SHOWN }
@@ -160,7 +166,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         }
         val activities = service.activities(days = 7 * 26)
         val activity = activities[today.toString()]
-        val readiness = ReadinessEvaluator.evaluate(i.checkin, i.injuries)
+        // What hurts today (check-in) is spared like an injury, without becoming one.
+        val injuriesToday = i.injuries + com.cruxcoach.athlete.logic.Soreness.injuries(i.checkin)
+        val readiness = ReadinessEvaluator.evaluate(i.checkin, injuriesToday)
         val trend = service.weightTrend()
         val streak = service.streak(i.profile, activities)
         val weekStart = ConsistencyStreak.weekStart(today)
@@ -251,6 +259,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 energy = service.energyReport(i.profile, activities),
                 loadSpikes = spikes,
                 suggestions = suggestions,
+                wish = wish,
             )
         }
     }
@@ -338,7 +347,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 profile = i.profile,
                 today = today,
                 readiness = readiness,
-                injuries = i.injuries,
+                injuries = i.injuries + com.cruxcoach.athlete.logic.Soreness.injuries(i.checkin),
                 activities = parsedActivities,
                 recentSets = recentSets,
                 favorites = repo.favorites(),
@@ -360,6 +369,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 weekly = weekly,
                 weekStart = weekStart,
                 returnState = returnState,
+                wish = wish,
             )
             val suggestion = SessionSuggester.suggest(input)
             val plannedName = suggestion.plannedEntry
@@ -391,6 +401,19 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 else -> Unit
             }
             variant++
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "What do you feel like today?" (owner 2026-10-15): the athlete picks the kind of
+     * training; null goes back to the coach's choice. Safety rules still apply.
+     */
+    fun chooseFocus(focus: com.cruxcoach.athlete.logic.SuggestionFocus?) = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+            wish = focus
             lastInputs?.let { refreshUnlocked(it) }
         }
     }
@@ -481,9 +504,20 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         return day in start..end
     }
 
-    fun saveCheckin(sleep: Int?, energy: Int?, skin: Int?, fingers: Int?, sick: Boolean) = io {
+    /**
+     * The questions before the suggestion: how strong the athlete feels (the check-in's
+     * energy) and what hurts today. Both optional; saving with neither means "skip".
+     */
+    fun saveQuickCheckin(strength: Int?, sore: Set<com.cruxcoach.athlete.model.InjuryRegion>) = io {
         val day = service.today().toString()
-        service.repo.saveCheckin(Checkin(day, System.currentTimeMillis(), sleep, energy, skin, fingers, sick = sick))
+        val old = service.repo.checkin(day)
+        service.repo.saveCheckin((old ?: Checkin(day, System.currentTimeMillis()))
+            .copy(createdAt = System.currentTimeMillis(), energy = strength ?: old?.energy, sore = sore))
+    }
+
+    fun saveCheckin(sleep: Int?, energy: Int?, skin: Int?, fingers: Int?, sick: Boolean, sore: Set<com.cruxcoach.athlete.model.InjuryRegion> = emptySet()) = io {
+        val day = service.today().toString()
+        service.repo.saveCheckin(Checkin(day, System.currentTimeMillis(), sleep, energy, skin, fingers, sick = sick, sore = sore))
         if (sick && service.repo.openPause() == null) {
             service.repo.savePause(PausePeriod(service.repo.newId(), PauseReason.ILLNESS, day))
         }

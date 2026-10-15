@@ -120,9 +120,16 @@ object BenchmarkMath {
         ExerciseKind.CLIMB -> null
     }
 
-    /** Capacity a stored value stands for; [bodyweightKg] fills in a missing snapshot. */
+    /**
+     * Capacity a stored value stands for; [bodyweightKg] fills in a missing snapshot.
+     * A value entered as several sets ([Benchmark.sets]) is read back the
+     * way [LoadPrescriber] plans: "5 × 5 at +20 kg" becomes the capacity for
+     * which today's plan would be 5 reps at +20 kg (RIR 2), a hang the
+     * capacity it would be planned at, reps and holds the maximum they are 70 % of.
+     */
     fun capacity(def: ExerciseDefinition, b: Benchmark, bodyweightKg: Double?): Capacity? {
         val bw = b.bodyweightKg ?: bodyweightKg
+        if (b.sets != null) return fromWorkingSets(def, b, bw)
         return when (capacityKind(def)) {
             CapacityKind.E1RM_TOTAL -> {
                 val reps = b.reps?.takeIf { it > 0 } ?: return null
@@ -138,6 +145,25 @@ object BenchmarkMath {
             CapacityKind.MAX_SECONDS -> b.durationS?.takeIf { it > 0 }?.let { Capacity(CapacityKind.MAX_SECONDS, it, bw) }
             null -> null
         }
+    }
+
+    private fun fromWorkingSets(def: ExerciseDefinition, b: Benchmark, bw: Double?): Capacity? = when (capacityKind(def)) {
+        CapacityKind.E1RM_TOTAL -> {
+            val reps = b.reps?.takeIf { it > 0 }
+            val total = StrengthMath.effectiveLoad(def.load, b.loadKg, bw)
+            if (reps == null || total == null) null
+            else Capacity(CapacityKind.E1RM_TOTAL, total * (1.0 + (reps + TARGET_RIR) / 30.0), bw)
+        }
+        CapacityKind.TEN_SECOND_MAX -> StrengthMath.effectiveLoad(def.load, b.loadKg, bw)?.let { total ->
+            val value = if (def.kind == ExerciseKind.INTERVAL) total / LoadPrescriber.REPEATER_SHARE else {
+                val d = b.durationS?.takeIf { it > 0 } ?: 10.0
+                total / HoldCurve.relative(d) / LoadPrescriber.holdShare(d.roundToInt())
+            }
+            Capacity(CapacityKind.TEN_SECOND_MAX, value, bw)
+        }
+        CapacityKind.MAX_REPS -> b.reps?.takeIf { it > 0 }?.let { Capacity(CapacityKind.MAX_REPS, it / LoadPrescriber.MAX_SHARE, bw) }
+        CapacityKind.MAX_SECONDS -> b.durationS?.takeIf { it > 0 }?.let { Capacity(CapacityKind.MAX_SECONDS, it / LoadPrescriber.MAX_SHARE, bw) }
+        null -> null
     }
 
     /**
@@ -204,6 +230,14 @@ data class LoadTarget(val loadKg: Double?, val reps: Int?, val durationS: Int?, 
  */
 object LoadPrescriber {
 
+    /** Body-weight reps and holds: share of the maximum a set is planned at. */
+    const val MAX_SHARE = 0.7
+    /** Repeaters: share of the 10-s maximum. */
+    const val REPEATER_SHARE = 0.65
+
+    /** Weighted holds: share of what the athlete can hold for [durationS]; long density hangs go easier. */
+    fun holdShare(durationS: Int): Double = if (durationS >= 20) 0.85 else 0.90
+
     fun prescribe(
         def: ExerciseDefinition,
         item: RoutineItem,
@@ -227,15 +261,14 @@ object LoadPrescriber {
             CapacityKind.TEN_SECOND_MAX -> {
                 if (def.kind == ExerciseKind.INTERVAL) {
                     val work = item.workS ?: def.defaults.workS ?: 7
-                    toLoad(capacity.value * 0.65)?.let { LoadTarget(it, null, work, capacity) }
+                    toLoad(capacity.value * REPEATER_SHARE)?.let { LoadTarget(it, null, work, capacity) }
                 } else {
                     val d = item.durationS ?: def.defaults.durationS ?: 10
-                    val share = if (d >= 20) 0.85 else 0.90
-                    toLoad(capacity.value * HoldCurve.relative(d.toDouble()) * share)?.let { LoadTarget(it, null, d, capacity) }
+                    toLoad(capacity.value * HoldCurve.relative(d.toDouble()) * holdShare(d))?.let { LoadTarget(it, null, d, capacity) }
                 }
             }
-            CapacityKind.MAX_REPS -> LoadTarget(null, max(1, (capacity.value * 0.7).roundToInt()), null, capacity)
-            CapacityKind.MAX_SECONDS -> LoadTarget(null, null, max(3, (capacity.value * 0.7).roundToInt()), capacity)
+            CapacityKind.MAX_REPS -> LoadTarget(null, max(1, (capacity.value * MAX_SHARE).roundToInt()), null, capacity)
+            CapacityKind.MAX_SECONDS -> LoadTarget(null, null, max(3, (capacity.value * MAX_SHARE).roundToInt()), capacity)
         }
     }
 }

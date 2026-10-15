@@ -23,6 +23,16 @@
     <string name="trbm_hint_hang">Das Maximum, das du halten kannst: Last, Haltezeit und Leiste. 10 s ist der Bezug, andere Zeiten werden umgerechnet.</string>
     <string name="trbm_hint_reps">Deine maximale Anzahl sauberer Wiederholungen in einem Satz.</string>
     <string name="trbm_hint_seconds">Deine längste saubere Haltezeit.</string>
+    <string name="trbm_mode_sets">Mehrere Sätze</string>
+    <string name="trbm_mode_max">Mein Maximum</string>
+    <string name="trbm_sets">Sätze</string>
+    <string name="trbm_hint_sets_e1rm">Was du im Training ohne Muskelversagen schaffst, z. B. 5 × 5 mit +20 kg. CruxCoach plant genau das und findet dein Limit über deine Sätze.</string>
+    <string name="trbm_hint_sets_hang">Hänger, die du mehrere Sätze lang sauber schaffst, z. B. 5 × 10 s mit +10 kg an 20 mm. CruxCoach plant genau das und lernt aus jedem Satz.</string>
+    <string name="trbm_hint_sets_reps">Wiederholungen, die du in jedem von mehreren Sätzen schaffst, z. B. 3 × 8.</string>
+    <string name="trbm_hint_sets_seconds">Wie lange du in jedem von mehreren Sätzen hältst, z. B. 3 × 45 s.</string>
+    <string name="trbm_sets_reps">%1$d × %2$d Wdh.</string>
+    <string name="trbm_max_reps_about">max. etwa %1$d Wdh.</string>
+    <string name="trbm_max_seconds_about">max. etwa %1$d s</string>
     <string name="trbm_load_added">Zusatzgewicht (%1$s)</string>
     <string name="trbm_load_total">Last (%1$s)</string>
     <string name="trbm_load_added_hint">0 = Körpergewicht, negativ = entlastet (Umlenkrolle, Band)</string>

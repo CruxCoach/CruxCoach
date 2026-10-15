@@ -13,6 +13,7 @@
     <string name="tro_name">Name (optional)</string>
     <string name="tro_add">Ort hinzufügen</string>
     <string name="tro_at">Ort: %1$s</string>
+    <string name="tro_no_gear">Ohne Geräte</string>
     <string name="tro_pick_title">Wo trainierst du heute?</string>
     <string name="tro_equipment_at">Ausrüstung · %1$s</string>
     <string name="tro_summary_default">%1$s (Standard)</string>

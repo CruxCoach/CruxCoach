@@ -34,6 +34,25 @@
     <string name="trwo_editor_notes">Notes (optional)</string>
     <string name="trwo_editor_empty">No exercises yet – add some from the library.</string>
     <string name="trwo_editor_add">Add exercises</string>
+    <string name="trwo_text_open">Type exercises</string>
+    <string name="trwo_text_title">Type a workout</string>
+    <string name="trwo_text_label">Exercises</string>
+    <string name="trwo_text_placeholder">Pull-ups 5×5 +20 kg\nPush-ups 3×15\nPlank 3×60 s</string>
+    <string name="trwo_text_hint">One exercise per line: sets × reps or seconds, load (+ added, − assisted), edge in mm, rest. A first line without numbers names the workout. Names CruxCoach does not know become new exercises.</string>
+    <string name="trwo_text_name">Name: %1$s</string>
+    <string name="trwo_text_new">New exercise · %1$s</string>
+    <plurals name="trwo_text_apply">
+        <item quantity="one">Add 1 exercise</item>
+        <item quantity="other">Add %d exercises</item>
+    </plurals>
+    <string name="trwo_text_apply_none">Add</string>
+    <string name="trwo_text_warmup">warm-up</string>
+    <string name="trwo_text_name_join">" &amp; "</string>
+    <string name="trwo_field_load">Load</string>
+    <string name="trwo_load_auto">Automatic</string>
+    <string name="trwo_load_auto_short">auto</string>
+    <string name="trwo_load_hint">Automatic: CruxCoach plans the load from your performance value and last time. A value here always wins.</string>
+    <string name="trwo_load_hint_added">Added load: 0 = body weight, negative = assisted. Automatic: CruxCoach plans it from your performance value and last time. A value here always wins.</string>
     <string name="trwo_editor_unsaved_title">Discard changes?</string>
     <string name="trwo_editor_unsaved_text">Your changes to this workout are not saved yet.</string>
     <string name="trwo_editor_discard">Discard</string>

@@ -75,6 +75,7 @@ data class RoutineItem(
     val repsMin: Int? = null,
     val repsMax: Int? = null,
     val durationS: Int? = null,
+    /** A load the athlete chose (added kg for body-weight work); wins over the prescription. Null = planned automatically. */
     val loadKg: Double? = null,
     val restS: Int? = null,
     val edgeMm: Int? = null,
@@ -123,6 +124,11 @@ data class Benchmark(
     val source: BenchmarkSource = BenchmarkSource.MANUAL,
     val measuredAt: Long,
     val note: String? = null,
+    /**
+     * Several sets the athlete manages with reserve ("5 × 5 at +20 kg"),
+     * for athletes who do not know their maximum; null = one maximal effort.
+     */
+    val sets: Int? = null,
 )
 
 // ── Body ─────────────────────────────────────────────────────────────
@@ -229,6 +235,8 @@ data class Checkin(
     val motivation: Int? = null,
     val sick: Boolean = false,
     val note: String? = null,
+    /** What does not feel good today ("Tut etwas weh?"): spared today, not stored as an injury. */
+    val sore: Set<InjuryRegion> = emptySet(),
 )
 
 @Serializable

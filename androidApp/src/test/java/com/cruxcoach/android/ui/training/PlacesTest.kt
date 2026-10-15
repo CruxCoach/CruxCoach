@@ -72,18 +72,21 @@ class PlacesTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `one place is simply used, two offer the pick`() {
+    fun `one place offers a day without equipment, two offer the pick`() {
         val homePlace = TrainingPlace("a", PlaceKind.HOME, null, home)
         val gymPlace = TrainingPlace("b", PlaceKind.GYM, null, base + EquipmentV2.HANGBOARD)
-        var places by androidx.compose.runtime.mutableStateOf(listOf(homePlace))
+        var places by androidx.compose.runtime.mutableStateOf(emptyList<TrainingPlace>())
         var picked: String? = null
         render { PlacePicker(places, currentId = "a", defaultId = "a", onPick = { picked = it }) }
         compose.waitForIdle()
         assertTrue(compose.onAllNodesWithTag("today_place").fetchSemanticsNodes().isEmpty())
-        places = listOf(homePlace, gymPlace)
-        waitForTag("today_place")
+        // Owner 2026-10-15: travelling or outside, "no equipment" is a choice even with one place.
+        places = listOf(homePlace)
         click("today_place")
-        waitForTag("today_place_b")
+        click("today_place_${TrainingPlaces.NO_GEAR_ID}")
+        compose.waitUntil(WAIT_MS) { picked == TrainingPlaces.NO_GEAR_ID }
+        places = listOf(homePlace, gymPlace)
+        click("today_place")
         click("today_place_b")
         compose.waitUntil(WAIT_MS) { picked == "b" }
         compose.onNodeWithTag("today_place").assertExists()

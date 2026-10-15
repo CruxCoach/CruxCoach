@@ -5,11 +5,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -33,7 +40,9 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.formatClock
 import com.cruxcoach.android.ui.training.sideLabel
 import com.cruxcoach.android.ui.training.workout.recordValueText
+import com.cruxcoach.android.ui.training.formatMass
 import com.cruxcoach.athlete.catalog.ExerciseKind
+import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.model.SetType
 import com.cruxcoach.athlete.model.UnitSystem
 import kotlin.math.roundToInt
@@ -54,6 +63,10 @@ fun RestScreen(
     onEnd: () -> Unit,
     onReserve: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** The athlete sets the next load by hand ("that was too heavy"). */
+    onNextChange: (com.cruxcoach.athlete.model.ExerciseSet) -> Unit = {},
+    /** A value of the set just done corrected. */
+    onCorrectDone: (com.cruxcoach.athlete.model.ExerciseSet) -> Unit = {},
 ) {
     val units = state.profile.units
     val armed = state.restArmed
@@ -126,15 +139,19 @@ fun RestScreen(
         Spacer(Modifier.height(20.dp))
 
         if (!state.restFinished) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = onMinus, enabled = armed, modifier = Modifier.heightIn(min = 56.dp).testTag("player_rest_minus")) {
-                    Text(stringResource(R.string.trp_rest_minus))
+            // Narrow padding and one line each: at 360 dp "+15 s" broke into two lines.
+            val sidePadding = PaddingValues(horizontal = 14.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = onMinus, enabled = armed, contentPadding = sidePadding,
+                    modifier = Modifier.heightIn(min = 56.dp).testTag("player_rest_minus")) {
+                    Text(stringResource(R.string.trp_rest_minus), maxLines = 1, softWrap = false)
                 }
                 Button(onClick = onEnd, modifier = Modifier.heightIn(min = 56.dp).testTag("player_rest_skip")) {
-                    Text(stringResource(R.string.trp_rest_skip))
+                    Text(stringResource(R.string.trp_rest_skip), maxLines = 1)
                 }
-                OutlinedButton(onClick = onPlus, enabled = armed, modifier = Modifier.heightIn(min = 56.dp).testTag("player_rest_plus")) {
-                    Text(stringResource(R.string.trp_rest_plus))
+                OutlinedButton(onClick = onPlus, enabled = armed, contentPadding = sidePadding,
+                    modifier = Modifier.heightIn(min = 56.dp).testTag("player_rest_plus")) {
+                    Text(stringResource(R.string.trp_rest_plus), maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -212,13 +229,72 @@ fun RestScreen(
                     Text(stringResource(R.string.trp_next_up), style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(next.def.name(language), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    val loaded = next.def.load == LoadMode.BODYWEIGHT_PLUS || next.def.load == LoadMode.EXTERNAL
                     val parts = buildList {
                         add(stringResource(R.string.trp_set_of, next.position.setNumber, next.position.setsInBlock))
                         next.set.side?.let { add(sideLabel(it)) }
-                        targetSummary(next.set, next.def, state.bodyweight, units)?.let { add(it) }
+                        if (!loaded) targetSummary(next.set, next.def, state.bodyweight, units)?.let { add(it) }
+                        else {
+                            // The load gets its own stepper below.
+                            mainValue(next.set, next.def)?.let { add(it) }
+                            percentText(next.set, next.def, state.bodyweight)?.let { add(it) }
+                            next.set.edgeMm?.let { add(stringResource(R.string.tr_format_mm, it.roundToInt().toString())) }
+                        }
                     }
                     Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodyLarge)
+                    if (loaded) {
+                        // "Too heavy" is decided right after a set: change the next load here, it carries over.
+                        val step = state.profile.smallestIncrementKg.coerceAtLeast(0.25)
+                        val min = if (next.def.load == LoadMode.BODYWEIGHT_PLUS) -200.0 else 0.0
+                        val load = next.set.loadKg ?: 0.0
+                        val label = stringResource(R.string.trw_load_label)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                            Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            FilledTonalIconButton(
+                                onClick = { onNextChange(next.set.copy(loadKg = snap(load - step, step).coerceAtLeast(min))) },
+                                modifier = Modifier.size(48.dp).testTag("player_next_load_minus"),
+                            ) { Icon(Icons.Default.Remove, contentDescription = stringResource(R.string.trw_minus, label)) }
+                            Text(loadText(next.set, next.def, units) ?: formatMass(load, units),
+                                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                                modifier = Modifier.widthIn(min = 104.dp).padding(horizontal = 6.dp).testTag("player_next_load_value"))
+                            FilledTonalIconButton(
+                                onClick = { onNextChange(next.set.copy(loadKg = snap(load + step, step).coerceAtMost(500.0))) },
+                                modifier = Modifier.size(48.dp).testTag("player_next_load_plus"),
+                            ) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.trw_plus, label)) }
+                        }
+                    }
                 }
+            }
+        }
+
+        // Back to the set just done, without losing the rest: a dialog over the timer.
+        state.lastDone?.let { done ->
+            var correcting by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { correcting = true }, modifier = Modifier.heightIn(min = 48.dp).testTag("player_correct_done")) {
+                Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.trp_correct_done))
+            }
+            if (correcting) {
+                AlertDialog(
+                    onDismissRequest = { correcting = false },
+                    modifier = Modifier.testTag("player_correct_dialog"),
+                    title = { Text(stringResource(R.string.trp_correct_title, done.def.name(language))) },
+                    text = {
+                        Column(Modifier.verticalScroll(rememberScrollState())) {
+                            Text(listOfNotNull(stringResource(R.string.trp_set_of, done.position.setNumber, done.position.setsInBlock),
+                                done.set.side?.let { sideLabel(it) }).joinToString(" · "),
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            SetSteppers(done.set, done.def, units, state.profile.smallestIncrementKg, onCorrectDone, Modifier.padding(top = 12.dp))
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { correcting = false }, modifier = Modifier.testTag("player_correct_ok")) {
+                            Text(stringResource(R.string.tr_action_done))
+                        }
+                    },
+                )
             }
         }
     }

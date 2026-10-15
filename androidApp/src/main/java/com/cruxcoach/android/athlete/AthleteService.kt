@@ -364,6 +364,10 @@ class AthleteService @Inject constructor(
         }
     }
 
+    /** Open injuries plus what today's check-in says hurts (spared today only). */
+    fun injuriesToday(): List<Injury> =
+        repo.activeInjuries() + com.cruxcoach.athlete.logic.Soreness.injuries(repo.checkin(today().toString()))
+
     /** Appends an exercise; returns false when the open injury rules it out. */
     fun addExercise(workoutId: String, slug: String): Boolean = synchronized(structureLock) {
         val def = catalog[slug] ?: return false
@@ -377,7 +381,8 @@ class AthleteService @Inject constructor(
      */
     fun todaysModifier(): ReadinessModifier = runCatching {
         val today = today()
-        val readiness = ReadinessEvaluator.evaluate(repo.checkin(today.toString()), repo.activeInjuries())
+        val checkin = repo.checkin(today.toString())
+        val readiness = ReadinessEvaluator.evaluate(checkin, repo.activeInjuries() + com.cruxcoach.athlete.logic.Soreness.injuries(checkin))
         val activity = activities(1)[today.toString()]
         val climbed = activity?.takeIf { it.climbingMinutes > 0 || it.climbingEfforts > 0 }?.climbIntensity
         ReadinessModifiers.of(readiness, climbed)
@@ -390,7 +395,7 @@ class AthleteService @Inject constructor(
         val adjusted = ReadinessModifiers.applyToItem(item, def, modifier)
         val history = repo.history(item.slug, 60)
         val planned = WorkoutPlanner.plan(
-            workoutId, blockIndex, adjusted, catalog, history, repo.activeInjuries(),
+            workoutId, blockIndex, adjusted, catalog, history, injuriesToday(),
             bodyweight,
             capacityFor = { side ->
                 capacityFor(def, side, item.edgeMm?.toDouble(), item.grip, bodyweight)
@@ -840,6 +845,67 @@ class AthleteService @Inject constructor(
         const val HISTORY_LIMIT = 20_000
     }
 
+    /** A user-made exercise (the form, or a name typed into a workout that matches nothing); returns its slug. */
+    suspend fun createCustomExercise(
+        name: String,
+        category: com.cruxcoach.athlete.catalog.ExerciseCategoryV2,
+        kind: com.cruxcoach.athlete.catalog.ExerciseKind,
+        load: com.cruxcoach.athlete.catalog.LoadMode,
+        unilateral: Boolean,
+        equipment: Collection<com.cruxcoach.athlete.catalog.EquipmentV2>,
+        domains: Collection<com.cruxcoach.athlete.catalog.LoadDomain>,
+        note: String = "",
+    ): String {
+        val slug = "user." + com.cruxcoach.android.ui.training.exercises.CustomExerciseViewModel.slugify(name) + "_" +
+            repo.newId().filter { it.isLetterOrDigit() }.take(6).lowercase()
+        val text = com.cruxcoach.athlete.catalog.ExerciseText(name = name.trim(), why = note.trim())
+        val gear = equipment.toList().ifEmpty { listOf(com.cruxcoach.athlete.catalog.EquipmentV2.NONE) }
+        val needsWall = kind == com.cruxcoach.athlete.catalog.ExerciseKind.CLIMB || gear.any {
+            it == com.cruxcoach.athlete.catalog.EquipmentV2.WALL || it == com.cruxcoach.athlete.catalog.EquipmentV2.BOARD ||
+                it == com.cruxcoach.athlete.catalog.EquipmentV2.CAMPUS_BOARD
+        }
+        val tags = buildList {
+            if (!needsWall) add(com.cruxcoach.athlete.catalog.ExerciseDefinition.TAG_NO_CLIMBING)
+            if (com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in domains) add(com.cruxcoach.athlete.catalog.ExerciseDefinition.TAG_FINGER_FREE)
+        }
+        repo.saveCustomExercise(com.cruxcoach.athlete.catalog.ExerciseDefinition(
+            slug = slug, category = category, kind = kind, load = load, unilateral = unilateral,
+            equipment = gear, domains = domains.toList(), difficulty = 2,
+            defaults = com.cruxcoach.athlete.logic.ExerciseGuess.defaultPrescription(kind), tags = tags,
+            i18n = mapOf("de" to text, "en" to text), custom = true,
+        ))
+        catalogStore.refresh()
+        return slug
+    }
+
+    /**
+     * Items for typed lines ([com.cruxcoach.athlete.logic.WorkoutTextParser]): catalogue
+     * exercises as they are, unknown names as new exercises of their own, one per name.
+     */
+    suspend fun resolveTyped(lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>): List<RoutineItem> {
+        val created = mutableMapOf<String, String>()
+        return lines.map { line ->
+            if (line.match != null) line.item
+            else {
+                val g = line.guess
+                val slug = created.getOrPut(line.name.trim().lowercase()) {
+                    createCustomExercise(line.name, g.category, g.kind, g.load, g.unilateral, g.equipment, g.domains)
+                }
+                line.item.copy(slug = slug)
+            }
+        }
+    }
+
+    /** Typed exercises appended to the open training, each with what the text said. */
+    suspend fun addTyped(workoutId: String, lines: List<com.cruxcoach.athlete.logic.WorkoutTextParser.Line>) {
+        val items = resolveTyped(lines)
+        synchronized(structureLock) {
+            val modifier = todaysModifier()
+            var next = (repo.setsFor(workoutId).maxOfOrNull { it.blockIndex } ?: -1) + 1
+            repo.transaction { items.forEach { item -> if (addItem(workoutId, next, item, modifier)) next++ } }
+        }
+    }
+
     fun saveRoutineFromWorkout(workoutId: String, name: String): Routine {
         val sets = repo.setsFor(workoutId)
         val items = sets.groupBy { it.blockIndex }.toSortedMap().values.map { block ->
@@ -850,7 +916,9 @@ class AthleteService @Inject constructor(
             RoutineItem(
                 slug = first.exerciseSlug, sets = rows,
                 repsMin = first.targetReps ?: first.reps, repsMax = first.targetReps ?: first.reps,
-                durationS = (first.targetDurationS ?: first.durationS)?.toInt(), loadKg = first.loadKg,
+                // No fixed load: a load in a workout wins over the prescription, and a saved
+                // training should keep progressing from the performance value and last time.
+                durationS = (first.targetDurationS ?: first.durationS)?.toInt(), loadKg = null,
                 restS = first.restS, edgeMm = first.edgeMm?.toInt(), grip = first.grip,
                 workS = first.workS?.toInt(), restBetweenS = first.restBetweenS?.toInt(), repsPerSet = first.repsPerSet,
                 warmup = first.setType == SetType.WARMUP, test = first.setType == SetType.TEST,
