@@ -141,6 +141,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   load you lowered during a training is the planned load next time ("Next time
   with your loads" in the summary), kept as a performance value from your
   training that a stronger set raises again and that goes with its training.
+  Settings → "What the coach learned" lists all of it – your weekdays,
+  exercises you like doing, suggested less often, your own loads, never
+  suggest – with "Forget" per item and "Forget everything"; "Why?" links to it.
+- In a training the shown exercise can be swapped (the same alternatives as
+  on Today's card, while none of its sets is done) or skipped.
+- Nutrition: "Log again" in the add sheet offers what the chosen meal usually
+  holds, with its usual amount – also quick entries and described meals – in
+  one tap, and a saved food's amount starts where it was last time.
 - Back after a break (10+ days, illness, a healed finger injury): one or two
   shorter weeks without maximal finger load, automatically.
 - Training reminders on planned days; a body map and grip pictograms for every
@@ -244,6 +252,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   opening the injury mode, and "Equipment" the equipment sheet.
 - More time on Today's card adds at most eight exercises; after that the sets
   grow. A 90-minute day listed 14 exercises before.
+- The range chips on Progress wrap instead of scrolling sideways, and the add
+  tiles in Nutrition fit a 360-dp phone ("Describe" was cut off).
 - The rest screen names a first value "Starting value learned" and maxima in
   words ("max. 1 rep at +35 kg", "10 s at 74 kg") instead of "e1RM +35 kg",
   which read like an increase of 35 kg.
