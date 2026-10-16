@@ -62,7 +62,7 @@
     <string name="trp_capacity_seconds">max. %1$d s</string>
 
     <!-- Swap or skip the shown exercise (UX review 2026-10-16) -->
-    <string name="trp_exercise_menu">More for this exercise</string>
+    <string name="trp_exercise_menu">Swap or skip this exercise</string>
     <string name="trp_swap_exercise">Swap exercise</string>
     <string name="trp_skip_exercise">Skip exercise</string>
     <string name="trp_skip_rest">Skip the remaining sets</string>
