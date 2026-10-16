@@ -42,6 +42,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.datetime.minus
 import javax.inject.Inject
 
 data class AthleteSettingsState(
@@ -72,9 +73,11 @@ data class Learned(
     val less: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
     val weekdays: List<com.cruxcoach.athlete.logic.PreferenceLearning.UsualChoice> = emptyList(),
     val ownLoads: List<Pair<Benchmark, com.cruxcoach.athlete.catalog.ExerciseDefinition>> = emptyList(),
+    /** The athlete's real training length when it differs clearly from the preferred one. */
+    val minutes: Int? = null,
 ) {
-    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty()
-    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size
+    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0)
 }
 
 @HiltViewModel
@@ -129,6 +132,9 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             less = defs { it <= -1.0 },
             weekdays = com.cruxcoach.athlete.logic.PreferenceLearning.usualChoices(events, today, resets).values.sortedBy { it.isoDay },
             ownLoads = own.map { it to service.catalog.fallbackFor(it.exerciseSlug) }.sortedBy { it.second.slug },
+            minutes = com.cruxcoach.athlete.logic.PreferenceLearning.suggestedSessionMinutes(
+                repo.workoutsBetween(today.minus(kotlinx.datetime.DatePeriod(days = com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS)).toString(),
+                    today.toString()), profile.sessionMinutes, today),
         )
     }
 
@@ -554,6 +560,17 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
     if (learned.isEmpty) {
         Text(stringResource(R.string.trlr_empty), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp).testTag("learned_empty"))
+    }
+    learned.minutes?.let { minutes ->
+        // The real training length: taken over as the preferred one, not forgotten (it is what happened).
+        SectionTitle(stringResource(R.string.trlr_minutes))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("learned_minutes")) {
+            Text(stringResource(R.string.trlr_minutes_text, minutes, state.profile.sessionMinutes), style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = { viewModel.update { it.copy(sessionMinutes = minutes) } }, modifier = Modifier.testTag("learned_minutes_apply")) {
+                Text(stringResource(R.string.tre_duration_apply))
+            }
+        }
     }
     if (learned.weekdays.isNotEmpty()) {
         SectionTitle(stringResource(R.string.trlr_weekdays))

@@ -225,4 +225,6 @@
     </plurals>
     <string name="trc_learning_own_short">Deine Last vom letzten Mal</string>
     <string name="trc_learning_own">Beim letzten Mal hast du leichter trainiert als geplant, deshalb ist jetzt diese Last geplant – bis ein Satz mehr zeigt. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
+    <string name="trlr_minutes">Deine Trainingsdauer</string>
+    <string name="trlr_minutes_text">Meist etwa %1$d min (eingestellt: %2$d min)</string>
 </resources>
