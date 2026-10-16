@@ -288,6 +288,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Favourite exercises are chosen right next to "routine or variety" in the
   coach setup: with a routine they are in almost every suggestion they fit,
   with variety they come back regularly. The suggestion card stars them.
+- Today's card lists every exercise with its sets ("3 × 8"), the whole list
+  one tap away, and a tap on an exercise swaps it: its easier and harder
+  variant and the best other exercises of the same kind – through the same
+  checks as the suggestion (equipment of today's place, what hurts, injuries,
+  guardrails, never more finger work) –, "leave out today" or "never suggest".
+- The coach learns from what you change, and shows it: a swap counts for the
+  exercise you picked and against the one you replaced (also when swapping to
+  the easier or harder variant during a training); a kind of training or a
+  duration you chose on two days of the same weekday becomes that weekday's
+  suggestion ("As usual on Monday: pull & push") on days without a week-plan
+  entry – the chips change it at once, safety rules still decide first; and a
+  load you lowered during a training is the planned load next time ("Next time
+  with your loads" in the summary), kept as a performance value from your
+  training that a stronger set raises again and that goes with its training.
 - Back after a break (10+ days, illness, a healed finger injury): one or two
   shorter weeks without maximal finger load, automatically.
 - Training reminders on planned days; a body map and grip pictograms for every
@@ -382,6 +396,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Collections survive app restarts and stay separate per physical board.
   Finish cleaning to restore the previous display and optionally reset the
   collection; an active-mode button keeps the controls accessible.
+
+### Changed
+- "Another suggestion" is shorter: the kind of training, "lighter" or
+  "harder" today, and one "Another mix" button. Time, place and single
+  exercises are changed on the card itself (time and place now share one row);
+  "Something hurts" opens today's check-in, so it is spared today instead of
+  opening the injury mode, and "Equipment" the equipment sheet.
+- More time on Today's card adds at most eight exercises; after that the sets
+  grow. A 90-minute day listed 14 exercises before.
+- The rest screen names a first value "Starting value learned" and maxima in
+  words ("max. 1 rep at +35 kg", "10 s at 74 kg") instead of "e1RM +35 kg",
+  which read like an increase of 35 kg.
+- The in-app updater's built-in fallback list now includes GitHub next to
+  Codeberg, matching the published source list. A device that cannot reach
+  cruxcoach.org or its mirror still checks both forges every release is
+  published on.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out
