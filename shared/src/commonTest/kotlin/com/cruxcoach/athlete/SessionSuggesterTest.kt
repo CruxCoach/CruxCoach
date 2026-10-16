@@ -359,6 +359,28 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun theGradeAndTheYearsSetTheLevelBeforeAnyPerformanceValue() {
+        // Device test 2026-10-17: a 7a boulderer with 3–5 years got assisted hangs before entering any value.
+        val fingers = ExerciseCatalog(1, listOf(
+            ex("warmup.arm_circles", ExerciseCategoryV2.WARMUP, ExerciseKind.REPS, LoadMode.BODYWEIGHT, tags = listOf("warmup")),
+            ex("finger.assisted_hang", ExerciseCategoryV2.FINGER, ExerciseKind.HANG, LoadMode.BODYWEIGHT_PLUS, listOf(EquipmentV2.HANGBOARD),
+                listOf(LoadDomain.FINGER), listOf("strength", "beginner_friendly"), difficulty = 1, contraindications = fingerContra),
+            ex("finger.max_hang", ExerciseCategoryV2.FINGER, ExerciseKind.HANG, LoadMode.BODYWEIGHT_PLUS, listOf(EquipmentV2.HANGBOARD),
+                listOf(LoadDomain.FINGER), listOf("strength"), difficulty = 3, contraindications = fingerContra,
+                defaults = Prescription(sets = 5, durationS = 10, restS = 180, edgeMm = 20)),
+            ex("pull.pull_up", ExerciseCategoryV2.PULL, ExerciseKind.REPS, LoadMode.BODYWEIGHT, listOf(EquipmentV2.PULL_UP_BAR), difficulty = 2),
+        ))
+        fun finger(grade: String?, years: ExperienceBand?) = SessionSuggester.suggest(input(profile = profile.copy(
+            coach = profile.coach.copy(currentGrade = grade, experience = years))).copy(catalog = fingers))
+            .routine.items.filter { fingers[it.slug]?.category == ExerciseCategoryV2.FINGER }.map { it.slug }
+        assertEquals(listOf("finger.assisted_hang"), finger(null, null), "no grade: careful")
+        assertEquals(listOf("finger.max_hang"), finger("7a", ExperienceBand.Y3_5), "7a, 3–5 years")
+        assertEquals(listOf("finger.assisted_hang"), finger("7a", ExperienceBand.UNDER_1), "7a in the first year: capped")
+        assertEquals(listOf("finger.assisted_hang"), finger("6a", ExperienceBand.OVER_5), "6a: level 2")
+        assertEquals(3, SessionSuggester.climbingLevel(CoachProfile(currentGrade = "7a", experience = null)))
+    }
+
+    @Test
     fun alternativesOfferEasierAndSimilarBeforeHarder() {
         // Device review 2026-10-16: only harder push-ups were offered instead of a diamond push-up.
         val levels = ExerciseCatalog(1, listOf(

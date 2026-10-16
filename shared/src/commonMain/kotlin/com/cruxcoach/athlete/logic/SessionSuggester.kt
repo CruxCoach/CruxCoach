@@ -251,6 +251,8 @@ object SessionSuggester {
     private const val REST_MINUTES = 10
     private const val ADDON_MINUTES = 15
     private const val SETUP_SECONDS_PER_EXERCISE = 60
+    /** Main-work slots whose picks follow the athlete's level from below too. */
+    private val LEVELLED_SLOTS = setOf(Slot.FINGER_MAIN, Slot.PULL, Slot.PUSH, Slot.POWER, Slot.LEGS)
     /** A session within this many minutes of its time counts as fitting. */
     private const val GROW_TOLERANCE_MIN = 4
     /**
@@ -1015,8 +1017,31 @@ object SessionSuggester {
         var level = 2
         if (input.benchmarkSlugs.size >= 3) level++
         if ("pull.weighted_pull_up" in input.benchmarkSlugs && "finger.max_hang" in input.benchmarkSlugs) level++
+        // What the athlete climbs, and for how long (quick start, coach setup): a 7a boulderer with years of
+        // climbing got assisted hangs and negative pull-ups before the first performance value (device test
+        // 2026-10-17). The grade sets the level, the years cap it; the novice and youth guardrails still apply.
+        climbingLevel(input.coach)?.let { level = max(level, it) }
         if (input.coach.goal == CoachGoal.COMEBACK) level--
         return (level + input.levelShift.coerceIn(-1, 1)).coerceAtLeast(1)
+    }
+
+    /** Exercise difficulty (1–5) the athlete's grade stands for, capped by their years of climbing; null without a grade. */
+    internal fun climbingLevel(coach: CoachProfile): Int? {
+        val grade = coach.currentGrade?.let { LogbookSummaries.difficultyOf(it) } ?: return null
+        val byGrade = when {
+            grade < 16 -> 1      // up to 5c
+            grade < 20 -> 2      // 6a – 6b+
+            grade < 24 -> 3      // 6c – 7a+
+            grade < 27 -> 4      // 7b – 7c
+            else -> 5            // 7c+ and harder
+        }
+        val cap = when (coach.experience) {
+            ExperienceBand.UNDER_1, ExperienceBand.Y1_2 -> 2
+            ExperienceBand.Y3_5 -> 4
+            ExperienceBand.OVER_5 -> 5
+            null -> 3
+        }
+        return min(byGrade, cap)
     }
 
     private fun pickSlots(
@@ -1057,6 +1082,12 @@ object SessionSuggester {
             // The preferred finger-training family, when the equipment allows it.
             val preferred = if (slot == Slot.FINGER_MAIN) base.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { base } else base
             val withinLevel = preferred.filter { it.difficulty <= level }.ifEmpty { preferred }
+                // From level 3 on, main work is not two steps below the athlete (a 7a boulderer got assisted hangs);
+                // favourites stay welcome at any difficulty, and prehab, mobility and warm-ups keep their easy picks.
+                .let { list ->
+                    if (level < 3 || slot !in LEVELLED_SLOTS) list
+                    else list.filter { it.difficulty >= level - 1 || it.slug in input.favorites }.ifEmpty { list }
+                }
             val choice = withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
