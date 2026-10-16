@@ -39,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -190,13 +192,15 @@ fun PlacePicker(places: List<TrainingPlace>, currentId: String?, defaultId: Stri
     val all = places + com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR
     val current = all.firstOrNull { it.id == currentId } ?: all.first()
     var menu by remember { mutableStateOf(false) }
+    val at = stringResource(R.string.tro_at, placeLabel(current))
     Box(modifier) {
         AssistChip(
             onClick = { menu = true },
-            label = { Text(stringResource(R.string.tro_at, placeLabel(current))) },
+            // The name and its icon are enough next to the time on the card; "At: …" stays for screen readers.
+            label = { Text(placeLabel(current)) },
             leadingIcon = { Icon(placeIcon(current.kind), null, Modifier.size(18.dp)) },
             trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = stringResource(R.string.tro_pick_title)) },
-            modifier = Modifier.testTag("today_place"),
+            modifier = Modifier.testTag("today_place").semantics { contentDescription = at },
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             all.forEach { place ->

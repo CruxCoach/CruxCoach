@@ -387,6 +387,12 @@ data class AthleteProfile(
      * the recommendation; 0 switches an area off.
      */
     val ownWeeklyTargets: Map<String, Int> = emptyMap(),
+    /**
+     * What the athlete told the coach to forget (owner 2026-10-16: learned preferences stay visible and
+     * resettable): key → time in ms; signals at or before it no longer count. Keys are
+     * [com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL], `ex:<slug>` and `day:<ISO weekday>`.
+     */
+    val learningResets: Map<String, Long> = emptyMap(),
 )
 
 /** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */

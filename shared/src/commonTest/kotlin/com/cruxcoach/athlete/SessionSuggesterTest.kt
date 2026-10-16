@@ -322,6 +322,73 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun moreTimeAddsSetsNotEndlessExercises() {
+        // Render review 2026-10-16: 90 minutes listed 14 exercises ("+ 9 more").
+        val many = ExerciseCatalog(1, catalog.all + (1..12).flatMap { i -> listOf(
+            ex("push.extra_$i", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT),
+            ex("antagonist.extra_$i", ExerciseCategoryV2.ANTAGONIST, ExerciseKind.REPS, LoadMode.BODYWEIGHT),
+            ex("core.extra_$i", ExerciseCategoryV2.CORE, ExerciseKind.REPS, LoadMode.BODYWEIGHT),
+            ex("mobility.extra_$i", ExerciseCategoryV2.MOBILITY, ExerciseKind.TIME, LoadMode.NONE),
+        ) })
+        val s = SessionSuggester.suggest(input().copy(catalog = many, wish = SuggestionFocus.PULL_PUSH, minutesToday = 120))
+        val main = s.routine.items.filter { !it.warmup }
+        assertTrue(main.size <= SessionSuggester.MAX_GROWN_EXERCISES, "${main.size}: ${main.map { it.slug }}")
+        // The rest of the time goes into sets.
+        assertTrue(main.any { it.sets >= 4 }, "${main.map { it.sets }}")
+    }
+
+    // ── Swapping one exercise on the card (UX review 2026-10-16) ──
+
+    @Test
+    fun alternativesAreTheSameKindThroughTheSameFilters() {
+        val s = SessionSuggester.suggest(input())
+        val core = s.routine.items.first { catalog[it.slug]?.category == ExerciseCategoryV2.CORE }
+        val alternatives = SessionSuggester.alternatives(input(), s, core.slug)
+        assertTrue(alternatives.isNotEmpty())
+        assertTrue(alternatives.all { it.def.category == ExerciseCategoryV2.CORE && it.def.slug != core.slug }, "$alternatives")
+        assertTrue(alternatives.none { a -> s.routine.items.any { it.slug == a.def.slug } })
+        // Pull work at a place without a bar or rings: only what the place has.
+        val bare = profile.copy(equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT, EquipmentV2.DUMBBELL))
+        val pull = SessionSuggester.suggest(input(profile = bare).copy(wish = SuggestionFocus.PULL_PUSH))
+        val row = pull.routine.items.firstOrNull { catalog[it.slug]?.category == ExerciseCategoryV2.PUSH }
+        if (row != null) assertTrue(SessionSuggester.alternatives(input(profile = bare), pull, row.slug)
+            .all { a -> a.def.equipment.all { EquipmentV2.satisfied(it, bare.equipment) } })
+        // A finger-free slot never gets finger work, and an excluded exercise is never offered.
+        val noHang = SessionSuggester.alternatives(input().copy(excluded = setOf("core.dead_bug")), s, core.slug)
+        assertTrue(noHang.none { it.def.slug == "core.dead_bug" || LoadDomain.FINGER in it.def.domains })
+    }
+
+    @Test
+    fun alternativesRespectInjuries() {
+        val shoulder = Injury("i", InjuryRegion.SHOULDER, severity = 4, climbingPaused = false, startedOn = monday.toString())
+        val s = SessionSuggester.suggest(input(injuries = listOf(shoulder)).copy(wish = SuggestionFocus.PULL_PUSH))
+        s.routine.items.filter { !it.warmup }.forEach { item ->
+            SessionSuggester.alternatives(input(injuries = listOf(shoulder)), s, item.slug).forEach { a ->
+                assertTrue(InjuryAdvisor.assess(a.def, listOf(shoulder)).verdict != InjuryVerdict.AVOID, "${a.def.slug} for ${item.slug}")
+            }
+        }
+    }
+
+    @Test
+    fun swapsReplaceKeepSetsAndNeverDouble() {
+        val s = SessionSuggester.suggest(input())
+        val core = s.routine.items.first { catalog[it.slug]?.category == ExerciseCategoryV2.CORE }
+        val other = listOf("core.dead_bug", "core.hollow_hold").first { it != core.slug }
+        val swapped = SessionSuggester.withSwaps(s, mapOf(core.slug to other), catalog)
+        val index = s.routine.items.indexOf(core)
+        assertEquals(other, swapped.routine.items[index].slug)
+        assertEquals(core.sets, swapped.routine.items[index].sets)
+        // "" leaves it out today.
+        val dropped = SessionSuggester.withSwaps(s, mapOf(core.slug to ""), catalog)
+        assertEquals(s.routine.items.size - 1, dropped.routine.items.size)
+        assertTrue(dropped.estimatedMinutes <= s.estimatedMinutes)
+        // A pick already in the session leaves the item out instead of doubling it.
+        val present = s.routine.items.first { it.slug != core.slug }.slug
+        val doubled = SessionSuggester.withSwaps(s, mapOf(core.slug to present), catalog)
+        assertEquals(1, doubled.routine.items.count { it.slug == present })
+    }
+
+    @Test
     fun aChosenDurationGoesToTheBoardOrTheOwnWorkout() {
         val gym = profile.copy(equipment = home + EquipmentV2.BOARD + EquipmentV2.WALL)
         val board = SessionSuggester.suggest(input(profile = gym).copy(wish = SuggestionFocus.BOARD_DAY, minutesToday = 90))

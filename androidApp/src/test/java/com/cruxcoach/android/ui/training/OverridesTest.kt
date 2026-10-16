@@ -22,6 +22,7 @@ import com.cruxcoach.athlete.model.InjuryRegion
 import com.cruxcoach.athlete.model.Routine
 import com.cruxcoach.athlete.model.RoutineItem
 import com.cruxcoach.athlete.model.SetType
+import kotlinx.datetime.minus
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -270,7 +271,63 @@ class OverridesTest : AthleteScreenTest() {
         repo.setFavorite(main, true)
         until { main in vm.state.value.favorites && SuggestionReason.FAVORITES_USED in vm.state.value.suggestion!!.reasons }
         render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
-        scrollTo("today_list", hasTestTag("today_favorite_$main"))
+        scrollTo("today_list", hasTestTag("today_item_$main"))
+        waitForTag("today_favorite_$main")
+    }
+
+    @Test
+    fun `an exercise on today's card is swapped, left out or never suggested – and the coach learns it`() {
+        // UX review 2026-10-16: one exercise could only be changed by reshuffling the whole suggestion.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        val first = items().first { !it.warmup }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_item_${first.slug}"))
+        click("today_item_${first.slug}")
+        waitForTag("today_swap_drop")
+        val alternatives = vm.alternatives(first.slug)
+        assertTrue(alternatives.isNotEmpty())
+        // Never more finger work through a swap than the rules allowed.
+        val fingerFree = com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in service.catalog.fallbackFor(first.slug).domains
+        if (fingerFree) assertTrue(alternatives.none { com.cruxcoach.athlete.catalog.LoadDomain.FINGER in it.def.domains })
+        val to = alternatives.first().def.slug
+        click("today_swap_to_$to")
+        until { items().any { it.slug == to } && items().none { it.slug == first.slug } }
+        assertEquals(first.sets, items().first { it.slug == to }.sets)
+        val day = service.today().toString()
+        assertTrue(repo.suggestionEventsForDay(day).any {
+            it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf(first.slug, to)
+        })
+        // Swapped back to the original: the card shows it again.
+        vm.swapExercise(to, first.slug)
+        until { items().any { it.slug == first.slug } && items().none { it.slug == to } }
+        // Left out today: gone without a replacement.
+        val count = items().size
+        vm.dropExercise(first.slug)
+        until { items().none { it.slug == first.slug } && items().size == count - 1 }
+        // Never suggested: in the profile, out of the card.
+        val other = items().first { !it.warmup }.slug
+        vm.excludeExercise(other)
+        until { other in repo.profile().excludedExercises && items().none { it.slug == other } }
+    }
+
+    @Test
+    fun `another suggestion offers kind, level and a new mix, and what hurts opens today's check-in`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_suggestion_next"))
+        click("today_suggestion_next")
+        click("today_level_easier")
+        until { vm.state.value.levelShift == -1 && SuggestionReason.LEVEL_EASIER in vm.state.value.suggestion!!.reasons }
+        click("today_suggestion_next")
+        click("today_next_hurts")
+        waitForTag("today_checkin_sheet")
+        // Nothing became an injury.
+        assertTrue(repo.activeInjuries().isEmpty())
     }
 
     @Test

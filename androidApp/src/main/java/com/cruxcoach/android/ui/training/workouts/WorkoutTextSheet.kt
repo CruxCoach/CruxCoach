@@ -129,7 +129,11 @@ fun WorkoutTextSheet(
 
 /** "5 × 5 · +20 kg", "3 × 60 s", "6 × 7 s on / 3 s off × 6 · 20 mm", "warm-up". */
 @Composable
-internal fun routineItemSummary(item: RoutineItem, kind: ExerciseKind, load: LoadMode, units: UnitSystem): String {
+internal fun routineItemSummary(
+    item: RoutineItem, kind: ExerciseKind, load: LoadMode, units: UnitSystem,
+    /** Only sets and reps or time ("3 × 8"), for a one-line list. */
+    short: Boolean = false,
+): String {
     val amount = when (kind) {
         ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
             val min = item.repsMin
@@ -142,6 +146,7 @@ internal fun routineItemSummary(item: RoutineItem, kind: ExerciseKind, load: Loa
         ExerciseKind.CLIMB -> item.durationS?.let { stringResource(R.string.trwo_minutes, it / 60) }
             ?: pluralStringResource(R.plurals.trp_rounds, item.repsPerSet ?: 4, item.repsPerSet ?: 4)
     }
+    if (short) return amount
     val parts = buildList {
         add(amount)
         item.loadKg?.let { kg ->

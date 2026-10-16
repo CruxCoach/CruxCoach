@@ -119,10 +119,6 @@
     <string name="tru_set_connections_summary">Sleep, climbing days and meals; force gauge</string>
     <string name="tru_set_days_summary">Climbing outside the board app</string>
     <string name="tru_set_none">None</string>
-    <plurals name="tru_set_exercises">
-        <item quantity="one">%d exercise</item>
-        <item quantity="other">%d exercises</item>
-    </plurals>
     <string name="tru_set_body_data">Body data</string>
     <string name="tru_set_sex">Sex</string>
     <string name="tru_set_birth_year">Year of birth</string>

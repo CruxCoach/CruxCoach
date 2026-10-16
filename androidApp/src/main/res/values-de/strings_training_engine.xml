@@ -17,7 +17,7 @@
     <string name="tre_deload_started">Leichtere Woche gestartet.</string>
     <string name="tre_duration_apply">Übernehmen</string>
     <string name="tre_duration_hint">Deine Trainings dauern meist etwa %1$d min. Vorschläge darauf abstimmen?</string>
-    <string name="tre_ev_affinity">Übungen, die du gern machst</string>
+    <string name="tre_ev_affinity">gern gemacht: %1$s</string>
     <string name="tre_ev_checkin">Check-in: %1$s</string>
     <string name="tre_ev_climb_days">Klettern vor %1$d Tagen: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d Versuche</string>
@@ -37,14 +37,6 @@
     <string name="tre_exclude">Nie vorschlagen</string>
     <string name="tre_excluded_badge">nie vorgeschlagen</string>
     <string name="tre_excluded_info">Wird nie vorgeschlagen – in der Bibliothek bleibt die Übung. Tippen, um sie wieder vorzuschlagen.</string>
-    <string name="tre_fb_dislike">Keine Lust auf …</string>
-    <string name="tre_fb_dislike_pick">Worauf?</string>
-    <string name="tre_fb_equipment">Ausrüstung fehlt</string>
-    <string name="tre_fb_hurts">Tut weh</string>
-    <string name="tre_fb_no_time">Keine Zeit</string>
-    <string name="tre_fb_other">Einfach was anderes</string>
-    <string name="tre_fb_too_easy">Zu leicht</string>
-    <string name="tre_fb_too_hard">Zu schwer</string>
     <string name="tre_focus_addon">Nach dem Klettern</string>
     <string name="tre_focus_core">Körperspannung</string>
     <string name="tre_focus_finger">Fingerkraft</string>
@@ -73,8 +65,6 @@
     <string name="tre_int_volume">Volumen</string>
     <string name="tre_menu_details">Details</string>
     <string name="tre_more_actions">Weitere Aktionen</string>
-    <string name="tre_next_subtitle">Freiwillig – deine Antwort passt die heutigen Vorschläge sofort an.</string>
-    <string name="tre_next_title">Warum ein anderer Vorschlag?</string>
     <string name="tre_reason_addon">Du kletterst heute – danach ein kurzer Block Antagonisten und Rumpf, keine zweite Einheit.</string>
     <string name="tre_reason_block_deload">Entlastungswoche: weniger Sätze, gleiche Übungen – Erholung gehört zum Plan.</string>
     <string name="tre_reason_block_event">Heute ist dein Trip oder Wettkampf – nur leichte Mobility, komm frisch an.</string>

@@ -89,6 +89,10 @@ data class TodayState(
     val minutesToday: Int? = null,
     /** Favourite exercises, starred on the card. */
     val favorites: Set<String> = emptySet(),
+    /** Today's "easier" (−1) / "harder" (+1) answer from the "another suggestion" sheet. */
+    val levelShift: Int = 0,
+    /** What the athlete usually chooses on today's weekday (kind, duration), learned from earlier choices. */
+    val usual: PreferenceLearning.UsualChoice? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -150,6 +154,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null
     private var minutesToday: Int? = null
     private val dislikedToday = mutableSetOf<String>()
+    /** Exercises the athlete swapped on the card today: suggested slug → own pick ("" = left out). */
+    private val swapsToday = mutableMapOf<String, String>()
+    /** The engine input of the shown suggestion, for the alternatives of a swap. */
+    private var lastInput: SuggestionInput? = null
+    /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
+    private var lastUsual: PreferenceLearning.UsualChoice? = null
+    private var ignoreUsualKind = false
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
     private val shownToday = mutableSetOf<String>()
 
@@ -167,7 +178,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         lastInputs = i
         if (variantDay != today) {
             variant = 0; variantDay = today
-            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear()
+            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false
             runCatching {
                 service.repo.suggestionEventsForDay(today.toString())
                     .filter { it.kind == SuggestionEventKind.SHOWN }
@@ -272,6 +283,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 wish = wish,
                 minutesToday = minutesToday,
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
+                levelShift = levelShift,
+                usual = lastUsual,
             )
         }
     }
@@ -337,8 +350,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             }.toMap()
             val routines = repo.routines()
             val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
-            val learned = PreferenceLearning.affinity(repo.suggestionEventsSince(sinceMs), repo.completedSetsSince(sinceMs), today)
+            val resets = i.profile.learningResets
+            val events = repo.suggestionEventsSince(sinceMs)
+            val learned = PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today, resets)
             val affinity = learned + dislikedToday.associateWith { -10.0 }
+            // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
+            val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
+            lastUsual = usual
+            val usualWish = usual?.focus?.takeIf { wish == null && !ignoreUsualKind }
+            val usualMinutes = usual?.minutes?.takeIf { minutesToday == null }
             val parsedActivities = activities.mapNotNull { (day, a) -> runCatching { LocalDate.parse(day) }.getOrNull()?.let { it to a } }.toMap()
             val todayActivity = parsedActivities[today]
             val climbingToday = (todayActivity != null && (todayActivity.climbingMinutes > 0 || todayActivity.climbingEfforts > 0)) ||
@@ -381,10 +401,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 weekly = weekly,
                 weekStart = weekStart,
                 returnState = returnState,
-                wish = wish,
-                minutesToday = minutesToday,
+                wish = wish ?: usualWish,
+                minutesToday = minutesToday ?: usualMinutes,
+                wishLearned = wish == null && usualWish != null,
+                minutesLearned = minutesToday == null && usualMinutes != null,
             )
-            val suggestion = SessionSuggester.suggest(input)
+            lastInput = input
+            // The athlete's swaps on the card stay for the day, whatever else changes.
+            val suggestion = SessionSuggester.withSwaps(SessionSuggester.suggest(input), swapsToday.toMap(), service.catalog)
             val plannedName = suggestion.plannedEntry
                 ?.takeIf { !it.startsWith("builtin:") && it != PLAN_BOARD && it != PLAN_REST }
                 ?.let { id -> routines.firstOrNull { it.id == id }?.name }
@@ -427,6 +451,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         synchronized(refreshLock) {
             val s = _state.value.suggestion
             service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
+            // The coach learns the athlete's usual choice per weekday from this ([PreferenceLearning.usualChoices]).
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_KIND + (focus?.name ?: ""), emptyList())
+            ignoreUsualKind = focus == null
             wish = focus
             lastInputs?.let { refreshUnlocked(it) }
         }
@@ -438,9 +465,60 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
      */
     fun chooseMinutes(minutes: Int?) = io {
         synchronized(refreshLock) {
-            minutesToday = minutes
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_MINUTES, emptyList(), value = minutes?.toDouble())
+            // "As usual" on a weekday with a habit of its own: the preferred duration, explicitly.
+            minutesToday = minutes ?: _state.value.profile.sessionMinutes.takeIf { lastUsual?.minutes != null }
             lastInputs?.let { refreshUnlocked(it) }
         }
+    }
+
+    /** Today's "easier" (−1) or "harder" (+1), 0 back to the coach's level; the coach learns nothing from it beyond today. */
+    fun chooseLevel(shift: Int) = io {
+        synchronized(refreshLock) {
+            val s = _state.value.suggestion
+            val feedback = when { shift > 0 -> SuggestionFeedback.TOO_EASY; shift < 0 -> SuggestionFeedback.TOO_HARD; else -> null }
+            if (feedback != null) service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), feedback)
+            levelShift = shift.coerceIn(-1, 1)
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand
+     * überschreibbar"): the same kind of work through the same safety filters as the suggestion.
+     */
+    fun alternatives(slug: String): List<SessionSuggester.Alternative> = synchronized(refreshLock) {
+        val input = lastInput ?: return emptyList()
+        val s = _state.value.suggestion ?: return emptyList()
+        runCatching { SessionSuggester.alternatives(input, s, slug) }.getOrDefault(emptyList())
+    }
+
+    /** The suggested slug [shown] stands for (itself, or the one it replaced earlier today). */
+    private fun originalOf(shown: String): String = swapsToday.entries.firstOrNull { it.value == shown }?.key ?: shown
+
+    /** The athlete's pick instead of [from] for today; the coach learns from it (−1 for [from], +1 for [to]). */
+    fun swapExercise(from: String, to: String) = io {
+        synchronized(refreshLock) {
+            val key = originalOf(from)
+            if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+            service.logSuggestion(SuggestionEventKind.SWAPPED, _state.value.suggestion?.focus?.name, listOf(from, to))
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /** "Heute weglassen": out of today's suggestion without a replacement; counts like "keine Lust". */
+    fun dropExercise(slug: String) = io {
+        synchronized(refreshLock) {
+            swapsToday[originalOf(slug)] = ""
+            service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug), SuggestionFeedback.DISLIKE_EXERCISE)
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /** "Nie vorschlagen" from the card; the profile change brings the new suggestion. */
+    fun excludeExercise(slug: String) = io {
+        synchronized(refreshLock) { swapsToday.entries.removeAll { it.value == slug } }
+        service.setExcluded(slug, true)
     }
 
     /** Takes over the real training length as the preferred duration. */

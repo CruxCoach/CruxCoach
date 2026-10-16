@@ -106,6 +106,10 @@ enum class SuggestionReason {
     KEPT_SHORT_THIS_WEEK,
     /** No more fitting exercises (equipment, injuries, exclusions): shorter than the chosen time. */
     LESS_THAN_CHOSEN,
+    /** The kind the athlete usually chooses on this weekday ([PreferenceLearning.usualChoices]). */
+    USUAL_KIND,
+    /** The duration the athlete usually chooses on this weekday. */
+    USUAL_MINUTES,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -199,6 +203,14 @@ data class SuggestionInput(
      * preferred duration, "keine Zeit" and the low-energy shortening; rest days and the event stay short.
      */
     val minutesToday: Int? = null,
+    /**
+     * [wish] is the kind the athlete usually chooses on this weekday, not a choice made today
+     * ([PreferenceLearning.usualChoices]): it only fills a free day – the week plan and climbing days
+     * stay the athlete's own plan – and every safety rule applies as to a choice.
+     */
+    val wishLearned: Boolean = false,
+    /** [minutesToday] is the athlete's usual duration on this weekday; being tired still shortens it. */
+    val minutesLearned: Boolean = false,
 )
 
 data class SessionSuggestion(
@@ -241,6 +253,11 @@ object SessionSuggester {
     private const val SETUP_SECONDS_PER_EXERCISE = 60
     /** A session within this many minutes of its time counts as fitting. */
     private const val GROW_TOLERANCE_MIN = 4
+    /**
+     * More time adds exercises only up to this many (warm-up not counted); after that only sets
+     * grow. A 90-minute day listed 14 exercises ("+ 9 more", render review 2026-10-16).
+     */
+    const val MAX_GROWN_EXERCISES = 8
 
     /** Mutable working state of one suggestion. */
     private class Ctx(val input: SuggestionInput) {
@@ -257,7 +274,8 @@ object SessionSuggester {
         val chosen = input.minutesToday?.coerceIn(10, 180)
         val usual = input.profile.sessionMinutes
         if (chosen != null && chosen != usual && s.timeAdjustable) {
-            s = s.copy(
+            s = if (input.minutesLearned) s.copy(reasons = (s.reasons + SuggestionReason.USUAL_MINUTES).distinct())
+            else s.copy(
                 reasons = (s.reasons + if (chosen < usual) SuggestionReason.NO_TIME_TODAY else SuggestionReason.MORE_TIME_TODAY).distinct(),
                 basedOn = (s.basedOn + Evidence.TimeToday(chosen, usual)).distinct(),
             )
@@ -274,7 +292,8 @@ object SessionSuggester {
         // chosen kind of training had to be replaced (that one explains the title).
         if (s.focus == SuggestionFocus.REST || input.injuries.none { Soreness.isSore(it) }) return s
         val reasons = s.reasons.toMutableList()
-        val replaced = input.wish != null && reasons.firstOrNull().let { it != null && it != SuggestionReason.CHOSEN_TODAY }
+        val chose = SuggestionReason.CHOSEN_TODAY in reasons || SuggestionReason.USUAL_KIND in reasons
+        val replaced = chose && reasons.firstOrNull().let { it != SuggestionReason.CHOSEN_TODAY && it != SuggestionReason.USUAL_KIND }
         reasons.add(if (replaced) 1 else 0, SuggestionReason.SPARED_TODAY)
         return s.copy(reasons = reasons)
     }
@@ -303,8 +322,8 @@ object SessionSuggester {
         }
         val lowEnergy = ReadinessReason.LOW_ENERGY in readiness.reasons || ReadinessReason.LOW_SLEEP in readiness.reasons
         if (lowEnergy) {
-            // Tired: shorter, unless the athlete chose the time for today.
-            if (chosenMinutes == null) budget = max(15, (budget * 0.6).roundToInt())
+            // Tired: shorter, unless the athlete chose the time for today (a usual time of the weekday still shrinks).
+            if (chosenMinutes == null || input.minutesLearned) budget = max(15, (budget * 0.6).roundToInt())
             reasons += SuggestionReason.LOW_ENERGY
         }
         when (input.levelShift.coerceIn(-1, 1)) {
@@ -328,9 +347,11 @@ object SessionSuggester {
         trend.evidence.forEach { ctx.evidence += it }
         val fingerBlock = recovery.reason ?: (if (fingersTired) SuggestionReason.FINGERS_TIRED else null) ?: trend.fingerReason
 
-        // The athlete's own choice for today comes before the plan and the rotation.
-        input.wish?.let { wish ->
-            chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike)?.let { return it }
+        // The athlete's own choice for today comes before the plan and the rotation; a usual choice of the
+        // weekday only fills a free day.
+        input.wish?.takeIf { !input.wishLearned || (planned == null && !input.climbingToday) }?.let { wish ->
+            val why = if (input.wishLearned) SuggestionReason.USUAL_KIND else SuggestionReason.CHOSEN_TODAY
+            chosen(ctx, wish, planned, budget, fingerBlock, climbingPaused, readiness, trend.skinSpike, why)?.let { return it }
         }
 
         // Climbing already done today on a climbing day: a short block after it instead of a
@@ -518,10 +539,11 @@ object SessionSuggester {
     private fun chosen(
         ctx: Ctx, wish: SuggestionFocus, planned: String?, budget: Int, fingerBlock: SuggestionReason?,
         climbingPaused: Boolean, readiness: Readiness, skinSpike: Boolean,
+        why: SuggestionReason = SuggestionReason.CHOSEN_TODAY,
     ): SessionSuggestion? {
         val reasons = ctx.reasons
         val areas = ctx.input.coach.focus
-        reasons.add(0, SuggestionReason.CHOSEN_TODAY)
+        reasons.add(0, why)
         fun pullPush() = build(ctx, SuggestionFocus.PULL_PUSH, withFocusAreas(slotsFor(SuggestionFocus.PULL_PUSH), SuggestionFocus.PULL_PUSH, areas, ctx), budget, planned, weekly = false)
         fun safe() = build(ctx, SuggestionFocus.INJURY_SAFE,
             withFocusAreas(listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS), SuggestionFocus.INJURY_SAFE, areas, ctx), budget, planned, weekly = false)
@@ -553,7 +575,7 @@ object SessionSuggester {
                 build(ctx, wish, withFocusAreas(slotsFor(wish), wish, areas, ctx), budget, planned, weekly = false)
             SuggestionFocus.MOBILITY_RECOVERY, SuggestionFocus.REST ->
                 build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(6) { Slot.MOBILITY }, budget, planned, weekly = false)
-            SuggestionFocus.PLANNED, SuggestionFocus.INJURY_SAFE -> { reasons.remove(SuggestionReason.CHOSEN_TODAY); null }
+            SuggestionFocus.PLANNED, SuggestionFocus.INJURY_SAFE -> { reasons.remove(why); null }
         }
     }
 
@@ -859,8 +881,8 @@ object SessionSuggester {
     }
 
     /**
-     * More time than the template fills: one more set on main work, then exercises from [extra], then a
-     * second extra set. Finger work keeps its dose (no extra sets, no second finger block). Runs before the
+     * More time than the template fills: one more set on main work, then exercises from [extra] (up to
+     * [MAX_GROWN_EXERCISES] in all), then a second extra set. Finger work keeps its dose (no extra sets, no second finger block). Runs before the
      * block and the re-entry scale the sets.
      */
     private fun growToBudget(
@@ -890,10 +912,11 @@ object SessionSuggester {
         // Up to three rounds through [extra]; a round that finds nothing new ends it.
         var full = false
         var round = 0
-        while (!full && short(list) && round++ < 3) {
+        fun room() = list.count { !it.warmup } < MAX_GROWN_EXERCISES
+        while (!full && short(list) && room() && round++ < 3) {
             var added = 0
             for (slot in extra) {
-                if (!short(list)) break
+                if (!short(list) || !room()) break
                 val picked = pickSlots(ctx, listOf(slot), allowWall = false, focus = focus, taken = list.map { it.slug }.toMutableSet())
                     .firstOrNull() ?: continue
                 val item = applyStyle(listOf(picked), input.coach.intensityStyle, catalog).first()
@@ -1180,6 +1203,86 @@ object SessionSuggester {
         }
         if (factor == 1.0) return items
         return items.map { if (it.warmup || it.test) it else it.copy(sets = max(1, (it.sets * factor).roundToInt())) }
+    }
+
+    // ── The athlete's swaps (owner 2026-10-16: every recommendation overridable with little effort) ──
+
+    /** One exercise that could take another's place; [easier]/[harder] mark its own progression chain. */
+    data class Alternative(val def: ExerciseDefinition, val easier: Boolean = false, val harder: Boolean = false)
+
+    /**
+     * What could take [slug]'s place in [suggestion]: its easier and harder variant first, then the best
+     * scored exercises of the same kind – through the same filters as a pick (equipment of today's place,
+     * injuries and what hurts today, guardrails, exclusions). Work that spares the fingers is only ever
+     * swapped for work that spares them too, so a swap never adds finger load the rules kept out.
+     */
+    fun alternatives(input: SuggestionInput, suggestion: SessionSuggestion, slug: String, count: Int = 4): List<Alternative> {
+        val catalog = input.catalog
+        val item = suggestion.routine.items.firstOrNull { it.slug == slug } ?: return emptyList()
+        val original = catalog.fallbackFor(slug)
+        val others = suggestion.routine.items.map { it.slug }.filter { it != slug }.toSet()
+        val filter = CatalogFilter(
+            ownedEquipment = if (input.profile.equipmentConfigured) input.profile.equipment else setOf(EquipmentV2.NONE, EquipmentV2.MAT),
+            withoutClimbing = !original.needsClimbingWall,
+        )
+        val guard = guardrails(input)
+        val focus = suggestion.focus
+        val slot = slotOf(original, item.warmup)
+        val mains = suggestion.routine.items.filter { !it.warmup }.map { catalog.fallbackFor(it.slug) }
+        val sparesFingers = LoadDomain.FINGER !in original.domains
+        val candidates = catalog.all.filter { def ->
+            val verdict = InjuryAdvisor.assess(def, input.injuries).verdict
+            val allowed = if (focus == SuggestionFocus.INJURY_SAFE) verdict == InjuryVerdict.OK || verdict == InjuryVerdict.ONE_SIDE_ONLY
+                else verdict != InjuryVerdict.AVOID
+            def.slug != slug && def.slug !in others && def.slug !in input.excluded && allowed && filter.matches(def) &&
+                def.category == original.category && (def.kind == ExerciseKind.CLIMB) == (original.kind == ExerciseKind.CLIMB) &&
+                (!sparesFingers || LoadDomain.FINGER !in def.domains) &&
+                !(guard.restrictFinger && !item.warmup && restrictedByGuard(def)) &&
+                (!item.warmup || warmupFits(def, mains)) &&
+                // One progression chain per session: no neighbour of another pick.
+                others.none { o -> def.easier == o || def.harder == o }
+        }
+        val chain = listOfNotNull(
+            candidates.firstOrNull { it.slug == original.easier }?.let { Alternative(it, easier = true) },
+            candidates.firstOrNull { it.slug == original.harder }?.let { Alternative(it, harder = true) },
+        )
+        val rest = candidates.filter { c -> chain.none { it.def.slug == c.slug } }
+            .sortedWith(compareByDescending<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
+            .map { Alternative(it) }
+        return (chain + rest).take(count)
+    }
+
+    /**
+     * Today's swaps on top of a suggestion: [swaps] maps a suggested slug to the athlete's pick, or to ""
+     * for "leave it out today". The pick keeps the item's number of sets and its warm-up role; a pick that
+     * is already in the session, or an unknown one, leaves the item out instead of doubling it.
+     */
+    fun withSwaps(suggestion: SessionSuggestion, swaps: Map<String, String>, catalog: ExerciseCatalog): SessionSuggestion {
+        if (swaps.isEmpty() || suggestion.routine.items.none { it.slug in swaps }) return suggestion
+        val items = mutableListOf<RoutineItem>()
+        for (item in suggestion.routine.items) {
+            val to = swaps[item.slug]
+            if (to == null) { items += item; continue }
+            val def = catalog[to] ?: continue
+            if (suggestion.routine.items.any { it.slug == to } || items.any { it.slug == to }) continue
+            items += WorkoutPlanner.itemFor(def).copy(sets = item.sets, warmup = item.warmup)
+        }
+        return suggestion.copy(routine = suggestion.routine.copy(items = items), estimatedMinutes = estimateMinutes(items, catalog))
+    }
+
+    private fun slotOf(def: ExerciseDefinition, warmup: Boolean): Slot = when {
+        warmup -> Slot.WARMUP
+        else -> when (def.category) {
+            ExerciseCategoryV2.FINGER -> Slot.FINGER_MAIN
+            ExerciseCategoryV2.PULL -> Slot.PULL
+            ExerciseCategoryV2.PUSH -> Slot.PUSH
+            ExerciseCategoryV2.ANTAGONIST -> Slot.ANTAGONIST
+            ExerciseCategoryV2.CORE -> Slot.CORE
+            ExerciseCategoryV2.LEGS -> Slot.LEGS
+            ExerciseCategoryV2.MOBILITY -> Slot.MOBILITY
+            ExerciseCategoryV2.WARMUP -> Slot.WARMUP
+            else -> Slot.POWER
+        }
     }
 
     // ── Time budget ──────────────────────────────────────────────────

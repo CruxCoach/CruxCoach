@@ -95,6 +95,56 @@ class PreferenceLearningTest {
         assertNull(PreferenceLearning.suggestedSessionMinutes(workouts.take(3), current = 60, today = today))
     }
 
+    // ── Choices per weekday and forgetting (UX review 2026-10-16) ──
+
+    private fun chosen(daysAgo: Int, focus: String, value: Double? = null, started: Boolean = true, at: Long = 0) = buildList {
+        val day = today.minus(DatePeriod(days = daysAgo)).toString()
+        val ms = todayMs - daysAgo * dayMs + at
+        add(SuggestionEvent("c$daysAgo$focus$at", day, ms, SuggestionEventKind.FEEDBACK, focus = focus, value = value))
+        if (started) add(SuggestionEvent("s$daysAgo$focus$at", day, ms + 1000, SuggestionEventKind.STARTED, focus = "PULL_PUSH"))
+    }
+
+    @Test
+    fun aKindChosenTwiceOnAWeekdayBecomesUsual() {
+        // 2026-10-05 is a Monday: the last two Mondays the athlete chose pull and push and trained.
+        val events = chosen(7, PreferenceLearning.CHOSEN_KIND + "PULL_PUSH") + chosen(14, PreferenceLearning.CHOSEN_KIND + "PULL_PUSH") +
+            chosen(7, PreferenceLearning.CHOSEN_MINUTES, 30.0) + chosen(21, PreferenceLearning.CHOSEN_MINUTES, 30.0)
+        val usual = PreferenceLearning.usualChoices(events, today)[1]
+        assertEquals(SuggestionFocus.PULL_PUSH, usual?.focus)
+        assertEquals(30, usual?.minutes)
+        // Once is no habit, and a choice without a training does not count.
+        assertNull(PreferenceLearning.usualChoices(chosen(7, PreferenceLearning.CHOSEN_KIND + "LEGS_CORE"), today)[1])
+        val idle = chosen(7, PreferenceLearning.CHOSEN_KIND + "LEGS_CORE", started = false) + chosen(14, PreferenceLearning.CHOSEN_KIND + "LEGS_CORE")
+        assertNull(PreferenceLearning.usualChoices(idle, today)[1])
+    }
+
+    @Test
+    fun theMostRecentChoiceOfAWeekdayDecides() {
+        val kind = PreferenceLearning.CHOSEN_KIND
+        // Two Mondays legs, the last one back to the coach: nothing usual any more.
+        val back = chosen(14, kind + "LEGS_CORE") + chosen(21, kind + "LEGS_CORE") + chosen(7, kind)
+        assertNull(PreferenceLearning.usualChoices(back, today)[1])
+        // Within one day the last choice wins.
+        val changed = chosen(7, kind + "FINGER_STRENGTH") + chosen(7, kind + "LEGS_CORE", at = 5000) + chosen(14, kind + "LEGS_CORE")
+        assertEquals(SuggestionFocus.LEGS_CORE, PreferenceLearning.usualChoices(changed, today)[1]?.focus)
+        // Today's own choice is today's, not a habit yet; other weekdays stay apart.
+        val todayToo = chosen(0, kind + "LEGS_CORE") + chosen(7, kind + "LEGS_CORE") + chosen(8, kind + "LEGS_CORE")
+        assertNull(PreferenceLearning.usualChoices(todayToo, today)[1])
+    }
+
+    @Test
+    fun forgottenSignalsNoLongerCount() {
+        val kind = PreferenceLearning.CHOSEN_KIND
+        val events = chosen(7, kind + "PULL_PUSH") + chosen(14, kind + "PULL_PUSH")
+        val reset = mapOf(PreferenceLearning.weekdayKey(1) to todayMs - 10 * dayMs)
+        assertNull(PreferenceLearning.usualChoices(events, today, reset)[1])
+        val dislikes = listOf(event(SuggestionEventKind.NEXT, listOf("core.dead_bug"), daysAgo = 3, feedback = SuggestionFeedback.DISLIKE_EXERCISE),
+            event(SuggestionEventKind.NEXT, listOf("legs.air_squat"), daysAgo = 3, feedback = SuggestionFeedback.DISLIKE_EXERCISE))
+        val one = PreferenceLearning.affinity(dislikes, emptyList(), today, mapOf(PreferenceLearning.exerciseKey("core.dead_bug") to todayMs))
+        assertNull(one["core.dead_bug"]); assertTrue((one["legs.air_squat"] ?: 0.0) < 0)
+        assertTrue(PreferenceLearning.affinity(dislikes, emptyList(), today, mapOf(PreferenceLearning.RESET_ALL to todayMs)).isEmpty())
+    }
+
     @Test
     fun actualWeekdaysNeedThreeOfEightWeeks() {
         val mondays = (0 until 4).map { today.minus(DatePeriod(days = 7 * it)) } // 2026-10-05 is a Monday

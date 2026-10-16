@@ -59,7 +59,23 @@ data class AthleteSettingsState(
     val plan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
     /** Today's nutrition targets with the recommendation behind own ones. */
     val targets: com.cruxcoach.athlete.logic.FuelTargets.Targets? = null,
+    /** What the coach learned from the athlete's choices, each part forgettable (UX review 2026-10-16). */
+    val learned: Learned = Learned(),
 )
+
+/**
+ * What the coach learned and uses: exercises done gladly or often swapped away (affinity ≥ 1 / ≤ −1),
+ * the usual kind and time per weekday, and loads the athlete chose lower than planned.
+ */
+data class Learned(
+    val liked: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
+    val less: List<com.cruxcoach.athlete.catalog.ExerciseDefinition> = emptyList(),
+    val weekdays: List<com.cruxcoach.athlete.logic.PreferenceLearning.UsualChoice> = emptyList(),
+    val ownLoads: List<Pair<Benchmark, com.cruxcoach.athlete.catalog.ExerciseDefinition>> = emptyList(),
+) {
+    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty()
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size
+}
 
 @HiltViewModel
 class AthleteSettingsViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
@@ -87,12 +103,48 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
                     completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
                     weightKg = trend.lastOrNull()?.trend,
+                    learned = runCatching { learned(profile, benchmarks) }.getOrDefault(Learned()),
                 )
             }.collect { _state.value = it }
         }
     }
 
     fun update(transform: (AthleteProfile) -> AthleteProfile) = io { service.repo.updateProfile(transform) }
+
+    private fun learned(profile: AthleteProfile, benchmarks: List<Benchmark>): Learned {
+        val repo = service.repo
+        val today = service.today()
+        val since = System.currentTimeMillis() - com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+        val events = repo.suggestionEventsSince(since)
+        val resets = profile.learningResets
+        val affinity = com.cruxcoach.athlete.logic.PreferenceLearning.affinity(events, repo.completedSetsSince(since), today, resets)
+            .filterKeys { it !in profile.excludedExercises }
+        fun defs(pick: (Double) -> Boolean) = affinity.filterValues(pick).entries.sortedByDescending { kotlin.math.abs(it.value) }
+            .map { service.catalog.fallbackFor(it.key) }
+        // The value that plans each exercise and side now, when it is one the athlete's lower loads left.
+        val own = benchmarks.groupBy { it.exerciseSlug to it.side }.values.mapNotNull { list -> list.maxByOrNull { it.measuredAt } }
+            .filter { it.source == BenchmarkSource.AUTO && it.sets != null }
+        return Learned(
+            liked = defs { it >= 1.0 },
+            less = defs { it <= -1.0 },
+            weekdays = com.cruxcoach.athlete.logic.PreferenceLearning.usualChoices(events, today, resets).values.sortedBy { it.isoDay },
+            ownLoads = own.map { it to service.catalog.fallbackFor(it.exerciseSlug) }.sortedBy { it.second.slug },
+        )
+    }
+
+    private fun forget(key: String) = update { it.copy(learningResets = it.learningResets + (key to System.currentTimeMillis())) }
+
+    /** The coach forgets what it learned about one exercise; favourites and "never" stay. */
+    fun forgetExercise(slug: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.exerciseKey(slug))
+
+    /** The usual kind and time of one weekday are forgotten. */
+    fun forgetWeekday(isoDay: Int) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.weekdayKey(isoDay))
+
+    /** An own lower load goes: planning falls back to the value before it. */
+    fun forgetOwnLoad(b: Benchmark) = io { service.repo.deleteBenchmark(b.id) }
+
+    /** Everything learned from choices so far (not favourites, "never" or performance values). */
+    fun forgetAll() = forget(com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL)
 
     /** Lets an excluded exercise be suggested again. */
     fun allow(slug: String) = update { it.copy(excludedExercises = it.excludedExercises - slug) }
@@ -162,6 +214,7 @@ fun AthleteSettingsScreen(
     val pageInfo = when (section) {
         SettingsSection.ABOUT -> stringResource(R.string.tra_personal_info)
         SettingsSection.EQUIPMENT -> stringResource(R.string.tro_places_intro)
+        SettingsSection.EXCLUDED -> stringResource(R.string.trlr_info)
         else -> null
     }
     TrainingScaffold(title = pageTitle, onBack = onBack, actions = { pageInfo?.let { InfoButton(pageTitle, it) } }) { padding ->
@@ -337,9 +390,11 @@ fun AthleteSettingsScreen(
                     extraSections()
                 }
                 SettingsSection.EXCLUDED -> {
+                    LearnedSection(state, viewModel)
+                    SectionTitle(stringResource(R.string.trc_excluded_title))
                     if (state.excluded.isEmpty()) {
                         Text(stringResource(R.string.trc_excluded_none), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         val lang = catalogLanguage()
                         state.excluded.forEach { def ->
@@ -389,7 +444,7 @@ private fun sectionTitle(s: SettingsSection): String = stringResource(when (s) {
     SettingsSection.TIMER -> R.string.tra_timer_title
     SettingsSection.DISPLAY -> R.string.tru_set_display
     SettingsSection.CONNECTIONS -> R.string.tru_set_connections
-    SettingsSection.EXCLUDED -> R.string.trc_excluded_title
+    SettingsSection.EXCLUDED -> R.string.trlr_title
 })
 
 /** Every page as one row with its current value; the most important first. */
@@ -469,10 +524,93 @@ private fun SettingsOverview(state: AthleteSettingsState, onOpen: (SettingsSecti
         "settings_row_connections", open(SettingsSection.CONNECTIONS))
     row(Icons.Default.Terrain, stringResource(R.string.trl_days_title), stringResource(R.string.tru_set_days_summary),
         "settings_row_climbing_days", onOpenClimbingDays)
-    row(Icons.Default.Block, sectionTitle(SettingsSection.EXCLUDED),
-        if (state.excluded.isEmpty()) stringResource(R.string.tru_set_none) else pluralStringResource(R.plurals.tru_set_exercises, state.excluded.size, state.excluded.size),
+    row(Icons.Default.Psychology, sectionTitle(SettingsSection.EXCLUDED),
+        listOfNotNull(
+            state.learned.count.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.trlr_summary_learned, it, it) },
+            state.excluded.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.trlr_summary_never, it, it) },
+        ).ifEmpty { listOf(stringResource(R.string.trlr_summary_nothing)) }.joinToString(" · "),
         "settings_row_excluded", open(SettingsSection.EXCLUDED))
 }
+
+/**
+ * "Was der Coach gelernt hat": every learned preference with "forget", and one reset for all of it
+ * (owner 2026-10-16: learning stays visible, explainable and resettable, never above the safety rules).
+ */
+@Composable
+private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettingsViewModel) {
+    val learned = state.learned
+    val lang = catalogLanguage()
+    var confirmAll by rememberSaveable { mutableStateOf(false) }
+    @Composable
+    fun row(text: String, detail: String?, tag: String, onForget: () -> Unit) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag)) {
+            Column(Modifier.weight(1f)) {
+                Text(text, style = MaterialTheme.typography.bodyLarge)
+                detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            TextButton(onClick = onForget, modifier = Modifier.testTag("${tag}_forget")) { Text(stringResource(R.string.trlr_forget)) }
+        }
+    }
+    if (learned.isEmpty) {
+        Text(stringResource(R.string.trlr_empty), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp).testTag("learned_empty"))
+    }
+    if (learned.weekdays.isNotEmpty()) {
+        SectionTitle(stringResource(R.string.trlr_weekdays))
+        learned.weekdays.forEach { u ->
+            val day = java.time.DayOfWeek.of(u.isoDay).getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+            val parts = listOfNotNull(
+                u.focus?.let { focusChoiceLabel(it) },
+                u.minutes?.let { stringResource(R.string.trt_duration_value, it) },
+            )
+            row(day, parts.joinToString(" · "), "learned_day_${u.isoDay}") { viewModel.forgetWeekday(u.isoDay) }
+        }
+    }
+    if (learned.liked.isNotEmpty()) {
+        SectionTitle(stringResource(R.string.trlr_liked))
+        learned.liked.forEach { def -> row(def.name(lang), null, "learned_liked_${def.slug}") { viewModel.forgetExercise(def.slug) } }
+    }
+    if (learned.less.isNotEmpty()) {
+        SectionTitle(stringResource(R.string.trlr_less))
+        learned.less.forEach { def -> row(def.name(lang), null, "learned_less_${def.slug}") { viewModel.forgetExercise(def.slug) } }
+    }
+    if (learned.ownLoads.isNotEmpty()) {
+        SectionTitle(stringResource(R.string.trlr_own_loads))
+        learned.ownLoads.forEach { (b, def) ->
+            val load = b.loadKg?.let { formatMass(it, state.profile.units, signed = def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS) }
+            row(listOfNotNull(def.name(lang), b.side?.let { sideLabel(it) }).joinToString(" · "),
+                listOfNotNull(b.sets?.let { n -> b.reps?.let { "$n × $it" } }, load).joinToString(" · ").ifBlank { null },
+                "learned_load_${b.exerciseSlug}") { viewModel.forgetOwnLoad(b) }
+        }
+    }
+    if (!learned.isEmpty) {
+        OutlinedButton(onClick = { confirmAll = true }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).testTag("learned_forget_all")) {
+            Text(stringResource(R.string.trlr_forget_all))
+        }
+    }
+    if (confirmAll) {
+        AlertDialog(
+            onDismissRequest = { confirmAll = false },
+            title = { Text(stringResource(R.string.trlr_forget_all)) },
+            text = { Text(stringResource(R.string.trlr_forget_all_text)) },
+            confirmButton = {
+                TextButton(onClick = { confirmAll = false; viewModel.forgetAll() }, modifier = Modifier.testTag("learned_forget_all_confirm")) {
+                    Text(stringResource(R.string.trlr_forget))
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun focusChoiceLabel(focus: com.cruxcoach.athlete.logic.SuggestionFocus): String = stringResource(when (focus) {
+    com.cruxcoach.athlete.logic.SuggestionFocus.FINGER_STRENGTH -> R.string.trt_kind_finger
+    com.cruxcoach.athlete.logic.SuggestionFocus.PULL_PUSH -> R.string.trt_kind_pull_push
+    com.cruxcoach.athlete.logic.SuggestionFocus.LEGS_CORE -> R.string.trt_kind_legs_core
+    com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY -> R.string.trt_kind_board
+    else -> R.string.trt_kind_mobility
+})
 
 @Composable
 private fun Stepper(label: String, tag: String, onMinus: () -> Unit, onPlus: () -> Unit) {
