@@ -255,28 +255,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     }
 
     /** The open sets after [after] in its block and side that followed its old load, moved by the same step. */
-    private fun carryLoad(before: ExerciseSet?, after: ExerciseSet): List<ExerciseSet> {
-        if (before == null || before.isCompleted || after.isCompleted) return emptyList()
-        val def = service.catalog.fallbackFor(after.exerciseSlug)
-        if (def.load != com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS && def.load != com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL) return emptyList()
-        // No load yet means body weight (or nothing on the block): the first "+" starts from zero.
-        val old = before.loadKg ?: 0.0
-        val new = after.loadKg ?: return emptyList()
-        val delta = new - old
-        if (kotlin.math.abs(delta) < 1e-9) return emptyList()
-        val min = if (def.load == com.cruxcoach.athlete.catalog.LoadMode.EXTERNAL) 0.0 else Double.NEGATIVE_INFINITY
-        return _state.value.sets.filter {
-            val load = it.loadKg ?: 0.0
-            it.id != after.id && !it.isCompleted && it.blockIndex == after.blockIndex && it.side == after.side &&
-                it.setType == after.setType && it.setIndex > after.setIndex &&
-                // Untouched by the athlete, or already following the old value.
-                (load == (it.targetLoadKg ?: load) || load == old)
-        }.map { s ->
-            val moved = ((s.loadKg ?: 0.0) + delta).coerceAtLeast(min)
-            // Target and value move together: autoregulation keeps working from the athlete's load.
-            s.copy(loadKg = moved, targetLoadKg = moved)
-        }
-    }
+    private fun carryLoad(before: ExerciseSet?, after: ExerciseSet): List<ExerciseSet> =
+        com.cruxcoach.android.ui.training.workout.carriedLoads(before, after, _state.value.sets, service.catalog.fallbackFor(after.exerciseSlug))
 
     private suspend fun readjust(done: ExerciseSet) {
         val adjustment = runCatching { service.adjustUpcomingSets(done.workoutId, done, applied[done.id]) }.getOrNull()

@@ -185,6 +185,18 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a load changed in the list carries over to the next sets too`() {
+        // Device test 2026-10-17: in a free training only the touched set changed.
+        val id = service.startWorkout(Routine("r", "Free", items = listOf(RoutineItem("antagonist.wrist_curl", sets = 3, loadKg = 6.0))), null)
+        val vm = loaded(com.cruxcoach.android.ui.training.workout.WorkoutViewModel(service))
+        until { vm.state.value.blocks.flatMap { it.sets }.count { it.setType == SetType.WORK } == 3 }
+        val first = vm.state.value.blocks.flatMap { it.sets }.filter { it.setType == SetType.WORK }.minBy { it.setIndex }
+        vm.update(first.copy(loadKg = 4.0))
+        until { work(id).all { it.loadKg == 4.0 } }
+        assertTrue(work(id).drop(1).all { it.targetLoadKg == 4.0 })
+    }
+
+    @Test
     fun `back shows a done set to correct, and it can be opened again`() {
         val (id, vm) = player(Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 10, repsMax = 10, restS = 60))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
