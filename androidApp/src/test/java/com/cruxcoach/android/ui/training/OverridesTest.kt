@@ -327,9 +327,12 @@ class OverridesTest : AthleteScreenTest() {
         click("today_kind_legs_core")
         until { vm.state.value.suggestion?.focus == SuggestionFocus.LEGS_CORE }
         assertEquals(SuggestionReason.CHOSEN_TODAY, vm.state.value.suggestion!!.reasons.first())
-        // A finger day at a place without a hangboard turns into pull and push, with the reason.
+        // A finger day at a place without a hangboard turns into pull and push, with the reason;
+        // the place is picked in the same sheet (owner 2026-10-15).
         vm.chooseFocus(SuggestionFocus.FINGER_STRENGTH)
-        vm.pickPlace(com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR_ID)
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.FINGER_STRENGTH }
+        click("today_suggestion_next")
+        click("today_next_place_${com.cruxcoach.athlete.logic.TrainingPlaces.NO_GEAR_ID}")
         until {
             val s = vm.state.value.suggestion
             s != null && s.focus == SuggestionFocus.PULL_PUSH && SuggestionReason.NO_FINGER_EQUIPMENT in s.reasons

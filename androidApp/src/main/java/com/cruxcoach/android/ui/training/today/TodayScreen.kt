@@ -279,6 +279,7 @@ fun TodayScreen(
             // What hurts today is spared today (check-in), not turned into an injury; equipment is answered right here.
             onHurts = { askWhy = false; showCheckin = true },
             onEquipment = { askWhy = false; showEquipment = true },
+            onPlace = { id -> askWhy = false; viewModel.pickPlace(id) },
         )
     }
     swapFor?.let { slug ->
@@ -1478,6 +1479,7 @@ private fun NextSuggestionSheet(
     onLevel: (Int) -> Unit,
     onHurts: () -> Unit,
     onEquipment: () -> Unit,
+    onPlace: (String) -> Unit = {},
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag("today_next_sheet")) {
@@ -1498,6 +1500,22 @@ private fun NextSuggestionSheet(
                 if (state.wish != null) {
                     SuggestionChip(onClick = { onFocus(null) }, label = { Text(stringResource(R.string.trt_kind_coach)) },
                         modifier = Modifier.testTag("today_kind_coach"))
+                }
+            }
+            // Where, right with the kind (owner 2026-10-15: no hangboard there, no finger day); also on the card.
+            val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
+            val currentPlace = TrainingPlaces.current(state.profile, day)?.id
+            Text(stringResource(R.string.trt_next_place), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                (TrainingPlaces.of(state.profile) + TrainingPlaces.NO_GEAR).forEach { place ->
+                    FilterChip(
+                        selected = place.id == currentPlace,
+                        onClick = { if (place.id != currentPlace) onPlace(place.id) },
+                        label = { Text(com.cruxcoach.android.ui.training.common.placeLabel(place)) },
+                        leadingIcon = { Icon(com.cruxcoach.android.ui.training.common.placeIcon(place.kind), null, Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag("today_next_place_${place.id}"),
+                    )
                 }
             }
             Text(stringResource(R.string.trt_next_level), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
