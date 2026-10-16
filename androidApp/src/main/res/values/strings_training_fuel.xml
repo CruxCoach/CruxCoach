@@ -146,4 +146,8 @@
     <string name="trf_create_serving_g">Portion size in g (optional)</string>
     <string name="trf_create_serving_label">Portion name (optional, e.g. bar)</string>
 
+    <!-- Log again what a meal usually holds (UX review 2026-10-16) -->
+    <string name="trf_recent_title">Log again</string>
+    <string name="trf_recent_log">Log %1$s again</string>
+    <string name="trf_recent_logged">Logged: %1$s</string>
 </resources>

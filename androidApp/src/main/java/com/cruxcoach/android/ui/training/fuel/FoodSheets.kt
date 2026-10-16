@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -189,6 +190,11 @@ fun FoodsSheet(
     onMealChange: (Meal) -> Unit = {},
     /** Scan, describe, photo and plain values as tiles under the search field (adding to the log). */
     addActions: (@Composable () -> Unit)? = null,
+    /** Foods eaten at the chosen meal again and again, logged once more with one tap (same amount). */
+    recent: List<FoodLogEntry> = emptyList(),
+    onRelog: (FoodLogEntry) -> Unit = {},
+    showCalories: Boolean = false,
+    units: UnitSystem = UnitSystem.METRIC,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     /** A food about to be deleted: one tap on the trash icon used to delete it outright. */
@@ -242,29 +248,58 @@ fun FoodsSheet(
             )
             // The other ways in, while nothing is typed: the list below belongs to the search.
             if (q.isEmpty()) addActions?.invoke()
-            if (onCreate != null || onCreateRecipe != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                    Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
-                    onCreateRecipe?.let { create ->
-                        TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
-                            Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.trf_recipe_new))
-                        }
-                    }
-                    onCreate?.let { create ->
-                        TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
-                            Icon(Icons.Default.Add, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(R.string.tru_new_food))
-                        }
-                    }
-                }
-            }
-            if (visible.isEmpty() && q.isEmpty()) {
-                EmptyHint(stringResource(R.string.trf_foods_empty))
-            }
+            // What this meal usually holds, the own foods and the databases scroll together: on a small phone
+            // the "log again" rows above a fixed list squeezed "my foods" away (render review 2026-10-16).
             LazyColumn(Modifier.heightIn(max = 460.dp).testTag("fuel_foods_list")) {
+                    if (q.isEmpty() && recent.isNotEmpty()) {
+                        item(key = "recent_title") {
+                            Text(stringResource(R.string.trf_recent_title), style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+                        }
+                        // One tap each: the same food with the same amount (UX review 2026-10-16).
+                        items(recent, key = { "recent_${it.id}" }) { entry ->
+                            val unit = FuelUnits.unitFor(units, FuelUnits.isDrink(entry.foodItemId, entry.name))
+                            val amount = when {
+                                entry.amountG != null -> amountText(entry.amountG!!, unit)
+                                entry.portions != null && entry.portions != 1.0 -> stringResource(R.string.trf_entry_portions, formatNumber(entry.portions!!))
+                                else -> null
+                            }
+                            ListItem(
+                                headlineContent = { Text(entry.name, maxLines = 1) },
+                                supportingContent = {
+                                    Text(listOfNotNull(amount, macrosText(entry.proteinG, entry.carbsG, entry.fatG,
+                                        com.cruxcoach.athlete.logic.MacroTotals.energy(entry), showCalories)).joinToString(" · "), maxLines = 1)
+                                },
+                                trailingContent = { Icon(Icons.Default.AddCircle, contentDescription = stringResource(R.string.trf_recent_log, entry.name)) },
+                                colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                                modifier = Modifier.clickable { onRelog(entry) }.testTag("fuel_recent_${entry.id}"),
+                            )
+                        }
+                    }
+                    if (onCreate != null || onCreateRecipe != null) {
+                        item(key = "own_title") {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                                Text(stringResource(R.string.trf_my_foods), style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f))
+                                onCreateRecipe?.let { create ->
+                                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_recipe_new")) {
+                                        Icon(Icons.Default.MenuBook, null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(stringResource(R.string.trf_recipe_new))
+                                    }
+                                }
+                                onCreate?.let { create ->
+                                    TextButton(onClick = create, modifier = Modifier.testTag("fuel_food_new")) {
+                                        Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(stringResource(R.string.tru_new_food))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (visible.isEmpty() && q.isEmpty()) {
+                        item(key = "own_empty") { EmptyHint(stringResource(R.string.trf_foods_empty)) }
+                    }
                     items(visible, key = { it.id }) { item ->
                         ListItem(
                             headlineContent = { Text(item.name) },
@@ -405,6 +440,8 @@ fun AmountDialog(
     forRecipe: Boolean = false,
     /** The athlete's calorie setting: the live preview names kcal only when calories are shown. */
     showCalories: Boolean = false,
+    /** The last time this food was logged: a new entry starts with that amount (UX review 2026-10-16). */
+    last: FoodLogEntry? = null,
 ) {
     val perPortion = FuelViewModel.isPerPortion(item)
     val gramsPossible = !perPortion
@@ -412,12 +449,14 @@ fun AmountDialog(
     val drink = FuelUnits.isDrink(item.id, item.name, item.servingLabel)
     val baseUnit = FuelUnits.unitFor(units, drink)
     val amountUnits = if (units == UnitSystem.IMPERIAL && drink) listOf(baseUnit, FuelUnits.Amount.CUP) else listOf(baseUnit)
-    val editedByGrams = editing != null && editing.portions == null && editing.amountG != null
+    // A change starts from the entry; a new entry from the amount eaten last time.
+    val start = editing ?: last
+    val editedByGrams = start != null && start.portions == null && start.amountG != null
     var useGrams by rememberSaveable { mutableStateOf(gramsPossible && (item.servingG == null || editedByGrams)) }
     var unit by rememberSaveable { mutableStateOf(baseUnit) }
-    var portions by rememberSaveable { mutableStateOf(editing?.portions?.let { formatNumber(it, 2) } ?: "1") }
+    var portions by rememberSaveable { mutableStateOf(start?.portions?.let { formatNumber(it, 2) } ?: "1") }
     var grams by rememberSaveable {
-        mutableStateOf(inputText(editing?.amountG?.takeIf { editedByGrams } ?: item.servingG ?: 100.0, baseUnit))
+        mutableStateOf(inputText(start?.amountG?.takeIf { editedByGrams } ?: item.servingG ?: 100.0, baseUnit))
     }
     var meal by rememberSaveable { mutableStateOf(editing?.meal ?: initialMeal) }
     val p = parseDecimal(portions)?.takeIf { it > 0 && it <= 50 }

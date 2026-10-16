@@ -48,6 +48,10 @@ data class FuelState(
     /** The shown day's estimated energy need; null without weight or height. */
     val need: EnergyBalance.Need? = null,
     val heightCm: Double? = null,
+    /** Per meal: foods eaten there again and again, to log once more with one tap ([com.cruxcoach.athlete.logic.RecentFoods]). */
+    val recentByMeal: Map<Meal, List<FoodLogEntry>> = emptyMap(),
+    /** Newest entry per saved food: where its amount dialog starts. */
+    val lastByFood: Map<String, FoodLogEntry> = emptyMap(),
 ) {
     val waterMl: Int get() = water.sumOf { it.ml }
     val isToday: Boolean get() = day != null && day == today
@@ -95,6 +99,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val activities = service.activities(days = maxOf(span, 7))
         val activity = activities[s.day.toString()]
         val previous = service.repo.foodLog(s.day.minus(DatePeriod(days = 1)).toString()).size
+        val log = runCatching {
+            service.repo.foodLogBetween(today.minus(DatePeriod(days = com.cruxcoach.athlete.logic.RecentFoods.WINDOW_DAYS)).toString(), today.toString())
+        }.getOrDefault(emptyList())
         _state.update {
             it.copy(
                 loading = false,
@@ -111,6 +118,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 energy = service.energyReport(s.profile, activities),
                 need = service.energyNeed(s.profile, activity),
                 heightCm = service.heightCm(),
+                recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
+                lastByFood = com.cruxcoach.athlete.logic.RecentFoods.lastByFood(log),
             )
         }
     }
@@ -198,6 +207,19 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     }
 
     fun deleteEntry(entry: FoodLogEntry) = io { service.repo.deleteFoodLog(entry.id) }
+
+    /**
+     * "Log again": the same food with the same amount into [meal] of the shown day, in one tap.
+     * Returns the new entry, for "undo".
+     */
+    fun relog(entry: FoodLogEntry, meal: Meal): FoodLogEntry {
+        val copy = entry.copy(id = java.util.UUID.randomUUID().toString(), day = currentDay(), loggedAt = System.currentTimeMillis(), meal = meal)
+        io {
+            service.repo.saveFoodLog(copy)
+            entry.foodItemId?.let { service.repo.markFoodItemUsed(it) }
+        }
+        return copy
+    }
 
     /** Saves a recipe as one of "my foods"; a new one gets an id. */
     fun saveRecipe(id: String?, recipe: Recipe) = io { service.repo.saveRecipe(id ?: service.repo.newId(), recipe) }

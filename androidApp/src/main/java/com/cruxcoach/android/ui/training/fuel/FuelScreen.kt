@@ -106,6 +106,7 @@ fun FuelScreen(
         foodsById[e.foodItemId]?.let { FuelUnits.isDrink(it.id, it.name, it.servingLabel) } ?: FuelUnits.isDrink(e.foodItemId, e.name)
     }
     val deletedText = stringResource(R.string.trf_deleted)
+    val relogText = stringResource(R.string.trf_recent_logged)
     val waterRemovedText = stringResource(R.string.trf_water_removed)
     val undoText = stringResource(R.string.trf_undo)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
@@ -267,6 +268,19 @@ fun FuelScreen(
             title = stringResource(R.string.tru_fuel_add),
             meal = addMeal,
             onMealChange = { addMeal = it },
+            recent = state.recentByMeal[addMeal].orEmpty(),
+            onRelog = { entry ->
+                foodsOpen = false
+                val added = viewModel.relog(entry, addMeal)
+                scope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(relogText.format(entry.name), undoText, duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                        viewModel.deleteEntry(added)
+                    }
+                }
+            },
+            showCalories = state.profile.showCalories,
+            units = units,
             addActions = {
                 FoodAddActions(
                     photoAvailable = photoState.support is com.cruxcoach.athlete.logic.VisionSupport.Supported && !photoState.tooSlow,
@@ -287,6 +301,7 @@ fun FuelScreen(
             onConfirm = { meal, portions, grams -> viewModel.addFood(item, meal, portions, grams); amountFor = null },
             units = units,
             showCalories = state.profile.showCalories,
+            last = state.lastByFood[item.id],
         )
     }
     if (createFood) {
