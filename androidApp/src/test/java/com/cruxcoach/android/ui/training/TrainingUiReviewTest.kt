@@ -150,6 +150,62 @@ class TrainingUiReviewTest : AthleteScreenTest() {
     }
 
     @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun fuelAddSheetRecent() {
+        // Yesterday's breakfast comes back as "log again" (UX review 2026-10-16).
+        val yesterday = service.today().minus(kotlinx.datetime.DatePeriod(days = 1)).toString()
+        repo.updateProfile { it.copy(fuelIntroAccepted = true) }
+        repo.saveFoodItem(com.cruxcoach.athlete.model.FoodItem(id = "oats", name = "Haferflocken", kcalPer100 = 370.0, proteinPer100 = 13.0,
+            carbsPer100 = 59.0, fatPer100 = 7.0, updatedAt = 1))
+        repo.saveFoodLog(FoodLogEntry("y1", yesterday, 1, Meal.BREAKFAST, foodItemId = "oats", name = "Haferflocken", amountG = 80.0,
+            kcal = 296.0, proteinG = 10.4, carbsG = 47.2, fatG = 5.6))
+        repo.saveFoodLog(FoodLogEntry("y2", yesterday, 2, Meal.BREAKFAST, name = "Kaffee mit Milch", portions = 1.0, kcal = 40.0, proteinG = 2.0))
+        repo.saveFoodLog(FoodLogEntry("y3", yesterday, 3, Meal.BREAKFAST, name = "Skyr", amountG = 150.0, kcal = 95.0, proteinG = 16.0))
+        val vm = loaded(FuelViewModel(service))
+        compose.waitUntil(WAIT_MS) { vm.state.value.recentByMeal[Meal.BREAKFAST]?.size == 3 }
+        val p = photo()
+        shoot("fuel-add-sheet-recent", {
+            scrollTo("fuel_list", "fuel_add_breakfast"); click("fuel_add_breakfast"); waitForTag("fuel_recent_y1")
+            Thread.sleep(800)
+        }) { FuelScreen({}, {}, viewModel = vm, photoViewModel = p) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun playerExerciseMenu() {
+        val vm = pullPlayer()
+        shoot("player-exercise-menu", { click("player_exercise_menu"); waitForTag("player_skip_exercise") }) {
+            com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> })
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun learnedPage() {
+        seedActive()
+        // A swap, a weekday habit and an own lower load, as the coach would have learned them.
+        val today = service.today()
+        val now = System.currentTimeMillis()
+        listOf(7, 14).forEach { ago ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = ago)).toString()
+            val at = now - ago * 86_400_000L
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("k$ago", day, at, com.cruxcoach.athlete.model.SuggestionEventKind.FEEDBACK,
+                focus = com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_KIND + "PULL_PUSH"))
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("m$ago", day, at, com.cruxcoach.athlete.model.SuggestionEventKind.FEEDBACK,
+                focus = com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_MINUTES, value = 30.0))
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("s$ago", day, at + 1000, com.cruxcoach.athlete.model.SuggestionEventKind.STARTED))
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("w$ago", day, at, com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED,
+                slugs = listOf("core.reverse_crunch", "core.dead_bug")))
+        }
+        repo.saveBenchmark(com.cruxcoach.athlete.model.Benchmark("own", "pull.weighted_pull_up", loadKg = 15.0, reps = 5, sets = 3, bodyweightKg = 68.0,
+            source = com.cruxcoach.athlete.model.BenchmarkSource.AUTO, measuredAt = now))
+        val vm = AthleteSettingsViewModel(service).tracked()
+        shoot("learned-page", { compose.waitUntil(WAIT_MS) { vm.state.value.learned.weekdays.isNotEmpty() } }) {
+            AthleteSettingsScreen({}, viewModel = vm, section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED)
+        }
+    }
+
+    @Test
     fun weightSheet() {
         val vm = loaded(FuelViewModel(service))
         val p = photo()
