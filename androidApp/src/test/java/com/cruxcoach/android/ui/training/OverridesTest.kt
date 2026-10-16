@@ -265,6 +265,10 @@ class OverridesTest : AthleteScreenTest() {
         vm.reopen()
         // Open again at the plan: 5 reps, no reserve answer.
         until { !work(id).first().isCompleted && work(id).first().reps == 5 && work(id).first().rir == null }
+        // The player stays on the reopened set even when a row read before the write arrives late.
+        until { vm.state.value.current?.set?.let { it.id == work(id).first().id && !it.isCompleted } == true }
+        Thread.sleep(600); idle()
+        assertEquals(work(id).first().id, vm.state.value.current?.set?.id)
         vm.update(vm.state.value.current!!.set.copy(reps = 3))
         vm.completeCurrent()
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
