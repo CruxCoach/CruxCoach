@@ -196,14 +196,14 @@ fun BenchmarksScreen(
             items(state.key, key = { it.def.slug }) { row ->
                 BenchmarkRowCard(row, lang, state.profile, state.bodyweight, state.workingDifficulty,
                     onOpen = { onOpenExercise(row.def.slug) }, onEnter = { entry = row.def },
-                    onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge)
+                    onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge, onDelete = { viewModel.delete(it.id) })
             }
             if (state.others.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trbm_other_title)) }
                 items(state.others, key = { "o-" + it.def.slug }) { row ->
                     BenchmarkRowCard(row, lang, state.profile, state.bodyweight, state.workingDifficulty,
                         onOpen = { onOpenExercise(row.def.slug) }, onEnter = { entry = row.def },
-                        onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge)
+                        onTest = { viewModel.startTest(row.def.slug) }, onForceGauge = onOpenForceGauge, onDelete = { viewModel.delete(it.id) })
                 }
             }
         }
@@ -239,8 +239,11 @@ private fun BenchmarkRowCard(
     onEnter: () -> Unit,
     onTest: () -> Unit,
     onForceGauge: () -> Unit,
+    /** A value entered by mistake (or a test value) can go; the plan then uses the one before or the training. */
+    onDelete: (Benchmark) -> Unit = {},
 ) {
     val paused = row.injury.verdict == InjuryVerdict.AVOID
+    var deleting by remember { mutableStateOf<Benchmark?>(null) }
     Card(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("benchmark_row_${row.def.slug}")) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -259,8 +262,15 @@ private fun BenchmarkRowCard(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (b != null) {
-                    Text(stringResource(R.string.trbm_meta, sourceLabel(b.source), formatDay(b.measuredAt)),
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.trbm_meta, sourceLabel(b.source), formatDay(b.measuredAt)),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f))
+                        IconButton(onClick = { deleting = b }, modifier = Modifier.size(40.dp).testTag("benchmark_delete_${row.def.slug}_${side?.name ?: "both"}")) {
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.trbm_delete), Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     normValue(row.def, b, bodyweight)?.let { (metric, pct) ->
                         com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
                     }
@@ -284,6 +294,19 @@ private fun BenchmarkRowCard(
                 }
             }
         }
+    }
+    deleting?.let { b ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(stringResource(R.string.trbm_delete_title)) },
+            text = { Text(benchmarkSummary(row.def, b, profile, bodyweight) + "\n\n" + stringResource(R.string.trbm_delete_text)) },
+            confirmButton = {
+                TextButton(onClick = { onDelete(b); deleting = null }, modifier = Modifier.testTag("benchmark_delete_confirm")) {
+                    Text(stringResource(R.string.tr_action_delete))
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.tr_action_cancel)) } },
+        )
     }
 }
 

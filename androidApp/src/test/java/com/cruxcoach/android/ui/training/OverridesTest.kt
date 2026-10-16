@@ -295,4 +295,16 @@ class OverridesTest : AthleteScreenTest() {
         assertTrue(repo.routines().none { it.id == "o" })
         assertEquals("Russian twists", service.catalog.fallbackFor(slug).name("de"))
     }
+
+    @Test
+    fun `a performance value entered by mistake can be deleted`() {
+        service.saveBenchmark(Benchmark("b", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, bodyweightKg = 70.0,
+            source = BenchmarkSource.MANUAL, measuredAt = System.currentTimeMillis(), sets = 5))
+        val vm = loaded(com.cruxcoach.android.ui.training.benchmarks.BenchmarksViewModel(service))
+        render { com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen({}, {}, {}, viewModel = vm) }
+        scrollTo("benchmarks_list", hasTestTag("benchmark_delete_pull.weighted_pull_up_both"))
+        click("benchmark_delete_pull.weighted_pull_up_both")
+        click("benchmark_delete_confirm")
+        until { repo.benchmarks("pull.weighted_pull_up").isEmpty() }
+    }
 }
