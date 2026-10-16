@@ -156,8 +156,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private val dislikedToday = mutableSetOf<String>()
     /** Exercises the athlete swapped on the card today: suggested slug → own pick ("" = left out). */
     private val swapsToday = mutableMapOf<String, String>()
-    /** The engine input of the shown suggestion, for the alternatives of a swap. */
-    private var lastInput: SuggestionInput? = null
+    /** The engine input of the shown suggestion, for the alternatives of a swap (read on the main thread). */
+    @Volatile private var lastInput: SuggestionInput? = null
     /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
     private var lastUsual: PreferenceLearning.UsualChoice? = null
     private var ignoreUsualKind = false
@@ -487,10 +487,12 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
      * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand
      * überschreibbar"): the same kind of work through the same safety filters as the suggestion.
      */
-    fun alternatives(slug: String): List<SessionSuggester.Alternative> = synchronized(refreshLock) {
+    fun alternatives(slug: String): List<SessionSuggester.Alternative> {
+        // No lock: a refresh holds it through its database reads, and this runs on the main thread; input and
+        // state are immutable snapshots.
         val input = lastInput ?: return emptyList()
         val s = _state.value.suggestion ?: return emptyList()
-        runCatching { SessionSuggester.alternatives(input, s, slug) }.getOrDefault(emptyList())
+        return runCatching { SessionSuggester.alternatives(input, s, slug) }.getOrDefault(emptyList())
     }
 
     /** The suggested slug [shown] stands for (itself, or the one it replaced earlier today). */
