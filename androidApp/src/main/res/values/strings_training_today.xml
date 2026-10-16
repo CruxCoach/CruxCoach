@@ -56,7 +56,6 @@
     <string name="trt_kind_board">Board</string>
     <string name="trt_kind_mobility">Stretching</string>
     <string name="trt_kind_coach">As the coach suggests</string>
-    <string name="trt_next_place">Where are you training?</string>
     <string name="trt_reason_chosen">Your choice for today.</string>
     <string name="trt_reason_no_wall">No wall or board at this place – pull and push instead of a board day.</string>
     <string name="trt_reason_spared">Spared today: %1$s – exercises that load it stay out.</string>
@@ -69,7 +68,7 @@
     <string name="trt_reason_more_time">More time today – the session is longer.</string>
     <string name="trt_reason_extended">Filled to your time with more sets and exercises of the same kind.</string>
     <string name="trt_reason_kept_short">This week is meant to be lighter: fewer sets, even with more time.</string>
-    <string name="trt_reason_less_than_chosen">No more exercises fit today (equipment, what is spared) – so it is shorter than chosen.</string>
+    <string name="trt_reason_less_than_chosen">Shorter than chosen: there are no more fitting exercises or sets for today.</string>
     <string name="trt_ev_time_today">%1$d instead of %2$d minutes today</string>
     <string name="trt_checkin_hint">Optional. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
     <string name="trt_q_sleep">Sleep</string>
@@ -144,4 +143,24 @@
     <string name="trt_done_hero_text">Recovery is part of training. If you still want more, the coach suggests something that fits what you already did.</string>
     <string name="trt_done_hero_more">Train some more</string>
     <string name="trt_done_hero_history">History</string>
+
+    <!-- Swapping on the card and the simpler "another suggestion" sheet (UX review 2026-10-16) -->
+    <string name="trt_swap_action">Swap</string>
+    <string name="trt_swap_title">Instead of %1$s</string>
+    <string name="trt_swap_none">Nothing else of this kind fits here today.</string>
+    <string name="trt_swap_easier">easier</string>
+    <string name="trt_swap_harder">harder</string>
+    <string name="trt_swap_drop">Leave out today</string>
+    <string name="trt_swap_exclude">Never suggest</string>
+    <string name="trt_show_less">Show less</string>
+    <string name="trt_next_level">Today rather</string>
+    <string name="trt_level_easier">Lighter</string>
+    <string name="trt_level_harder">Harder</string>
+    <string name="trt_next_shuffle">Another mix</string>
+    <string name="trt_next_hurts">Something hurts</string>
+    <string name="trt_next_equipment">Equipment</string>
+    <string name="trt_reason_usual_kind">As usual on %1$s: %2$s.</string>
+    <string name="trt_reason_usual_minutes">As usual on %1$s: %2$d min.</string>
+    <string name="trt_reason_usual_kind_generic">What you usually choose on this weekday.</string>
+    <string name="trt_reason_usual_minutes_generic">Your usual time on this weekday.</string>
 </resources>

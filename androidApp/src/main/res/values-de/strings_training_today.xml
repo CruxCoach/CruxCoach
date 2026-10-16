@@ -56,7 +56,6 @@
     <string name="trt_kind_board">Board</string>
     <string name="trt_kind_mobility">Dehnen</string>
     <string name="trt_kind_coach">Wie der Coach vorschlägt</string>
-    <string name="trt_next_place">Wo trainierst du?</string>
     <string name="trt_reason_chosen">Heute nach deiner Wahl.</string>
     <string name="trt_reason_no_wall">Hier gibt es keine Wand und kein Board – heute Zug und Druck statt Board-Tag.</string>
     <string name="trt_reason_spared">Heute geschont: %1$s – Übungen, die das belasten, bleiben weg.</string>
@@ -69,7 +68,7 @@
     <string name="trt_reason_more_time">Heute mehr Zeit – die Einheit ist länger.</string>
     <string name="trt_reason_extended">Auf deine Zeit aufgefüllt: mehr Sätze und Übungen derselben Art.</string>
     <string name="trt_reason_kept_short">Diese Woche ist bewusst leichter: weniger Sätze, auch mit mehr Zeit.</string>
-    <string name="trt_reason_less_than_chosen">Mehr passende Übungen gibt es heute nicht (Ausrüstung, Schonung) – deshalb kürzer als gewählt.</string>
+    <string name="trt_reason_less_than_chosen">Kürzer als gewählt: Mehr passende Übungen und Sätze gibt es heute nicht.</string>
     <string name="trt_ev_time_today">heute %1$d statt %2$d Minuten</string>
     <string name="trt_checkin_hint">Freiwillig. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
     <string name="trt_q_sleep">Schlaf</string>
@@ -144,4 +143,24 @@
     <string name="trt_done_hero_text">Erholung gehört zum Training. Willst du trotzdem mehr, schlägt der Coach etwas vor, das zu deinem heutigen Training passt.</string>
     <string name="trt_done_hero_more">Noch etwas trainieren</string>
     <string name="trt_done_hero_history">Verlauf</string>
+
+    <!-- Swapping on the card and the simpler "another suggestion" sheet (UX review 2026-10-16) -->
+    <string name="trt_swap_action">Tauschen</string>
+    <string name="trt_swap_title">Statt %1$s</string>
+    <string name="trt_swap_none">Hier passt heute nichts anderes dieser Art.</string>
+    <string name="trt_swap_easier">leichter</string>
+    <string name="trt_swap_harder">schwerer</string>
+    <string name="trt_swap_drop">Heute weglassen</string>
+    <string name="trt_swap_exclude">Nie vorschlagen</string>
+    <string name="trt_show_less">Weniger zeigen</string>
+    <string name="trt_next_level">Heute lieber</string>
+    <string name="trt_level_easier">Leichter</string>
+    <string name="trt_level_harder">Fordernder</string>
+    <string name="trt_next_shuffle">Neu mischen</string>
+    <string name="trt_next_hurts">Etwas tut weh</string>
+    <string name="trt_next_equipment">Ausrüstung</string>
+    <string name="trt_reason_usual_kind">Wie meist am %1$s: %2$s.</string>
+    <string name="trt_reason_usual_minutes">Wie meist am %1$s: %2$d min.</string>
+    <string name="trt_reason_usual_kind_generic">Was du an diesem Wochentag meist wählst.</string>
+    <string name="trt_reason_usual_minutes_generic">Deine übliche Zeit an diesem Wochentag.</string>
 </resources>

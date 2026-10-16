@@ -158,7 +158,12 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
 
     fun swap(blockIndex: Int, slug: String) {
         val id = workoutId ?: return
-        io { service.swapBlock(id, blockIndex, slug) }
+        val from = _state.value.blocks.firstOrNull { it.index == blockIndex }?.def?.slug
+        io {
+            service.swapBlock(id, blockIndex, slug)
+            // The coach learns from it like from any swap (UX review 2026-10-16: it did not before).
+            if (from != null && from != slug) service.logSuggestion(com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED, null, listOf(from, slug))
+        }
     }
 
     fun startRest(seconds: Int) = io { service.startRest(seconds) }

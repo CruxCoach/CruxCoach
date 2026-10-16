@@ -418,7 +418,38 @@ class TrainingUiReviewTest : AthleteScreenTest() {
         shoot("today-next-sheet", {
             scrollTo("today_list", "today_suggestion_next")
             click("today_suggestion_next")
-            waitForTag("today_next_place_no-gear")
+            waitForTag("today_next_shuffle")
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todaySwapSheet() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val first = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        shoot("today-swap-sheet", {
+            scrollTo("today_list", "today_item_$first")
+            click("today_item_$first")
+            waitForTag("today_swap_drop")
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayCardExpanded() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseMinutes(75)
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.minutesToday == 75 }
+        shoot("today-card-expanded", {
+            scrollTo("today_list", "today_items_more")
+            click("today_items_more")
+            scrollTo("today_list", "today_suggestion_start")
         }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
     }
 
