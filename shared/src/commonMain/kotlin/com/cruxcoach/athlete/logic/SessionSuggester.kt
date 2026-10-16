@@ -1216,19 +1216,22 @@ object SessionSuggester {
      * injuries and what hurts today, guardrails, exclusions). Work that spares the fingers is only ever
      * swapped for work that spares them too, so a swap never adds finger load the rules kept out.
      */
-    fun alternatives(input: SuggestionInput, suggestion: SessionSuggestion, slug: String, count: Int = 4): List<Alternative> {
+    fun alternatives(input: SuggestionInput, suggestion: SessionSuggestion, slug: String, count: Int = 4): List<Alternative> =
+        alternatives(input, suggestion.routine.items, suggestion.focus, slug, count)
+
+    /** The same for any list of exercises, e.g. an open training ([focus] decides how strict the injury filter is). */
+    fun alternatives(input: SuggestionInput, items: List<RoutineItem>, focus: SuggestionFocus, slug: String, count: Int = 4): List<Alternative> {
         val catalog = input.catalog
-        val item = suggestion.routine.items.firstOrNull { it.slug == slug } ?: return emptyList()
+        val item = items.firstOrNull { it.slug == slug } ?: return emptyList()
         val original = catalog.fallbackFor(slug)
-        val others = suggestion.routine.items.map { it.slug }.filter { it != slug }.toSet()
+        val others = items.map { it.slug }.filter { it != slug }.toSet()
         val filter = CatalogFilter(
             ownedEquipment = if (input.profile.equipmentConfigured) input.profile.equipment else setOf(EquipmentV2.NONE, EquipmentV2.MAT),
             withoutClimbing = !original.needsClimbingWall,
         )
         val guard = guardrails(input)
-        val focus = suggestion.focus
         val slot = slotOf(original, item.warmup)
-        val mains = suggestion.routine.items.filter { !it.warmup }.map { catalog.fallbackFor(it.slug) }
+        val mains = items.filter { !it.warmup }.map { catalog.fallbackFor(it.slug) }
         val sparesFingers = LoadDomain.FINGER !in original.domains
         val candidates = catalog.all.filter { def ->
             val verdict = InjuryAdvisor.assess(def, input.injuries).verdict

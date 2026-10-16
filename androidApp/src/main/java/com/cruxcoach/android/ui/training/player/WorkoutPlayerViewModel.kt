@@ -451,6 +451,50 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         }
     }
 
+    // ── Swapping or skipping the shown exercise (UX review 2026-10-16) ──
+
+    /** The shown exercise can be swapped while none of its sets is done; afterwards only the rest can be skipped. */
+    fun canSwap(): Boolean {
+        val st = _state.value
+        val current = st.current?.set?.takeIf { !it.isCompleted } ?: return false
+        return st.sets.none { it.blockIndex == current.blockIndex && it.isCompleted }
+    }
+
+    /** What could replace the shown exercise: the suggestion's filters with today's place and injuries. */
+    suspend fun alternatives(): List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative> {
+        val st = _state.value
+        val current = st.current?.set ?: return emptyList()
+        if (!canSwap()) return emptyList()
+        return withContext(Dispatchers.IO) {
+            runCatching { service.alternativesInTraining(current.exerciseSlug, st.sets.map { it.exerciseSlug }) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Another exercise instead of the shown one, with fresh sets; the coach learns from it (−1 / +1). */
+    fun swapExercise(to: String) {
+        val current = _state.value.current?.set ?: return
+        if (!canSwap()) return
+        focusId = null
+        enqueue {
+            service.swapBlock(current.workoutId, current.blockIndex, to)
+            service.logSuggestion(SuggestionEventKind.SWAPPED, null, listOf(current.exerciseSlug, to), workoutId = current.workoutId)
+        }
+    }
+
+    /** The open sets of the shown exercise go; one skip in the ledger (time or mood, not necessarily dislike). */
+    fun skipExercise() {
+        val st = _state.value
+        val current = st.current?.set?.takeIf { !it.isCompleted } ?: return
+        val open = st.sets.filter { it.blockIndex == current.blockIndex && !it.isCompleted }
+        focusId = null
+        enqueue {
+            open.forEach { service.removeSet(it.id) }
+            if (current.setType == SetType.WORK) {
+                service.logSuggestion(SuggestionEventKind.SKIPPED_SET, null, listOf(current.exerciseSlug), workoutId = current.workoutId)
+            }
+        }
+    }
+
     // ── It hurts ─────────────────────────────────────────────────────
 
     /**
