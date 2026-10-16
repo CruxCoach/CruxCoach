@@ -143,6 +143,8 @@ class OverridesTest : AthleteScreenTest() {
         val to = alternatives.first().def.slug
         click("player_swap_to_$to")
         until { repo.setsFor(id).none { it.exerciseSlug == "pull.pull_up" } && repo.setsFor(id).any { it.exerciseSlug == to } }
+        // It keeps the replaced exercise's three sets (device test 2026-10-17: 5 fresh sets in an intro week).
+        assertEquals(3, repo.setsFor(id).filter { it.exerciseSlug == to && it.setType == SetType.WORK }.map { it.setIndex }.distinct().size)
         // The ledger entry is written right after the sets.
         until { repo.suggestionEventsForDay(service.today().toString()).any {
             it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf("pull.pull_up", to)

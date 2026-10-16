@@ -600,8 +600,19 @@ class AthleteService @Inject constructor(
     fun swapBlock(workoutId: String, blockIndex: Int, newSlug: String) {
         val def = catalog[newSlug] ?: return
         repo.transaction {
+            // The new exercise keeps the replaced one's number of sets and its warm-up role (device test
+            // 2026-10-17: a swap in an intro week came with 5 fresh sets where the plan had 2).
+            val old = repo.setsFor(workoutId).filter { it.blockIndex == blockIndex }
+            val work = old.filter { it.setType == SetType.WORK }.map { it.setIndex }.distinct().size
+            val warm = old.filter { it.setType == SetType.WARMUP }.map { it.setIndex }.distinct().size
+            val planned = WorkoutPlanner.itemFor(def)
+            val item = when {
+                work > 0 -> planned.copy(sets = work)
+                warm > 0 -> planned.copy(sets = warm, warmup = true)
+                else -> planned
+            }
             repo.deleteBlock(workoutId, blockIndex)
-            addItem(workoutId, blockIndex, WorkoutPlanner.itemFor(def))
+            addItem(workoutId, blockIndex, item)
         }
     }
 
