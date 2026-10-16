@@ -115,6 +115,27 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED)
 
+    /**
+     * Sets changed on screen whose write the database has not reported back yet. A row read
+     * before the write must not undo them (CI 2026-10-16: right after "not done", a stale
+     * "done" row moved the player on to the next set; a reserve answer was lost the same way).
+     */
+    private val pending = mutableMapOf<String, ExerciseSet>()
+
+    private fun pend(set: ExerciseSet) = synchronized(pending) { pending[set.id] = set }
+
+    /** After the write: rows read from now on carry it; a short grace covers a query already under way. */
+    private fun written(set: ExerciseSet) {
+        viewModelScope.launch {
+            delay(PENDING_GRACE_MS)
+            synchronized(pending) { if (pending[set.id] === set) pending.remove(set.id) }
+        }
+    }
+
+    private fun withPending(rows: List<ExerciseSet>): List<ExerciseSet> = synchronized(pending) {
+        if (pending.isEmpty()) rows else rows.map { pending[it.id] ?: it }
+    }
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
@@ -147,7 +168,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             if (st.closing) return@update st.copy(profile = profile)
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),
                 current = null, upcoming = null, profile = profile)
-            val ordered = PlayerQueue.ordered(sets)
+            val ordered = PlayerQueue.ordered(withPending(sets))
             val review = reviewId?.let { id -> ordered.firstOrNull { it.id == id && it.isCompleted } }
             if (review == null) reviewId = null
             val focus = focusId?.let { id -> ordered.firstOrNull { it.id == id && !it.isCompleted } }
@@ -203,9 +224,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val carried = carryLoad(before, set)
         replaceLocal(set)
         carried.forEach(::replaceLocal)
+        pend(set)
+        carried.forEach(::pend)
         enqueue {
             service.updateSet(set)
             carried.forEach { service.updateSet(it) }
+            written(set)
+            carried.forEach(::written)
             // Only for sets done in this training session: an older one's step is unknown and would stack.
             if (set.isCompleted && set.setType == SetType.WORK && set.id !in manualAfter && applied.containsKey(set.id)) {
                 readjust(set)
@@ -295,9 +320,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val set = _state.value.current?.set?.takeIf { it.isCompleted } ?: return
         val open = set.copy(completedAt = null, rir = null, reps = set.targetReps ?: set.reps, durationS = set.targetDurationS ?: set.durationS)
         replaceLocal(open)
+        pend(open)
         show(open)
         enqueue {
             service.updateSet(open)
+            written(open)
             if (applied.containsKey(set.id) && set.id !in manualAfter) readjust(open)
         }
     }
@@ -347,6 +374,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         if (st.phase == PlayerPhase.REST || current0.set.isCompleted) return
         val current = if (heldSeconds == null) current0 else current0.copy(set = current0.set.copy(durationS = heldSeconds))
         val doneLocal = current.set.copy(completedAt = System.currentTimeMillis())
+        pend(doneLocal)
         val setsAfter = st.sets.map { if (it.id == doneLocal.id) doneLocal else it }
         val next = PlayerQueue.nextAfter(setsAfter, doneLocal)?.takeIf { !it.isCompleted && it.id != doneLocal.id }
         val rest = PlayerQueue.restAfter(doneLocal, next, current.def)
@@ -375,6 +403,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         enqueue {
             val startRest = next != null && rest > 0
             val outcome = service.completeSetDetailed(current.set, startRest = startRest, restSeconds = rest)
+            written(doneLocal)
             // Missed reps or a hold that ended early move the next sets at once; the reserve answer may refine it.
             // Not when the athlete already set the next load by hand after this set (a set done again after "not done").
             val adjustment = if (doneLocal.id in manualAfter) null
@@ -403,9 +432,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     fun setReserve(rir: Int) {
         val done = _state.value.lastDone?.set ?: return
         val updated = done.copy(rir = rir)
-        _state.update { it.copy(lastDone = it.lastDone?.copy(set = updated)) }
+        replaceLocal(updated)
+        pend(updated)
         enqueue {
             service.updateSet(updated)
+            written(updated)
             // The athlete set the next load by hand: that wins over the answer.
             if (updated.id in manualAfter) return@enqueue
             // The answer arrives during the rest, before the next set starts: adjust what is still planned.
@@ -516,5 +547,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     companion object {
         /** How long "Los geht's" stays before the next set appears. */
         const val GO_DISPLAY_MS = 1_500L
+        /** How long a written set still wins over rows read from the database. */
+        const val PENDING_GRACE_MS = 500L
     }
 }
