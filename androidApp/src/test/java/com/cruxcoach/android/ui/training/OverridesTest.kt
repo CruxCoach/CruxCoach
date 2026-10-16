@@ -154,6 +154,22 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the real training length shows on the learned page and is taken over`() {
+        val today = service.today()
+        (1..4).forEach { i ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = i * 3)).toString()
+            repo.saveWorkout(com.cruxcoach.athlete.model.Workout("w$i", 0, 30 * 60_000L, day, updatedAt = 0))
+        }
+        repo.updateProfile { it.copy(sessionMinutes = 60) }
+        val settings = com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel(service).tracked()
+        until { settings.state.value.learned.minutes == 30 }
+        render { com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen({}, viewModel = settings,
+            section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
+        click("learned_minutes_apply")
+        until { repo.profile().sessionMinutes == 30 && settings.state.value.learned.minutes == null }
+    }
+
+    @Test
     fun `a load changed in the player carries over to the next sets`() {
         val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }

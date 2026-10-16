@@ -225,4 +225,6 @@
     </plurals>
     <string name="trc_learning_own_short">Your load from last time</string>
     <string name="trc_learning_own">Last time you trained lighter than planned, so this load is planned now – until a set shows more. You can change or delete it under performance values.</string>
+    <string name="trlr_minutes">Your training length</string>
+    <string name="trlr_minutes_text">Usually about %1$d min (set: %2$d min)</string>
 </resources>
