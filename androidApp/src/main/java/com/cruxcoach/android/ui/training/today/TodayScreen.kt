@@ -1037,6 +1037,12 @@ private fun suggestionReasonText(reason: SuggestionReason, state: TodayState): S
     if (reason == SuggestionReason.USUAL_MINUTES && usualMinutes != null && weekday != null) {
         return stringResource(R.string.trt_reason_usual_minutes, weekday, usualMinutes)
     }
+    // The weekly plan names the area it means (device test 2026-10-17: "this area" on a finger day meant pull).
+    if (reason == SuggestionReason.WEEKLY_TARGET) {
+        state.suggestion?.basedOn?.filterIsInstance<com.cruxcoach.athlete.logic.Evidence.WeeklyTarget>()?.firstOrNull()?.let { w ->
+            return stringResource(R.string.trv_reason_weekly_area, com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(w.area))
+        }
+    }
     val sore = state.checkin?.sore.orEmpty()
     if (reason != SuggestionReason.SPARED_TODAY || sore.isEmpty()) return suggestionReasonText(reason)
     val areas = sore.map { regionLabel(it) }.joinToString(", ")
