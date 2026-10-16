@@ -186,6 +186,7 @@ fun TodayScreen(
                         onPickPlace = viewModel::pickPlace,
                         onQuickCheckin = viewModel::saveQuickCheckin,
                         onMoreCheckin = { showCheckin = true },
+                        onChooseMinutes = viewModel::chooseMinutes,
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -1005,6 +1006,10 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
     SuggestionReason.SPARED_TODAY -> R.string.trt_reason_spared_generic
     SuggestionReason.NO_WALL_HERE -> R.string.trt_reason_no_wall
+    SuggestionReason.MORE_TIME_TODAY -> R.string.trt_reason_more_time
+    SuggestionReason.EXTENDED_TO_TIME -> R.string.trt_reason_extended
+    SuggestionReason.KEPT_SHORT_THIS_WEEK -> R.string.trt_reason_kept_short
+    SuggestionReason.LESS_THAN_CHOSEN -> R.string.trt_reason_less_than_chosen
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …"). */
@@ -1035,6 +1040,7 @@ private fun DailySuggestionCard(
     onPickPlace: (String) -> Unit = {},
     onQuickCheckin: (Int?, Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit = { _, _ -> },
     onMoreCheckin: () -> Unit = {},
+    onChooseMinutes: (Int?) -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     val language = catalogLanguage()
@@ -1067,8 +1073,13 @@ private fun DailySuggestionCard(
             }
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 4.dp).testTag("today_suggestion_title"))
-            Text(pluralStringResource(R.plurals.trsg_meta, s.routine.items.size, s.routine.items.size, s.estimatedMinutes),
-                style = MaterialTheme.typography.bodyMedium)
+            // How long: one tap on the time changes it for today (owner 2026-10-16).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(pluralStringResource(R.plurals.trsg_meta_count, s.routine.items.size, s.routine.items.size) + " · ",
+                    style = MaterialTheme.typography.bodyMedium)
+                if (s.timeAdjustable) DurationChip(s.totalMinutes, state.minutesToday, state.profile.sessionMinutes, onChooseMinutes)
+                else Text(stringResource(R.string.trt_duration_value, s.totalMinutes), style = MaterialTheme.typography.bodyMedium)
+            }
             // Where today's training happens: the default place, another one for today in the menu.
             // With one place there is nothing to pick (owner 2026-10-10).
             val day = state.today?.toString() ?: java.time.LocalDate.now().toString()
@@ -1082,7 +1093,18 @@ private fun DailySuggestionCard(
             if (shown.isNotEmpty()) {
                 Column(Modifier.padding(top = 8.dp)) {
                     shown.forEach { item ->
-                        Text("• " + state.catalog.fallbackFor(item.slug).name(language), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        val name = state.catalog.fallbackFor(item.slug).name(language)
+                        if (item.slug in state.favorites) {
+                            // A favourite carries its star, so it is clear why it keeps coming back.
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("today_favorite_${item.slug}")) {
+                                Icon(Icons.Default.Star, contentDescription = stringResource(R.string.trt_favorite), Modifier.size(16.dp),
+                                    tint = CruxCoachDesign.colors.brandAccent)
+                                Spacer(Modifier.width(4.dp))
+                                Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                            }
+                        } else {
+                            Text("• $name", style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        }
                     }
                     if (main.size > shown.size) {
                         Text(stringResource(R.string.trt_more_exercises, main.size - shown.size), style = MaterialTheme.typography.bodySmall)
@@ -1156,6 +1178,45 @@ private fun DailySuggestionCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Today's duration: the estimate, and a menu of durations for today only. */
+@Composable
+private fun DurationChip(minutes: Int, chosen: Int?, usual: Int, onChoose: (Int?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val content = LocalContentColor.current
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = { Text(stringResource(R.string.trt_duration_value, minutes)) },
+            leadingIcon = { Icon(Icons.Default.Timer, null, Modifier.size(18.dp)) },
+            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp)) },
+            colors = AssistChipDefaults.assistChipColors(labelColor = content, leadingIconContentColor = content,
+                trailingIconContentColor = content),
+            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = content.copy(alpha = 0.4f)),
+            modifier = Modifier.testTag("today_duration"),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.testTag("today_duration_menu")) {
+            Text(stringResource(R.string.trt_duration_title), style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            TodayViewModel.DURATION_OPTIONS.forEach { m ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trt_duration_value, m)) },
+                    onClick = { open = false; onChoose(if (m == chosen) null else m) },
+                    trailingIcon = if (m == chosen) { { Icon(Icons.Default.Check, null) } } else null,
+                    modifier = Modifier.testTag("today_duration_$m"),
+                )
+            }
+            if (chosen != null) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.trt_duration_usual, usual)) },
+                    onClick = { open = false; onChoose(null) },
+                    modifier = Modifier.testTag("today_duration_usual"),
+                )
             }
         }
     }
@@ -1327,6 +1388,7 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
     is com.cruxcoach.athlete.logic.Evidence.WeeklyTarget -> stringResource(
         if (e.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) R.string.trv_ev_sessions else R.string.trv_ev_sets,
         com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(e.area), e.done, e.target)
+    is com.cruxcoach.athlete.logic.Evidence.TimeToday -> stringResource(R.string.trt_ev_time_today, e.minutes, e.usual)
 }
 
 @Composable

@@ -62,6 +62,15 @@
     <string name="trt_reason_spared">Spared today: %1$s – exercises that load it stay out.</string>
     <string name="trt_reason_spared_generic">What hurts today is spared – exercises that load it stay out.</string>
     <string name="trt_ev_sore">hurts today: %1$s</string>
+    <string name="trt_duration_value">%d min</string>
+    <string name="trt_duration_title">How long today?</string>
+    <string name="trt_duration_usual">As usual (%d min)</string>
+    <string name="trt_favorite">Favourite</string>
+    <string name="trt_reason_more_time">More time today – the session is longer.</string>
+    <string name="trt_reason_extended">Filled to your time with more sets and exercises of the same kind.</string>
+    <string name="trt_reason_kept_short">This week is meant to be lighter: fewer sets, even with more time.</string>
+    <string name="trt_reason_less_than_chosen">No more exercises fit today (equipment, what is spared) – so it is shorter than chosen.</string>
+    <string name="trt_ev_time_today">%1$d instead of %2$d minutes today</string>
     <string name="trt_checkin_hint">Optional. 1 = bad, 5 = great. Every answer can only make the day gentler.</string>
     <string name="trt_q_sleep">Sleep</string>
     <string name="trt_q_energy">Energy</string>

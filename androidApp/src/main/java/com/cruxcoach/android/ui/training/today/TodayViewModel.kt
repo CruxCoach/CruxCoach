@@ -85,6 +85,10 @@ data class TodayState(
     val setupJustDone: Boolean = false,
     /** What the athlete chose to train today ("another suggestion"); null = the coach decides. */
     val wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null,
+    /** Minutes chosen for today on the card; null = the preferred duration. */
+    val minutesToday: Int? = null,
+    /** Favourite exercises, starred on the card. */
+    val favorites: Set<String> = emptySet(),
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -117,7 +121,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 combine(
                     repo.observeRecentWorkouts(30),
                     // Weight and height feed the targets and the energy estimate.
-                    combine(repo.observeSeries(BodyMetric.WEIGHT.key), repo.observeSeries(BodyMetric.HEIGHT.key)) { w, h -> w.size to h.size },
+                    // Favourites only re-trigger the suggestion; it reads them itself.
+                    combine(repo.observeSeries(BodyMetric.WEIGHT.key), repo.observeSeries(BodyMetric.HEIGHT.key), repo.observeFavorites()) { w, h, f -> Triple(w.size, h.size, f.size) },
                     repo.observeFoodLog(today),
                     repo.observeHydration(today),
                     repo.observePauses(),
@@ -143,6 +148,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var budgetFactor = 1.0
     private var levelShift = 0
     private var wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null
+    private var minutesToday: Int? = null
     private val dislikedToday = mutableSetOf<String>()
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
     private val shownToday = mutableSetOf<String>()
@@ -161,7 +167,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         lastInputs = i
         if (variantDay != today) {
             variant = 0; variantDay = today
-            budgetFactor = 1.0; levelShift = 0; wish = null; dislikedToday.clear(); shownToday.clear()
+            budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear()
             runCatching {
                 service.repo.suggestionEventsForDay(today.toString())
                     .filter { it.kind == SuggestionEventKind.SHOWN }
@@ -264,6 +270,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 loadSpikes = spikes,
                 suggestions = suggestions,
                 wish = wish,
+                minutesToday = minutesToday,
+                favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
             )
         }
     }
@@ -374,6 +382,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 weekStart = weekStart,
                 returnState = returnState,
                 wish = wish,
+                minutesToday = minutesToday,
             )
             val suggestion = SessionSuggester.suggest(input)
             val plannedName = suggestion.plannedEntry
@@ -398,7 +407,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 else s?.routine?.items?.map { it.slug }.orEmpty()
             service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, slugs, feedback)
             when (feedback) {
-                SuggestionFeedback.NO_TIME -> budgetFactor = (budgetFactor * 0.7).coerceAtLeast(0.3)
+                // "Keine Zeit": the next shorter duration, the same one the card's time menu offers.
+                SuggestionFeedback.NO_TIME -> minutesToday = shorterThan(s?.totalMinutes ?: _state.value.profile.sessionMinutes)
                 SuggestionFeedback.DISLIKE_EXERCISE -> slug?.let { dislikedToday += it }
                 SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
                 SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
@@ -418,6 +428,17 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val s = _state.value.suggestion
             service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), null)
             wish = focus
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /**
+     * "Wie lange heute?" on the card (owner 2026-10-16): today's suggestion is built for [minutes];
+     * null goes back to the preferred duration. Only for today, like the chosen kind.
+     */
+    fun chooseMinutes(minutes: Int?) = io {
+        synchronized(refreshLock) {
+            minutesToday = minutes
             lastInputs?.let { refreshUnlocked(it) }
         }
     }
@@ -580,5 +601,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     private fun io(block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
+    }
+
+    companion object {
+        /** The card's "Wie lange heute?" choices in minutes. */
+        val DURATION_OPTIONS = listOf(15, 20, 30, 45, 60, 75, 90, 120)
+
+        /** The next choice clearly below [minutes], at least the shortest. */
+        internal fun shorterThan(minutes: Int): Int = DURATION_OPTIONS.lastOrNull { it < minutes - 2 } ?: DURATION_OPTIONS.first()
     }
 }

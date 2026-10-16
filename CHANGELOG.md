@@ -111,6 +111,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - During training the next sets follow the last one: missed reps or no
   reserve make them lighter, a big reserve heavier; "let go" in a hang records
   the time actually held. "It hurts" swaps, lightens or ends the exercise.
+- Your word wins: a load changed during a training carries over to the
+  remaining sets, ⏮/⏭ go back to a done set to correct or reopen it, and the
+  rest screen sets the next set's load. A load written into a workout wins over
+  the plan. Workouts and exercises can be typed ("pull-ups 5×5 +20 kg, plank
+  3×60 s"); unknown names become own exercises. Own exercises and performance
+  values can be deleted, and a value can be entered as working sets ("5×5 at
+  +20 kg") instead of a maximum.
+- Today asks first how strong you feel and whether anything hurts; what hurts
+  is spared today without becoming an injury. "Another suggestion" picks the
+  kind of training and the place (also "no equipment" for one day), and the
+  time on the card sets today's duration: shorter cuts sets and exercises,
+  longer adds sets and exercises of the same kind – never more finger load,
+  and a deload week keeps its fewer sets.
+- Favourite exercises are chosen right next to "routine or variety" in the
+  coach setup: with a routine they are in almost every suggestion they fit,
+  with variety they come back regularly. The suggestion card stars them.
 - Back after a break (10+ days, illness, a healed finger injury): one or two
   shorter weeks without maximal finger load, automatically.
 - Training reminders on planned days; a body map and grip pictograms for every

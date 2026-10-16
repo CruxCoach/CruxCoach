@@ -62,6 +62,15 @@
     <string name="trt_reason_spared">Heute geschont: %1$s – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_reason_spared_generic">Was heute wehtut, wird geschont – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_ev_sore">tut heute weh: %1$s</string>
+    <string name="trt_duration_value">%d min</string>
+    <string name="trt_duration_title">Wie lange heute?</string>
+    <string name="trt_duration_usual">Wie sonst (%d min)</string>
+    <string name="trt_favorite">Favorit</string>
+    <string name="trt_reason_more_time">Heute mehr Zeit – die Einheit ist länger.</string>
+    <string name="trt_reason_extended">Auf deine Zeit aufgefüllt: mehr Sätze und Übungen derselben Art.</string>
+    <string name="trt_reason_kept_short">Diese Woche ist bewusst leichter: weniger Sätze, auch mit mehr Zeit.</string>
+    <string name="trt_reason_less_than_chosen">Mehr passende Übungen gibt es heute nicht (Ausrüstung, Schonung) – deshalb kürzer als gewählt.</string>
+    <string name="trt_ev_time_today">heute %1$d statt %2$d Minuten</string>
     <string name="trt_checkin_hint">Freiwillig. 1 = schlecht, 5 = super. Jede Antwort kann den Tag nur sanfter machen.</string>
     <string name="trt_q_sleep">Schlaf</string>
     <string name="trt_q_energy">Energie</string>

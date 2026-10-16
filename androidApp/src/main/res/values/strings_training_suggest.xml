@@ -4,9 +4,9 @@
     <string name="trsg_card_label">Suggestion for today</string>
     <string name="trsg_why_title">Why this suggestion?</string>
     <string name="trsg_planned_today">Planned for today in your week plan</string>
-    <plurals name="trsg_meta">
-        <item quantity="one">%1$d exercise · about %2$d min</item>
-        <item quantity="other">%1$d exercises · about %2$d min</item>
+    <plurals name="trsg_meta_count">
+        <item quantity="one">%d exercise</item>
+        <item quantity="other">%d exercises</item>
     </plurals>
     <string name="trsg_start">Start</string>
     <string name="trsg_next">Another suggestion</string>

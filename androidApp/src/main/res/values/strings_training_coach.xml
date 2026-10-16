@@ -95,6 +95,12 @@
     <string name="trc_style_intense">short and intense</string>
     <string name="trc_style_calm">longer and calmer</string>
     <string name="trc_style_variety">Routine or variety</string>
+    <string name="trc_favorites">Favourite exercises</string>
+    <string name="trc_favorites_routine">With a routine they are in almost every suggestion they fit.</string>
+    <string name="trc_favorites_some">They come first in suggestions they fit, with some variety around them.</string>
+    <string name="trc_favorites_varied">With variety they come back regularly, taking turns with others.</string>
+    <string name="trc_favorites_add">Add</string>
+    <string name="trc_favorites_remove">Remove %1$s</string>
     <string name="trc_style_routine">fixed routine</string>
     <string name="trc_style_varied">lots of variety</string>
     <string name="trc_no_preference">No preference</string>

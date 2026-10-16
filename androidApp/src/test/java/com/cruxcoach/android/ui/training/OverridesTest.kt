@@ -35,7 +35,8 @@ import kotlin.test.assertTrue
  * The athlete's word wins (owner 2026-10-15): loads changed during a training
  * carry over, sets can be gone back to and corrected, workouts and their loads
  * can be typed, performance values entered as working sets, and today's
- * suggestion asks first and lets the athlete pick the kind and the place.
+ * suggestion asks first and lets the athlete pick the kind, the place and the
+ * time; favourites are chosen next to "routine or variety" (2026-10-16).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -236,6 +237,58 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     private fun idle() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    @Test
+    fun `the time on the card changes today's training, only for today`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val usual = vm.state.value.suggestion!!
+        val preferred = repo.profile().sessionMinutes
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_duration"))
+        click("today_duration")
+        click("today_duration_90")
+        until { vm.state.value.minutesToday == 90 && (vm.state.value.suggestion?.totalMinutes ?: 0) > usual.totalMinutes + 15 }
+        assertTrue(SuggestionReason.MORE_TIME_TODAY in vm.state.value.suggestion!!.reasons, "${vm.state.value.suggestion!!.reasons}")
+        click("today_duration")
+        click("today_duration_20")
+        until { vm.state.value.minutesToday == 20 && vm.state.value.suggestion!!.totalMinutes <= 24 }
+        click("today_duration")
+        click("today_duration_usual")
+        until { vm.state.value.minutesToday == null && vm.state.value.suggestion!!.totalMinutes == usual.totalMinutes }
+        // Today only: the preferred duration stays.
+        assertEquals(preferred, repo.profile().sessionMinutes)
+    }
+
+    @Test
+    fun `a favourite in today's suggestion carries its star`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val main = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        repo.setFavorite(main, true)
+        until { main in vm.state.value.favorites && SuggestionReason.FAVORITES_USED in vm.state.value.suggestion!!.reasons }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", hasTestTag("today_favorite_$main"))
+    }
+
+    @Test
+    fun `favourites are chosen right next to routine or variety`() {
+        val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)))
+        repeat(3) { vm.next() }
+        until { vm.state.value.step == 3 }
+        render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }
+        click("coach_favorites_add")
+        waitForTag("routine_picker_search")
+        compose.onNodeWithTag("routine_picker_search").performTextReplacement("Dead Bug")
+        click("routine_picker_row_core.dead_bug")
+        click("routine_picker_confirm")
+        until { "core.dead_bug" in repo.favorites() }
+        waitForTag("coach_favorite_core.dead_bug")
+        click("coach_favorite_core.dead_bug")
+        until { "core.dead_bug" !in repo.favorites() }
+    }
 
     @Test
     fun `what hurts today spares the suggestion but never empties an own workout`() {
