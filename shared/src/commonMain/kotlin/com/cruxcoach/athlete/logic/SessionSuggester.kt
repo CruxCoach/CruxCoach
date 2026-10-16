@@ -1207,8 +1207,16 @@ object SessionSuggester {
 
     // ── The athlete's swaps (owner 2026-10-16: every recommendation overridable with little effort) ──
 
-    /** One exercise that could take another's place; [easier]/[harder] mark its own progression chain. */
-    data class Alternative(val def: ExerciseDefinition, val easier: Boolean = false, val harder: Boolean = false)
+    /**
+     * One exercise that could take another's place; [easier]/[harder] compare its difficulty with the
+     * original's, [variant] marks the original's own easier or harder progression step.
+     */
+    data class Alternative(
+        val def: ExerciseDefinition,
+        val easier: Boolean = false,
+        val harder: Boolean = false,
+        val variant: Boolean = false,
+    )
 
     /**
      * What could take [slug]'s place in [suggestion]: its easier and harder variant first, then the best
@@ -1246,13 +1254,19 @@ object SessionSuggester {
                 others.none { o -> def.easier == o || def.harder == o }
         }
         val chain = listOfNotNull(
-            candidates.firstOrNull { it.slug == original.easier }?.let { Alternative(it, easier = true) },
-            candidates.firstOrNull { it.slug == original.harder }?.let { Alternative(it, harder = true) },
+            candidates.firstOrNull { it.slug == original.easier }?.let { Alternative(it, easier = true, variant = true) },
+            candidates.firstOrNull { it.slug == original.harder }?.let { Alternative(it, harder = true, variant = true) },
         )
         val rest = candidates.filter { c -> chain.none { it.def.slug == c.slug } }
             .sortedWith(compareByDescending<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
-            .map { Alternative(it) }
-        return (chain + rest).take(count)
+        // Device review 2026-10-16: a diamond push-up got only harder push-ups. An easier one comes first when the
+        // chain has none, then exercises about as hard, then the rest — each marked easier or harder.
+        val easierPick = if (chain.any { it.easier }) null else rest.firstOrNull { it.difficulty < original.difficulty }
+        val ordered = listOfNotNull(easierPick) +
+            rest.filter { it != easierPick && it.difficulty == original.difficulty } +
+            rest.filter { it != easierPick && it.difficulty != original.difficulty }
+        return (chain + ordered.map { Alternative(it, easier = it.difficulty < original.difficulty, harder = it.difficulty > original.difficulty) })
+            .take(count)
     }
 
     /**
