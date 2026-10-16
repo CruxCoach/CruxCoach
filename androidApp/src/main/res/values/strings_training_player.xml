@@ -51,9 +51,10 @@
     <string name="trp_rir_question_seconds">How many more seconds would have been possible?</string>
     <string name="trp_record">New best: %1$s</string>
     <string name="trp_benchmark_raised">Performance value raised: %1$s</string>
-    <string name="trp_capacity_e1rm">e1RM %1$s</string>
-    <string name="trp_capacity_ten">10-s max %1$s</string>
-    <string name="trp_capacity_ten_pct">10-s max %1$s (%2$s)</string>
+    <string name="trp_benchmark_first">Starting value learned: %1$s</string>
+    <string name="trp_capacity_e1rm">max. 1 rep at %1$s</string>
+    <string name="trp_capacity_ten">10 s at %1$s</string>
+    <string name="trp_capacity_ten_pct">10 s at %1$s (%2$s)</string>
     <plurals name="trp_capacity_reps">
         <item quantity="one">max. %d rep</item>
         <item quantity="other">max. %d reps</item>

@@ -178,7 +178,8 @@ fun RestScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.AutoMirrored.Filled.TrendingUp, null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.trp_benchmark_raised, capacityText(fb.def, capacity, units)),
+                            Text(stringResource(if (fb.firstValue) R.string.trp_benchmark_first else R.string.trp_benchmark_raised,
+                                capacityText(fb.def, capacity, units)),
                                 style = MaterialTheme.typography.bodyMedium)
                         }
                     }
@@ -300,7 +301,7 @@ fun RestScreen(
     }
 }
 
-/** "e1RM +18 kg", "10-s-Max 74 kg (109 % BW)", "max. 14 reps", "max. 60 s". */
+/** "max. 1 rep with +18 kg", "10 s with 74 kg (109 % BW)", "max. 14 reps", "max. 60 s". */
 @Composable
 internal fun capacityText(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, capacity: com.cruxcoach.athlete.logic.Capacity, units: UnitSystem): String {
     val bw = capacity.bodyweightKg

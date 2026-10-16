@@ -50,9 +50,10 @@
     <string name="trp_rir_question_seconds">Wie viele Sekunden wären noch gegangen?</string>
     <string name="trp_record">Neuer Bestwert: %1$s</string>
     <string name="trp_benchmark_raised">Leistungswert angehoben: %1$s</string>
-    <string name="trp_capacity_e1rm">e1RM %1$s</string>
-    <string name="trp_capacity_ten">10-s-Max %1$s</string>
-    <string name="trp_capacity_ten_pct">10-s-Max %1$s (%2$s)</string>
+    <string name="trp_benchmark_first">Startwert gelernt: %1$s</string>
+    <string name="trp_capacity_e1rm">max. 1 Wdh. mit %1$s</string>
+    <string name="trp_capacity_ten">10 s mit %1$s</string>
+    <string name="trp_capacity_ten_pct">10 s mit %1$s (%2$s)</string>
     <plurals name="trp_capacity_reps">
         <item quantity="one">max. %d Wdh.</item>
         <item quantity="other">max. %d Wdh.</item>
