@@ -571,7 +571,12 @@ class AthleteService @Inject constructor(
     }
 
     fun reopenSet(set: ExerciseSet) = repo.saveSet(set.copy(completedAt = null))
-    fun updateSet(set: ExerciseSet) = repo.saveSet(set)
+    fun updateSet(set: ExerciseSet) {
+        repo.saveSet(set)
+        // The reserve answer comes after the set: it counts for the value too (device test 2026-10-17: a first
+        // value ignored "3+ in reserve" and placed a 7a climber at 5a). Only ever raises, like a fresh set.
+        if (set.isCompleted && set.setType != SetType.WARMUP) runCatching { updateBenchmark(set) }
+    }
     fun addSet(workoutId: String, blockIndex: Int) {
         val block = repo.setsFor(workoutId).filter { it.blockIndex == blockIndex }
         WorkoutPlanner.extraSet(block, repo::newId).forEach(repo::saveSet)
