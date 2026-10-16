@@ -79,7 +79,8 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
 }
 
 // The same steps as the coach setup asks (15 … 90 min).
-private val SESSION_MINUTES = listOf(15, 30, 45, 60, 90)
+/** The same choices as the time on Today's card (UX review 2026-10-16: the two lists differed). */
+private val SESSION_MINUTES = com.cruxcoach.android.ui.training.today.TodayViewModel.DURATION_OPTIONS
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
