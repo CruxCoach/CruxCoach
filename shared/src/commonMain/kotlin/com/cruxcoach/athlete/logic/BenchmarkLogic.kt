@@ -62,6 +62,38 @@ object StartEstimate {
         def.load == LoadMode.EXTERNAL && BenchmarkMath.capacityKind(def) == CapacityKind.TEN_SECOND_MAX &&
             com.cruxcoach.athlete.catalog.LoadDomain.FINGER in def.domains
 
+    /**
+     * Working weight as a share of body weight for a first session of common dumbbell, kettlebell,
+     * barbell and machine lifts without any value (per dumbbell for one-handed and paired work, else the
+     * total). Device test 2026-10-17: wrist curls were planned at 0 kg. Deliberately on the light side –
+     * the reserve answer after each set moves the next sets, and the first logged sets become the value.
+     */
+    private val LIFT_SHARE = mapOf(
+        "antagonist.wrist_curl" to 0.06, "antagonist.reverse_wrist_curl" to 0.04,
+        "antagonist.eccentric_wrist_extension" to 0.04, "antagonist.forearm_rotation" to 0.04,
+        "antagonist.radial_ulnar_deviation" to 0.04, "antagonist.side_lying_external_rotation" to 0.025,
+        "antagonist.cuban_press" to 0.03, "antagonist.prone_iyt_bench" to 0.02,
+        "antagonist.bottoms_up_kettlebell_carry" to 0.1, "antagonist.turkish_get_up" to 0.12,
+        "pull.dumbbell_row" to 0.22, "pull.lat_pulldown" to 0.55,
+        "push.dumbbell_bench_press" to 0.18, "push.dumbbell_overhead_press" to 0.12,
+        "core.dumbbell_side_bend" to 0.18,
+        "legs.goblet_squat" to 0.22, "legs.hip_thrust" to 0.6, "legs.romanian_deadlift" to 0.55,
+        "legs.back_squat" to 0.55, "legs.conventional_deadlift" to 0.7, "legs.single_leg_rdl" to 0.12,
+        "legs.front_squat" to 0.45,
+    )
+
+    /**
+     * The start guess for a loaded lift ([LIFT_SHARE]) as a one-rep max, so that the usual prescription
+     * (top of the rep range, two in reserve) plans that working weight; null for anything else.
+     */
+    fun liftCapacity(def: ExerciseDefinition, bodyweightKg: Double?): Capacity? {
+        val share = LIFT_SHARE[def.slug] ?: return null
+        if (def.load != LoadMode.EXTERNAL || def.kind != com.cruxcoach.athlete.catalog.ExerciseKind.LOAD_REPS) return null
+        val bw = bodyweightKg?.takeIf { it > 0 } ?: return null
+        val reps = def.defaults.repsMax ?: def.defaults.repsMin ?: 10
+        return Capacity(CapacityKind.E1RM_TOTAL, bw * share * (1.0 + (reps + BenchmarkMath.TARGET_RIR) / 30.0), bw, estimated = true)
+    }
+
     /** Two-hand 10-second pick-up total from body weight and grade alone. */
     fun twoHandFromGrade(bodyweightKg: Double, difficulty: Double?): Double {
         val d = (difficulty ?: DEFAULT_DIFFICULTY).coerceIn(13.0, 32.0)
