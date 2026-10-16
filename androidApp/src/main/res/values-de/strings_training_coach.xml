@@ -223,4 +223,6 @@
         <item quantity="one">%1$d nie</item>
         <item quantity="other">%1$d nie</item>
     </plurals>
+    <string name="trc_learning_own_short">Deine Last vom letzten Mal</string>
+    <string name="trc_learning_own">Beim letzten Mal hast du leichter trainiert als geplant, deshalb ist jetzt diese Last geplant – bis ein Satz mehr zeigt. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
 </resources>

@@ -42,6 +42,9 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
     /** Nothing known, and the load is a careful start guess ([com.cruxcoach.athlete.logic.StartEstimate]). */
     private val _guessed = MutableStateFlow(false)
     val guessed: StateFlow<Boolean> = _guessed.asStateFlow()
+    /** The plan comes from the load the athlete lowered last time ([com.cruxcoach.athlete.logic.OwnLoads]). */
+    private val _ownLoad = MutableStateFlow(false)
+    val ownLoad: StateFlow<Boolean> = _ownLoad.asStateFlow()
     private var loaded: String? = null
 
     fun load(slug: String) {
@@ -56,7 +59,10 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
                 def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.MOBILITY ||
                 def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP
             if (noValue) { _state.value = LearningState.State.Known; return@launch }
-            val learning = LearningState.of(slug, service.repo.benchmarks(slug), workSessionCount(service, slug))
+            val benchmarks = service.repo.benchmarks(slug)
+            _ownLoad.value = benchmarks.maxByOrNull { it.measuredAt }
+                ?.let { it.source == com.cruxcoach.athlete.model.BenchmarkSource.AUTO && it.sets != null } == true
+            val learning = LearningState.of(slug, benchmarks, workSessionCount(service, slug))
             _guessed.value = learning == LearningState.State.None && service.startEstimate(def) != null
             _state.value = learning
         }
@@ -74,8 +80,11 @@ fun LearningBadge(slug: String, modifier: Modifier = Modifier) {
     LaunchedEffect(slug) { viewModel.load(slug) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val guessed by viewModel.guessed.collectAsStateWithLifecycle()
+    val ownLoad by viewModel.ownLoad.collectAsStateWithLifecycle()
     // One line on every work set, the explanation behind the info icon (device test 2026-10-10: five lines above each set).
-    val (short, text) = when (val s = state) {
+    // The athlete's own load from last time says so first: it explains why the plan is lighter (UX review 2026-10-16).
+    val (short, text) = if (ownLoad && state != null) stringResource(R.string.trc_learning_own_short) to stringResource(R.string.trc_learning_own)
+    else when (val s = state) {
         null, LearningState.State.Known -> return
         LearningState.State.None -> if (guessed) stringResource(R.string.trc_learning_guess_short) to stringResource(R.string.trc_learning_guess)
             else stringResource(R.string.trc_learning_none_short) to stringResource(R.string.trc_learning_none)
