@@ -577,6 +577,23 @@ class AthleteService @Inject constructor(
     fun removeSet(id: String) = repo.deleteSet(id)
     fun removeBlock(workoutId: String, blockIndex: Int) = repo.deleteBlock(workoutId, blockIndex)
 
+    /**
+     * What could replace [slug] in an open training with [slugs] (UX review 2026-10-16: swapping in the
+     * player only worked through "it hurts"): the suggestion's filters with today's place, injuries
+     * and what hurts today; around an injury that pauses climbing only what spares it.
+     */
+    fun alternativesInTraining(slug: String, slugs: List<String>): List<SessionSuggester.Alternative> {
+        val today = today()
+        val profile = TrainingPlaces.inUse(repo.profile(), today.toString())
+        val checkin = repo.checkin(today.toString())
+        val active = repo.activeInjuries()
+        val injuries = active + Soreness.injuries(checkin)
+        val input = SuggestionInput(catalog, profile, today, ReadinessEvaluator.evaluate(checkin, injuries), injuries,
+            favorites = repo.favorites(), benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet())
+        val focus = if (active.any { it.climbingPaused }) SuggestionFocus.INJURY_SAFE else SuggestionFocus.PULL_PUSH
+        return SessionSuggester.alternatives(input, slugs.distinct().map { RoutineItem(it) }, focus, slug)
+    }
+
     /** Swaps a whole block to another exercise (progression chain "easier/harder"). */
     fun swapBlock(workoutId: String, blockIndex: Int, newSlug: String) {
         val def = catalog[newSlug] ?: return

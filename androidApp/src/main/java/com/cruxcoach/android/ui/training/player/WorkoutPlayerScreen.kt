@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -78,6 +80,7 @@ fun WorkoutPlayerScreen(
     val language = catalogLanguage()
     var finishing by rememberSaveable { mutableStateOf(false) }
     var reportingPain by rememberSaveable { mutableStateOf(false) }
+    var swapping by rememberSaveable { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     // A clear tick when a set is done; a longer buzz when it was a new best.
     val completeSet: () -> Unit = {
@@ -201,6 +204,9 @@ fun WorkoutPlayerScreen(
                         onOpenExercise = onOpenExercise,
                         onPain = { reportingPain = true },
                         learningBadge = learningBadge,
+                        canSwap = viewModel.canSwap(),
+                        onSwap = { swapping = true },
+                        onSkipExercise = viewModel::skipExercise,
                     )
                 }
                 PlayerPhase.REST -> RestScreen(
@@ -217,6 +223,19 @@ fun WorkoutPlayerScreen(
                 PlayerPhase.COMPLETE -> CompleteView(state, onFinish = { finishing = true }, onOverview = onOverview)
             }
             }
+        }
+    }
+
+    if (swapping) {
+        val current = state.current
+        if (current == null) swapping = false
+        else {
+            val alternatives by produceState<List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative>?>(null, current.set.id) {
+                value = viewModel.alternatives()
+            }
+            PlayerSwapSheet(current.def.name(language), alternatives, language,
+                onDismiss = { swapping = false },
+                onSwap = { slug -> swapping = false; viewModel.swapExercise(slug) })
         }
     }
 
@@ -247,6 +266,48 @@ fun WorkoutPlayerScreen(
     }
 }
 
+/** "Instead of X" during a training: the same alternatives as on today's card. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerSwapSheet(
+    name: String,
+    alternatives: List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative>?,
+    language: String,
+    onDismiss: () -> Unit,
+    onSwap: (String) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        modifier = Modifier.testTag("player_swap_sheet")) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Text(stringResource(R.string.trt_swap_title, name), style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp))
+            Spacer(Modifier.height(8.dp))
+            when {
+                alternatives == null -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                alternatives.isEmpty() -> Text(stringResource(R.string.trt_swap_none), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                else -> alternatives.forEach { alt ->
+                    val tag = when {
+                        alt.easier -> stringResource(R.string.trt_swap_easier)
+                        alt.harder -> stringResource(R.string.trt_swap_harder)
+                        else -> null
+                    }
+                    ListItem(
+                        leadingContent = { com.cruxcoach.android.ui.training.bodymap.ExerciseThumb(alt.def, Modifier.size(40.dp)) },
+                        headlineContent = { Text(alt.def.name(language)) },
+                        supportingContent = {
+                            Text(listOfNotNull(tag, com.cruxcoach.android.ui.training.exercises.equipmentSummary(alt.def).takeIf { it.isNotBlank() })
+                                .joinToString(" · "))
+                        },
+                        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                        modifier = Modifier.clickable { onSwap(alt.def.slug) }.testTag("player_swap_to_${alt.def.slug}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ── Set view ─────────────────────────────────────────────────────────
 
 @Composable
@@ -265,6 +326,10 @@ private fun SetView(
     onResume: () -> Unit = {},
     onReopen: () -> Unit = {},
     learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit = { _, _ -> },
+    /** None of the exercise's sets is done yet: it can still be swapped. */
+    canSwap: Boolean = false,
+    onSwap: () -> Unit = {},
+    onSkipExercise: () -> Unit = {},
 ) {
     val set = item.set
     val def = item.def
@@ -305,6 +370,29 @@ private fun SetView(
                         leadingIcon = { Icon(Icons.Default.Healing, null, Modifier.size(18.dp)) },
                         modifier = Modifier.testTag("player_pain"),
                     )
+                    // Swap or skip the exercise itself, not only through "it hurts" (UX review 2026-10-16).
+                    Box {
+                        var menu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { menu = true }, modifier = Modifier.testTag("player_exercise_menu")) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.trp_exercise_menu))
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (canSwap) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.trp_swap_exercise)) },
+                                    leadingIcon = { Icon(Icons.Default.SwapHoriz, null) },
+                                    onClick = { menu = false; onSwap() },
+                                    modifier = Modifier.testTag("player_swap_exercise"),
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(if (canSwap) R.string.trp_skip_exercise else R.string.trp_skip_rest)) },
+                                leadingIcon = { Icon(Icons.Default.SkipNext, null) },
+                                onClick = { menu = false; onSkipExercise() },
+                                modifier = Modifier.testTag("player_skip_exercise"),
+                            )
+                        }
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {

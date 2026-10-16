@@ -124,6 +124,31 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the shown exercise is swapped or skipped in the player, and the coach learns it`() {
+        // UX review 2026-10-16: in a training an exercise could only be swapped through "it hurts".
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(
+            RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 5), RoutineItem("push.push_up", sets = 2, repsMin = 10, repsMax = 10))))
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        until { vm.state.value.current?.set?.exerciseSlug == "pull.pull_up" }
+        assertTrue(vm.canSwap())
+        val alternatives = kotlinx.coroutines.runBlocking { vm.alternatives() }
+        assertTrue(alternatives.isNotEmpty() && alternatives.none { it.def.slug == "push.push_up" || it.def.slug == "pull.pull_up" }, "$alternatives")
+        click("player_exercise_menu")
+        click("player_swap_exercise")
+        waitForTag("player_swap_sheet")
+        val to = alternatives.first().def.slug
+        click("player_swap_to_$to")
+        until { repo.setsFor(id).none { it.exerciseSlug == "pull.pull_up" } && repo.setsFor(id).any { it.exerciseSlug == to } }
+        assertTrue(repo.suggestionEventsForDay(service.today().toString()).any {
+            it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf("pull.pull_up", to)
+        })
+        // Skipping takes the open sets of the shown exercise; the next exercise follows.
+        until { vm.state.value.current?.set?.exerciseSlug == to }
+        vm.skipExercise()
+        until { repo.setsFor(id).none { it.exerciseSlug == to } && vm.state.value.current?.set?.exerciseSlug == "push.push_up" }
+    }
+
+    @Test
     fun `a load changed in the player carries over to the next sets`() {
         val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
