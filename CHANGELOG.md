@@ -132,6 +132,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   variant and the best other exercises of the same kind – through the same
   checks as the suggestion (equipment of today's place, what hurts, injuries,
   guardrails, never more finger work) –, "leave out today" or "never suggest".
+  An easier and an equally hard exercise come first, each marked easier or
+  harder, and a swap changes only that exercise today.
 - The coach learns from what you change, and shows it: a swap counts for the
   exercise you picked and against the one you replaced (also when swapping to
   the easier or harder variant during a training); a kind of training or a
@@ -142,12 +144,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with your loads" in the summary), kept as a performance value from your
   training that a stronger set raises again and that goes with its training.
   Settings → "What the coach learned" lists all of it – your real training
-  length (to take over), your weekdays, exercises you like doing, suggested
+  length (to take over), your weekdays, exercises suggested more often and
   less often, your own loads, never suggest – with "Forget" per item and
   "Forget everything"; "Why?" links to it, and the player says "Your load
   from last time" when a lowered load is planned.
 - In a training the shown exercise can be swapped (the same alternatives as
-  on Today's card, while none of its sets is done) or skipped.
+  on Today's card, while none of its sets is done; the new one keeps the
+  sets) or skipped. A load changed on one set carries over to the next sets
+  in the list view too, and the rest timer ends with the training.
+- Suggestions fit your level from the start: the grade and the years of
+  climbing from the quick start set it (a 7a boulderer with years of climbing
+  gets max hangs, not assisted hangs), the novice and youth guardrails stay.
+  First dumbbell, kettlebell and barbell lifts start at a light share of body
+  weight instead of 0 kg, and the reserve you answer after a first set counts
+  for its value.
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
   holds, with its usual amount – also quick entries and described meals – in
   one tap, and a saved food's amount starts where it was last time.
