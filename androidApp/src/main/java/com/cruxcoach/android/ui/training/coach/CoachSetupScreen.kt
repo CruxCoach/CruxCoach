@@ -616,7 +616,8 @@ private fun goalPreview(d: CoachProfile): String {
 
 // ── Card 2: week ─────────────────────────────────────────────────────
 
-private val MINUTES = listOf(15, 30, 45, 60, 90)
+/** The same choices as the time on Today's card. */
+private val MINUTES = com.cruxcoach.android.ui.training.today.TodayViewModel.DURATION_OPTIONS
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
