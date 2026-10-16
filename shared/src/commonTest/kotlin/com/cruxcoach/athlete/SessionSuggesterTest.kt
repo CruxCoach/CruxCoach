@@ -84,6 +84,18 @@ class SessionSuggesterTest {
         assertEquals(SuggestionFocus.PULL_PUSH, pull.focus)
         assertEquals(SuggestionReason.CHOSEN_TODAY, pull.reasons.first())
         assertTrue(pull.routine.items.none { catalog[it.slug]?.category == ExerciseCategoryV2.FINGER })
+        // Device test 2026-10-16: "Beine & Rumpf" got negative pull-ups from the weekly plan's pull deficit.
+        val weekly = listOf(AreaProgress(VolumeArea.PULL, 0, 0, AreaTarget(VolumeArea.PULL, 7, 12, 2), 0.0, expectedByNow = 5.0),
+            AreaProgress(VolumeArea.LEGS, 0, 0, AreaTarget(VolumeArea.LEGS, 3, 9, 1), 0.0, expectedByNow = 2.0))
+        val legs = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.LEGS_CORE, weekly = weekly, weekStart = monday))
+        assertEquals(SuggestionFocus.LEGS_CORE, legs.focus)
+        assertTrue(legs.routine.items.none { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.PULL }, "${slugs(legs)}")
+        // A board day at a place with nothing to climb on: pull and push, and why.
+        val board = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.BOARD_DAY))
+        assertEquals(SuggestionFocus.PULL_PUSH, board.focus)
+        assertEquals(SuggestionReason.NO_WALL_HERE, board.reasons.first(), "${board.reasons}")
+        val gym = profile.copy(equipment = home + EquipmentV2.BOARD)
+        assertEquals(SuggestionFocus.BOARD_DAY, SessionSuggester.suggest(input(profile = gym).copy(wish = SuggestionFocus.BOARD_DAY)).focus)
         val stretch = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.MOBILITY_RECOVERY))
         assertEquals(SuggestionFocus.MOBILITY_RECOVERY, stretch.focus)
         assertTrue(stretch.routine.items.isNotEmpty() && stretch.routine.items.all { catalog[it.slug]?.category == ExerciseCategoryV2.MOBILITY })

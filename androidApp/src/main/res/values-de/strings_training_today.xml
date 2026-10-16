@@ -58,6 +58,7 @@
     <string name="trt_kind_coach">Wie der Coach vorschlägt</string>
     <string name="trt_next_place">Wo trainierst du?</string>
     <string name="trt_reason_chosen">Heute nach deiner Wahl.</string>
+    <string name="trt_reason_no_wall">Hier gibt es keine Wand und kein Board – heute Zug und Druck statt Board-Tag.</string>
     <string name="trt_reason_spared">Heute geschont: %1$s – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_reason_spared_generic">Was heute wehtut, wird geschont – Übungen, die das belasten, bleiben weg.</string>
     <string name="trt_ev_sore">tut heute weh: %1$s</string>
