@@ -80,6 +80,8 @@ data class SummaryState(
     val streak: com.cruxcoach.athlete.logic.StreakState? = null,
     /** The training was deleted: the screen leaves. */
     val deleted: Boolean = false,
+    /** Loads the athlete lowered that the next training plans ([AthleteService.learnOwnLoads]). */
+    val ownLoads: List<com.cruxcoach.athlete.model.Benchmark> = emptyList(),
 )
 
 @HiltViewModel
@@ -135,6 +137,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                     units = profile.units,
                     trends = trends,
                     routineCounts = slugs.associateWith { s -> routines.count { r -> r.items.any { i -> i.slug == s } } },
+                    ownLoads = workout?.let { w -> runCatching { service.ownLoadsOf(w) }.getOrNull() }.orEmpty(),
                 )
             }
             if (workout != null) logCompletion(workout, sets)
@@ -295,9 +298,27 @@ fun WorkoutSummaryScreen(
                     }
                 }
             }
-            if (summary.suggestions.isNotEmpty()) {
+            if (state.ownLoads.isNotEmpty()) {
+                // The athlete worked lighter than planned: next time plans their load (UX review 2026-10-16).
+                item {
+                    SectionTitle(stringResource(R.string.trw_own_loads_title)) {
+                        com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trw_own_loads_title), stringResource(R.string.trw_own_loads_info))
+                    }
+                }
+                state.ownLoads.forEach { b ->
+                    item(key = "own_${b.id}") {
+                        val def = state.catalog.fallbackFor(b.exerciseSlug)
+                        val load = b.loadKg?.let { formatMass(it, state.units, signed = def.load == com.cruxcoach.athlete.catalog.LoadMode.BODYWEIGHT_PLUS) }
+                        Text(listOfNotNull(def.name(language), b.side?.let { sideLabel(it) }, load).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("summary_own_load_${b.exerciseSlug}"))
+                    }
+                }
+            }
+            val ownSlugs = state.ownLoads.map { it.exerciseSlug }.toSet()
+            val suggestions = summary.suggestions.filter { (slug, _) -> slug !in ownSlugs }
+            if (suggestions.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trw_suggestions_title)) }
-                summary.suggestions.forEach { (slug, suggestion) ->
+                suggestions.forEach { (slug, suggestion) ->
                     item(key = "sugg_$slug") {
                         SuggestionRow(state.catalog.fallbackFor(slug), suggestion, state, language, onOpenExercise)
                     }

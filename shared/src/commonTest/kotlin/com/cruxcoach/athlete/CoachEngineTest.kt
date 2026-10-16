@@ -155,6 +155,43 @@ class PreferenceLearningTest {
     }
 }
 
+class OwnLoadsTest {
+
+    private val pull = ExerciseDefinition("pull.weighted_pull_up", ExerciseCategoryV2.PULL, ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
+        false, listOf(EquipmentV2.PULL_UP_BAR), emptyList(), defaults = Prescription(sets = 4, repsMin = 5, repsMax = 5, restS = 150),
+        i18n = mapOf("en" to ExerciseText("Weighted pull-up")))
+
+    private fun set(i: Int, load: Double, target: Double, reps: Int = 5, done: Boolean = true, type: SetType = SetType.WORK) =
+        ExerciseSet("s$i", "w", pull.slug, 0, i, type, targetReps = 5, targetLoadKg = target, reps = reps, loadKg = load,
+            bodyweightKg = 70.0, completedAt = if (done) 1000L + i else null)
+
+    @Test
+    fun aLoadLoweredByTheAthleteBecomesTheirValue() {
+        // Planned +20 kg; the athlete set +15 on the first set, the rest followed (their plan moved with it).
+        val sets = listOf(set(0, 15.0, 20.0), set(1, 15.0, 15.0), set(2, 15.0, 15.0, reps = 4), set(3, 15.0, 15.0))
+        val values = OwnLoads.lowered(pull, sets, { "b" }, 5000)
+        assertEquals(1, values.size)
+        val b = values.single()
+        assertEquals(15.0, b.loadKg); assertEquals(4, b.reps); assertEquals(4, b.sets); assertEquals(BenchmarkSource.AUTO, b.source)
+        // Read back the way plans are made: 4 reps at +15 kg (reserve 2) again.
+        val capacity = BenchmarkMath.capacity(pull, b, 70.0)!!
+        val item = RoutineItem(pull.slug, sets = 4, repsMin = 4, repsMax = 4)
+        assertEquals(15.0, LoadPrescriber.prescribe(pull, item, capacity, 70.0, 1.0)?.loadKg)
+    }
+
+    @Test
+    fun autoregulationAndOneTiredSetAreNoChoice() {
+        // Plan and load moved together (autoregulation): nothing to learn.
+        assertTrue(OwnLoads.lowered(pull, listOf(set(0, 20.0, 20.0), set(1, 17.5, 17.5), set(2, 17.5, 17.5)), { "b" }, 0).isEmpty())
+        // Only the last set lighter: fatigue, not the athlete's load.
+        assertTrue(OwnLoads.lowered(pull, listOf(set(0, 20.0, 20.0), set(1, 20.0, 20.0), set(2, 15.0, 20.0)), { "b" }, 0).isEmpty())
+        // Heavier than planned is handled by the performance value rising, warm-ups and open sets never count.
+        assertTrue(OwnLoads.lowered(pull, listOf(set(0, 25.0, 20.0), set(1, 25.0, 25.0)), { "b" }, 0).isEmpty())
+        assertTrue(OwnLoads.lowered(pull, listOf(set(0, 10.0, 20.0, type = SetType.WARMUP), set(1, 10.0, 20.0, done = false),
+            set(2, 10.0, 20.0, done = false)), { "b" }, 0).isEmpty())
+    }
+}
+
 class ReadinessModifiersTest {
 
     private fun def(slug: String, tags: List<String> = listOf("strength"), domains: List<LoadDomain> = listOf(LoadDomain.FINGER),

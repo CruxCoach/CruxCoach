@@ -68,6 +68,62 @@ class OverridesTest : AthleteScreenTest() {
     private fun work(id: String) = repo.setsFor(id).filter { it.setType == SetType.WORK }.sortedBy { it.setIndex }
 
     @Test
+    fun `a load the athlete lowered is planned next time, and goes with its training`() {
+        // UX review 2026-10-16: a lowered load came back heavier the next time (values only rose by themselves).
+        repo.saveBenchmark(Benchmark("b0", "pull.weighted_pull_up", loadKg = 20.0, reps = 5, sets = 3, bodyweightKg = 70.0,
+            source = BenchmarkSource.MANUAL, measuredAt = 1))
+        val routine = Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5)))
+        val first = service.startWorkout(routine, null)
+        assertEquals(listOf(20.0, 20.0, 20.0), work(first).map { it.loadKg })
+        // In the player: +15 kg on the first set, the later sets follow and take it as their plan.
+        val now = System.currentTimeMillis()
+        work(first).forEachIndexed { i, set ->
+            repo.saveSet(set.copy(loadKg = 15.0, targetLoadKg = if (i == 0) 20.0 else 15.0, reps = 5, completedAt = now + i))
+        }
+        service.finishWorkout(first, null, null)
+        val own = service.ownLoadsOf(repo.workout(first)!!)
+        assertEquals(listOf(15.0), own.map { it.loadKg })
+        val second = service.startWorkout(routine, null)
+        assertEquals(listOf(15.0, 15.0, 15.0), work(second).map { it.loadKg })
+        // Deleting the training takes its value with it: planning is back at the athlete's earlier value.
+        service.discardWorkout(second)
+        service.discardWorkout(first)
+        val third = service.startWorkout(routine, null)
+        assertEquals(listOf(20.0, 20.0, 20.0), work(third).map { it.loadKg })
+    }
+
+    @Test
+    fun `a kind chosen on two Mondays is that weekday's suggestion, shown and forgettable`() {
+        // UX review 2026-10-16: the athlete's choices were forgotten the next day, and nothing learned was visible.
+        val today = service.today()
+        val dayMs = 86_400_000L
+        listOf(7, 14).forEach { ago ->
+            val day = today.minus(kotlinx.datetime.DatePeriod(days = ago)).toString()
+            val at = System.currentTimeMillis() - ago * dayMs
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("k$ago", day, at,
+                com.cruxcoach.athlete.model.SuggestionEventKind.FEEDBACK, focus = com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_KIND + "LEGS_CORE"))
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("s$ago", day, at + 1000,
+                com.cruxcoach.athlete.model.SuggestionEventKind.STARTED, focus = "LEGS_CORE"))
+        }
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion?.focus == SuggestionFocus.LEGS_CORE }
+        assertEquals(SuggestionReason.USUAL_KIND, vm.state.value.suggestion!!.reasons.first())
+        // "The coach decides" for today wins over the habit.
+        vm.chooseFocus(null)
+        until { SuggestionReason.USUAL_KIND !in vm.state.value.suggestion!!.reasons }
+        // The settings page shows the weekday and forgets it.
+        val settings = com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel(service).tracked()
+        until { settings.state.value.learned.weekdays.any { it.focus == SuggestionFocus.LEGS_CORE } }
+        render { com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen({}, viewModel = settings,
+            section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
+        val iso = today.dayOfWeek.ordinal + 1
+        click("learned_day_${iso}_forget")
+        until { settings.state.value.learned.weekdays.isEmpty() }
+        waitForTag("learned_empty")
+    }
+
+    @Test
     fun `a load changed in the player carries over to the next sets`() {
         val (id, vm) = player(Routine("r", "Pull", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }

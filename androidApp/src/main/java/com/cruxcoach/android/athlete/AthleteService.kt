@@ -522,8 +522,7 @@ class AthleteService @Inject constructor(
         return startWorkout(routine, null)
     }
 
-    /** What a completed set changed besides the log. */
-    /** [firstValue]: the set gave the exercise its first performance value (not a raise of an older one). */
+    /** What a completed set changed besides the log; [firstValue]: it gave the exercise its first performance value. */
     data class SetOutcome(val record: PersonalRecord?, val raisedBenchmark: Benchmark?, val capacity: Capacity?, val firstValue: Boolean = false)
 
     private fun updateBenchmark(set: ExerciseSet): Triple<Benchmark, Capacity, Boolean>? {
@@ -747,7 +746,37 @@ class AthleteService @Inject constructor(
             repo.setsFor(id).filter { !it.isCompleted }.forEach { repo.deleteSet(it.id) }
             repo.finishWorkout(id, end, sessionRpe, notes?.takeIf { it.isNotBlank() })
         }
+        runCatching { learnOwnLoads(id) }
         return summarize(id, workout?.let { ((end - it.startedAt) / 60_000L).toInt() })
+    }
+
+    /**
+     * Loads the athlete lowered during the training are theirs next time ([OwnLoads]): a value "from
+     * your training" in working-set form, saved when it plans less than the value that applied.
+     * Returns what was saved (the summary names it).
+     */
+    fun learnOwnLoads(workoutId: String): List<Benchmark> {
+        val sets = repo.setsFor(workoutId)
+        val now = System.currentTimeMillis()
+        return sets.map { it.exerciseSlug }.distinct().flatMap { slug ->
+            val def = catalog[slug] ?: return@flatMap emptyList()
+            OwnLoads.lowered(def, sets, repo::newId, now).filter { b ->
+                val bw = b.bodyweightKg ?: currentBodyweight()
+                val mine = BenchmarkMath.capacity(def, b, bw) ?: return@filter false
+                val current = capacityFor(def, b.side, b.edgeMm, b.grip, bw)
+                current == null || current.kind != mine.kind || mine.value < current.value * 0.99
+            }.onEach { repo.saveBenchmark(it) }
+        }
+    }
+
+    /**
+     * Values the athlete's own lower loads left in a training ([learnOwnLoads]): working-set values
+     * "from your training" measured while it ran or right after.
+     */
+    fun ownLoadsOf(workout: Workout): List<Benchmark> {
+        val until = (workout.endedAt ?: System.currentTimeMillis()) + 60_000L
+        return repo.setsFor(workout.id).map { it.exerciseSlug }.distinct().flatMap { repo.benchmarks(it) }
+            .filter { it.source == BenchmarkSource.AUTO && it.sets != null && it.measuredAt in workout.startedAt..until }
     }
 
     /** Records are judged against what came before this training — also when an old one is reopened. */
