@@ -223,4 +223,6 @@
         <item quantity="one">%1$d never</item>
         <item quantity="other">%1$d never</item>
     </plurals>
+    <string name="trc_learning_own_short">Your load from last time</string>
+    <string name="trc_learning_own">Last time you trained lighter than planned, so this load is planned now – until a set shows more. You can change or delete it under performance values.</string>
 </resources>

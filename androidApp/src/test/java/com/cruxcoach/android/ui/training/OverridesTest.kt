@@ -85,6 +85,10 @@ class OverridesTest : AthleteScreenTest() {
         assertEquals(listOf(15.0), own.map { it.loadKg })
         val second = service.startWorkout(routine, null)
         assertEquals(listOf(15.0, 15.0, 15.0), work(second).map { it.loadKg })
+        // The player says where the lighter plan comes from.
+        val badge = com.cruxcoach.android.ui.training.coach.LearningBadgeViewModel(service).tracked()
+        badge.load("pull.weighted_pull_up")
+        until { badge.ownLoad.value }
         // Deleting the training takes its value with it: planning is back at the athlete's earlier value.
         service.discardWorkout(second)
         service.discardWorkout(first)
@@ -139,9 +143,10 @@ class OverridesTest : AthleteScreenTest() {
         val to = alternatives.first().def.slug
         click("player_swap_to_$to")
         until { repo.setsFor(id).none { it.exerciseSlug == "pull.pull_up" } && repo.setsFor(id).any { it.exerciseSlug == to } }
-        assertTrue(repo.suggestionEventsForDay(service.today().toString()).any {
+        // The ledger entry is written right after the sets.
+        until { repo.suggestionEventsForDay(service.today().toString()).any {
             it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf("pull.pull_up", to)
-        })
+        } }
         // Skipping takes the open sets of the shown exercise; the next exercise follows.
         until { vm.state.value.current?.set?.exerciseSlug == to }
         vm.skipExercise()
