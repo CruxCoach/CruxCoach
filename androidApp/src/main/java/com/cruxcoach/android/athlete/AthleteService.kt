@@ -444,11 +444,13 @@ class AthleteService @Inject constructor(
     }
 
     /**
-     * [StartEstimate] for a block lift or pick-up without any value: from a
+     * [StartEstimate] for a dumbbell, kettlebell or barbell lift (a share of body weight) or a block lift or
+     * pick-up without any value: from a
      * related value (two-arm pick-up, max hang, one-arm pick-up) when there is
      * one, else from body weight and the climbing grade (logbook or coach setup).
      */
     fun startEstimate(def: com.cruxcoach.athlete.catalog.ExerciseDefinition, bodyweightKg: Double? = currentBodyweight()): Capacity? {
+        StartEstimate.liftCapacity(def, bodyweightKg)?.let { return it }
         if (!StartEstimate.applies(def)) return null
         fun known(slug: String, side: Side? = null) = catalog[slug]?.let { capacityFor(it, side, 20.0, null, bodyweightKg) }?.value
         val twoHand = known(TWO_ARM_PICKUP_SLUG)

@@ -30,6 +30,18 @@ class StartLoadTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `first dumbbell and barbell lifts start light instead of at 0 kg`() {
+        // Device test 2026-10-17: wrist curls were planned at 0 kg.
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 72.0, "kg", 1))
+        val work = plannedWork(listOf(RoutineItem("antagonist.wrist_curl", sets = 2), RoutineItem("pull.dumbbell_row", sets = 2),
+            RoutineItem("legs.goblet_squat", sets = 2)))
+        fun load(slug: String) = work.filter { it.exerciseSlug == slug }.mapNotNull { it.loadKg }.distinct()
+        assertTrue("wrist curl ${load("antagonist.wrist_curl")}", load("antagonist.wrist_curl").all { it in 2.0..6.0 } && load("antagonist.wrist_curl").isNotEmpty())
+        assertTrue("row ${load("pull.dumbbell_row")}", load("pull.dumbbell_row").all { it in 10.0..20.0 } && load("pull.dumbbell_row").isNotEmpty())
+        assertTrue("goblet ${load("legs.goblet_squat")}", load("legs.goblet_squat").all { it in 10.0..20.0 } && load("legs.goblet_squat").isNotEmpty())
+    }
+
+    @Test
     fun `a first two-arm pick-up gets a careful load from body weight`() {
         repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 68.5, "kg", 1))
         val work = plannedWork(listOf(RoutineItem("finger.two_arm_pickup", sets = 4, durationS = 10, edgeMm = 20)))
