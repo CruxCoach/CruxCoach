@@ -153,6 +153,7 @@
     <string name="trt_swap_drop">Heute weglassen</string>
     <string name="trt_swap_exclude">Nie vorschlagen</string>
     <string name="trt_show_less">Weniger zeigen</string>
+    <string name="trt_next_place">Wo trainierst du?</string>
     <string name="trt_next_level">Heute lieber</string>
     <string name="trt_level_easier">Leichter</string>
     <string name="trt_level_harder">Fordernder</string>
