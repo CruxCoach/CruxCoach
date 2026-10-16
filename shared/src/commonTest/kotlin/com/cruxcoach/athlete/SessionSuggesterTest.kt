@@ -359,6 +359,22 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun alternativesOfferEasierAndSimilarBeforeHarder() {
+        // Device review 2026-10-16: only harder push-ups were offered instead of a diamond push-up.
+        val levels = ExerciseCatalog(1, listOf(
+            ex("push.diamond", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT, difficulty = 2),
+            ex("push.archer", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT, difficulty = 3, tags = listOf("strength")),
+            ex("push.pike", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT, difficulty = 3, tags = listOf("strength")),
+            ex("push.wide", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT, difficulty = 2),
+            ex("push.knee", ExerciseCategoryV2.PUSH, ExerciseKind.REPS, LoadMode.BODYWEIGHT, difficulty = 1),
+        ))
+        val items = listOf(RoutineItem("push.diamond"))
+        val alts = SessionSuggester.alternatives(input().copy(catalog = levels), items, SuggestionFocus.PULL_PUSH, "push.diamond")
+        assertEquals(listOf("push.knee", "push.wide"), alts.take(2).map { it.def.slug }, "${alts.map { it.def.slug }}")
+        assertTrue(alts[0].easier && !alts[1].easier && !alts[1].harder && alts.drop(2).all { it.harder }, "$alts")
+    }
+
+    @Test
     fun alternativesRespectInjuries() {
         val shoulder = Injury("i", InjuryRegion.SHOULDER, severity = 4, climbingPaused = false, startedOn = monday.toString())
         val s = SessionSuggester.suggest(input(injuries = listOf(shoulder)).copy(wish = SuggestionFocus.PULL_PUSH))
