@@ -499,8 +499,11 @@ private fun AddAction(
         Column(Modifier.padding(vertical = 10.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
             Icon(icon, null, tint = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else CruxCoachDesign.colors.brandAccent)
-            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
-                color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface)
+            // Shrinks to fit a quarter of a 360-dp phone: "Beschreiben" was cut to "Beschreibe" (render review 2026-10-16).
+            val labelStyle = MaterialTheme.typography.labelMedium
+            androidx.compose.foundation.text.BasicText(label, maxLines = 1, modifier = Modifier.padding(top = 4.dp),
+                style = labelStyle.copy(color = if (dimmed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface),
+                autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelStyle.fontSize))
         }
     }
 }
