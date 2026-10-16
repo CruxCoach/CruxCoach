@@ -675,7 +675,7 @@ private fun CheckinForm(
         Text(stringResource(R.string.trt_q_sick))
     }
     Text(stringResource(R.string.trt_q_sore), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
-    SoreChips(sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()) { set ->
+    SoreChips(sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet(), accent = false) { set ->
         sore = set.map { it.name }
     }
     val soreSet = sore.mapNotNull { n -> com.cruxcoach.athlete.model.InjuryRegion.entries.firstOrNull { it.name == n } }.toSet()
@@ -749,14 +749,20 @@ private fun answerChipColors() = FilterChipDefaults.filterChipColors(
 /** Body areas as chips, several at once; the same ones as for an injury. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun SoreChips(selected: Set<com.cruxcoach.athlete.model.InjuryRegion>, onChange: (Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit) {
+private fun SoreChips(
+    selected: Set<com.cruxcoach.athlete.model.InjuryRegion>,
+    /** On the suggestion card the default selected colour is the card's own; the sheet keeps the default. */
+    accent: Boolean = true,
+    onChange: (Set<com.cruxcoach.athlete.model.InjuryRegion>) -> Unit,
+) {
+    val colors = if (accent) answerChipColors() else FilterChipDefaults.filterChipColors()
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         com.cruxcoach.athlete.model.InjuryRegion.entries.forEach { r ->
             FilterChip(
                 selected = r in selected,
                 onClick = { onChange(if (r in selected) selected - r else selected + r) },
                 label = { Text(regionLabel(r)) },
-                colors = answerChipColors(),
+                colors = colors,
                 modifier = Modifier.testTag("today_sore_${r.name.lowercase()}"),
             )
         }
@@ -998,6 +1004,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.WEEKLY_TARGET -> R.string.trv_reason_weekly
     SuggestionReason.CHOSEN_TODAY -> R.string.trt_reason_chosen
     SuggestionReason.SPARED_TODAY -> R.string.trt_reason_spared_generic
+    SuggestionReason.NO_WALL_HERE -> R.string.trt_reason_no_wall
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …"). */

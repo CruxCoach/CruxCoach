@@ -96,6 +96,8 @@ enum class SuggestionReason {
     CHOSEN_TODAY,
     /** What hurts today (check-in) is spared: exercises loading it stay out ([Soreness]). */
     SPARED_TODAY,
+    /** A board day was chosen at a place without a wall or board. */
+    NO_WALL_HERE,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -476,12 +478,16 @@ object SessionSuggester {
         val reasons = ctx.reasons
         val areas = ctx.input.coach.focus
         reasons.add(0, SuggestionReason.CHOSEN_TODAY)
-        fun pullPush() = build(ctx, SuggestionFocus.PULL_PUSH, withFocusAreas(slotsFor(SuggestionFocus.PULL_PUSH), SuggestionFocus.PULL_PUSH, areas, ctx), budget, planned)
+        fun pullPush() = build(ctx, SuggestionFocus.PULL_PUSH, withFocusAreas(slotsFor(SuggestionFocus.PULL_PUSH), SuggestionFocus.PULL_PUSH, areas, ctx), budget, planned, weekly = false)
         fun safe() = build(ctx, SuggestionFocus.INJURY_SAFE,
-            withFocusAreas(listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS), SuggestionFocus.INJURY_SAFE, areas, ctx), budget, planned)
+            withFocusAreas(listOf(Slot.WARMUP, Slot.PULL, Slot.PULL, Slot.ANTAGONIST, Slot.CORE, Slot.LEGS), SuggestionFocus.INJURY_SAFE, areas, ctx), budget, planned, weekly = false)
         return when (wish) {
             SuggestionFocus.BOARD_DAY -> when {
                 climbingPaused -> { reasons.add(0, SuggestionReason.PLAN_REPLACED_FOR_INJURY); safe() }
+                // Equipment known and nothing to climb on here: no board day at this place.
+                ctx.input.profile.equipmentConfigured && ctx.input.profile.equipment.none {
+                    it == EquipmentV2.WALL || it == EquipmentV2.BOARD || it == EquipmentV2.CAMPUS_BOARD
+                } -> { reasons.add(0, SuggestionReason.NO_WALL_HERE); pullPush() }
                 readiness.avoidClimbing || fingerBlock != null || skinSpike -> {
                     reasons.add(0, fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY)
                     pullPush()
@@ -493,16 +499,16 @@ object SessionSuggester {
                 fingerBlock != null -> { reasons.add(0, fingerBlock); pullPush() }
                 else -> {
                     val result = build(ctx, SuggestionFocus.FINGER_STRENGTH,
-                        withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned)
+                        withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned, weekly = false)
                     val hasFingerMain = result.routine.items.any { !it.warmup && ctx.input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
                     // No hangboard or block at this place: say so and train the rest.
                     if (hasFingerMain) result else { reasons.add(0, SuggestionReason.NO_FINGER_EQUIPMENT); pullPush() }
                 }
             }
             SuggestionFocus.PULL_PUSH, SuggestionFocus.LEGS_CORE ->
-                build(ctx, wish, withFocusAreas(slotsFor(wish), wish, areas, ctx), budget, planned)
+                build(ctx, wish, withFocusAreas(slotsFor(wish), wish, areas, ctx), budget, planned, weekly = false)
             SuggestionFocus.MOBILITY_RECOVERY, SuggestionFocus.REST ->
-                build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(6) { Slot.MOBILITY }, budget, planned)
+                build(ctx, SuggestionFocus.MOBILITY_RECOVERY, List(6) { Slot.MOBILITY }, budget, planned, weekly = false)
             SuggestionFocus.PLANNED, SuggestionFocus.INJURY_SAFE -> { reasons.remove(SuggestionReason.CHOSEN_TODAY); null }
         }
     }
@@ -769,9 +775,11 @@ object SessionSuggester {
         slots: List<Slot>,
         budgetMinutes: Int,
         planned: String?,
+        /** A kind the athlete chose stays that kind: the weekly plan does not mix other areas in. */
+        weekly: Boolean = true,
     ): SessionSuggestion {
         val input = ctx.input
-        val shaped = if (focus in WEEKLY_FOCI) withWeeklyDeficit(slots, focus, ctx) else slots
+        val shaped = if (weekly && focus in WEEKLY_FOCI) withWeeklyDeficit(slots, focus, ctx) else slots
         var items = pickSlots(ctx, shaped, allowWall = false, focus = focus, taken = mutableSetOf())
         if (focus != SuggestionFocus.REST && focus != SuggestionFocus.MOBILITY_RECOVERY) {
             items = applyStyle(items, input.coach.intensityStyle, input.catalog)

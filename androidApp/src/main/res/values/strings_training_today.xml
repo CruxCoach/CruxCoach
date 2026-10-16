@@ -58,6 +58,7 @@
     <string name="trt_kind_coach">As the coach suggests</string>
     <string name="trt_next_place">Where are you training?</string>
     <string name="trt_reason_chosen">Your choice for today.</string>
+    <string name="trt_reason_no_wall">No wall or board at this place – pull and push instead of a board day.</string>
     <string name="trt_reason_spared">Spared today: %1$s – exercises that load it stay out.</string>
     <string name="trt_reason_spared_generic">What hurts today is spared – exercises that load it stay out.</string>
     <string name="trt_ev_sore">hurts today: %1$s</string>
