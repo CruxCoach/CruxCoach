@@ -95,6 +95,12 @@
     <string name="trc_style_intense">kurz und intensiv</string>
     <string name="trc_style_calm">länger und ruhiger</string>
     <string name="trc_style_variety">Routine oder Abwechslung</string>
+    <string name="trc_favorites">Lieblingsübungen</string>
+    <string name="trc_favorites_routine">Bei Routine sind sie fast in jedem Vorschlag, in den sie passen.</string>
+    <string name="trc_favorites_some">Sie kommen in passenden Vorschlägen bevorzugt dran, mit etwas Abwechslung drumherum.</string>
+    <string name="trc_favorites_varied">Bei Abwechslung kommen sie regelmäßig, im Wechsel mit anderen.</string>
+    <string name="trc_favorites_add">Hinzufügen</string>
+    <string name="trc_favorites_remove">%1$s entfernen</string>
     <string name="trc_style_routine">feste Routine</string>
     <string name="trc_style_varied">viel Abwechslung</string>
     <string name="trc_no_preference">Keine Vorliebe</string>

@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.foodvision.BlsRepository
@@ -419,6 +420,52 @@ class TrainingUiReviewTest : AthleteScreenTest() {
             click("today_suggestion_next")
             waitForTag("today_next_place_no-gear")
         }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayDurationMenu() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val first = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        repo.setFavorite(first, true)
+        compose.waitUntil(WAIT_MS) { idleMain(); first in vm.state.value.favorites }
+        shoot("today-duration-menu", {
+            scrollTo("today_list", "today_duration")
+            click("today_duration")
+            waitForTag("today_duration_90")
+        }) { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun todayLonger() {
+        seedActive()
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(4, emptySet())
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseMinutes(90)
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.minutesToday == 90 }
+        shoot("today-longer", { scrollTo("today_list", "today_duration") }) {
+            TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm)
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "de-w360dp-h760dp-xhdpi")
+    fun coachFavorites() {
+        repo.setFavorite("core.dead_bug", true)
+        repo.setFavorite("pull.pull_up", true)
+        val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true)))
+        repeat(3) { vm.next() }
+        compose.waitUntil(WAIT_MS) { idleMain(); vm.state.value.step == 3 && vm.state.value.favorites.size == 2 }
+        vm.update { it.copy(variety = 20) }
+        shoot("coach-favorites", {
+            waitForTag("coach_favorites_add")
+            compose.onNodeWithTag("coach_favorites_add").performScrollTo()
+        }) { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }
     }
 
     @Test

@@ -8,8 +8,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,6 +74,9 @@ data class CoachSetupState(
     val testStarted: Boolean = false,
     /** Current body weight; asked on the climbing card, where loads in % body weight start. */
     val bodyweightKg: Double? = null,
+    /** Favourite exercises, chosen next to "routine or variety" (saved at once, like the equipment). */
+    val favorites: Set<String> = emptySet(),
+    val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
 ) {
     val proposal: Map<Int, String>
         get() = WeekPlanSuggester.suggest(draft, logbook, routines, profile.equipment, injuries)
@@ -160,10 +165,24 @@ class CoachSetupViewModel @Inject constructor(
                 routines = repo.routines(),
                 injuries = repo.activeInjuries(),
                 bodyweightKg = service.currentBodyweight(),
+                favorites = repo.favorites(),
+                catalog = service.catalog,
             )
             // Equipment may change in the settings screen opened from here.
             repo.observeProfile().collect { p -> _state.update { it.copy(profile = p) } }
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            service.repo.observeFavorites().collect { f -> _state.update { it.copy(favorites = f) } }
+        }
+    }
+
+    fun setFavorite(slug: String, favorite: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); service.repo.setFavorite(slug, favorite) }
+    }
+
+    fun addFavorites(slugs: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); slugs.forEach { service.repo.setFavorite(it, true) } }
     }
 
     fun update(transform: (CoachProfile) -> CoachProfile) = _state.update { it.copy(draft = transform(it.draft)) }
@@ -355,6 +374,7 @@ fun CoachSetupScreen(
     pendingStart?.let { com.cruxcoach.android.ui.training.workout.OpenTrainingDialog(it, viewModel::resolveStart) }
     var estimating by rememberSaveable { mutableStateOf(false) }
     var equipmentOpen by rememberSaveable { mutableStateOf(false) }
+    var favoritesOpen by rememberSaveable { mutableStateOf(false) }
     var weightOpen by rememberSaveable { mutableStateOf(false) }
     var confirmDismiss by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.finished) { if (state.finished) onFinished() }
@@ -412,7 +432,8 @@ fun CoachSetupScreen(
                 0 -> GoalCard(state, viewModel::update)
                 1 -> WeekCard(state, viewModel::update, viewModel::setMinutes)
                 2 -> ExperienceCard(state, viewModel::update, onLogWeight = { weightOpen = true })
-                3 -> PreferencesCard(state, viewModel::update, onOpenEquipment = { equipmentOpen = true })
+                3 -> PreferencesCard(state, viewModel::update, onOpenEquipment = { equipmentOpen = true },
+                    onPickFavorites = { favoritesOpen = true }, onRemoveFavorite = { viewModel.setFavorite(it, false) })
                 else -> FinishCard(state, onEstimate = { estimating = true }, onStartTest = { viewModel.startTestSession(testTitle) },
                     onOpenBenchmarks = onOpenBenchmarks, onApplyPlan = viewModel::applyPlan)
             }
@@ -421,6 +442,16 @@ fun CoachSetupScreen(
     }
 
     if (estimating) QuickEstimateSheet(onDismiss = { estimating = false })
+    if (favoritesOpen) {
+        com.cruxcoach.android.ui.training.workouts.ExercisePickerSheet(
+            catalog = state.catalog,
+            favorites = state.favorites,
+            lang = com.cruxcoach.android.ui.training.catalogLanguage(),
+            onToggleFavorite = { slug -> viewModel.setFavorite(slug, slug !in state.favorites) },
+            onDismiss = { favoritesOpen = false },
+            onConfirm = { slugs -> viewModel.addFavorites(slugs); favoritesOpen = false },
+        )
+    }
     // Equipment and weight are answered right here, without leaving the setup.
     if (equipmentOpen) {
         com.cruxcoach.android.ui.training.common.EquipmentSheet(
@@ -725,7 +756,13 @@ private fun guardrailPreview(d: CoachProfile): String {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PreferencesCard(state: CoachSetupState, update: ((CoachProfile) -> CoachProfile) -> Unit, onOpenEquipment: () -> Unit) {
+private fun PreferencesCard(
+    state: CoachSetupState,
+    update: ((CoachProfile) -> CoachProfile) -> Unit,
+    onOpenEquipment: () -> Unit,
+    onPickFavorites: () -> Unit = {},
+    onRemoveFavorite: (String) -> Unit = {},
+) {
     val d = state.draft
     CardHeader(stringResource(R.string.trc_prefs_title), stringResource(R.string.trc_prefs_why))
     QuestionLabel(stringResource(R.string.trc_focus))
@@ -768,6 +805,7 @@ private fun PreferencesCard(state: CoachSetupState, update: ((CoachProfile) -> C
         tag = "coach_variety",
         onChange = { v -> update { it.copy(variety = v) } },
     )
+    FavoritesQuestion(state, onPickFavorites, onRemoveFavorite)
     QuestionLabel(stringResource(R.string.trc_equipment))
     val owned = state.profile.equipment.filter { it != EquipmentV2.NONE && it != EquipmentV2.MAT }
     Text(
@@ -779,6 +817,39 @@ private fun PreferencesCard(state: CoachSetupState, update: ((CoachProfile) -> C
         Text(stringResource(R.string.trc_equipment_edit))
     }
     EffectPreview(preferencesPreview(d))
+}
+
+/**
+ * Favourite exercises right below "routine or variety" (owner 2026-10-16), because that answer decides
+ * how often they come: in almost every fitting suggestion with a routine, regularly with variety.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FavoritesQuestion(state: CoachSetupState, onPick: () -> Unit, onRemove: (String) -> Unit) {
+    val lang = com.cruxcoach.android.ui.training.catalogLanguage()
+    val variety = state.draft.variety ?: 50
+    QuestionLabel(stringResource(R.string.trc_favorites))
+    Text(stringResource(if (variety < 40) R.string.trc_favorites_routine else if (variety > 60) R.string.trc_favorites_varied
+        else R.string.trc_favorites_some), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp).testTag("coach_favorites")) {
+        state.favorites.mapNotNull { state.catalog[it] }.sortedBy { it.name(lang) }.forEach { def ->
+            val name = def.name(lang)
+            InputChip(
+                selected = false,
+                onClick = { onRemove(def.slug) },
+                label = { Text(name) },
+                leadingIcon = { Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent) },
+                trailingIcon = { Icon(Icons.Default.Close, stringResource(R.string.trc_favorites_remove, name), Modifier.size(18.dp)) },
+                modifier = Modifier.testTag("coach_favorite_${def.slug}"),
+            )
+        }
+        AssistChip(
+            onClick = onPick,
+            label = { Text(stringResource(R.string.trc_favorites_add)) },
+            leadingIcon = { Icon(Icons.Default.Add, null, Modifier.size(18.dp)) },
+            modifier = Modifier.testTag("coach_favorites_add"),
+        )
+    }
 }
 
 @Composable

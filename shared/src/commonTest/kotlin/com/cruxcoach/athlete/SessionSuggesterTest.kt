@@ -250,6 +250,96 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun favouritesFollowTheRoutineOrVarietyAnswer() {
+        // Owner 2026-10-16: favourites belong in the suggestions — how often depends on routine vs variety.
+        val yesterday = monday.minus(DatePeriod(days = 1))
+        fun picks(variety: Int?) = (0 until 12).map { variant ->
+            SessionSuggester.suggest(input(favorites = setOf("core.dead_bug"), variant = variant).copy(
+                coach = profile.coach.copy(variety = variety), lastTrained = mapOf("core.dead_bug" to yesterday)))
+        }.map { "core.dead_bug" in slugs(it) }
+        assertTrue(picks(0).all { it }, "routine: always")
+        assertTrue(picks(null).all { it }, "no answer: still preferred")
+        val varied = picks(100)
+        assertTrue(varied.any { it } && !varied.all { it }, "variety: regularly, not always – $varied")
+    }
+
+    // ── The duration of today's suggestion (owner 2026-10-16) ──
+
+    @Test
+    fun aChosenDurationShortensOrFillsTheSession() {
+        val usual = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 30)))
+        val short = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 30)).copy(minutesToday = 20))
+        val long = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 30)).copy(minutesToday = 75))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, long.focus)
+        assertTrue(short.estimatedMinutes <= 24, "short was ${short.estimatedMinutes}")
+        assertTrue(long.estimatedMinutes > usual.estimatedMinutes + 15, "long ${long.estimatedMinutes} vs ${usual.estimatedMinutes}")
+        assertTrue(SuggestionReason.NO_TIME_TODAY in short.reasons, "${short.reasons}")
+        assertTrue(SuggestionReason.MORE_TIME_TODAY in long.reasons && SuggestionReason.EXTENDED_TO_TIME in long.reasons, "${long.reasons}")
+        assertTrue(Evidence.TimeToday(75, 30) in long.basedOn, "${long.basedOn}")
+        // More time is never more finger load: one finger block at its dose.
+        val finger = { s: SessionSuggestion -> s.routine.items.filter { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.FINGER } }
+        assertEquals(finger(usual).map { it.slug }, finger(long).map { it.slug })
+        assertTrue(finger(long).all { it.sets <= (catalog[it.slug]!!.defaults.sets ?: 5) }, "${finger(long)}")
+        // A chosen kind stays that kind when it grows.
+        val pull = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.PULL_PUSH, minutesToday = 90))
+        assertTrue(pull.routine.items.none { catalog[it.slug]?.category in setOf(ExerciseCategoryV2.LEGS, ExerciseCategoryV2.FINGER) }, "${slugs(pull)}")
+        // A cool-down stays at the end.
+        val main = pull.routine.items.filter { !it.warmup }.map { catalog[it.slug]!!.category }
+        assertTrue(main.dropWhile { it != ExerciseCategoryV2.MOBILITY }.all { it == ExerciseCategoryV2.MOBILITY }, "$main")
+        assertTrue(long.timeAdjustable)
+    }
+
+    @Test
+    fun restDaysStayShortAndDeloadWeeksKeepFewerSets() {
+        val sick = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, sick = true)).copy(minutesToday = 90))
+        assertEquals(SuggestionFocus.REST, sick.focus)
+        assertTrue(!sick.timeAdjustable && sick.estimatedMinutes <= 15, "${sick.estimatedMinutes}")
+        val deload = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 30))
+            .copy(block = BlockState(BlockPhase.DELOAD, 1, 1, null), minutesToday = 90))
+        assertEquals(SuggestionReason.KEPT_SHORT_THIS_WEEK, deload.reasons.first(), "${deload.reasons}")
+        // Same exercises as a build week with that time, fewer sets.
+        val build = SessionSuggester.suggest(input(profile = profile.copy(sessionMinutes = 30))
+            .copy(block = BlockState(BlockPhase.BUILD, 1, 1, null), minutesToday = 90))
+        assertEquals(slugs(build), slugs(deload))
+        assertTrue(deload.estimatedMinutes < build.estimatedMinutes - 10, "${deload.estimatedMinutes} vs ${build.estimatedMinutes}")
+        // Tired but the athlete chose the time: the time stands, the reason stays visible.
+        val tired = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, sleep = 2, energy = 3)))
+        val tiredChosen = SessionSuggester.suggest(input(checkin = Checkin(monday.toString(), 0, sleep = 2, energy = 3)).copy(minutesToday = 60))
+        assertTrue(tiredChosen.estimatedMinutes > tired.estimatedMinutes, "${tiredChosen.estimatedMinutes} vs ${tired.estimatedMinutes}")
+        assertTrue(SuggestionReason.LOW_ENERGY in tiredChosen.reasons)
+    }
+
+    @Test
+    fun moreTimeThanFittingExercisesSaysWhyFirst() {
+        // Device render 2026-10-16: no equipment, 90 minutes chosen, 53 came – without a word why.
+        val bare = profile.copy(equipment = setOf(EquipmentV2.NONE, EquipmentV2.MAT), sessionMinutes = 45)
+        val s = SessionSuggester.suggest(input(profile = bare).copy(minutesToday = 120))
+        assertTrue(s.totalMinutes < 100, "${s.totalMinutes}")
+        assertEquals(SuggestionReason.LESS_THAN_CHOSEN, s.reasons.first(), "${s.reasons}")
+        // Filling the preferred duration by itself needs no reason.
+        val usual = SessionSuggester.suggest(input())
+        assertTrue(SuggestionReason.EXTENDED_TO_TIME !in usual.reasons && SuggestionReason.LESS_THAN_CHOSEN !in usual.reasons, "${usual.reasons}")
+    }
+
+    @Test
+    fun aChosenDurationGoesToTheBoardOrTheOwnWorkout() {
+        val gym = profile.copy(equipment = home + EquipmentV2.BOARD + EquipmentV2.WALL)
+        val board = SessionSuggester.suggest(input(profile = gym).copy(wish = SuggestionFocus.BOARD_DAY, minutesToday = 90))
+        assertEquals(SuggestionFocus.BOARD_DAY, board.focus)
+        assertTrue(board.totalMinutes in 85..95, "board ${board.boardPlan} + ${board.estimatedMinutes}")
+        val shortBoard = SessionSuggester.suggest(input(profile = gym).copy(wish = SuggestionFocus.BOARD_DAY, minutesToday = 30))
+        assertTrue(shortBoard.boardPlan!!.minutes < board.boardPlan!!.minutes)
+        // An own planned workout keeps its exercises as written; more time adds exercises after them.
+        val mine = Routine("r1", "Mine", items = listOf(RoutineItem("pull.pull_up", sets = 3), RoutineItem("push.push_up", sets = 3)))
+        val planned = profile.copy(weekPlan = mapOf(1 to "r1"))
+        val asWritten = SessionSuggester.suggest(input(profile = planned, routines = listOf(mine)))
+        assertEquals(listOf("pull.pull_up" to 3, "push.push_up" to 3), asWritten.routine.items.map { it.slug to it.sets })
+        val longer = SessionSuggester.suggest(input(profile = planned, routines = listOf(mine)).copy(minutesToday = 45))
+        assertEquals(asWritten.routine.items, longer.routine.items.take(2))
+        assertTrue(longer.routine.items.size > 2 && SuggestionReason.EXTENDED_TO_TIME in longer.reasons, "${slugs(longer)}")
+    }
+
+    @Test
     fun anotherVariantChangesThePicks() {
         val distinct = (0 until 10).map { slugs(SessionSuggester.suggest(input(variant = it))) }.toSet()
         assertTrue(distinct.size > 1)
