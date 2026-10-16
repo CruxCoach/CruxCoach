@@ -13,6 +13,9 @@
     <string name="trbm_source_auto">from your training</string>
     <string name="trbm_paused_injury">Paused while the injury heals.</string>
     <string name="trbm_enter">Enter</string>
+    <string name="trbm_delete">Delete value</string>
+    <string name="trbm_delete_title">Delete this value?</string>
+    <string name="trbm_delete_text">CruxCoach then plans from the value before it, or from your training.</string>
     <string name="trbm_test">Test</string>
     <string name="trbm_e1rm">est. 1RM %1$s</string>
     <string name="trbm_ten_second_max">10-s max %1$s (%2$d %% BW)</string>
