@@ -48,6 +48,8 @@ data class PlayerFeedback(
     val def: ExerciseDefinition,
     val record: PersonalRecord?,
     val raisedCapacity: Capacity?,
+    /** The capacity is the exercise's first value, learned from this set (not a raise). */
+    val firstValue: Boolean = false,
 )
 
 data class PlayerState(
@@ -415,7 +417,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 service.cancelRest()
             }
             val feedback = if (outcome.record != null || outcome.raisedBenchmark != null)
-                PlayerFeedback(current.def, outcome.record, outcome.capacity?.takeIf { outcome.raisedBenchmark != null }) else null
+                PlayerFeedback(current.def, outcome.record, outcome.capacity?.takeIf { outcome.raisedBenchmark != null },
+                    firstValue = outcome.firstValue) else null
             withContext(Dispatchers.Main) {
                 _state.update { s ->
                     if (s.lastDone?.set?.id != current.set.id) s

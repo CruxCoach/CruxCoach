@@ -523,9 +523,10 @@ class AthleteService @Inject constructor(
     }
 
     /** What a completed set changed besides the log. */
-    data class SetOutcome(val record: PersonalRecord?, val raisedBenchmark: Benchmark?, val capacity: Capacity?)
+    /** [firstValue]: the set gave the exercise its first performance value (not a raise of an older one). */
+    data class SetOutcome(val record: PersonalRecord?, val raisedBenchmark: Benchmark?, val capacity: Capacity?, val firstValue: Boolean = false)
 
-    private fun updateBenchmark(set: ExerciseSet): Pair<Benchmark, Capacity>? {
+    private fun updateBenchmark(set: ExerciseSet): Triple<Benchmark, Capacity, Boolean>? {
         if (set.setType == SetType.WARMUP) return null
         val def = catalog[set.exerciseSlug] ?: return null
         val implied = BenchmarkMath.implied(def, set) ?: return null
@@ -548,7 +549,7 @@ class AthleteService @Inject constructor(
         val source = if (set.setType == SetType.TEST) BenchmarkSource.TEST else BenchmarkSource.AUTO
         val b = BenchmarkMath.benchmarkFromSet(def, set, repo.newId(), source, System.currentTimeMillis())
         repo.saveBenchmark(b)
-        return b to implied
+        return Triple(b, implied, existing == null)
     }
 
     /**
@@ -564,7 +565,8 @@ class AthleteService @Inject constructor(
         repo.saveSet(done)
         if (startRest) (restSeconds ?: done.restS ?: catalog[set.exerciseSlug]?.defaults?.restS)?.takeIf { it > 0 }?.let(::startRest)
         val raised = runCatching { updateBenchmark(done) }.getOrNull()
-        return SetOutcome(PersonalRecords.detect(catalog.fallbackFor(set.exerciseSlug), done, history), raised?.first, raised?.second)
+        return SetOutcome(PersonalRecords.detect(catalog.fallbackFor(set.exerciseSlug), done, history), raised?.first, raised?.second,
+            firstValue = raised?.third == true)
     }
 
     fun reopenSet(set: ExerciseSet) = repo.saveSet(set.copy(completedAt = null))
