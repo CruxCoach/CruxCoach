@@ -114,10 +114,19 @@ class WorkoutViewModel @Inject constructor(private val service: AthleteService) 
     /** The catalogue with the athlete's own exercises, for typed lines. */
     fun catalog(): com.cruxcoach.athlete.catalog.ExerciseCatalog = service.catalog
 
-    /** Optimistic: the row changes on screen at once, the database follows. */
+    /**
+     * Optimistic: the row changes on screen at once, the database follows. A load changed on an open set
+     * carries over to the later open sets of the exercise, as in the player (device test 2026-10-17).
+     */
     fun update(set: ExerciseSet) {
+        val all = _state.value.blocks.flatMap { it.sets }
+        val carried = carriedLoads(all.firstOrNull { it.id == set.id }, set, all, service.catalog.fallbackFor(set.exerciseSlug))
         replaceLocal(set)
-        io { service.updateSet(set) }
+        carried.forEach(::replaceLocal)
+        io {
+            service.updateSet(set)
+            carried.forEach { service.updateSet(it) }
+        }
     }
 
     fun complete(set: ExerciseSet) {

@@ -777,6 +777,8 @@ class AthleteService @Inject constructor(
             repo.finishWorkout(id, end, sessionRpe, notes?.takeIf { it.isNotBlank() })
         }
         runCatching { learnOwnLoads(id) }
+        // The rest after the last set ends with the training (device test 2026-10-17: it ran on over the summary).
+        runCatching { sessionManager.cancelRestTimer() }
         return summarize(id, workout?.let { ((end - it.startedAt) / 60_000L).toInt() })
     }
 
