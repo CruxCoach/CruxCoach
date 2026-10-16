@@ -1,10 +1,11 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.cruxcoach.android.ui.training.stats
 
 import com.cruxcoach.android.ui.common.InfoButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.ensureActive
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -246,7 +247,8 @@ fun StatsHubScreen(
             item(key = "volume") { volumeCard() }
             item {
                 SectionTitle(stringResource(R.string.tru_progress_training))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Wrapping, not scrolling sideways: "1 year" was cut off at 360 dp (render review 2026-10-16).
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatsRange.entries.forEach { r ->
                         FilterChip(selected = s.range == r, onClick = { viewModel.setRange(r) }, label = { Text(rangeLabel(r)) },
                             modifier = Modifier.testTag("stats_range_${r.name.lowercase()}"))
