@@ -1,8 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.cruxcoach.android.ui.training.exercises
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +16,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -274,29 +278,13 @@ fun ExerciseCatalogScreen(
                 // (device test 2026-10-10: the fixed header took half of the Nokia's screen).
                 item(key = "filters") {
                     Column {
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                        // One wrapping row: the categories behind one chip with a menu, then the filters (render review
+                        // 2026-10-16: two rows scrolled sideways and hid chips off the edge, design.md).
+                        FlowRow(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            FilterChip(
-                                selected = state.categories.isEmpty(),
-                                onClick = { viewModel.toggleCategory(null) },
-                                label = { Text(stringResource(R.string.trx_filter_all_categories)) },
-                                modifier = Modifier.testTag("exercise_category_all"),
-                            )
-                            ExerciseCategoryV2.entries.forEach { c ->
-                                FilterChip(
-                                    selected = c in state.categories,
-                                    onClick = { viewModel.toggleCategory(c) },
-                                    label = { Text(categoryLabel(c)) },
-                                    modifier = Modifier.testTag("exercise_category_${c.name.lowercase()}"),
-                                )
-                            }
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+                            CategoryPicker(state.categories, onToggle = viewModel::toggleCategory)
                             FilterChip(
                                 selected = state.mineOnly && state.profile.equipmentConfigured,
                                 onClick = {
@@ -508,6 +496,43 @@ internal fun DifficultyDots(level: Int, modifier: Modifier = Modifier) {
         color = CruxCoachDesign.colors.brandAccent,
         modifier = modifier.semantics { contentDescription = description },
     )
+}
+
+/** The categories as one chip: "All categories" or the chosen ones, a menu to pick several. */
+@Composable
+private fun CategoryPicker(selected: Set<ExerciseCategoryV2>, onToggle: (ExerciseCategoryV2?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = when {
+        selected.isEmpty() -> stringResource(R.string.trx_filter_categories_all)
+        selected.size <= 2 -> ExerciseCategoryV2.entries.filter { it in selected }.map { categoryLabel(it) }.joinToString(", ")
+        else -> pluralStringResource(R.plurals.trx_filter_categories_count, selected.size, selected.size)
+    }
+    Box {
+        FilterChip(
+            selected = selected.isNotEmpty(),
+            onClick = { open = true },
+            label = { Text(label, maxLines = 1) },
+            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.size(18.dp)) },
+            modifier = Modifier.testTag("exercise_category_picker"),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.trx_filter_all_categories)) },
+                trailingIcon = if (selected.isEmpty()) ({ Icon(Icons.Default.Check, null) }) else null,
+                onClick = { onToggle(null); open = false },
+                modifier = Modifier.testTag("exercise_category_all"),
+            )
+            // Several at once: the menu stays open while ticking.
+            ExerciseCategoryV2.entries.forEach { c ->
+                DropdownMenuItem(
+                    text = { Text(categoryLabel(c)) },
+                    trailingIcon = if (c in selected) ({ Icon(Icons.Default.Check, null) }) else null,
+                    onClick = { onToggle(c) },
+                    modifier = Modifier.testTag("exercise_category_${c.name.lowercase()}"),
+                )
+            }
+        }
+    }
 }
 
 @Composable

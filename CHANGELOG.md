@@ -413,8 +413,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   opening the injury mode, and "Equipment" the equipment sheet.
 - More time on Today's card adds at most eight exercises; after that the sets
   grow. A 90-minute day listed 14 exercises before.
-- The range chips on Progress wrap instead of scrolling sideways, and the add
-  tiles in Nutrition fit a 360-dp phone ("Describe" was cut off).
+- The range chips on Progress and the exercise filters wrap instead of
+  scrolling sideways (the categories sit behind one "All categories" chip with
+  a menu), the add tiles in Nutrition fit a 360-dp phone ("Describe" was cut
+  off), and the week plan, the coach setup and Today's card offer the same
+  durations.
 - The rest screen names a first value "Starting value learned" and maxima in
   words ("max. 1 rep at +35 kg", "10 s at 74 kg") instead of "e1RM +35 kg",
   which read like an increase of 35 kg.

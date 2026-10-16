@@ -88,4 +88,9 @@
     <string name="trx_section_all">Alle Übungen</string>
     <string name="trx_add_to_workout">%1$s zu Training oder Workout hinzufügen</string>
     <string name="trx_to_workout">Zu Workout</string>
+    <plurals name="trx_filter_categories_count">
+        <item quantity="one">%1$d Kategorien</item>
+        <item quantity="other">%1$d Kategorien</item>
+    </plurals>
+    <string name="trx_filter_categories_all">Alle Kategorien</string>
 </resources>
