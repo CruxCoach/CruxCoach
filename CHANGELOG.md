@@ -302,9 +302,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   load you lowered during a training is the planned load next time ("Next time
   with your loads" in the summary), kept as a performance value from your
   training that a stronger set raises again and that goes with its training.
-  Settings → "What the coach learned" lists all of it – your weekdays,
-  exercises you like doing, suggested less often, your own loads, never
-  suggest – with "Forget" per item and "Forget everything"; "Why?" links to it.
+  Settings → "What the coach learned" lists all of it – your real training
+  length (to take over), your weekdays, exercises you like doing, suggested
+  less often, your own loads, never suggest – with "Forget" per item and
+  "Forget everything"; "Why?" links to it, and the player says "Your load
+  from last time" when a lowered load is planned.
 - In a training the shown exercise can be swapped (the same alternatives as
   on Today's card, while none of its sets is done) or skipped.
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
