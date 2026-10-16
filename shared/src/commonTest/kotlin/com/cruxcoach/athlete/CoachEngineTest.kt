@@ -79,6 +79,18 @@ class PreferenceLearningTest {
     }
 
     @Test
+    fun aSwapJustAfterLocalMidnightCountsFully() {
+        // Device test 2026-10-17, 00:30 in Berlin = 22:30 UTC the day before: the swap aged a day and missed "gladly".
+        val berlin = kotlinx.datetime.TimeZone.of("Europe/Berlin")
+        val justAfterMidnight = today.toEpochDays().toLong() * dayMs - 90 * 60_000L  // 22:30 UTC the evening before
+        val swap = SuggestionEvent("s", today.toString(), justAfterMidnight, SuggestionEventKind.SWAPPED,
+            slugs = listOf("pull.negative_pull_up", "pull.pull_up"))
+        val a = PreferenceLearning.affinity(listOf(swap), emptyList(), today, zone = berlin)
+        assertEquals(1.0, a["pull.pull_up"])
+        assertEquals(-1.0, a["pull.negative_pull_up"])
+    }
+
+    @Test
     fun signalsFadeAndAreClamped() {
         val old = listOf(event(SuggestionEventKind.NEXT, listOf("core.dead_bug"), daysAgo = 50, feedback = SuggestionFeedback.DISLIKE_EXERCISE))
         assertTrue(PreferenceLearning.affinity(old, emptyList(), today).isEmpty())

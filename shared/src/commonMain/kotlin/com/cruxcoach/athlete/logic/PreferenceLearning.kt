@@ -8,6 +8,7 @@ import com.cruxcoach.athlete.model.SuggestionFeedback
 import com.cruxcoach.athlete.model.Workout
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlin.math.abs
@@ -25,7 +26,6 @@ object PreferenceLearning {
 
     const val WINDOW_DAYS = 42
     const val MAX_AFFINITY = 3.0
-    private const val DAY_MS = 86_400_000L
 
     // ── Forgetting (owner 2026-10-16: what is learned stays visible and can be reset) ──
 
@@ -101,31 +101,41 @@ object PreferenceLearning {
         events: List<SuggestionEvent>, sets: List<ExerciseSet>, today: LocalDate,
         /** Forgotten exercises and "forget everything" ([since]). */
         resets: Map<String, Long> = emptyMap(),
+        /** The athlete's time zone: signals age by their local days. */
+        zone: TimeZone = TimeZone.currentSystemDefault(),
     ): Map<String, Double> {
-        val todayMs = today.toEpochDays().toLong() * DAY_MS + DAY_MS
         val scores = mutableMapOf<String, Double>()
-        fun add(slug: String, value: Double, atMs: Long) {
+        // Age in the athlete's days, not in UTC days: just after local midnight, a swap made a minute
+        // ago counted as a day old (0.98) and missed "done gladly" (≥ 1) – device test 2026-10-17.
+        fun add(slug: String, value: Double, atMs: Long, day: LocalDate) {
             if (atMs <= since(resets, exerciseKey(slug))) return
-            val ageDays = ((todayMs - atMs) / DAY_MS).toDouble().coerceAtLeast(0.0)
+            val ageDays = (today.toEpochDays() - day.toEpochDays()).toDouble().coerceAtLeast(0.0)
             val weight = (1.0 - ageDays / WINDOW_DAYS).coerceAtLeast(0.0)
             if (weight > 0) scores[slug] = (scores[slug] ?: 0.0) + value * weight
         }
-        for (e in events) when (e.kind) {
-            SuggestionEventKind.NEXT, SuggestionEventKind.FEEDBACK ->
-                if (e.feedback == SuggestionFeedback.DISLIKE_EXERCISE) e.slugs.forEach { add(it, -2.0, e.createdAt) }
-            SuggestionEventKind.SKIPPED_SET -> e.slugs.forEach { add(it, -0.5, e.createdAt) }
-            SuggestionEventKind.EXCLUDED -> e.slugs.forEach { add(it, -3.0, e.createdAt) }
-            SuggestionEventKind.SWAPPED -> {
-                e.slugs.getOrNull(0)?.let { add(it, -1.0, e.createdAt) }
-                e.slugs.getOrNull(1)?.let { add(it, 1.0, e.createdAt) }
+        for (e in events) {
+            val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: ProgressStats.dayOf(e.createdAt, zone)
+            fun add(slug: String, value: Double) = add(slug, value, e.createdAt, day)
+            when (e.kind) {
+                SuggestionEventKind.NEXT, SuggestionEventKind.FEEDBACK ->
+                    if (e.feedback == SuggestionFeedback.DISLIKE_EXERCISE) e.slugs.forEach { add(it, -2.0) }
+                SuggestionEventKind.SKIPPED_SET -> e.slugs.forEach { add(it, -0.5) }
+                SuggestionEventKind.EXCLUDED -> e.slugs.forEach { add(it, -3.0) }
+                SuggestionEventKind.SWAPPED -> {
+                    e.slugs.getOrNull(0)?.let { add(it, -1.0) }
+                    e.slugs.getOrNull(1)?.let { add(it, 1.0) }
+                }
+                SuggestionEventKind.STARTED -> e.slugs.forEach { add(it, 0.3) }
+                SuggestionEventKind.COMPLETED -> e.slugs.forEach { add(it, 0.5 * (e.value ?: 1.0).coerceIn(0.0, 1.0)) }
+                SuggestionEventKind.SHOWN, SuggestionEventKind.EDITED, SuggestionEventKind.SAVED -> Unit
             }
-            SuggestionEventKind.STARTED -> e.slugs.forEach { add(it, 0.3, e.createdAt) }
-            SuggestionEventKind.COMPLETED -> e.slugs.forEach { add(it, 0.5 * (e.value ?: 1.0).coerceIn(0.0, 1.0), e.createdAt) }
-            SuggestionEventKind.SHOWN, SuggestionEventKind.EDITED, SuggestionEventKind.SAVED -> Unit
         }
         sets.filter { it.isCompleted && it.setType != SetType.WARMUP }
             .groupBy { it.workoutId to it.exerciseSlug }
-            .forEach { (key, rows) -> add(key.second, 0.3, rows.maxOf { it.completedAt ?: 0L }) }
+            .forEach { (key, rows) ->
+                val at = rows.maxOf { it.completedAt ?: 0L }
+                add(key.second, 0.3, at, ProgressStats.dayOf(at, zone))
+            }
         return scores.mapValues { (_, v) -> v.coerceIn(-MAX_AFFINITY, MAX_AFFINITY) }.filterValues { abs(it) >= 0.05 }
     }
 
