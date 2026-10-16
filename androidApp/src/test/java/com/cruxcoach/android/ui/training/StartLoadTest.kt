@@ -42,6 +42,19 @@ class StartLoadTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the reserve answered after a first set counts for the value`() {
+        // Device test 2026-10-17: 5 pull-ups at body weight with "3+ in reserve" became "5 reps", typical 5a.
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 72.0, "kg", 1))
+        val first = plannedWork(listOf(RoutineItem("pull.weighted_pull_up", sets = 2, repsMin = 5, repsMax = 5))).minBy { it.setIndex }
+        service.completeSet(first.copy(reps = 5, loadKg = 0.0), startRest = false)
+        val done = repo.setsFor(first.workoutId).first { it.id == first.id }
+        val before = repo.benchmarks("pull.weighted_pull_up").maxBy { it.measuredAt }
+        assertEquals(5, before.reps)
+        service.updateSet(done.copy(rir = 3))
+        assertEquals(8, repo.benchmarks("pull.weighted_pull_up").maxBy { it.measuredAt }.reps)
+    }
+
+    @Test
     fun `a first two-arm pick-up gets a careful load from body weight`() {
         repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 68.5, "kg", 1))
         val work = plannedWork(listOf(RoutineItem("finger.two_arm_pickup", sets = 4, durationS = 10, edgeMm = 20)))

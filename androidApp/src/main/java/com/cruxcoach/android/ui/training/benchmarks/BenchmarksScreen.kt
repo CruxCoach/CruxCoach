@@ -271,7 +271,8 @@ private fun BenchmarkRowCard(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    normValue(row.def, b, bodyweight)?.let { (metric, pct) ->
+                    // While the value is still being learned it is no verdict on the athlete's level.
+                    if (row.learning !is LearningState.State.Learning) normValue(row.def, b, bodyweight)?.let { (metric, pct) ->
                         com.cruxcoach.android.ui.training.coach.PlausibilityHint(metric, pct, workingDifficulty)
                     }
                 }
