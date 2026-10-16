@@ -151,4 +151,6 @@
     <string name="trw_open_replace">Beenden, „%1$s“ starten</string>
     <string name="trw_open_replace_empty">Beenden, neues Training</string>
     <string name="trw_open_continue">„%1$s“ fortsetzen</string>
+    <string name="trw_own_loads_title">Nächstes Mal mit deinen Lasten</string>
+    <string name="trw_own_loads_info">Du hast leichter trainiert als geplant. Das nächste Training plant die Last, die du gewählt hast; ein Satz, der mehr zeigt, hebt sie wieder an. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
 </resources>

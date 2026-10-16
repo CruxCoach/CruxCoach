@@ -157,4 +157,6 @@
     <string name="trw_open_replace">End it, start “%1$s”</string>
     <string name="trw_open_replace_empty">End it, start a new one</string>
     <string name="trw_open_continue">Continue “%1$s”</string>
+    <string name="trw_own_loads_title">Next time with your loads</string>
+    <string name="trw_own_loads_info">You trained lighter than planned. The next training plans the load you chose; a set that shows more raises it again. You can change or delete it under performance values.</string>
 </resources>
