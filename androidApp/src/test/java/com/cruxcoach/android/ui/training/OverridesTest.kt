@@ -398,9 +398,12 @@ class OverridesTest : AthleteScreenTest() {
         val fingerFree = com.cruxcoach.athlete.catalog.LoadDomain.FINGER !in service.catalog.fallbackFor(first.slug).domains
         if (fingerFree) assertTrue(alternatives.none { com.cruxcoach.athlete.catalog.LoadDomain.FINGER in it.def.domains })
         val to = alternatives.first().def.slug
+        val before = items().map { it.slug }
         click("today_swap_to_$to")
         until { items().any { it.slug == to } && items().none { it.slug == first.slug } }
         assertEquals(first.sets, items().first { it.slug == to }.sets)
+        // Only the swapped exercise changes today, in its place.
+        assertEquals(before.map { if (it == first.slug) to else it }, items().map { it.slug })
         val day = service.today().toString()
         assertTrue(repo.suggestionEventsForDay(day).any {
             it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED && it.slugs == listOf(first.slug, to)

@@ -352,7 +352,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
             val resets = i.profile.learningResets
             val events = repo.suggestionEventsSince(sinceMs)
-            val learned = PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today, resets)
+            // Today's swaps are learned for the days to come; today's card keeps the rest of its picks
+            // (device test 2026-10-17: one swap moved the other exercises around).
+            val stable = events.filterNot { it.day == today.toString() && it.kind == SuggestionEventKind.SWAPPED }
+            val learned = PreferenceLearning.affinity(stable, repo.completedSetsSince(sinceMs), today, resets)
             val affinity = learned + dislikedToday.associateWith { -10.0 }
             // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
             val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
