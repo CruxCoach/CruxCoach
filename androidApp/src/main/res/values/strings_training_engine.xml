@@ -17,7 +17,7 @@
     <string name="tre_deload_started">Lighter week started.</string>
     <string name="tre_duration_apply">Use it</string>
     <string name="tre_duration_hint">Your trainings usually take about %1$d min. Match the suggestions to that?</string>
-    <string name="tre_ev_affinity">exercises you like doing: %1$s</string>
+    <string name="tre_ev_affinity">often picked or done: %1$s</string>
     <string name="tre_ev_checkin">check-in: %1$s</string>
     <string name="tre_ev_climb_days">climbing %1$d days ago: %2$s</string>
     <string name="tre_ev_climb_detail">%1$s, %2$d attempts</string>
@@ -80,7 +80,7 @@
     <string name="tre_reason_guard_masters">From 40 on the fingers get an extra recovery day.</string>
     <string name="tre_reason_guard_novice">In the first climbing years: no max hangs, one-arm or campus work yet – the fingers adapt slower than the muscles.</string>
     <string name="tre_reason_guard_youth">While still growing: no max hangs, one-arm or campus work – only light finger training.</string>
-    <string name="tre_reason_learned">Exercises you like doing are preferred.</string>
+    <string name="tre_reason_learned">Exercises you often pick or do come up more often.</string>
     <string name="tre_reason_level_easier">You found it too hard – today\'s picks are a step easier.</string>
     <string name="tre_reason_level_harder">You found it too easy – today\'s picks are a step harder.</string>
     <string name="tre_reason_no_time">Less time today – the session is shorter.</string>
