@@ -412,6 +412,12 @@ data class AthleteProfile(
      * [com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL], `ex:<slug>` and `day:<ISO weekday>`.
      */
     val learningResets: Map<String, Long> = emptyMap(),
+    /**
+     * A level step the athlete kept for a kind of training ("from now on one step easier", comparison review #10):
+     * [com.cruxcoach.athlete.logic.SuggestionFocus] name → −1 easier / +1 more demanding. Today's "easier"/"harder"
+     * still move one step from there; forgetting it on "What the coach learned" removes it.
+     */
+    val keptLevels: Map<String, Int> = emptyMap(),
 )
 
 /** What kind of place: names it until the athlete gives it a name, and fills a new one with typical gear. */

@@ -22,4 +22,15 @@
     <string name="trlr_kept">Nach dem Training übernommen</string>
     <string name="trlr_kept_until">Bis %1$s</string>
     <string name="tre_reason_kept">Übungen, die du nach einem Training übernommen hast, kommen bis zum Blockende zuerst.</string>
+    <!-- „Leichter“/„Fordernder“ dauerhaft (Vergleichsbericht #10) -->
+    <string name="trt_level_offer_easier">Zweimal „Leichter“ für %1$s gewählt – ab jetzt eine Stufe leichter?</string>
+    <string name="trt_level_offer_harder">Zweimal „Fordernder“ für %1$s gewählt – ab jetzt eine Stufe fordernder?</string>
+    <string name="trt_level_kept_easier">Ab jetzt eine Stufe leichter für %1$s</string>
+    <string name="trt_level_kept_harder">Ab jetzt eine Stufe fordernder für %1$s</string>
+    <string name="trt_level_kept_normal">%1$s wieder auf dem Niveau des Coachs</string>
+    <string name="tre_reason_level_easier_kept">Eine Stufe leichter für diese Trainingsart, wie du es gewählt hast (Was der Coach gelernt hat).</string>
+    <string name="tre_reason_level_harder_kept">Eine Stufe fordernder für diese Trainingsart, wie du es gewählt hast (Was der Coach gelernt hat).</string>
+    <string name="trlr_levels">Dein Niveau</string>
+    <string name="trlr_level_easier">Eine Stufe leichter</string>
+    <string name="trlr_level_harder">Eine Stufe fordernder</string>
 </resources>

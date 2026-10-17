@@ -213,7 +213,7 @@
     <string name="trlr_own_loads">Deine eigenen Lasten</string>
     <string name="trlr_forget">Vergessen</string>
     <string name="trlr_forget_all">Alles vergessen</string>
-    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche und was du nach einem Training übernommen hast. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Leistungswerte bleiben.</string>
+    <string name="trlr_forget_all_text">Der Coach vergisst die bisher gelernten Übungen, Wochentage und Tausche, was du nach einem Training übernommen hast und die übernommenen Stufen. Lieblingsübungen, „Nie vorschlagen“, deine eigenen Lasten und Leistungswerte bleiben.</string>
     <string name="trlr_summary_nothing">Noch nichts</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d gelernt</item>

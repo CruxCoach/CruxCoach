@@ -5,10 +5,12 @@ import com.cruxcoach.android.ui.training.today.TodayViewModel
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryViewModel
 import com.cruxcoach.athlete.logic.PreferenceLearning
+import com.cruxcoach.athlete.logic.SuggestionReason
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.SuggestionEventKind
 import androidx.compose.ui.test.performClick
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import org.junit.Before
 import org.junit.Test
@@ -101,5 +103,49 @@ class LearningOffersTest : AthleteScreenTest() {
         click("learned_kept_pull.pull_up_forget")
         until { settings.state.value.learned.kept.isEmpty() }
         assertTrue("pull.pull_up" !in settings.state.value.learned.resting)
+    }
+
+    @Test
+    fun `lighter chosen twice for one kind is offered for good, with undo, and a no is kept`() {
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val focus = vm.state.value.suggestion!!.focus
+        // "Lighter" for this kind of training eight days ago, and again today.
+        repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("old", service.today().minus(kotlinx.datetime.DatePeriod(days = 8)).toString(),
+            System.currentTimeMillis() - 8 * 86_400_000L, SuggestionEventKind.NEXT, focus.name,
+            feedback = com.cruxcoach.athlete.model.SuggestionFeedback.TOO_HARD))
+        vm.chooseLevel(-1)
+        until { vm.state.value.levelOffer == PreferenceLearning.LevelOffer(focus, -1) }
+        render { com.cruxcoach.android.ui.training.today.TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        scrollTo("today_list", "today_level_offer")
+        click("today_level_offer_yes")
+        until { repo.profile().keptLevels[focus.name] == -1 && vm.state.value.levelShift == 0 && vm.state.value.levelOffer == null }
+        until { SuggestionReason.LEVEL_EASIER_KEPT in vm.state.value.suggestion!!.reasons }
+        // "Rückgängig": the step goes, today's "lighter" is back, and so is the question.
+        val undo = context.getString(com.cruxcoach.android.R.string.trpg_undo)
+        waitForText(undo)
+        compose.onNode(androidx.compose.ui.test.hasText(undo)).performClick()
+        until { repo.profile().keptLevels.isEmpty() && vm.state.value.levelShift == -1 && vm.state.value.levelOffer != null }
+        // "Nein": not asked again.
+        vm.answerLevelOffer(false)
+        until { repo.suggestionEventsForDay(day).any { it.focus == PreferenceLearning.LEVEL_ANSWER + focus.name && it.value == 0.0 } }
+        vm.chooseLevel(0)
+        vm.chooseLevel(-1)
+        until { repo.suggestionEventsForDay(day).count { it.feedback == com.cruxcoach.athlete.model.SuggestionFeedback.TOO_HARD } >= 2 }
+        compose.waitForIdle()
+        assertEquals(null, vm.state.value.levelOffer)
+        assertTrue(repo.profile().keptLevels.isEmpty())
+    }
+
+    @Test
+    fun `a kept level shows on the learned page and can be forgotten`() {
+        repo.updateProfile { it.copy(keptLevels = mapOf("PULL_PUSH" to 1)) }
+        val settings = com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel(service).tracked()
+        until { settings.state.value.learned.levels.isNotEmpty() }
+        render { com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen({}, viewModel = settings,
+            section = com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED) }
+        click("learned_level_PULL_PUSH_forget")
+        until { repo.profile().keptLevels.isEmpty() && settings.state.value.learned.levels.isEmpty() }
     }
 }

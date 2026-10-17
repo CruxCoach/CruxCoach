@@ -208,6 +208,9 @@ fun TodayScreen(
                 state.durationHint?.let { minutes ->
                     item(key = "duration_hint") { DurationHintCard(minutes, onApply = viewModel::applyDurationHint) }
                 }
+                state.levelOffer?.let { offer ->
+                    item(key = "level_offer") { LevelOfferCard(offer, onAnswer = viewModel::answerLevelOffer) }
+                }
             }
             if (state.energy.signals.isNotEmpty()) item { EnergyCareCard(state.energy, state.profile, "today_reds", onAdjustGoal = { showGoal = true }) }
             if (state.loadSpikes.isNotEmpty()) item { LoadSpikeCard(state) }
@@ -336,6 +339,23 @@ fun TodayScreen(
                 }
             },
         )
+    }
+    // A level step kept for good: one line with "Rückgängig" (comparison review #10).
+    state.levelKept?.let { kept ->
+        val kind = levelKindLabel(kept.offer.focus)
+        val now = (kept.before ?: 0) + kept.offer.direction
+        val text = stringResource(when {
+            now < 0 -> R.string.trt_level_kept_easier
+            now > 0 -> R.string.trt_level_kept_harder
+            else -> R.string.trt_level_kept_normal
+        }, kind)
+        LaunchedEffect(kept) {
+            viewModel.consumeLevelKept()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoLevelKept(kept)
+            }
+        }
     }
     // Turned down for the third time: ask once instead of resting it again and again.
     state.neverOffer?.let { slug ->
@@ -1081,6 +1101,8 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.USUAL_KIND -> R.string.trt_reason_usual_kind_generic
     SuggestionReason.USUAL_MINUTES -> R.string.trt_reason_usual_minutes_generic
     SuggestionReason.KEPT_CHOICE -> R.string.tre_reason_kept
+    SuggestionReason.LEVEL_EASIER_KEPT -> R.string.tre_reason_level_easier_kept
+    SuggestionReason.LEVEL_HARDER_KEPT -> R.string.tre_reason_level_harder_kept
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
@@ -1557,6 +1579,28 @@ private fun evidenceText(e: com.cruxcoach.athlete.logic.Evidence, state: TodaySt
         if (e.area == com.cruxcoach.athlete.logic.VolumeArea.FINGER) R.string.trv_ev_sessions else R.string.trv_ev_sets,
         com.cruxcoach.android.ui.training.workouts.volumeAreaLabel(e.area), e.done, e.target)
     is com.cruxcoach.athlete.logic.Evidence.TimeToday -> stringResource(R.string.trt_ev_time_today, e.minutes, e.usual)
+}
+
+@Composable
+internal fun LevelOfferCard(offer: com.cruxcoach.athlete.logic.PreferenceLearning.LevelOffer, onAnswer: (Boolean) -> Unit) {
+    OutlinedCard(Modifier.fillMaxWidth().testTag("today_level_offer")) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp)) {
+            Text(stringResource(if (offer.direction < 0) R.string.trt_level_offer_easier else R.string.trt_level_offer_harder,
+                levelKindLabel(offer.focus)), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onAnswer(false) }, modifier = Modifier.testTag("today_level_offer_no")) { Text(stringResource(R.string.trc_no)) }
+                TextButton(onClick = { onAnswer(true) }, modifier = Modifier.testTag("today_level_offer_yes")) { Text(stringResource(R.string.trc_yes)) }
+            }
+        }
+    }
+}
+
+/** The kind of training a level step is kept for, in the athlete's words. */
+@Composable
+internal fun levelKindLabel(focus: SuggestionFocus): String = when (focus) {
+    SuggestionFocus.PLANNED -> stringResource(R.string.trsg_focus_planned)
+    SuggestionFocus.INJURY_SAFE -> stringResource(R.string.trsg_focus_injury)
+    else -> kindLabel(focus)
 }
 
 @Composable

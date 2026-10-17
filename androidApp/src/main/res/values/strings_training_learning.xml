@@ -22,4 +22,15 @@
     <string name="trlr_kept">Kept after a training</string>
     <string name="trlr_kept_until">Until %1$s</string>
     <string name="tre_reason_kept">Exercises you kept after a training come first until the end of the block.</string>
+    <!-- "Easier"/"harder" for good (comparison review #10) -->
+    <string name="trt_level_offer_easier">You chose “lighter” twice for %1$s – one step easier from now on?</string>
+    <string name="trt_level_offer_harder">You chose “harder” twice for %1$s – one step more demanding from now on?</string>
+    <string name="trt_level_kept_easier">From now on one step easier for %1$s</string>
+    <string name="trt_level_kept_harder">From now on one step more demanding for %1$s</string>
+    <string name="trt_level_kept_normal">%1$s back at the coach’s level</string>
+    <string name="tre_reason_level_easier_kept">One step easier for this kind of training, as you chose (What the coach learned).</string>
+    <string name="tre_reason_level_harder_kept">One step more demanding for this kind of training, as you chose (What the coach learned).</string>
+    <string name="trlr_levels">Your level</string>
+    <string name="trlr_level_easier">One step easier</string>
+    <string name="trlr_level_harder">One step more demanding</string>
 </resources>
