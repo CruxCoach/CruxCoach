@@ -157,6 +157,12 @@
     <string name="trt_next_level">Intensity today</string>
     <string name="trt_level_easier">Lighter</string>
     <string name="trt_level_harder">Harder</string>
+    <!-- Little energy lately before maximal finger work: a supportive hint on the card, never a lock (holistic audit P2-17). -->
+    <string name="trt_energy_hint_deficit">Last %1$d logged days: on average %2$d of %3$d kcal – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_deficit_share">Last %1$d logged days: on average about %2$d %% under your estimated need – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_deficit_plain">Your energy has been on the low side lately – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_carbs">On %1$d training days %2$s g/kg of carbohydrate on average instead of %3$s g/kg – a snack with carbohydrates before hard finger work helps.</string>
+    <string name="trt_energy_hint_carbs_plain">Carbohydrates have been on the low side on your last training days – a snack with them before hard finger work helps.</string>
     <string name="trt_next_shuffle">Another mix</string>
     <string name="trt_next_hurts">Something hurts</string>
     <string name="trt_next_equipment">Equipment</string>
