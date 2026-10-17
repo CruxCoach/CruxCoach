@@ -58,6 +58,14 @@
     <string name="trn_target_own_label">Your target: %1$s</string>
     <string name="trn_target_range">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo.</string>
     <string name="trn_target_range_energy">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo. A low target inside it is kept and named on the energy card.</string>
+    <!-- An own carbohydrate or calorie target is the same on every day (holistic audit W13, P2-16). -->
+    <string name="trn_target_own_fixed">Stays the same on every day and does not follow the training day.</string>
+    <string name="trn_own_carbs_note_today">Carbohydrates: own target – does not follow the training day (recommended today %1$d g)</string>
+    <string name="trn_own_carbs_note_day">Carbohydrates: own target – does not follow the training day (recommended for this day %1$d g)</string>
+    <string name="trn_own_energy_note_today">Energy: own target – does not follow the training day (recommended today %1$d kcal)</string>
+    <string name="trn_own_energy_note_day">Energy: own target – does not follow the training day (recommended for this day %1$d kcal)</string>
+    <string name="trn_own_kcal_hidden">Your own calorie target still applies while calories are hidden: it sets the fat target and is checked on the energy card.</string>
+    <string name="trn_own_kcal_reset">Back to the recommendation</string>
     <string name="trn_unit_g">g</string>
     <string name="trn_set_summary_own">Own targets: %1$s</string>
     <string name="trn_goal_stop">Stop losing weight</string>

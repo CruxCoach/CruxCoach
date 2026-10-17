@@ -105,4 +105,37 @@ class OwnTargetsTest : AthleteScreenTest() {
         assertNull(repo.profile().ownProteinG)
         compose.onNodeWithText("Close").performSemanticsAction(SemanticsActions.OnClick)
     }
+
+    @Test
+    fun `an own carbohydrate target says it does not follow the training day and names today's recommendation`() {
+        body()
+        repo.updateProfile { it.copy(ownCarbsG = 300) }
+        val photo = FoodPhotoViewModel(context, service, VisionModelStore(context), BlsRepository(context), DeviceFactsReader(context)).tracked()
+        render { FuelScreen({}, {}, viewModel = FuelViewModel(service).tracked(), photoViewModel = photo) }
+        // A rest day recommends 3 g per kg: 70 kg → 210 g, while the own 300 g stay on the ring.
+        waitForTag("fuel_own_note_carbs")
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText("does not follow the training day (recommended today 210 g)", substring = true, useUnmergedTree = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        // The recommended carbohydrates and calories carry no such line.
+        assertTrue(compose.onAllNodesWithTag("fuel_own_note_energy", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // The ring's own field says the same in a word.
+        compose.onNodeWithTag("fuel_carbs").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("own_carbs_note")
+    }
+
+    @Test
+    fun `an own calorie target can be taken back while calories are hidden`() {
+        body()
+        repo.updateProfile { it.copy(ownKcal = 1800, showCalories = false) }
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.NUTRITION) }
+        // No calorie field while they are hidden, but the target is named as still active and can be reset.
+        waitForTag("own_energy_hidden")
+        assertTrue(compose.onAllNodesWithTag("own_energy_input").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithTag("own_energy_reset").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitUntil(WAIT_MS) { repo.profile().ownKcal == null }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("own_energy_hidden").fetchSemanticsNodes().isEmpty() }
+    }
 }

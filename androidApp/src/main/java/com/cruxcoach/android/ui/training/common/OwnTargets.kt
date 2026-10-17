@@ -55,6 +55,8 @@ fun TargetChoice(
     recommendedLabel: String? = null,
     /** Why an entry outside [range] is not kept, shown at the field while one is typed. */
     invalidHint: String? = null,
+    /** Under an own value: what it does not follow (an own carbohydrate or calorie target, holistic audit W13). */
+    ownNote: String? = null,
 ) {
     Column(modifier.fillMaxWidth().testTag(tag)) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
@@ -84,6 +86,10 @@ fun TargetChoice(
                 invalidHint = invalidHint,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("${tag}_input"),
             )
+            ownNote?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp).testTag("${tag}_note"))
+            }
         }
     }
 }
@@ -140,7 +146,12 @@ fun OwnTargetChoice(
         // A typo guard, not a limit on choices: the field names the range and why (holistic audit 2026-10-17).
         invalidHint = stringResource(if (kind == FuelTargets.TargetKind.ENERGY) R.string.trn_target_range_energy else R.string.trn_target_range,
             toDisplay(range.first), toDisplay(range.last), unit),
+        // The recommendation follows the day's training; an own carbohydrate or calorie target does not (audit W13).
+        ownNote = if (kind in DAY_FOLLOWING) stringResource(R.string.trn_target_own_fixed) else null,
     )
 }
+
+/** Targets whose recommendation changes with the day's training load, unlike an own value. */
+private val DAY_FOLLOWING = setOf(FuelTargets.TargetKind.CARBS, FuelTargets.TargetKind.ENERGY)
 
 private data class Quad(val label: String, val unit: String, val range: IntRange, val fallback: Int)
