@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -139,6 +141,9 @@ fun MapScreenLayout(
     // status and navigation bars: measure the real layout, never raw insets.
     var peekContentPx by remember { mutableIntStateOf(0) }
     val peek = with(density) { peekContentPx.toDp() }.coerceAtLeast(96.dp)
+    // The collapsed sheet shows its peek above the navigation bar, not under it (device test 2026-10-17: with
+    // three-button navigation the second row of places sat half under the buttons).
+    val navBar = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     var screenHeightPx by remember { mutableIntStateOf(0) }
     var overlayBottomPx by remember { mutableIntStateOf(0) }
     // Pulled all the way up, the sheet stops below the search bar so search,
@@ -158,7 +163,7 @@ fun MapScreenLayout(
     ) {
         BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            sheetPeekHeight = peek,
+            sheetPeekHeight = peek + navBar,
             sheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
             sheetContainerColor = MaterialTheme.colorScheme.surface,
             sheetShadowElevation = 10.dp,
@@ -199,7 +204,7 @@ fun MapScreenLayout(
                     }
                 } else {
                     VenueListSheet(
-                        modifier = Modifier.heightIn(max = sheetMax),
+                        modifier = Modifier.heightIn(max = sheetMax).navigationBarsPadding(),
                         state = state,
                         inView = inView,
                         userPosition = userPosition,
@@ -233,7 +238,7 @@ fun MapScreenLayout(
                     onClick = onLocateMe,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = peek + 16.dp),
+                        .padding(end = 16.dp, bottom = peek + navBar + 16.dp),
                 )
             }
         }
@@ -379,7 +384,7 @@ private fun VenueListSheet(
                         )
                     }
                 }
-                item { Spacer(Modifier.navigationBarsPadding().height(12.dp)) }
+                item { Spacer(Modifier.height(12.dp)) }
             }
         }
     }
