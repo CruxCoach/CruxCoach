@@ -565,6 +565,17 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val catalog = service.catalog
         var items = com.cruxcoach.athlete.logic.Circuits.asCircuitToday(s.routine.items, catalog)
         val key = items.firstOrNull { it.circuit != null }?.circuit ?: return s
+        // A circuit saves the rests between sets: with the same sets it ended far below the chosen time
+        // (60 min → 38). More rounds fill the time – only when the straight suggestion filled it too, so an
+        // intentionally light week stays light – up to five rounds; the athlete's own round count wins.
+        val target = minutesToday ?: (lastInputs?.profile?.sessionMinutes ?: s.estimatedMinutes)
+        if (circuitRounds == null && s.estimatedMinutes >= target - CIRCUIT_TOLERANCE_MIN) {
+            var rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, key)
+            while (rounds < MAX_CIRCUIT_ROUNDS && SessionSuggester.estimateMinutes(items, catalog) < target - CIRCUIT_TOLERANCE_MIN) {
+                rounds++
+                items = com.cruxcoach.athlete.logic.Circuits.setRounds(items, key, rounds)
+            }
+        }
         circuitRounds?.let { items = com.cruxcoach.athlete.logic.Circuits.setRounds(items, key, it) }
         if (circuitRestS != null || circuitRoundRestS != null) {
             val first = items.first { it.circuit == key }
@@ -785,6 +796,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     companion object {
+        /** A circuit within this many minutes of the chosen time counts as fitting. */
+        const val CIRCUIT_TOLERANCE_MIN = 4
+        /** Rounds a circuit grows to at most to fill the chosen time (like sets on straight work). */
+        const val MAX_CIRCUIT_ROUNDS = 5
         /** The card's "Wie lange heute?" choices in minutes. */
         val DURATION_OPTIONS = listOf(15, 20, 30, 45, 60, 75, 90, 120)
 

@@ -15,6 +15,7 @@
     <string name="trpg_circuit_rests">%1$s between exercises · %2$s after each round</string>
     <string name="trpg_round">Round %1$d</string>
     <string name="trpg_exercise_done">%1$s done · %2$d of %3$d on target</string>
+    <string name="trpg_exercise_done_plain">%1$s done</string>
     <string name="trpg_to_next">Next exercise</string>
     <string name="trpg_outcome_met">on target</string>
     <string name="trpg_outcome_under">below target</string>
