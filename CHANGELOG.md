@@ -75,7 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   favourites first), copy and adapt starter routines, and a standard week that
   assigns workouts, board sessions or rest to weekdays. Favourites sit at the
   top of the library; "add to workout" works from every exercise.
-- A suggestion for today, MCI-style but for climbers: built from the week
+- A suggestion for today, built for climbers: from the week
   plan, the check-in, injuries, finger load of the last two days, equipment,
   favourites, performance values and the preferred duration, with the reasons
   shown; start it, ask for another one, adapt it or save it as a workout.

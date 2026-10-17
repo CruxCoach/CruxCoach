@@ -9,7 +9,7 @@ created: 2026-10-04
 
 # Feature Spec: Food photo recognition on the device (0.2.4)
 
-Owner request 2026-10-04: offer what MCI does with the paid FatSecret API
+Owner request 2026-10-04: offer what paid food APIs do
 (photo → foods → nutrition estimate) without a paid API and without sending
 photos anywhere. Hardware that cannot run it shows the feature greyed out.
 

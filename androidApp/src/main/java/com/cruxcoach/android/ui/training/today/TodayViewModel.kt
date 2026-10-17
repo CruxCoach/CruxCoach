@@ -66,7 +66,7 @@ data class TodayState(
     val startedWorkout: Boolean = false,
     /** The started training should open in the guided player (routines), not the list. */
     val startedGuided: Boolean = false,
-    /** Today's suggested training (MCI-style), null while a training is open. */
+    /** Today's suggested training, null while a training is open. */
     val suggestion: SessionSuggestion? = null,
     /** Name of the athlete's own routine when the week plan picked it. */
     val plannedName: String? = null,

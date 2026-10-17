@@ -941,7 +941,7 @@ private fun SuggestionCard(s: TodaySuggestion, onAction: () -> Unit, onSecondary
     }
 }
 
-// ── Daily suggestion (MCI-style, climber version) ───────────────────
+// ── Daily suggestion (climber version) ──────────────────────────────
 
 @Composable
 private fun suggestionTitle(state: TodayState): String {

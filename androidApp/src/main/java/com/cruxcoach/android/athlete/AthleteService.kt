@@ -511,7 +511,7 @@ class AthleteService @Inject constructor(
     }
 
     /**
-     * A short test for one exercise (MCI's strength test, climber version):
+     * A short test for one exercise (a strength test, climber version):
      * finger ramp first for finger work, then test sets logged as TEST; the
      * best one becomes the new performance value.
      */
@@ -739,7 +739,7 @@ class AthleteService @Inject constructor(
     data class PainOutcome(val action: PainAction, val newSlug: String? = null, val injuryId: String? = null)
 
     /**
-     * "Tut weh" in the middle of a training (MCI's pain sheet, climber
+     * "Tut weh" in the middle of a training (a pain sheet, climber
      * version): swap the block's open sets to an exercise that spares the
      * region, make them lighter, or end the exercise. Completed sets stay.
      * With [remember] the pain becomes an injury, so every later suggestion

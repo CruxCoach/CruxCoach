@@ -140,7 +140,7 @@ object WorkoutPlanner {
     }
 }
 
-/** End-of-training summary (MCI's reward screen, without confetti). */
+/** End-of-training summary (a reward screen, without confetti). */
 data class WorkoutSummary(
     val completedSets: Int,
     val exercises: Int,

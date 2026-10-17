@@ -139,7 +139,7 @@ object HoldCurve {
 
 object BenchmarkMath {
 
-    /** Reps in reserve a strength prescription aims for (MCI-style RIR 2). */
+    /** Reps in reserve a strength prescription aims for (RIR 2). */
     const val TARGET_RIR = 2
 
     fun capacityKind(def: ExerciseDefinition): CapacityKind? = when (def.kind) {
@@ -254,7 +254,7 @@ object BenchmarkMath {
 data class LoadTarget(val loadKg: Double?, val reps: Int?, val durationS: Int?, val basis: Capacity)
 
 /**
- * Turns a capacity into today's targets, the MCI way but for climbers:
+ * Turns a capacity into today's targets, for climbers:
  * loaded reps at RIR 2 from the e1RM, max hangs at 90 % of what the athlete
  * can hold for the prescribed time, long density hangs at 85 %, repeaters at
  * 65 % of the 10-s maximum, bodyweight reps and holds at 70 % of the maximum.

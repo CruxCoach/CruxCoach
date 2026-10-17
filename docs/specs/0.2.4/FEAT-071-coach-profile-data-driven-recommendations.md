@@ -11,7 +11,7 @@ created: 2026-10-05
 
 > Owner request 2026-10-05: ask training preferences pleasantly and optionally,
 > first values too; make every recommendation use all historical climbing and
-> training data; at least MCI quality, optimised for climbing. "All questions
+> training data; top quality, optimised for climbing. "All questions
 > are okay as long as they are stored locally only"; grade ↔ finger-strength
 > relations must be visible and well visualised.
 > Concept: `research/cruxcoach-0.2.4-training-body-nutrition-2026-10-03/D-coach-setup-and-recommendations.md`.
@@ -67,7 +67,7 @@ created: 2026-10-05
 - Force gauge (experimental): Tindeq Progressor live force and max-pull test
   as a test value.
 
-## 3b. MCI-parity round (2026-10-06)
+## 3b. Coach round (2026-10-06)
 
 - Weekly volume plan (`WeeklyVolume`): targets per area (finger, pull, push,
   legs, core, antagonist, mobility) in hard sets per ISO week, scaled by goal,

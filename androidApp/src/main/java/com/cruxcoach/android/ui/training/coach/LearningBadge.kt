@@ -71,7 +71,7 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
 
 /**
  * Small hint in the guided player while a starting value is still being
- * learnt (MCI's first week, climber version): the reps-in-reserve answer
+ * learnt (the first week, climber version): the reps-in-reserve answer
  * after the set is what teaches the coach.
  */
 @Composable

@@ -38,7 +38,7 @@ data class SetAdjustment(
 }
 
 /**
- * Set-to-set autoregulation, the MCI way but for climbers: after a completed
+ * Set-to-set autoregulation for climbers: after a completed
  * work set the next sets of the same block move by one small step.
  *
  * - Reps (with or without load): missed reps or no reserve (RIR 0) → one

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Geführter Player: Satz-zu-Satz-Anpassung, "Tut weh", Belohnungsscreen (MCI-Paritätsrunde). -->
+<!-- Geführter Player: Satz-zu-Satz-Anpassung, "Tut weh", Belohnungsscreen. -->
 <resources>
     <string name="trp2_adj_missed">Wiederholungen verpasst</string>
     <string name="trp2_adj_no_reserve">Keine Reserve</string>
