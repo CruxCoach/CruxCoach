@@ -360,6 +360,23 @@ class AthleteService @Inject constructor(
 
     fun deleteClimbingDay(id: String) = repo.deleteClimbingDay(id)
 
+    /** A deleted climbing day with its board-overlap choice, for "Rückgängig" (device test D45). */
+    data class DeletedClimb(val entry: com.cruxcoach.athlete.model.ClimbingDayEntry, val overlap: String?)
+
+    /** Deletes a climbing day and returns what "Rückgängig" needs to bring it back. */
+    fun deleteClimbingDayForUndo(id: String): DeletedClimb? {
+        val entry = repo.climbingDay(id) ?: return null
+        val overlap = repo.setting(com.cruxcoach.athlete.logic.BoardOverlap.key(id))?.takeIf { it.isNotEmpty() }
+        repo.deleteClimbingDay(id)
+        return DeletedClimb(entry, overlap)
+    }
+
+    /** "Rückgängig" for [deleteClimbingDayForUndo]: the entry and its overlap choice come back unchanged. */
+    fun restoreClimbingDay(d: DeletedClimb) {
+        repo.saveClimbingDay(d.entry)
+        d.overlap?.let { repo.putSetting(com.cruxcoach.athlete.logic.BoardOverlap.key(d.entry.id), it) }
+    }
+
     fun streak(profile: AthleteProfile, activities: Map<String, DayActivity>): StreakState {
         val trainingDays = activities.values.filter { it.trained }.mapNotNull { runCatching { LocalDate.parse(it.day) }.getOrNull() }.toSet()
         val weeks = ConsistencyStreak.weeksFrom(trainingDays, repo.pauses(), today(), weekCount = 26)

@@ -74,6 +74,9 @@ class ClimbingDayViewModel @Inject constructor(private val service: AthleteServi
     val state: StateFlow<ClimbingDayFormState> = _state.asStateFlow()
     private val _done = Channel<Unit>(Channel.CONFLATED)
     val done = _done.receiveAsFlow()
+    /** A deleted entry, for the host's "Rückgängig" (device test D45). */
+    private val _deleted = Channel<AthleteService.DeletedClimb>(Channel.CONFLATED)
+    val deleted = _deleted.receiveAsFlow()
     private var loadedFor: String? = "\u0000"
 
     fun load(editId: String?) {
@@ -126,7 +129,7 @@ class ClimbingDayViewModel @Inject constructor(private val service: AthleteServi
     fun delete() {
         val id = _state.value.existing?.id ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            service.deleteClimbingDay(id)
+            service.deleteClimbingDayForUndo(id)?.let { _deleted.send(it) }
             _done.send(Unit)
         }
     }
@@ -170,8 +173,11 @@ fun ClimbingDaySheet(
     viewModel: ClimbingDayViewModel = hiltViewModel(key = "climbing-day-${editId ?: "new"}"),
     /** While editing: log another climbing session instead (today's entry opened from Today's tile, device test D30). */
     onAddAnother: (() -> Unit)? = null,
+    /** The entry was deleted: the host offers "Rückgängig" (device test D45). */
+    onDeleted: (AthleteService.DeletedClimb) -> Unit = {},
 ) {
     LaunchedEffect(editId) { viewModel.load(editId) }
+    LaunchedEffect(Unit) { viewModel.deleted.collect { onDeleted(it) } }
     LaunchedEffect(Unit) { viewModel.done.collect { onDismiss() } }
     val s by viewModel.state.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf(false) }
@@ -343,6 +349,11 @@ private fun PastDayPicker(day: LocalDate, today: LocalDate, onPick: (LocalDate) 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ClimbingDaysViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
+    /** "Rückgängig" after a delete (device test D45). */
+    fun restore(d: AthleteService.DeletedClimb) {
+        viewModelScope.launch(Dispatchers.IO) { service.restoreClimbingDay(d) }
+    }
+
     val days: StateFlow<List<ClimbingDayEntry>?> = flow {
         service.ensureReady()
         emit(service.today().minus(DatePeriod(days = 365)).toString())
@@ -367,9 +378,21 @@ fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hi
     val overlaps by viewModel.overlaps.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val snackScope = androidx.compose.runtime.rememberCoroutineScope()
+    val deletedText = stringResource(R.string.trl_day_deleted)
+    val undoText = stringResource(R.string.trf_undo)
+    fun offerUndo(d: AthleteService.DeletedClimb) {
+        snackScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            if (snackbar.showSnackbar(deletedText, undoText, duration = androidx.compose.material3.SnackbarDuration.Long) ==
+                androidx.compose.material3.SnackbarResult.ActionPerformed) viewModel.restore(d)
+        }
+    }
     TrainingScaffold(
         title = stringResource(R.string.trl_days_title),
         onBack = onBack,
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { adding = true },
@@ -424,6 +447,6 @@ fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hi
             }
         }
     }
-    editing?.let { id -> ClimbingDaySheet(onDismiss = { editing = null }, editId = id) }
+    editing?.let { id -> ClimbingDaySheet(onDismiss = { editing = null }, editId = id, onDeleted = ::offerUndo) }
     if (adding) ClimbingDaySheet(onDismiss = { adding = false })
 }
