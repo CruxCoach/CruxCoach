@@ -1,0 +1,9 @@
+-- Migration 4 → 5: circuit training (one set of each exercise in turn, for N
+-- rounds). A set row knows its circuit and the rest after each round; rest_s
+-- is then the short rest to the next exercise. Routines keep their circuits
+-- in items_json and need no change. Every build before circuits shipped
+-- schema 4. Columns are appended in this order, matching Training.sq.
+
+ALTER TABLE exercise_set ADD COLUMN circuit INTEGER;
+
+ALTER TABLE exercise_set ADD COLUMN round_rest_s INTEGER;

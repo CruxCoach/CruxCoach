@@ -431,8 +431,17 @@ object CruxCoachBackup {
             listOf(x.targetDurationS, x.targetLoadKg, x.durationS, x.loadKg, x.edgeMm, x.workS, x.restBetweenS, x.bodyweightKg)
                 .forEach { requireFinite("set.value", it) }
             requireIntRange("set.reps", x.reps, 0..10_000)
+            requireIntRange("set.circuit", x.circuit, 0..10_000)
+            requireIntRange("set.roundRestS", x.roundRestS, 0..3600)
         }
-        for (r in a.routines) { requireLen("routine.name", r.name, MAX_NAME_LEN); requireSize("routine.items", r.items.size) }
+        for (r in a.routines) {
+            requireLen("routine.name", r.name, MAX_NAME_LEN); requireSize("routine.items", r.items.size)
+            for (item in r.items) {
+                requireIntRange("routine.item.circuit", item.circuit, 0..10_000)
+                requireIntRange("routine.item.circuitRestS", item.circuitRestS, 0..3600)
+                requireIntRange("routine.item.roundRestS", item.roundRestS, 0..3600)
+            }
+        }
         for (m in a.measurements) {
             requireLen("measurement.day", m.day, MAX_DATE_LEN); requireLen("measurement.metric", m.metric, MAX_STAT_NAME_LEN)
             requireLen("measurement.unit", m.unit, MAX_UNIT_LEN); requireFinite("measurement.value", m.value)

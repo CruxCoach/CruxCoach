@@ -17,6 +17,8 @@ CREATE TABLE workout (
 
 CREATE INDEX workout_day ON workout(day);
 
+-- circuit / round_rest_s (circuit training, 4.sqm) are appended in migration
+-- order: SELECT * maps columns by position.
 CREATE TABLE exercise_set (
     id TEXT NOT NULL PRIMARY KEY,
     workout_id TEXT NOT NULL,
@@ -40,7 +42,9 @@ CREATE TABLE exercise_set (
     rest_s INTEGER,
     bodyweight_kg REAL,
     completed_at INTEGER,
-    note TEXT
+    note TEXT,
+    circuit INTEGER,
+    round_rest_s INTEGER
 );
 
 CREATE INDEX exercise_set_workout ON exercise_set(workout_id, block_index, set_index);
@@ -100,8 +104,9 @@ INSERT OR REPLACE INTO exercise_set(
     id, workout_id, exercise_slug, block_index, set_index, set_type, side,
     target_reps, target_duration_s, target_load_kg,
     reps, duration_s, load_kg, edge_mm, grip, rir,
-    work_s, rest_between_s, reps_per_set, rest_s, bodyweight_kg, completed_at, note
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    work_s, rest_between_s, reps_per_set, rest_s, bodyweight_kg, completed_at, note,
+    circuit, round_rest_s
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getSetsForWorkout:
 SELECT * FROM exercise_set WHERE workout_id = ? ORDER BY block_index, set_index;
