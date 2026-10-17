@@ -102,6 +102,7 @@ class AthleteRepository(
         s.targetReps?.toLong(), s.targetDurationS, s.targetLoadKg,
         s.reps?.toLong(), s.durationS, s.loadKg, s.edgeMm, s.grip?.name, s.rir?.toLong(),
         s.workS, s.restBetweenS, s.repsPerSet?.toLong(), s.restS?.toLong(), s.bodyweightKg, s.completedAt, s.note,
+        s.circuit?.toLong(), s.roundRestS?.toLong(),
     )
 
     fun setsFor(workoutId: String): List<ExerciseSet> = training.getSetsForWorkout(workoutId).executeAsList().map { it.toModel() }
@@ -445,6 +446,7 @@ private fun Exercise_set.toModel() = ExerciseSet(
     reps = reps?.toInt(), durationS = duration_s, loadKg = load_kg, edgeMm = edge_mm, grip = enumOrNull<Grip>(grip),
     rir = rir?.toInt(), workS = work_s, restBetweenS = rest_between_s, repsPerSet = reps_per_set?.toInt(),
     restS = rest_s?.toInt(), bodyweightKg = bodyweight_kg, completedAt = completed_at, note = note,
+    circuit = circuit?.toInt(), roundRestS = round_rest_s?.toInt(),
 )
 
 private fun Body_measurement.toModel() = BodyMeasurement(day, metric, value_, unit, measured_at, source)

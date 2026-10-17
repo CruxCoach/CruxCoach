@@ -178,4 +178,63 @@ class AthleteRepositoryTest {
         assertTrue(migrated.checkin("2026-10-16")!!.sore.isEmpty())
         old.close()
     }
+
+    @Test
+    fun `schema 4 database migrates to 5 and keeps circuits on its sets`() {
+        // Every build before circuits had schema 4: no circuit columns on a set.
+        val old = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        old.execute(null, "ALTER TABLE exercise_set DROP COLUMN round_rest_s", 0)
+        old.execute(null, "ALTER TABLE exercise_set DROP COLUMN circuit", 0)
+        // A training left open over the update.
+        old.execute(null, "INSERT INTO workout(id, started_at, day, updated_at) VALUES ('w1', 10, '2026-10-17', 10)", 0)
+        old.execute(null, "INSERT INTO exercise_set(id, workout_id, exercise_slug, block_index, set_index, set_type, target_reps, reps, rest_s, note) " +
+            "VALUES ('old', 'w1', 'pull.pull_up', 0, 0, 'WORK', 8, 8, 90, 'kept')", 0)
+        AthleteDatabase.Schema.migrate(old, 4, 5)
+        val migrated = AthleteRepository(AthleteDatabase(old), Dispatchers.IO) { 1_000L }
+        val before = migrated.setsFor("w1").single()
+        assertEquals(90, before.restS); assertEquals("kept", before.note)
+        assertNull(before.circuit); assertNull(before.roundRestS)
+        // New sets keep their circuit next to the columns that came before (SELECT * maps by position).
+        val member = set("c1", "w1", "push.push_up", 0, done = 20).copy(blockIndex = 1, restS = 15, circuit = 1, roundRestS = 120,
+            bodyweightKg = 70.0, note = "n")
+        migrated.saveSet(member)
+        assertEquals(member, migrated.setsFor("w1").first { it.id == "c1" })
+        assertEquals(member, migrated.history("push.push_up").single())
+        assertEquals(1, migrated.snapshot().sets.first { it.id == "c1" }.circuit)
+        old.close()
+    }
+
+    @Test
+    fun `circuits travel with the backup and an old backup restores without them`() {
+        repo.saveWorkout(Workout("w1", 10, 20, "2026-10-17", updatedAt = 10))
+        repo.saveSet(set("s1", "w1", "pull.pull_up", 0, done = 15).copy(restS = 0, circuit = 1, roundRestS = 150))
+        repo.saveSet(set("s2", "w1", "push.push_up", 0, done = 16).copy(blockIndex = 1, restS = 0, circuit = 1, roundRestS = 150))
+        val items = listOf(
+            RoutineItem("pull.pull_up", sets = 3, restS = 120, circuit = 1, circuitRestS = 0, roundRestS = 150),
+            RoutineItem("push.push_up", sets = 3, circuit = 1, circuitRestS = 0, roundRestS = 150),
+        )
+        repo.saveRoutine(Routine("r1", "Circuit", items = items, createdAt = 1, updatedAt = 1))
+        val snapshot = repo.snapshot()
+
+        val otherDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { AthleteDatabase.Schema.create(it) }
+        val other = AthleteRepository(AthleteDatabase(otherDriver), Dispatchers.Unconfined) { 0L }
+        other.restore(snapshot, includeProfile = false)
+        assertEquals(listOf(1, 1), other.setsFor("w1").map { it.circuit })
+        assertEquals(listOf(150, 150), other.setsFor("w1").map { it.roundRestS })
+        assertEquals(listOf(0, 0), other.setsFor("w1").map { it.restS })
+        assertEquals(items, other.routines().single { it.id == "r1" }.items)
+
+        // A backup written before circuits: no keys, the sets and items read back without one.
+        val oldJson = """{"workouts":[{"id":"w2","startedAt":30,"endedAt":40,"day":"2026-10-10","updatedAt":30}],
+            "sets":[{"id":"o1","workoutId":"w2","exerciseSlug":"pull.pull_up","blockIndex":0,"setIndex":0,"reps":6,"restS":90,"completedAt":35}],
+            "routines":[{"id":"r2","name":"Old","items":[{"slug":"pull.pull_up","sets":4,"restS":150}]}]}"""
+        val oldSnapshot = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            .decodeFromString(com.cruxcoach.athlete.data.AthleteSnapshot.serializer(), oldJson)
+        other.restore(oldSnapshot, includeProfile = false)
+        val oldSet = other.setsFor("w2").single()
+        assertNull(oldSet.circuit); assertNull(oldSet.roundRestS); assertEquals(90, oldSet.restS)
+        val oldItem = other.routines().single { it.id == "r2" }.items.single()
+        assertNull(oldItem.circuit); assertNull(oldItem.circuitRestS); assertNull(oldItem.roundRestS)
+        otherDriver.close()
+    }
 }

@@ -60,6 +60,15 @@ data class ExerciseSet(
     val bodyweightKg: Double? = null,
     val completedAt: Long? = null,
     val note: String? = null,
+    /**
+     * Circuit the set belongs to (owner 2026-10-17: one set of each exercise in turn, N rounds):
+     * sets of consecutive blocks with the same key are played round by round, the round being
+     * [setIndex] (work sets 0..n-1, warm-ups negative). [restS] is then the short rest to the next
+     * exercise of the round; null = a set of its own block, played block by block.
+     */
+    val circuit: Int? = null,
+    /** Rest after each round of [circuit]; null outside a circuit. */
+    val roundRestS: Int? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
 }
@@ -87,6 +96,16 @@ data class RoutineItem(
     val warmup: Boolean = false,
     /** Benchmark item: its sets are logged as [SetType.TEST]. */
     val test: Boolean = false,
+    /**
+     * Consecutive items with the same key form one circuit ([com.cruxcoach.athlete.logic.Circuits]):
+     * one set of each in turn, for as many rounds as the members' largest [sets]. Never on warm-up,
+     * test or climbing items. [restS] stays the item's own rest for when the circuit is dissolved.
+     */
+    val circuit: Int? = null,
+    /** Seconds from one exercise to the next within a round (0 = straight on); the same on all members. */
+    val circuitRestS: Int? = null,
+    /** Seconds after each round; the same on all members. */
+    val roundRestS: Int? = null,
 )
 
 @Serializable
