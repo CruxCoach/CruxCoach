@@ -92,4 +92,5 @@
     <string name="trwo_add_new_routine">Neues Workout mit dieser Übung</string>
     <string name="trwo_add_rejected">Nicht hinzugefügt: Sie belastet die verletzte Stelle. Prüf den Verletzungsmodus oder wähl eine andere Übung.</string>
     <string name="trwo_add_added_to">Zu „%1$s“ hinzugefügt.</string>
+    <string name="trwo_week_applied">Vorschlag für deine Woche übernommen</string>
 </resources>

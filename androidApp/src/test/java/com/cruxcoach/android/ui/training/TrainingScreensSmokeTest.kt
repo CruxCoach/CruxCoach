@@ -169,6 +169,19 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the week plan proposal can be applied and taken back`() {
+        // Audit P2-14: "Übernehmen" with Undo.
+        val vm = loaded(com.cruxcoach.android.ui.training.workouts.WeekPlanViewModel(service))
+        compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
+        val before = repo.profile().weekPlan
+        if (vm.state.value.proposal.isEmpty() || vm.state.value.proposal == before) return
+        vm.applyProposal()
+        compose.waitUntil(WAIT_MS) { repo.profile().weekPlan == vm.state.value.proposal }
+        vm.undoProposal()
+        compose.waitUntil(WAIT_MS) { repo.profile().weekPlan == before }
+    }
+
+    @Test
     fun `a finished training can be deleted from its summary`() {
         val id = service.startWorkout(BuiltinRoutines.byKey(BuiltinRoutines.CORE_CLIMBER), null)
         repo.setsFor(id).take(2).forEach { service.completeSet(it, startRest = false) }

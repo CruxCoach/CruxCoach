@@ -68,9 +68,20 @@ class WeekPlanViewModel @Inject constructor(private val service: AthleteService)
 
     fun setMinutes(minutes: Int) = io { service.repo.updateProfile { it.copy(sessionMinutes = minutes) } }
 
+    /** The week before "Übernehmen", for "Rückgängig" (audit P2-14). */
+    private var previousPlan: Map<Int, String>? = null
+
     fun applyProposal() {
         val plan = _state.value.proposal
-        if (plan.isNotEmpty()) io { service.repo.updateProfile { it.copy(weekPlan = plan) } }
+        if (plan.isEmpty()) return
+        previousPlan = _state.value.profile.weekPlan
+        io { service.repo.updateProfile { it.copy(weekPlan = plan) } }
+    }
+
+    fun undoProposal() {
+        val previous = previousPlan ?: return
+        previousPlan = null
+        io { service.repo.updateProfile { it.copy(weekPlan = previous) } }
     }
 
     private fun io(block: suspend () -> Unit) {
@@ -87,8 +98,20 @@ private val SESSION_MINUTES = com.cruxcoach.android.ui.training.today.TodayViewM
 fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var choosing by remember { mutableStateOf<Int?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    val snackScope = rememberCoroutineScope()
+    val appliedText = stringResource(R.string.trwo_week_applied)
+    val undoText = stringResource(R.string.trpg_undo)
+    val apply = {
+        viewModel.applyProposal()
+        snackScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            if (snackbar.showSnackbar(appliedText, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoProposal()
+        }
+        Unit
+    }
     // What the standard week is for: the app bar's info icon, not a paragraph above the days (design.md).
-    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack,
+    TrainingScaffold(title = stringResource(R.string.trwo_week_plan), onBack = onBack, snackbarHost = { SnackbarHost(snackbar) },
         actions = { com.cruxcoach.android.ui.common.InfoButton(stringResource(R.string.trwo_week_plan), stringResource(R.string.trwo_week_plan_intro)) }) { padding ->
         if (state.loading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -100,7 +123,7 @@ fun WeekPlanScreen(onBack: () -> Unit, viewModel: WeekPlanViewModel = hiltViewMo
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.proposal.isNotEmpty()) {
-                item(key = "proposal") { ProposalCard(state, onApply = viewModel::applyProposal) }
+                item(key = "proposal") { ProposalCard(state, onApply = apply) }
             }
             items((1..7).toList(), key = { it }) { day ->
                 val entry = state.profile.weekPlan[day]
