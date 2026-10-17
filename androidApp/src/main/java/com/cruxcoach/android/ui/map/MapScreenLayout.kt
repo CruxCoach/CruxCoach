@@ -242,6 +242,18 @@ fun MapScreenLayout(
                 )
             }
         }
+        // The rows below the peek run on under the navigation bar: a solid strip in the sheet's colour keeps the
+        // buttons on a calm ground instead of over a half-hidden place (device test 2026-10-17).
+        if (navBar > 0.dp) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(navBar)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .testTag("map_nav_bar_backdrop")
+            )
+        }
         Box(
             Modifier
                 .fillMaxWidth()
