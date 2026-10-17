@@ -53,6 +53,21 @@ class LocalIdentity(private val secrets: SecretStore, private val hashing: Hashi
         return IdentityResult(ActiveIdentity(pubkeyHex, "cruxcoach_secure_${pubkeyHex.take(16)}.db", dbKey), null, created)
     }
 
+    /**
+     * Name and key of the identity's athlete database (training, body,
+     * nutrition), derived on first use like Android's
+     * `SqlCipherKeyManager.getDerivedAthleteKeyForPubkey`: the same master key,
+     * its own HKDF label, so the two databases never share a key. Null when the
+     * master key cannot be read; the caller must zero the key after opening.
+     */
+    fun athleteDatabase(pubkeyHex: String): Pair<String, ByteArray>? {
+        val master = secrets.read(DB_MASTER_KEY) ?: return null
+        if (master.size != 32) { master.fill(0); return null }
+        val key = hkdfSha256(hashing, master, pubkeyHex.encodeToByteArray(), INFO_ATHLETE_DB.encodeToByteArray(), 32)
+        master.fill(0)
+        return "cruxcoach_athlete_${pubkeyHex.take(16)}.db" to key
+    }
+
     private fun newSecretKey(): ByteArray {
         while (true) {
             val candidate = hashing.randomBytes(32)
@@ -64,6 +79,7 @@ class LocalIdentity(private val secrets: SecretStore, private val hashing: Hashi
         const val NOSTR_KEY = "nostr_priv_key"
         const val DB_MASTER_KEY = "secure_db_master_key"
         const val INFO_SECURE_DB = "cruxcoach-secure-db"
+        const val INFO_ATHLETE_DB = "cruxcoach-athlete-db"
 
         fun xOnlyPubkey(secret: ByteArray): ByteArray =
             Secp256k1.pubKeyCompress(Secp256k1.pubkeyCreate(secret)).copyOfRange(1, 33)

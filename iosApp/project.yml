@@ -39,6 +39,9 @@ targets:
       - path: ../androidApp/src/main/assets/board_map
         type: folder
         buildPhase: resources
+      - path: ../androidApp/src/main/assets/training
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/CruxCoachCore.xcframework
         embed: false

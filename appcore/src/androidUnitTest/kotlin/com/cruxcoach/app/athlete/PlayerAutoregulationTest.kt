@@ -1,0 +1,98 @@
+package com.cruxcoach.app.athlete
+
+import com.cruxcoach.athlete.data.AthleteRepository
+import com.cruxcoach.athlete.model.*
+import kotlinx.coroutines.runBlocking
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/**
+ * Port of Android's PlayerAutoregulationTest (androidApp/src/test/.../athlete):
+ * set-to-set autoregulation and "it hurts" against the ported service and a
+ * real database. The assertions are Android's, unchanged.
+ */
+class PlayerAutoregulationTest {
+
+    private lateinit var kit: AthleteTestKit
+    private lateinit var repo: AthleteRepository
+    private lateinit var service: AthleteService
+
+    @BeforeTest
+    fun setUp() {
+        kit = AthleteTestKit()
+        repo = kit.repo
+        service = kit.service
+        runBlocking { service.ensureReady() }
+        repo.saveMeasurement(BodyMeasurement(service.today().toString(), BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+    }
+
+    @AfterTest
+    fun tearDown() = kit.close()
+
+    private fun workSets(workoutId: String, slug: String) =
+        repo.setsFor(workoutId).filter { it.exerciseSlug == slug && it.setType == SetType.WORK }.sortedBy { it.setIndex }
+
+    @Test
+    fun `no reserve on a set moves the next planned set once, also when asked again`() {
+        val id = service.startWorkout(Routine("r", "R", items = listOf(RoutineItem("pull.weighted_pull_up", sets = 3, repsMin = 5, repsMax = 5))), null)
+        val first = workSets(id, "pull.weighted_pull_up").first()
+        val before = workSets(id, "pull.weighted_pull_up")[1]
+        service.completeSetDetailed(first.copy(reps = first.targetReps ?: 5, rir = 0), startRest = false)
+        val done = repo.setsFor(id).first { it.id == first.id }
+        val adjustment = service.adjustUpcomingSets(id, done)
+        assertNotNull(adjustment)
+        val after = workSets(id, "pull.weighted_pull_up")[1]
+        assertTrue(after.targetLoadKg != before.targetLoadKg || after.targetReps != before.targetReps, "$before → $after")
+        // Asking again with what was applied changes nothing more.
+        assertEquals(adjustment, service.adjustUpcomingSets(id, done, adjustment))
+        assertEquals(after, workSets(id, "pull.weighted_pull_up")[1])
+    }
+
+    @Test
+    fun `pain swap keeps done sets and puts a sparing exercise right after the block`() {
+        val id = service.startWorkout(Routine("r", "R", items = listOf(
+            RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8),
+            RoutineItem("core.hollow_hold", sets = 2, durationS = 20),
+        )), null)
+        val first = workSets(id, "pull.pull_up").first()
+        service.completeSetDetailed(first.copy(reps = 6), startRest = false)
+        val outcome = service.painStop(id, first.blockIndex, InjuryRegion.FINGER, null, 3, PainAction.SWAP)
+        assertEquals(PainAction.SWAP, outcome.action)
+        val newSlug = assertNotNull(outcome.newSlug)
+        assertNotEquals("pull.pull_up", newSlug)
+        val sets = repo.setsFor(id)
+        assertEquals(listOf(first.id), sets.filter { it.exerciseSlug == "pull.pull_up" }.map { it.id })
+        assertTrue(sets.filter { it.exerciseSlug == newSlug }.all { it.blockIndex == first.blockIndex + 1 && !it.isCompleted })
+        assertTrue(sets.filter { it.exerciseSlug == "core.hollow_hold" }.all { it.blockIndex == first.blockIndex + 2 })
+    }
+
+    @Test
+    fun `remembered strong pain becomes an injury that pauses climbing`() {
+        val id = service.startWorkout(Routine("r", "R", items = listOf(RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8))), null)
+        val first = workSets(id, "pull.pull_up").first()
+        val outcome = service.painStop(id, first.blockIndex, InjuryRegion.ELBOW, InjurySide.LEFT, 6, PainAction.END_EXERCISE, remember = true)
+        assertNotNull(outcome.injuryId)
+        assertTrue(repo.setsFor(id).none { it.exerciseSlug == "pull.pull_up" && !it.isCompleted })
+        val injury = repo.activeInjuries().single()
+        assertEquals(InjuryRegion.ELBOW, injury.region)
+        assertTrue(injury.climbingPaused)
+    }
+
+    @Test
+    fun `the pain swap spares what today's check-in says hurts too`() {
+        // Audit W9: card and player swap respected the check-in's sore regions, the pain swap did not.
+        repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(service.today().toString(), 0, sore = setOf(InjuryRegion.SHOULDER)))
+        val id = service.startWorkout(Routine("r", "R", items = listOf(RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8))), null)
+        val first = workSets(id, "pull.pull_up").first()
+        val outcome = service.painStop(id, first.blockIndex, InjuryRegion.ELBOW, null, 3, PainAction.SWAP)
+        outcome.newSlug?.let { slug ->
+            val verdict = com.cruxcoach.athlete.logic.InjuryAdvisor.assess(service.catalog.fallbackFor(slug), service.injuriesToday()).verdict
+            assertTrue(verdict == com.cruxcoach.athlete.logic.InjuryVerdict.OK || verdict == com.cruxcoach.athlete.logic.InjuryVerdict.ONE_SIDE_ONLY, "$slug $verdict")
+        }
+    }
+}

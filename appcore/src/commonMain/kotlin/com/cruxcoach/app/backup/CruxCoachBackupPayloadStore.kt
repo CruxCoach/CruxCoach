@@ -37,6 +37,13 @@ class CruxCoachBackupPayloadStore(
     private val personalBoardRepo: PersonalBoardRepository,
     private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
+    /**
+     * The athlete database (training, body, nutrition, 0.2.4), exactly as
+     * Android's BackupRepository passes it. Null only where no athlete
+     * database exists; a backup written then carries no athlete part, and a
+     * restore leaves the athlete part of the payload untouched.
+     */
+    private val athlete: AthleteBackupHooks? = null,
 ) : BackupPayloadStore {
 
     /**
@@ -49,6 +56,7 @@ class CruxCoachBackupPayloadStore(
         secureDb: SecureDatabase,
         boardRepository: BoardRepository,
         personalBoardRepo: PersonalBoardRepository = PersonalBoardRepositoryImpl(secureDb),
+        athlete: AthleteBackupHooks? = null,
     ) : this(
         userRepository = UserRepositoryImpl(secureDb),
         bodyStatRepository = BodyStatRepositoryImpl(secureDb),
@@ -58,6 +66,7 @@ class CruxCoachBackupPayloadStore(
         personalBoardRepo = personalBoardRepo,
         boardRepository = boardRepository,
         transactionRunner = SecureDatabaseTransactionRunner(secureDb),
+        athlete = athlete,
     )
 
     override fun exportJson(exportedAt: String, nostrPubkey: String): String? = try {
@@ -72,6 +81,7 @@ class CruxCoachBackupPayloadStore(
             boardRepository = boardRepository,
             exportedAt = exportedAt,
             nostrPubkey = nostrPubkey,
+            athleteSnapshot = athlete?.let { hooks -> { hooks.snapshot() } },
         )
     } catch (e: Exception) {
         null
@@ -101,12 +111,14 @@ class CruxCoachBackupPayloadStore(
             boardRepository = boardRepository,
             transactionRunner = transactionRunner,
             expectedNostrPubkey = expectedNostrPubkey,
+            athleteRestore = athlete?.let { hooks -> { snapshot, withProfile -> hooks.restore(snapshot, withProfile) } },
+            athleteLegacyBodyStats = athlete?.let { hooks -> { rows -> hooks.importLegacyBodyStats(rows) } },
         )
         BackupImportSummary(
             rowsImported = with(result) {
                 assessments + bodyStats + workoutLogs + climbLogs + trainingPlans +
                     boardAscents + boardBids + boardSessions + climbLists +
-                    ownClimbs + ownClimbStats + climbNotes +
+                    ownClimbs + ownClimbStats + climbNotes + athleteRows +
                     (if (profileImported) 1 else 0)
             },
             skippedDuplicates = result.skippedDuplicates,
@@ -117,4 +129,11 @@ class CruxCoachBackupPayloadStore(
     } catch (e: Exception) {
         null
     }
+}
+
+/** The athlete database's part of a backup; implemented by AthleteService's backup methods. */
+interface AthleteBackupHooks {
+    fun snapshot(): com.cruxcoach.athlete.data.AthleteSnapshot
+    fun restore(snapshot: com.cruxcoach.athlete.data.AthleteSnapshot, includeProfile: Boolean): Int
+    fun importLegacyBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int
 }

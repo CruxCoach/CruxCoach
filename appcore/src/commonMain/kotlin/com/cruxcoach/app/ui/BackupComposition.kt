@@ -31,6 +31,7 @@ fun createBackupScreenModel(
     personalBoardRepo: PersonalBoardRepository,
     scope: CoroutineScope,
     secretKeyProvider: () -> ByteArray?,
+    athlete: com.cruxcoach.app.backup.AthleteBackupHooks? = null,
 ): BackupScreenModel {
     val signer = LocalEventSigner(platform.hashing, secretKeyProvider)
     val state = BackupState(platform.keyValues, platform.hashing)
@@ -42,7 +43,7 @@ fun createBackupScreenModel(
         clock = platform.clock,
         events = RelayBackupEventSource(RelayClient(platform.webSockets, platform.hashing)),
         blossom = BlossomClient(platform.http, platform.hashing, platform.clock, signer),
-        payloads = CruxCoachBackupPayloadStore(secureDb, boardRepository, personalBoardRepo),
+        payloads = CruxCoachBackupPayloadStore(secureDb, boardRepository, personalBoardRepo, athlete),
         state = state,
         signer = signer,
         secretKeyProvider = secretKeyProvider,

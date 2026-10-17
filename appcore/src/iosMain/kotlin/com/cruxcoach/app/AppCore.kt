@@ -91,6 +91,20 @@ import com.cruxcoach.app.ui.SettingsScreenModel
 import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
 import platform.Foundation.NSBundle
+import com.cruxcoach.app.athlete.AthleteService
+import com.cruxcoach.app.athlete.ClimbingDaysReader
+import com.cruxcoach.app.athlete.ExerciseCatalogStore
+import com.cruxcoach.app.athlete.TrainingRestTimer
+import com.cruxcoach.app.athlete.nowMs
+import com.cruxcoach.app.backup.AthleteBackupHooks
+import com.cruxcoach.athlete.data.AthleteRepository
+import com.cruxcoach.athlete.data.AthleteSnapshot
+import com.cruxcoach.data.repository.BodyStatRepositoryImpl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import platform.Foundation.NSLocale
+import platform.Foundation.countryCode
+import platform.Foundation.currentLocale
 import com.cruxcoach.app.sync.CatalogueImporter
 import com.cruxcoach.app.sync.ImportResult
 import kotlinx.coroutines.MainScope
@@ -184,6 +198,7 @@ class AppCore private constructor(
             personalBoardRepo = personalRepository,
             scope = MainScope(),
             secretKeyProvider = { platform.secrets.read(LocalIdentity.NOSTR_KEY) },
+            athlete = athleteBackupHooks,
         )
     }
     val bleScreen: BleScreenModel by lazy { BleScreenModel(boardConnection) }
@@ -195,7 +210,7 @@ class AppCore private constructor(
     fun makeDataExchangeScreen(): DataExchangeScreenModel = DataExchangeScreenModel(
         FileExchangePresenter(
             payloads = CruxCoachBackupPayloadStore(
-                secureDatabase, boardRepository, personalRepository,
+                secureDatabase, boardRepository, personalRepository, athleteBackupHooks,
             ),
             files = platform.files,
             clock = platform.clock,
@@ -488,6 +503,62 @@ class AppCore private constructor(
     fun makeHistoryScreen(): HistoryScreenModel =
         HistoryScreenModel(HistoryPresenter(personalRepository, platform.keyValues))
 
+    // ── Training, body and nutrition (0.2.4) ──────────────────────────
+    //
+    // The athlete database is a separate SQLCipher file per identity, opened on
+    // first use like Android's AthleteModule (never at app start). When it cannot
+    // be opened the training area reports itself unavailable; nothing throws.
+
+    private val athleteStack: AthleteStack? by lazy { openAthleteStack() }
+
+    /** False when the athlete database could not be opened (the training area then says so). */
+    val athleteAvailable: Boolean get() = athleteStack != null
+
+    /** Internal entry for the training/nutrition presenters. Null = unavailable. */
+    internal val athlete: AthleteService? get() = athleteStack?.service
+
+    private val trainingRestTimer: TrainingRestTimer by lazy { TrainingRestTimer(MainScope(), { restTimer }) }
+
+    private class AthleteStack(val repository: AthleteRepository, val service: AthleteService)
+
+    private fun openAthleteStack(): AthleteStack? = try {
+        val (name, key) = LocalIdentity(platform.secrets, platform.hashing).athleteDatabase(pubkeyHex)
+            ?: error("master key unavailable")
+        val db = try { IosDatabases.openAthlete(key, name) } finally { key.fill(0) }
+        val repository = AthleteRepository(db, Dispatchers.IO) { nowMs() }
+        val bundle = NSBundle.mainBundle.resourcePath ?: error("bundle missing")
+        val catalog = ExerciseCatalogStore(
+            readPackaged = {
+                platform.files.readBytes("$bundle/${ExerciseCatalogStore.ASSET}", MAX_CATALOG_BYTES)
+                    ?.decodeToString() ?: error("exercise catalogue missing from the app bundle")
+            },
+            repository = { repository },
+            io = Dispatchers.IO,
+        )
+        val service = AthleteService(
+            repoLazy = { repository },
+            catalogStore = catalog,
+            climbingDays = ClimbingDaysReader(secureDatabase),
+            bodyStatRepository = BodyStatRepositoryImpl(secureDatabase),
+            sessionManager = trainingRestTimer,
+            io = Dispatchers.IO,
+        )
+        service.systemRegion = { NSLocale.currentLocale.countryCode ?: "" }
+        AthleteStack(repository, service)
+    } catch (e: Throwable) {
+        println("AppCore: athlete database unavailable: ${e.message}")
+        null
+    }
+
+    /** The athlete part of backups and file exports, as on Android. */
+    private val athleteBackupHooks: AthleteBackupHooks = object : AthleteBackupHooks {
+        override fun snapshot() = athleteStack?.service?.backupSnapshot() ?: AthleteSnapshot()
+        override fun restore(snapshot: AthleteSnapshot, includeProfile: Boolean): Int =
+            athleteStack?.service?.restoreBackup(snapshot, includeProfile) ?: 0
+        override fun importLegacyBodyStats(rows: List<com.cruxcoach.domain.model.BodyStat>): Int =
+            athleteStack?.service?.importBackupBodyStats(rows) ?: 0
+    }
+
     /** Empty until that brand's catalogue is installed. */
     fun boardOptions(brandWire: String): List<BoardOption> = try {
         BoardBrand.fromWireOrNull(brandWire)?.let { BoardOptions.forBrand(it, boardRepository) } ?: emptyList()
@@ -528,6 +599,9 @@ class AppCore private constructor(
         } catch (e: Throwable) {
             AppStartResult(null, "databaseOpenFailed", e.message ?: "")
         }
+
+        /** The bundled exercise catalogue is ~0.4 MB; anything far larger is not ours. */
+        private const val MAX_CATALOG_BYTES = 16L * 1024 * 1024
 
         /** Must not be the bundle identifier: NSUserDefaults rejects that as a suite name. */
         const val USER_DEFAULTS_SUITE = "org.cruxcoach.prefs"

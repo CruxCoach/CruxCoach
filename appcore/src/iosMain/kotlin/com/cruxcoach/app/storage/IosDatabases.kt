@@ -3,7 +3,9 @@ package com.cruxcoach.app.storage
 import app.cash.sqldelight.db.QueryResult
 import com.cruxcoach.data.BoardDatabaseHandle
 import com.cruxcoach.data.BoardDriverFactory
+import com.cruxcoach.data.AthleteDriverFactory
 import com.cruxcoach.data.SecureDriverFactory
+import com.cruxcoach.db.athlete.AthleteDatabase
 import com.cruxcoach.data.createBoardDatabaseHandle
 import com.cruxcoach.db.secure.SecureDatabase
 
@@ -60,5 +62,18 @@ object IosDatabases {
         } catch (e: Exception) {
             DatabaseOpenResult(null, null, null, DatabaseFailure.OPEN_FAILED, e.message)
         }
+    }
+
+    private val athlete = mutableMapOf<String, AthleteDatabase>()
+
+    /**
+     * The athlete database, opened on first use as on Android (never at app
+     * start). Cached for the same reason as [open]. Throws when it cannot be
+     * opened; the caller turns that into an "unavailable" state.
+     */
+    fun openAthlete(key: ByteArray, name: String): AthleteDatabase {
+        athlete[name]?.let { return it }
+        require(key.size == SecureDriverFactory.KEY_BYTES) { "key must be 32 bytes" }
+        return AthleteDatabase(AthleteDriverFactory(key).createDriver(name)).also { athlete[name] = it }
     }
 }

@@ -70,4 +70,26 @@ class LocalIdentityTest {
         assertNull(result.identity)
         assertEquals(IdentityFailure.SECRET_STORE_UNAVAILABLE, result.failure)
     }
+
+    @Test
+    fun `the athlete database key is Android's HKDF with its own label`() {
+        val secrets = MemorySecrets()
+        secrets.items[LocalIdentity.NOSTR_KEY] = ByteArray(32).also { it[31] = 3 }
+        secrets.items[LocalIdentity.DB_MASTER_KEY] = ByteArray(32) { 1 }
+        val identity = assertNotNull(LocalIdentity(secrets, JvmHashing).loadOrCreate().identity)
+        val (name, key) = assertNotNull(LocalIdentity(secrets, JvmHashing).athleteDatabase(identity.pubkeyHex))
+        assertEquals("cruxcoach_athlete_f9308a019258c310.db", name)
+        // Independent of hkdfSha256: Android's SqlCipherKeyManager steps with javax.crypto.
+        fun hmac(k: ByteArray, d: ByteArray) = javax.crypto.Mac.getInstance("HmacSHA256")
+            .apply { init(javax.crypto.spec.SecretKeySpec(k, "HmacSHA256")) }.doFinal(d)
+        val prk = hmac(identity.pubkeyHex.toByteArray(), ByteArray(32) { 1 })
+        val okm = hmac(prk, "cruxcoach-athlete-db".toByteArray() + byteArrayOf(1))
+        assertTrue(okm.contentEquals(key))
+        assertFalse(key.contentEquals(identity.secureDbKey))
+    }
+
+    @Test
+    fun `no master key means no athlete database`() {
+        assertNull(LocalIdentity(MemorySecrets(), JvmHashing).athleteDatabase("ab".repeat(32)))
+    }
 }
