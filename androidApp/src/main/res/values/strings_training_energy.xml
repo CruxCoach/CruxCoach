@@ -55,6 +55,8 @@
     <string name="trn_target_recommended_plain">Recommended</string>
     <string name="trn_target_own">Own target</string>
     <string name="trn_target_own_label">Your target: %1$s</string>
+    <string name="trn_target_range">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo.</string>
+    <string name="trn_target_range_energy">Kept between %1$d and %2$d %3$s – a value outside is most likely a typo. A low target inside it is kept and named on the energy card.</string>
     <string name="trn_unit_g">g</string>
     <string name="trn_set_summary_own">Own targets: %1$s</string>
     <string name="trn_goal_stop">Stop losing weight</string>
