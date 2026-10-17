@@ -120,7 +120,12 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** Bumped to re-read the day now instead of at the next minute (device test 2026-10-16, 00:00). */
     private val dayCheck = MutableStateFlow(0)
 
-    init {
+    /**
+     * The data collector. Started from the init block at the end of the class: a refresh on the IO thread uses
+     * fields declared further down (the lock, today's choices), which are only set once the constructor got
+     * there (CI 2026-10-17: "Cannot enter synchronized block because refreshLock is null" on a slow runner).
+     */
+    private fun startCollecting() {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
@@ -879,6 +884,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
 
     private fun io(block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) { service.ensureReady(); block() }
+    }
+
+    init {
+        startCollecting()
     }
 
     companion object {

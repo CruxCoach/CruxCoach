@@ -144,7 +144,9 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
             // Off-wall finger sets block today and tomorrow (one more day from 40 on), as the suggestion counts it.
             val masters = profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y40_54 ||
                 profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y55_PLUS
-            val fingerWork = work.any { com.cruxcoach.athlete.catalog.LoadDomain.FINGER in catalog.fallbackFor(it.exerciseSlug).domains }
+            // Test sets count too: a first max hang without a value is a test, and it loads the fingers fully.
+            val fingerWork = sets.any { it.setType != SetType.WARMUP &&
+                com.cruxcoach.athlete.catalog.LoadDomain.FINGER in catalog.fallbackFor(it.exerciseSlug).domains }
             val fingersFreeOn = if (isToday && fingerWork) today.plus(kotlinx.datetime.DatePeriod(days = if (masters) 3 else 2)) else null
             val fuelLeft = if (!isToday) null else runCatching {
                 val targets = service.fuelTargets(service.activities(1)[today.toString()], profile) ?: return@runCatching null
