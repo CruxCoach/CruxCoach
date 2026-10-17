@@ -749,6 +749,12 @@ This feature does **not** request `ACCESS_FINE_LOCATION` /
 `ACCESS_COARSE_LOCATION`. No GPS, no on-device location lookup, no
 background scanning. "Locate me" is explicitly out of scope for v1.
 
+> **Superseded in 0.2.4** (owner decision 2026-10-17, branch
+> `feat/0.2.4-board-map`): "My location" on the map and "Gyms near me" in the
+> gym picker request coarse/fine location **only when tapped**, take one
+> foreground fix through the platform `LocationManager` (no Play Services),
+> keep it in memory and never store or send it. Still no background location.
+
 ### 10.2 Tile Requests
 
 - Tiles fetched from `tiles.openfreemap.org` reveal the user's IP and
