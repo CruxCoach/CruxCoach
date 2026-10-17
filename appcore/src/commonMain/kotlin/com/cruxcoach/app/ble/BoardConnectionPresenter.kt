@@ -56,7 +56,13 @@ class BoardConnectionPresenter(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val remembered = RememberedBoardStore(keyValues)
-    private val controller = BoardConnectionController(central, scope, clock)
+    private val cleaningStorage = BoardCleaningStorage(keyValues)
+    private val controller = BoardConnectionController(
+        central, scope, clock,
+        cleaning = BoardCleaningSession(cleaningStorage.load(), cleaningStorage::save) {
+            cleaningLocalDate(clock.epochMillis())
+        },
+    )
     private val _state = MutableStateFlow(BoardConnectionUiState(remembered = remembered.all()))
     val state: StateFlow<BoardConnectionUiState> = _state.asStateFlow()
 
@@ -158,6 +164,43 @@ class BoardConnectionPresenter(
     }
 
     fun clearBoard() = run { controller.clearBoard() }
+
+    // ── Clean holds ─────────────────────────────────────────────────────
+
+    val cleaningState: StateFlow<BoardCleaningState> get() = controller.cleaningState
+
+    fun refreshCleaningDay() = controller.refreshCleaningDay()
+
+    /**
+     * Runs on this presenter's scope, not the caller's: leaving the screen
+     * must not interrupt a multi-chunk frame or let its outstanding write
+     * callback acknowledge a new write. [onResult] gets false for any failure.
+     */
+    fun startCleaning(onResult: (Boolean) -> Unit) = cleaningCommand(onResult) { identifier ->
+        controller.startCleaning(identifier)
+    }
+
+    fun finishCleaning(markCleaned: Boolean, onResult: (Boolean) -> Unit) = cleaningCommand(onResult) { identifier ->
+        controller.finishCleaning(identifier, markCleaned)
+    }
+
+    private fun cleaningCommand(onResult: (Boolean) -> Unit, command: suspend (String) -> Boolean) {
+        val identifier = controller.state.value.connectedBoard?.identifier
+        if (identifier == null) {
+            onResult(false)
+            return
+        }
+        scope.launch {
+            val success = try {
+                command(identifier)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
+            }
+            onResult(success)
+        }
+    }
 
     fun dispose() {
         controller.disconnect()

@@ -180,15 +180,16 @@ class BoardConnectionControllerTest {
     }
 
     @Test
-    fun clearSendsTheEmptyPacketAndMoonBoardGetsTheAuroraV2Quirk() = runTest {
+    fun clearSendsTheEmptyPacketAndMoonBoardGetsAnEmptyFrame() = runTest {
         val kilter = connected(kilter3)
         assertEquals(BoardSendResult.OK, kilter.controller.clearBoard(BoardBrand.KILTER))
         assertEquals(bytes(0x01, 0x01, 0xAB, 0x02, 0x54, 0x03), kilter.central.writes.single().bytes)
 
-        // Documented Android quirk: the MoonBoard encoder is BoardPacketEncoder(apiLevel = 0).
+        // Android 0.2.4: a MoonBoard is cleared with its own empty frame, in one write
+        // (0.2.3 sent the Aurora v2 empty packet of its apiLevel-0 encoder).
         val moonRig = connected(moon)
         assertEquals(BoardSendResult.OK, moonRig.controller.clearBoard())
-        assertEquals(bytes(0x01, 0x01, 0xAF, 0x02, 0x50, 0x03), moonRig.central.writes.single().bytes)
+        assertEquals("l##".encodeToByteArray().toList(), moonRig.central.writes.single().bytes)
     }
 
     @Test

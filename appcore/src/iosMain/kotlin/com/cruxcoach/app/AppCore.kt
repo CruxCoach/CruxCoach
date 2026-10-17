@@ -79,6 +79,7 @@ import com.cruxcoach.app.ui.DetailScreenModel
 import com.cruxcoach.app.ui.HistoryScreenModel
 import com.cruxcoach.app.ui.ListDetailScreenModel
 import com.cruxcoach.app.ui.ImportScreenModel
+import com.cruxcoach.app.ui.BoardCleaningScreenModel
 import com.cruxcoach.app.ui.KilterScreenModel
 import com.cruxcoach.app.ui.DataExchangeScreenModel
 import com.cruxcoach.app.ui.BrowserTourModel
@@ -570,7 +571,10 @@ class AppCore private constructor(
         emptyList()
     }
 
-    // ── Board area: Kilter upload (0.2.4) ───────────────────────────────
+    // ── Board area: Clean holds and Kilter upload (0.2.4) ───────────────
+
+    /** "Clean holds" for the connected board; the collection lives in the shared connection. */
+    fun makeBoardCleaningScreen(): BoardCleaningScreenModel = BoardCleaningScreenModel(boardConnection)
 
     /**
      * The Kilter screen with the 0.2.4 upload engine. Upload runs and their

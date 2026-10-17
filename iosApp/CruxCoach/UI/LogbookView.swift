@@ -6,6 +6,8 @@ import SwiftUI
 struct LogbookView: View {
     let core: AppCore
     @State private var host: ScreenHost<LogbookScreenModel, LogbookScreenState>?
+    @State private var cleaning: ScreenHost<BoardCleaningScreenModel, BoardCleaningScreenState>?
+    @State private var showCleaning = false
 
     var body: some View {
         Group {
@@ -16,6 +18,22 @@ struct LogbookView: View {
             }
         }
         .navigationTitle(L("board_logbook_title"))
+        .toolbar {
+            // Android's logbook options menu; "Clean holds" is its entry point.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { showCleaning = true } label: {
+                        Label(L("board_cleaning_title"), systemImage: "sparkles")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .accessibilityLabel(L("board_cleaning_logbook_options"))
+                }
+            }
+        }
+        .sheet(isPresented: $showCleaning) {
+            NavigationStack { BoardCleaningSheet(core: core) }
+        }
         .task {
             guard host == nil else { return }
             let model = core.makeLogbookScreen()
@@ -23,12 +41,21 @@ struct LogbookView: View {
                               subscribe: { model, onState in model.watch(onState: onState) },
                               onClose: { model in model.close() })
             model.refresh()
+            let cleaningModel = core.makeBoardCleaningScreen()
+            cleaning = ScreenHost(model: cleaningModel, initial: cleaningModel.currentState,
+                                  subscribe: { model, onState in model.watch(onState: onState) },
+                                  onClose: { model in model.close() })
         }
     }
 
     @ViewBuilder
     private func screen(model: LogbookScreenModel, ui: LogbookScreenState) -> some View {
         List {
+            if let cleaning, cleaning.state.active {
+                Section {
+                    BoardCleaningBanner(ui: cleaning.state) { showCleaning = true }
+                }
+            }
             if ui.isLoading && !ui.hasData {
                 Section { ProgressView().frame(maxWidth: .infinity) }
             } else if !ui.hasData {
