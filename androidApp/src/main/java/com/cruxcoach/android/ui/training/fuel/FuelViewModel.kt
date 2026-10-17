@@ -20,7 +20,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -80,15 +83,19 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
 
     private val _state = MutableStateFlow(FuelState())
     val state: StateFlow<FuelState> = _state.asStateFlow()
+    /** The day picked with the arrows; null = today, following the clock (device test D41). */
     private val selectedDay = MutableStateFlow<LocalDate?>(null)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             service.ensureReady()
             val repo = service.repo
-            if (selectedDay.value == null) selectedDay.value = service.today()
-            selectedDay.flatMapLatest { day ->
-                val d = (day ?: service.today()).toString()
+            // On today the screen follows the clock, so a screen left open over midnight shows the new day (D41);
+            // a day picked with the arrows stays.
+            val clockDay = flow { while (true) { emit(service.today()); delay(dayTickMs) } }.distinctUntilChanged()
+            // The clock's day is part of the key, so "yesterday" on a picked day is relabelled after midnight too.
+            combine(selectedDay, clockDay) { picked, today -> (picked ?: today) to today }.distinctUntilChanged().flatMapLatest { (day, _) ->
+                val d = day.toString()
                 combine(
                     repo.observeProfile(),
                     repo.observeFoodLog(d),
@@ -103,7 +110,7 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                         // Today's planned training as Today computed it (audit W4).
                         repo.observeSetting(com.cruxcoach.athlete.logic.PlannedTraining.SETTING_KEY),
                     ) { w, h, _, _, _ -> w.size to h.lastOrNull()?.value },
-                ) { profile, entries, water, foods, _ -> Snapshot(day ?: service.today(), profile, entries, water, foods) }
+                ) { profile, entries, water, foods, _ -> Snapshot(day, profile, entries, water, foods) }
             }.collect { refresh(it) }
         }
     }
@@ -160,15 +167,16 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
 
     // ── Navigation between days ──────────────────────────────────────
 
-    fun previousDay() { selectedDay.value?.let { selectedDay.value = it.minus(DatePeriod(days = 1)) } }
+    fun previousDay() { selectedDay.value = (selectedDay.value ?: service.today()).minus(DatePeriod(days = 1)) }
 
+    /** One day on; reaching today means following the clock again. */
     fun nextDay() {
         val day = selectedDay.value ?: return
-        val today = service.today()
-        if (day < today) selectedDay.value = day.plus(DatePeriod(days = 1))
+        val next = day.plus(DatePeriod(days = 1))
+        selectedDay.value = if (next < service.today()) next else null
     }
 
-    fun goToday() { selectedDay.value = service.today() }
+    fun goToday() { selectedDay.value = null }
 
     private fun currentDay(): String = (selectedDay.value ?: service.today()).toString()
 
@@ -315,6 +323,9 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
     }
 
     companion object {
+        /** How often the screen checks whether the date changed; tests shorten it. */
+        @androidx.annotation.VisibleForTesting
+        internal var dayTickMs = 60_000L
         /** Nutrient fields hold the values of one portion. */
         const val SOURCE_PORTION = "portion"
         /** Nutrient fields hold values per 100 g. */
