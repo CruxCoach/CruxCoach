@@ -197,6 +197,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   training block, three weeks at least – through every safety rule, with
   Undo, and listed under "What the coach learned" with "Forget"; "Only
   today" changes nothing beyond the usual light learning.
+- "Lighter" or "harder" chosen on two days within three weeks for the same
+  kind of training: the card asks once "one step easier from now on?" (or
+  more demanding). "Yes" keeps the step for that kind – today's chips still
+  move one step from there – with Undo, listed under "What the coach
+  learned" with "Forget"; "No" is not asked again for three weeks. "Back to
+  normal" on the chip now survives a restart too.
 - Today's form is visible and overridable: when the check-in or hard
   climbing earlier today takes a set off or lowers a load, the card shows
   the sets the training will plan and the training page says why ("day form

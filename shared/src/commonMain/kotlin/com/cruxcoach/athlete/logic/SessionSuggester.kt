@@ -91,6 +91,10 @@ enum class SuggestionReason {
     NO_TIME_TODAY,
     LEVEL_EASIER,
     LEVEL_HARDER,
+    /** One step easier for this kind of training, as the athlete kept it ([AthleteProfile.keptLevels]). */
+    LEVEL_EASIER_KEPT,
+    /** One step more demanding for this kind of training, as the athlete kept it. */
+    LEVEL_HARDER_KEPT,
     /** The weekly volume plan: this area has the most left to do this week (see [WeeklyVolume]). */
     WEEKLY_TARGET,
     /** Back after a break: fewer sets and no maximal finger load for now (see [ReturnToTraining]). */
@@ -186,7 +190,7 @@ data class SuggestionInput(
     val climbingToday: Boolean = false,
     /** Newest performance values, for the evidence line. */
     val benchmarks: List<Benchmark> = emptyList(),
-    /** "zu leicht" (+1) / "zu schwer" (−1) for today. */
+    /** "zu leicht" (+1) / "zu schwer" (−1) for today; on top of the step kept for the kind ([AthleteProfile.keptLevels]). */
     val levelShift: Int = 0,
     /** "keine Zeit" shortens today's budget. */
     val budgetFactor: Double = 1.0,
@@ -823,7 +827,7 @@ object SessionSuggester {
             items = applyBlock(ctx, items)
             // "Easier" / "harder" from the card works on the athlete's own plan too (audit W8): a set less or more
             // of the main work, the exercises stay as they built them.
-            when (input.levelShift.coerceIn(-1, 1)) {
+            when (shift(input, SuggestionFocus.PLANNED)) {
                 -1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = max(1, it.sets - 1)) }
                 1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = it.sets + 1) }
             }
@@ -887,7 +891,7 @@ object SessionSuggester {
         if (light) return BoardPlan(GeneratorType.VOLUME, 45)
         val phase = input.block?.phase
         // "Easier" makes the board day volume, "harder" limit moves when fresh (audit W8).
-        val shift = input.levelShift.coerceIn(-1, 1)
+        val shift = shift(input, SuggestionFocus.BOARD_DAY)
         val coach = input.coach
         val type = when {
             shift < 0 -> GeneratorType.VOLUME
@@ -1030,6 +1034,11 @@ object SessionSuggester {
                 minutes = (boardPlan.minutes * back.setsFactor).roundToInt().coerceAtLeast(20),
             )
         }
+        // A step kept for this kind says so, unless today's own choice already explains the level.
+        if (input.levelShift == 0) when (keptLevel(input, focus)) {
+            -1 -> ctx.reasons += SuggestionReason.LEVEL_EASIER_KEPT
+            1 -> ctx.reasons += SuggestionReason.LEVEL_HARDER_KEPT
+        }
         val main = routine.items.filter { !it.warmup }
         val favs = main.count { it.slug in input.favorites }
         if (favs > 0) {
@@ -1074,8 +1083,15 @@ object SessionSuggester {
         }
     }
 
-    /** Athlete level from what is known about them; keeps beginners away from one-arm and campus work. */
-    private fun level(input: SuggestionInput): Int {
+    /** The kept step for [focus] (−1/+1, 0 without one). */
+    private fun keptLevel(input: SuggestionInput, focus: SuggestionFocus): Int = (input.profile.keptLevels[focus.name] ?: 0).coerceIn(-1, 1)
+
+    /** Today's level step for [focus]: the kept one, moved by today's "easier"/"harder" – at most one step either way. */
+    private fun shift(input: SuggestionInput, focus: SuggestionFocus): Int =
+        (keptLevel(input, focus) + input.levelShift.coerceIn(-1, 1)).coerceIn(-1, 1)
+
+    /** Athlete level from what is known about them, with the step for [focus]; keeps beginners away from one-arm and campus work. */
+    private fun level(input: SuggestionInput, focus: SuggestionFocus): Int {
         var level = 2
         if (input.benchmarkSlugs.size >= 3) level++
         if ("pull.weighted_pull_up" in input.benchmarkSlugs && "finger.max_hang" in input.benchmarkSlugs) level++
@@ -1084,7 +1100,7 @@ object SessionSuggester {
         // 2026-10-17). The grade sets the level, the years cap it; the novice and youth guardrails still apply.
         climbingLevel(input.coach, input.logbookDifficulty)?.let { level = max(level, it) }
         if (input.coach.goal == CoachGoal.COMEBACK) level--
-        return (level + input.levelShift.coerceIn(-1, 1)).coerceAtLeast(1)
+        return (level + shift(input, focus)).coerceAtLeast(1)
     }
 
     /**
@@ -1125,7 +1141,7 @@ object SessionSuggester {
             ownedEquipment = if (profile.equipmentConfigured) profile.equipment else setOf(EquipmentV2.NONE, EquipmentV2.MAT),
             withoutClimbing = !allowWall,
         )
-        val level = level(input)
+        val level = level(input, focus)
         val guard = guardrails(input)
         val fingerFocus = focus == SuggestionFocus.FINGER_STRENGTH || focus == SuggestionFocus.INJURY_SAFE
         val result = mutableListOf<RoutineItem>()
@@ -1252,7 +1268,7 @@ object SessionSuggester {
             if (FocusArea.POWER_ENDURANCE in coach.focus && "endurance" in def.tags) s += 2.0
         }
         if (slot == Slot.PULL && FocusArea.POWER in coach.focus && "power" in def.tags) s += 1.5
-        if ("beginner_friendly" in def.tags && level(input) <= 2) s += 0.5
+        if ("beginner_friendly" in def.tags && level(input, focus) <= 2) s += 0.5
         if (slot == Slot.WARMUP) {
             // Prepares the body parts the session loads; a lighter version on the same equipment first.
             val loaded = mains.flatMap { it.domains }.toSet()

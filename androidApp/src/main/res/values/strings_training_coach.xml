@@ -213,7 +213,7 @@
     <string name="trlr_own_loads">Your own loads</string>
     <string name="trlr_forget">Forget</string>
     <string name="trlr_forget_all">Forget everything</string>
-    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far and what you kept after a training. Favourites, “never suggest”, your own loads and performance values stay.</string>
+    <string name="trlr_forget_all_text">The coach forgets the exercises, weekdays and swaps it learned so far, what you kept after a training and the level steps you kept. Favourites, “never suggest”, your own loads and performance values stay.</string>
     <string name="trlr_summary_nothing">Nothing yet</string>
     <plurals name="trlr_summary_learned">
         <item quantity="one">%1$d learned</item>

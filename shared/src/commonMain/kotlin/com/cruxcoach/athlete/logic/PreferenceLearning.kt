@@ -236,6 +236,63 @@ object PreferenceLearning {
         return rejections.mapValues { (_, all) -> all.groupBy { it.first }.map { (day, rows) -> day to rows.maxOf { it.second } } }
     }
 
+    // ── "Easier"/"harder" for good (comparison review #10) ──
+
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus `chosen_level:<SuggestionFocus>`, value 0: back to the coach's level
+     * for today. "Easier" and "harder" themselves are NEXT events with TOO_HARD / TOO_EASY and the kind as focus.
+     */
+    const val CHOSEN_LEVEL = "chosen_level:"
+    /** Ledger FEEDBACK focus `level_answer:<SuggestionFocus>`: value = the step taken over for good (−1/+1), 0 = "no". */
+    const val LEVEL_ANSWER = "level_answer:"
+    /** Two same-direction choices within this many days make the offer; a "no" keeps it away as long. */
+    const val LEVEL_WINDOW_DAYS = 21
+    /** Forgets the level kept for one kind (and the choices behind it). */
+    fun levelKey(focus: String) = "level:$focus"
+
+    /** "From now on one step easier ([direction] −1) / more demanding (+1) for [focus]?" */
+    data class LevelOffer(val focus: SuggestionFocus, val direction: Int)
+
+    /**
+     * The level step to offer for good: the athlete chose the same direction for the same kind of training on two
+     * days within [LEVEL_WINDOW_DAYS] (a day counts with its last choice; "back to normal" cancels it). Choices before an
+     * answer for that kind, and the [LEVEL_WINDOW_DAYS] after a "no", ask nothing; a kept step is never offered twice.
+     */
+    fun levelOffers(
+        events: List<SuggestionEvent>,
+        today: LocalDate,
+        kept: Map<String, Int>,
+        resets: Map<String, Long> = emptyMap(),
+    ): List<LevelOffer> {
+        val from = today.minus(DatePeriod(days = LEVEL_WINDOW_DAYS - 1))
+        val answers = events.filter { it.kind == SuggestionEventKind.FEEDBACK && it.focus?.startsWith(LEVEL_ANSWER) == true }
+            .groupBy { it.focus!!.removePrefix(LEVEL_ANSWER) }.mapValues { (_, list) -> list.maxBy { it.createdAt } }
+        // Kind → day → the day's last level choice.
+        val days = mutableMapOf<String, MutableMap<LocalDate, Int>>()
+        for (e in events.sortedBy { it.createdAt }) {
+            val (kind, shift) = when {
+                e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.TOO_EASY -> (e.focus ?: continue) to 1
+                e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.TOO_HARD -> (e.focus ?: continue) to -1
+                e.kind == SuggestionEventKind.FEEDBACK && e.focus?.startsWith(CHOSEN_LEVEL) == true ->
+                    e.focus!!.removePrefix(CHOSEN_LEVEL) to (e.value?.roundToInt() ?: 0)
+                else -> continue
+            }
+            val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: continue
+            if (day < from || day > today) continue
+            if (e.createdAt <= max(since(resets, levelKey(kind)), answers[kind]?.createdAt ?: 0L)) continue
+            days.getOrPut(kind) { mutableMapOf() }[day] = shift.coerceIn(-1, 1)
+        }
+        return days.mapNotNull { (kind, byDay) ->
+            val focus = SuggestionFocus.entries.firstOrNull { it.name == kind }?.takeIf { it != SuggestionFocus.REST } ?: return@mapNotNull null
+            val no = answers[kind]?.takeIf { (it.value ?: 0.0) == 0.0 }
+            if (no != null && runCatching { LocalDate.parse(no.day) }.getOrNull()?.let { it >= from } != false) return@mapNotNull null
+            val direction = listOf(-1, 1).firstOrNull { d -> byDay.values.count { it == d } >= 2 } ?: return@mapNotNull null
+            val now = kept[kind] ?: 0
+            if ((now + direction) !in -1..1) return@mapNotNull null
+            LevelOffer(focus, direction)
+        }
+    }
+
     // ── "From now on like this?" after a training (comparison review #3) ──
 
     /**

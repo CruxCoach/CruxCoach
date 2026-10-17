@@ -84,9 +84,12 @@ data class Learned(
     val resting: Map<String, kotlinx.datetime.LocalDate> = emptyMap(),
     /** Kept after a training ("künftig so", comparison review #3), newest first. */
     val kept: List<com.cruxcoach.athlete.logic.PreferenceLearning.Kept> = emptyList(),
+    /** Level steps kept per kind of training (comparison review #10). */
+    val levels: List<Pair<com.cruxcoach.athlete.logic.SuggestionFocus, Int>> = emptyList(),
 ) {
-    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null && kept.isEmpty()
-    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size
+    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null &&
+        kept.isEmpty() && levels.isEmpty()
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size + levels.size
 }
 
 @HiltViewModel
@@ -159,6 +162,9 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             weekdays = com.cruxcoach.athlete.logic.PreferenceLearning.usualChoices(events, today, resets).values.sortedBy { it.isoDay },
             ownLoads = own.map { it to service.catalog.fallbackFor(it.exerciseSlug) }.sortedBy { it.second.slug },
             kept = kept,
+            levels = profile.keptLevels.mapNotNull { (kind, step) ->
+                com.cruxcoach.athlete.logic.SuggestionFocus.entries.firstOrNull { it.name == kind }?.takeIf { step != 0 }?.let { it to step }
+            }.sortedBy { it.first.ordinal },
             minutes = com.cruxcoach.athlete.logic.PreferenceLearning.suggestedSessionMinutes(
                 repo.workoutsBetween(today.minus(kotlinx.datetime.DatePeriod(days = com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS)).toString(),
                     today.toString()), profile.sessionMinutes, today),
@@ -170,6 +176,12 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     /** The coach forgets what it learned about one exercise; favourites and "never" stay. */
     fun forgetExercise(slug: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.exerciseKey(slug))
 
+    /** A kept level step goes, with the choices that led to it: the coach's own level for that kind again. */
+    fun forgetLevel(focus: com.cruxcoach.athlete.logic.SuggestionFocus) = update {
+        it.copy(keptLevels = it.keptLevels - focus.name,
+            learningResets = it.learningResets + (com.cruxcoach.athlete.logic.PreferenceLearning.levelKey(focus.name) to System.currentTimeMillis()))
+    }
+
     /** A choice kept after a training is forgotten: the coach chooses that slot again. */
     fun forgetKept(eventId: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.keptKey(eventId))
 
@@ -179,8 +191,11 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
     /** An own lower load goes: planning falls back to the value before it. */
     fun forgetOwnLoad(b: Benchmark) = io { service.repo.deleteBenchmark(b.id) }
 
-    /** Everything learned from choices so far (not favourites, "never" or performance values). */
-    fun forgetAll() = forget(com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL)
+    /** Everything learned from choices so far, kept level steps included (not favourites, "never" or performance values). */
+    fun forgetAll() = update {
+        it.copy(keptLevels = emptyMap(),
+            learningResets = it.learningResets + (com.cruxcoach.athlete.logic.PreferenceLearning.RESET_ALL to System.currentTimeMillis()))
+    }
 
     /** Lets an excluded exercise be suggested again. */
     fun allow(slug: String) = update { it.copy(excludedExercises = it.excludedExercises - slug) }
@@ -639,6 +654,15 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
                 u.minutes?.let { stringResource(R.string.trt_duration_value, it) },
             )
             row(day, parts.joinToString(" · "), "learned_day_${u.isoDay}") { viewModel.forgetWeekday(u.isoDay) }
+        }
+    }
+    if (learned.levels.isNotEmpty()) {
+        // "From now on one step easier": per kind of training, until forgotten.
+        SectionTitle(stringResource(R.string.trlr_levels))
+        learned.levels.forEach { (focus, step) ->
+            row(com.cruxcoach.android.ui.training.today.levelKindLabel(focus),
+                stringResource(if (step < 0) R.string.trlr_level_easier else R.string.trlr_level_harder),
+                "learned_level_${focus.name}") { viewModel.forgetLevel(focus) }
         }
     }
     if (learned.kept.isNotEmpty()) {

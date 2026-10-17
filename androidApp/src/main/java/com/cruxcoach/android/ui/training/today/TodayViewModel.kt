@@ -25,6 +25,9 @@ import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.plus
 import javax.inject.Inject
 
+/** A level step kept from [offer]: [before] the kept step for the kind, [todayShift] today's choice, [eventIds] the ledger entries. */
+data class LevelKept(val offer: PreferenceLearning.LevelOffer, val before: Int?, val todayShift: Int, val eventIds: List<String>)
+
 /** One day in the week strip. */
 data class WeekDay(val date: LocalDate, val climbed: Boolean, val trained: Boolean, val paused: Boolean, val isToday: Boolean)
 
@@ -107,6 +110,10 @@ data class TodayState(
     val circuitPossible: Boolean = false,
     /** Ids of today's climbing days logged by hand or from Health Connect: the filled tile opens them (device test D30). */
     val climbingEntriesToday: List<String> = emptyList(),
+    /** "Easier"/"harder" twice for today's kind: the card asks once whether to keep the step (comparison review #10). */
+    val levelOffer: PreferenceLearning.LevelOffer? = null,
+    /** A level step just kept, for the snackbar and "Rückgängig". */
+    val levelKept: LevelKept? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -184,6 +191,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private val swapsToday = mutableMapOf<String, String>()
     /** The engine input of the shown suggestion, for the alternatives of a swap (read on the main thread). */
     @Volatile private var lastInput: SuggestionInput? = null
+    /** Level steps to offer for good, from the ledger at the last suggestion (comparison review #10). */
+    @Volatile private var lastLevelOffers: List<PreferenceLearning.LevelOffer> = emptyList()
     /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
     private var lastUsual: PreferenceLearning.UsualChoice? = null
     private var ignoreUsualKind = false
@@ -327,6 +336,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 circuitPossible = daily?.let { circuitCandidates(it) } ?: false,
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
                 levelShift = levelShift,
+                levelOffer = daily?.let { s -> lastLevelOffers.firstOrNull { it.focus == s.focus } },
                 usual = lastUsual,
                 climbingEntriesToday = runCatching { repo.climbingDaysSince(today.toString()) }.getOrDefault(emptyList())
                     .filter { e -> e.day == today.toString() }.map { e -> e.id },
@@ -351,13 +361,15 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 SuggestionFeedback.DISLIKE_EXERCISE -> e.slugs.singleOrNull()?.let {
                     if (e.value == PreferenceLearning.LEFT_OUT) swapsToday[originalOf(it)] = "" else dislikedToday += it
                 }
-                SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
-                SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
+                // The level chips set the level, they do not add up (lighter, then harder = harder).
+                SuggestionFeedback.TOO_EASY -> levelShift = 1
+                SuggestionFeedback.TOO_HARD -> levelShift = -1
                 else -> Unit
             }
             SuggestionEventKind.FEEDBACK -> {
                 val focus = e.focus.orEmpty()
                 when {
+                    focus.startsWith(PreferenceLearning.CHOSEN_LEVEL) -> levelShift = (e.value?.toInt() ?: 0).coerceIn(-1, 1)
                     focus == PreferenceLearning.CHOSEN_MINUTES -> minutesToday = e.value?.toInt()
                     focus.startsWith(PreferenceLearning.CHOSEN_KIND) -> {
                         chosenKinds++
@@ -377,9 +389,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             }
             else -> Unit
         }
-        // "Another suggestion" taps: a kind choice also writes a NEXT, so it does not count as one.
-        variant = (events.count { it.kind == SuggestionEventKind.NEXT && it.feedback != SuggestionFeedback.DISLIKE_EXERCISE } - chosenKinds)
-            .coerceAtLeast(0)
+        // "Another suggestion" taps: a kind choice also writes a NEXT, so it does not count as one, and neither does a level chip.
+        variant = (events.count { it.kind == SuggestionEventKind.NEXT && it.feedback != SuggestionFeedback.DISLIKE_EXERCISE &&
+            it.feedback != SuggestionFeedback.TOO_EASY && it.feedback != SuggestionFeedback.TOO_HARD } - chosenKinds).coerceAtLeast(0)
     }
 
     private fun signature(focus: String?, slugs: List<String>) = (focus ?: "") + "|" + slugs.joinToString(",")
@@ -459,6 +471,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val kept = PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets))
             val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys + kept.resting.keys
             // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
+            lastLevelOffers = PreferenceLearning.levelOffers(events, today, i.profile.keptLevels, resets)
             val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
             lastUsual = usual
             val usualWish = usual?.focus?.takeIf { wish == null && !ignoreUsualKind }
@@ -640,10 +653,62 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val s = _state.value.suggestion
             val feedback = when { shift > 0 -> SuggestionFeedback.TOO_EASY; shift < 0 -> SuggestionFeedback.TOO_HARD; else -> null }
             if (feedback != null) service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), feedback)
+            // Back to the coach's level: noted too, so a restart and the "for good?" offer see it (comparison review #10).
+            else if (levelShift != 0) service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_LEVEL + (s?.focus?.name ?: ""),
+                emptyList(), value = 0.0)
             levelShift = shift.coerceIn(-1, 1)
             lastInputs?.let { refreshUnlocked(it) }
         }
     }
+
+    /**
+     * The answer to [TodayState.levelOffer]: [keep] takes the step for the kind of training for good (visible and
+     * forgettable on "What the coach learned"; today's own chip goes back to the coach's level, which is now that
+     * step); no asks nothing for [PreferenceLearning.LEVEL_WINDOW_DAYS] days.
+     */
+    fun answerLevelOffer(keep: Boolean) {
+        val offer = _state.value.levelOffer ?: return
+        lastLevelOffers = lastLevelOffers - offer
+        _state.update { it.copy(levelOffer = null) }
+        io {
+            val kind = offer.focus.name
+            val before = service.repo.profile().keptLevels[kind]
+            val answer = service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.LEVEL_ANSWER + kind, emptyList(),
+                value = if (keep) offer.direction.toDouble() else 0.0)
+            if (!keep) {
+                // Recomputed under the lock, so a refresh that ran meanwhile cannot bring the question back.
+                synchronized(refreshLock) { lastInputs?.let { refreshUnlocked(it) } }
+                return@io
+            }
+            val today = synchronized(refreshLock) {
+                val shift = levelShift
+                val back = if (shift != 0) service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_LEVEL + kind,
+                    emptyList(), value = 0.0) else null
+                levelShift = 0
+                shift to back
+            }
+            val now = ((before ?: 0) + offer.direction).coerceIn(-1, 1)
+            service.repo.updateProfile { p -> p.copy(keptLevels = if (now == 0) p.keptLevels - kind else p.keptLevels + (kind to now)) }
+            _state.update { it.copy(levelKept = LevelKept(offer, before, today.first, listOfNotNull(answer, today.second))) }
+        }
+    }
+
+    /** "Rückgängig" after keeping a level step: the step, today's choice and the answer as before. */
+    fun undoLevelKept(kept: LevelKept) {
+        _state.update { it.copy(levelKept = null) }
+        io {
+            val kind = kept.offer.focus.name
+            synchronized(refreshLock) {
+                kept.eventIds.forEach(service::forgetSuggestion)
+                levelShift = kept.todayShift
+            }
+            service.repo.updateProfile { p ->
+                p.copy(keptLevels = if (kept.before == null) p.keptLevels - kind else p.keptLevels + (kind to kept.before))
+            }
+        }
+    }
+
+    fun consumeLevelKept() = _state.update { it.copy(levelKept = null) }
 
     /**
      * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand
