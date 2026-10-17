@@ -454,7 +454,10 @@ private fun boardFacts(board: BoardLocation, info: MapBoardInfo?): List<String> 
     val size = board.productSizeId?.let { id ->
         BoardConstants.sizeLabel(id.toLong(), board.sizeLabel.orEmpty(), board.boardBrand)
     } ?: board.sizeLabel
-    size?.takeIf(String::isNotBlank)?.let { out += it }
+    val layout = board.layoutName
+    size?.takeIf(String::isNotBlank)
+        ?.let { if (layout != null && it.startsWith("$layout ", ignoreCase = true)) it.substring(layout.length + 1) else it }
+        ?.let { out += it }
     angleFact(board.adjustability, info, board.fixedAngle)?.let { out += angleFactText(it) }
     when (board.accessType) {
         AccessType.PUBLIC -> out += stringResource(R.string.map_access_public)
