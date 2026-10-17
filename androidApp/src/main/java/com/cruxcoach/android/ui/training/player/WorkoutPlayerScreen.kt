@@ -176,6 +176,7 @@ fun WorkoutPlayerScreen(
             onAddSet = viewModel::addSet,
             onAddWarmups = viewModel::addWarmups,
             onRemoveExercise = viewModel::removeExercise,
+            onAsPlanned = viewModel::asPlanned,
         )
     }
 

@@ -119,6 +119,8 @@ data class PlayerState(
     val editingId: String? = null,
     val endedUndo: EndedExercise? = null,
     val defs: Map<String, ExerciseDefinition> = emptyMap(),
+    /** What today's form trimmed in this training (sets, load), until the athlete chooses "as planned". */
+    val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
 ) {
     val page: PlayerPage? get() = pages.getOrNull(pageIndex)
     fun def(slug: String): ExerciseDefinition? = defs[slug]
@@ -285,6 +287,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 browsing = shownPage != null,
                 editingId = editing,
                 defs = ordered.map { it.exerciseSlug }.distinct().associateWith { def(it) },
+                dayForm = service.dayForm(workout.id),
             )
         }
     }
@@ -640,6 +643,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     }
 
     fun consumeEnded() = _state.update { it.copy(endedUndo = null) }
+
+    /** "Wie geplant": what today's form trimmed comes back (open sets only) and stays off for today. */
+    fun asPlanned() {
+        val workoutId = _state.value.workout?.id ?: return
+        _state.update { it.copy(dayForm = null) }
+        enqueue { service.asPlanned(workoutId) }
+    }
 
     /** "+ set" (or "+ round" for a circuit): one more like the last, with its plan, not with a missed result. */
     fun addSet() {

@@ -387,12 +387,77 @@ class AthleteService @Inject constructor(
      */
     fun todaysModifier(): ReadinessModifier = runCatching {
         val today = today()
+        // "As planned" earlier today: the athlete decided, nothing is trimmed for the rest of the day.
+        if (repo.setting(ReadinessModifiers.AS_PLANNED_KEY) == today.toString()) return@runCatching ReadinessModifier.NONE
         val checkin = repo.checkin(today.toString())
         val readiness = ReadinessEvaluator.evaluate(checkin, repo.activeInjuries() + com.cruxcoach.athlete.logic.Soreness.injuries(checkin))
         val activity = activities(1)[today.toString()]
         val climbed = activity?.takeIf { it.climbingMinutes > 0 || it.climbingEfforts > 0 }?.climbIntensity
         ReadinessModifiers.of(readiness, climbed)
     }.getOrDefault(ReadinessModifier.NONE)
+
+    /** What today's form changed in this training, while the athlete has not chosen "as planned". */
+    fun dayForm(workoutId: String): ReadinessModifier? =
+        runCatching { ReadinessModifier.decode(repo.setting(ReadinessModifiers.settingKey(workoutId))) }.getOrNull()
+
+    /**
+     * "Wie geplant": undoes what today's form trimmed in the open part of the training – loads of open
+     * work sets back to full, the trimmed set back for exercises (one round for circuits) that still have
+     * an open set – and nothing is trimmed for the rest of the day. Done sets stay as they are.
+     */
+    suspend fun asPlanned(workoutId: String): Unit = withContext(Dispatchers.IO) {
+        val m = dayForm(workoutId) ?: return@withContext
+        synchronized(structureLock) {
+            val bodyweight = currentBodyweight()
+            val increment = repo.profile().smallestIncrementKg
+            repo.transaction {
+                val work = repo.setsFor(workoutId).filter { it.setType == SetType.WORK }
+                val loadsKey = ReadinessModifiers.settingKey(workoutId) + ".loads"
+                // id → planned target, trimmed target, planned load, trimmed load
+                val planned = repo.setting(loadsKey).orEmpty().split(";").mapNotNull { row ->
+                    row.split(",").takeIf { it.size == 5 }?.let { f -> f[0] to f.drop(1).map { it.toDoubleOrNull() } }
+                }.toMap()
+                work.filter { !it.isCompleted }.forEach { set ->
+                    val def = catalog.fallbackFor(set.exerciseSlug)
+                    val f = ReadinessModifiers.loadFactorFor(def, m)
+                    fun back(now: Double?, plannedValue: Double?, trimmedValue: Double?): Double? = when {
+                        // Untouched since it was trimmed: exactly the planned value.
+                        planned.containsKey(set.id) && now == trimmedValue -> plannedValue
+                        // Changed since (e.g. after a missed set): scale what is there back up.
+                        f > 0 && f != 1.0 -> ReadinessModifiers.scaleLoad(def, now, set.bodyweightKg ?: bodyweight, 1 / f, increment)
+                        else -> now
+                    }
+                    val p = planned[set.id]
+                    val restored = set.copy(targetLoadKg = back(set.targetLoadKg, p?.get(0), p?.get(1)), loadKg = back(set.loadKg, p?.get(2), p?.get(3)))
+                    if (restored != set) repo.saveSet(restored)
+                }
+                val open = work.filter { !it.isCompleted }
+                // Circuits: a round more when the rounds were trimmed.
+                open.mapNotNull { it.circuit }.distinct().forEach { circuit ->
+                    if (m.setsDelta < 0) {
+                        val sets = repo.setsFor(workoutId)
+                        val members = sets.filter { it.circuit == circuit }.map { it.blockIndex }.toSet()
+                        val round = (sets.filter { it.blockIndex in members && it.setType != SetType.WARMUP }.maxOfOrNull { it.setIndex } ?: -1) + 1
+                        members.sorted().forEach { block ->
+                            WorkoutPlanner.extraSet(sets.filter { it.blockIndex == block }, repo::newId)
+                                .forEach { repo.saveSet(it.copy(setIndex = round, circuit = circuit)) }
+                        }
+                    }
+                }
+                open.filter { it.circuit == null }.map { it.blockIndex }.distinct().forEach { block ->
+                    val rows = repo.setsFor(workoutId).filter { it.blockIndex == block }
+                    val def = catalog.fallbackFor(rows.first().exerciseSlug)
+                    val workSets = rows.filter { it.setType == SetType.WORK }.map { it.setIndex }.distinct().size
+                    repeat(ReadinessModifiers.setsToRestore(def, workSets, m)) {
+                        WorkoutPlanner.extraSet(repo.setsFor(workoutId).filter { it.blockIndex == block }, repo::newId).forEach(repo::saveSet)
+                    }
+                }
+                repo.putSetting(ReadinessModifiers.settingKey(workoutId), "")
+                repo.putSetting(loadsKey, "")
+                repo.putSetting(ReadinessModifiers.AS_PLANNED_KEY, today().toString())
+            }
+        }
+    }
 
     /** [setIndexOf] renumbers the planned sets (0..n-1), e.g. so an exercise taking over in a circuit plays the remaining rounds. */
     private fun addItem(
@@ -421,13 +486,25 @@ class AthleteService @Inject constructor(
             newId = repo::newId,
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
+        // The training remembers what today's form changed, so the player can say why and offer "as planned".
+        if (!item.warmup && !item.test && !modifier.isNeutral && ReadinessModifiers.affects(def, modifier) &&
+            repo.setting(ReadinessModifiers.settingKey(workoutId)) == null
+        ) repo.putSetting(ReadinessModifiers.settingKey(workoutId), modifier.encode())
+        val trimmed = mutableListOf<String>()
         planned.sets.forEach { row ->
             val set = setIndexOf(row.setIndex).let { if (it == row.setIndex) row else row.copy(setIndex = it) }
             val scaled = if (factor == 1.0 || set.setType != SetType.WORK) set else set.copy(
                 targetLoadKg = ReadinessModifiers.scaleLoad(def, set.targetLoadKg, set.bodyweightKg ?: bodyweight, factor, increment),
                 loadKg = ReadinessModifiers.scaleLoad(def, set.loadKg, set.bodyweightKg ?: bodyweight, factor, increment),
             )
+            if (scaled.targetLoadKg != set.targetLoadKg || scaled.loadKg != set.loadKg) trimmed += listOf(
+                set.id, set.targetLoadKg, scaled.targetLoadKg, set.loadKg, scaled.loadKg).joinToString(",") { it?.toString().orEmpty() }
             repo.saveSet(scaled)
+        }
+        // The planned loads, so "as planned" restores them exactly (scaling back would round differently).
+        if (trimmed.isNotEmpty()) {
+            val key = ReadinessModifiers.settingKey(workoutId) + ".loads"
+            repo.putSetting(key, (listOfNotNull(repo.setting(key)) + trimmed).joinToString(";"))
         }
         return !planned.skippedForInjury
     }
@@ -660,11 +737,24 @@ class AthleteService @Inject constructor(
         val checkin = repo.checkin(today.toString())
         val active = repo.activeInjuries()
         val injuries = active + Soreness.injuries(checkin)
+        // The same knowledge as the card (comparison review #11): what the athlete chooses comes first,
+        // what they turned down lately comes last.
+        val (affinity, resting) = learnedChoices(today, profile)
         val input = SuggestionInput(catalog, profile, today, ReadinessEvaluator.evaluate(checkin, injuries), injuries,
-            favorites = repo.favorites(), benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet())
+            favorites = repo.favorites(), benchmarkSlugs = repo.allBenchmarks().map { it.exerciseSlug }.toSet(),
+            affinity = affinity, resting = resting)
         val focus = if (active.any { it.climbingPaused }) SuggestionFocus.INJURY_SAFE else SuggestionFocus.PULL_PUSH
         return SessionSuggester.alternatives(input, slugs.distinct().map { RoutineItem(it) }, focus, slug)
     }
+
+    /** Learned preference per exercise and the exercises resting after a rejection (today's included). */
+    private fun learnedChoices(today: LocalDate, profile: AthleteProfile): Pair<Map<String, Double>, Set<String>> = runCatching {
+        val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+        val resets = profile.learningResets
+        val events = repo.suggestionEventsSince(sinceMs)
+        PreferenceLearning.affinity(events, repo.completedSetsSince(sinceMs), today, resets) to
+            PreferenceLearning.resting(events, today, resets).keys
+    }.getOrDefault(emptyMap<String, Double>() to emptySet())
 
     /** Swaps a whole block to another exercise (progression chain "easier/harder"). */
     fun swapBlock(workoutId: String, blockIndex: Int, newSlug: String) {

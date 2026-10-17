@@ -162,6 +162,24 @@ class ExercisePageTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `the page says why today is lighter and "as planned" brings it back`() {
+        // Comparison review #5: the check-in trimmed sets and load silently.
+        repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(service.today().toString(), 0, sleep = 2))
+        val (id, vm) = player(Routine("r", "Pull", items = listOf(
+            RoutineItem("pull.weighted_pull_up", sets = 4, repsMin = 5, repsMax = 5, loadKg = 20.0, restS = 120))))
+        assertEquals(3, work(id).size)
+        val trimmed = work(id).first().targetLoadKg!!
+        assertTrue(trimmed < 20.0, "$trimmed")
+        waitForTag("player_dayform")
+        click("player_dayform_as_planned")
+        until { work(id).size == 4 && vm.state.value.dayForm == null }
+        assertEquals(20.0, work(id).first().targetLoadKg)
+        assertTrue(compose.onAllNodes(androidx.compose.ui.test.hasTestTag("player_dayform")).fetchSemanticsNodes().isEmpty())
+        // The rest of the day stays as planned: a new exercise is not trimmed either.
+        assertTrue(service.todaysModifier().isNeutral)
+    }
+
+    @Test
     fun `back in the training it goes on after the set done last`() {
         // Device test 2026-10-17: after reopening, the page jumped to an exercise skipped earlier.
         val (id, vm) = player(Routine("r", "Two", items = listOf(

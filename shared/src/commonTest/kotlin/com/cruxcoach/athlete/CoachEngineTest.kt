@@ -111,6 +111,10 @@ class PreferenceLearningTest {
         val storm = (1..8).map { i -> event(SuggestionEventKind.SKIPPED_SET, listOf("finger.max_hang"), daysAgo = 1).copy(id = "s$i") } +
             (1..3).map { i -> event(SuggestionEventKind.SWAPPED, listOf("finger.max_hang", "finger.half_crimp"), daysAgo = 1).copy(id = "w$i") }
         assertEquals(today.plus(DatePeriod(days = 2)), PreferenceLearning.resting(storm, today)["finger.max_hang"])
+        // The count behind the offer "stop suggesting it?" (third rejection) uses the same rules.
+        assertEquals(1.0, PreferenceLearning.rejections(storm, today)["finger.max_hang"])
+        val third = twice + event(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.plank"), daysAgo = 1)
+        assertTrue((PreferenceLearning.rejections(third, today)["core.dead_bug"] ?: 0.0) >= PreferenceLearning.OFFER_NEVER_AFTER)
     }
 
     @Test
@@ -292,6 +296,28 @@ class ReadinessModifiersTest {
     fun restDayLeavesAStartedTrainingAlone() {
         val sick = ReadinessModifiers.of(ReadinessEvaluator.evaluate(Checkin("d", 0, sick = true), emptyList()), ClimbIntensity.LIMIT)
         assertTrue(sick.isNeutral)
+    }
+
+    @Test
+    fun theModifierTravelsWithTheTrainingAndExplainsItself() {
+        val tired = ReadinessModifiers.of(ReadinessEvaluator.evaluate(Checkin("d", 0, sleep = 2, fingers = 2), emptyList()), ClimbIntensity.HARD)
+        assertEquals(tired, ReadinessModifier.decode(tired.encode()))
+        assertNull(ReadinessModifier.decode(ReadinessModifier.NONE.encode()))
+        assertNull(ReadinessModifier.decode("garbage"))
+        val hang = def("finger.max_hang").copy(defaults = com.cruxcoach.athlete.catalog.Prescription(sets = 5))
+        val plank = ExerciseDefinition("core.plank", ExerciseCategoryV2.CORE, ExerciseKind.TIME, LoadMode.BODYWEIGHT)
+        // 0.95 × 0.85 on max finger work → 19 % lighter; body-weight work has no load to cut.
+        assertEquals(19, ReadinessModifiers.loadCutPercent(hang, tired))
+        assertEquals(5, ReadinessModifiers.loadCutPercent(pullUp, tired))
+        assertEquals(0, ReadinessModifiers.loadCutPercent(plank, tired))
+        assertTrue(ReadinessModifiers.affects(plank, tired)) // one set less
+        val handsOnly = ReadinessModifiers.of(ReadinessEvaluator.evaluate(null, emptyList()), ClimbIntensity.HARD)
+        assertTrue(!ReadinessModifiers.affects(plank, handsOnly))
+        assertTrue(ReadinessModifiers.affects(hang, handsOnly))
+        // "As planned": the trimmed set back, max finger work up to its usual count.
+        assertEquals(1, ReadinessModifiers.setsToRestore(pullUp, 3, tired))
+        assertEquals(3, ReadinessModifiers.setsToRestore(hang, 2, tired))
+        assertEquals(0, ReadinessModifiers.setsToRestore(hang, 2, handsOnly))
     }
 
     @Test

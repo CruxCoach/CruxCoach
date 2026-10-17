@@ -1304,18 +1304,24 @@ object SessionSuggester {
                 // One progression chain per session: no neighbour of another pick.
                 others.none { o -> def.easier == o || def.harder == o }
         }
-        val chain = listOfNotNull(
+        // Turned down lately ([SuggestionInput.resting]): offered last, so the athlete still finds them but the
+        // coach does not lead with what they rejected (comparison review #1/#11).
+        val chainAll = listOfNotNull(
             candidates.firstOrNull { it.slug == original.easier }?.let { Alternative(it, easier = true, variant = true) },
             candidates.firstOrNull { it.slug == original.harder }?.let { Alternative(it, harder = true, variant = true) },
         )
+        val chain = chainAll.filter { it.def.slug !in input.resting }
         val rest = candidates.filter { c -> chain.none { it.def.slug == c.slug } }
-            .sortedWith(compareByDescending<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
+            .sortedWith(compareBy<ExerciseDefinition> { it.slug in input.resting }
+                .thenByDescending { score(input, it, slot, focus, mains) }.thenBy { it.slug })
         // Device review 2026-10-16: a diamond push-up got only harder push-ups. An easier one comes first when the
         // chain has none, then exercises about as hard, then the rest — each marked easier or harder.
-        val easierPick = if (chain.any { it.easier }) null else rest.firstOrNull { it.difficulty < original.difficulty }
+        val fresh = rest.filter { it.slug !in input.resting }
+        val easierPick = if (chain.any { it.easier }) null else fresh.firstOrNull { it.difficulty < original.difficulty }
         val ordered = listOfNotNull(easierPick) +
-            rest.filter { it != easierPick && it.difficulty == original.difficulty } +
-            rest.filter { it != easierPick && it.difficulty != original.difficulty }
+            fresh.filter { it != easierPick && it.difficulty == original.difficulty } +
+            fresh.filter { it != easierPick && it.difficulty != original.difficulty } +
+            rest.filter { it.slug in input.resting }
         return (chain + ordered.map { Alternative(it, easier = it.difficulty < original.difficulty, harder = it.difficulty > original.difficulty) })
             .take(count)
     }
