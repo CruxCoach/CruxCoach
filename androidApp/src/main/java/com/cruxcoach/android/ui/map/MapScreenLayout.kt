@@ -8,17 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +33,8 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.LocationSearching
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.BarChart
@@ -54,11 +53,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,11 +67,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -123,111 +126,161 @@ fun MapScreenLayout(
     onShowNearest: () -> Unit,
     onOverlayHeight: (px: Int) -> Unit,
     onPeekHeight: (px: Int, venueId: String?) -> Unit,
+    /** The user's position once "My location" found it; rows then show distances. */
+    userPosition: UserPosition? = null,
+    locating: Boolean = false,
+    onLocateMe: () -> Unit = {},
     map: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val navBottom = WindowInsets.navigationBars.getBottom(density)
+    // The screen sits inside the app scaffold, which already keeps it off the
+    // status and navigation bars: measure the real layout, never raw insets.
     var peekContentPx by remember { mutableIntStateOf(0) }
-    val peekPx = peekContentPx + navBottom
-    val peek = with(density) { peekPx.toDp() }.coerceAtLeast(96.dp)
+    val peek = with(density) { peekContentPx.toDp() }.coerceAtLeast(96.dp)
+    var screenHeightPx by remember { mutableIntStateOf(0) }
+    var overlayBottomPx by remember { mutableIntStateOf(0) }
     // Pulled all the way up, the sheet stops below the search bar so search,
     // board choice and filters stay reachable.
-    var overlayBottomPx by remember { mutableIntStateOf(0) }
-    val windowHeightPx = LocalWindowInfo.current.containerSize.height
-    val sheetMax = if (overlayBottomPx > 0 && windowHeightPx > overlayBottomPx) {
-        with(density) { (windowHeightPx - overlayBottomPx).toDp() - 8.dp }
+    val sheetMax = if (overlayBottomPx > 0 && screenHeightPx > overlayBottomPx) {
+        with(density) { (screenHeightPx - overlayBottomPx).toDp() - 8.dp }
     } else androidx.compose.ui.unit.Dp.Unspecified
+    val screenTitle = stringResource(R.string.map_screen_title)
 
-    BottomSheetScaffold(
-        scaffoldState = scaffoldState,
-        sheetPeekHeight = peek,
-        sheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        sheetContainerColor = MaterialTheme.colorScheme.surface,
-        sheetShadowElevation = 10.dp,
-        sheetDragHandle = null,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        sheetContent = {
-            if (selectedVenue != null) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = sheetMax)
-                        .verticalScroll(rememberScrollState())
-                        .navigationBarsPadding()
-                        .padding(bottom = 24.dp)
-                        .testTag("map_sheet_venue"),
-                ) {
-                    Column(
-                        Modifier.onSizeChanged {
-                            peekContentPx = it.height
-                            onPeekHeight(it.height + navBottom, selectedVenue.id)
+    // The search bar, chips and search results are drawn above the sheet, so
+    // results stay readable while the keyboard pushes the sheet up.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .semantics { paneTitle = screenTitle }
+            .onSizeChanged { screenHeightPx = it.height }
+    ) {
+        BottomSheetScaffold(
+            scaffoldState = scaffoldState,
+            sheetPeekHeight = peek,
+            sheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+            sheetContainerColor = MaterialTheme.colorScheme.surface,
+            sheetShadowElevation = 10.dp,
+            sheetDragHandle = null,
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            sheetContent = {
+                if (selectedVenue != null) {
+                    // Keyed by venue: switching straight to another place resets
+                    // the scroll and re-reports the summary height for it.
+                    key(selectedVenue.id) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = sheetMax)
+                                .verticalScroll(rememberScrollState())
+                                .navigationBarsPadding()
+                                .padding(bottom = 24.dp)
+                                .testTag("map_sheet_venue"),
+                        ) {
+                            Column(
+                                Modifier.onSizeChanged {
+                                    peekContentPx = it.height
+                                    onPeekHeight(it.height, selectedVenue.id)
+                                }
+                            ) {
+                                SheetHandle()
+                                VenueSummary(
+                                    selectedVenue,
+                                    onClose = onCloseVenue,
+                                    distanceMeters = userPosition?.distanceTo(selectedVenue),
+                                )
+                            }
+                            VenueDetails(selectedVenue, state.boardInfo, onBrowseClimbs)
                         }
-                    ) {
-                        SheetHandle()
-                        VenueSummary(selectedVenue, onClose = onCloseVenue)
                     }
-                    VenueDetails(selectedVenue, state.boardInfo, onBrowseClimbs)
+                } else {
+                    VenueListSheet(
+                        modifier = Modifier.heightIn(max = sheetMax),
+                        state = state,
+                        inView = inView,
+                        userPosition = userPosition,
+                        onSelectVenue = onSelectVenue,
+                        onResetFilters = onResetFilters,
+                        onShowNearest = onShowNearest,
+                        onPeekContent = { px ->
+                            peekContentPx = px
+                            onPeekHeight(px, null)
+                        },
+                    )
                 }
-            } else {
-                VenueListSheet(
-                    modifier = Modifier.heightIn(max = sheetMax),
-                    state = state,
-                    inView = inView,
-                    onSelectVenue = onSelectVenue,
-                    onResetFilters = onResetFilters,
-                    onShowNearest = onShowNearest,
-                    onPeekContent = { px ->
-                        peekContentPx = px
-                        onPeekHeight(px + navBottom, null)
-                    },
+            },
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                map()
+                if (state.isLoading || state.locationsLoading) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
+                            .padding(16.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp), color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                // Under the sheet: hidden when the sheet is pulled up.
+                LocateMeButton(
+                    locating = locating,
+                    active = userPosition != null,
+                    onClick = onLocateMe,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = peek + 16.dp),
                 )
             }
-        },
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Column(Modifier.onGloballyPositioned { coords ->
+                // Bottom edge of the chips in the map's own coordinates.
+                overlayBottomPx = (coords.positionInParent().y + coords.size.height).toInt() +
+                    with(density) { 8.dp.roundToPx() }
+                onOverlayHeight(overlayBottomPx)
+            }) {
+                SearchPill(
+                    search = search,
+                    onBack = onBack,
+                    onQueryChange = onQueryChange,
+                    onSubmit = { search.results.firstOrNull()?.let(onSearchResult) },
+                    onOpenStats = onOpenStats,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BrandChip(state, onSelectAllBrands, onToggleBrand)
+                    FiltersChip(state.filters.activeCountExceptBrands, onOpenFilters)
+                }
+            }
+            // Results cover the chips while the user is searching.
+            if (search.query.trim().length >= 2) {
+                SearchResults(search, onSearchResult, Modifier.padding(top = 60.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocateMeButton(locating: Boolean, active: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val label = stringResource(if (locating) R.string.locate_me_finding else R.string.locate_me)
+    SmallFloatingActionButton(
+        onClick = onClick,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+            .size(48.dp)
+            .testTag("map_locate_me")
+            .semantics { contentDescription = label },
     ) {
-        val screenTitle = stringResource(R.string.map_screen_title)
-        Box(Modifier.fillMaxSize().semantics { paneTitle = screenTitle }) {
-            map()
-            val statusTop = WindowInsets.statusBars.getTop(density)
-            val overlayMargin = with(density) { 8.dp.roundToPx() }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Column(Modifier.onSizeChanged { size ->
-                    // From the top of the screen down to the chips' bottom edge.
-                    overlayBottomPx = statusTop + overlayMargin + size.height
-                    onOverlayHeight(overlayBottomPx)
-                }) {
-                    SearchPill(
-                        search = search,
-                        onBack = onBack,
-                        onQueryChange = onQueryChange,
-                        onSubmit = { search.results.firstOrNull()?.let(onSearchResult) },
-                        onOpenStats = onOpenStats,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BrandChip(state, onSelectAllBrands, onToggleBrand)
-                        FiltersChip(state.filters.activeCountExceptBrands, onOpenFilters)
-                    }
-                }
-                // Results cover the chips while the user is searching.
-                if (search.query.trim().length >= 2) {
-                    SearchResults(search, onSearchResult, Modifier.padding(top = 60.dp))
-                }
-            }
-            if (state.isLoading || state.locationsLoading) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
-                        .padding(16.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(36.dp), color = MaterialTheme.colorScheme.primary)
-                }
-            }
+        if (locating) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            Icon(if (active) Icons.Filled.MyLocation else Icons.Filled.LocationSearching, contentDescription = null)
         }
     }
 }
@@ -249,18 +302,21 @@ private fun VenueListSheet(
     modifier: Modifier,
     state: MapState,
     inView: VenuesInView,
+    userPosition: UserPosition?,
     onSelectVenue: (MapVenue) -> Unit,
     onResetFilters: () -> Unit,
     onShowNearest: () -> Unit,
     onPeekContent: (px: Int) -> Unit,
 ) {
     val density = LocalDensity.current
-    // The collapsed sheet shows the header plus most of the nearest place, so
-    // it is obvious there is a list to pull up.
-    val firstRowPeek = with(density) { if (inView.nearest.isEmpty()) 0 else 60.dp.roundToPx() }
+    // The collapsed sheet is the header plus a fixed 60 dp — most of the
+    // nearest place, or the reset / "show nearest" button. Fixed on purpose:
+    // the list depends on the visible area, which depends on this height, so
+    // a height that followed the list could flip back and forth.
+    val belowHeader = with(density) { 60.dp.roundToPx() }
     val filteredEmpty = !state.isLoading && state.filteredVenues.isEmpty() && state.unfilteredVenues.isNotEmpty()
     Column(modifier.fillMaxWidth().testTag("map_sheet_list")) {
-        Column(Modifier.onSizeChanged { onPeekContent(it.height + firstRowPeek) }) {
+        Column(Modifier.onSizeChanged { onPeekContent(it.height + belowHeader) }) {
             SheetHandle()
             Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
                 val title = when {
@@ -272,39 +328,41 @@ private fun VenueListSheet(
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.testTag("map_in_view_title"),
                 )
                 val subtitle = when {
-                    state.isLoading || state.locationsLoading -> null
-                    filteredEmpty -> null
+                    state.isLoading || state.locationsLoading || filteredEmpty -> ""
                     inView.total == 0 -> stringResource(R.string.map_in_view_empty_hint)
                     inView.total > inView.nearest.size -> stringResource(R.string.map_in_view_capped, inView.nearest.size)
+                    userPosition != null -> stringResource(R.string.map_in_view_nearest_you)
                     else -> stringResource(R.string.map_in_view_nearest)
                 }
-                subtitle?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (filteredEmpty) {
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = onResetFilters) { Text(stringResource(R.string.map_filter_reset)) }
-                } else if (inView.total == 0 && !state.isLoading && state.filteredVenues.isNotEmpty()) {
-                    // An empty stretch of map (open sea, a country without boards):
-                    // one tap brings the closest boards into view.
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = onShowNearest, modifier = Modifier.testTag("map_show_nearest")) {
-                        Text(stringResource(R.string.map_in_view_show_nearest))
-                    }
-                }
+                // Always one line, empty or not, so the header keeps its height.
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
-        if (inView.nearest.isNotEmpty()) {
-            LazyColumn(Modifier.fillMaxWidth().testTag("map_venue_list")) {
+        when {
+            filteredEmpty -> OutlinedButton(
+                onClick = onResetFilters,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            ) { Text(stringResource(R.string.map_filter_reset)) }
+            // An empty stretch of map (open sea, a country without boards):
+            // one tap brings the closest boards into view.
+            inView.total == 0 && !state.isLoading && state.filteredVenues.isNotEmpty() -> OutlinedButton(
+                onClick = onShowNearest,
+                modifier = Modifier.padding(horizontal = 20.dp).testTag("map_show_nearest"),
+            ) { Text(stringResource(R.string.map_in_view_show_nearest)) }
+            inView.nearest.isNotEmpty() -> LazyColumn(Modifier.fillMaxWidth().testTag("map_venue_list")) {
                 items(inView.nearest, key = { it.id }) { venue ->
-                    VenueRow(venue, onClick = { onSelectVenue(venue) })
+                    VenueRow(venue, onClick = { onSelectVenue(venue) }, distanceMeters = userPosition?.distanceTo(venue))
                 }
                 if (inView.total > inView.nearest.size) {
                     item {

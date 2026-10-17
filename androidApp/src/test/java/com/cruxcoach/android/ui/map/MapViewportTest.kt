@@ -33,6 +33,23 @@ class MapViewportTest {
     }
 
     @Test
+    fun `once located, the list is nearest to the user, not to the centre`() {
+        val nearEast = UserPosition(48.13, 11.71)
+        val result = venuesInView(venues, munich, origin = nearEast)
+        assertEquals(listOf("Ost", "Zentrum", "West"), result.nearest.map { it.name })
+        assertTrue(nearEast.distanceTo(result.nearest.first()) < 1_000)
+    }
+
+    @Test
+    fun `my location frames the user with the nearest boards`() {
+        val frame = nearestFrame(venues, 48.0, 11.0, count = 2)!!
+        assertEquals(48.0, frame.south, 1e-9)
+        assertEquals(11.0, frame.west, 1e-9)
+        assertEquals(48.15, frame.north, 1e-9)   // West (48.15, 11.40) and Zentrum (48.14, 11.58)
+        assertEquals(11.58, frame.east, 1e-9)
+    }
+
+    @Test
     fun `a view across the antimeridian wraps`() {
         val pacific = MapViewport(-50.0, 170.0, -30.0, -170.0, centerLat = -40.0, centerLng = 180.0)
         assertTrue(pacific.contains(-40.0, 175.0))

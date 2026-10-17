@@ -25,6 +25,11 @@ data class MapViewport(
     }
 }
 
+/** Where "My location" found the user. Used on the device only, never stored. */
+data class UserPosition(val lat: Double, val lng: Double, val accuracyMeters: Float? = null) {
+    fun distanceTo(venue: MapVenue): Double = distanceMeters(lat, lng, venue.lat, venue.lng)
+}
+
 /** What the sheet lists while no venue is selected. */
 data class VenuesInView(
     /** All filter-passing venues inside the viewport. */
@@ -37,11 +42,19 @@ data class VenuesInView(
     }
 }
 
-/** Venues in [viewport], nearest to its centre first, at most [limit] of them. */
-fun venuesInView(venues: List<MapVenue>, viewport: MapViewport, limit: Int = 50): VenuesInView {
+/** Venues in [viewport], nearest to [origin] (the user, once located) or else to
+ *  the viewport's centre first, at most [limit] of them. */
+fun venuesInView(
+    venues: List<MapVenue>,
+    viewport: MapViewport,
+    limit: Int = 50,
+    origin: UserPosition? = null,
+): VenuesInView {
     val inside = venues.filter { viewport.contains(it.lat, it.lng) }
+    val lat = origin?.lat ?: viewport.centerLat
+    val lng = origin?.lng ?: viewport.centerLng
     val nearest = inside
-        .sortedBy { distanceMeters(viewport.centerLat, viewport.centerLng, it.lat, it.lng) }
+        .sortedBy { distanceMeters(lat, lng, it.lat, it.lng) }
         .take(limit)
     return VenuesInView(inside.size, nearest)
 }
@@ -62,19 +75,23 @@ fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Doub
  * there are no venues. Longitudes are taken relative to the centre, so a
  * frame across the antimeridian stays narrow.
  */
-fun nearestFrame(venues: List<MapVenue>, viewport: MapViewport, count: Int = 3): MapStartView.Bounds? {
+fun nearestFrame(venues: List<MapVenue>, viewport: MapViewport, count: Int = 3): MapStartView.Bounds? =
+    nearestFrame(venues, viewport.centerLat, viewport.centerLng, count)
+
+/** The point at ([lat], [lng]) and the [count] venues nearest to it, as one frame. */
+fun nearestFrame(venues: List<MapVenue>, lat: Double, lng: Double, count: Int = 3): MapStartView.Bounds? {
     val nearest = venues
-        .sortedBy { distanceMeters(viewport.centerLat, viewport.centerLng, it.lat, it.lng) }
+        .sortedBy { distanceMeters(lat, lng, it.lat, it.lng) }
         .take(count)
     if (nearest.isEmpty()) return null
-    fun unwrap(lng: Double): Double {
-        var d = lng - viewport.centerLng
+    fun unwrap(other: Double): Double {
+        var d = other - lng
         while (d > 180) d -= 360
         while (d < -180) d += 360
-        return viewport.centerLng + d
+        return lng + d
     }
-    val lats = nearest.map { it.lat } + viewport.centerLat
-    val lngs = nearest.map { unwrap(it.lng) } + viewport.centerLng
+    val lats = nearest.map { it.lat } + lat
+    val lngs = nearest.map { unwrap(it.lng) } + lng
     return MapStartView.Bounds(lats.min(), lngs.min(), lats.max(), lngs.max())
 }
 

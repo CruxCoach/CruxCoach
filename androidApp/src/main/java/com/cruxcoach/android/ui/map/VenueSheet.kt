@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.common.distanceLabel
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
@@ -143,7 +144,12 @@ fun VenueMarkerDot(brands: List<BoardBrand>, modifier: Modifier = Modifier, size
 
 /** One row of the "places in view" list. */
 @Composable
-fun VenueRow(venue: MapVenue, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun VenueRow(
+    venue: MapVenue,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    distanceMeters: Double? = null,
+) {
     val brands = venue.markerBrands.joinToString(", ") { it.displayName }
     val place = venueLocationLine(venue)
     Row(
@@ -168,6 +174,14 @@ fun VenueRow(venue: MapVenue, onClick: () -> Unit, modifier: Modifier = Modifier
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        distanceMeters?.let {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                distanceLabel(it),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -196,7 +210,12 @@ fun venueLocationLine(venue: MapVenue): String {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun VenueSummary(venue: MapVenue, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun VenueSummary(
+    venue: MapVenue,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    distanceMeters: Double? = null,
+) {
     val context = LocalContext.current
     val contact = venue.contactBoard()
     Column(modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 12.dp)) {
@@ -212,7 +231,10 @@ fun VenueSummary(venue: MapVenue, onClose: () -> Unit, modifier: Modifier = Modi
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.testTag("map_venue_name"),
                 )
-                val place = venueLocationLine(venue)
+                val place = listOfNotNull(
+                    venueLocationLine(venue).takeIf(String::isNotBlank),
+                    distanceMeters?.let { distanceLabel(it) },
+                ).joinToString(" · ")
                 if (place.isNotBlank()) {
                     Text(
                         place,

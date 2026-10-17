@@ -121,6 +121,14 @@ class MapUiReviewTest {
     @Test
     fun emptyView() = shoot("empty", inView(55.0, 3.0, 0.5, 0.8), null)
 
+    /** After "My location" in Munich: list by distance, distances on the rows. */
+    @Test
+    fun located() {
+        val user = UserPosition(48.137, 11.575, 25f)
+        val view = MapViewport(48.137 - 0.08, 11.575 - 0.13, 48.137 + 0.08, 11.575 + 0.13, 48.137, 11.575)
+        shoot("located", venuesInView(venues, view, origin = user), null, user = user)
+    }
+
     @Test
     fun venueSelected() {
         val venue = venues.filter { it.city?.contains("Munich") == true || it.city?.contains("München") == true }
@@ -143,6 +151,7 @@ class MapUiReviewTest {
         dark: Boolean = false,
         expanded: Boolean = false,
         search: MapSearchUi = MapSearchUi(),
+        user: UserPosition? = null,
         afterSetup: () -> Unit = {},
     ) {
         val backdrop = File(dir!!, "backdrop-$name.png").takeIf { it.isFile }
@@ -157,7 +166,7 @@ class MapUiReviewTest {
                         skipHiddenState = true,
                     )
                 )
-                Screen(inView, selected, scaffoldState, search) {
+                Screen(inView, selected, scaffoldState, search, user) {
                     if (backdrop != null) {
                         Image(backdrop, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     } else {
@@ -190,6 +199,7 @@ class MapUiReviewTest {
         selected: MapVenue?,
         scaffoldState: BottomSheetScaffoldState,
         search: MapSearchUi,
+        user: UserPosition?,
         map: @Composable () -> Unit,
     ) {
         MapScreenLayout(
@@ -213,6 +223,7 @@ class MapUiReviewTest {
             onShowNearest = {},
             onOverlayHeight = { File(dir!!, "overlay-px.txt").writeText(it.toString()) },
             onPeekHeight = { px, id -> File(dir!!, "peek-px-${id ?: "list"}.txt".replace(',', '_')).writeText(px.toString()) },
+            userPosition = user,
             map = map,
         )
     }

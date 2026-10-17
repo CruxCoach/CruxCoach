@@ -102,6 +102,7 @@ fun BoardBrowserScreen(
     var showMismatchPicker by remember { mutableStateOf(false) }
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
+    var gymSearchNearby by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
@@ -248,12 +249,19 @@ fun BoardBrowserScreen(
             },
             onFindViaGym = {
                 showBoardPicker = false
+                gymSearchNearby = false
+                showGymSearch = true
+            },
+            onFindNearbyGym = {
+                showBoardPicker = false
+                gymSearchNearby = true
                 showGymSearch = true
             },
         )
     }
     if (showGymSearch) {
         GymBoardSearchSheet(
+            startNearby = gymSearchNearby,
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
