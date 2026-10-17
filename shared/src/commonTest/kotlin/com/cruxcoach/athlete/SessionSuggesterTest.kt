@@ -2,6 +2,7 @@ package com.cruxcoach.athlete
 
 import com.cruxcoach.athlete.catalog.*
 import com.cruxcoach.athlete.logic.*
+import com.cruxcoach.domain.playlist.GeneratorType
 import com.cruxcoach.athlete.model.*
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -554,6 +555,28 @@ class SessionSuggesterTest {
         mapOf(day to DayActivity(day.toString(), climbingMinutes = 60, climbingEfforts = 30, climbIntensity = intensity))
 
     private fun mainSets(s: SessionSuggestion) = s.routine.items.filter { !it.warmup }.sumOf { it.sets }
+
+    @Test
+    fun aBoardDayWhileTheFingersRecoverIsALightSessionPlannedOrChosen() {
+        // Audit W6: the planned board day ran silently as a pyramid, a chosen one was refused.
+        val gym = profile.copy(equipment = home + EquipmentV2.BOARD + EquipmentV2.WALL)
+        val afterLimit = climbed(yesterday, ClimbIntensity.LIMIT)
+        val planned = SessionSuggester.suggest(input(profile = gym.copy(weekPlan = mapOf(1 to PLAN_BOARD)), activities = afterLimit))
+        assertEquals(SuggestionFocus.BOARD_DAY, planned.focus)
+        assertEquals(GeneratorType.VOLUME, planned.boardPlan?.type)
+        assertTrue(SuggestionReason.BOARD_LIGHT in planned.reasons && SuggestionReason.RECOVERY_AFTER_LIMIT in planned.reasons, "${planned.reasons}")
+        val chosen = SessionSuggester.suggest(input(profile = gym, activities = afterLimit).copy(wish = SuggestionFocus.BOARD_DAY))
+        assertEquals(SuggestionFocus.BOARD_DAY, chosen.focus)
+        assertEquals(GeneratorType.VOLUME, chosen.boardPlan?.type)
+        assertEquals(SuggestionReason.BOARD_LIGHT, chosen.reasons.first(), "${chosen.reasons}")
+        // Fresh: the planned board day is the real thing again.
+        val fresh = SessionSuggester.suggest(input(profile = gym.copy(weekPlan = mapOf(1 to PLAN_BOARD))))
+        assertTrue(fresh.boardPlan?.type != GeneratorType.VOLUME && SuggestionReason.BOARD_LIGHT !in fresh.reasons, "${fresh.boardPlan}")
+        // A volume day yesterday blocks finger work today too (36 h), like the week-plan proposal.
+        val afterVolume = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.VOLUME)))
+        assertTrue(afterVolume.focus != SuggestionFocus.FINGER_STRENGTH && SuggestionReason.RECOVERY_AFTER_VOLUME in afterVolume.reasons,
+            "${afterVolume.focus} ${afterVolume.reasons}")
+    }
 
     @Test
     fun limitSessionYesterdayBlocksMaxFingerWork() {
