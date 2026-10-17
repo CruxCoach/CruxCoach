@@ -344,6 +344,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   choices survive a restart of the app, and a deleted training takes what was
   learned from it along. Without a saved grade the board logbook's grade sets
   the level.
+- Every decision can be taken back in one tap, and a decision taken back
+  teaches the coach nothing: a swap, "leave out today" and "never suggest"
+  on Today's card, skipping or removing an exercise in the training, "as
+  planned", "lighter week" and "swap in your workouts" in the summary, a
+  pain stop saved as an injury. The third time the same exercise is turned
+  down, the card asks once "stop suggesting it?".
+- Today's form is visible and overridable: when the check-in or hard
+  climbing earlier today takes a set off or lowers a load, the card shows
+  the sets the training will plan and the training page says why ("day form
+  (sleep): one set less · load −5 %") with "as planned"; a session already
+  shortened for little sleep is not trimmed twice.
+- The coach looks ahead and stays consistent: no finger focus the day
+  before a board day or a usual climbing day (finger work you choose still
+  runs, with the hint); after a volume day the next day is no finger day
+  either; a planned or chosen board day while the fingers recover becomes a
+  light board session that says why; "easier"/"harder" also change your own
+  planned workout and a board day; alternatives in the training know what
+  the card knows (what you like, what you turned down lately).
+- Training, climbing and nutrition stay in step: a climbing day entered on
+  the tile, a Health Connect sync, a board session or a finished training
+  update Today's tile, the suggestion and the nutrition targets at once; a
+  watch session during a board session is not counted twice ("count anyway"
+  is one tap); a planned training sets today's targets from the morning
+  ("training day (planned: board 60 min)"), and the evening before a hard
+  day the carb info says so. The training summary shows when max finger work
+  is fine again and what today's food still needs, with "log food".
+- Nutrition: macro targets fit the calorie target – on hard days in a
+  deficit the deficit gets smaller so the carbohydrates fit, and the plan
+  says the real weekly pace; under 18 the energy card says adult thresholds
+  do not fit; the low-carb warning counts complete days only and names its
+  numbers; own targets outside the plausible range say why at the field.
+- Pain in the training says when it pauses climbing before it is saved, and
+  the swap spares what today's check-in says hurts.
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
   holds, with its usual amount – also quick entries and described meals – in
   one tap, and a saved food's amount starts where it was last time.
