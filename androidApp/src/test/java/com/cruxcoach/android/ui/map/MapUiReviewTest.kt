@@ -112,6 +112,16 @@ class MapUiReviewTest {
     }
 
     @Test
+    fun searchResults() {
+        val query = "boulderwelt"
+        val results = BoardMapSearchIndex(venues, snapshot.places, java.util.Locale.GERMAN).search(query)
+        shoot("search", inView(48.14, 11.57, 0.12, 0.2), null, search = MapSearchUi(query, results))
+    }
+
+    @Test
+    fun emptyView() = shoot("empty", inView(55.0, 3.0, 0.5, 0.8), null)
+
+    @Test
     fun venueSelected() {
         val venue = venues.filter { it.city?.contains("Munich") == true || it.city?.contains("München") == true }
             .maxBy { it.boards.size * 10 + (if (it.info.hours != null) 5 else 0) }
@@ -132,6 +142,7 @@ class MapUiReviewTest {
         selected: MapVenue?,
         dark: Boolean = false,
         expanded: Boolean = false,
+        search: MapSearchUi = MapSearchUi(),
         afterSetup: () -> Unit = {},
     ) {
         val backdrop = File(dir!!, "backdrop-$name.png").takeIf { it.isFile }
@@ -146,7 +157,7 @@ class MapUiReviewTest {
                         skipHiddenState = true,
                     )
                 )
-                Screen(inView, selected, scaffoldState) {
+                Screen(inView, selected, scaffoldState, search) {
                     if (backdrop != null) {
                         Image(backdrop, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     } else {
@@ -178,13 +189,14 @@ class MapUiReviewTest {
         inView: VenuesInView,
         selected: MapVenue?,
         scaffoldState: BottomSheetScaffoldState,
+        search: MapSearchUi,
         map: @Composable () -> Unit,
     ) {
         MapScreenLayout(
             state = state,
             inView = inView,
             selectedVenue = selected,
-            search = MapSearchUi(),
+            search = search,
             scaffoldState = scaffoldState,
             snackbarHostState = SnackbarHostState(),
             onBack = {},
