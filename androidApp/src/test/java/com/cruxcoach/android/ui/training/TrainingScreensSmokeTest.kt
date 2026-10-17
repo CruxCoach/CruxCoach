@@ -148,10 +148,15 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         // Audit P2-15: training, recovery and nutrition in one place.
         repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
             com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, 70.0, "kg", 1))
-        val id = service.startWorkout(null, null)
-        service.addExercise(id, "finger.max_hang")
-        repo.setsFor(id).filter { it.setType == com.cruxcoach.athlete.model.SetType.WORK }
-            .forEach { service.completeSet(it.copy(durationS = it.targetDurationS ?: 10.0), startRest = false) }
+        // This class sets up a finger injury that rules finger work out: healed for this test.
+        repo.deleteInjury("i1")
+        // The same finger block lift the start-load tests use (it plans sets without a value of its own).
+        val id = service.startWorkout(com.cruxcoach.athlete.model.Routine(id = "f", name = "Finger", items = listOf(
+            com.cruxcoach.athlete.model.RoutineItem("finger.two_arm_pickup", sets = 2, durationS = 10, edgeMm = 20))), null)
+        // Without a value the first max hang is a test set: it counts for the fingers as well.
+        val planned = repo.setsFor(id).filter { it.setType != com.cruxcoach.athlete.model.SetType.WARMUP }
+        assert(planned.isNotEmpty()) { "nothing planned: ${repo.setsFor(id)}" }
+        planned.forEach { service.completeSet(it.copy(durationS = it.targetDurationS ?: 10.0, reps = it.targetReps), startRest = false) }
         service.finishWorkout(id, 7, null)
         val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
         compose.waitUntil(WAIT_MS) { !vm.state.value.loading }

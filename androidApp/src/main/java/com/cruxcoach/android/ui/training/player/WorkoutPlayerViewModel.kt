@@ -180,6 +180,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
      * "done" row moved the player on to the next set; a reserve answer was lost the same way).
      */
     private val pending = mutableMapOf<String, ExerciseSet>()
+    /** Ledger entries of a skip, by the first set it removed: "Rückgängig" takes them back too. */
+    private val undoEvents = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun pend(set: ExerciseSet) = synchronized(pending) { pending[set.id] = set }
 
@@ -619,9 +621,6 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             }
         }
     }
-
-    /** Ledger entries of a skip, by the first set it removed: "Rückgängig" takes them back too. */
-    private val undoEvents = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
      * "Enough for today" after some sets: the page's open sets go in one tap, with "Undo".

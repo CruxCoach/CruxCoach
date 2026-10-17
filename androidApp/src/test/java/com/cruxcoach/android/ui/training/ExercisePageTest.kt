@@ -172,6 +172,9 @@ class ExercisePageTest : AthleteScreenTest() {
         vm.undoEnd()
         until { work(id, "push.push_up").size == 2 }
         until { repo.suggestionEventsForDay(service.today().toString()).none { it.kind == SuggestionEventKind.SKIPPED_SET } }
+        // Back on the push-up page (after the skip the player may have moved on to the next exercise).
+        click("player_strip_0")
+        until { vm.state.value.page?.sets?.any { it.exerciseSlug == "push.push_up" } == true }
         vm.removeExercise()
         until { work(id, "push.push_up").isEmpty() && vm.state.value.endedUndo?.kind == com.cruxcoach.android.ui.training.player.EndKind.REMOVED }
         vm.undoEnd()
