@@ -164,4 +164,7 @@
     <string name="trt_reason_usual_minutes">As usual on %1$s: %2$d min.</string>
     <string name="trt_reason_usual_kind_generic">What you usually choose on this weekday.</string>
     <string name="trt_reason_usual_minutes_generic">Your usual time on this weekday.</string>
+    <string name="trt_never_done">“%1$s” will not be suggested any more</string>
+    <string name="trt_never_offer">Turned down “%1$s” three times – stop suggesting it?</string>
+    <string name="trt_never_offer_yes">Never again</string>
 </resources>

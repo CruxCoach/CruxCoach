@@ -59,6 +59,11 @@ class AthleteRepository(
     /** False until a profile was saved once – the first start, before any default is written. */
     fun hasStoredProfile(): Boolean = body.getSetting(KEY_PROFILE).executeAsOneOrNull() != null
 
+    /** A small stored value (blank counts as none). */
+    fun setting(key: String): String? = body.getSetting(key).executeAsOneOrNull()?.takeIf { it.isNotBlank() }
+
+    fun putSetting(key: String, value: String) = body.putSetting(key, value, clock())
+
     fun saveProfile(profile: AthleteProfile) {
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
     }
@@ -100,6 +105,9 @@ class AthleteRepository(
         training.deleteSetsForWorkout(id)
         training.deleteWorkout(id)
         db.coachQueries.deleteSuggestionEventsForWorkout(id)
+        val dayForm = com.cruxcoach.athlete.logic.ReadinessModifiers.settingKey(id)
+        if (setting(dayForm) != null) putSetting(dayForm, "")
+        if (setting("$dayForm.loads") != null) putSetting("$dayForm.loads", "")
     }
 
     fun saveSet(s: ExerciseSet) = training.upsertSet(

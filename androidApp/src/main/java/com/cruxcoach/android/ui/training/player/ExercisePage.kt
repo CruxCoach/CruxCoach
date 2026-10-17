@@ -73,6 +73,7 @@ class PageActions(
     val onAddSet: () -> Unit,
     val onAddWarmups: () -> Unit,
     val onRemoveExercise: () -> Unit,
+    val onAsPlanned: () -> Unit = {},
 )
 
 /**
@@ -123,7 +124,7 @@ fun ExercisePage(
                 else ExerciseHeader(page, state, active, language, actions, canSwap, warmupAvailable)
             }
         }
-        item(key = "intro") { PageIntro(page, state, active, language, learningBadge) }
+        item(key = "intro") { PageIntro(page, state, active, language, learningBadge, actions.onAsPlanned) }
         if (page.circuit != null) {
             val rounds = page.sets.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().sorted()
             val warmups = page.sets.filter { it.setType == SetType.WARMUP }
@@ -250,6 +251,7 @@ private fun PageIntro(
     active: ExerciseSet?,
     language: String,
     learningBadge: @Composable (slug: String, modifier: Modifier) -> Unit,
+    onAsPlanned: () -> Unit = {},
 ) {
     val first = page.sets.firstOrNull() ?: return
     val units = state.profile.units
@@ -261,6 +263,7 @@ private fun PageIntro(
         }
         val set = active ?: first
         val def = state.def(set.exerciseSlug) ?: return
+        state.dayForm?.let { m -> DayFormLine(page, state, m, onAsPlanned) }
         if (active?.setType == SetType.WORK) learningBadge(def.slug, Modifier.padding(bottom = 4.dp))
         val details = listOfNotNull(
             perBlockText(set, def, units),
@@ -272,6 +275,40 @@ private fun PageIntro(
         if (details.isNotEmpty()) {
             Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp).testTag("player_target_detail"))
+        }
+    }
+}
+
+/**
+ * Why this exercise is lighter today (comparison review #5): the check-in answer or the hard climbing that
+ * trimmed sets or load, with "As planned" to undo it in one tap. Only on pages it changed.
+ */
+@Composable
+private fun DayFormLine(page: PlayerPage, state: PlayerState, m: com.cruxcoach.athlete.logic.ReadinessModifier, onAsPlanned: () -> Unit) {
+    val defs = page.sets.filter { it.setType == SetType.WORK }.mapNotNull { state.def(it.exerciseSlug) }.distinctBy { it.slug }
+    val touched = defs.filter { com.cruxcoach.athlete.logic.ReadinessModifiers.affects(it, m) }
+    if (touched.isEmpty()) return
+    val parts = buildList {
+        if (m.setsDelta < 0) add(stringResource(if (page.circuit != null) R.string.trpg_dayform_round_less else R.string.trpg_dayform_set_less))
+        if (m.dropMaxFinger && touched.any { com.cruxcoach.athlete.logic.ReadinessModifiers.isMaxFinger(it) }) add(stringResource(R.string.trpg_dayform_finger_cap))
+        touched.maxOf { com.cruxcoach.athlete.logic.ReadinessModifiers.loadCutPercent(it, m) }.takeIf { it > 0 }
+            ?.let { add(stringResource(R.string.trpg_dayform_load, it)) }
+    }
+    if (parts.isEmpty()) return
+    val why = m.reason?.let { com.cruxcoach.android.ui.training.today.readinessReasonShort(it) }
+        ?: stringResource(R.string.trpg_dayform_climbed)
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).testTag("player_dayform"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+            Text(stringResource(R.string.trpg_dayform, why, parts.joinToString(" · ")),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+            TextButton(onClick = onAsPlanned, modifier = Modifier.testTag("player_dayform_as_planned")) {
+                Text(stringResource(R.string.trpg_dayform_as_planned))
+            }
         }
     }
 }

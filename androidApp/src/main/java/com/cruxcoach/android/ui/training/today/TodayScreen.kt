@@ -103,6 +103,8 @@ fun TodayScreen(
     val savedText = stringResource(R.string.trsg_saved)
     val weightSavedText = stringResource(R.string.tru_weight_saved)
     val undoText = stringResource(R.string.trf_undo)
+    val neverDoneText = stringResource(R.string.trt_never_done)
+    val screenLanguage = catalogLanguage()
     val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
     val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
     val snackScope = rememberCoroutineScope()
@@ -291,8 +293,28 @@ fun TodayScreen(
             onDismiss = { swapFor = null },
             onSwap = { to -> swapFor = null; viewModel.swapExercise(slug, to) },
             onDrop = { swapFor = null; viewModel.dropExercise(slug) },
-            onExclude = { swapFor = null; viewModel.excludeExercise(slug) },
+            onExclude = {
+                swapFor = null
+                viewModel.excludeExercise(slug)
+                // Never final by accident (comparison review #8): one tap takes it back.
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(neverDoneText.format(state.catalog.fallbackFor(slug).name(screenLanguage)), undoText,
+                            duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.includeExercise(slug)
+                }
+            },
         )
+    }
+    // Turned down for the third time: ask once instead of resting it again and again.
+    state.neverOffer?.let { slug ->
+        val name = state.catalog.fallbackFor(slug).name(catalogLanguage())
+        val text = stringResource(R.string.trt_never_offer, name)
+        val yes = stringResource(R.string.trt_never_offer_yes)
+        LaunchedEffect(slug) {
+            snackbar.currentSnackbarData?.dismiss()
+            val result = snackbar.showSnackbar(text, yes, withDismissAction = true, duration = SnackbarDuration.Long)
+            viewModel.answerNeverOffer(result == SnackbarResult.ActionPerformed)
+        }
     }
 }
 
@@ -647,7 +669,7 @@ private fun readinessReasonText(reason: ReadinessReason): String = stringResourc
 })
 
 @Composable
-private fun readinessReasonShort(reason: ReadinessReason): String = stringResource(when (reason) {
+internal fun readinessReasonShort(reason: ReadinessReason): String = stringResource(when (reason) {
     ReadinessReason.SICK -> R.string.trt_short_sick
     ReadinessReason.INJURY_CLIMBING_PAUSED, ReadinessReason.INJURY_ACTIVE -> R.string.trt_short_injury
     ReadinessReason.FINGERS_TIRED -> R.string.trt_q_fingers

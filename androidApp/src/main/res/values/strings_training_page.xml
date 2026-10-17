@@ -43,4 +43,11 @@
     <string name="trpg_next_member">Next: %1$s</string>
     <string name="trpg_round_rest">Rest after round %1$d</string>
     <string name="trpg_seconds_of">%1$d/%2$d s</string>
+    <string name="trpg_dayform">Day form (%1$s): %2$s</string>
+    <string name="trpg_dayform_climbed">hard climbing today</string>
+    <string name="trpg_dayform_set_less">one set less</string>
+    <string name="trpg_dayform_round_less">one round less</string>
+    <string name="trpg_dayform_finger_cap">max finger work at most 2 sets</string>
+    <string name="trpg_dayform_load">load −%1$d %%</string>
+    <string name="trpg_dayform_as_planned">As planned</string>
 </resources>

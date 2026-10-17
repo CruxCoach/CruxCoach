@@ -30,8 +30,22 @@ data class ReadinessModifier(
 ) {
     val isNeutral: Boolean get() = setsDelta == 0 && loadFactor == 1.0 && !dropMaxFinger && fingerLoadFactor == 1.0
 
+    /** Stored with the training it shaped, so the player can say why and offer "as planned". */
+    fun encode(): String = listOf(setsDelta, loadFactor, dropMaxFinger, reason?.name.orEmpty(), fingerLoadFactor,
+        climbedToday?.name.orEmpty()).joinToString(";")
+
     companion object {
         val NONE = ReadinessModifier()
+
+        fun decode(text: String?): ReadinessModifier? = runCatching {
+            val f = text?.takeIf { it.isNotBlank() }?.split(";") ?: return null
+            ReadinessModifier(
+                setsDelta = f[0].toInt(), loadFactor = f[1].toDouble(), dropMaxFinger = f[2].toBooleanStrict(),
+                reason = f[3].takeIf { it.isNotEmpty() }?.let { ReadinessReason.valueOf(it) },
+                fingerLoadFactor = f[4].toDouble(),
+                climbedToday = f[5].takeIf { it.isNotEmpty() }?.let { ClimbIntensity.valueOf(it) },
+            ).takeIf { !it.isNeutral }
+        }.getOrNull()
     }
 }
 
@@ -69,6 +83,32 @@ object ReadinessModifiers {
         }
         val climbed = climbedToday?.takeIf { it == ClimbIntensity.HARD || it == ClimbIntensity.LIMIT }
         return ReadinessModifier(setsDelta, load, drop, reason, finger, climbed)
+    }
+
+    /** Setting key of the modifier a training was planned with ([ReadinessModifier.encode]). */
+    fun settingKey(workoutId: String): String = "dayform.$workoutId"
+
+    /** Setting key of the day on which the athlete chose "as planned": no trimming for the rest of it. */
+    const val AS_PLANNED_KEY: String = "dayform.asplanned"
+
+    /** Whether [m] changes the sets or the load of main work of [def]: then the player explains it. */
+    fun affects(def: ExerciseDefinition, m: ReadinessModifier): Boolean =
+        m.setsDelta != 0 || (m.dropMaxFinger && isMaxFinger(def)) || loadCutPercent(def, m) > 0
+
+    /** The load cut on [def] in whole percent; 0 for work without a load to scale. */
+    fun loadCutPercent(def: ExerciseDefinition, m: ReadinessModifier): Int {
+        if (def.load != LoadMode.EXTERNAL && def.load != LoadMode.BODYWEIGHT_PLUS) return 0
+        return kotlin.math.round((1.0 - loadFactorFor(def, m)) * 100).toInt().coerceAtLeast(0)
+    }
+
+    /**
+     * How many sets "as planned" gives back to an exercise of [def] that now has [workSets] work sets:
+     * the trimmed set, and for max finger work up to its usual count.
+     */
+    fun setsToRestore(def: ExerciseDefinition, workSets: Int, m: ReadinessModifier): Int {
+        var missing = (-m.setsDelta).coerceAtLeast(0)
+        if (m.dropMaxFinger && isMaxFinger(def)) missing = max(missing, (def.defaults.sets ?: 0) - workSets)
+        return missing
     }
 
     /** Strength hangs and block lifts — the work that goes to the finger limit. */

@@ -73,6 +73,8 @@ data class TodayState(
     val suggestionSaved: Boolean = false,
     /** For exercise names on the suggestion card. */
     val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
+    /** Turned down for the third time: the card asks once whether to stop suggesting it (comparison review #8). */
+    val neverOffer: String? = null,
     /** Position in the training cycle (FEAT-071), null without a block. */
     val block: BlockState? = null,
     /** The athlete's real training length when it differs clearly from the preferred one. */
@@ -618,6 +620,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             service.logSuggestion(SuggestionEventKind.SWAPPED, _state.value.suggestion?.focus?.name, listOf(from, to))
             lastInputs?.let { refreshUnlocked(it) }
         }
+        offerNeverIfRepeated(from)
     }
 
     /** "Heute weglassen": out of today's suggestion without a replacement; counts like "keine Lust". */
@@ -627,12 +630,40 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug), SuggestionFeedback.DISLIKE_EXERCISE)
             lastInputs?.let { refreshUnlocked(it) }
         }
+        offerNeverIfRepeated(slug)
     }
 
     /** "Nie vorschlagen" from the card; the profile change brings the new suggestion. */
     fun excludeExercise(slug: String) = io {
         synchronized(refreshLock) { swapsToday.entries.removeAll { it.value == slug } }
         service.setExcluded(slug, true)
+    }
+
+    /** "Rückgängig" after "Nie vorschlagen". */
+    fun includeExercise(slug: String) = io { service.setExcluded(slug, false) }
+
+    /**
+     * After a rejection: on the third one the card asks once "stop suggesting it?" instead of only resting it
+     * again and again; asked at most once per exercise (answer or dismiss).
+     */
+    private fun offerNeverIfRepeated(slug: String) {
+        val repo = service.repo
+        val key = "never.offered.$slug"
+        if (repo.setting(key) != null || slug in repo.profile().excludedExercises) return
+        val today = service.today()
+        val sinceMs = System.currentTimeMillis() - PreferenceLearning.WINDOW_DAYS * 24L * 3600 * 1000
+        val count = PreferenceLearning.rejections(repo.suggestionEventsSince(sinceMs), today, repo.profile().learningResets)[slug] ?: 0.0
+        if (count >= PreferenceLearning.OFFER_NEVER_AFTER) _state.update { it.copy(neverOffer = slug) }
+    }
+
+    /** The answer to [TodayState.neverOffer]: never again, or keep it (it rests a while and may come back). */
+    fun answerNeverOffer(never: Boolean) {
+        val slug = _state.value.neverOffer ?: return
+        _state.update { it.copy(neverOffer = null) }
+        io {
+            service.repo.putSetting("never.offered.$slug", if (never) "never" else "kept")
+            if (never) excludeExercise(slug)
+        }
     }
 
     /** Takes over the real training length as the preferred duration. */

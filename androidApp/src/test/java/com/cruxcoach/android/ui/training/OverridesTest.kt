@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import com.cruxcoach.android.ui.training.player.PlayerPhase
 import com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen
 import com.cruxcoach.android.ui.training.player.WorkoutPlayerViewModel
@@ -436,6 +437,33 @@ class OverridesTest : AthleteScreenTest() {
         val other = items().first { !it.warmup }.slug
         vm.excludeExercise(other)
         until { other in repo.profile().excludedExercises && items().none { it.slug == other } }
+    }
+
+    @Test
+    fun `turned down a third time, the card asks once whether to stop suggesting it`() {
+        // Comparison review #8: instead of resting it again and again, ask once; "never" can be undone.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        val slug = vm.state.value.suggestion!!.routine.items.first { !it.warmup }.slug
+        val day = 24L * 3600 * 1000
+        listOf(20, 9).forEach { ago ->
+            repo.logSuggestionEvent(com.cruxcoach.athlete.model.SuggestionEvent("old$ago", service.today().minus(kotlinx.datetime.DatePeriod(days = ago)).toString(),
+                System.currentTimeMillis() - ago * day, com.cruxcoach.athlete.model.SuggestionEventKind.NEXT, slugs = listOf(slug),
+                feedback = com.cruxcoach.athlete.model.SuggestionFeedback.DISLIKE_EXERCISE))
+        }
+        render { TodayScreen({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, viewModel = vm) }
+        vm.dropExercise(slug)
+        until { vm.state.value.neverOffer == slug }
+        compose.onNode(androidx.compose.ui.test.hasText(context.getString(com.cruxcoach.android.R.string.trt_never_offer_yes))).performClick()
+        until { slug in repo.profile().excludedExercises && vm.state.value.neverOffer == null }
+        assertEquals("never", repo.setting("never.offered.$slug"))
+        // Asked once: another rejection does not ask again.
+        vm.includeExercise(slug)
+        until { slug !in repo.profile().excludedExercises }
+        vm.dropExercise(slug)
+        compose.waitForIdle()
+        assertEquals(null, vm.state.value.neverOffer)
     }
 
     @Test

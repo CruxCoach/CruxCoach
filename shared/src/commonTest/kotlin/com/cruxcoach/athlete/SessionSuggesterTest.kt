@@ -405,6 +405,21 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun alternativesOfferWhatWasTurnedDownLast() {
+        // Comparison review #11: the alternatives use the same knowledge as the card.
+        val many = ExerciseCatalog(1, catalog.all + (1..4).map { i -> ex("core.extra_$i", ExerciseCategoryV2.CORE, ExerciseKind.REPS, LoadMode.BODYWEIGHT) })
+        val base = input().copy(catalog = many)
+        val s = SessionSuggester.suggest(base)
+        val core = s.routine.items.first { many[it.slug]?.category == ExerciseCategoryV2.CORE }
+        val all = SessionSuggester.alternatives(base, s, core.slug, count = 20)
+        assertTrue(all.size >= 2, "$all")
+        val first = all.first().def.slug
+        val rested = SessionSuggester.alternatives(base.copy(resting = setOf(first)), s, core.slug, count = 20)
+        assertEquals(first, rested.last().def.slug)
+        assertEquals(all.size, rested.size)
+    }
+
+    @Test
     fun theGradeAndTheYearsSetTheLevelBeforeAnyPerformanceValue() {
         // Device test 2026-10-17: a 7a boulderer with 3–5 years got assisted hangs before entering any value.
         val fingers = ExerciseCatalog(1, listOf(

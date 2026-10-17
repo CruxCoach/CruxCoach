@@ -179,7 +179,36 @@ object PreferenceLearning {
         today: LocalDate,
         resets: Map<String, Long> = emptyMap(),
         zone: TimeZone = TimeZone.currentSystemDefault(),
-    ): Map<String, LocalDate> {
+    ): Map<String, LocalDate> = rejectionDays(events, today, resets, zone).mapNotNull { (slug, list) ->
+        val count = list.sumOf { it.second }
+        // One skipped exercise alone says too little (time, mood): no rest yet.
+        if (count < 1.0) return@mapNotNull null
+        val days = when {
+            count >= 3.0 -> REST_DAYS[2]
+            count >= 2.0 -> REST_DAYS[1]
+            else -> REST_DAYS[0]
+        }
+        val until = list.maxOf { it.first }.plus(DatePeriod(days = days))
+        if (until > today) slug to until else null
+    }.toMap()
+
+    /** How often each exercise was turned down in [WINDOW_DAYS], counted like [resting]. */
+    fun rejections(
+        events: List<SuggestionEvent>,
+        today: LocalDate,
+        resets: Map<String, Long> = emptyMap(),
+        zone: TimeZone = TimeZone.currentSystemDefault(),
+    ): Map<String, Double> = rejectionDays(events, today, resets, zone).mapValues { (_, list) -> list.sumOf { it.second } }
+
+    /** After this many rejections the card asks once whether to stop suggesting the exercise. */
+    const val OFFER_NEVER_AFTER = 3.0
+
+    private fun rejectionDays(
+        events: List<SuggestionEvent>,
+        today: LocalDate,
+        resets: Map<String, Long>,
+        zone: TimeZone,
+    ): Map<String, List<Pair<LocalDate, Double>>> {
         val from = today.minus(DatePeriod(days = WINDOW_DAYS))
         val rejections = mutableMapOf<String, MutableList<Pair<LocalDate, Double>>>()
         for (e in events) {
@@ -197,21 +226,9 @@ object PreferenceLearning {
                 else -> Unit
             }
         }
-        return rejections.mapNotNull { (slug, all) ->
-            // At most one rejection per exercise and day (the strongest): an older player logged a skip for
-            // every set it moved past, which rested an exercise for three weeks after one session.
-            val list = all.groupBy { it.first }.map { (day, rows) -> day to rows.maxOf { it.second } }
-            val count = list.sumOf { it.second }
-            // One skipped exercise alone says too little (time, mood): no rest yet.
-            if (count < 1.0) return@mapNotNull null
-            val days = when {
-                count >= 3.0 -> REST_DAYS[2]
-                count >= 2.0 -> REST_DAYS[1]
-                else -> REST_DAYS[0]
-            }
-            val until = list.maxOf { it.first }.plus(DatePeriod(days = days))
-            if (until > today) slug to until else null
-        }.toMap()
+        // At most one rejection per exercise and day (the strongest): an older player logged a skip for
+        // every set it moved past, which rested an exercise for three weeks after one session.
+        return rejections.mapValues { (_, all) -> all.groupBy { it.first }.map { (day, rows) -> day to rows.maxOf { it.second } } }
     }
 
     /**
