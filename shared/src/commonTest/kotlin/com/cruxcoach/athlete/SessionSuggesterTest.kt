@@ -579,6 +579,24 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun easierAndHarderWorkOnTheOwnPlanAndTheBoardDayToo() {
+        // Audit W8: the level only changed generated sessions, while the reason claimed it everywhere.
+        val gym = profile.copy(equipment = home + EquipmentV2.BOARD + EquipmentV2.WALL, weekPlan = mapOf(1 to PLAN_BOARD))
+        assertEquals(GeneratorType.VOLUME, SessionSuggester.suggest(input(profile = gym).copy(levelShift = -1)).boardPlan?.type)
+        val planned = SessionSuggester.suggest(input()).let { base ->
+            val own = Routine("own", "Own", items = base.routine.items.filter { !it.warmup }.take(3).map { it.copy(sets = 3) })
+            val withPlan = profile.copy(weekPlan = mapOf(1 to "own"))
+            Triple(SessionSuggester.suggest(input(profile = withPlan).copy(routines = listOf(own))),
+                SessionSuggester.suggest(input(profile = withPlan).copy(routines = listOf(own), levelShift = -1)),
+                SessionSuggester.suggest(input(profile = withPlan).copy(routines = listOf(own), levelShift = 1)))
+        }
+        val (normal, easier, harder) = planned
+        assertEquals(SuggestionFocus.PLANNED, normal.focus, "${normal.reasons}")
+        assertTrue(mainSets(easier) < mainSets(normal), "${mainSets(easier)} vs ${mainSets(normal)}")
+        assertTrue(mainSets(harder) > mainSets(normal), "${mainSets(harder)} vs ${mainSets(normal)}")
+    }
+
+    @Test
     fun limitSessionYesterdayBlocksMaxFingerWork() {
         val s = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.LIMIT)))
         assertTrue(s.focus == SuggestionFocus.PULL_PUSH || s.focus == SuggestionFocus.LEGS_CORE, "${s.focus}")
