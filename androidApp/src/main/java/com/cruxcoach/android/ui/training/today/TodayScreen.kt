@@ -198,6 +198,7 @@ fun TodayScreen(
                         onExercise = { swapFor = it },
                         onChooseCircuit = viewModel::chooseCircuit,
                         onSetCircuit = viewModel::setCircuit,
+                        onLighter = { viewModel.chooseLevel(-1) },
                     )
                 }
                 state.durationHint?.let { minutes ->
@@ -1120,6 +1121,8 @@ private fun DailySuggestionCard(
     /** "Als Zirkel" for today (owner 2026-10-17), and its rounds and rests. */
     onChooseCircuit: (Boolean) -> Unit = {},
     onSetCircuit: (Int?, Int?, Int?) -> Unit = { _, _, _ -> },
+    /** "Leichter" from the energy hint (holistic audit P2-17): today's easier level, as in "another suggestion". */
+    onLighter: () -> Unit = {},
 ) {
     val s = state.suggestion ?: return
     var circuitSheet by remember { mutableStateOf(false) }
@@ -1254,6 +1257,11 @@ private fun DailySuggestionCard(
                     modifier = Modifier.padding(top = 8.dp).clickable(onClickLabel = why, onClick = onWhy).testTag("today_suggestion_reason"),
                 )
             }
+            // Little energy lately before maximal finger work: one supportive line and "lighter" as one tap (P2-17).
+            val energyHint = remember(state.energy, s, state.catalog) {
+                com.cruxcoach.athlete.logic.EnergyBeforeTraining.hint(state.energy, s, state.catalog)
+            }
+            energyHint?.let { EnergyHintLine(it, state.profile, lighterChosen = state.levelShift < 0, onLighter = onLighter) }
             checkin()
             val plan = s.boardPlan
             if (plan != null) {

@@ -157,6 +157,12 @@
     <string name="trt_next_level">Heute lieber</string>
     <string name="trt_level_easier">Leichter</string>
     <string name="trt_level_harder">Fordernder</string>
+    <!-- Little energy lately before maximal finger work: a supportive hint on the card, never a lock (holistic audit P2-17). -->
+    <string name="trt_energy_hint_deficit">Letzte %1$d erfasste Tage im Schnitt %2$d von %3$d kcal – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_deficit_share">Letzte %1$d erfasste Tage im Schnitt etwa %2$d %% unter deinem geschätzten Bedarf – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_deficit_plain">Deine Energie war zuletzt eher knapp – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_carbs">An %1$d Trainingstagen im Schnitt %2$s g/kg Kohlenhydrate statt %3$s g/kg – vor harter Fingerlast hilft ein Snack mit Kohlenhydraten.</string>
+    <string name="trt_energy_hint_carbs_plain">An deinen letzten Trainingstagen waren die Kohlenhydrate eher knapp – vor harter Fingerlast hilft ein Snack damit.</string>
     <string name="trt_next_shuffle">Neu mischen</string>
     <string name="trt_next_hurts">Etwas tut weh</string>
     <string name="trt_next_equipment">Ausrüstung</string>
