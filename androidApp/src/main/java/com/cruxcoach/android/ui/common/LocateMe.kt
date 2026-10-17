@@ -49,6 +49,20 @@ class LocateMeState internal constructor(
 
     internal var requestPermission: () -> Unit = {}
 
+    /** "Turn on" / "settings" was opened: coming back tries again (device test 2026-10-17: the note stayed "off"). */
+    private var retryOnResume = false
+
+    fun openFix(result: LocateResult) {
+        retryOnResume = true
+        openLocateFix(context, result)
+    }
+
+    internal fun onResumed() {
+        if (!retryOnResume) return
+        retryOnResume = false
+        locate()
+    }
+
     /** True when a tap would locate without a permission prompt. */
     val hasPermission: Boolean get() = DeviceLocation.hasPermission(context)
 
@@ -104,6 +118,14 @@ fun rememberLocateMe(onResult: (LocateResult) -> Unit): LocateMeState {
         }
     }
     state.requestPermission = { launcher.launch(DeviceLocation.PERMISSIONS) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle, state) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) state.onResumed()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     return state
 }
 
