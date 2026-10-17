@@ -197,7 +197,10 @@ object PreferenceLearning {
                 else -> Unit
             }
         }
-        return rejections.mapNotNull { (slug, list) ->
+        return rejections.mapNotNull { (slug, all) ->
+            // At most one rejection per exercise and day (the strongest): an older player logged a skip for
+            // every set it moved past, which rested an exercise for three weeks after one session.
+            val list = all.groupBy { it.first }.map { (day, rows) -> day to rows.maxOf { it.second } }
             val count = list.sumOf { it.second }
             // One skipped exercise alone says too little (time, mood): no rest yet.
             if (count < 1.0) return@mapNotNull null

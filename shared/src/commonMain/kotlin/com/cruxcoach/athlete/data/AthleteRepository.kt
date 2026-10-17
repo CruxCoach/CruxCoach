@@ -92,9 +92,14 @@ class AthleteRepository(
     fun finishWorkout(id: String, endedAt: Long, sessionRpe: Int?, notes: String?) =
         training.finishWorkout(endedAt, sessionRpe?.toLong(), notes, clock(), id)
 
+    /**
+     * A deleted training takes what the coach learned from it along (skips, swaps, started/completed
+     * there): a training logged by mistake must not keep resting or favouring exercises.
+     */
     fun deleteWorkout(id: String) = transaction {
         training.deleteSetsForWorkout(id)
         training.deleteWorkout(id)
+        db.coachQueries.deleteSuggestionEventsForWorkout(id)
     }
 
     fun saveSet(s: ExerciseSet) = training.upsertSet(
