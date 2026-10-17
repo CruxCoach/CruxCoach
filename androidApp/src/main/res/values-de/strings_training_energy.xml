@@ -55,6 +55,8 @@
     <string name="trn_target_recommended_plain">Empfohlen</string>
     <string name="trn_target_own">Eigenes Ziel</string>
     <string name="trn_target_own_label">Dein Ziel: %1$s</string>
+    <string name="trn_target_range">Gespeichert wird ein Wert zwischen %1$d und %2$d %3$s – außerhalb ist es fast immer ein Tippfehler.</string>
+    <string name="trn_target_range_energy">Gespeichert wird ein Wert zwischen %1$d und %2$d %3$s – außerhalb ist es fast immer ein Tippfehler. Ein niedriges Ziel darin bleibt gespeichert und wird auf der Energiekarte benannt.</string>
     <string name="trn_unit_g">g</string>
     <string name="trn_set_summary_own">Eigene Ziele: %1$s</string>
     <string name="trn_goal_stop">Abnehmen beenden</string>

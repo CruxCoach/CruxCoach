@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training.fuel
 import android.app.Application
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performImeAction
@@ -59,6 +60,27 @@ class OwnTargetsTest : AthleteScreenTest() {
         assertEquals(60, service.fuelTargets(null, repo.profile())!!.fatG)
         compose.onNodeWithTag("own_fat_auto").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         compose.waitUntil(WAIT_MS) { repo.profile().ownFatG == null }
+    }
+
+    @Test
+    fun `an own calorie target outside the plausible range is not kept and the field says why`() {
+        body()
+        repo.updateProfile { it.copy(ownKcal = 2000) }
+        val vm = loaded(AthleteSettingsViewModel(service))
+        render { AthleteSettingsScreen({}, viewModel = vm, section = SettingsSection.NUTRITION) }
+        waitForTag("own_energy_input")
+        // 700 kcal is most likely a typo: not kept, and the range is named at the field – nothing else is locked.
+        compose.onNodeWithTag("own_energy_input").performScrollTo().performTextReplacement("700")
+        compose.onNodeWithTag("own_energy_input").performImeAction()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText("Kept between 800 and 6000 kcal", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(2000, repo.profile().ownKcal)
+        // A low but plausible target is kept.
+        compose.onNodeWithTag("own_energy_input").performTextReplacement("1200")
+        compose.onNodeWithTag("own_energy_input").performImeAction()
+        compose.waitUntil(WAIT_MS) { repo.profile().ownKcal == 1200 }
+        assertTrue(compose.onAllNodesWithText("Kept between", substring = true, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
     }
 
     @Test

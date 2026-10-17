@@ -26,7 +26,8 @@ import kotlin.math.roundToInt
  * Own targets (owner 2026-10-10): every nutrition target follows the
  * recommendation or a value the athlete sets. The recommendation stays named
  * next to an own value; nothing is refused, a low calorie target is warned
- * about on the energy card.
+ * about on the energy card. Only values outside a plausible range (a typo
+ * like 150 kcal) are not kept, and the field says so with the range.
  */
 
 /**
@@ -52,6 +53,8 @@ fun TargetChoice(
     fieldLabel: String? = null,
     /** The recommendation's chip text when it is not one number, e.g. "Empfohlen (6–12 Sätze)". */
     recommendedLabel: String? = null,
+    /** Why an entry outside [range] is not kept, shown at the field while one is typed. */
+    invalidHint: String? = null,
 ) {
     Column(modifier.fillMaxWidth().testTag(tag)) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
@@ -78,6 +81,7 @@ fun TargetChoice(
                 onSave = { t -> t.toIntOrNull()?.let { onOwn(fromDisplay(it)) } },
                 label = fieldLabel ?: stringResource(R.string.trn_target_own_label, label), suffix = unit,
                 keyboardType = KeyboardType.Number,
+                invalidHint = invalidHint,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("${tag}_input"),
             )
         }
@@ -126,12 +130,16 @@ fun OwnTargetChoice(
             FuelTargets.OWN_WATER_ML, 2500)
     }
     val imperialWater = kind == FuelTargets.TargetKind.WATER && profile.units == UnitSystem.IMPERIAL
+    val toDisplay = { v: Int -> if (imperialWater) (v / FuelUnits.ML_PER_FL_OZ).roundToInt() else v }
     TargetChoice(
         label = heading ?: label, unit = unit, recommended = recommended, own = ownTarget(profile, kind), range = range, fallback = fallback,
         tag = "own_${kind.name.lowercase()}", onOwn = { v -> onChange { withOwnTarget(it, kind, v) } }, modifier = modifier,
-        toDisplay = { if (imperialWater) (it / FuelUnits.ML_PER_FL_OZ).roundToInt() else it },
+        toDisplay = toDisplay,
         fromDisplay = { if (imperialWater) (it * FuelUnits.ML_PER_FL_OZ).roundToInt() else it },
         fieldLabel = stringResource(R.string.trn_target_own_label, label),
+        // A typo guard, not a limit on choices: the field names the range and why (holistic audit 2026-10-17).
+        invalidHint = stringResource(if (kind == FuelTargets.TargetKind.ENERGY) R.string.trn_target_range_energy else R.string.trn_target_range,
+            toDisplay(range.first), toDisplay(range.last), unit),
     )
 }
 

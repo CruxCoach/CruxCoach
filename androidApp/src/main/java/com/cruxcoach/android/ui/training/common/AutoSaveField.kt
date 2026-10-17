@@ -27,7 +27,8 @@ const val AUTOSAVE_DELAY_MS = 1_000L
  * nutrition have no save buttons). A valid entry is kept once typing pauses,
  * on the keyboard's "Fertig", when the field loses focus and when it leaves
  * the screen. [stored] is the saved value as text ("" when there is none);
- * [isValid] decides what may be saved, and an invalid entry is marked.
+ * [isValid] decides what may be saved, and an invalid entry is marked –
+ * with [invalidHint] saying why, when given.
  */
 @Composable
 fun AutoSaveTextField(
@@ -39,6 +40,7 @@ fun AutoSaveTextField(
     suffix: String? = null,
     placeholder: String? = null,
     keyboardType: KeyboardType = KeyboardType.Decimal,
+    invalidHint: String? = null,
 ) {
     var text by rememberSaveable(stored) { mutableStateOf(stored) }
     // What was handed over last, so a pause, "Fertig" and leaving the field save it once.
@@ -65,6 +67,7 @@ fun AutoSaveTextField(
         onValueChange = { text = it },
         singleLine = true,
         isError = text.isNotBlank() && !isValid(text.trim()),
+        supportingText = invalidHint?.takeIf { text.isNotBlank() && !isValid(text.trim()) }?.let { hint -> { Text(hint) } },
         label = { Text(label) },
         suffix = suffix?.let { s -> { Text(s) } },
         placeholder = placeholder?.let { s -> { Text(s) } },
