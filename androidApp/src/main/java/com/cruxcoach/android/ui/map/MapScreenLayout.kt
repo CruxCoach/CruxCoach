@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -68,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -141,9 +141,6 @@ fun MapScreenLayout(
     // status and navigation bars: measure the real layout, never raw insets.
     var peekContentPx by remember { mutableIntStateOf(0) }
     val peek = with(density) { peekContentPx.toDp() }.coerceAtLeast(96.dp)
-    // The collapsed sheet shows its peek above the navigation bar, not under it (device test 2026-10-17: with
-    // three-button navigation the second row of places sat half under the buttons).
-    val navBar = androidx.compose.foundation.layout.WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     var screenHeightPx by remember { mutableIntStateOf(0) }
     var overlayBottomPx by remember { mutableIntStateOf(0) }
     // Pulled all the way up, the sheet stops below the search bar so search,
@@ -155,15 +152,19 @@ fun MapScreenLayout(
 
     // The search bar, chips and search results are drawn above the sheet, so
     // results stay readable while the keyboard pushes the sheet up.
+    // Clipped: the sheet's rows below the peek are laid out past the screen's bottom edge, and unclipped they
+    // were drawn on under the navigation bar (device tests D36/D44: places and "Choose this board" behind the
+    // buttons, a tap there hit Back). The app scaffold already keeps this screen above the bar.
     Box(
         Modifier
             .fillMaxSize()
+            .clipToBounds()
             .semantics { paneTitle = screenTitle }
             .onSizeChanged { screenHeightPx = it.height }
     ) {
         BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            sheetPeekHeight = peek + navBar,
+            sheetPeekHeight = peek,
             sheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
             sheetContainerColor = MaterialTheme.colorScheme.surface,
             sheetShadowElevation = 10.dp,
@@ -238,21 +239,9 @@ fun MapScreenLayout(
                     onClick = onLocateMe,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = peek + navBar + 16.dp),
+                        .padding(end = 16.dp, bottom = peek + 16.dp),
                 )
             }
-        }
-        // The rows below the peek run on under the navigation bar: a solid strip in the sheet's colour keeps the
-        // buttons on a calm ground instead of over a half-hidden place (device test 2026-10-17).
-        if (navBar > 0.dp) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(navBar)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .testTag("map_nav_bar_backdrop")
-            )
         }
         Box(
             Modifier
