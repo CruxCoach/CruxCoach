@@ -127,7 +127,11 @@ fun WorkoutPlayerScreen(
         val e = ended ?: return@LaunchedEffect
         val names = e.slugs.joinToString(", ") { state.def(it)?.name(language) ?: viewModel.catalog().fallbackFor(it).name(language) }
         // A circuit: "Circuit ended" (the list of four names filled three lines on the Nokia).
-        val text = if (e.circuit) resources.getString(R.string.trpg_circuit_ended) else resources.getString(R.string.trpg_ended, names)
+        val text = when (e.kind) {
+            EndKind.SKIPPED -> resources.getString(R.string.trpg_skipped, names)
+            EndKind.REMOVED -> resources.getString(R.string.trpg_removed, names)
+            EndKind.ENDED -> if (e.circuit) resources.getString(R.string.trpg_circuit_ended) else resources.getString(R.string.trpg_ended, names)
+        }
         snackScope.launch {
             val result = snackbar.showSnackbar(text, resources.getString(R.string.trpg_undo), duration = SnackbarDuration.Long)
             if (result == SnackbarResult.ActionPerformed) viewModel.undoEnd() else viewModel.consumeEnded()

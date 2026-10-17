@@ -167,4 +167,6 @@
     <string name="trt_never_done">“%1$s” will not be suggested any more</string>
     <string name="trt_never_offer">Turned down “%1$s” three times – stop suggesting it?</string>
     <string name="trt_never_offer_yes">Never again</string>
+    <string name="trt_swapped_undo">“%1$s” instead of “%2$s” today</string>
+    <string name="trt_dropped_undo">“%1$s” left out today</string>
 </resources>

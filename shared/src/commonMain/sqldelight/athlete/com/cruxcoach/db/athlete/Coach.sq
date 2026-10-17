@@ -64,5 +64,8 @@ SELECT * FROM suggestion_event ORDER BY created_at DESC;
 deleteSuggestionEventsForWorkout:
 DELETE FROM suggestion_event WHERE workout_id = ?;
 
+deleteSuggestionEvent:
+DELETE FROM suggestion_event WHERE id = ?;
+
 pruneSuggestionEvents:
 DELETE FROM suggestion_event WHERE created_at < ?;

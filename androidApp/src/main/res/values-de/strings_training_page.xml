@@ -50,4 +50,6 @@
     <string name="trpg_dayform_finger_cap">Fingermaximalkraft höchstens 2 Sätze</string>
     <string name="trpg_dayform_load">Last −%1$d %%</string>
     <string name="trpg_dayform_as_planned">Wie geplant</string>
+    <string name="trpg_skipped">„%1$s“ übersprungen</string>
+    <string name="trpg_removed">„%1$s“ entfernt</string>
 </resources>

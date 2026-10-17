@@ -214,6 +214,9 @@ class AthleteRepository(
     fun allClimbingDays(): List<ClimbingDayEntry> = coach.getAllClimbingDays().executeAsList().mapNotNull { it.toModel() }
     fun deleteClimbingDay(id: String) = coach.deleteClimbingDay(id)
 
+    /** "Rückgängig": the decision is taken back, so the coach does not learn from it either. */
+    fun deleteSuggestionEvent(id: String) = coach.deleteSuggestionEvent(id)
+
     fun logSuggestionEvent(e: SuggestionEvent) = coach.insertSuggestionEvent(
         e.id, e.day, e.createdAt, e.kind.name, e.focus, e.slugs.joinToString(","), e.feedback?.name, e.workoutId, e.value,
     )

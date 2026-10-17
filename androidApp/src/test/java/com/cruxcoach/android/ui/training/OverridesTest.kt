@@ -440,6 +440,29 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a swap or leaving out on the card can be undone and teaches nothing then`() {
+        // Audit P2-14: Undo wherever the athlete decides; the ledger entry goes too.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        fun items() = vm.state.value.suggestion!!.routine.items
+        val first = items().first { !it.warmup }
+        val to = vm.alternatives(first.slug).first().def.slug
+        val day = service.today().toString()
+        vm.swapExercise(first.slug, to)
+        until { items().any { it.slug == to } }
+        vm.undoCardChange()
+        until { items().any { it.slug == first.slug } && items().none { it.slug == to } }
+        until { repo.suggestionEventsForDay(day).none { it.kind == com.cruxcoach.athlete.model.SuggestionEventKind.SWAPPED } }
+        val count = items().size
+        vm.dropExercise(first.slug)
+        until { items().size == count - 1 }
+        vm.undoCardChange()
+        until { items().size == count && items().any { it.slug == first.slug } }
+        until { repo.suggestionEventsForDay(day).none { it.feedback == com.cruxcoach.athlete.model.SuggestionFeedback.DISLIKE_EXERCISE } }
+    }
+
+    @Test
     fun `turned down a third time, the card asks once whether to stop suggesting it`() {
         // Comparison review #8: instead of resting it again and again, ask once; "never" can be undone.
         val vm = loaded(TodayViewModel(service))

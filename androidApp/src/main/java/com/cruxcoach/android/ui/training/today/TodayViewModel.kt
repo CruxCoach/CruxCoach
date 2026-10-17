@@ -622,25 +622,60 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** The suggested slug [shown] stands for (itself, or the one it replaced earlier today). */
     private fun originalOf(shown: String): String = swapsToday.entries.firstOrNull { it.value == shown }?.key ?: shown
 
+    /** The last swap or "leave out" on the card, for "Rückgängig": the card's entry before it and the ledger entry. */
+    private class CardUndo(var key: String? = null, var previous: String? = null, var eventId: String? = null)
+    @Volatile private var cardUndo: CardUndo? = null
+    private var cardJob: kotlinx.coroutines.Job? = null
+
     /** The athlete's pick instead of [from] for today; the coach learns from it (−1 for [from], +1 for [to]). */
-    fun swapExercise(from: String, to: String) = io {
-        synchronized(refreshLock) {
-            val key = originalOf(from)
-            if (key == to) swapsToday.remove(key) else swapsToday[key] = to
-            service.logSuggestion(SuggestionEventKind.SWAPPED, _state.value.suggestion?.focus?.name, listOf(from, to))
-            lastInputs?.let { refreshUnlocked(it) }
+    fun swapExercise(from: String, to: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(from)
+                undo.key = key; undo.previous = swapsToday[key]
+                if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                undo.eventId = service.logSuggestion(SuggestionEventKind.SWAPPED, _state.value.suggestion?.focus?.name, listOf(from, to))
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            offerNeverIfRepeated(from)
         }
-        offerNeverIfRepeated(from)
     }
 
     /** "Heute weglassen": out of today's suggestion without a replacement; counts like "keine Lust". */
-    fun dropExercise(slug: String) = io {
-        synchronized(refreshLock) {
-            swapsToday[originalOf(slug)] = ""
-            service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug), SuggestionFeedback.DISLIKE_EXERCISE)
-            lastInputs?.let { refreshUnlocked(it) }
+    fun dropExercise(slug: String) {
+        val undo = CardUndo().also { cardUndo = it }
+        cardJob = viewModelScope.launch(Dispatchers.IO) {
+            service.ensureReady()
+            synchronized(refreshLock) {
+                val key = originalOf(slug)
+                undo.key = key; undo.previous = swapsToday[key]
+                swapsToday[key] = ""
+                undo.eventId = service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug),
+                    SuggestionFeedback.DISLIKE_EXERCISE)
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            offerNeverIfRepeated(slug)
         }
-        offerNeverIfRepeated(slug)
+    }
+
+    /** "Rückgängig" after a swap or "leave out" on the card (audit P2-14): the card as before, nothing learned. */
+    fun undoCardChange() {
+        val undo = cardUndo ?: return
+        cardUndo = null
+        val job = cardJob
+        io {
+            job?.join()
+            val key = undo.key ?: return@io
+            synchronized(refreshLock) {
+                val previous = undo.previous
+                if (previous == null) swapsToday.remove(key) else swapsToday[key] = previous
+                undo.eventId?.let(service::forgetSuggestion)
+                lastInputs?.let { refreshUnlocked(it) }
+            }
+            if (_state.value.neverOffer != null) _state.update { it.copy(neverOffer = null) }
+        }
     }
 
     /** "Nie vorschlagen" from the card; the profile change brings the new suggestion. */
