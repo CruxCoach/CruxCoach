@@ -74,6 +74,7 @@
     <string name="trn_w_high_deficit_plain">On %1$d logged days you ate about %2$d %% less than your estimated need (if everything was logged).</string>
     <string name="trn_w_fast_pace">Your pace of %1$s per week is %2$s %% of your weight – recommended is at most 0.5–1 %%.</string>
     <string name="trn_w_fast_pace_plain" formatted="false">Your pace is more than 1 % of your weight per week – recommended is at most 0.5–1 %.</string>
+    <string name="trn_w_low_carbs">On %1$d training days you logged %2$s g/kg of carbohydrate on average instead of %3$s g/kg (if everything was logged).</string>
     <string name="trn_w_large_deficit">Your calorie target is %1$d %% under your estimated need – more than 25 %% is a large deficit.</string>
     <string name="trn_w_below_resting">Your calorie target of %1$d kcal is below your resting energy (%2$d kcal).</string>
     <string name="trn_w_low_target_bmi">Your target weight means a BMI of %1$s – below %2$s, where climbing federations recommend a health check.</string>

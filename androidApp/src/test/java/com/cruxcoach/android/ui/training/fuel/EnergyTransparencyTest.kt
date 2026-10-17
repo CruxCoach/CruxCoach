@@ -24,6 +24,10 @@ import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayEntry
 import com.cruxcoach.athlete.model.ClimbingDayKind
+import com.cruxcoach.athlete.model.FoodLogEntry
+import com.cruxcoach.athlete.model.Meal
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.minus
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.Sex
@@ -128,6 +132,27 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         waitForTag("goal_warning_youth")
         compose.onNodeWithTag("goal_done").assertIsEnabled()
         compose.onNodeWithTag("goal_stop").assertIsEnabled()
+    }
+
+    @Test
+    fun `low carbohydrate on earlier training days is named with its numbers`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.MALE) }
+        body(70.0)
+        val today = service.today()
+        // Three earlier hard days, each with breakfast and dinner logged: 140, 150 and 151 g carbohydrate.
+        listOf(140.0, 150.0, 151.0).forEachIndexed { i, carbs ->
+            val day = today.minus(DatePeriod(days = i + 1)).toString()
+            service.saveClimbingDay(ClimbingDayEntry("cd$i", day, ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+            repo.saveFoodLog(FoodLogEntry("b$i", day, 1, Meal.BREAKFAST, name = "Oats", carbsG = carbs / 2))
+            repo.saveFoodLog(FoodLogEntry("d$i", day, 2, Meal.DINNER, name = "Rice", carbsG = carbs / 2))
+        }
+        // Today's breakfast on a training day does not count: the day is still running.
+        service.saveClimbingDay(ClimbingDayEntry("cd-today", today.toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        repo.saveFoodLog(FoodLogEntry("t", today.toString(), 1, Meal.BREAKFAST, name = "Toast", carbsG = 20.0))
+        fuel()
+        waitForTag("fuel_reds_low_carbs_on_training_days")
+        // 441 g over 3 days at 70 kg: 2.1 g/kg against 6 g/kg on a hard day.
+        waitForText("On 3 training days you logged 2.1 g/kg of carbohydrate on average instead of 6 g/kg")
     }
 
     @Test
