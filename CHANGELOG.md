@@ -562,6 +562,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   do not change.
 
 ### Fixed
+- Deleting a climbing day offers "Undo" (on Today and in the list of climbing
+  days); the entry comes back with its board-overlap choice.
+- The map no longer draws a place's sheet under the navigation bar, where
+  "Choose this board" sat behind the buttons and a tap hit Back.
 - The nutrition page left open over midnight moves to the new day by itself
   instead of showing "Yesterday" with the old day's food; a day picked with
   the arrows stays picked.

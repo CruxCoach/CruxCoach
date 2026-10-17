@@ -14,6 +14,7 @@
     <string name="trl_empty_text">Logge Boulder am Board oder einen Klettertag und trag einen Leistungswert für Max-Hangs oder Klimmzüge mit Zusatzgewicht ein. Dann siehst du, wo du stehst und wie Grad und Kraft zusammenhängen.</string>
     <string name="trl_action_values">Leistungswerte eintragen</string>
     <string name="trl_action_log_climbing">Klettertag eintragen</string>
+    <string name="trl_day_deleted">Klettertag gelöscht</string>
 
     <string name="trl_position_title">Kraft im Verhältnis zum Grad</string>
     <string name="trl_tab_finger">Finger</string>
