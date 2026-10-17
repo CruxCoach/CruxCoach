@@ -334,6 +334,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Codeberg, matching the published source list. A device that cannot reach
   cruxcoach.org or its mirror still checks both forges every release is
   published on.
+- The board map is easier to read and to use. Every place shows the colour
+  and letter of its board family (Kilter "K", MoonBoard "M", Tension "T", …),
+  places with several families a pie of them, gym names appear from city zoom
+  on, and the count bubbles are readable in light and dark. A floating search
+  bar replaces the title bar; below it, "All boards" opens a list of all
+  families with marker and count (the map's legend) and "Filters" shows how
+  many filters are active.
+- A sheet at the bottom lists the places in the visible part of the map,
+  nearest to the centre first. Tapping a place shows name, place, its boards
+  and the buttons for directions, website and phone; pulling it up shows per
+  board size, angle range ("adjustable 0–70° in 5° steps"), setup and LEDs,
+  the opening hours as the venue published them, and address and contact.
+  Rows without data are left out instead of showing "—". The map stays usable
+  while a place is open; a tap on the empty map or Back closes it.
+- The map reopens where it was left; on the first visit it shows the boards of
+  your country (from the timezone, without location permission) instead of
+  the whole world. Rotating and tilting by accident is off, and the dark theme
+  gets a dark map instead of a light grey one.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out

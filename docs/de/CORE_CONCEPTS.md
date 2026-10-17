@@ -204,6 +204,14 @@ Konto bleibt die bestehende Trennung der Daten erhalten. Ohne lokale Schlüsselk
 wird ein Import angeboten, statt beim Trennen eine neue Identität zu erzeugen.
 Private Schlüssel bleiben beim Import zunächst verdeckt; der Screenshot-Schutz bleibt aktiv.
 
+## Boardkarte
+
+Die Karte zeigt je Standort einen Marker in Farbe und Buchstabe seiner Board-Familie (Kilter rot „K“, MoonBoard gelb „M“, Tension schiefergrau „T“, …); ein Standort mit mehreren Familien bekommt je Familie ein Tortenstück. Nahe Standorte werden zu neutralen Zahlenblasen zusammengefasst, die die Farbe einer Familie annehmen, wenn die Board-Auswahl genau eine übrig lässt. Ab Stadtzoom stehen die Hallennamen unter den Markern. Der Board-Chip oben listet jede Familie mit Marker und Anzahl und ist damit zugleich die Legende; der Filter-Chip nennt die Zahl weiterer aktiver Filter.
+
+Das Sheet unten listet die Orte im sichtbaren Kartenausschnitt, die nächsten zur Kartenmitte zuerst (höchstens 50, mit der echten Gesamtzahl), und zeigt einen angetippten Ort: Name, Ort, Boards, Route, Website und Telefon im eingeklappten Sheet; je Board Größe, Winkelbereich, Aufbau und LEDs, die Öffnungszeiten und die Kontaktzeilen beim Hochziehen. Angezeigt wird nur, was die Daten enthalten. Öffnungszeiten erscheinen genau so, wie die Halle sie veröffentlicht hat (kuratiert von cruxcoach.org); ob gerade geöffnet ist, berechnet die App nicht, weil Zeitzone und Feiertage des Ortes nicht in den Daten stehen.
+
+Die Karte hat keine Standortberechtigung. Sie öffnet dort, wo sie verlassen wurde; beim ersten Öffnen zeigt sie die Boards des eigenen Landes, abgeleitet aus der Zeitzone („Europe/Vienna“ → Wien im mitgelieferten Ortsindex → Österreich) oder sonst aus der Spracheinstellung. Drehen und Kippen sind aus; im dunklen Design kommt ein dunkler Kartenstil.
+
 ## Statistik der Boardkarte
 
 Die Kartenstatistik zählt alle erfassten Boards im geladenen Kartendatensatz, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards enthalten. Marken- und Layout-Verteilung berücksichtigen alle Board-Familien; Layouts werden je Marke gruppiert und fehlende Angaben als unbekannt angezeigt. Zugang, Verstellbarkeit, Länder und bekannte Größen verwenden denselben Datensatz.
