@@ -66,6 +66,54 @@ final class MainScreensUITests: XCTestCase {
         shot("06-statistics")
     }
 
+    /// The 0.2.4 training area: open it, put off the quick start, start today's
+    /// suggestion and log the first set as planned.
+    func test07TrainingTodayStartsAndLogsASet() throws {
+        try reachBrowser()
+        app.buttons[Strings.li("browser_more")].tap()
+        let entry = app.buttons["browser_training"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
+        entry.tap()
+        let later = app.buttons[Strings.l("trq_later")]
+        if later.waitForExistence(timeout: 10) {
+            shot("07a-training-quick-start")
+            later.tap()
+        }
+        let start = app.buttons["today_suggestion_start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "Today shows no suggestion to start:\n\(app.debugDescription)")
+        shot("07b-training-today")
+        start.tap()
+        // A rep set logs with "done"; a timed set (warm-up hang, plank) offers "done without timer".
+        let done = app.buttons["player_done"]
+        let withoutTimer = app.buttons[Strings.l("trp_done_without_timer")]
+        var target: XCUIElement?
+        let deadline = Date().addingTimeInterval(30)
+        while target == nil && Date() < deadline {
+            if done.exists { target = done } else if withoutTimer.exists { target = withoutTimer }
+            else { _ = done.waitForExistence(timeout: 1) }
+        }
+        shot("07c-training-player")
+        let set = try XCTUnwrap(target, "The training player shows no set to log:\n\(app.debugDescription)")
+        set.tap()
+        shot("07d-training-set-logged")
+    }
+
+    func test08TrainingTabsOpen() throws {
+        try reachBrowser()
+        app.buttons[Strings.li("browser_more")].tap()
+        let entry = app.buttons["browser_training"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "No training entry in the menu:\n\(app.debugDescription)")
+        entry.tap()
+        let later = app.buttons[Strings.l("trq_later")]
+        if later.waitForExistence(timeout: 5) { later.tap() }
+        for (index, key) in ["tr_tab_training", "tr_nav_fuel", "tr_tab_progress"].enumerated() {
+            let tab = app.tabBars.buttons[Strings.l(key)]
+            XCTAssertTrue(tab.waitForExistence(timeout: 10), "No tab \(key):\n\(app.debugDescription)")
+            tab.tap()
+            shot("08\(index)-training-tab-\(key)")
+        }
+    }
+
     // MARK: - Helpers
 
     /// First run shows the two-step setup; skipping it must land in the browser.
