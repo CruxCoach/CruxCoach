@@ -506,6 +506,27 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a circuit fills the chosen time with more rounds`() {
+        // Device test 2026-10-17: the same sets as a circuit ended far below the chosen time (60 min → 28–38).
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseFocus(SuggestionFocus.PULL_PUSH)
+        vm.chooseMinutes(60)
+        until { vm.state.value.minutesToday == 60 && vm.state.value.suggestion?.focus == SuggestionFocus.PULL_PUSH && vm.state.value.circuitPossible }
+        val straight = vm.state.value.suggestion!!.estimatedMinutes
+        vm.chooseCircuit(true)
+        until { vm.state.value.circuitToday }
+        val s = vm.state.value.suggestion!!
+        val key = s.routine.items.first { it.circuit != null }.circuit!!
+        val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(s.routine.items, key)
+        if (straight >= 60 - TodayViewModel.CIRCUIT_TOLERANCE_MIN) {
+            assertTrue(s.estimatedMinutes >= 60 - TodayViewModel.CIRCUIT_TOLERANCE_MIN || rounds == TodayViewModel.MAX_CIRCUIT_ROUNDS,
+                "straight $straight min, circuit ${s.estimatedMinutes} min in $rounds rounds")
+        }
+    }
+
+    @Test
     fun `what hurts today spares the suggestion but never empties an own workout`() {
         // Device test 2026-10-16: a sore shoulder took pull-ups, bench press and plank out of the athlete's own workout.
         val day = service.today().toString()

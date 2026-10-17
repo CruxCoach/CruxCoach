@@ -213,7 +213,11 @@ private fun ExerciseHeader(
                 else stringResource(R.string.trp_set_of, workNumberOf(page, set) ?: 1,
                     page.sets.filter { it.setType != SetType.WARMUP && it.blockIndex == set.blockIndex }.map { it.setIndex }.distinct().size)
             }
-            Text(listOfNotNull(categoryLabel(def.category), position).joinToString(" · "), style = MaterialTheme.typography.titleSmall,
+            // "Warm-up · Warm-up · 1 of 2" on a warm-up exercise: the category goes when the row says it already.
+            val category = categoryLabel(def.category).takeIf {
+                !(def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP && active?.setType == SetType.WARMUP)
+            }
+            Text(listOfNotNull(category, position).joinToString(" · "), style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).testTag("player_set_of"))
             active?.side?.let { side ->

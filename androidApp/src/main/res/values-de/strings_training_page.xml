@@ -15,6 +15,7 @@
     <string name="trpg_circuit_rests">%1$s zwischen den Übungen · %2$s nach jeder Runde</string>
     <string name="trpg_round">Runde %1$d</string>
     <string name="trpg_exercise_done">%1$s fertig · %2$d von %3$d im Ziel</string>
+    <string name="trpg_exercise_done_plain">%1$s fertig</string>
     <string name="trpg_to_next">Zur nächsten Übung</string>
     <string name="trpg_outcome_met">Ziel erreicht</string>
     <string name="trpg_outcome_under">unter dem Ziel</string>

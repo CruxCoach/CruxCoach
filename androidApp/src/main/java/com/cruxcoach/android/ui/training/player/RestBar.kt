@@ -72,7 +72,9 @@ fun RestBar(
                             val onTarget = work.count { s ->
                                 SetOutcomes.of(done!!.def, s).main.let { it == TargetOutcome.MET || it == TargetOutcome.OVER }
                             }
-                            stringResource(R.string.trpg_exercise_done, done!!.def.name(language), onTarget, work.size)
+                            // A warm-up exercise has no work sets: just "done" ("0 of 0 on target" said nothing).
+                            if (work.isEmpty()) stringResource(R.string.trpg_exercise_done_plain, done!!.def.name(language))
+                            else stringResource(R.string.trpg_exercise_done, done!!.def.name(language), onTarget, work.size)
                         }
                         state.sideSwitch -> state.next?.set?.side?.let { stringResource(R.string.trp_side_switch) + " → " + sideLabel(it) }
                             ?: stringResource(R.string.trp_side_switch)
