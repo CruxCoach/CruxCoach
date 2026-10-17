@@ -300,14 +300,14 @@
     <string name="map_filter_show_homewalls">Private Homewalls</string>
     <string name="map_open_stats">Statistik öffnen</string>
     <string name="map_filter_sheet_title">Karte filtern</string>
-    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_layout">Kilter-Layout</string>
     <string name="map_filter_section_access">Zugang</string>
     <string name="map_filter_section_moon_variant">MoonBoard-Variante</string>
     <string name="map_filter_section_moon_type">MoonBoard-Setup</string>
     <string name="map_filter_section_moon_led">MoonBoard-Hardware</string>
     <string name="map_filter_moon_no_led">Keine LEDs</string>
-    <string name="map_filter_section_adjustability">Verstellbarkeit</string>
-    <string name="map_filter_section_size">Größe</string>
+    <string name="map_filter_section_adjustability">Kilter-Verstellbarkeit</string>
+    <string name="map_filter_section_size">Kilter-Größe</string>
     <string name="map_filter_section_country">Land</string>
     <string name="map_filter_count_template">Zeigt %1$d von %2$d</string>
     <string name="map_filter_reset">Zurücksetzen</string>

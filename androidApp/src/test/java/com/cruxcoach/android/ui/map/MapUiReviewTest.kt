@@ -198,6 +198,7 @@ class MapUiReviewTest {
             onCloseVenue = {},
             onBrowseClimbs = { _, _, _ -> },
             onResetFilters = {},
+            onShowNearest = {},
             onOverlayHeight = { File(dir!!, "overlay-px.txt").writeText(it.toString()) },
             onPeekHeight = { px, id -> File(dir!!, "peek-px-${id ?: "list"}.txt".replace(',', '_')).writeText(px.toString()) },
             map = map,

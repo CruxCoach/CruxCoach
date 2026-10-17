@@ -42,6 +42,16 @@ class MapViewportTest {
     }
 
     @Test
+    fun `nearest boards are framed together with the current centre`() {
+        val sea = MapViewport(53.0, 4.0, 55.0, 7.0, centerLat = 54.0, centerLng = 5.5) // North Sea
+        val frame = nearestFrame(venues, sea, count = 1)!!
+        assertEquals(52.52, frame.south, 1e-9)    // Berlin is the closest
+        assertEquals(54.0, frame.north, 1e-9)     // … and the centre stays in view
+        assertEquals(5.5, frame.west, 1e-9)
+        assertEquals(13.40, frame.east, 1e-9)
+    }
+
+    @Test
     fun `distance is roughly right`() {
         val km = distanceMeters(48.137, 11.575, 52.520, 13.405) / 1000
         assertTrue("Munich–Berlin was $km km", km in 500.0..510.0)

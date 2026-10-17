@@ -56,6 +56,28 @@ fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Doub
     return 2 * r * asin(sqrt(a.coerceIn(0.0, 1.0)))
 }
 
+/**
+ * The frame for "show nearest boards": the current centre plus the [count]
+ * nearest venues, so the user sees where they are relative to them. Null when
+ * there are no venues. Longitudes are taken relative to the centre, so a
+ * frame across the antimeridian stays narrow.
+ */
+fun nearestFrame(venues: List<MapVenue>, viewport: MapViewport, count: Int = 3): MapStartView.Bounds? {
+    val nearest = venues
+        .sortedBy { distanceMeters(viewport.centerLat, viewport.centerLng, it.lat, it.lng) }
+        .take(count)
+    if (nearest.isEmpty()) return null
+    fun unwrap(lng: Double): Double {
+        var d = lng - viewport.centerLng
+        while (d > 180) d -= 360
+        while (d < -180) d += 360
+        return viewport.centerLng + d
+    }
+    val lats = nearest.map { it.lat } + viewport.centerLat
+    val lngs = nearest.map { unwrap(it.lng) } + viewport.centerLng
+    return MapStartView.Bounds(lats.min(), lngs.min(), lats.max(), lngs.max())
+}
+
 /** Where the map opens. */
 sealed interface MapStartView {
     data class Camera(val lat: Double, val lng: Double, val zoom: Double) : MapStartView
