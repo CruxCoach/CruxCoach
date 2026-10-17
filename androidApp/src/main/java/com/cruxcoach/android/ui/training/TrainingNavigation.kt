@@ -62,6 +62,8 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
         var showEstimate by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
         /** The climbing-day sheet: "" logs a new day, an id edits today's entry (device test D30); null = closed. */
         var climbingSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
+        // The same view model as TodayScreen's (same back stack entry): a deleted climbing day gets its "Rückgängig" there.
+        val todayViewModel: com.cruxcoach.android.ui.training.today.TodayViewModel = androidx.hilt.navigation.compose.hiltViewModel()
         val context = androidx.compose.ui.platform.LocalContext.current
         // The first visit asks the basics (owner 2026-10-09); the longer coach setup stays a checklist step.
         BasicsGate { go(TrainingRoutes.BASICS) }
@@ -102,6 +104,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                     onDismiss = { climbingSheet = null }, editId = id.ifEmpty { null },
                     // A second session today stays one tap away from today's entry.
                     onAddAnother = if (id.isNotEmpty()) ({ climbingSheet = "" }) else null,
+                    onDeleted = todayViewModel::climbingDeleted,
                 )
             }
         }

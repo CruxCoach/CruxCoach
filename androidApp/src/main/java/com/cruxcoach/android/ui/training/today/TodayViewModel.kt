@@ -118,6 +118,8 @@ data class TodayState(
     val gradeOffer: String? = null,
     /** A logbook grade just taken over (new, before), for the snackbar and "Rückgängig". */
     val gradeTaken: Pair<String, String?>? = null,
+    /** A climbing day just deleted from Today's tile, for the snackbar and "Rückgängig" (device test D45). */
+    val climbDeleted: AthleteService.DeletedClimb? = null,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -734,6 +736,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     fun consumeGradeTaken() = _state.update { it.copy(gradeTaken = null) }
+
+    /** A climbing day was deleted in the sheet: Today offers "Rückgängig" (device test D45). */
+    fun climbingDeleted(d: AthleteService.DeletedClimb) = _state.update { it.copy(climbDeleted = d) }
+
+    fun consumeClimbDeleted() = _state.update { it.copy(climbDeleted = null) }
+
+    /** "Rückgängig" after deleting a climbing day: the entry and its board-overlap choice are back. */
+    fun undoClimbingDelete(d: AthleteService.DeletedClimb) = io { service.restoreClimbingDay(d) }
 
     /**
      * What could replace [slug] on today's card (owner 2026-10-16: "jede Empfehlung mit wenig Aufwand

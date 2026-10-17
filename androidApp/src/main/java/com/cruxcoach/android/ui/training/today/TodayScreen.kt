@@ -342,6 +342,19 @@ fun TodayScreen(
             },
         )
     }
+    // A climbing day deleted from the tile: one line with "Rückgängig" (device test D45).
+    state.climbDeleted?.let { deleted ->
+        val text = stringResource(R.string.trl_day_deleted)
+        LaunchedEffect(deleted) {
+            viewModel.consumeClimbDeleted()
+            snackScope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) {
+                    viewModel.undoClimbingDelete(deleted)
+                }
+            }
+        }
+    }
     // A logbook grade taken over: one line with "Rückgängig".
     state.gradeTaken?.let { taken ->
         val text = stringResource(R.string.trt_grade_taken, com.cruxcoach.android.ui.training.coach.gradeWithV(taken.first))
