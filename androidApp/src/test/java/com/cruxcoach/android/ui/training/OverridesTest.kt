@@ -431,8 +431,11 @@ class OverridesTest : AthleteScreenTest() {
         until { items().any { it.slug == first.slug } && items().none { it.slug == to } }
         // Left out today: gone without a replacement.
         val count = items().size
+        val others = items().map { it.slug }.toSet() - first.slug
         vm.dropExercise(first.slug)
         until { items().none { it.slug == first.slug } && items().size == count - 1 }
+        // Left out without a replacement: the rest of the card stays as it was (device test 2026-10-17).
+        assertEquals(others, items().map { it.slug }.toSet())
         // Never suggested: in the profile, out of the card.
         val other = items().first { !it.warmup }.slug
         vm.excludeExercise(other)
