@@ -369,6 +369,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   an exercise in the training say "Pulling this week: 4/6 sets", and the
   workout editor shows per area where the week stands and what the workout
   adds ("· this workout +6").
+- When the board logbook shows a working grade clearly above the saved one
+  (one sub-grade at least), Today asks once "Your logbook shows 7a – take it
+  over as your grade?"; "Yes" saves it with Undo, "No" is not asked again
+  for that grade (a higher one asks again).
 - Today's form is visible and overridable: when the check-in or hard
   climbing earlier today takes a set off or lowers a load, the card shows
   the sets the training will plan and the training page says why ("day form

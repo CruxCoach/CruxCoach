@@ -33,4 +33,7 @@
     <string name="trlr_levels">Dein Niveau</string>
     <string name="trlr_level_easier">Eine Stufe leichter</string>
     <string name="trlr_level_harder">Eine Stufe fordernder</string>
+    <!-- Das Logbuch zeigt einen höheren Grad als den gespeicherten -->
+    <string name="trt_grade_offer">Dein Logbuch zeigt %1$s – als deinen Grad übernehmen?</string>
+    <string name="trt_grade_taken">Dein Grad ist jetzt %1$s</string>
 </resources>

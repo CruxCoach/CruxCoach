@@ -165,6 +165,25 @@ class AthleteService @Inject constructor(
     /** Working grade, flash grade, rhythm — the coach setup's prefill and the load model's anchor. */
     fun logbookSummary(): LogbookSummary = LogbookSummaries.summarize(logbookRows(), today())
 
+    /**
+     * "Your logbook shows 7a – take it over?": the logbook's working grade when it is clearly above the saved grade and
+     * not one the athlete said no to ([LogbookSummaries.higherWorkingGrade]).
+     */
+    fun gradeOffer(profile: AthleteProfile = repo.profile(), summary: LogbookSummary = logbookSummary()): String? = runCatching {
+        LogbookSummaries.higherWorkingGrade(summary, profile.coach.currentGrade, repo.setting(GRADE_DECLINED_KEY)?.takeIf { it.isNotBlank() })
+    }.getOrNull()
+
+    /** Takes over [grade] as the athlete's grade; returns the one before, for "Rückgängig". */
+    fun takeOverGrade(grade: String): String? {
+        val before = repo.profile().coach.currentGrade
+        repo.updateProfile { p -> p.copy(coach = p.coach.copy(currentGrade = grade, currentFlashGrade = p.coach.currentFlashGrade?.takeIf {
+            (LogbookSummaries.difficultyOf(it) ?: 0.0) <= (LogbookSummaries.difficultyOf(grade) ?: 0.0) }, setupUpdatedAt = System.currentTimeMillis())) }
+        return before
+    }
+
+    /** "Nein": not asked again for [grade] (a higher one later asks again). */
+    fun declineGrade(grade: String) = repo.putSetting(GRADE_DECLINED_KEY, grade)
+
     /** [logbookSummary], with the coach-setup grades standing in when there is no graded logbook. */
     fun gradeSummary(): LogbookSummary {
         val coach = repo.profile().coach
@@ -1229,6 +1248,8 @@ class AthleteService @Inject constructor(
             rounds.getOrNull(i) ?: ((rounds.lastOrNull() ?: -1) + 1 + (i - rounds.size))
 
         const val LEDGER_KEEP_DAYS = 180L
+        /** The logbook grade the athlete last said no to taking over; a higher one asks again. */
+        const val GRADE_DECLINED_KEY = "logbook.grade.declined"
         /** Pain from this level on pauses climbing when it is remembered as an injury. */
         const val PAIN_PAUSE_SEVERITY = 5
         const val PAIN_LIGHTER_FACTOR = 0.8
