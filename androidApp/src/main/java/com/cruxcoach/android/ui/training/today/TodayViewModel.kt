@@ -180,6 +180,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** Today's weekday habit; "the coach decides" for today sets [ignoreUsualKind]. */
     private var lastUsual: PreferenceLearning.UsualChoice? = null
     private var ignoreUsualKind = false
+    /** Today's plan as this screen last stored it for nutrition ([AthleteService.rememberPlannedToday]). */
+    private var plannedWritten: String? = null
     /** Suggestions already in the ledger as SHOWN today (focus + slugs). */
     private val shownToday = mutableSetOf<String>()
 
@@ -256,7 +258,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             if (shownToday.add(sig)) service.logSuggestion(SuggestionEventKind.SHOWN, s.focus.name, s.routine.items.map { it.slug })
         }
         // Nutrition follows today's planned training until it is done (audit W4); an open training keeps the plan.
-        daily?.let { runCatching { service.rememberPlannedToday(it) } }
+        daily?.let { s -> runCatching { plannedWritten = service.rememberPlannedToday(s, plannedWritten) } }
         val planned = runCatching { service.plannedForTargets(activity) }.getOrNull()
         val fuelActivity = planned?.activity ?: activity
         val durationHint = runCatching {
@@ -306,7 +308,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
                 need = service.energyNeed(i.profile, fuelActivity),
                 fuelPlan = planned?.let { runCatching { service.todayWeightPlan(i.profile, fuelActivity, activities) }.getOrNull() },
-                weekNeeds = runCatching { service.weekNeeds(i.profile, activities) }.getOrDefault(emptyList()),
+                weekNeeds = runCatching { service.weekNeeds(i.profile, if (planned != null) service.withToday(activities, fuelActivity) else activities) }
+                    .getOrDefault(emptyList()),
                 heightCm = service.heightCm(),
                 energy = service.energyReport(i.profile, activities),
                 loadSpikes = spikes,

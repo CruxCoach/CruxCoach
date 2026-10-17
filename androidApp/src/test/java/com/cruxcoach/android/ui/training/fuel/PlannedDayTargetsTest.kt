@@ -64,6 +64,8 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         assertEquals(60, s.planned!!.minutes)
         assertEquals(DayLoad.HARD, s.dayLoad)
         assertEquals(420, s.targets!!.carbsG)
+        // The goal sheet plans from the same today as the rings.
+        assertEquals(s.need, s.weekNeeds.last())
         // The energy card stays on what was logged: today is no training day there.
         val real = service.activities(days = 1)[today.toString()]
         assertNull(real)
@@ -127,6 +129,24 @@ class PlannedDayTargetsTest : AthleteScreenTest() {
         vm.previousDay()
         compose.waitUntil(WAIT_MS) { vm.state.value.day == today.minus(DatePeriod(days = 1)) }
         assertEquals(false, vm.state.value.tomorrowHard)
+    }
+
+    @Test
+    fun `two Today screens do not overwrite each other's plan in turn`() {
+        boardToday()
+        val board = com.cruxcoach.athlete.logic.SessionSuggestion(
+            com.cruxcoach.athlete.logic.SuggestionFocus.BOARD_DAY, com.cruxcoach.athlete.model.Routine("r", "board", items = emptyList()),
+            listOf(com.cruxcoach.athlete.logic.SuggestionReason.WEEK_PLAN_BOARD), 15, PLAN_BOARD,
+            boardPlan = com.cruxcoach.athlete.logic.BoardPlan(com.cruxcoach.domain.playlist.GeneratorType.LIMIT, 60),
+        )
+        val longer = board.copy(boardPlan = com.cruxcoach.athlete.logic.BoardPlan(com.cruxcoach.domain.playlist.GeneratorType.LIMIT, 90))
+        // The first screen stores its plan, the second its own (the athlete chose 90 min there) …
+        val first = service.rememberPlannedToday(board, null)
+        val second = service.rememberPlannedToday(longer, null)
+        assertEquals(second, repo.setting(PlannedTraining.SETTING_KEY))
+        // … and the first, re-deriving on that write with its plan unchanged, leaves the newer one alone.
+        assertEquals(first, service.rememberPlannedToday(board, first))
+        assertEquals(90, PlannedTraining.decode(repo.setting(PlannedTraining.SETTING_KEY))!!.minutes)
     }
 
     @Test

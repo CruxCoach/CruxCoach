@@ -146,7 +146,8 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 },
                 planned = planned,
                 tomorrowHard = s.day == today && service.tomorrowHard(s.profile),
-                weekNeeds = service.weekNeeds(s.profile, activities),
+                // The goal sheet plans from today as the rings see it.
+                weekNeeds = service.weekNeeds(s.profile, if (planned != null) service.withToday(activities, activity) else activities),
                 heightCm = service.heightCm(),
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
                 lastByFood = com.cruxcoach.athlete.logic.RecentFoods.lastByFood(log),
