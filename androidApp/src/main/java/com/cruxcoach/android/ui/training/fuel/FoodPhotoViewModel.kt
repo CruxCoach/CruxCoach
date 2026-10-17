@@ -527,11 +527,19 @@ class FoodPhotoViewModel @Inject constructor(
             )
         }
 
-        /** A BLS food as an (unsaved) per-100 g food item; saved on first use. */
-        fun blsFoodItem(food: BlsFood) = FoodItem(
-            id = "bls:${food.code}", name = blsName(food), source = BlsRepository.SOURCE,
-            kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
-        )
+        /**
+         * A BLS food as an (unsaved) per-100 g food item; saved on first use. Foods people count (a banana, an egg)
+         * get one piece as their portion, so the amount dialog offers pieces next to grams (device test D43).
+         */
+        fun blsFoodItem(food: BlsFood): FoodItem {
+            val piece = com.cruxcoach.athlete.logic.MealTextParser.pieceGramsOf(food.nameDe)
+            return FoodItem(
+                id = "bls:${food.code}", name = blsName(food), source = BlsRepository.SOURCE,
+                kcalPer100 = food.kcal, proteinPer100 = food.protein, carbsPer100 = food.carbs, fatPer100 = food.fat,
+                servingG = piece,
+                servingLabel = piece?.let { g -> if (german()) "1 Stück (${g.toInt()} g)" else "1 piece (${g.toInt()} g)" },
+            )
+        }
 
         fun displayName(food: DetectedFood): String = if (german()) food.nameDe else food.nameEn
 

@@ -71,6 +71,33 @@ class FoodSearchAndTextTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a food people count is offered by the piece (device test D43)`() {
+        render()
+        waitForTag("fuel_my_foods")
+        compose.onNodeWithTag("fuel_my_foods").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_foods_search")
+        compose.onNodeWithTag("fuel_foods_search").performTextInput("banane")
+        compose.waitUntil(WAIT_MS) {
+            runCatching { compose.onNodeWithTag("fuel_foods_list").performScrollToNode(hasTestTag("fuel_bls_F503100")); true }
+                .getOrDefault(false)
+        }
+        compose.onNodeWithTag("fuel_bls_F503100").performSemanticsAction(SemanticsActions.OnClick)
+        waitForTag("fuel_amount_dialog")
+        // It opens on pieces, one banana, and says what a piece weighs; grams stay one tap away.
+        waitForTag("fuel_amount_portions")
+        waitForText("(120 g)")
+        compose.onNodeWithTag("fuel_amount_portions").performTextReplacement("2")
+        compose.onNodeWithTag("fuel_amount_confirm").performSemanticsAction(SemanticsActions.OnClick)
+
+        val day = service.today().toString()
+        compose.waitUntil(WAIT_MS) { repo.foodLog(day).isNotEmpty() }
+        val entry = repo.foodLog(day).single()
+        assertEquals(2.0, entry.portions!!, 0.0)
+        assertEquals(240.0, entry.amountG!!, 0.0)
+        assertEquals(120.0, repo.foodItem("bls:F503100")!!.servingG!!, 0.0)
+    }
+
+    @Test
     fun `product search finds a packaged product and logs one serving`() {
         val products = OffRepository(context).apply {
             source = { "# version: t\n4025500000001\tSkyr Natur\t\tMilbona\t63\t11\t4\t0.2\t150\t1\n".reader().buffered() }
