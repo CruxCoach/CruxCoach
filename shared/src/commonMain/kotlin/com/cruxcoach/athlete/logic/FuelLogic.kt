@@ -65,6 +65,14 @@ object FuelTargets {
 
     enum class TargetKind { ENERGY, CARBS, PROTEIN, FAT, WATER }
 
+    /** Protein per kg body weight the athlete can choose; [compute] keeps it inside 1.2–2.4 as well. */
+    val PROTEIN_PER_KG_CHOICE = 1.4..2.4
+    /**
+     * Protein per kg recommended while losing weight: more protein helps keep muscle in an energy deficit
+     * (holistic audit P2-18). Named next to the choice, never set by itself.
+     */
+    val PROTEIN_PER_KG_LOSING = 1.8..2.2
+
     /** Plausible own targets: typos are refused, choices are not. */
     val OWN_KCAL = 800..6000
     val OWN_CARBS_G = 0..1000

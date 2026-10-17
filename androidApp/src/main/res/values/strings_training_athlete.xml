@@ -42,6 +42,9 @@
     <string name="tra_show_calories">Show calories</string>
     <string name="tra_protein_per_kg">Protein: %1$s g per kg body weight</string>
     <string name="tra_protein_per_kg_lb">Protein: %1$s g per kg body weight (%2$s g per lb)</string>
+    <!-- While losing weight more protein helps keep muscle; the slider goes up to 2.4 g/kg (holistic audit P2-18). -->
+    <string name="tra_protein_losing">While losing weight %1$s–%2$s g per kg is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
+    <string name="tra_protein_losing_lb">While losing weight %1$s–%2$s g per kg (%3$s–%4$s g per lb) is recommended: it helps keep muscle in the deficit. The choice is yours.</string>
     <string name="tra_personal_title">About you (optional)</string>
     <string name="tra_personal_info">Weight: nutrition targets and loads in % body weight. Height: ape index. Sex and year of birth: reference values for micronutrients and the energy check. Nothing leaves your device.</string>
     <string name="tra_height">Height (%1$s)</string>

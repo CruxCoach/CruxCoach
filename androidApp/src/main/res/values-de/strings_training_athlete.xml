@@ -40,6 +40,9 @@
     <string name="tra_show_calories">Kalorien anzeigen</string>
     <string name="tra_protein_per_kg">Protein: %1$s g pro kg Körpergewicht</string>
     <string name="tra_protein_per_kg_lb">Protein: %1$s g pro kg Körpergewicht (%2$s g pro lb)</string>
+    <!-- While losing weight more protein helps keep muscle; the slider goes up to 2.4 g/kg (holistic audit P2-18). -->
+    <string name="tra_protein_losing">Beim Abnehmen empfohlen: %1$s–%2$s g pro kg – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
+    <string name="tra_protein_losing_lb">Beim Abnehmen empfohlen: %1$s–%2$s g pro kg (%3$s–%4$s g pro lb) – das hilft, im Defizit die Muskeln zu halten. Die Wahl bleibt bei dir.</string>
     <string name="tra_personal_title">Über dich (freiwillig)</string>
     <string name="tra_personal_info">Gewicht: Ernährungsziele und Lasten in % Körpergewicht. Größe: Ape-Index. Geschlecht und Geburtsjahr: Richtwerte für Mikronährstoffe und den Energie-Check. Nichts verlässt dein Gerät.</string>
     <string name="tra_height">Größe (%1$s)</string>
