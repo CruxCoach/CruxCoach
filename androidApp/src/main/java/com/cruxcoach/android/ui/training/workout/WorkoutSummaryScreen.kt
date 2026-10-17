@@ -34,6 +34,8 @@ import com.cruxcoach.athlete.catalog.ExerciseKind
 import com.cruxcoach.athlete.catalog.LoadMode
 import com.cruxcoach.athlete.logic.ProgressionSuggestion
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.isoDayNumber
 import com.cruxcoach.athlete.model.SuggestionEventKind
 import com.cruxcoach.athlete.logic.WorkoutPlanner
 import com.cruxcoach.athlete.logic.TrainingBlocks
@@ -82,7 +84,15 @@ data class SummaryState(
     val deleted: Boolean = false,
     /** Loads the athlete lowered that the next training plans ([AthleteService.learnOwnLoads]). */
     val ownLoads: List<com.cruxcoach.athlete.model.Benchmark> = emptyList(),
+    /** Today's training only (audit P2-15): when the fingers take max work again, after finger sets. */
+    val fingersFreeOn: kotlinx.datetime.LocalDate? = null,
+    /** Today's nutrition after the training: the day type and what is left of carbs and protein. */
+    val fuelLeft: FuelLeft? = null,
+    /** What today's form trimmed in this training, while it was not taken back. */
+    val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
 )
+
+data class FuelLeft(val dayLoad: com.cruxcoach.athlete.logic.DayLoad, val carbsG: Int, val proteinG: Int)
 
 @HiltViewModel
 class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteService) : ViewModel() {
@@ -129,6 +139,19 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                 }
             }
             val streak = runCatching { service.streak(profile, service.activities(7 * 26)) }.getOrNull()
+            val today = service.today()
+            val isToday = workout?.day == today.toString()
+            // Off-wall finger sets block today and tomorrow (one more day from 40 on), as the suggestion counts it.
+            val masters = profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y40_54 ||
+                profile.coach.ageBand == com.cruxcoach.athlete.model.AgeBand.Y55_PLUS
+            val fingerWork = work.any { com.cruxcoach.athlete.catalog.LoadDomain.FINGER in catalog.fallbackFor(it.exerciseSlug).domains }
+            val fingersFreeOn = if (isToday && fingerWork) today.plus(kotlinx.datetime.DatePeriod(days = if (masters) 3 else 2)) else null
+            val fuelLeft = if (!isToday) null else runCatching {
+                val targets = service.fuelTargets(service.activities(1)[today.toString()], profile) ?: return@runCatching null
+                val eaten = repo.foodLog(today.toString())
+                FuelLeft(targets.dayLoad, (targets.carbsG - eaten.sumOf { it.carbsG ?: 0.0 }).roundToInt().coerceAtLeast(0),
+                    (targets.proteinG - eaten.sumOf { it.proteinG ?: 0.0 }).roundToInt().coerceAtLeast(0))
+            }.getOrNull()
             _state.update {
                 it.copy(
                     loading = false, workout = workout, blocks = blocks, catalog = catalog,
@@ -138,6 +161,7 @@ class WorkoutSummaryViewModel @Inject constructor(private val service: AthleteSe
                     trends = trends,
                     routineCounts = slugs.associateWith { s -> routines.count { r -> r.items.any { i -> i.slug == s } } },
                     ownLoads = workout?.let { w -> runCatching { service.ownLoadsOf(w) }.getOrNull() }.orEmpty(),
+                    fingersFreeOn = fingersFreeOn, fuelLeft = fuelLeft, dayForm = service.dayForm(workoutId),
                 )
             }
             if (workout != null) logCompletion(workout, sets)
@@ -222,6 +246,7 @@ fun WorkoutSummaryScreen(
     onBack: () -> Unit,
     onOpenExercise: (String) -> Unit,
     viewModel: WorkoutSummaryViewModel = hiltViewModel(),
+    onOpenFuel: () -> Unit = {},
 ) {
     LaunchedEffect(workoutId) { viewModel.load(workoutId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -272,6 +297,9 @@ fun WorkoutSummaryScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { RewardHeader(workout, summary, state) }
+            if (state.fingersFreeOn != null || state.fuelLeft != null || state.dayForm != null) {
+                item(key = "after") { AfterTraining(state, onOpenFuel) }
+            }
             if (summary.records.isNotEmpty()) {
                 item { SectionTitle(stringResource(R.string.trw_records_title)) }
                 summary.records.forEach { (slug, record) ->
@@ -558,6 +586,40 @@ internal fun formatDay(day: String): String = runCatching {
  * The end of a training as a small celebration (a reward screen):
  * a check that pops in, "done", the key numbers, and where the week stands.
  */
+/**
+ * Training, recovery and nutrition in one place (audit P2-15): when the fingers take max work again,
+ * what today's food still needs after this training, and what today's form trimmed.
+ */
+@Composable
+private fun AfterTraining(state: SummaryState, onOpenFuel: () -> Unit) {
+    Card(Modifier.fillMaxWidth().testTag("summary_after")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.tre_after_title), style = MaterialTheme.typography.titleSmall)
+            state.dayForm?.let { m ->
+                val why = m.reason?.let { com.cruxcoach.android.ui.training.today.readinessReasonShort(it) }
+                    ?: stringResource(R.string.trpg_dayform_climbed)
+                if (m.setsDelta < 0) Text(stringResource(R.string.tre_after_dayform, why), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("summary_after_dayform"))
+            }
+            state.fingersFreeOn?.let { day ->
+                val name = java.time.DayOfWeek.of(day.dayOfWeek.isoDayNumber)
+                    .getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+                Text(stringResource(R.string.tre_after_fingers, name), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("summary_after_fingers"))
+            }
+            state.fuelLeft?.let { f ->
+                val day = com.cruxcoach.android.ui.training.dayLoadLabel(f.dayLoad)
+                Text(if (f.carbsG == 0 && f.proteinG == 0) stringResource(R.string.tre_after_fuel_done, day)
+                    else stringResource(R.string.tre_after_fuel, day, f.carbsG, f.proteinG),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("summary_after_fuel"))
+                TextButton(onClick = onOpenFuel, modifier = Modifier.testTag("summary_after_open_fuel")) {
+                    Text(stringResource(R.string.tre_after_fuel_open))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RewardHeader(workout: Workout, summary: WorkoutSummary, state: SummaryState) {
     val scale = remember { androidx.compose.animation.core.Animatable(0.4f) }

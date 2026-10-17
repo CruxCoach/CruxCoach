@@ -119,4 +119,10 @@
     <string name="tre_reason_return_break">Zurück nach einer Pause: weniger Sätze und vorerst keine maximale Fingerlast – der Körper braucht einen kurzen Anlauf.</string>
     <string name="tre_reason_return_finger">Deine Fingerverletzung ist erst kürzlich verheilt: Fingertraining bleibt noch ein paar Wochen leicht.</string>
     <string name="tre_ev_return">Wiedereinstieg nach %1$d Tagen (Woche %2$d von %3$d)</string>
+    <string name="tre_after_title">Nach dem Training</string>
+    <string name="tre_after_fingers">Fingerkraft wieder voll belastbar ab %1$s</string>
+    <string name="tre_after_fuel">Ernährung heute (%1$s): noch %2$d g Kohlenhydrate und %3$d g Protein</string>
+    <string name="tre_after_fuel_done">Ernährung heute (%1$s): Kohlenhydrate und Protein erreicht</string>
+    <string name="tre_after_fuel_open">Essen eintragen</string>
+    <string name="tre_after_dayform">Tagesform (%1$s): heute ein Satz weniger je Übung</string>
 </resources>

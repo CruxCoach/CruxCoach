@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.training
 
+import kotlin.test.assertEquals
+import kotlinx.datetime.plus
 import android.app.Application
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -139,6 +141,26 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
         val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
         render { WorkoutSummaryScreen(id, {}, {}, viewModel = vm) }
         waitForTag("summary_list")
+    }
+
+    @Test
+    fun `the summary links recovery and nutrition after finger work`() {
+        // Audit P2-15: training, recovery and nutrition in one place.
+        repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+            com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        val id = service.startWorkout(null, null)
+        service.addExercise(id, "finger.max_hang")
+        repo.setsFor(id).filter { it.setType == com.cruxcoach.athlete.model.SetType.WORK }
+            .forEach { service.completeSet(it.copy(durationS = it.targetDurationS ?: 10.0), startRest = false) }
+        service.finishWorkout(id, 7, null)
+        val vm = loaded(WorkoutSummaryViewModel(service).also { it.load(id) })
+        compose.waitUntil(WAIT_MS) { !vm.state.value.loading }
+        assertEquals(service.today().plus(kotlinx.datetime.DatePeriod(days = 2)), vm.state.value.fingersFreeOn,
+            "sets ${repo.setsFor(id).map { "${it.exerciseSlug} ${it.setType} ${it.completedAt}" }}")
+        assert(vm.state.value.fuelLeft != null)
+        render { WorkoutSummaryScreen(id, {}, {}, viewModel = vm) }
+        waitForTag("summary_after_fingers")
+        waitForTag("summary_after_fuel")
     }
 
     @Test

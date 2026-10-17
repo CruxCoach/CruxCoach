@@ -229,6 +229,7 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
                 workoutId = entry.arguments?.getString("workoutId").orEmpty(),
                 onBack = back,
                 onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
+                onOpenFuel = { goTab(TrainingTab.FUEL) },
             )
         }
     }
