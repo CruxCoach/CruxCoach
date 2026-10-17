@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -60,6 +62,10 @@ data class ClimbingDayFormState(
     val intensity: ClimbIntensity = ClimbIntensity.VOLUME,
     val note: String = "",
     val existing: ClimbingDayEntry? = null,
+    /** Minutes of a synced session the board logbook already counts (audit W3); 0 = no overlap. */
+    val coveredMinutes: Int = 0,
+    /** The athlete counts the synced session in full anyway (extra climbing the logbook does not know). */
+    val countAnyway: Boolean = false,
 )
 
 @HiltViewModel
@@ -77,10 +83,12 @@ class ClimbingDayViewModel @Inject constructor(private val service: AthleteServi
             service.ensureReady()
             val today = service.today()
             val existing = editId?.let { service.repo.climbingDay(it) }
+            val overlap = existing?.takeIf { it.source == ClimbingDaySource.HEALTH_CONNECT }?.let { service.boardOverlap(it.id) }
             _state.value = if (existing != null) ClimbingDayFormState(
                 loading = false, today = today, day = runCatching { LocalDate.parse(existing.day) }.getOrDefault(today),
                 kind = existing.kind, minutes = existing.minutes, intensity = existing.intensity,
                 note = existing.note.orEmpty(), existing = existing,
+                coveredMinutes = overlap?.coveredMinutes ?: 0, countAnyway = overlap?.countAnyway ?: false,
             ) else ClimbingDayFormState(loading = false, today = today, day = today)
         }
     }
@@ -90,11 +98,15 @@ class ClimbingDayViewModel @Inject constructor(private val service: AthleteServi
     fun setMinutes(m: Int) = _state.update { it.copy(minutes = m.coerceIn(5, 600)) }
     fun setIntensity(i: ClimbIntensity) = _state.update { it.copy(intensity = i) }
     fun setNote(n: String) = _state.update { it.copy(note = n.take(300)) }
+    fun setCountAnyway(on: Boolean) = _state.update { it.copy(countAnyway = on) }
 
     fun save() {
         val s = _state.value
         val day = s.day ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            // The choice first: the entry's write below makes the list re-read both.
+            s.existing?.takeIf { it.source == ClimbingDaySource.HEALTH_CONNECT && s.coveredMinutes > 0 }
+                ?.let { service.saveBoardOverlap(it.id, countAnyway = s.countAnyway) }
             service.saveClimbingDay(
                 ClimbingDayEntry(
                     id = s.existing?.id ?: service.repo.newId(),
@@ -152,8 +164,11 @@ fun climbIntensityHint(i: ClimbIntensity): String = stringResource(when (i) {
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ClimbingDaySheet(onDismiss: () -> Unit, editId: String? = null) {
-    val viewModel: ClimbingDayViewModel = hiltViewModel(key = "climbing-day-${editId ?: "new"}")
+fun ClimbingDaySheet(
+    onDismiss: () -> Unit,
+    editId: String? = null,
+    viewModel: ClimbingDayViewModel = hiltViewModel(key = "climbing-day-${editId ?: "new"}"),
+) {
     LaunchedEffect(editId) { viewModel.load(editId) }
     LaunchedEffect(Unit) { viewModel.done.collect { onDismiss() } }
     val s by viewModel.state.collectAsStateWithLifecycle()
@@ -238,6 +253,7 @@ fun ClimbingDaySheet(onDismiss: () -> Unit, editId: String? = null) {
             if (s.existing?.source == ClimbingDaySource.HEALTH_CONNECT) {
                 Text(stringResource(R.string.trl_day_from_health), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (s.coveredMinutes > 0) BoardOverlapChoice(s, viewModel::setCountAnyway)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (s.existing != null) {
@@ -253,6 +269,35 @@ fun ClimbingDaySheet(onDismiss: () -> Unit, editId: String? = null) {
     }
     if (picking && s.today != null && s.day != null) {
         PastDayPicker(s.day!!, s.today!!, onPick = { viewModel.setDay(it); picking = false }, onDismiss = { picking = false })
+    }
+}
+
+/**
+ * A synced session the board logbook already counts (audit W3): says so with its minutes, and lets the
+ * athlete count it anyway – for climbing the logbook does not know.
+ */
+@Composable
+private fun BoardOverlapChoice(s: ClimbingDayFormState, onCountAnyway: (Boolean) -> Unit) {
+    val covered = minOf(s.coveredMinutes, s.minutes)
+    Text(
+        stringResource(if (s.countAnyway) R.string.trl_day_overlap_counted else R.string.trl_day_overlap, covered, s.minutes),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.testTag("climbing_day_overlap"),
+    )
+    Row(
+        Modifier.fillMaxWidth()
+            .toggleable(value = s.countAnyway, role = Role.Switch, onValueChange = onCountAnyway)
+            .padding(vertical = 4.dp)
+            .testTag("climbing_day_count_anyway"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.trl_day_count_anyway), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.trl_day_count_anyway_hint), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(8.dp))
+        Switch(checked = s.countAnyway, onCheckedChange = null)
     }
 }
 
@@ -295,12 +340,19 @@ class ClimbingDaysViewModel @Inject constructor(private val service: AthleteServ
     }.flatMapLatest { from -> service.repo.observeClimbingDaysSince(from) }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Board overlaps of the synced entries (audit W3), re-read with the list. */
+    val overlaps: StateFlow<Map<String, com.cruxcoach.athlete.logic.BoardOverlap.Stored>> = days
+        .map { service.boardOverlaps() }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 }
 
 /** Climbing logged outside the board app (by hand or from Health Connect), with edit and delete. */
 @Composable
 fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hiltViewModel()) {
     val days by viewModel.days.collectAsStateWithLifecycle()
+    val overlaps by viewModel.overlaps.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     TrainingScaffold(
@@ -342,6 +394,14 @@ fun ClimbingDaysScreen(onBack: () -> Unit, viewModel: ClimbingDaysViewModel = hi
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 d.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                overlaps[d.id]?.takeIf { d.source == ClimbingDaySource.HEALTH_CONNECT && it.coveredMinutes > 0 }?.let { o ->
+                                    Text(
+                                        stringResource(if (o.countAnyway) R.string.trl_day_overlap_counted else R.string.trl_day_overlap,
+                                            minOf(o.coveredMinutes, d.minutes), d.minutes),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.testTag("climbing_day_row_overlap_${d.id}"),
+                                    )
+                                }
                             }
                             if (d.source == ClimbingDaySource.HEALTH_CONNECT) {
                                 AssistChip(onClick = { editing = d.id }, label = { Text(stringResource(R.string.trl_days_source_health)) })

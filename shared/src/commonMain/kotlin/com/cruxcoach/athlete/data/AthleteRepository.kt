@@ -64,6 +64,14 @@ class AthleteRepository(
 
     fun putSetting(key: String, value: String) = body.putSetting(key, value, clock())
 
+    /** All stored values whose key starts with [prefix] (blank ones count as none), by key. */
+    fun settingsWithPrefix(prefix: String): Map<String, String> {
+        if (prefix.isEmpty()) return emptyMap()
+        val upper = prefix.dropLast(1) + (prefix.last() + 1)
+        return body.getSettingsInRange(prefix, upper).executeAsList()
+            .filter { it.value_.isNotBlank() }.associate { it.key to it.value_ }
+    }
+
     fun saveProfile(profile: AthleteProfile) {
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
     }
@@ -212,7 +220,12 @@ class AthleteRepository(
     fun observeClimbingDaysSince(fromDay: String): Flow<List<ClimbingDayEntry>> =
         coach.getClimbingDaysSince(fromDay).asFlow().mapToList(dispatcher).map { rows -> rows.mapNotNull { it.toModel() } }
     fun allClimbingDays(): List<ClimbingDayEntry> = coach.getAllClimbingDays().executeAsList().mapNotNull { it.toModel() }
-    fun deleteClimbingDay(id: String) = coach.deleteClimbingDay(id)
+    /** A deleted climbing day takes its board overlap (Health Connect, [BoardOverlap]) along. */
+    fun deleteClimbingDay(id: String) = transaction {
+        coach.deleteClimbingDay(id)
+        val overlap = com.cruxcoach.athlete.logic.BoardOverlap.key(id)
+        if (setting(overlap) != null) putSetting(overlap, "")
+    }
 
     /** "Rückgängig": the decision is taken back, so the coach does not learn from it either. */
     fun deleteSuggestionEvent(id: String) = coach.deleteSuggestionEvent(id)

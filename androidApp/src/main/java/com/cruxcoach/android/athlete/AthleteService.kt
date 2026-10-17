@@ -110,6 +110,11 @@ class ClimbingDaysReader @Inject constructor(private val secureDb: SecureDatabas
         }
     }
 
+    /** Start and end of every board session since [fromDay] (an open one has no end yet). */
+    fun sessionTimes(fromDay: String): List<BoardOverlap.SessionTimes> =
+        secureDb.trainingDaysQueries.boardSessionTimesSince(fromDay).executeAsList()
+            .map { BoardOverlap.SessionTimes(it.started_at, it.ended_at, it.total_duration_seconds) }
+
     /** Emits whenever board sessions, sends or attempts since [fromDay] change, and once at the start. */
     fun changes(fromDay: String): kotlinx.coroutines.flow.Flow<Unit> =
         com.cruxcoach.data.repository.trainingDayChanges(secureDb, fromDay)
@@ -219,8 +224,14 @@ class AthleteService @Inject constructor(
         val climbing = runCatching { climbingDays.since(from) }.getOrDefault(emptyMap())
         val allWorkouts = repo.workoutsBetween(from, to)
         val workouts = allWorkouts.filter { !it.isOpen }.groupBy { it.day }
-        val manual = runCatching { repo.climbingDaysSince(from) }.getOrDefault(emptyList())
-            .filter { it.day <= to }.groupBy { it.day }
+        val logged = runCatching { repo.climbingDaysSince(from) }.getOrDefault(emptyList()).filter { it.day <= to }
+        // Health Connect minutes the board logbook already counts are not counted twice (audit W3).
+        val overlaps = boardOverlaps()
+        val counted = logged.map { e -> overlaps[e.id]?.let { o -> e.copy(minutes = o.counted(e.minutes)) } ?: e }
+        val manual = counted.groupBy { it.day }
+        // Those minutes stand in for the board time of a day whose logbook has attempts but no timed session.
+        val boardTimeFromWatch = logged.zip(counted).groupBy({ it.first.day }, { (e, c) -> e.minutes - c.minutes })
+            .mapValues { (_, minutes) -> minutes.sum() }
         val rows = logbookRows()
         val summary = LogbookSummaries.summarize(rows, today)
         val rowsByDay = rows.filter { it.day in from..to }.groupBy { it.day }
@@ -239,9 +250,10 @@ class AthleteService @Inject constructor(
             val boardIntensity = ClimbingLoad.classifyDay(dayRows, summary)
             val intensity = (listOfNotNull(boardIntensity) + m.map { it.intensity }).maxByOrNull { it.ordinal }
             val units = ClimbingLoad.dayUnits(dayRows, summary, c?.minutes ?: 0, m, setsByDay[day].orEmpty(), cat)
+            val boardMinutes = c?.minutes?.takeIf { it > 0 } ?: boardTimeFromWatch[day] ?: 0
             DayActivity(
                 day = day,
-                climbingMinutes = (c?.minutes ?: 0) + m.sumOf { it.minutes },
+                climbingMinutes = boardMinutes + m.sumOf { it.minutes },
                 climbingEfforts = c?.efforts ?: 0,
                 workoutMinutes = w.sumOf { it.durationMinutes ?: 0 },
                 workoutLoad = w.sumOf { (it.durationMinutes ?: 0) * (it.sessionRpe ?: 6) },
@@ -284,6 +296,34 @@ class AthleteService @Inject constructor(
 
     /** Climbing outside the board app (gym, rock, another board). */
     fun saveClimbingDay(entry: ClimbingDayEntry) = repo.saveClimbingDay(entry.copy(updatedAt = System.currentTimeMillis()))
+
+    /** Board sessions and timed logbook attempts since [fromDay]: what a Health Connect session may overlap (audit W3). */
+    fun boardEvidence(fromDay: String): BoardOverlap.Evidence {
+        val rows = logbookRows().filter { it.day >= fromDay }
+        val sessions = runCatching { climbingDays.sessionTimes(fromDay) }.getOrDefault(emptyList())
+        return BoardOverlap.evidence(rows, sessions, TimeZone.currentSystemDefault(), System.currentTimeMillis())
+    }
+
+    /** Stored board overlaps of synced climbing days, by entry id. */
+    fun boardOverlaps(): Map<String, BoardOverlap.Stored> = runCatching {
+        repo.settingsWithPrefix(BoardOverlap.SETTING_PREFIX).mapNotNull { (key, value) ->
+            BoardOverlap.Stored.parse(value)?.let { key.removePrefix(BoardOverlap.SETTING_PREFIX) to it }
+        }.toMap()
+    }.getOrDefault(emptyMap())
+
+    fun boardOverlap(entryId: String): BoardOverlap.Stored? = BoardOverlap.Stored.parse(repo.setting(BoardOverlap.key(entryId)))
+
+    /**
+     * Stores what the sync found ([coveredMinutes]) or what the athlete chose ([countAnyway]), keeping the other
+     * part; writes only on a change, since every observer of the settings re-derives on a write.
+     */
+    fun saveBoardOverlap(entryId: String, coveredMinutes: Int? = null, countAnyway: Boolean? = null) {
+        val key = BoardOverlap.key(entryId)
+        val old = BoardOverlap.Stored.parse(repo.setting(key))
+        val new = BoardOverlap.Stored(coveredMinutes ?: old?.coveredMinutes ?: 0, countAnyway ?: old?.countAnyway ?: false)
+        val value = if (new.coveredMinutes == 0 && !new.countAnyway) "" else new.encode()
+        if (value != (old?.encode() ?: "")) repo.putSetting(key, value)
+    }
 
     fun deleteClimbingDay(id: String) = repo.deleteClimbingDay(id)
 

@@ -130,6 +130,10 @@
     <string name="trl_day_intensity">How hard</string>
     <string name="trl_day_note">Note (optional)</string>
     <string name="trl_day_from_health">Imported from Health Connect.</string>
+    <string name="trl_day_overlap">Overlaps with the board session (%1$d of %2$d min) – not counted twice.</string>
+    <string name="trl_day_overlap_counted">Overlaps with the board session (%1$d of %2$d min) – counted anyway.</string>
+    <string name="trl_day_count_anyway">Count anyway</string>
+    <string name="trl_day_count_anyway_hint">Only if it was extra climbing that the board logbook does not know.</string>
     <string name="trl_kind_gym_boulder">Gym bouldering</string>
     <string name="trl_kind_gym_rope">Gym rope</string>
     <string name="trl_kind_outdoor">Rock</string>
