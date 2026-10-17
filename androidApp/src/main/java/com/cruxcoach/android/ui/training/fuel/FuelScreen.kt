@@ -612,6 +612,7 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
                     onClick = { explained = "fat" })
             }
         }
+        OwnTargetNotes(state, showEnergy)
     }
     explained?.let { which ->
         val title = stringResource(when (which) {
@@ -665,6 +666,33 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
             },
             confirmButton = { TextButton(onClick = { explained = null }) { Text(stringResource(R.string.action_close)) } },
         )
+    }
+}
+
+/**
+ * Under the rings: an own carbohydrate or calorie target stays the same on every day, so the line says it does not
+ * follow the training day and names the day's recommendation (holistic audit W13, P2-16).
+ */
+@Composable
+private fun OwnTargetNotes(state: FuelState, showEnergy: Boolean) {
+    val recommended = state.targets?.recommended
+    val notes = buildList {
+        if (recommended != null && com.cruxcoach.athlete.logic.FuelTargets.TargetKind.CARBS in state.targets?.own.orEmpty()) {
+            add("carbs" to stringResource(if (state.isToday) R.string.trn_own_carbs_note_today else R.string.trn_own_carbs_note_day,
+                recommended.carbsG))
+        }
+        // The recommendation without the own value: the need, less the day's deficit while losing weight.
+        val kcal = com.cruxcoach.android.ui.training.common.energyTarget(state.need, state.plan)
+        if (showEnergy && state.profile.ownKcal != null && kcal != null) {
+            add("energy" to stringResource(if (state.isToday) R.string.trn_own_energy_note_today else R.string.trn_own_energy_note_day, kcal))
+        }
+    }
+    if (notes.isEmpty()) return
+    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+        notes.forEach { (which, text) ->
+            Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp).testTag("fuel_own_note_$which"))
+        }
     }
 }
 

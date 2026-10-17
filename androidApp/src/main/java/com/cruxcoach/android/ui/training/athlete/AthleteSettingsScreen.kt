@@ -359,6 +359,14 @@ fun AthleteSettingsScreen(
                     val rec = state.targets?.let { it.recommended ?: it }
                     val kinds = com.cruxcoach.athlete.logic.FuelTargets.TargetKind.entries
                         .filter { it != com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY || p.showCalories }
+                    // Hidden calories hide the number, not the own target: it still counts and can be taken back (audit W13).
+                    if (!p.showCalories && p.ownKcal != null) {
+                        Text(stringResource(R.string.trn_own_kcal_hidden), style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp).testTag("own_energy_hidden"))
+                        TextButton(onClick = { viewModel.update { it.copy(ownKcal = null) } }, modifier = Modifier.testTag("own_energy_reset")) {
+                            Text(stringResource(R.string.trn_own_kcal_reset))
+                        }
+                    }
                     kinds.forEach { kind ->
                         val recommended = when (kind) {
                             com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY ->

@@ -58,6 +58,14 @@
     <string name="trn_target_own_label">Dein Ziel: %1$s</string>
     <string name="trn_target_range">Gespeichert wird ein Wert zwischen %1$d und %2$d %3$s – außerhalb ist es fast immer ein Tippfehler.</string>
     <string name="trn_target_range_energy">Gespeichert wird ein Wert zwischen %1$d und %2$d %3$s – außerhalb ist es fast immer ein Tippfehler. Ein niedriges Ziel darin bleibt gespeichert und wird auf der Energiekarte benannt.</string>
+    <!-- An own carbohydrate or calorie target is the same on every day (holistic audit W13, P2-16). -->
+    <string name="trn_target_own_fixed">Gilt an jedem Tag gleich und folgt dem Trainingstag nicht.</string>
+    <string name="trn_own_carbs_note_today">Kohlenhydrate: eigenes Ziel – folgt dem Trainingstag nicht (empfohlen heute %1$d g)</string>
+    <string name="trn_own_carbs_note_day">Kohlenhydrate: eigenes Ziel – folgt dem Trainingstag nicht (empfohlen für diesen Tag %1$d g)</string>
+    <string name="trn_own_energy_note_today">Energie: eigenes Ziel – folgt dem Trainingstag nicht (empfohlen heute %1$d kcal)</string>
+    <string name="trn_own_energy_note_day">Energie: eigenes Ziel – folgt dem Trainingstag nicht (empfohlen für diesen Tag %1$d kcal)</string>
+    <string name="trn_own_kcal_hidden">Dein eigenes Kalorienziel gilt weiter, auch wenn Kalorien ausgeblendet sind: Es bestimmt das Fettziel und wird auf der Energiekarte geprüft.</string>
+    <string name="trn_own_kcal_reset">Zurück zur Empfehlung</string>
     <string name="trn_unit_g">g</string>
     <string name="trn_set_summary_own">Eigene Ziele: %1$s</string>
     <string name="trn_goal_stop">Abnehmen beenden</string>
