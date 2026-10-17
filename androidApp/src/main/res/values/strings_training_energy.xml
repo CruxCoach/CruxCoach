@@ -78,6 +78,7 @@
     <string name="trn_w_below_resting">Your calorie target of %1$d kcal is below your resting energy (%2$d kcal).</string>
     <string name="trn_w_low_target_bmi">Your target weight means a BMI of %1$s – below %2$s, where climbing federations recommend a health check.</string>
     <string name="trn_w_low_target_bmi_plain">Your target weight lies below the range climbing federations use for health checks.</string>
+    <string name="trn_w_youth">Under 18 the body is still growing: adult BMI thresholds do not apply, and losing weight belongs only with a doctor\'s guidance.</string>
 
     <string name="trn_tile_kcal">%1$d of %2$d kcal</string>
     <string name="trn_review_energy">Energy on logged days: %1$d kcal (estimated need about %2$d kcal)</string>

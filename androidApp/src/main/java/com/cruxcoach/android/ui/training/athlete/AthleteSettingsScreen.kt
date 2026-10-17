@@ -262,9 +262,13 @@ fun AthleteSettingsScreen(
                                 modifier = Modifier.weight(1f).testTag("goal_summary"))
                             TextButton(onClick = { goalOpen = true }, modifier = Modifier.testTag("goal_edit")) { Text(stringResource(R.string.trn_goal_edit)) }
                         }
-                        state.plan?.takeIf { it.warnings.isNotEmpty() }?.let { plan ->
-                            val preview = com.cruxcoach.athlete.logic.EnergyReport(signals = plan.warnings, plan = plan)
-                            plan.warnings.forEach { w ->
+                        // Under 18 the running goal carries its own reason first, as on the energy card.
+                        val youth = com.cruxcoach.athlete.logic.RedsSignal.YOUTH
+                            .takeIf { com.cruxcoach.athlete.logic.EnergyBalance.isMinor(p, java.time.LocalDate.now().year) }
+                        val warnings = listOfNotNull(youth) + state.plan?.warnings.orEmpty()
+                        if (warnings.isNotEmpty()) {
+                            val preview = com.cruxcoach.athlete.logic.EnergyReport(signals = warnings, plan = state.plan)
+                            warnings.forEach { w ->
                                 Text("• " + com.cruxcoach.android.ui.training.energyWarningText(w, preview, p), style = MaterialTheme.typography.bodySmall,
                                     color = CruxCoachDesign.colors.caution, modifier = Modifier.padding(top = 2.dp).testTag("settings_warning_${w.name.lowercase()}"))
                             }

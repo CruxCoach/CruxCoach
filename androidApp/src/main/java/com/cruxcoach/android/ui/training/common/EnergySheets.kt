@@ -208,6 +208,10 @@ fun WeightGoalSheet(
                     modifier = Modifier.weight(1f))
                 InfoButton(stringResource(R.string.trn_goal_title), stringResource(R.string.trn_goal_info))
             }
+            // Under 18 first of all: adult thresholds do not fit a growing body. Said, never locked.
+            if (EnergyBalance.isMinor(profile, java.time.LocalDate.now().year)) {
+                GoalWarning(stringResource(R.string.trn_w_youth), "goal_warning_youth")
+            }
             if (weightKg == null) {
                 Text(stringResource(R.string.trn_needs_weight), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
                 NumberEntry(stringResource(R.string.tru_weight_title), Units.massUnit(units), "goal_weight",
@@ -271,13 +275,7 @@ fun WeightGoalSheet(
                 }
                 // The same reasons as on the energy card, live while choosing.
                 val preview = EnergyReport(signals = p.warnings, plan = p)
-                p.warnings.forEach { w ->
-                    Row(Modifier.padding(top = 8.dp).testTag("goal_warning_${w.name.lowercase()}")) {
-                        Icon(Icons.Default.Warning, null, tint = CruxCoachDesign.colors.caution, modifier = Modifier.size(18.dp).padding(top = 2.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(energyWarningText(w, preview, profile), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
+                p.warnings.forEach { w -> GoalWarning(energyWarningText(w, preview, profile), "goal_warning_${w.name.lowercase()}") }
             }
             if (losing) {
                 Button(onClick = { keep(); onDismiss() },
@@ -374,6 +372,15 @@ fun weekPaceText(plan: WeightPlan.Plan?, profile: AthleteProfile): String? {
     val shown = (week * 10).roundToInt() / 10.0
     if (shown >= plan.paceKgPerWeek - 1e-9) return null
     return stringResource(R.string.trn_week_pace, formatMass(shown, profile.units), formatMass(plan.paceKgPerWeek, profile.units))
+}
+
+@Composable
+private fun GoalWarning(text: String, tag: String) {
+    Row(Modifier.padding(top = 8.dp).testTag(tag)) {
+        Icon(Icons.Default.Warning, null, tint = CruxCoachDesign.colors.caution, modifier = Modifier.size(18.dp).padding(top = 2.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable

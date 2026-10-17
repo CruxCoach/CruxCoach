@@ -19,6 +19,7 @@ import com.cruxcoach.android.ui.training.AthleteScreenTest
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
 import com.cruxcoach.android.ui.training.athlete.SettingsSection
+import com.cruxcoach.athlete.model.AgeBand
 import com.cruxcoach.athlete.model.AthleteGoal
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayEntry
@@ -109,6 +110,24 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         compose.onNodeWithText("−50 kcal", useUnmergedTree = true).assertExists()
         waitForTag("energy_week_pace")
         waitForText("about 0.4 kg instead of 0.5 kg per week")
+    }
+
+    @Test
+    fun `under 18 the energy card and the goal sheet say adult thresholds do not fit, nothing is locked`() {
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.FEMALE, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 0.3,
+            coach = it.coach.copy(ageBand = AgeBand.UNDER_16)) }
+        body(50.0, 160.0)
+        fuel()
+        // A gentle plan with no warning of its own: the card speaks because of the age, first.
+        waitForTag("fuel_reds_youth")
+        waitForText("Under 18 the body is still growing")
+        // The running goal can be looked at again from the card – and kept or stopped, as the athlete decides.
+        compose.onNodeWithTag("fuel_list").performScrollToNode(hasTestTag("fuel_reds_adjust"))
+        click("fuel_reds_adjust")
+        waitForTag("goal_sheet")
+        waitForTag("goal_warning_youth")
+        compose.onNodeWithTag("goal_done").assertIsEnabled()
+        compose.onNodeWithTag("goal_stop").assertIsEnabled()
     }
 
     @Test

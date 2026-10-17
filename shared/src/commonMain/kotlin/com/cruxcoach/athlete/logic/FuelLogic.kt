@@ -268,6 +268,12 @@ enum class RedsSignal {
     LARGE_DEFICIT,
     /** The target weight lies under the BMI screening threshold. */
     LOW_TARGET_BMI,
+    /**
+     * Under 18: the body still grows, adult BMI thresholds do not fit and
+     * losing weight belongs with a doctor. Named whenever the card speaks or
+     * a weight-loss goal runs, never as a lock.
+     */
+    YOUTH,
 }
 
 /** An own calorie target with today's need and resting energy, so a warning can name them. */
@@ -336,6 +342,8 @@ object RedsGuard {
         fuelDays: List<FuelDay>,
         plan: WeightPlan.Plan? = null,
         ownTarget: OwnEnergyTarget? = null,
+        /** The current year, for the age; without it no age is weighed. */
+        year: Int? = null,
     ): EnergyReport {
         val signals = mutableListOf<RedsSignal>()
         val currentTrend = trend.lastOrNull()?.trend
@@ -365,6 +373,8 @@ object RedsGuard {
         // An own calorie target replaces the plan's: its deficit is weighed instead, with the same thresholds.
         plan?.let { p -> signals += if (ownTarget != null) p.warnings - RedsSignal.LARGE_DEFICIT else p.warnings }
         if (ownTarget?.large == true) signals += RedsSignal.LARGE_DEFICIT
+        // A growing body comes first: the thresholds named below are adult ones. Age alone puts no card up.
+        if (year != null && EnergyBalance.isMinor(profile, year) && (plan != null || signals.isNotEmpty())) signals.add(0, RedsSignal.YOUTH)
         return EnergyReport(
             signals = signals, bmi = bmi, bmiThreshold = threshold,
             weeklyRateKg = weekly, weeklyRateShare = weeklyShare, fourWeekShare = fourWeeks,

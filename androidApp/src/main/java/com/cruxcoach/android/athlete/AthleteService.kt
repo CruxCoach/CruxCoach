@@ -1310,7 +1310,7 @@ class AthleteService @Inject constructor(
         val todayNeed = needs.last()
         val own = profile.ownKcal?.let { kcal -> todayNeed?.let { OwnEnergyTarget(kcal, it.totalKcal, it.restingKcal) } }
         return RedsGuard.evaluate(profile, height, weightTrend(), fuelDays,
-            weightPlan(profile, activities[today.toString()], needs.filterNotNull()), own)
+            weightPlan(profile, activities[today.toString()], needs.filterNotNull()), own, year = today.year)
     }
 
     /** Turns the weight-loss goal on with its target and pace, or off (target and pace stay for next time). */
