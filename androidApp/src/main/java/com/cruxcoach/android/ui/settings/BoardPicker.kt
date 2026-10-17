@@ -276,6 +276,8 @@ internal fun BoardPickerDialog(
     onDismiss: () -> Unit,
     onSelected: () -> Unit = {},
     onFindViaGym: (() -> Unit)? = null,
+    /** "Find a gym near you": opens the gym search straight in near-me mode. */
+    onFindNearbyGym: (() -> Unit)? = null,
     prefill: BoardPickerPrefill? = null,
     mismatch: BoardConfigurationMismatch? = null,
     deferDownloads: Boolean = false,
@@ -314,6 +316,7 @@ internal fun BoardPickerDialog(
             onConfirmQuantum = { model -> request(BoardBrand.QUANTUM) { viewModel.selectQuantum(model, deferDownloads) } },
             onConfirmAurora = { brand, variant, sizeId -> request(brand) { viewModel.selectAurora(brand, variant, sizeId, deferDownloads) } },
             onFindViaGym = onFindViaGym,
+            onFindNearbyGym = onFindNearbyGym,
             onFindViaBluetooth = onFindViaBluetooth,
             bluetoothResult = bluetoothResult,
             onDismiss = onDismiss,

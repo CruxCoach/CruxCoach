@@ -401,6 +401,7 @@ fun BoardSyncInlineCard(
     // (Settings, Filter, Onboarding, sync card) so the "Weiß nicht?" link is
     // consistently present. Falls back to the direct picker on demand.
     var showGymSearch by remember { mutableStateOf(false) }
+    var gymSearchNearby by remember { mutableStateOf(false) }
     if (modelState.showDialog) {
         // FEAT-031: the one shared board picker (same as Settings / Filter /
         // Onboarding) — identical state + the full board list incl. Aurora.
@@ -409,12 +410,19 @@ fun BoardSyncInlineCard(
             onSelected = { viewModel.dismissModelDialog() },
             onFindViaGym = {
                 viewModel.dismissModelDialog()
+                gymSearchNearby = false
+                showGymSearch = true
+            },
+            onFindNearbyGym = {
+                viewModel.dismissModelDialog()
+                gymSearchNearby = true
                 showGymSearch = true
             },
         )
     }
     if (showGymSearch) {
         GymBoardSearchSheet(
+            startNearby = gymSearchNearby,
             onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false

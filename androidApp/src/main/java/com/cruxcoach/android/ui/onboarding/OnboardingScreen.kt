@@ -414,6 +414,7 @@ private fun BoardSetupStep(
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
+    var gymSearchNearby by rememberSaveable { mutableStateOf(false) }
     val previousBrand = BoardBrand.fromWire(state.boardBrand)
     var returnFromBluetooth by rememberSaveable { mutableStateOf(false) }
     var bluetoothSearched by rememberSaveable { mutableStateOf(false) }
@@ -454,12 +455,19 @@ private fun BoardSetupStep(
             onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
                 showBoardModelDialog = false
+                gymSearchNearby = false
+                showGymSearch = true
+            },
+            onFindNearbyGym = {
+                showBoardModelDialog = false
+                gymSearchNearby = true
                 showGymSearch = true
             },
         )
     }
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            startNearby = gymSearchNearby,
             deferDownloads = true,
             onBoardChosen = {
                 if (shareChoice != null) shareChoice.include(it)
