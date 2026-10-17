@@ -412,18 +412,94 @@ class AthleteLogicTest {
         assertEquals(need.totalKcal - 330, gentle.targetKcal)
         assertEquals(10, gentle.weeksToTarget)
         assertTrue(gentle.warnings.isEmpty())
-        // 1 kg a week at 60 kg is 1.7 % and a deficit of 1100 kcal: allowed, with both warnings.
+        // 1 kg a week at 60 kg is 1.7 % and a deficit of 1100 kcal: allowed, with its warnings.
         val fast = WeightPlan.plan(1.0, 45.0, 60.0, 165.0, Sex.FEMALE, need)
-        assertEquals(1100, fast.dailyDeficitKcal)
+        assertEquals(1100, fast.paceDeficitKcal)
         assertTrue(RedsSignal.FAST_PACE in fast.warnings)
-        assertTrue(RedsSignal.LARGE_DEFICIT in fast.warnings)
-        assertTrue(fast.belowResting)
         // 45 kg at 165 cm is BMI 16.5, under the female threshold of 17.5.
         assertTrue(RedsSignal.LOW_TARGET_BMI in fast.warnings)
+        // The day keeps room for its protein, carbohydrate and 20 % fat: the deficit shrinks to what fits.
+        assertEquals(need.totalKcal - need.macroFloorKcal, fast.dailyDeficitKcal)
+        assertEquals(need.macroFloorKcal, fast.targetKcal)
+        // The full 1100 kcal (a need without macro targets) would be a large deficit under resting energy: named.
+        val bare = WeightPlan.plan(1.0, 45.0, 60.0, 165.0, Sex.FEMALE, need.copy(macroFloorKcal = 0))
+        assertEquals(1100, bare.dailyDeficitKcal)
+        assertTrue(RedsSignal.LARGE_DEFICIT in bare.warnings)
+        assertTrue(bare.belowResting)
         // The plan's warnings reach the energy report.
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 60.0))
         val report = RedsGuard.evaluate(AthleteProfile(sex = Sex.FEMALE), 165.0, trend, emptyList(), fast)
         assertTrue(report.signals.containsAll(fast.warnings))
+    }
+
+    @Test
+    fun macroTargetsFitTheCalorieTargetOnEveryDay() {
+        // Holistic audit 2026-10-17: 60 kg, 165 cm, 25 years, female, mostly seated, 0.5 kg a week.
+        val profile = AthleteProfile(sex = Sex.FEMALE, birthYear = 2001)
+        val days = listOf(
+            DayLoad.REST to null,
+            DayLoad.MODERATE to DayActivity("d", climbingMinutes = 60, climbIntensity = ClimbIntensity.VOLUME),
+            DayLoad.HARD to DayActivity("d", climbingMinutes = 90, climbIntensity = ClimbIntensity.HARD),
+        )
+        for ((load, activity) in days) {
+            val need = EnergyBalance.need(profile, 60.0, 165.0, activity, 2026)!!
+            assertEquals(load, need.dayLoad)
+            val plan = WeightPlan.plan(0.5, null, 60.0, 165.0, Sex.FEMALE, need)
+            assertEquals(550, plan.paceDeficitKcal)
+            // The deficit only shrinks: the target never rises above the need.
+            assertTrue(plan.targetKcal!! in need.macroFloorKcal..need.totalKcal, "$load")
+            // With the deficit and without it (the need), the macro targets add up to no more than the target.
+            for (energy in listOf(plan.targetKcal!!, need.totalKcal)) {
+                val t = FuelTargets.compute(60.0, activity, 1.6, energy)
+                // The training is fuelled: the carbohydrates are never capped.
+                assertEquals((FuelTargets.carbsPerKg(load) * 60).toInt(), t.carbsG, "$load")
+                assertTrue(t.fatG >= t.fatRangeG.first, "$load at $energy kcal: fat keeps its 20 % floor")
+                assertTrue(4 * t.proteinG + 4 * t.carbsG + 9 * t.fatG <= energy, "$load at $energy kcal")
+            }
+        }
+        // The hard day: 96 g protein + 360 g carbohydrate + 20 % fat take 2283 kcal, the full deficit would leave 1783.
+        val hardNeed = EnergyBalance.need(profile, 60.0, 165.0, days[2].second, 2026)!!
+        assertEquals(2333, hardNeed.totalKcal)
+        assertEquals(2283, hardNeed.macroFloorKcal)
+        val hard = WeightPlan.plan(0.5, null, 60.0, 165.0, Sex.FEMALE, hardNeed)
+        assertEquals(2283, hard.targetKcal)
+        assertEquals(50, hard.dailyDeficitKcal)
+        assertEquals(500, hard.easedKcal)
+        // Its rings at that target: 384 + 1440 + 9 × 51 = 2283 kcal.
+        val rings = FuelTargets.compute(60.0, days[2].second, 1.6, hard.targetKcal)
+        assertEquals(51, rings.fatG)
+        // Two hours at the limit ask 420 g carbohydrate, more than even the whole need holds: the deficit goes
+        // entirely, and the target stays at the need – it never rises above it.
+        val veryHard = DayActivity("d", climbingMinutes = 120, climbIntensity = ClimbIntensity.LIMIT)
+        val veryHardNeed = EnergyBalance.need(profile, 60.0, 165.0, veryHard, 2026)!!
+        assertEquals(DayLoad.VERY_HARD, veryHardNeed.dayLoad)
+        assertTrue(veryHardNeed.macroFloorKcal > veryHardNeed.totalKcal)
+        val veryHardPlan = WeightPlan.plan(0.5, null, 60.0, 165.0, Sex.FEMALE, veryHardNeed)
+        assertEquals(0, veryHardPlan.dailyDeficitKcal)
+        assertEquals(veryHardNeed.totalKcal, veryHardPlan.targetKcal)
+        // Own protein or carbohydrate targets count in the room the day needs.
+        val own = EnergyBalance.need(profile.copy(ownCarbsG = 200), 60.0, 165.0, days[2].second, 2026)!!
+        assertEquals(FuelTargets.macroFloorKcal(96, 200), own.macroFloorKcal)
+    }
+
+    @Test
+    fun weightPlanSaysWhatTheWeekReallyAddsUpTo() {
+        val profile = AthleteProfile(sex = Sex.FEMALE, birthYear = 2001)
+        fun need(a: DayActivity?) = EnergyBalance.need(profile, 60.0, 165.0, a, 2026)!!
+        val hard = DayActivity("d", climbingMinutes = 90, climbIntensity = ClimbIntensity.HARD)
+        val week = listOf(need(null), need(hard), need(null), need(hard), need(null), need(hard), need(null))
+        val plan = WeightPlan.plan(0.5, 57.0, 60.0, 165.0, Sex.FEMALE, week.last(), week)
+        // Rest days hold 500 of the 550 kcal, hard days 50: about 0.28 instead of 0.5 kg a week.
+        assertEquals((4 * 500 + 3 * 50) / EnergyBalance.KCAL_PER_KG, plan.weekPaceKg!!, 1e-9)
+        // The weeks to the target follow the pace the week really has: 3 kg at 0.28 kg.
+        assertEquals(11, plan.weeksToTarget)
+        // A tall athlete has room for the full deficit: nothing changes.
+        val tall = EnergyBalance.need(AthleteProfile(sex = Sex.MALE, birthYear = 1996), 80.0, 185.0, null, 2026)!!
+        val roomy = WeightPlan.plan(0.5, 75.0, 80.0, 185.0, Sex.MALE, tall, listOf(tall))
+        assertEquals(550, roomy.dailyDeficitKcal)
+        assertEquals(0, roomy.easedKcal)
+        assertEquals(0.5, roomy.weekPaceKg!!, 1e-9)
+        assertEquals(10, roomy.weeksToTarget)
     }
 
     @Test

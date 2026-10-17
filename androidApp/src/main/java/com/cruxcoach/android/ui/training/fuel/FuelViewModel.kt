@@ -8,6 +8,7 @@ import com.cruxcoach.athlete.logic.DayLoad
 import com.cruxcoach.athlete.logic.FuelTargets
 import com.cruxcoach.athlete.logic.EnergyBalance
 import com.cruxcoach.athlete.logic.EnergyReport
+import com.cruxcoach.athlete.logic.WeightPlan
 import com.cruxcoach.athlete.model.AthleteProfile
 import com.cruxcoach.athlete.model.FoodItem
 import com.cruxcoach.athlete.model.FoodLogEntry
@@ -47,6 +48,10 @@ data class FuelState(
     val energy: EnergyReport = EnergyReport(),
     /** The shown day's estimated energy need; null without weight or height. */
     val need: EnergyBalance.Need? = null,
+    /** The shown day's weight-loss plan while one is set: its deficit leaves room for the day's macro targets. */
+    val plan: WeightPlan.Plan? = null,
+    /** The last seven days' needs, today last: what a pace really adds up to in the goal sheet. */
+    val weekNeeds: List<EnergyBalance.Need> = emptyList(),
     val heightCm: Double? = null,
     /** Per meal: foods eaten there again and again, to log once more with one tap ([com.cruxcoach.athlete.logic.RecentFoods]). */
     val recentByMeal: Map<Meal, List<FoodLogEntry>> = emptyMap(),
@@ -103,6 +108,7 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
         val activities = service.activities(days = maxOf(span, 7))
         val activity = activities[s.day.toString()]
         val previous = service.repo.foodLog(s.day.minus(DatePeriod(days = 1)).toString()).size
+        val energy = service.energyReport(s.profile, activities)
         val log = runCatching {
             service.repo.foodLogBetween(today.minus(DatePeriod(days = com.cruxcoach.athlete.logic.RecentFoods.WINDOW_DAYS)).toString(), today.toString())
         }.getOrDefault(emptyList())
@@ -119,8 +125,11 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 water = s.water,
                 foods = s.foods,
                 previousDayCount = previous,
-                energy = service.energyReport(s.profile, activities),
+                energy = energy,
                 need = service.energyNeed(s.profile, activity),
+                // Today's plan comes with the week's pace; an earlier day gets its own deficit.
+                plan = if (s.day == today) energy.plan else service.weightPlan(s.profile, activity),
+                weekNeeds = service.weekNeeds(s.profile, activities),
                 heightCm = service.heightCm(),
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
                 lastByFood = com.cruxcoach.athlete.logic.RecentFoods.lastByFood(log),

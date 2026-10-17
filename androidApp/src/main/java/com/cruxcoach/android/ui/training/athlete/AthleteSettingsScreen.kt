@@ -58,6 +58,8 @@ data class AthleteSettingsState(
     /** Today's estimated energy need and, while losing weight, the plan with its warnings. */
     val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
     val plan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
+    /** The last seven days' needs, today last: what a pace really adds up to in the goal sheet. */
+    val weekNeeds: List<com.cruxcoach.athlete.logic.EnergyBalance.Need> = emptyList(),
     /** Today's nutrition targets with the recommendation behind own ones. */
     val targets: com.cruxcoach.athlete.logic.FuelTargets.Targets? = null,
     /** What the coach learned from the athlete's choices, each part forgettable (UX review 2026-10-16). */
@@ -99,11 +101,14 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             ) { profile, heights, benchmarks, _ ->
                 val height = heights.lastOrNull()?.value
                 val trend = service.weightTrend()
-                val todayActivity = service.activities(days = 1)[service.today().toString()]
+                val activities = service.activities(days = 7)
+                val todayActivity = activities[service.today().toString()]
+                val weekNeeds = service.weekNeeds(profile, activities)
                 AthleteSettingsState(
                     profile, height, loaded = true,
                     need = service.energyNeed(profile, todayActivity),
-                    plan = service.weightPlan(profile, todayActivity),
+                    plan = service.weightPlan(profile, todayActivity, weekNeeds),
+                    weekNeeds = weekNeeds,
                     targets = service.fuelTargets(todayActivity, profile),
                     completeness = com.cruxcoach.athlete.logic.CoachLogic.completeness(profile, benchmarks, logbook),
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
@@ -432,7 +437,7 @@ fun AthleteSettingsScreen(
     }
     if (goalOpen) {
         com.cruxcoach.android.ui.training.common.WeightGoalSheet(
-            profile = p, weightKg = state.weightKg, heightCm = state.heightCm, need = state.need,
+            profile = p, weightKg = state.weightKg, heightCm = state.heightCm, need = state.need, weekNeeds = state.weekNeeds,
             onDismiss = { goalOpen = false },
             onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::setHeight,

@@ -42,6 +42,11 @@
     <string name="trn_goal_target_math">Bedarf %1$d − %2$d kcal. Trainingstage bekommen mehr.</string>
     <string name="trn_goal_weeks">Zielgewicht in etwa %1$d Wochen</string>
     <string name="trn_goal_reached">Zielgewicht erreicht: Dein Kalorienziel ist dein Bedarf.</string>
+    <!-- Das Tagesdefizit wird kleiner, damit Protein, Kohlenhydrate und 20 % Fett ins Kalorienziel passen (Gesamt-Audit 2026-10-17). -->
+    <string name="trn_deficit_eased">%1$s: Defizit %2$d statt %3$d kcal, damit die Kohlenhydrate reichen.</string>
+    <string name="trn_deficit_eased_rest">%1$s: Defizit %2$d statt %3$d kcal, damit Protein und Kohlenhydrate hineinpassen.</string>
+    <string name="trn_deficit_eased_plain">%1$s: ein kleineres Defizit, damit Protein und Kohlenhydrate hineinpassen.</string>
+    <string name="trn_week_pace">Wo Protein und Kohlenhydrate es brauchen, wird das Defizit kleiner: Mit deinen letzten 7 Tagen sind das etwa %1$s statt %2$s pro Woche.</string>
     <string name="trn_goal_start">Abnehmen starten</string>
     <!-- Eigene Ziele (Owner 2026-10-10) -->
     <string name="trn_targets_title">Deine Ziele</string>

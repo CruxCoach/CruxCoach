@@ -33,6 +33,14 @@ object EnergyBalance {
         val ageAssumed: Boolean,
         /** No sex given: the mean of the female and male formula. */
         val sexAssumed: Boolean,
+        /**
+         * Energy the day's protein and carbohydrate targets take with fat at
+         * its 20 % floor ([FuelTargets.macroFloorKcal]): a calorie target
+         * under it cannot hold the macro targets. 0 when unknown.
+         */
+        val macroFloorKcal: Int = 0,
+        /** The day's training load, which sets its carbohydrate target. */
+        val dayLoad: DayLoad = DayLoad.REST,
     ) {
         val totalKcal: Int get() = restingKcal + everydayKcal + trainingKcal
     }
@@ -85,20 +93,28 @@ object EnergyBalance {
         val w = weightKg?.takeIf { it > 0 } ?: return null
         val h = heightCm?.takeIf { it > 100 } ?: return null
         val resting = restingKcal(w, h, age(profile, year), profile.sex)
+        // The macro targets the rings show that day: recommended, or the athlete's own.
+        val macros = FuelTargets.withOwn(FuelTargets.compute(w, activity, profile.proteinPerKg), profile)
         return Need(
             restingKcal = resting.roundToInt(),
             everydayKcal = (resting * (activityLevel(profile.everydayActivity) - 1)).roundToInt(),
             trainingKcal = trainingKcal(activity, w).roundToInt(),
             ageAssumed = profile.birthYear == null,
             sexAssumed = profile.sex == null || profile.sex == Sex.OTHER,
+            macroFloorKcal = FuelTargets.macroFloorKcal(macros.proteinG, macros.carbsG),
+            dayLoad = macros.dayLoad,
         )
     }
 }
 
 /**
  * The calorie target while losing weight: the day's need minus the deficit of
- * the planned pace, so training days get more. Every pace can be set; the
- * plan names what argues against it instead of refusing it (owner
+ * the planned pace, so training days get more. Where that target could not
+ * hold the day's protein, carbohydrate and 20 % fat, the day's deficit
+ * shrinks until it does – at most to none, the target never rises above the
+ * need: hard days are fuelled rather than their carbohydrates capped, and
+ * the plan says how much slower that makes the week. Every pace can be set;
+ * the plan names what argues against it instead of refusing it (owner
  * 2026-10-09). Above 1 % of body weight per week climbers lose strength and
  * muscle (Garthe et al. 2011, ISSN position stand); a target more than 25 %
  * under the need or under resting energy is a large deficit.
@@ -116,7 +132,12 @@ object WeightPlan {
         val paceKgPerWeek: Double,
         /** Pace as a share of the current weight per week (0.007 = 0.7 %). */
         val paceShare: Double,
-        /** Zero once the target weight is reached: the target is then the need. */
+        /**
+         * The day's deficit: [paceDeficitKcal], made smaller where the full
+         * one would leave no room for the day's macro targets
+         * ([dayDeficit]). Zero once the target weight is reached: the target
+         * is then the need.
+         */
         val dailyDeficitKcal: Int,
         val needKcal: Int?,
         val restingKcal: Int?,
@@ -124,10 +145,20 @@ object WeightPlan {
         val targetWeightKg: Double?,
         val targetBmi: Double?,
         val bmiThreshold: Double,
-        /** Weeks until the target weight at this pace; 0 once it is reached, null without a target. */
+        /**
+         * Weeks until the target weight: at [weekPaceKg] when the week's days
+         * are known, else at the pace. 0 once it is reached; null without a
+         * target or when the days leave no deficit at all.
+         */
         val weeksToTarget: Int?,
         val warnings: List<RedsSignal>,
+        /** The deficit the pace asks for every day (7,700 kcal per kg, spread over the week). */
+        val paceDeficitKcal: Int = dailyDeficitKcal,
+        /** Kilograms per week that the deficits of the given days add up to; null without them. */
+        val weekPaceKg: Double? = null,
     ) {
+        /** How much smaller the day's deficit is than the pace's, so its macro targets fit. */
+        val easedKcal: Int get() = paceDeficitKcal - dailyDeficitKcal
         val deficitShare: Double? get() = needKcal?.takeIf { it > 0 }?.let { dailyDeficitKcal.toDouble() / it }
         val belowResting: Boolean get() = targetKcal != null && restingKcal != null && targetKcal < restingKcal
         val targetReached: Boolean get() = weeksToTarget == 0
@@ -136,6 +167,20 @@ object WeightPlan {
     /** The pace on the 0.1 kg grid, inside [MIN_PACE_KG]..[MAX_PACE_KG]. */
     fun clampPace(kg: Double): Double = ((kg * 10).roundToInt() / 10.0).coerceIn(MIN_PACE_KG, MAX_PACE_KG)
 
+    /**
+     * The deficit a day can hold: the pace's, but no more than lets the
+     * target stay at [EnergyBalance.Need.macroFloorKcal] – and never below
+     * zero, so the target never exceeds the need.
+     */
+    fun dayDeficit(paceDeficitKcal: Int, need: EnergyBalance.Need?): Int {
+        if (need == null || need.macroFloorKcal <= 0) return paceDeficitKcal
+        return paceDeficitKcal.coerceAtMost((need.totalKcal - need.macroFloorKcal).coerceAtLeast(0))
+    }
+
+    /**
+     * [weekNeeds] are the needs of the last days (today included); with them
+     * the plan says what pace their deficits really add up to.
+     */
     fun plan(
         paceKg: Double,
         targetWeightKg: Double?,
@@ -143,10 +188,15 @@ object WeightPlan {
         heightCm: Double?,
         sex: Sex?,
         need: EnergyBalance.Need?,
+        weekNeeds: List<EnergyBalance.Need> = emptyList(),
     ): Plan {
         val pace = clampPace(paceKg)
         val reached = targetWeightKg != null && weightKg <= targetWeightKg
-        val deficit = if (reached) 0 else (pace * EnergyBalance.KCAL_PER_KG / 7).roundToInt()
+        val paceDeficit = if (reached) 0 else (pace * EnergyBalance.KCAL_PER_KG / 7).roundToInt()
+        val deficit = dayDeficit(paceDeficit, need)
+        val weekPace = weekNeeds.takeIf { !reached && it.isNotEmpty() }
+            ?.let { days -> days.sumOf { dayDeficit(paceDeficit, it) } * 7.0 / days.size / EnergyBalance.KCAL_PER_KG }
+        val effectivePace = weekPace ?: pace
         val needKcal = need?.totalKcal
         val target = needKcal?.let { it - deficit }
         val threshold = RedsGuard.bmiThreshold(sex)
@@ -163,8 +213,12 @@ object WeightPlan {
             needKcal = needKcal, restingKcal = need?.restingKcal, targetKcal = target,
             targetWeightKg = targetWeightKg, targetBmi = targetBmi, bmiThreshold = threshold,
             // A hair below whole weeks (3 kg at 0.3 kg) stays that many weeks.
-            weeksToTarget = targetWeightKg?.let { if (reached) 0 else ceil((weightKg - it) / pace - 1e-6).toInt() },
+            weeksToTarget = targetWeightKg?.let {
+                if (reached) 0 else if (effectivePace < MIN_PACE_KG / 10) null else ceil((weightKg - it) / effectivePace - 1e-6).toInt()
+            },
             warnings = warnings,
+            paceDeficitKcal = paceDeficit,
+            weekPaceKg = weekPace,
         )
     }
 }

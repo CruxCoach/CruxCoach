@@ -42,6 +42,11 @@
     <string name="trn_goal_target_math">Need %1$d − %2$d kcal. Training days get more.</string>
     <string name="trn_goal_weeks">Target weight in about %1$d weeks</string>
     <string name="trn_goal_reached">Target weight reached: the calorie target is your need.</string>
+    <!-- The day's deficit shrinks so protein, carbohydrate and 20 % fat fit the calorie target (holistic audit 2026-10-17). -->
+    <string name="trn_deficit_eased">%1$s: deficit %2$d instead of %3$d kcal, so the carbohydrates are covered.</string>
+    <string name="trn_deficit_eased_rest">%1$s: deficit %2$d instead of %3$d kcal, so protein and carbohydrates fit.</string>
+    <string name="trn_deficit_eased_plain">%1$s: a smaller deficit, so protein and carbohydrates fit.</string>
+    <string name="trn_week_pace">Where protein and carbohydrates need it, the deficit gets smaller: with your last 7 days that is about %1$s instead of %2$s per week.</string>
     <string name="trn_goal_start">Start losing weight</string>
     <!-- Own targets (owner 2026-10-10) -->
     <string name="trn_targets_title">Your targets</string>

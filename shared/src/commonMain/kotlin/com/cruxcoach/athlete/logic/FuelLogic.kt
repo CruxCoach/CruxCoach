@@ -138,8 +138,25 @@ object FuelTargets {
     const val FAT_PER_KG = 1.0
 
     /**
+     * The least energy that holds [proteinG] and [carbsG] with fat at its
+     * 20 % floor – fat rounded as [compute] rounds it – so the macro rings
+     * add up to no more than the calorie target. A calorie target under it
+     * cannot hold the day's macro targets.
+     */
+    fun macroFloorKcal(proteinG: Int, carbsG: Int): Int {
+        val base = 4 * (proteinG + carbsG)
+        var kcal = kotlin.math.ceil(base / (1 - MacroTotals.FAT_SHARE_MIN)).toInt()
+        while (base + 9 * fatFloorG(kcal) > kcal) kcal++
+        return kcal
+    }
+
+    private fun fatFloorG(energyKcal: Int): Int = (energyKcal * MacroTotals.FAT_SHARE_MIN / 9).roundToInt()
+
+    /**
      * [energyKcal] is the day's energy target (the need, minus the deficit
-     * while losing weight); without it fat follows body weight.
+     * while losing weight); without it fat follows body weight. Fat takes
+     * the whole grams the energy leaves, so protein, carbohydrate and fat
+     * stay within the target whenever it is at least [macroFloorKcal].
      */
     fun compute(weightKg: Double, activity: DayActivity?, proteinPerKg: Double, energyKcal: Int? = null): Targets {
         val load = dayLoad(activity)
@@ -150,9 +167,9 @@ object FuelTargets {
         val carbsG = (weightKg * cpk).roundToInt()
         val energy = energyKcal?.takeIf { it > 0 }
         val fatRange = if (energy != null) {
-            (energy * MacroTotals.FAT_SHARE_MIN / 9).roundToInt()..(energy * MacroTotals.FAT_SHARE_MAX / 9).roundToInt()
+            fatFloorG(energy)..(energy * MacroTotals.FAT_SHARE_MAX / 9).roundToInt()
         } else (weightKg * 0.8).roundToInt()..(weightKg * 1.2).roundToInt()
-        val fatG = if (energy != null) ((energy - 4 * proteinG - 4 * carbsG) / 9.0).roundToInt().coerceIn(fatRange)
+        val fatG = if (energy != null) (energy - 4 * proteinG - 4 * carbsG).floorDiv(9).coerceIn(fatRange)
             else (weightKg * FAT_PER_KG).roundToInt()
         return Targets(
             dayLoad = load,

@@ -224,6 +224,7 @@ fun FuelScreen(
             profile = state.profile, weightKg = state.bodyweightKg, heightCm = state.heightCm,
             // The pace's calorie target is today's: the sheet always plans from today.
             need = state.need.takeIf { state.isToday },
+            weekNeeds = state.weekNeeds,
             onDismiss = { goalOpen = false },
             onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
@@ -591,10 +592,11 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
             Row(Modifier.fillMaxWidth()) {
                 val cell = Modifier.weight(1f)
                 if (showEnergy) {
-                    val plan = state.energy.plan
+                    // The shown day's plan: its deficit leaves room for that day's macro targets.
+                    val plan = state.plan
                     EnergyRing(eaten = totals.kcal, estimated = totals.kcalEstimated,
                         target = com.cruxcoach.android.ui.training.common.energyTarget(state.need, plan, state.profile),
-                        losing = plan != null && plan.dailyDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
+                        losing = plan != null && plan.paceDeficitKcal > 0, size = ringSize, onClick = onOpenEnergy, modifier = cell)
                 }
                 MacroRing(label = stringResource(R.string.tru_carbs_short), value = totals.carbs, target = t?.carbsG,
                     color = CruxCoachDesign.colors.brandAccent, tag = "fuel_carbs", size = ringSize, modifier = cell,
@@ -615,7 +617,12 @@ private fun MacroSummaryCard(state: FuelState, onOpenEnergy: () -> Unit, onUpdat
             else -> R.string.trf_fat
         })
         val text = when (which) {
-            "carbs" -> listOfNotNull(t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) })
+            "carbs" -> listOfNotNull(
+                t?.let { stringResource(R.string.trf_carbs_info, dayLoadLabel(it.dayLoad), formatNumber(it.carbsPerKg)) },
+                // While losing weight: the day's deficit shrinks so these carbohydrates fit, named with both numbers.
+                state.plan.takeIf { state.profile.ownKcal == null && t != null }
+                    ?.let { com.cruxcoach.android.ui.training.common.easedDeficitText(it, state.dayLoad, state.profile) },
+            )
             "protein" -> listOfNotNull(t?.let { stringResource(R.string.trf_protein_info, it.proteinRangeG.first, it.proteinRangeG.last) })
             else -> listOfNotNull(
                 t?.let {

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
@@ -19,10 +20,14 @@ import com.cruxcoach.android.ui.training.athlete.AthleteSettingsScreen
 import com.cruxcoach.android.ui.training.athlete.AthleteSettingsViewModel
 import com.cruxcoach.android.ui.training.athlete.SettingsSection
 import com.cruxcoach.athlete.model.AthleteGoal
+import com.cruxcoach.athlete.model.ClimbIntensity
+import com.cruxcoach.athlete.model.ClimbingDayEntry
+import com.cruxcoach.athlete.model.ClimbingDayKind
 import com.cruxcoach.athlete.model.BodyMeasurement
 import com.cruxcoach.athlete.model.BodyMetric
 import com.cruxcoach.athlete.model.Sex
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -71,6 +76,39 @@ class EnergyTransparencyTest : AthleteScreenTest() {
         // Everyday life is chosen right here and changes the need.
         click("everyday_physical")
         compose.waitUntil(WAIT_MS) { repo.profile().everydayActivity == com.cruxcoach.athlete.model.EverydayActivity.PHYSICAL }
+    }
+
+    @Test
+    fun `a hard day while losing weight gets a smaller deficit so the rings fit, said with the numbers`() {
+        // Holistic audit 2026-10-17: 60 kg, 165 cm, 25 years, 0.5 kg a week, 90 minutes of hard climbing today.
+        val year = service.today().year
+        repo.updateProfile { it.copy(fuelIntroAccepted = true, sex = Sex.FEMALE, birthYear = year - 25, goal = AthleteGoal.LOSE_WEIGHT, weeklyLossKg = 0.5) }
+        body(60.0, 165.0)
+        service.saveClimbingDay(ClimbingDayEntry("cd1", service.today().toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        // Need 2333 kcal; the full 550 kcal deficit would leave 1783 for 96 g protein + 360 g carbohydrate + 20 % fat (2283).
+        val activity = service.activities(days = 1)[service.today().toString()]
+        val plan = service.weightPlan(repo.profile(), activity)!!
+        assertEquals(2283, plan.targetKcal)
+        assertEquals(50, plan.dailyDeficitKcal)
+        val targets = service.fuelTargets(activity, repo.profile())!!
+        assertEquals(360, targets.carbsG)
+        assertTrue(4 * targets.proteinG + 4 * targets.carbsG + 9 * targets.fatG <= plan.targetKcal!!)
+        fuel()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodes(androidx.compose.ui.test.hasText("of 2283", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        // The carbohydrate ring says why the deficit is smaller today …
+        click("fuel_carbs")
+        waitForTag("fuel_explain_carbs")
+        waitForText("Hard training day: deficit 50 instead of 550 kcal")
+        compose.onNodeWithText("Close").performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("fuel_explain_carbs").fetchSemanticsNodes().isEmpty() }
+        // … and the energy sheet too, with the pace the last seven days really add up to (6 × 500 + 50 kcal).
+        click("fuel_energy")
+        waitForTag("energy_eased")
+        compose.onNodeWithText("−50 kcal", useUnmergedTree = true).assertExists()
+        waitForTag("energy_week_pace")
+        waitForText("about 0.4 kg instead of 0.5 kg per week")
     }
 
     @Test
