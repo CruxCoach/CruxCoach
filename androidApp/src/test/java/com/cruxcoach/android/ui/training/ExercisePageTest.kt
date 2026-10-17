@@ -162,6 +162,23 @@ class ExercisePageTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `skipping or removing an exercise can be undone and the skip is not learned`() {
+        val (id, vm) = player(Routine("r", "Two", items = listOf(
+            RoutineItem("push.push_up", sets = 2, repsMin = 10, repsMax = 10),
+            RoutineItem("core.dead_bug", sets = 2, repsMin = 10, repsMax = 10))))
+        vm.skipExercise()
+        until { work(id, "push.push_up").isEmpty() && vm.state.value.endedUndo?.kind == com.cruxcoach.android.ui.training.player.EndKind.SKIPPED }
+        until { repo.suggestionEventsForDay(service.today().toString()).any { it.kind == SuggestionEventKind.SKIPPED_SET } }
+        vm.undoEnd()
+        until { work(id, "push.push_up").size == 2 }
+        until { repo.suggestionEventsForDay(service.today().toString()).none { it.kind == SuggestionEventKind.SKIPPED_SET } }
+        vm.removeExercise()
+        until { work(id, "push.push_up").isEmpty() && vm.state.value.endedUndo?.kind == com.cruxcoach.android.ui.training.player.EndKind.REMOVED }
+        vm.undoEnd()
+        until { work(id, "push.push_up").size == 2 }
+    }
+
+    @Test
     fun `the page says why today is lighter and "as planned" brings it back`() {
         // Comparison review #5: the check-in trimmed sets and load silently.
         repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(service.today().toString(), 0, sleep = 2))

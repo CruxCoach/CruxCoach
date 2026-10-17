@@ -1059,12 +1059,15 @@ class AthleteService @Inject constructor(
         feedback: SuggestionFeedback? = null,
         workoutId: String? = null,
         value: Double? = null,
-    ) {
-        runCatching {
-            repo.logSuggestionEvent(SuggestionEvent(repo.newId(), today().toString(), System.currentTimeMillis(), kind, focus,
-                slugs, feedback, workoutId, value))
-        }
-    }
+    ): String? = runCatching {
+        val id = repo.newId()
+        repo.logSuggestionEvent(SuggestionEvent(id, today().toString(), System.currentTimeMillis(), kind, focus,
+            slugs, feedback, workoutId, value))
+        id
+    }.getOrNull()
+
+    /** Takes a logged decision back ("Rückgängig"): it no longer teaches the coach. */
+    fun forgetSuggestion(id: String) { runCatching { repo.deleteSuggestionEvent(id) } }
 
     /** "Nie vorschlagen": the exercise stays in the library but is never suggested. */
     fun setExcluded(slug: String, excluded: Boolean) {

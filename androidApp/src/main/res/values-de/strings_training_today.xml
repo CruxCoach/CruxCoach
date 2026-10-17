@@ -167,4 +167,6 @@
     <string name="trt_never_done">„%1$s“ wird nicht mehr vorgeschlagen</string>
     <string name="trt_never_offer">„%1$s“ dreimal abgelehnt – nicht mehr vorschlagen?</string>
     <string name="trt_never_offer_yes">Nie mehr</string>
+    <string name="trt_swapped_undo">Heute „%1$s“ statt „%2$s“</string>
+    <string name="trt_dropped_undo">„%1$s“ heute weggelassen</string>
 </resources>

@@ -78,7 +78,10 @@ data class PlayerPage(
 }
 
 /** An exercise ended early, for the "Undo" in the snackbar. */
-data class EndedExercise(val slugs: List<String>, val sets: List<ExerciseSet>, val circuit: Boolean = false)
+/** How an exercise left the page: ended after some sets, skipped before any, or removed from the training. */
+enum class EndKind { ENDED, SKIPPED, REMOVED }
+
+data class EndedExercise(val slugs: List<String>, val sets: List<ExerciseSet>, val circuit: Boolean = false, val kind: EndKind = EndKind.ENDED)
 
 data class PlayerState(
     val phase: PlayerPhase = PlayerPhase.LOADING,
@@ -604,13 +607,21 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         focusId = null
         shownPage = null
         val first = open.first()
+        val slugs = page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b }?.exerciseSlug }
+        // With Undo, like ending (audit P2-14); the skip is only learned when it stays.
+        _state.update { s -> s.copy(sets = s.sets.filterNot { o -> open.any { it.id == o.id } },
+            endedUndo = EndedExercise(slugs, open, circuit = page.circuit != null, kind = EndKind.SKIPPED)) }
         enqueue {
             open.forEach { service.removeSet(it.id) }
             if (first.setType == SetType.WORK || open.any { it.setType == SetType.WORK }) {
                 service.logSuggestion(SuggestionEventKind.SKIPPED_SET, null, open.map { it.exerciseSlug }.distinct(), workoutId = first.workoutId)
+                    ?.let { undoEvents[first.id] = it }
             }
         }
     }
+
+    /** Ledger entries of a skip, by the first set it removed: "Rückgängig" takes them back too. */
+    private val undoEvents = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
      * "Enough for today" after some sets: the page's open sets go in one tap, with "Undo".
@@ -638,8 +649,11 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     fun undoEnd() {
         val ended = _state.value.endedUndo ?: return
         _state.update { it.copy(endedUndo = null) }
-        focusId = ended.sets.firstOrNull()?.id
-        enqueue { service.restoreSets(ended.sets) }
+        focusId = ended.sets.firstOrNull { !it.isCompleted }?.id
+        enqueue {
+            service.restoreSets(ended.sets)
+            ended.sets.firstOrNull()?.id?.let { undoEvents.remove(it) }?.let(service::forgetSuggestion)
+        }
     }
 
     fun consumeEnded() = _state.update { it.copy(endedUndo = null) }
@@ -698,6 +712,9 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val workoutId = st.workout?.id ?: return
         focusId = null
         shownPage = null
+        val slugs = page.blockIndexes.mapNotNull { b -> page.sets.firstOrNull { it.blockIndex == b }?.exerciseSlug }
+        _state.update { s -> s.copy(sets = s.sets.filterNot { o -> page.sets.any { it.id == o.id } },
+            endedUndo = EndedExercise(slugs, page.sets, circuit = page.circuit != null, kind = EndKind.REMOVED)) }
         enqueue { page.blockIndexes.forEach { service.removeBlock(workoutId, it) } }
     }
 

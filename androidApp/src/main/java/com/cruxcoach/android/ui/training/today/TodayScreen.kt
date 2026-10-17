@@ -104,6 +104,8 @@ fun TodayScreen(
     val weightSavedText = stringResource(R.string.tru_weight_saved)
     val undoText = stringResource(R.string.trf_undo)
     val neverDoneText = stringResource(R.string.trt_never_done)
+    val swappedText = stringResource(R.string.trt_swapped_undo)
+    val droppedText = stringResource(R.string.trt_dropped_undo)
     val screenLanguage = catalogLanguage()
     val glass = FuelUnits.waterPresetsMl(state.profile.units).first()
     val waterAddedText = stringResource(R.string.tru_water_added, amountText(glass.toDouble(), FuelUnits.unitFor(state.profile.units, drink = true)))
@@ -292,8 +294,24 @@ fun TodayScreen(
         SwapSheet(
             state = state, slug = slug, alternatives = alternatives,
             onDismiss = { swapFor = null },
-            onSwap = { to -> swapFor = null; viewModel.swapExercise(slug, to) },
-            onDrop = { swapFor = null; viewModel.dropExercise(slug) },
+            onSwap = { to ->
+                swapFor = null
+                viewModel.swapExercise(slug, to)
+                val text = swappedText.format(state.catalog.fallbackFor(to).name(screenLanguage), state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
+            onDrop = {
+                swapFor = null
+                viewModel.dropExercise(slug)
+                val text = droppedText.format(state.catalog.fallbackFor(slug).name(screenLanguage))
+                snackScope.launch {
+                    snackbar.currentSnackbarData?.dismiss()
+                    if (snackbar.showSnackbar(text, undoText, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) viewModel.undoCardChange()
+                }
+            },
             onExclude = {
                 swapFor = null
                 viewModel.excludeExercise(slug)
