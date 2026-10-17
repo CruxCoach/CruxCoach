@@ -291,7 +291,10 @@ private fun DayFormLine(page: PlayerPage, state: PlayerState, m: com.cruxcoach.a
     val parts = buildList {
         if (m.setsDelta < 0) add(stringResource(if (page.circuit != null) R.string.trpg_dayform_round_less else R.string.trpg_dayform_set_less))
         if (m.dropMaxFinger && touched.any { com.cruxcoach.athlete.logic.ReadinessModifiers.isMaxFinger(it) }) add(stringResource(R.string.trpg_dayform_finger_cap))
-        touched.maxOf { com.cruxcoach.athlete.logic.ReadinessModifiers.loadCutPercent(it, m) }.takeIf { it > 0 }
+        // Only where a load is planned (device test 2026-10-17: a body-weight pull-up said "load −5 %").
+        val loaded = page.sets.filter { it.setType == SetType.WORK && (it.targetLoadKg ?: 0.0) != 0.0 }
+            .mapNotNull { state.def(it.exerciseSlug) }.distinctBy { it.slug }
+        loaded.maxOfOrNull { com.cruxcoach.athlete.logic.ReadinessModifiers.loadCutPercent(it, m) }?.takeIf { it > 0 }
             ?.let { add(stringResource(R.string.trpg_dayform_load, it)) }
     }
     if (parts.isEmpty()) return

@@ -235,6 +235,8 @@ data class SessionSuggestion(
     val addOn: Boolean = false,
     /** The duration can be chosen for today (not on a rest day or the event itself). */
     val timeAdjustable: Boolean = true,
+    /** Already shorter because of little sleep or energy: starting it takes no extra set off (audit W7). */
+    val shortenedForFatigue: Boolean = false,
 ) {
     /** The whole session in minutes, the board part included. */
     val totalMinutes: Int get() = estimatedMinutes + (boardPlan?.minutes ?: 0)
@@ -278,7 +280,11 @@ object SessionSuggester {
 
     fun suggest(input: SuggestionInput): SessionSuggestion {
         var s = suggestByRules(input).let {
-            it.copy(timeAdjustable = it.focus != SuggestionFocus.REST && SuggestionReason.BLOCK_EVENT !in it.reasons)
+            it.copy(
+                timeAdjustable = it.focus != SuggestionFocus.REST && SuggestionReason.BLOCK_EVENT !in it.reasons,
+                // The same condition as the time cut for fatigue in suggestByRules.
+                shortenedForFatigue = SuggestionReason.LOW_ENERGY in it.reasons && (input.minutesToday == null || input.minutesLearned),
+            )
         }
         // A chosen duration is said last: the card's first line keeps the reason that decided the kind of training.
         val chosen = input.minutesToday?.coerceIn(10, 180)
