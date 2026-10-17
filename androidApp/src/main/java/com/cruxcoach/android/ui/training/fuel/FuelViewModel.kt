@@ -64,6 +64,8 @@ data class FuelState(
     val recentByMeal: Map<Meal, List<FoodLogEntry>> = emptyMap(),
     /** Newest entry per saved food: where its amount dialog starts. */
     val lastByFood: Map<String, FoodLogEntry> = emptyMap(),
+    /** When the last training or board session ended (epoch ms); "add" starts in "after training" shortly after it. */
+    val lastTrainingEndedAt: Long? = null,
 ) {
     val waterMl: Int get() = water.sumOf { it.ml }
     val isToday: Boolean get() = day != null && day == today
@@ -151,6 +153,7 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                 heightCm = service.heightCm(),
                 recentByMeal = Meal.entries.associateWith { com.cruxcoach.athlete.logic.RecentFoods.forMeal(log, it, s.entries) },
                 lastByFood = com.cruxcoach.athlete.logic.RecentFoods.lastByFood(log),
+                lastTrainingEndedAt = runCatching { service.lastTrainingEndedAt() }.getOrNull(),
             )
         }
     }
@@ -341,6 +344,17 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
             return Nutrients(item.kcalPer100.scaled(factor), item.proteinPer100.scaled(factor),
                 item.carbsPer100.scaled(factor), item.fatPer100.scaled(factor))
         }
+
+        /** Adding food within this long after a finished training starts in "after training" (holistic audit P2-15). */
+        const val POST_TRAINING_WINDOW_MS = 2 * 60 * 60 * 1000L
+
+        /**
+         * The meal "add" starts with at [nowMs] (local [hour]): "after training" within [POST_TRAINING_WINDOW_MS] of a
+         * training that ended at [trainingEndedAtMs], else the meal of the time of day. The athlete can change it.
+         */
+        fun mealFor(nowMs: Long, hour: Int, trainingEndedAtMs: Long?): Meal =
+            if (trainingEndedAtMs != null && nowMs - trainingEndedAtMs in 0..POST_TRAINING_WINDOW_MS) Meal.POST_TRAINING
+            else mealForHour(hour)
 
         /** Sensible meal for the current time of day. */
         fun mealForHour(hour: Int): Meal = when (hour) {

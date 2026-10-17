@@ -131,6 +131,9 @@ fun FuelScreen(
     }
 
     fun openAdd(meal: Meal) { addMeal = meal; foodsOpen = true }
+    /** The add button's meal: by the time of day, or "after training" within two hours of one today (holistic audit P2-15). */
+    fun mealNow(): Meal = FuelViewModel.mealFor(System.currentTimeMillis(), java.time.LocalTime.now().hour,
+        state.lastTrainingEndedAt.takeIf { state.isToday })
 
     TrainingScaffold(
         title = stringResource(R.string.tr_nav_fuel),
@@ -147,7 +150,7 @@ fun FuelScreen(
         floatingActionButton = {
             if (!state.loading) {
                 ExtendedFloatingActionButton(
-                    onClick = { openAdd(FuelViewModel.mealForHour(java.time.LocalTime.now().hour)) },
+                    onClick = { openAdd(mealNow()) },
                     icon = { Icon(Icons.Default.Add, null) },
                     text = { Text(stringResource(R.string.tru_fuel_add)) },
                     containerColor = CruxCoachDesign.colors.brandAccent, contentColor = CruxCoachDesign.colors.onBrandAccent,
