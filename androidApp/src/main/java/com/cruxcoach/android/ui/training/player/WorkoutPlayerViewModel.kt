@@ -78,7 +78,7 @@ data class PlayerPage(
 }
 
 /** An exercise ended early, for the "Undo" in the snackbar. */
-data class EndedExercise(val slugs: List<String>, val sets: List<ExerciseSet>)
+data class EndedExercise(val slugs: List<String>, val sets: List<ExerciseSet>, val circuit: Boolean = false)
 
 data class PlayerState(
     val phase: PlayerPhase = PlayerPhase.LOADING,
@@ -615,7 +615,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         focusId = null
         shownPage = null
         // Off the screen at once; the database follows.
-        _state.update { s -> s.copy(sets = s.sets.filterNot { o -> open.any { it.id == o.id } }, endedUndo = EndedExercise(slugs, open)) }
+        _state.update { s -> s.copy(sets = s.sets.filterNot { o -> open.any { it.id == o.id } }, endedUndo = EndedExercise(slugs, open, circuit = page.circuit != null)) }
         enqueue {
             if (service.restTimer.value.isRunning && st.next?.set?.blockIndex in page.blockIndexes) service.cancelRest()
             service.endBlocks(workoutId, page.blockIndexes)
