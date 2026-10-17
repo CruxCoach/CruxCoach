@@ -105,6 +105,8 @@ data class TodayState(
     val circuitToday: Boolean = false,
     /** At least two of today's exercises can go into a circuit (pull, push, prehab, core, legs). */
     val circuitPossible: Boolean = false,
+    /** Ids of today's climbing days logged by hand or from Health Connect: the filled tile opens them (device test D30). */
+    val climbingEntriesToday: List<String> = emptyList(),
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -326,6 +328,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
                 levelShift = levelShift,
                 usual = lastUsual,
+                climbingEntriesToday = runCatching { repo.climbingDaysSince(today.toString()) }.getOrDefault(emptyList())
+                    .filter { e -> e.day == today.toString() }.map { e -> e.id },
             )
         }
     }
