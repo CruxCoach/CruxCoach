@@ -65,6 +65,8 @@ data class AthleteSettingsState(
     val targets: com.cruxcoach.athlete.logic.FuelTargets.Targets? = null,
     /** What the coach learned from the athlete's choices, each part forgettable (UX review 2026-10-16). */
     val learned: Learned = Learned(),
+    /** Exercise names for the kept choices. */
+    val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
 )
 
 /**
@@ -80,9 +82,11 @@ data class Learned(
     val minutes: Int? = null,
     /** Turned down lately: the day each may be suggested again (see [com.cruxcoach.athlete.logic.PreferenceLearning.resting]). */
     val resting: Map<String, kotlinx.datetime.LocalDate> = emptyMap(),
+    /** Kept after a training ("künftig so", comparison review #3), newest first. */
+    val kept: List<com.cruxcoach.athlete.logic.PreferenceLearning.Kept> = emptyList(),
 ) {
-    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null
-    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0)
+    val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null && kept.isEmpty()
+    val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0) + kept.size
 }
 
 @HiltViewModel
@@ -118,6 +122,7 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
                     excluded = profile.excludedExercises.sorted().map { service.catalog.fallbackFor(it) },
                     weightKg = trend.lastOrNull()?.trend,
                     learned = runCatching { learned(profile, benchmarks) }.getOrDefault(Learned()),
+                    catalog = service.catalog,
                 )
             }.collect { _state.value = it }
         }
@@ -138,7 +143,12 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
         // The value that plans each exercise and side now, when it is one the athlete's lower loads left.
         val own = benchmarks.groupBy { it.exerciseSlug to it.side }.values.mapNotNull { list -> list.maxByOrNull { it.measuredAt } }
             .filter { it.source == BenchmarkSource.AUTO && it.sets != null }
-        val resting = com.cruxcoach.athlete.logic.PreferenceLearning.resting(events, today, resets)
+        val kept = com.cruxcoach.athlete.logic.PreferenceLearning.kept(events, today, resets)
+            .filter { it.replaced !in profile.excludedExercises }
+        // Resting after a rejection or for a kept choice: the later day counts.
+        val keptRests = com.cruxcoach.athlete.logic.PreferenceLearning.keptEffect(kept).resting
+        val rejected = com.cruxcoach.athlete.logic.PreferenceLearning.resting(events, today, resets)
+        val resting = (rejected.keys + keptRests.keys).associateWith { slug -> listOfNotNull(rejected[slug], keptRests[slug]).max() }
             .filterKeys { it !in profile.excludedExercises }
         val less = defs { it <= -1.0 }
         return Learned(
@@ -148,6 +158,7 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
             resting = resting,
             weekdays = com.cruxcoach.athlete.logic.PreferenceLearning.usualChoices(events, today, resets).values.sortedBy { it.isoDay },
             ownLoads = own.map { it to service.catalog.fallbackFor(it.exerciseSlug) }.sortedBy { it.second.slug },
+            kept = kept,
             minutes = com.cruxcoach.athlete.logic.PreferenceLearning.suggestedSessionMinutes(
                 repo.workoutsBetween(today.minus(kotlinx.datetime.DatePeriod(days = com.cruxcoach.athlete.logic.PreferenceLearning.WINDOW_DAYS)).toString(),
                     today.toString()), profile.sessionMinutes, today),
@@ -158,6 +169,9 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
 
     /** The coach forgets what it learned about one exercise; favourites and "never" stay. */
     fun forgetExercise(slug: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.exerciseKey(slug))
+
+    /** A choice kept after a training is forgotten: the coach chooses that slot again. */
+    fun forgetKept(eventId: String) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.keptKey(eventId))
 
     /** The usual kind and time of one weekday are forgotten. */
     fun forgetWeekday(isoDay: Int) = forget(com.cruxcoach.athlete.logic.PreferenceLearning.weekdayKey(isoDay))
@@ -625,6 +639,15 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
                 u.minutes?.let { stringResource(R.string.trt_duration_value, it) },
             )
             row(day, parts.joinToString(" · "), "learned_day_${u.isoDay}") { viewModel.forgetWeekday(u.isoDay) }
+        }
+    }
+    if (learned.kept.isNotEmpty()) {
+        // "Künftig so" after a training: what leads its slot (or stays out) and until when.
+        SectionTitle(stringResource(R.string.trlr_kept))
+        learned.kept.forEach { k ->
+            row(keptChangeText(k.replaced, k.chosen, state.catalog, lang),
+                stringResource(R.string.trlr_kept_until, com.cruxcoach.android.ui.training.coach.formatIsoDay(k.until.toString())),
+                "learned_kept_${k.replaced}") { viewModel.forgetKept(k.eventId) }
         }
     }
     if (learned.liked.isNotEmpty()) {

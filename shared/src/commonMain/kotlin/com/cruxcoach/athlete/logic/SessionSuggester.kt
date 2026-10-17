@@ -115,6 +115,8 @@ enum class SuggestionReason {
     USUAL_KIND,
     /** The duration the athlete usually chooses on this weekday. */
     USUAL_MINUTES,
+    /** An exercise the athlete kept after a training leads its slot ([SuggestionInput.kept]). */
+    KEPT_CHOICE,
 }
 
 /** How much the suggestion knows about the athlete. */
@@ -220,6 +222,12 @@ data class SuggestionInput(
     val wishLearned: Boolean = false,
     /** [minutesToday] is the athlete's usual duration on this weekday; being tired still shortens it. */
     val minutesLearned: Boolean = false,
+    /**
+     * Exercises the athlete kept after a training ("künftig so", [PreferenceLearning.keptEffect]), newest first: each
+     * is the preferred pick of the slots it fits – through every safety filter, while it does not rest, and within
+     * today's level when "easier"/"harder" was chosen today.
+     */
+    val kept: List<String> = emptyList(),
 )
 
 data class SessionSuggestion(
@@ -1153,7 +1161,11 @@ object SessionSuggester {
                     if (level < 3 || slot !in LEVELLED_SLOTS) list
                     else list.filter { it.difficulty >= level - 1 || it.slug in input.favorites }.ifEmpty { list }
                 }
-            val choice = withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
+            // Kept after a training (comparison review #3): the athlete's pick leads the slot, not the score.
+            val kept = input.kept.firstNotNullOfOrNull { k -> fresh.firstOrNull { it.slug == k } }
+                ?.takeIf { k -> input.levelShift == 0 || withinLevel.any { it.slug == k.slug } }
+            if (kept != null) ctx.reasons += SuggestionReason.KEPT_CHOICE
+            val choice = kept ?: withinLevel.maxWithOrNull(compareBy<ExerciseDefinition> { score(input, it, slot, focus, mains) }.thenBy { it.slug })
                 ?: continue
             taken += choice.slug
             if (slot == Slot.WARMUP) result.add(0, WorkoutPlanner.itemFor(choice).copy(warmup = true, sets = min(WorkoutPlanner.itemFor(choice).sets, 4)))

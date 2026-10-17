@@ -189,6 +189,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   planned", "lighter week" and "swap in your workouts" in the summary, a
   pain stop saved as an injury. The third time the same exercise is turned
   down, the card asks once "stop suggesting it?".
+- "Suggest it like this from now on?" after a training: when exercises of
+  today's suggestion were swapped or left out (on the card or in the
+  training), the summary asks once in one line ("2 exercises swapped –
+  suggest it like this from now on?"). "Yes" makes each chosen exercise the
+  first pick of its slot and rests the replaced one until the end of the
+  training block, three weeks at least – through every safety rule, with
+  Undo, and listed under "What the coach learned" with "Forget"; "Only
+  today" changes nothing beyond the usual light learning.
 - Today's form is visible and overridable: when the check-in or hard
   climbing earlier today takes a set off or lowers a load, the card shows
   the sets the training will plan and the training page says why ("day form

@@ -1,6 +1,8 @@
 package com.cruxcoach.athlete.logic
 
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 
 /** Where the athlete stands in the training cycle (week types, climber version). */
 enum class BlockPhase { INTRO, BUILD, DELOAD, TAPER, EVENT }
@@ -51,6 +53,19 @@ object TrainingBlocks {
             return BlockState(BlockPhase.DELOAD, 1, DELOAD_WEEKS, daysToEvent)
         }
         return state
+    }
+
+    /**
+     * The first day after the current block: the next cycle's first day, or a trip or competition ahead that comes
+     * sooner; null without a block. What the athlete keeps "for this block" holds until then.
+     */
+    fun blockEnd(blockStartDay: LocalDate?, targetDate: LocalDate?, today: LocalDate): LocalDate? {
+        val target = targetDate?.takeIf { it >= today }
+        val start = blockStartDay?.takeIf { it <= today } ?: return target
+        val cycleDays = CYCLE_WEEKS * 7
+        val cycles = (today.toEpochDays() - start.toEpochDays()) / cycleDays + 1
+        val end = start.plus(DatePeriod(days = (cycles * cycleDays).toInt()))
+        return if (target != null && target < end) target else end
     }
 
     /** Volume of main work in a phase, relative to a build week. */

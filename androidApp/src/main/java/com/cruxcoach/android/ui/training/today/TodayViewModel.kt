@@ -455,7 +455,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val learned = PreferenceLearning.affinity(stable, repo.completedSetsSince(sinceMs), today, resets)
             val affinity = learned + dislikedToday.associateWith { -10.0 }
             // Turned down on earlier days: rests a few days (today's own swaps keep the card stable instead).
-            val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys
+            // Kept after a training ("künftig so"): the chosen exercise leads its slot, the replaced one rests.
+            val kept = PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets))
+            val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys + kept.resting.keys
             // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
             val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
             lastUsual = usual
@@ -510,6 +512,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 minutesToday = minutesToday ?: usualMinutes,
                 wishLearned = wish == null && usualWish != null,
                 minutesLearned = minutesToday == null && usualMinutes != null,
+                kept = kept.preferred,
             )
             lastInput = input
             // The athlete's swaps on the card stay for the day, whatever else changes.

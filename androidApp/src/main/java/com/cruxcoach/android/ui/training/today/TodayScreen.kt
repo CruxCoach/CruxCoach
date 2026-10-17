@@ -1080,6 +1080,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.LESS_THAN_CHOSEN -> R.string.trt_reason_less_than_chosen
     SuggestionReason.USUAL_KIND -> R.string.trt_reason_usual_kind_generic
     SuggestionReason.USUAL_MINUTES -> R.string.trt_reason_usual_minutes_generic
+    SuggestionReason.KEPT_CHOICE -> R.string.tre_reason_kept
 })
 
 /** A reason with today's details where it has them ("Heute geschont: Schulter …", "Wie meist am Montag: …"). */
