@@ -27,7 +27,7 @@ class TrainingRestTimerTest {
         now += 30_500 // a suspended app comes back 30.5 s later
         timer.tick()
         assertEquals(60, timer.restTimer.value.secondsRemaining)
-        now += 59_999
+        now += 59_000 // 0.5 s left
         timer.tick()
         assertEquals(1, timer.restTimer.value.secondsRemaining)
     }

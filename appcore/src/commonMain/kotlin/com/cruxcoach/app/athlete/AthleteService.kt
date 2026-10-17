@@ -806,7 +806,7 @@ class AthleteService(
             val sets = repo.setsFor(workoutId).filter { it.blockIndex in blocks }
             val open = sets.filter { !it.isCompleted }
             repo.transaction { open.forEach { repo.deleteSet(it.id) } }
-            open to sets.groupBy { it.blockIndex }.toSortedMap().values.filter { rows -> rows.any { it.isCompleted } && rows.any { !it.isCompleted } }
+            open to sets.groupBy { it.blockIndex }.entries.sortedBy { it.key }.map { it.value }.filter { rows -> rows.any { it.isCompleted } && rows.any { !it.isCompleted } }
         }
         ended.forEach { rows ->
             val work = rows.filter { it.setType != SetType.WARMUP }
@@ -884,7 +884,8 @@ class AthleteService(
         val block = TrainingBlocks.state(day(coach.blockStartDay), day(coach.targetDate), today)
         val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal)
         val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
-        val startMs = java.time.LocalDate.parse(weekStart.toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        // The first instant of the week's first day in the phone's zone (Android: java.time atStartOfDay).
+        val startMs = weekStart.atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds()
         val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
         return WeeklyVolume.progress(sets, activities(days = 8), catalog, weekStart, targets, today)
     }
@@ -1353,7 +1354,7 @@ class AthleteService(
 
     fun saveRoutineFromWorkout(workoutId: String, name: String): Routine {
         val sets = repo.setsFor(workoutId)
-        val items = sets.groupBy { it.blockIndex }.toSortedMap().values.map { block ->
+        val items = sets.groupBy { it.blockIndex }.entries.sortedBy { it.key }.map { it.value }.map { block ->
             // Inserted warm-up rows sort first; the routine describes the work sets.
             val work = block.filter { it.setType != SetType.WARMUP }.ifEmpty { block }
             val first = work.first()
