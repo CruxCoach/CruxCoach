@@ -369,6 +369,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val stable = events.filterNot { it.day == today.toString() && it.kind == SuggestionEventKind.SWAPPED }
             val learned = PreferenceLearning.affinity(stable, repo.completedSetsSince(sinceMs), today, resets)
             val affinity = learned + dislikedToday.associateWith { -10.0 }
+            // Turned down on earlier days: rests a few days (today's own swaps keep the card stable instead).
+            val resting = PreferenceLearning.resting(stable.filterNot { it.day == today.toString() }, today, resets).keys
             // The kind and time the athlete chose on this weekday before: today's default until they choose otherwise.
             val usual = PreferenceLearning.usualChoices(events, today, resets)[today.dayOfWeek.isoDayNumber]
             lastUsual = usual
@@ -414,6 +416,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 budgetFactor = budgetFactor,
                 logbookSends = logbook?.sampleSize ?: 0,
                 logbookDifficulty = logbook?.takeIf { it.hasGrades }?.workingDifficulty,
+                resting = resting,
                 historyWeeks = historyWeeks,
                 weekly = weekly,
                 weekStart = weekStart,
@@ -490,9 +493,6 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         }
     }
 
-    /** Today's "easier" (−1) or "harder" (+1), 0 back to the coach's level; the coach learns nothing from it beyond today. */
-    fun chooseLevel(shift: Int) = io {
-        synchronized(refreshLock) {
     /**
      * "Als Zirkel" on the card (owner 2026-10-17): today's pull, push, prehab, core and leg work in one
      * circuit – one set of each in turn; finger and power work stay before it. Only for today; the choice
@@ -532,6 +532,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         return s.copy(routine = s.routine.copy(items = items), estimatedMinutes = SessionSuggester.estimateMinutes(items, catalog))
     }
 
+    /** Today's "easier" (−1) or "harder" (+1), 0 back to the coach's level; the coach learns nothing from it beyond today. */
+    fun chooseLevel(shift: Int) = io {
+        synchronized(refreshLock) {
             val s = _state.value.suggestion
             val feedback = when { shift > 0 -> SuggestionFeedback.TOO_EASY; shift < 0 -> SuggestionFeedback.TOO_HARD; else -> null }
             if (feedback != null) service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), feedback)

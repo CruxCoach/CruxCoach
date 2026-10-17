@@ -11,6 +11,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -26,6 +27,13 @@ object PreferenceLearning {
 
     const val WINDOW_DAYS = 42
     const val MAX_AFFINITY = 3.0
+    /** An exercise logged in the athlete's own training (not a suggestion they followed). */
+    const val OWN_LOGGED = 0.3
+    const val FOLLOWED_START = 0.05
+    const val FOLLOWED_DONE = 0.05
+    const val FOLLOWED_LOGGED = 0.05
+    /** Days a rejected exercise rests: once, twice, three times or more within [WINDOW_DAYS]. */
+    val REST_DAYS = listOf(3, 10, 21)
 
     // ── Forgetting (owner 2026-10-16: what is learned stays visible and can be reset) ──
 
@@ -108,8 +116,11 @@ object PreferenceLearning {
      *
      * - "another suggestion" because of an exercise (DISLIKE) −2, skipped set −0.5, excluded −3
      * - swapped away −1, swapped to +1 (SWAPPED slugs = [from, to])
-     * - started suggestion +0.3, completed suggestion +0.5 × share done
-     * - every training the exercise was logged in +0.3 (repeated → liked)
+     * - every own training the exercise was logged in +0.3 (repeated → liked)
+     * - following the coach counts little (owner 2026-10-17: learn, but do not overfit): started suggestion
+     *   +[FOLLOWED_START], completed +[FOLLOWED_DONE] × share done, logged in a suggested training
+     *   +[FOLLOWED_LOGGED]. Doing what was suggested is not a preference; otherwise the coach kept
+     *   suggesting its own picks (+0.8 per session, the cap after four).
      */
     fun affinity(
         events: List<SuggestionEvent>, sets: List<ExerciseSet>, today: LocalDate,
@@ -119,6 +130,9 @@ object PreferenceLearning {
         zone: TimeZone = TimeZone.currentSystemDefault(),
     ): Map<String, Double> {
         val scores = mutableMapOf<String, Double>()
+        // Trainings started from a suggestion: what was done there followed the coach.
+        val followed = events.filter { it.kind == SuggestionEventKind.STARTED || it.kind == SuggestionEventKind.COMPLETED }
+            .mapNotNull { it.workoutId }.toSet()
         // Age in the athlete's days, not in UTC days: just after local midnight, a swap made a minute
         // ago counted as a day old (0.98) and missed "done gladly" (≥ 1) – device test 2026-10-17.
         fun add(slug: String, value: Double, atMs: Long, day: LocalDate) {
@@ -139,8 +153,8 @@ object PreferenceLearning {
                     e.slugs.getOrNull(0)?.let { add(it, -1.0) }
                     e.slugs.getOrNull(1)?.let { add(it, 1.0) }
                 }
-                SuggestionEventKind.STARTED -> e.slugs.forEach { add(it, 0.3) }
-                SuggestionEventKind.COMPLETED -> e.slugs.forEach { add(it, 0.5 * (e.value ?: 1.0).coerceIn(0.0, 1.0)) }
+                SuggestionEventKind.STARTED -> e.slugs.forEach { add(it, FOLLOWED_START) }
+                SuggestionEventKind.COMPLETED -> e.slugs.forEach { add(it, FOLLOWED_DONE * (e.value ?: 1.0).coerceIn(0.0, 1.0)) }
                 SuggestionEventKind.SHOWN, SuggestionEventKind.EDITED, SuggestionEventKind.SAVED -> Unit
             }
         }
@@ -148,9 +162,53 @@ object PreferenceLearning {
             .groupBy { it.workoutId to it.exerciseSlug }
             .forEach { (key, rows) ->
                 val at = rows.maxOf { it.completedAt ?: 0L }
-                add(key.second, 0.3, at, ProgressStats.dayOf(at, zone))
+                add(key.second, if (key.first in followed) FOLLOWED_LOGGED else OWN_LOGGED, at, ProgressStats.dayOf(at, zone))
             }
         return scores.mapValues { (_, v) -> v.coerceIn(-MAX_AFFINITY, MAX_AFFINITY) }.filterValues { abs(it) >= 0.05 }
+    }
+
+    /**
+     * Exercises that rest after the athlete turned them down, with the day they may come back
+     * (owner 2026-10-17: the coach must not keep suggesting what the athlete rejects – and stays a coach).
+     * Swapped away or left out today counts 1, a skipped exercise ½; once rests [REST_DAYS][0] days,
+     * twice [REST_DAYS][1], three times or more [REST_DAYS][2], from the last rejection. Afterwards the
+     * exercise may come back; only "never suggest" is for good. Forgotten exercises start fresh.
+     */
+    fun resting(
+        events: List<SuggestionEvent>,
+        today: LocalDate,
+        resets: Map<String, Long> = emptyMap(),
+        zone: TimeZone = TimeZone.currentSystemDefault(),
+    ): Map<String, LocalDate> {
+        val from = today.minus(DatePeriod(days = WINDOW_DAYS))
+        val rejections = mutableMapOf<String, MutableList<Pair<LocalDate, Double>>>()
+        for (e in events) {
+            val day = runCatching { LocalDate.parse(e.day) }.getOrNull() ?: ProgressStats.dayOf(e.createdAt, zone)
+            if (day < from || day > today) continue
+            fun reject(slug: String, weight: Double) {
+                if (e.createdAt <= since(resets, exerciseKey(slug))) return
+                rejections.getOrPut(slug) { mutableListOf() } += day to weight
+            }
+            when (e.kind) {
+                SuggestionEventKind.NEXT, SuggestionEventKind.FEEDBACK ->
+                    if (e.feedback == SuggestionFeedback.DISLIKE_EXERCISE) e.slugs.forEach { reject(it, 1.0) }
+                SuggestionEventKind.SWAPPED -> e.slugs.getOrNull(0)?.let { reject(it, 1.0) }
+                SuggestionEventKind.SKIPPED_SET -> e.slugs.forEach { reject(it, 0.5) }
+                else -> Unit
+            }
+        }
+        return rejections.mapNotNull { (slug, list) ->
+            val count = list.sumOf { it.second }
+            // One skipped exercise alone says too little (time, mood): no rest yet.
+            if (count < 1.0) return@mapNotNull null
+            val days = when {
+                count >= 3.0 -> REST_DAYS[2]
+                count >= 2.0 -> REST_DAYS[1]
+                else -> REST_DAYS[0]
+            }
+            val until = list.maxOf { it.first }.plus(DatePeriod(days = days))
+            if (until > today) slug to until else null
+        }.toMap()
     }
 
     /**
