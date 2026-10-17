@@ -19,6 +19,7 @@
     <string name="map_in_view_more">%1$d more — zoom in to see them</string>
     <string name="map_in_view_empty_title">No boards in this part of the map</string>
     <string name="map_in_view_empty_hint">Zoom out or search for a city.</string>
+    <string name="map_in_view_show_nearest">Show nearest boards</string>
     <string name="map_in_view_filtered_title">No boards match your filters</string>
 
     <!-- Board map: selected place -->

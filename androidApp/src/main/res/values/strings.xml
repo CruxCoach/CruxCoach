@@ -319,14 +319,14 @@
     <string name="map_tile_provider_unreachable">Map tile service is currently unreachable — check your connection or try again later.</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>
-    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_layout">Kilter layout</string>
     <string name="map_filter_section_access">Access</string>
     <string name="map_filter_section_moon_variant">MoonBoard variant</string>
     <string name="map_filter_section_moon_type">MoonBoard setup</string>
     <string name="map_filter_section_moon_led">MoonBoard hardware</string>
     <string name="map_filter_moon_no_led">No LED</string>
-    <string name="map_filter_section_adjustability">Adjustability</string>
-    <string name="map_filter_section_size">Size</string>
+    <string name="map_filter_section_adjustability">Kilter adjustability</string>
+    <string name="map_filter_section_size">Kilter size</string>
     <string name="map_filter_section_country">Country</string>
     <string name="map_filter_count_template">Showing %1$d of %2$d</string>
     <string name="map_filter_reset">Reset</string>

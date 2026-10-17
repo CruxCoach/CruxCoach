@@ -102,6 +102,7 @@ class MapScreenLayoutTest {
             onCloseVenue = {},
             onBrowseClimbs = onBrowse,
             onResetFilters = {},
+            onShowNearest = {},
             onOverlayHeight = {},
             onPeekHeight = { _, _ -> },
         ) { Box(Modifier.fillMaxSize().background(Color.LightGray)) }
