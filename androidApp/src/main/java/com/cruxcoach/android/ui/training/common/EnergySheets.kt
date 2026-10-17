@@ -21,10 +21,12 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.InfoButton
 import com.cruxcoach.android.ui.theme.CruxCoachDesign
+import com.cruxcoach.android.ui.training.dayLoadLabel
 import com.cruxcoach.android.ui.training.energyWarningText
 import com.cruxcoach.android.ui.training.formatMass
 import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.android.ui.training.parseDecimal
+import com.cruxcoach.athlete.logic.DayLoad
 import com.cruxcoach.athlete.logic.EnergyBalance
 import com.cruxcoach.athlete.logic.EnergyReport
 import com.cruxcoach.athlete.logic.Units
@@ -101,6 +103,8 @@ fun EnergySheet(
                     KcalRow(stringResource(R.string.trn_deficit_line, formatMass(plan.paceKgPerWeek, profile.units)),
                         "−" + plan.dailyDeficitKcal, "energy_deficit")
                     KcalRow(stringResource(R.string.trn_target), plan.targetKcal.toString(), "energy_target", bold = true)
+                    PlanNote(easedDeficitText(plan, need.dayLoad, profile), "energy_eased")
+                    PlanNote(weekPaceText(plan, profile), "energy_week_pace")
                 }
                 // Recommended (the line above) or an own calorie target; a low one is named right here, never refused.
                 OwnTargetChoice(com.cruxcoach.athlete.logic.FuelTargets.TargetKind.ENERGY, profile, energyTarget(need, plan),
@@ -163,6 +167,8 @@ fun WeightGoalSheet(
     onSave: (lose: Boolean, targetKg: Double?, paceKg: Double) -> Unit,
     onLogWeight: (Double) -> Unit,
     onLogHeight: (Double) -> Unit,
+    /** The last seven days' needs, today last: the plan then says what the chosen pace really adds up to. */
+    weekNeeds: List<EnergyBalance.Need> = emptyList(),
 ) {
     val units = profile.units
     val losing = profile.goal == AthleteGoal.LOSE_WEIGHT
@@ -172,7 +178,7 @@ fun WeightGoalSheet(
     var pace by rememberSaveable { mutableStateOf(WeightPlan.clampPace(profile.weeklyLossKg)) }
     val targetKg = parseDecimal(targetText)?.let { Units.massFromDisplay(it, units) }
     val targetValid = targetText.isBlank() || (targetKg != null && targetKg in PLAUSIBLE_WEIGHT_KG)
-    val plan = weightKg?.let { WeightPlan.plan(pace, targetKg?.takeIf { targetValid }, it, heightCm, profile.sex, need) }
+    val plan = weightKg?.let { WeightPlan.plan(pace, targetKg?.takeIf { targetValid }, it, heightCm, profile.sex, need, weekNeeds) }
     val choice = Triple(true, targetKg?.takeIf { targetValid }, pace)
     val changed = losing && targetValid && weightKg != null &&
         (pace != WeightPlan.clampPace(profile.weeklyLossKg) || !sameKg(choice.second, profile.targetWeightKg))
@@ -248,6 +254,10 @@ fun WeightGoalSheet(
                                 modifier = Modifier.testTag("goal_target_kcal"))
                             Text(stringResource(R.string.trn_goal_target_math, needKcal, p.dailyDeficitKcal), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (!p.targetReached) {
+                            PlanNote(need?.let { easedDeficitText(p, it.dayLoad, profile) }, "goal_eased")
+                            PlanNote(weekPaceText(p, profile), "goal_week_pace")
                         }
                         p.weeksToTarget?.takeIf { it > 0 }?.let {
                             Text(stringResource(R.string.trn_goal_weeks, it), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
@@ -336,6 +346,41 @@ fun weightGoalSummary(profile: AthleteProfile, plan: WeightPlan.Plan?): String {
         else stringResource(R.string.trn_goal_summary_plain, pace)
     val goal = profile.targetWeightKg?.takeIf { !profile.hideBodyNumbers }?.let { stringResource(R.string.trn_goal_summary_target, formatMass(it, profile.units)) }
     return listOfNotNull(head, goal).joinToString(" · ")
+}
+
+/**
+ * Why the day's deficit is smaller than the pace's, with both numbers (holistic
+ * audit 2026-10-17: hard days are fuelled rather than their carbohydrates capped); null
+ * when it is not smaller.
+ */
+@Composable
+fun easedDeficitText(plan: WeightPlan.Plan?, dayLoad: DayLoad, profile: AthleteProfile): String? {
+    if (plan == null || plan.easedKcal <= 0) return null
+    val day = dayLoadLabel(dayLoad)
+    return when {
+        !profile.showCalories -> stringResource(R.string.trn_deficit_eased_plain, day)
+        dayLoad == DayLoad.REST -> stringResource(R.string.trn_deficit_eased_rest, day, plan.dailyDeficitKcal, plan.paceDeficitKcal)
+        else -> stringResource(R.string.trn_deficit_eased, day, plan.dailyDeficitKcal, plan.paceDeficitKcal)
+    }
+}
+
+/**
+ * The pace the last seven days' deficits really add up to, when it is
+ * slower than the chosen one (to the 0.1 kg shown); null otherwise.
+ */
+@Composable
+fun weekPaceText(plan: WeightPlan.Plan?, profile: AthleteProfile): String? {
+    val week = plan?.weekPaceKg ?: return null
+    val shown = (week * 10).roundToInt() / 10.0
+    if (shown >= plan.paceKgPerWeek - 1e-9) return null
+    return stringResource(R.string.trn_week_pace, formatMass(shown, profile.units), formatMass(plan.paceKgPerWeek, profile.units))
+}
+
+@Composable
+private fun PlanNote(text: String?, tag: String) {
+    if (text == null) return
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag(tag))
 }
 
 /** Two optional weights are the same to the gram that matters (lb round trips). */
