@@ -15,6 +15,7 @@
     <string name="trn_everyday">Alltag</string>
     <string name="trn_training">Training heute</string>
     <string name="trn_no_training">noch kein Training</string>
+    <string name="trn_training_planned">Geplant, noch nicht erledigt: %1$s. Zählt, bis es erledigt ist.</string>
     <string name="trn_need">Bedarf</string>
     <string name="trn_deficit_line">Defizit für %1$s pro Woche</string>
     <string name="trn_target">Kalorienziel</string>

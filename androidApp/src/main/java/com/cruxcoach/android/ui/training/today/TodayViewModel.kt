@@ -59,6 +59,8 @@ data class TodayState(
     val kcalToday: Double? = null,
     /** Today's estimated need and, while losing weight, the plan behind the calorie target. */
     val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
+    /** Today's weight-loss plan as today's targets see it (planned training included, audit W4). */
+    val fuelPlan: com.cruxcoach.athlete.logic.WeightPlan.Plan? = null,
     /** The last seven days' needs: the goal sheet says what the chosen pace really adds up to. */
     val weekNeeds: List<com.cruxcoach.athlete.logic.EnergyBalance.Need> = emptyList(),
     val heightCm: Double? = null,
@@ -253,6 +255,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val sig = signature(s.focus.name, s.routine.items.map { it.slug })
             if (shownToday.add(sig)) service.logSuggestion(SuggestionEventKind.SHOWN, s.focus.name, s.routine.items.map { it.slug })
         }
+        // Nutrition follows today's planned training until it is done (audit W4); an open training keeps the plan.
+        daily?.let { runCatching { service.rememberPlannedToday(it) } }
+        val planned = runCatching { service.plannedForTargets(activity) }.getOrNull()
+        val fuelActivity = planned?.activity ?: activity
         val durationHint = runCatching {
             PreferenceLearning.suggestedSessionMinutes(repo.workoutsBetween(today.minus(DatePeriod(days = 42)).toString(), today.toString()),
                 i.profile.sessionMinutes, today)
@@ -293,12 +299,13 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 trendKg = trend.lastOrNull()?.trend,
                 weeklyRateKg = TrendWeight.weeklyRate(trend),
                 lastWeighDay = trend.lastOrNull()?.day?.toString(),
-                fuelTargets = service.fuelTargets(activity, i.profile),
+                fuelTargets = service.fuelTargets(fuelActivity, i.profile),
                 proteinToday = i.food.sumOf { e -> e.proteinG ?: 0.0 },
                 carbsToday = i.food.sumOf { e -> e.carbsG ?: 0.0 },
                 waterTodayMl = i.water.sumOf { w -> w.ml },
                 kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
-                need = service.energyNeed(i.profile, activity),
+                need = service.energyNeed(i.profile, fuelActivity),
+                fuelPlan = planned?.let { runCatching { service.todayWeightPlan(i.profile, fuelActivity, activities) }.getOrNull() },
                 weekNeeds = runCatching { service.weekNeeds(i.profile, activities) }.getOrDefault(emptyList()),
                 heightCm = service.heightCm(),
                 energy = service.energyReport(i.profile, activities),

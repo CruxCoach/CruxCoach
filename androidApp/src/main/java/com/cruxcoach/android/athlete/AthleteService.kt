@@ -1322,6 +1322,37 @@ class AthleteService @Inject constructor(
             energyNeed(profile, dayActivity, weight, height), weekNeeds)
     }
 
+    // ── Planned training for today's targets (audit W4) ──────────────
+
+    /** Stores today's suggestion [s] as today's plan for nutrition ([PlannedTraining]); writes only on a change. */
+    fun rememberPlannedToday(s: SessionSuggestion) {
+        val value = PlannedTraining.encode(PlannedTraining.summaryOf(s, today()))
+        if (repo.setting(PlannedTraining.SETTING_KEY) != value) repo.putSetting(PlannedTraining.SETTING_KEY, value)
+    }
+
+    /**
+     * Today's planned training estimated as a [DayActivity]: from today's suggestion as Today last computed it,
+     * else from the week plan and the usual climbing days. Null when nothing is planned.
+     */
+    fun plannedActivityToday(): PlannedTraining.Planned? = runCatching {
+        val today = today()
+        val stored = PlannedTraining.decode(repo.setting(PlannedTraining.SETTING_KEY))?.takeIf { it.day == today.toString() }
+        PlannedTraining.planned(stored ?: PlannedTraining.fromWeekPlan(repo.profile(), today, repo.routines(), catalog))
+    }.getOrNull()
+
+    /** The plan today's targets follow while it is not done and weighs more than what is done ([real]); null otherwise. */
+    fun plannedForTargets(real: DayActivity?): PlannedTraining.Planned? = PlannedTraining.forTargets(real, plannedActivityToday())
+
+    /**
+     * Today's weight-loss plan for [activity] as today's targets see it: the last six days stay real, so the
+     * week's pace and the deficit fit the rings. The energy check ([energyReport]) keeps the real today.
+     */
+    fun todayWeightPlan(profile: AthleteProfile, activity: DayActivity?, activities: Map<String, DayActivity>): WeightPlan.Plan? {
+        val day = today().toString()
+        val withToday = if (activity == null) activities - day else activities + (day to activity)
+        return weightPlan(profile, activity, weekNeeds(profile, withToday))
+    }
+
     /** The estimated needs of the last seven days, today last; empty without weight or height. */
     fun weekNeeds(profile: AthleteProfile, activities: Map<String, DayActivity>): List<EnergyBalance.Need> {
         val today = today()
