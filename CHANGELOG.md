@@ -366,6 +366,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   board": it opens the gym search with that place already picked, and the
   chosen board goes straight to the board browser. The gym search also offers
   the Quantum models.
+- Performance values are harder to throw off: one set raises a value by at
+  most 10 % (a second set of the same training that shows as much confirms
+  more), so a typo such as "50 reps" no longer jumps the next plan; a quick
+  self-estimate is replaced by the best set of the first training with the
+  exercise, also when that is lower; and on holds the seconds answered as
+  "how many more?" count as time held. Loads planned from an existing value
+  do not change.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out

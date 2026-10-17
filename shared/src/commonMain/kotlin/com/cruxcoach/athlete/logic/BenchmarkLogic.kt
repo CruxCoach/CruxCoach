@@ -200,7 +200,9 @@ object BenchmarkMath {
 
     /**
      * What a completed set proves. Reps in reserve count as reps the athlete
-     * could have done; holds shorter than 3 s say nothing about 10 s.
+     * could have done, and on a hold the reserve ("how many more?" – seconds)
+     * as time they could have held (comparison review #12: the answer was
+     * ignored on holds); holds shorter than 3 s say nothing about 10 s.
      */
     fun implied(def: ExerciseDefinition, set: ExerciseSet): Capacity? {
         if (!set.isCompleted || set.setType == SetType.WARMUP) return null
@@ -216,22 +218,27 @@ object BenchmarkMath {
                 if (def.kind == ExerciseKind.INTERVAL) return null // repeaters are too fatigue-driven to estimate a maximum
                 val duration = set.durationS?.takeIf { it >= 3.0 } ?: return null
                 val total = StrengthMath.effectiveLoad(def.load, set.loadKg, bw) ?: return null
-                Capacity(CapacityKind.TEN_SECOND_MAX, total / HoldCurve.relative(duration), bw)
+                Capacity(CapacityKind.TEN_SECOND_MAX, total / HoldCurve.relative(duration + (set.rir ?: 0)), bw)
             }
             CapacityKind.MAX_REPS -> ((set.reps ?: return null) + (set.rir ?: 0)).takeIf { it > 0 }
                 ?.let { Capacity(CapacityKind.MAX_REPS, it.toDouble(), bw) }
-            CapacityKind.MAX_SECONDS -> set.durationS?.takeIf { it > 0 }?.let { Capacity(CapacityKind.MAX_SECONDS, it, bw) }
+            CapacityKind.MAX_SECONDS -> set.durationS?.takeIf { it > 0 }?.let { Capacity(CapacityKind.MAX_SECONDS, it + (set.rir ?: 0), bw) }
             null -> null
         }
     }
 
-    /** A stored value expressed the way the athlete enters it again (reps folded with RIR). */
+    /** A stored value expressed the way the athlete enters it again (reps, and on holds seconds, folded with the reserve). */
     fun benchmarkFromSet(def: ExerciseDefinition, set: ExerciseSet, id: String, source: com.cruxcoach.athlete.model.BenchmarkSource, now: Long): Benchmark =
         Benchmark(
             id = id, exerciseSlug = def.slug, side = set.side, edgeMm = set.edgeMm, grip = set.grip,
-            loadKg = set.loadKg, reps = set.reps?.let { it + (set.rir ?: 0) }, durationS = set.durationS,
+            loadKg = set.loadKg, reps = set.reps?.let { it + (set.rir ?: 0) },
+            durationS = set.durationS?.let { d -> if (holdKind(def)) d + (set.rir ?: 0) else d },
             bodyweightKg = set.bodyweightKg, source = source, measuredAt = now,
         )
+
+    /** Held for a time: the reserve answer there is in seconds. Repeaters yield no value. */
+    private fun holdKind(def: ExerciseDefinition): Boolean = def.kind != ExerciseKind.INTERVAL &&
+        (capacityKind(def) == CapacityKind.TEN_SECOND_MAX || capacityKind(def) == CapacityKind.MAX_SECONDS)
 
     /**
      * The value that applies to a set: same side first (one-sided work is

@@ -713,30 +713,28 @@ class AthleteService @Inject constructor(
     /** What a completed set changed besides the log; [firstValue]: it gave the exercise its first performance value. */
     data class SetOutcome(val record: PersonalRecord?, val raisedBenchmark: Benchmark?, val capacity: Capacity?, val firstValue: Boolean = false)
 
+    /**
+     * The value a completed set leaves ([ValueUpdates]): a test is the truth, a first training learns the value
+     * (also below a self-estimate), and a trusted value rises by at most 10 % on one set's word.
+     */
     private fun updateBenchmark(set: ExerciseSet): Triple<Benchmark, Capacity, Boolean>? {
         if (set.setType == SetType.WARMUP) return null
         val def = catalog[set.exerciseSlug] ?: return null
-        val implied = BenchmarkMath.implied(def, set) ?: return null
-        val existing = BenchmarkMath.select(repo.benchmarks(def.slug), set.side, set.edgeMm, set.grip)
-            ?.takeIf { it.side == set.side }
-        val current = existing?.let { BenchmarkMath.capacity(def, it, set.bodyweightKg) }
-        val raise = when {
-            set.setType == SetType.TEST -> {
-                // A fresh test is the truth, also when lower; within one test the best set counts.
-                val sameTest = repo.setsFor(set.workoutId).filter {
-                    it.id != set.id && it.isCompleted && it.setType == SetType.TEST && it.exerciseSlug == set.exerciseSlug && it.side == set.side
-                }.mapNotNull { BenchmarkMath.implied(def, it)?.value }
-                sameTest.all { implied.value > it }
-            }
-            current == null -> true                          // the first session learns the starting value
-            current.kind != implied.kind -> false
-            else -> implied.value > current.value * 1.02     // only a clear improvement moves the value up
+        val all = repo.benchmarks(def.slug)
+        fun sameSide(list: List<Benchmark>) = BenchmarkMath.select(list, set.side, set.edgeMm, set.grip)?.takeIf { it.side == set.side }
+        val existing = sameSide(all)
+        // The value the training started with: what the athlete trusted before these sets.
+        val started = repo.workout(set.workoutId)?.startedAt
+        val before = sameSide(if (started == null) all else all.filter { it.measuredAt < started })
+        val session = repo.setsFor(set.workoutId).filter {
+            it.id != set.id && it.isCompleted && it.exerciseSlug == set.exerciseSlug && it.side == set.side
         }
-        if (!raise) return null
+        val update = ValueUpdates.decide(def, set, existing, before, session, set.bodyweightKg) ?: return null
         val source = if (set.setType == SetType.TEST) BenchmarkSource.TEST else BenchmarkSource.AUTO
-        val b = BenchmarkMath.benchmarkFromSet(def, set, repo.newId(), source, System.currentTimeMillis())
+        val raw = BenchmarkMath.benchmarkFromSet(def, update.source, repo.newId(), source, System.currentTimeMillis())
+        val b = if (update.capped) ValueUpdates.scaledTo(def, raw, update.value, set.bodyweightKg) else raw
         repo.saveBenchmark(b)
-        return Triple(b, implied, existing == null)
+        return Triple(b, Capacity(update.kind, update.value, set.bodyweightKg), existing == null)
     }
 
     /**
@@ -760,7 +758,7 @@ class AthleteService @Inject constructor(
     fun updateSet(set: ExerciseSet) {
         repo.saveSet(set)
         // The reserve answer comes after the set: it counts for the value too (device test 2026-10-17: a first
-        // value ignored "3+ in reserve" and placed a 7a climber at 5a). Only ever raises, like a fresh set.
+        // value ignored "3+ in reserve" and placed a 7a climber at 5a). It counts like a fresh set ([ValueUpdates]).
         if (set.isCompleted && set.setType != SetType.WARMUP) runCatching { updateBenchmark(set) }
     }
     fun addSet(workoutId: String, blockIndex: Int) {
