@@ -291,8 +291,6 @@
 
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
-    <string name="map_search_open">Search map</string>
-    <string name="map_search_close">Close search</string>
     <string name="map_search_hint">Gym, city or board</string>
     <string name="map_search_no_results">No gyms or places found</string>
     <string name="map_search_searching">Searching…</string>
@@ -308,11 +306,7 @@
     <string name="map_filter_brand_other">Other boards</string>
     <string name="map_filter_section_membership">Membership</string>
     <string name="map_filter_wellpass">egym Wellpass</string>
-    <string name="map_marker_open_in_maps">Open in Maps</string>
     <string name="map_marker_layout">Layout</string>
-    <string name="map_marker_access">Access</string>
-    <string name="map_marker_adjustability">Adjustability</string>
-    <string name="map_marker_frame">Frame</string>
     <string name="map_marker_field_unknown">—</string>
     <string name="map_marker_intent_failed">No app available for this action.</string>
     <string name="map_offline_dialog_title">No internet connection</string>
@@ -323,7 +317,6 @@
     <string name="map_init_error" formatted="false">Map failed to load: %1$s</string>
     <string name="map_init_error_generic">Map failed to load. Please try again.</string>
     <string name="map_tile_provider_unreachable">Map tile service is currently unreachable — check your connection or try again later.</string>
-    <string name="map_open_filters">Open filters</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>
     <string name="map_filter_section_layout">Layout</string>
@@ -357,10 +350,7 @@
 
     <!-- Adjustability enum display values -->
     <string name="map_adjustability_fixed">Fixed</string>
-    <string name="map_adjustability_fixed_angle">Fixed (%1$d°)</string>
     <string name="map_adjustability_adjustable">Adjustable</string>
-    <string name="map_adjustability_limited">Limited</string>
-    <string name="map_adjustability_full">Fully adjustable</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>

@@ -14,12 +14,18 @@ tags:
     id: "board_map_button"
 - waitForAnimationToEnd:
     timeout: 5000
-# Top-level Map screen: the "Karte" top-bar title is shared with no
-# other route in the DE UI. Pair with the filter / stats action
-# contentDescriptions (icon-only buttons on the AppBar) to disambiguate.
-- assertVisible: "Karte"
-- assertVisible: "Filter öffnen"
+# Map screen: floating search bar with the board and filter chips on top,
+# the stats action is the icon-only button in the search bar.
+- assertVisible:
+    id: "map_search_field"
+- assertVisible:
+    id: "map_brand_chip"
+- assertVisible:
+    id: "map_filters_chip"
 - assertVisible: "Statistik öffnen"
+# The bottom sheet lists the places in the visible part of the map.
+- assertVisible:
+    id: "map_in_view_title"
 - pressKey: Back
 # We should be back on the BoardBrowser; "Filter" is the browser's
 # filter-chips header, the same anchor the settings-navigate flow uses.

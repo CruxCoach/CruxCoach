@@ -1,7 +1,11 @@
 package com.cruxcoach.android.ui.map
 
-import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.DisplayMetrics
 import android.util.Log
+import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.maplibre.android.geometry.LatLng
@@ -9,6 +13,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
@@ -16,6 +21,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
+import java.util.Locale
 
 /**
  * Map layer + source manager for board-location markers.
@@ -23,20 +29,18 @@ import org.maplibre.geojson.Point
  * Two-stage de-overlap so dense regions stay legible:
  *  1. **Venue grouping** (caller-side, [groupIntoVenues]) collapses boards
  *     that sit on the same coordinate — a gym with both a Kilter and a
- *     MoonBoard becomes one pin, not two stacked dots.
+ *     MoonBoard becomes one marker, not two stacked dots.
  *  2. **Clustering** (here, via [GeoJsonOptions.withCluster]) collapses
  *     nearby venues into a count bubble until the user zooms in. Tapping a
  *     cluster eases the camera to the zoom where it splits apart.
  *
- * This replaces the earlier no-cluster CircleLayer: with two board
- * catalogues (~2.6k venues) the old flat layer piled into opaque blobs over
- * cities. Clustering is done with the canonical raw-style pattern
- * (`has(point_count)` cluster layer + `!has(point_count)` point layer), which
- * avoids the zoom-boundary dropouts the annotation-plugin clustering hit.
- *
- * Marker colour encodes the venue's board family ([VenueBrandKey]); a mixed
- * venue (Kilter + MoonBoard) gets its own colour. [SOURCE_SELECTED] keeps a
- * single-feature halo so selection never re-pushes the main dataset.
+ * Venues are symbols, not circles: each shows its family's colour and letter
+ * ([MapMarkerIcons]), mixed venues a pie of their families, and from city zoom
+ * on the gym's name underneath. Clusters are symbols too, so the base map's
+ * place labels make room for them instead of being painted over. Clusters are
+ * neutral (they mix brands) unless the brand filter leaves exactly one family,
+ * then they take its colour. [SOURCE_SELECTED] keeps a single-feature
+ * highlight so selection never re-pushes the main dataset.
  */
 object MapMarkerLayer {
     private const val TAG = "MapMarkerLayer"
@@ -45,199 +49,263 @@ object MapMarkerLayer {
     const val SOURCE_SELECTED = "board-location-selected"
 
     const val LAYER_CLUSTERS = "board-locations-clusters"
-    const val LAYER_CLUSTER_COUNT = "board-locations-cluster-count"
     const val LAYER_POINTS = "board-locations-points"
     const val LAYER_SELECTED_HALO = "board-locations-selected-halo"
+    const val LAYER_SELECTED = "board-locations-selected"
 
     private const val PROP_ID = "id"
-    private const val PROP_BRAND = "brand"
-    private const val PROP_COUNT = "boardCount"
+    private const val PROP_ICON = "icon"
+    private const val PROP_NAME = "name"
+    private const val PROP_HALO = "halo"
 
-    private val ORANGE = Color.parseColor("#FF6B1A") // Kilter
-    private val MOON_BLUE = Color.parseColor("#2D9CDB") // MoonBoard
-    private val MULTI_PURPLE = Color.parseColor("#9B51E0") // mixed-brand venue
-    private val GREY = Color.parseColor("#9E9E9E") // other / unknown brand
-    private val WHITE = Color.parseColor("#FFFFFF")
+    /** From this zoom on, venue names are drawn under their markers. */
+    const val LABEL_MIN_ZOOM = 11f
 
-    // Cluster bubble palette — neutral, sized + shaded by how many venues
-    // it contains (not by brand; a cluster usually mixes brands).
-    private val CLUSTER_SMALL = Color.parseColor("#FFB07A")
-    private val CLUSTER_MEDIUM = Color.parseColor("#FF6B1A")
-    private val CLUSTER_LARGE = Color.parseColor("#E04E00")
+    private const val FONT_REGULAR = "Noto Sans Regular"
+    private const val FONT_BOLD = "Noto Sans Bold"
+
+    /** Cluster sizes by venue count: diameters in dp for <10, <50, <200, more. */
+    private val CLUSTER_BUCKETS = listOf("s" to 30f, "m" to 36f, "l" to 44f, "xl" to 52f)
+
+    /** Colours that depend on the map style (light tiles vs. dark tiles). */
+    data class Theme(
+        val isDark: Boolean,
+        val labelColor: Int,
+        val labelHalo: Int,
+        val clusterColor: Int,
+        val onClusterColor: Int,
+    ) {
+        companion object {
+            val Light = Theme(false, 0xFF1F2328.toInt(), 0xFFFFFFFF.toInt(), 0xFF263238.toInt(), 0xFFFFFFFF.toInt())
+            val Dark = Theme(true, 0xFFE8EAED.toInt(), 0xFF101214.toInt(), 0xFFE3E7EA.toInt(), 0xFF1B2328.toInt())
+            fun of(isDark: Boolean) = if (isDark) Dark else Light
+        }
+    }
 
     /** Initial layer + source setup. Idempotent — safe after a style reload. */
-    fun install(style: Style) {
+    fun install(style: Style, theme: Theme, density: Float, clusterBrand: BoardBrand? = null) {
         if (style.getSource(SOURCE_ID) == null) {
             // Cluster the venue points. radius 50 px groups city-dense
             // venues; maxZoom 13 lets clusters split before street level so
             // individual gyms are tappable. Generous buffer + maxZoom 22 keep
             // points served to the edge at full pinch-zoom.
-            val source = GeoJsonSource(
-                SOURCE_ID,
-                FeatureCollection.fromFeatures(emptyList()),
-                GeoJsonOptions()
-                    .withBuffer(128)
-                    .withTolerance(0.5f)
-                    .withMaxZoom(22)
-                    .withCluster(true)
-                    .withClusterRadius(50)
-                    .withClusterMaxZoom(13),
-            )
-            style.addSource(source)
-        }
-        if (style.getSource(SOURCE_SELECTED) == null) {
             style.addSource(
                 GeoJsonSource(
-                    SOURCE_SELECTED,
+                    SOURCE_ID,
                     FeatureCollection.fromFeatures(emptyList()),
-                    GeoJsonOptions().withMaxZoom(22),
+                    GeoJsonOptions()
+                        .withBuffer(128)
+                        .withTolerance(0.5f)
+                        .withMaxZoom(22)
+                        .withCluster(true)
+                        .withClusterRadius(50)
+                        .withClusterMaxZoom(13),
                 )
             )
         }
+        if (style.getSource(SOURCE_SELECTED) == null) {
+            style.addSource(
+                GeoJsonSource(SOURCE_SELECTED, FeatureCollection.fromFeatures(emptyList()), GeoJsonOptions().withMaxZoom(22))
+            )
+        }
 
-        // Selected halo sits at the bottom so the point draws on top of it.
+        if (style.getLayer(LAYER_CLUSTERS) == null) {
+            style.addLayer(
+                SymbolLayer(LAYER_CLUSTERS, SOURCE_ID).apply {
+                    setFilter(Expression.has("point_count"))
+                    setProperties(
+                        PropertyFactory.iconAllowOverlap(true),
+                        PropertyFactory.textAllowOverlap(true),
+                        PropertyFactory.textField(Expression.get("point_count_abbreviated")),
+                        PropertyFactory.textFont(arrayOf(FONT_BOLD)),
+                        PropertyFactory.textSize(
+                            Expression.step(Expression.get("point_count"), Expression.literal(13f), Expression.stop(50, 14f))
+                        ),
+                    )
+                }
+            )
+        }
+        setClusterStyle(style, theme, density, clusterBrand)
+
+        if (style.getLayer(LAYER_POINTS) == null) {
+            style.addLayer(
+                SymbolLayer(LAYER_POINTS, SOURCE_ID).apply {
+                    setFilter(Expression.not(Expression.has("point_count")))
+                    setProperties(
+                        PropertyFactory.iconImage(Expression.get(PROP_ICON)),
+                        PropertyFactory.iconSize(
+                            Expression.interpolate(
+                                Expression.linear(), Expression.zoom(),
+                                Expression.stop(3, 0.62f),
+                                Expression.stop(7, 0.78f),
+                                Expression.stop(11, 0.95f),
+                                Expression.stop(15, 1.05f),
+                            )
+                        ),
+                        // Markers never disappear behind each other or behind
+                        // the base map's labels; only our own names may drop out.
+                        PropertyFactory.iconAllowOverlap(true),
+                        PropertyFactory.textField(
+                            Expression.step(
+                                Expression.zoom(), Expression.literal(""),
+                                Expression.stop(LABEL_MIN_ZOOM, Expression.get(PROP_NAME)),
+                            )
+                        ),
+                        PropertyFactory.textFont(arrayOf(FONT_REGULAR)),
+                        PropertyFactory.textSize(12f),
+                        PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                        PropertyFactory.textOffset(arrayOf(0f, 1.15f)),
+                        PropertyFactory.textMaxWidth(9f),
+                        PropertyFactory.textOptional(true),
+                    )
+                }
+            )
+        }
+
         if (style.getLayer(LAYER_SELECTED_HALO) == null) {
             style.addLayer(
                 CircleLayer(LAYER_SELECTED_HALO, SOURCE_SELECTED).apply {
                     setProperties(
-                        PropertyFactory.circleColor(ORANGE),
-                        PropertyFactory.circleOpacity(0.25f),
-                        PropertyFactory.circleRadius(20f),
-                        PropertyFactory.circleStrokeColor(ORANGE),
-                        PropertyFactory.circleStrokeWidth(2.5f),
-                    )
-                }
-            )
-        }
-
-        // Unclustered venue points. Colour = board family; mixed venues get
-        // their own colour so "this place has both" reads at a glance.
-        if (style.getLayer(LAYER_POINTS) == null) {
-            style.addLayer(
-                CircleLayer(LAYER_POINTS, SOURCE_ID).apply {
-                    setFilter(Expression.not(Expression.has("point_count")))
-                    setProperties(
-                        PropertyFactory.circleColor(
-                            Expression.match(
-                                Expression.get(PROP_BRAND),
-                                Expression.color(GREY),
-                                Expression.stop(VenueBrandKey.KILTER.wire, Expression.color(ORANGE)),
-                                Expression.stop(VenueBrandKey.MOONBOARD.wire, Expression.color(MOON_BLUE)),
-                                Expression.stop(VenueBrandKey.MULTI.wire, Expression.color(MULTI_PURPLE)),
-                                Expression.stop(VenueBrandKey.OTHER.wire, Expression.color(GREY)),
-                            )
-                        ),
-                        PropertyFactory.circleRadius(
-                            Expression.interpolate(
-                                Expression.linear(),
-                                Expression.zoom(),
-                                Expression.stop(2, 3.5f),
-                                Expression.stop(6, 5f),
-                                Expression.stop(10, 7f),
-                                Expression.stop(14, 9f),
-                            )
-                        ),
-                        PropertyFactory.circleStrokeColor(WHITE),
-                        PropertyFactory.circleStrokeWidth(1.5f),
-                        PropertyFactory.circleOpacity(
-                            Expression.interpolate(
-                                Expression.linear(),
-                                Expression.zoom(),
-                                Expression.stop(2, 0.8f),
-                                Expression.stop(8, 0.95f),
-                            )
-                        ),
-                    )
-                }
-            )
-        }
-
-        // Cluster bubbles — sized + shaded by point_count (10 / 50 breaks).
-        if (style.getLayer(LAYER_CLUSTERS) == null) {
-            style.addLayer(
-                CircleLayer(LAYER_CLUSTERS, SOURCE_ID).apply {
-                    setFilter(Expression.has("point_count"))
-                    setProperties(
-                        PropertyFactory.circleColor(
-                            Expression.step(
-                                Expression.get("point_count"),
-                                Expression.color(CLUSTER_SMALL),
-                                Expression.stop(10, Expression.color(CLUSTER_MEDIUM)),
-                                Expression.stop(50, Expression.color(CLUSTER_LARGE)),
-                            )
-                        ),
-                        PropertyFactory.circleRadius(
-                            Expression.step(
-                                Expression.get("point_count"),
-                                14f,
-                                Expression.stop(10, 18f),
-                                Expression.stop(50, 24f),
-                            )
-                        ),
-                        PropertyFactory.circleStrokeColor(WHITE),
+                        PropertyFactory.circleColor(Expression.toColor(Expression.get(PROP_HALO))),
+                        PropertyFactory.circleOpacity(0.22f),
+                        PropertyFactory.circleRadius(25f),
+                        PropertyFactory.circleStrokeColor(Expression.toColor(Expression.get(PROP_HALO))),
                         PropertyFactory.circleStrokeWidth(2f),
-                        PropertyFactory.circleOpacity(0.9f),
+                        PropertyFactory.circleStrokeOpacity(0.85f),
+                    )
+                }
+            )
+        }
+        if (style.getLayer(LAYER_SELECTED) == null) {
+            style.addLayer(
+                SymbolLayer(LAYER_SELECTED, SOURCE_SELECTED).apply {
+                    setProperties(
+                        PropertyFactory.iconImage(Expression.get(PROP_ICON)),
+                        PropertyFactory.iconSize(1.3f),
+                        PropertyFactory.iconAllowOverlap(true),
+                        PropertyFactory.iconIgnorePlacement(true),
+                        PropertyFactory.textField(Expression.get(PROP_NAME)),
+                        PropertyFactory.textFont(arrayOf(FONT_BOLD)),
+                        PropertyFactory.textSize(13f),
+                        PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                        PropertyFactory.textOffset(arrayOf(0f, 1.45f)),
+                        PropertyFactory.textMaxWidth(10f),
+                        PropertyFactory.textAllowOverlap(true),
                     )
                 }
             )
         }
 
-        // Cluster count label. Relies on the style's glyphs (OpenFreeMap ships
-        // Noto Sans); if a glyph set is missing the number simply doesn't draw
-        // and the sized bubble still conveys density.
-        if (style.getLayer(LAYER_CLUSTER_COUNT) == null) {
-            style.addLayer(
-                SymbolLayer(LAYER_CLUSTER_COUNT, SOURCE_ID).apply {
-                    setFilter(Expression.has("point_count"))
-                    setProperties(
-                        PropertyFactory.textField(Expression.get("point_count_abbreviated")),
-                        PropertyFactory.textSize(12f),
-                        PropertyFactory.textColor(WHITE),
-                        PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
-                        PropertyFactory.textAllowOverlap(true),
-                        PropertyFactory.textIgnorePlacement(true),
-                    )
-                }
+        listOf(LAYER_POINTS, LAYER_SELECTED).forEach { id ->
+            style.getLayer(id)?.setProperties(
+                PropertyFactory.textColor(theme.labelColor),
+                PropertyFactory.textHaloColor(theme.labelHalo),
+                PropertyFactory.textHaloWidth(1.6f),
+                PropertyFactory.textHaloBlur(0.3f),
             )
         }
     }
 
     /**
-     * Replace the data source with the venue list. Feature assembly runs on
-     * [Dispatchers.Default]; the GeoJSON push lands on Main where MapLibre
-     * expects it.
+     * Cluster colour: neutral when the visible venues mix families, the
+     * family's colour when the brand filter leaves exactly one. Cluster
+     * images are drawn per colour on demand.
      */
-    suspend fun setData(style: Style, venues: List<MapVenue>) {
-        val collection = withContext(Dispatchers.Default) {
-            FeatureCollection.fromFeatures(venues.map { it.toFeature() })
+    fun setClusterStyle(style: Style, theme: Theme, density: Float, clusterBrand: BoardBrand?) {
+        val markerStyle = clusterBrand?.markerStyle()
+        val fill = markerStyle?.color ?: theme.clusterColor
+        val onFill = markerStyle?.onColor ?: theme.onClusterColor
+        val suffix = Integer.toHexString(fill)
+        CLUSTER_BUCKETS.forEach { (bucket, diameter) ->
+            val id = "cluster-$bucket-$suffix"
+            if (style.getImage(id) == null) style.addImage(id, renderCluster(fill, diameter, density))
+        }
+        style.getLayer(LAYER_CLUSTERS)?.setProperties(
+            PropertyFactory.iconImage(
+                Expression.step(
+                    Expression.get("point_count"),
+                    Expression.literal("cluster-s-$suffix"),
+                    Expression.stop(10, "cluster-m-$suffix"),
+                    Expression.stop(50, "cluster-l-$suffix"),
+                    Expression.stop(200, "cluster-xl-$suffix"),
+                )
+            ),
+            PropertyFactory.textColor(onFill),
+        )
+    }
+
+    /** A filled disc with a white ring inside a translucent halo of the same colour. */
+    internal fun renderCluster(fill: Int, diameterDp: Float, density: Float): Bitmap {
+        val halo = 5f * density
+        val radius = diameterDp / 2f * density
+        val size = Math.round(2 * (radius + halo))
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        bitmap.density = Math.round(density * DisplayMetrics.DENSITY_DEFAULT)
+        val canvas = Canvas(bitmap)
+        val c = size / 2f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.color = (fill and 0x00FFFFFF) or 0x40000000
+        canvas.drawCircle(c, c, radius + halo, paint)
+        paint.color = 0xFFFFFFFF.toInt()
+        canvas.drawCircle(c, c, radius, paint)
+        paint.color = fill
+        canvas.drawCircle(c, c, radius - 2f * density, paint)
+        return bitmap
+    }
+
+    /**
+     * Replace the data source with the venue list. Feature assembly (and the
+     * marker images it needs) runs on [Dispatchers.Default]; registering images
+     * and pushing the GeoJSON land on Main where MapLibre expects them.
+     */
+    suspend fun setData(style: Style, venues: List<MapVenue>, density: Float) {
+        val missing = withContext(Dispatchers.Main) {
+            if (!style.isFullyLoaded) return@withContext emptyList()
+            venues.mapTo(linkedSetOf()) { it.markerBrands }
+                .filter { style.getImage(MapMarkerIcons.iconId(it)) == null }
+        }
+        val (collection, icons) = withContext(Dispatchers.Default) {
+            FeatureCollection.fromFeatures(venues.map { it.toFeature() }) to
+                missing.associate { MapMarkerIcons.iconId(it) to MapMarkerIcons.render(it, density) }
         }
         withContext(Dispatchers.Main) {
+            if (!style.isFullyLoaded) return@withContext
             val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID)
             if (source == null) {
                 Log.w(TAG, "setData: source $SOURCE_ID missing — install() not called yet?")
                 return@withContext
             }
+            if (icons.isNotEmpty()) style.addImages(HashMap(icons))
             source.setGeoJson(collection)
             Log.d(TAG, "setData: pushed ${venues.size} venues to $SOURCE_ID")
         }
     }
 
-    /** Update the selection halo to a single venue, or clear it. */
-    fun setSelected(style: Style, venue: MapVenue?) {
+    /** Update the selection highlight to a single venue, or clear it. */
+    fun setSelected(style: Style, venue: MapVenue?, density: Float) {
         val collection = if (venue == null) {
             FeatureCollection.fromFeatures(emptyList())
         } else {
-            FeatureCollection.fromFeatures(listOf(Feature.fromGeometry(Point.fromLngLat(venue.lng, venue.lat))))
+            val brands = venue.markerBrands
+            val icon = MapMarkerIcons.iconId(brands)
+            if (style.getImage(icon) == null) style.addImage(icon, MapMarkerIcons.render(brands, density))
+            FeatureCollection.fromFeatures(listOf(venue.toFeature()))
         }
         style.getSourceAs<GeoJsonSource>(SOURCE_SELECTED)?.setGeoJson(collection)
     }
 
-    /** Hit-test the unclustered venue layer; returns the tapped venue or null. */
-    fun venueAt(map: MapLibreMap, screenX: Float, screenY: Float, venues: List<MapVenue>): MapVenue? {
+    /** Hit-test the venue markers (selected one first); returns the venue id or null. */
+    fun venueIdAt(map: MapLibreMap, screenX: Float, screenY: Float, density: Float): String? {
         val pixel = android.graphics.PointF(screenX, screenY)
-        val features = map.queryRenderedFeatures(pixel, LAYER_POINTS)
-        val id = features.firstOrNull()?.getStringProperty(PROP_ID) ?: return null
-        return venues.firstOrNull { it.id == id }
+        // A finger is wider than the marker: probe a small box, not a point.
+        val slop = 10f * density
+        val box = android.graphics.RectF(pixel.x - slop, pixel.y - slop, pixel.x + slop, pixel.y + slop)
+        val features = map.queryRenderedFeatures(box, LAYER_SELECTED, LAYER_POINTS)
+        return features.minByOrNull { f ->
+            val p = f.geometry() as? Point ?: return@minByOrNull Float.MAX_VALUE
+            val s = map.projection.toScreenLocation(LatLng(p.latitude(), p.longitude()))
+            (s.x - pixel.x) * (s.x - pixel.x) + (s.y - pixel.y) * (s.y - pixel.y)
+        }?.getStringProperty(PROP_ID)
     }
 
     /**
@@ -264,7 +332,8 @@ object MapMarkerLayer {
     private fun MapVenue.toFeature(): Feature =
         Feature.fromGeometry(Point.fromLngLat(lng, lat)).apply {
             addStringProperty(PROP_ID, id)
-            addStringProperty(PROP_BRAND, brandKey.wire)
-            addNumberProperty(PROP_COUNT, boards.size)
+            addStringProperty(PROP_ICON, MapMarkerIcons.iconId(markerBrands))
+            addStringProperty(PROP_NAME, name)
+            addStringProperty(PROP_HALO, String.format(Locale.ROOT, "#%06X", markerBrands.first().markerStyle().color and 0xFFFFFF))
         }
 }

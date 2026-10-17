@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -41,9 +43,14 @@ fun MapView(
     modifier: Modifier = Modifier,
     onMapReady: (MapLibreMap, Style) -> Unit = { _, _ -> },
     onMapTap: ((MapLibreMap, screenX: Float, screenY: Float) -> Boolean)? = null,
+    onCameraIdle: ((MapLibreMap) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    // The native view is created once; its listeners call the latest lambdas.
+    val currentOnMapReady by rememberUpdatedState(onMapReady)
+    val currentOnMapTap by rememberUpdatedState(onMapTap)
+    val currentOnCameraIdle by rememberUpdatedState(onCameraIdle)
 
     // MapLibre.getInstance is idempotent and returns the process singleton.
     val mapLibre = remember(context) { MapLibre.getInstance(context) }
@@ -76,16 +83,20 @@ fun MapView(
                 // (see THIRD_PARTY_LICENSES.md, NOTICE).
                 map.uiSettings.isAttributionEnabled = true
                 map.uiSettings.isLogoEnabled = true
+                // A gym finder needs pan and zoom only: rotating or tilting by
+                // accident (two-finger gestures) left the map askew with no
+                // obvious way back.
+                map.uiSettings.isRotateGesturesEnabled = false
+                map.uiSettings.isTiltGesturesEnabled = false
                 map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                     map.cameraPosition = initialCameraPosition
-                    onMapReady(map, style)
+                    currentOnMapReady(map, style)
                 }
-                onMapTap?.let { tapHandler ->
-                    map.addOnMapClickListener { latLng ->
-                        val pixel = map.projection.toScreenLocation(latLng)
-                        tapHandler(map, pixel.x, pixel.y)
-                    }
+                map.addOnMapClickListener { latLng ->
+                    val pixel = map.projection.toScreenLocation(latLng)
+                    currentOnMapTap?.invoke(map, pixel.x, pixel.y) ?: false
                 }
+                map.addOnCameraIdleListener { currentOnCameraIdle?.invoke(map) }
             }
         }
     }

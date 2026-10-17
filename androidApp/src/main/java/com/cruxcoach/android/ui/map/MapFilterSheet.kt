@@ -182,7 +182,7 @@ fun MapFilterSheet(
                                         when (ledState) {
                                             MoonLedState.LED -> "LED"
                                             MoonLedState.NO_LED -> stringResource(R.string.map_filter_moon_no_led)
-                                            MoonLedState.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
+                                            MoonLedState.UNKNOWN -> stringResource(R.string.map_filter_unknown)
                                         }
                                     )
                                 },
@@ -304,7 +304,7 @@ private fun accessTypeLabel(type: AccessType): String = when (type) {
     AccessType.PUBLIC -> stringResource(R.string.map_access_public)
     AccessType.PRIVATE -> stringResource(R.string.map_access_private)
     AccessType.MEMBERS -> stringResource(R.string.map_access_members)
-    AccessType.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
+    AccessType.UNKNOWN -> stringResource(R.string.map_filter_unknown)
 }
 
 @Composable
@@ -312,5 +312,5 @@ private fun adjustabilityLabel(adj: Adjustability): String = when (adj) {
     Adjustability.ADJUSTABLE, Adjustability.FULL, Adjustability.LIMITED ->
         stringResource(R.string.map_adjustability_adjustable)
     Adjustability.FIXED -> stringResource(R.string.map_adjustability_fixed)
-    Adjustability.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
+    Adjustability.UNKNOWN -> stringResource(R.string.map_filter_unknown)
 }

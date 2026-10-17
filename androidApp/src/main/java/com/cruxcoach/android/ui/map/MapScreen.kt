@@ -1,66 +1,53 @@
 package com.cruxcoach.android.ui.map
 
 import android.content.Context
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import android.content.SharedPreferences
+import android.graphics.PointF
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.LocationCity
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberModalBottomSheetState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
+import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.isNetworkAvailable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.util.Locale
+import java.util.TimeZone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,28 +59,50 @@ fun MapScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val pixelDensity = density.density
+    val focusManager = LocalFocusManager.current
+    val scope = rememberCoroutineScope()
     val loadingLocationsMessage = stringResource(R.string.map_loading_locations)
     val noLocationDataMessage = stringResource(R.string.map_no_data)
     val initErrorMessage = stringResource(R.string.map_init_error_generic)
     val tileProviderUnavailableMessage = stringResource(R.string.map_tile_provider_unreachable)
-    val isDark = isSystemInDarkTheme()
+
+    // Follow the app's theme (it can differ from the system's), not the system flag.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val styleUrl = remember(isDark) { MapStyleProvider.forDarkMode(isDark) }
+    val markerTheme = MapMarkerLayer.Theme.of(isDark)
+    val clusterBrand = state.filters.brands.singleOrNull()
+
+    val mapState = remember { context.getSharedPreferences(MAP_STATE_PREFS, Context.MODE_PRIVATE) }
+    val savedCamera = remember { readCamera(mapState) }
     val initialCamera = remember {
-        cameraAt(state.initialLat, state.initialLng, state.initialZoom)
+        val start = savedCamera ?: MapStartView.World
+        cameraAt(start.lat, start.lng, start.zoom)
     }
+    // Without a remembered camera the map opens on the user's country once the data is in.
+    var startViewApplied by remember { mutableStateOf(savedCamera != null) }
+
     val snackbarHostState = remember { SnackbarHostState() }
+    val scaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = rememberStandardBottomSheetState(
+            initialValue = SheetValue.PartiallyExpanded,
+            skipHiddenState = true,
+        ),
+    )
     var showFilterSheet by remember { mutableStateOf(false) }
     var showStatsSheet by remember { mutableStateOf(false) }
-    var searchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var requestedPlace by remember { mutableStateOf<MapPlace?>(null) }
-
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
+    var viewport by remember { mutableStateOf<MapViewport?>(null) }
+    var overlayPx by remember { mutableIntStateOf(0) }
+    var peekPx by remember { mutableIntStateOf(0) }
+    var peekVenueId by remember { mutableStateOf<String?>(null) }
 
     // Once a style has loaded, the areas viewed stay in MapLibre's cache.
     // The dialog says the map needs internet the first time, so it only
     // belongs before that; afterwards it blocked a map that worked offline.
-    val mapState = remember { context.getSharedPreferences(MAP_STATE_PREFS, Context.MODE_PRIVATE) }
     var showOfflineDialog by remember {
         mutableStateOf(!isNetworkAvailable(context) && !mapState.getBoolean(KEY_STYLE_LOADED, false))
     }
@@ -101,9 +110,6 @@ fun MapScreen(
         OfflineMapDialog(onDismiss = { showOfflineDialog = false })
     }
 
-    // While the one-time locations backfill runs, show a real progress
-    // hint instead of the old "sync the board DB / Sync now" prompt (a
-    // full board sync never fixed this — the backfill does, automatically).
     LaunchedEffect(state.locationsLoading, state.noLocationData) {
         when {
             state.locationsLoading -> snackbarHostState.showSnackbar(
@@ -114,40 +120,38 @@ fun MapScreen(
                 message = noLocationDataMessage,
                 duration = SnackbarDuration.Long,
             )
+            else -> snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
 
-    // Init-failure surface — no more silent infinite spinner.
+    // Init-failure surface — no more silent infinite spinner. errorMessage is
+    // an internal flag, not user-facing text.
     LaunchedEffect(state.errorMessage) {
         if (state.errorMessage == null) return@LaunchedEffect
-        // Generic localized message — errorMessage is an internal flag, not
-        // user-facing text (avoids leaking raw exception text into the UI).
-        snackbarHostState.showSnackbar(
-            message = initErrorMessage,
-            duration = SnackbarDuration.Long,
-        )
+        snackbarHostState.showSnackbar(message = initErrorMessage, duration = SnackbarDuration.Long)
         viewModel.clearError()
     }
 
-    // One-shot tile-provider reachability probe. If OpenFreeMap is down /
-    // rate-limited the user would otherwise see only a grey canvas with
-    // markers and no explanation — surface a snackbar instead.
+    // One-shot tile-provider reachability probe: a down provider would
+    // otherwise show only a grey canvas with markers and no explanation.
     LaunchedEffect(styleUrl) {
-        val ok = MapStyleProvider.isReachable(styleUrl)
-        if (!ok) {
-            snackbarHostState.showSnackbar(
-                message = tileProviderUnavailableMessage,
-                duration = SnackbarDuration.Long,
-            )
+        if (!MapStyleProvider.isReachable(styleUrl)) {
+            snackbarHostState.showSnackbar(message = tileProviderUnavailableMessage, duration = SnackbarDuration.Long)
         }
     }
 
     LaunchedEffect(styleUrl) {
-        val (map, _) = mapHandle ?: return@LaunchedEffect
+        val (map, style) = mapHandle ?: return@LaunchedEffect
+        if (style.uri == styleUrl) return@LaunchedEffect
         map.setStyle(Style.Builder().fromUri(styleUrl)) { newStyle ->
-            MapMarkerLayer.install(newStyle)
+            MapMarkerLayer.install(newStyle, markerTheme, pixelDensity, clusterBrand)
             mapHandle = map to newStyle
         }
+    }
+
+    LaunchedEffect(mapHandle, clusterBrand, isDark) {
+        val (_, style) = mapHandle ?: return@LaunchedEffect
+        if (style.isFullyLoaded) MapMarkerLayer.setClusterStyle(style, markerTheme, pixelDensity, clusterBrand)
     }
 
     LaunchedEffect(mapHandle, state.filteredVenues, state.selectedVenueId) {
@@ -156,7 +160,7 @@ fun MapScreen(
         val displayed = if (selected != null && state.filteredVenues.none { it.id == selected.id }) {
             state.filteredVenues + selected
         } else state.filteredVenues
-        MapMarkerLayer.setData(style, displayed)
+        MapMarkerLayer.setData(style, displayed, pixelDensity)
     }
 
     val selectedVenue = remember(state.selectedVenueId, state.unfilteredVenues) {
@@ -164,14 +168,86 @@ fun MapScreen(
         state.unfilteredVenues.firstOrNull { it.id == id }
     }
 
+    fun refreshViewport(map: MapLibreMap) {
+        viewport = visibleViewport(map, overlayPx, peekPx)
+    }
+
+    // First visit: frame the boards of the user's country (timezone, then
+    // locale) instead of the whole planet. Needs the data and the measured
+    // overlays, so it waits for both.
+    LaunchedEffect(mapHandle, state.isLoading, startViewApplied) {
+        val (map, _) = mapHandle ?: return@LaunchedEffect
+        if (startViewApplied || state.isLoading || state.unfilteredVenues.isEmpty()) return@LaunchedEffect
+        withTimeoutOrNull(1_000) { snapshotFlow { peekPx > 0 && overlayPx > 0 }.first { it } }
+        val guess = withContext(Dispatchers.Default) {
+            guessStartView(TimeZone.getDefault().id, Locale.getDefault().country, state.places, state.unfilteredVenues)
+        }
+        val margin = with(density) { 24.dp.roundToPx() }
+        when (guess) {
+            is MapStartView.Bounds -> map.moveCamera(
+                CameraUpdateFactory.newLatLngBounds(
+                    LatLngBounds.from(guess.north, guess.east, guess.south, guess.west),
+                    margin, overlayPx + margin, margin, peekPx + margin,
+                )
+            )
+            is MapStartView.Camera -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(guess.lat, guess.lng), guess.zoom))
+        }
+        startViewApplied = true
+        refreshViewport(map)
+    }
+
+    // The list follows the visible area: refresh when the sheet or the
+    // search bar change size, not only when the camera stops.
+    LaunchedEffect(mapHandle, overlayPx, peekPx) {
+        val (map, _) = mapHandle ?: return@LaunchedEffect
+        refreshViewport(map)
+    }
+
     LaunchedEffect(mapHandle, requestedPlace) {
         val (map, _) = mapHandle ?: return@LaunchedEffect
         val place = requestedPlace ?: return@LaunchedEffect
         map.easeCamera(
-            CameraUpdateFactory.newLatLngZoom(LatLng(place.lat, place.lng), 11.0),
-            500,
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(LatLng(place.lat, place.lng))
+                    .zoom(11.0)
+                    .padding(0.0, overlayPx.toDouble(), 0.0, peekPx.toDouble())
+                    .build()
+            ),
+            600,
         )
         requestedPlace = null
+    }
+
+    // Selecting a venue: highlight it and bring it into the free area above
+    // the sheet, close enough to see the gym's surroundings.
+    LaunchedEffect(mapHandle, selectedVenue?.id) {
+        val (map, style) = mapHandle ?: return@LaunchedEffect
+        MapMarkerLayer.setSelected(style, selectedVenue, pixelDensity)
+        val venue = selectedVenue ?: return@LaunchedEffect
+        // Wait for the sheet to measure the venue summary it now shows.
+        withTimeoutOrNull(500) { snapshotFlow { peekVenueId }.first { it == venue.id } }
+        val zoom = map.cameraPosition.zoom.coerceAtLeast(13.5)
+        map.easeCamera(
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(LatLng(venue.lat, venue.lng))
+                    .zoom(zoom)
+                    .padding(0.0, overlayPx.toDouble(), 0.0, peekPx.toDouble())
+                    .build()
+            ),
+            500,
+        )
+    }
+
+    // Keep the OSM/OpenFreeMap attribution and the MapLibre logo above the sheet.
+    LaunchedEffect(mapHandle, peekPx) {
+        val (map, _) = mapHandle ?: return@LaunchedEffect
+        val bottom = peekPx + with(density) { 6.dp.roundToPx() }
+        map.uiSettings.apply {
+            setLogoMargins(logoMarginLeft, logoMarginTop, logoMarginRight, bottom)
+            setAttributionMargins(attributionMarginLeft, attributionMarginTop, attributionMarginRight, bottom)
+        }
     }
 
     // Search never runs on the main thread: the corpus (venues plus the bundled city index)
@@ -200,32 +276,25 @@ fun MapScreen(
         searchResults = withContext(Dispatchers.Default) { index.search(query) }
         searchedQuery = query
     }
-    val searchPending = searchQuery.trim().length >= 2 && searchedQuery != searchQuery
+    val search = MapSearchUi(
+        query = searchQuery,
+        results = searchResults,
+        pending = searchQuery.trim().length >= 2 && searchedQuery != searchQuery,
+    )
 
-    LaunchedEffect(mapHandle, selectedVenue) {
-        val (map, style) = mapHandle ?: return@LaunchedEffect
-        MapMarkerLayer.setSelected(style, selectedVenue)
-        if (selectedVenue != null) {
-            val target = LatLng(selectedVenue.lat, selectedVenue.lng)
-            val update = if (map.cameraPosition.zoom < 8.0) {
-                CameraUpdateFactory.newLatLngZoom(target, 9.0)
-            } else {
-                CameraUpdateFactory.newLatLng(target)
-            }
-            map.easeCamera(update, 450)
-        }
+    val sheetExpanded = scaffoldState.bottomSheetState.currentValue == SheetValue.Expanded
+    BackHandler(enabled = searchQuery.isNotEmpty()) {
+        searchQuery = ""
+        focusManager.clearFocus()
+    }
+    BackHandler(enabled = searchQuery.isEmpty() && selectedVenue != null) { viewModel.selectVenue(null) }
+    BackHandler(enabled = searchQuery.isEmpty() && selectedVenue == null && sheetExpanded) {
+        scope.launch { scaffoldState.bottomSheetState.partialExpand() }
     }
 
-    if (selectedVenue != null) {
-        BoardLocationDetailSheet(
-            venue = selectedVenue,
-            onDismiss = { viewModel.selectVenue(null) },
-            onBrowseClimbs = { brand, layoutId, sizeId ->
-                viewModel.applyBoardConfigForBrowse(brand, layoutId, sizeId)
-                viewModel.selectVenue(null)
-                onNavigateToBoardBrowser()
-            },
-        )
+    fun showVenue(venue: MapVenue) {
+        viewModel.selectVenue(venue.id)
+        scope.launch { scaffoldState.bottomSheetState.partialExpand() }
     }
 
     if (showFilterSheet) {
@@ -253,212 +322,129 @@ fun MapScreen(
         StatsSheet(state = state, onDismiss = { showStatsSheet = false })
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    if (searchOpen) {
-                        TextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text(stringResource(R.string.map_search_hint)) },
-                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        Text(stringResource(R.string.map_screen_title))
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        searchOpen = !searchOpen
-                        if (!searchOpen) searchQuery = ""
-                    }) {
-                        Icon(
-                            if (searchOpen) Icons.Filled.Close else Icons.Filled.Search,
-                            contentDescription = stringResource(
-                                if (searchOpen) R.string.map_search_close else R.string.map_search_open
-                            ),
-                        )
-                    }
-                    IconButton(onClick = { showStatsSheet = true }) {
-                        Icon(
-                            Icons.Filled.BarChart,
-                            contentDescription = stringResource(R.string.map_open_stats),
-                        )
-                    }
-                    IconButton(onClick = { showFilterSheet = true }) {
-                        Icon(
-                            // Same icon as Board Browser uses for its filter
-                            // entry-point — keeps the affordance consistent.
-                            Icons.Filled.Tune,
-                            contentDescription = stringResource(R.string.map_open_filters),
-                            tint = if (state.filters.isAtDefault) {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                        )
-                    }
-                },
-            )
+    MapScreenLayout(
+        state = state,
+        inView = remember(state.filteredVenues, viewport) {
+            viewport?.let { venuesInView(state.filteredVenues, it) } ?: VenuesInView.Empty
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            MapView(
-                styleUrl = styleUrl,
-                initialCameraPosition = initialCamera,
-                onMapReady = { map, style ->
-                    MapMarkerLayer.install(style)
-                    mapHandle = map to style
-                    mapState.edit().putBoolean(KEY_STYLE_LOADED, true).apply()
-                },
-                onMapTap = { map, x, y ->
-                    // Cluster first: tapping a count bubble eases the camera to
-                    // the zoom where it splits apart. Then individual venues.
-                    val style = mapHandle?.second
-                    if (style != null) {
-                        val cluster = MapMarkerLayer.clusterExpansionAt(map, style, x, y)
-                        if (cluster != null) {
-                            map.easeCamera(
-                                CameraUpdateFactory.newLatLngZoom(cluster.center, cluster.zoom),
-                                450,
-                            )
-                            return@MapView true
-                        }
-                    }
-                    val hit = MapMarkerLayer.venueAt(map, x, y, state.filteredVenues)
-                    if (hit != null) {
-                        viewModel.selectVenue(hit.id)
+        selectedVenue = selectedVenue,
+        search = search,
+        scaffoldState = scaffoldState,
+        snackbarHostState = snackbarHostState,
+        onBack = onNavigateBack,
+        onQueryChange = { searchQuery = it },
+        onSearchResult = { result ->
+            when (result) {
+                is MapSearchResult.Venue -> showVenue(result.venue)
+                is MapSearchResult.Place -> {
+                    viewModel.selectVenue(null)
+                    requestedPlace = result.place
+                }
+            }
+            searchQuery = ""
+            focusManager.clearFocus()
+        },
+        onOpenStats = { showStatsSheet = true },
+        onOpenFilters = { showFilterSheet = true },
+        onSelectAllBrands = viewModel::selectAllBrands,
+        onToggleBrand = viewModel::toggleBrand,
+        onSelectVenue = ::showVenue,
+        onCloseVenue = { viewModel.selectVenue(null) },
+        onBrowseClimbs = { brand, layoutId, sizeId ->
+            viewModel.applyBoardConfigForBrowse(brand, layoutId, sizeId)
+            viewModel.selectVenue(null)
+            onNavigateToBoardBrowser()
+        },
+        onResetFilters = viewModel::resetFilters,
+        onOverlayHeight = { overlayPx = it },
+        onPeekHeight = { px, venueId ->
+            peekPx = px
+            peekVenueId = venueId
+        },
+    ) {
+        MapView(
+            styleUrl = styleUrl,
+            initialCameraPosition = initialCamera,
+            modifier = Modifier.fillMaxSize(),
+            onMapReady = { map, style ->
+                MapMarkerLayer.install(style, markerTheme, pixelDensity, clusterBrand)
+                mapHandle = map to style
+                mapState.edit().putBoolean(KEY_STYLE_LOADED, true).apply()
+            },
+            onMapTap = { map, x, y ->
+                focusManager.clearFocus()
+                // Cluster first: tapping a count bubble eases the camera to
+                // the zoom where it splits apart. Then individual venues.
+                val style = mapHandle?.second
+                if (style != null) {
+                    val cluster = MapMarkerLayer.clusterExpansionAt(map, style, x, y)
+                    if (cluster != null) {
+                        map.easeCamera(CameraUpdateFactory.newLatLngZoom(cluster.center, cluster.zoom), 450)
                         return@MapView true
                     }
-                    false
-                },
-            )
-            if (searchOpen && searchQuery.trim().length >= 2) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .heightIn(max = 520.dp)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    shape = MaterialTheme.shapes.large,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 8.dp,
-                ) {
-                    if (searchPending && searchResults.isEmpty()) {
-                        Row(
-                            modifier = Modifier.padding(20.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                stringResource(R.string.map_search_searching),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    } else if (searchResults.isEmpty()) {
-                        Text(
-                            stringResource(R.string.map_search_no_results),
-                            modifier = Modifier.padding(20.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                            searchResults.forEach { result ->
-                                MapSearchResultRow(
-                                    result = result,
-                                    onClick = {
-                                        when (result) {
-                                            is MapSearchResult.Venue -> viewModel.selectVenue(result.venue.id)
-                                            is MapSearchResult.Place -> requestedPlace = result.place
-                                        }
-                                        searchQuery = ""
-                                        searchOpen = false
-                                    },
-                                )
-                            }
-                        }
-                    }
                 }
-            }
-            if (state.isLoading || state.locationsLoading) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-                        .padding(16.dp),
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(36.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                val id = MapMarkerLayer.venueIdAt(map, x, y, pixelDensity)
+                if (id != null) {
+                    viewModel.selectVenue(id)
+                    return@MapView true
                 }
-            }
-        }
+                // A tap on empty map closes the selected place, like other map apps.
+                if (state.selectedVenueId != null) {
+                    viewModel.selectVenue(null)
+                    return@MapView true
+                }
+                false
+            },
+            onCameraIdle = { map ->
+                refreshViewport(map)
+                if (startViewApplied) writeCamera(mapState, map.cameraPosition)
+            },
+        )
     }
 }
 
-@Composable
-private fun MapSearchResultRow(result: MapSearchResult, onClick: () -> Unit) {
-    val locale = Locale.getDefault()
-    val title: String
-    val subtitle: String
-    val icon = when (result) {
-        is MapSearchResult.Venue -> {
-            title = result.venue.name
-            subtitle = listOfNotNull(
-                result.venue.city,
-                Locale("", result.venue.countryCode).getDisplayCountry(locale)
-                    .takeIf(String::isNotBlank),
-                result.venue.brands.joinToString { it.displayName },
-            ).joinToString(" · ")
-            Icons.Filled.Place
-        }
-        is MapSearchResult.Place -> {
-            title = if (locale.language == "de") result.place.germanName ?: result.place.name
-                else result.place.name
-            subtitle = listOfNotNull(
-                result.place.region,
-                Locale("", result.place.countryCode).getDisplayCountry(locale)
-                    .takeIf(String::isNotBlank),
-            ).joinToString(" · ")
-            Icons.Filled.LocationCity
-        }
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle.isNotBlank()) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
+/** The part of the map between the search overlay and the sheet, as lat/lng. */
+private fun visibleViewport(map: MapLibreMap, overlayPx: Int, peekPx: Int): MapViewport? {
+    val w = map.width
+    val h = map.height
+    if (w <= 0f || h <= 0f) return null
+    val top = overlayPx.toFloat().coerceIn(0f, h / 2f)
+    val bottom = (h - peekPx).coerceIn(h / 2f, h)
+    val projection = map.projection
+    val northWest = projection.fromScreenLocation(PointF(0f, top))
+    val southEast = projection.fromScreenLocation(PointF(w, bottom))
+    val center = projection.fromScreenLocation(PointF(w / 2f, (top + bottom) / 2f)).wrap()
+    var span = southEast.longitude - northWest.longitude
+    if (span < 0) span += 360.0
+    val west = if (span >= 360.0) -180.0 else northWest.wrap().longitude
+    val east = if (span >= 360.0) 180.0 else southEast.wrap().longitude
+    return MapViewport(
+        south = southEast.latitude,
+        west = west,
+        north = northWest.latitude,
+        east = east,
+        centerLat = center.latitude,
+        centerLng = center.longitude,
+    )
+}
+
+private fun readCamera(prefs: SharedPreferences): MapStartView.Camera? {
+    if (!prefs.contains(KEY_CAMERA_LAT)) return null
+    val lat = prefs.getFloat(KEY_CAMERA_LAT, 0f).toDouble()
+    val lng = prefs.getFloat(KEY_CAMERA_LNG, 0f).toDouble()
+    val zoom = prefs.getFloat(KEY_CAMERA_ZOOM, 0f).toDouble()
+    if (lat !in -85.0..85.0 || lng !in -180.0..180.0 || zoom !in 0.0..22.0) return null
+    return MapStartView.Camera(lat, lng, zoom)
+}
+
+private fun writeCamera(prefs: SharedPreferences, camera: CameraPosition) {
+    val target = camera.target ?: return
+    val wrapped = target.wrap()
+    prefs.edit()
+        .putFloat(KEY_CAMERA_LAT, wrapped.latitude.toFloat())
+        .putFloat(KEY_CAMERA_LNG, wrapped.longitude.toFloat())
+        .putFloat(KEY_CAMERA_ZOOM, camera.zoom.toFloat())
+        .apply()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -475,3 +461,7 @@ private fun StatsSheet(state: MapState, onDismiss: () -> Unit) {
 /** Kept out of backups: a restored flag could hide the dialog on a phone whose map never loaded. */
 private const val MAP_STATE_PREFS = "map_state"
 private const val KEY_STYLE_LOADED = "style_loaded_once"
+/** The last camera, so the map reopens where the user left it. */
+private const val KEY_CAMERA_LAT = "camera_lat"
+private const val KEY_CAMERA_LNG = "camera_lng"
+private const val KEY_CAMERA_ZOOM = "camera_zoom"
