@@ -343,7 +343,10 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 }
             }
             SuggestionEventKind.NEXT -> when (e.feedback) {
-                SuggestionFeedback.DISLIKE_EXERCISE -> e.slugs.singleOrNull()?.let { dislikedToday += it }
+                // "Leave it out today" stays left out after a restart; "not today" picks something else.
+                SuggestionFeedback.DISLIKE_EXERCISE -> e.slugs.singleOrNull()?.let {
+                    if (e.value == PreferenceLearning.LEFT_OUT) swapsToday[originalOf(it)] = "" else dislikedToday += it
+                }
                 SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
                 SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
                 else -> Unit
@@ -360,6 +363,12 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                     }
                     focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
                         circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
+                    focus.startsWith(PreferenceLearning.CIRCUIT_SETUP) -> {
+                        val f = focus.removePrefix(PreferenceLearning.CIRCUIT_SETUP).split(",")
+                        circuitRounds = f.getOrNull(0)?.toIntOrNull()
+                        circuitRestS = f.getOrNull(1)?.toIntOrNull()
+                        circuitRoundRestS = f.getOrNull(2)?.toIntOrNull()
+                    }
                 }
             }
             else -> Unit
@@ -582,6 +591,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             circuitRoundRestS = roundRestS
             lastInputs?.let { refreshUnlocked(it) }
         }
+        // Survives a restart like the other choices of today (audit P2-13).
+        service.logSuggestion(SuggestionEventKind.FEEDBACK,
+            PreferenceLearning.CIRCUIT_SETUP + listOf(rounds, circuitRestS, roundRestS).joinToString(",") { it?.toString().orEmpty() }, emptyList())
     }
 
     private fun circuitCandidates(s: com.cruxcoach.athlete.logic.SessionSuggestion): Boolean =
@@ -668,7 +680,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 undo.key = key; undo.previous = swapsToday[key]
                 swapsToday[key] = ""
                 undo.eventId = service.logSuggestion(SuggestionEventKind.NEXT, _state.value.suggestion?.focus?.name, listOf(slug),
-                    SuggestionFeedback.DISLIKE_EXERCISE)
+                    SuggestionFeedback.DISLIKE_EXERCISE, value = PreferenceLearning.LEFT_OUT)
                 lastInputs?.let { refreshUnlocked(it) }
             }
             offerNeverIfRepeated(slug)

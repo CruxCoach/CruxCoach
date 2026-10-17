@@ -549,11 +549,21 @@ class OverridesTest : AthleteScreenTest() {
         until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
         vm.chooseMinutes(90)
         vm.chooseCircuit(true)
-        until { vm.state.value.minutesToday == 90 }
+        vm.setCircuit(4, 20, 120)
+        val day = service.today().toString()
+        val left = vm.state.value.suggestion!!.routine.items.last { !it.warmup && it.circuit == null }.slug
+        vm.dropExercise(left)
+        // Wait for the ledger, not for the screen: the restart reads what was written (CI 2026-10-17 was faster than the write).
+        until { vm.state.value.minutesToday == 90 && repo.suggestionEventsForDay(day).let { ev ->
+            ev.any { it.focus.orEmpty().startsWith(com.cruxcoach.athlete.logic.PreferenceLearning.CHOSEN_FORMAT) } &&
+                ev.any { it.focus.orEmpty().startsWith(com.cruxcoach.athlete.logic.PreferenceLearning.CIRCUIT_SETUP) } &&
+                ev.any { it.value == com.cruxcoach.athlete.logic.PreferenceLearning.LEFT_OUT } } }
         val again = loaded(TodayViewModel(service))
         until { again.state.value.suggestion != null }
         assertEquals(90, again.state.value.minutesToday)
         assertEquals(vm.state.value.circuitToday, again.state.value.circuitToday)
+        // Left out today stays left out (it is not replaced by something else either).
+        assertTrue(again.state.value.suggestion!!.routine.items.none { it.slug == left }, "$left")
     }
 
     @Test
