@@ -299,6 +299,18 @@ class AthleteService @Inject constructor(
     /** Climbing outside the board app (gym, rock, another board). */
     fun saveClimbingDay(entry: ClimbingDayEntry) = repo.saveClimbingDay(entry.copy(updatedAt = System.currentTimeMillis()))
 
+    /**
+     * When the last training or board session ended (epoch ms), from the last two days; null without one. Adding food
+     * shortly after it starts in "after training" (holistic audit P2-15).
+     */
+    fun lastTrainingEndedAt(): Long? {
+        val workouts = repo.recentWorkouts(5).mapNotNull { it.endedAt }
+        val zone = TimeZone.currentSystemDefault()
+        val boards = runCatching { climbingDays.sessionTimes(today().minus(DatePeriod(days = 1)).toString()) }.getOrDefault(emptyList())
+            .mapNotNull { s -> s.endedAt?.takeIf { it.isNotBlank() }?.let { BoardOverlap.epochMillis(it, zone) } }
+        return (workouts + boards).maxOrNull()
+    }
+
     /** Board sessions and timed logbook attempts since [fromDay]: what a Health Connect session may overlap (audit W3). */
     fun boardEvidence(fromDay: String): BoardOverlap.Evidence {
         val rows = logbookRows().filter { it.day >= fromDay }
