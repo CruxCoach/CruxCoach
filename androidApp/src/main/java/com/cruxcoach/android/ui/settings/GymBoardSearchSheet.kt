@@ -58,6 +58,9 @@ internal fun GymBoardSearchSheet(
     deferDownloads: Boolean = false,
     onBoardChosen: (BoardBrand) -> Unit = {},
     startNearby: Boolean = false,
+    /** The rows of one gym to open directly (the board map's "Choose this
+     *  board"); null starts with search / near me as usual. */
+    startGym: List<BoardLocation>? = null,
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -76,7 +79,7 @@ internal fun GymBoardSearchSheet(
     // Asked for explicitly by the host, or already allowed earlier: no prompt
     // appears unless the user just chose "near me".
     LaunchedEffect(Unit) {
-        if (startNearby || locateMe.hasPermission) locateMe.locate()
+        if (startGym == null && (startNearby || locateMe.hasPermission)) locateMe.locate()
     }
     BoardDownloadRequestHost(boardPickerViewModel, deferDownloads, onSelected = { brand ->
         vm.clearGymSelection()
@@ -91,7 +94,10 @@ internal fun GymBoardSearchSheet(
         // board prefs and self-closing the sheet before the user can search.
         // Declared BEFORE the auto-apply effect: launch order guarantees the
         // clear runs first, and the auto-apply reads vm.state.value fresh.
-        LaunchedEffect(Unit) { vm.clearGymSelection() }
+        LaunchedEffect(Unit) {
+            vm.clearGymSelection()
+            startGym?.let(vm::openGym)
+        }
 
         // Apply a chosen board option (routes every brand through the shared picker
         // VM) and close the sheet. Hoisted so a tapped card and the single-option
@@ -103,6 +109,9 @@ internal fun GymBoardSearchSheet(
             vm.clearGymSelection()
             request(opt.boardBrand) {
                 when (opt.boardBrand) {
+                    BoardBrand.QUANTUM ->
+                        com.cruxcoach.domain.board.QuantumBoardModel.fromLayoutId(opt.layoutId.toLong())
+                            ?.let { boardPickerViewModel.selectQuantum(it, deferDownloads) }
                     BoardBrand.MOONBOARD ->
                         MoonBoardVariant.fromLayoutId(opt.layoutId.toLong())
                             ?.let { boardPickerViewModel.selectMoonBoard(it) }

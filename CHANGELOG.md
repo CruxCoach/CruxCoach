@@ -303,6 +303,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gyms with their boards and distance. Before the gym data has synced, search
   and "near me" use the board map's bundled gym list, so they work on the
   first start too.
+- A board the map cannot open directly — Tension, Grasshopper, Decoy, So iLL,
+  Touchstone, Quantum, a MoonBoard of unknown variant — now has "Choose this
+  board": it opens the gym search with that place already picked, and the
+  chosen board goes straight to the board browser. The gym search also offers
+  the Quantum models.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out

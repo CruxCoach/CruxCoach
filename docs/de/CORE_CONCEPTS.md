@@ -216,6 +216,8 @@ Die Karte öffnet dort, wo sie verlassen wurde; beim ersten Öffnen zeigt sie di
 
 Die Hallensuche hinter dem Board-Picker („Weiß nicht?“) hat „Hallen in meiner Nähe“: die zehn nächsten Hallen im Umkreis von 100 km mit einem Board, das CruxCoach unterstützt, die nächste zuerst, jeweils mit Boards und Entfernung; ein Tipp bietet wie gewohnt die Boards der Halle an. Der Board-Dialog selbst hat „Halle in deiner Nähe finden“, das die Suche direkt so öffnet. Beides fragt die Standortberechtigung erst bei diesem Tipp ab; ist sie erteilt, zeigt die Suche die Hallen in der Nähe gleich beim Öffnen (ohne Getipptes zu überschreiben). Solange die synchronisierten Hallendaten noch nicht auf dem Gerät sind (erster Start im Onboarding), nutzen Suche und „In meiner Nähe“ den mitgelieferten Snapshot der Board-Karte und funktionieren damit von Anfang an offline.
 
+Auf der Karte öffnet ein Board mit bekanntem Layout seine Climbs direkt („Climbs für dieses Board ansehen“). Ein Board, das CruxCoach steuern kann, dessen Layout oder Größe die Daten aber nicht nennen (Tension, Grasshopper, Decoy, So iLL, Touchstone, Quantum, ein MoonBoard unbekannter Variante), bietet stattdessen „Dieses Board wählen“: dieselbe Hallensuche mit diesem Ort schon geöffnet; das gewählte Board geht weiter in den Board-Browser.
+
 ## Statistik der Boardkarte
 
 Die Kartenstatistik zählt alle erfassten Boards im geladenen Kartendatensatz, unabhängig von den Kartenfiltern. Ein Standort kann mehrere Boards enthalten. Marken- und Layout-Verteilung berücksichtigen alle Board-Familien; Layouts werden je Marke gruppiert und fehlende Angaben als unbekannt angezeigt. Zugang, Verstellbarkeit, Länder und bekannte Größen verwenden denselben Datensatz.
