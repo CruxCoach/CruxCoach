@@ -119,6 +119,22 @@ class HealthBoardOverlapTest : AthleteScreenTest() {
         render { ClimbingDaysScreen({}, viewModel = ClimbingDaysViewModel(service).tracked()) }
         waitForTag("climbing_day_row_overlap_${entry.id}")
         waitForText("(50 of 60 min) – not counted twice")
+        // A change of the overlap alone (a later sync, the sheet) shows in the list at once.
+        service.saveBoardOverlap(entry.id, countAnyway = true)
+        waitForText("(50 of 60 min) – counted anyway")
+    }
+
+    @Test
+    fun `a fully covered watch session keeps its load while the board session has no time of its own`() {
+        // A board session 18:00–19:00 that recorded no active time (all paused) and no logbook rows yet.
+        board.insertBoardSession("${today}T18:00:00", "${today}T19:00:00", 3600L, 3600L, 0L, 0L)
+        import(watch("hc5", "Bouldern Halle", "18:00:00", "19:00:00"))
+        val entry = repo.climbingDayByExternalId("hc5")!!
+        assertEquals(BoardOverlap.Stored(60), service.boardOverlap(entry.id))
+        val day = todayActivity()
+        // The watch's hour is the board time, for the energy and for the load.
+        assertEquals(60, day.climbingMinutes)
+        assertTrue(day.fingerLoad > 0.0)
     }
 
     @Test

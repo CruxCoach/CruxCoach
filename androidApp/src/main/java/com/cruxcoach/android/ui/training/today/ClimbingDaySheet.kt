@@ -341,8 +341,11 @@ class ClimbingDaysViewModel @Inject constructor(private val service: AthleteServ
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Board overlaps of the synced entries (audit W3), re-read with the list. */
-    val overlaps: StateFlow<Map<String, com.cruxcoach.athlete.logic.BoardOverlap.Stored>> = days
+    /** Board overlaps of the synced entries (audit W3); a sync may change only them, not the entries. */
+    val overlaps: StateFlow<Map<String, com.cruxcoach.athlete.logic.BoardOverlap.Stored>> = flow {
+        service.ensureReady()
+        emit(Unit)
+    }.flatMapLatest { service.repo.observeSettingsWithPrefix(com.cruxcoach.athlete.logic.BoardOverlap.SETTING_PREFIX) }
         .map { service.boardOverlaps() }
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
