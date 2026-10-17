@@ -196,6 +196,14 @@ switching accounts keeps the existing isolation/reset behavior. Without a retain
 local key, the UI offers import rather than a disconnect that creates an identity.
 Private keys remain masked during import, and screenshot protection remains active.
 
+## Board map
+
+The map shows one marker per venue in the colour and letter of its board family (Kilter red "K", MoonBoard yellow "M", Tension slate "T", …); a venue with several families gets one pie segment per family. Nearby venues merge into neutral count bubbles that take a family's colour when the board choice leaves exactly one family. From city zoom on, gym names stand under the markers. The board chip on top lists every family with its marker and count, so it is also the legend; the filter chip carries the number of further active filters.
+
+The bottom sheet lists the places in the visible part of the map, nearest to the map centre first (at most 50, with the true total), and shows a tapped place: name, place, boards, directions, website and phone in the collapsed sheet; per board size, angle range, setup and LEDs, the opening hours and the contact rows when pulled up. Only facts the data has are shown. Opening hours appear exactly as the venue published them (curated by cruxcoach.org); the app does not work out whether a venue is open now, because the venue's timezone and public holidays are not in the data.
+
+The map has no location permission. It reopens where it was left; on the first visit it frames the boards of the device's country, taken from the timezone ("Europe/Vienna" → Vienna in the bundled place index → Austria) or else the locale. Rotation and tilt are off; the dark theme uses a dark map style.
+
 ## Board map statistics
 
 Map statistics count all recorded boards in the loaded map dataset, independently of map filters. A venue may contain several boards. Brand and layout distributions include every board family; layout names are grouped within their brand, and missing layouts remain visible as unknown. Access, adjustability, country and known size aggregates use the same dataset.
