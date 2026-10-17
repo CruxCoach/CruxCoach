@@ -47,7 +47,7 @@ class MapVenueTest {
         val v = venues.first()
         assertEquals(2, v.boards.size)
         assertTrue(v.isMultiBoard)
-        assertEquals(VenueBrandKey.MULTI, v.brandKey)
+        assertEquals(listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), v.markerBrands)
         assertEquals(setOf(BoardBrand.KILTER, BoardBrand.MOONBOARD), v.brands)
     }
 
@@ -82,18 +82,18 @@ class MapVenueTest {
     }
 
     @Test
-    fun `single Kilter venue has KILTER brand key`() {
+    fun `single Kilter venue has a Kilter-only marker`() {
         val v = groupIntoVenues(listOf(loc("a", 48.1370, 11.5750))).single()
-        assertEquals(VenueBrandKey.KILTER, v.brandKey)
+        assertEquals(listOf(BoardBrand.KILTER), v.markerBrands)
         assertTrue(!v.isMultiBoard)
     }
 
     @Test
-    fun `single MoonBoard venue has MOONBOARD brand key`() {
+    fun `single MoonBoard venue has a MoonBoard-only marker`() {
         val v = groupIntoVenues(
             listOf(loc("m", 48.1370, 11.5750, brand = BoardBrand.MOONBOARD, layoutId = 5))
         ).single()
-        assertEquals(VenueBrandKey.MOONBOARD, v.brandKey)
+        assertEquals(listOf(BoardBrand.MOONBOARD), v.markerBrands)
     }
 
     @Test

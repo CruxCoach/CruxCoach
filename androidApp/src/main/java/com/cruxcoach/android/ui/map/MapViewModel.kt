@@ -48,6 +48,9 @@ data class MapState(
     val unfilteredLocations: List<BoardLocation> = emptyList(),
     val unfilteredVenues: List<MapVenue> = emptyList(),
     val places: List<MapPlace> = emptyList(),
+    /** Map-only extras from the Pages snapshot (hours, wall angles, models). */
+    val venueInfo: Map<String, MapVenueInfo> = emptyMap(),
+    val boardInfo: Map<String, MapBoardInfo> = emptyMap(),
     val filteredLocations: List<BoardLocation> = emptyList(),
     /** [filteredLocations] collapsed to one entry per physical venue — what
      *  the map renders (MapLibre then clusters these). */
@@ -100,8 +103,10 @@ class MapViewModel @Inject constructor(
                     it.copy(
                         canonicalLocations = snapshot.locations,
                         unfilteredLocations = all,
-                        unfilteredVenues = groupIntoVenues(all),
+                        unfilteredVenues = groupIntoVenues(all, snapshot.venueInfo),
                         places = snapshot.places,
+                        venueInfo = snapshot.venueInfo,
+                        boardInfo = snapshot.boardInfo,
                         unfilteredStats = MapStats.from(all),
                         isLoading = false,
                         noLocationData = all.isEmpty(),
@@ -122,7 +127,7 @@ class MapViewModel @Inject constructor(
                                 _state.update {
                                     it.copy(
                                         unfilteredLocations = merged,
-                                        unfilteredVenues = groupIntoVenues(merged),
+                                        unfilteredVenues = groupIntoVenues(merged, it.venueInfo),
                                         unfilteredStats = MapStats.from(merged),
                                         noLocationData = merged.isEmpty(),
                                     )
@@ -237,7 +242,7 @@ class MapViewModel @Inject constructor(
         _state.update {
             it.copy(
                 filteredLocations = filtered,
-                filteredVenues = groupIntoVenues(filtered),
+                filteredVenues = groupIntoVenues(filtered, it.venueInfo),
                 stats = MapStats.from(filtered),
             )
         }
