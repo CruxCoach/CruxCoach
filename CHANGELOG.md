@@ -499,6 +499,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   collection; an active-mode button keeps the controls accessible.
 
 ### Changed
+- Foods people count – a banana, an apple, an egg, a roll – offer pieces
+  next to grams when picked from the food database ("1 piece (120 g)");
+  grams stay one tap away.
 - "Another suggestion" is shorter: the kind of training, "lighter" or
   "harder" today, and one "Another mix" button. Time, place and single
   exercises are changed on the card itself (time and place now share one row);
@@ -559,6 +562,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   do not change.
 
 ### Fixed
+- The nutrition page left open over midnight moves to the new day by itself
+  instead of showing "Yesterday" with the old day's food; a day picked with
+  the arrows stays picked.
+- A water target of more than ten glasses wraps into even rows (6 + 5)
+  instead of one lonely glass in a second row.
 - A board session no longer stays "paused" after a rest timer runs out
   (M-097, since 0.2.2); the time after the rest is counted as training again.
 - Uploading the logbook to Kilter no longer stalls on one entry. Kilter refuses
