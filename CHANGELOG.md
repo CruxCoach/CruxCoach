@@ -311,14 +311,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   from last time" when a lowered load is planned.
 - In a training the shown exercise can be swapped (the same alternatives as
   on Today's card, while none of its sets is done; the new one keeps the
-  sets) or skipped. A load changed on one set carries over to the next sets
-  in the list view too, and the rest timer ends with the training.
+  sets) or skipped. A load changed on one set carries over to the next sets,
+  and the rest timer ends with the training.
 - Suggestions fit your level from the start: the grade and the years of
   climbing from the quick start set it (a 7a boulderer with years of climbing
   gets max hangs, not assisted hangs), the novice and youth guardrails stay.
   First dumbbell, kettlebell and barbell lifts start at a light share of body
   weight instead of 0 kg, and the reserve you answer after a first set counts
   for its value.
+- The training is one page per exercise with all its sets: done sets say
+  what was done against the target (8/8 ✓, 6/8 ↓, 10/8 ↑) and open for a
+  correction; the set that is due holds the load and a row of results – one
+  tap logs "as planned", one tap logs "6 instead of 8"; planned sets can be
+  done in any order. The rest is a bar on the same page (the next set can be
+  changed during it, the reserve question sits on the set just done), "+ set"
+  and "end exercise" (with Undo) are one tap each, a strip moves between
+  exercises without counting a skip, and the end page asks how hard it was.
+  Free trainings open in the same view; the separate list view is gone.
+- Circuit training: one set of each exercise in turn, round after round. A
+  "Circuit" chip on Today's card turns the suggestion's pull, push, prehab,
+  core and leg work into a circuit (finger and power work stay before it),
+  with short rests between exercises, a longer one after each round, and
+  rounds that fill the chosen time; the workout editor joins exercises into
+  circuits. In the training a circuit is one page with its rounds ("Next:
+  push-ups", "Rest after round 1", "+ round", "end circuit").
+- The coach learns from what you change without overfitting: following a
+  suggestion counts as no preference (the coach no longer suggests its own
+  picks over and over), choosing an exercise does; an exercise you turn down
+  rests for 3 days, after repeated rejections 10 or 21 days, and gets no
+  "not done for a while" bonus while it is disliked – then the coach may
+  suggest it again ("What the coach learned" shows "resting until …"). Today's
+  choices survive a restart of the app, and a deleted training takes what was
+  learned from it along. Without a saved grade the board logbook's grade sets
+  the level.
 - Nutrition: "Log again" in the add sheet offers what the chosen meal usually
   holds, with its usual amount – also quick entries and described meals – in
   one tap, and a saved food's amount starts where it was last time.
