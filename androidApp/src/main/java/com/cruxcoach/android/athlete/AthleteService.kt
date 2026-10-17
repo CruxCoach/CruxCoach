@@ -249,8 +249,9 @@ class AthleteService @Inject constructor(
             val dayRows = rowsByDay[day].orEmpty()
             val boardIntensity = ClimbingLoad.classifyDay(dayRows, summary)
             val intensity = (listOfNotNull(boardIntensity) + m.map { it.intensity }).maxByOrNull { it.ordinal }
-            val units = ClimbingLoad.dayUnits(dayRows, summary, c?.minutes ?: 0, m, setsByDay[day].orEmpty(), cat)
             val boardMinutes = c?.minutes?.takeIf { it > 0 } ?: boardTimeFromWatch[day] ?: 0
+            // The watch's covered minutes stand in for the load too while the logbook has no rows yet.
+            val units = ClimbingLoad.dayUnits(dayRows, summary, boardMinutes, m, setsByDay[day].orEmpty(), cat)
             DayActivity(
                 day = day,
                 climbingMinutes = boardMinutes + m.sumOf { it.minutes },

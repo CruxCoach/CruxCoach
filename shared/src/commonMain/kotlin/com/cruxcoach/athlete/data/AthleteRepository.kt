@@ -71,10 +71,17 @@ class AthleteRepository(
     /** All stored values whose key starts with [prefix] (blank ones count as none), by key. */
     fun settingsWithPrefix(prefix: String): Map<String, String> {
         if (prefix.isEmpty()) return emptyMap()
-        val upper = prefix.dropLast(1) + (prefix.last() + 1)
-        return body.getSettingsInRange(prefix, upper).executeAsList()
+        return body.getSettingsInRange(prefix, upperBound(prefix)).executeAsList()
             .filter { it.value_.isNotBlank() }.associate { it.key to it.value_ }
     }
+
+    /** [settingsWithPrefix] as it changes. */
+    fun observeSettingsWithPrefix(prefix: String): Flow<Map<String, String>> =
+        body.getSettingsInRange(prefix, upperBound(prefix)).asFlow().mapToList(dispatcher)
+            .map { rows -> rows.filter { it.value_.isNotBlank() }.associate { it.key to it.value_ } }
+
+    /** The first key after every key starting with [prefix]. */
+    private fun upperBound(prefix: String): String = prefix.dropLast(1) + (prefix.last() + 1)
 
     fun saveProfile(profile: AthleteProfile) {
         body.putSetting(KEY_PROFILE, json.encodeToString(AthleteProfile.serializer(), profile), clock())
