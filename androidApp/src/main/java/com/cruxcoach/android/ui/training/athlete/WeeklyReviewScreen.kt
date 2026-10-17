@@ -74,6 +74,8 @@ data class WeeklyReviewState(
     /** Mean energy eaten and mean estimated need on the logged days; need is null without weight or height. */
     val kcalAvg: Double? = null,
     val kcalNeedAvg: Int? = null,
+    /** Mean calorie target of the logged days as the nutrition screen sets it: the need, less the deficit, or the own one. */
+    val kcalTargetAvg: Int? = null,
     /** Energy guard with its numbers; only for the current week (it looks at the last days). */
     val energy: com.cruxcoach.athlete.logic.EnergyReport = com.cruxcoach.athlete.logic.EnergyReport(),
     val checkinAverages: List<Pair<Int, Double>> = emptyList(),
@@ -148,14 +150,20 @@ class WeeklyReviewViewModel @Inject constructor(
             val endTrend = trend.lastOrNull { it.day <= end }?.trend
             val food = repo.foodLogBetween(start.toString(), end.toString())
             val loggedDays = food.map { it.day }.toSet()
-            // Carbohydrate targets follow each logged day's training load (FEAT-068).
-            val carbTargets = endTrend?.let { w -> loggedDays.map { (profile.ownCarbsG ?: FuelTargets.compute(w, activities[it], profile.proteinPerKg).carbsG) } }.orEmpty()
+            // The targets the nutrition screen set for each logged day (holistic audit P2-18): protein and carbohydrate
+            // from that day's training, own targets in their place, through the same service call.
+            val dayTargets = loggedDays.mapNotNull { service.fuelTargets(activities[it], profile) }
+            val carbTargets = dayTargets.map { it.carbsG }
             val micros = runCatching { micronutrients.upTo(end, profile.sex, profile.birthYear) }.getOrNull()
             val reds = if (offset == 0) runCatching { service.energyReport(profile, service.activities(7)) }.getOrNull() else null
             // Energy per logged day against that day's estimated need (training days need more).
             val kcalByDay = food.groupBy { it.day }.mapValues { (_, list) -> list.mapNotNull { MacroTotals.energy(it)?.kcal }.sum() }
-            val height = service.heightCm()
-            val needs = endTrend?.let { w -> loggedDays.mapNotNull { service.energyNeed(profile, activities[it], w, height)?.totalKcal } }.orEmpty()
+            val needs = loggedDays.mapNotNull { service.energyNeed(profile, activities[it])?.totalKcal }
+            // The energy ring's target of each logged day: the need, less the day's deficit while losing weight, or the own one.
+            val kcalTargets = loggedDays.mapNotNull { day ->
+                val a = activities[day]
+                com.cruxcoach.android.ui.training.common.energyTarget(service.energyNeed(profile, a), service.weightPlan(profile, a), profile)
+            }
             val checkins = repo.checkinsBetween(start.toString(), end.toString())
             fun avg(values: List<Int?>) = values.filterNotNull().takeIf { it.isNotEmpty() }?.average()
 
@@ -177,7 +185,8 @@ class WeeklyReviewViewModel @Inject constructor(
                 domainDays = domainDays,
                 weightChangeKg = if (startTrend != null && endTrend != null) endTrend - startTrend else null,
                 proteinAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.proteinG ?: 0.0 } / loggedDays.size else null,
-                proteinTarget = profile.ownProteinG ?: endTrend?.let { (it * profile.proteinPerKg).roundToInt() },
+                proteinTarget = dayTargets.takeIf { it.isNotEmpty() }?.map { it.proteinG }?.average()?.roundToInt()
+                    ?: profile.ownProteinG ?: service.fuelTargets(null, profile)?.proteinG,
                 foodDays = loggedDays.size,
                 carbsAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.carbsG ?: 0.0 } / loggedDays.size else null,
                 fatAvg = if (loggedDays.isNotEmpty()) food.sumOf { it.fatG ?: 0.0 } / loggedDays.size else null,
@@ -186,6 +195,7 @@ class WeeklyReviewViewModel @Inject constructor(
                 micros = micros,
                 kcalAvg = kcalByDay.values.takeIf { it.isNotEmpty() }?.average(),
                 kcalNeedAvg = needs.takeIf { it.isNotEmpty() && it.size == loggedDays.size }?.average()?.roundToInt(),
+                kcalTargetAvg = kcalTargets.takeIf { it.isNotEmpty() && it.size == loggedDays.size }?.average()?.roundToInt(),
                 energy = reds ?: com.cruxcoach.athlete.logic.EnergyReport(),
                 checkinAverages = listOfNotNull(
                     avg(checkins.map { it.sleep })?.let { R.string.trt_q_sleep to it },
@@ -284,9 +294,19 @@ fun WeeklyReviewScreen(onBack: () -> Unit, viewModel: WeeklyReviewViewModel = hi
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_fat"))
                 }
                 if (s.profile.showCalories && s.kcalAvg != null) {
-                    Text(s.kcalNeedAvg?.let { stringResource(R.string.trn_review_energy, s.kcalAvg!!.roundToInt(), it) }
-                        ?: stringResource(R.string.trn_review_energy_no_need, s.kcalAvg!!.roundToInt()),
-                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_energy"))
+                    // Against the calorie target where it is not the need (losing weight, an own target), as in Nutrition.
+                    val eaten = s.kcalAvg!!.roundToInt()
+                    val need = s.kcalNeedAvg
+                    val target = s.kcalTargetAvg
+                    Text(
+                        when {
+                            target != null && need != null && target != need -> stringResource(R.string.trn_review_energy_target, eaten, target, need)
+                            target != null && need == null -> stringResource(R.string.trn_review_energy_target_only, eaten, target)
+                            need != null -> stringResource(R.string.trn_review_energy, eaten, need)
+                            else -> stringResource(R.string.trn_review_energy_no_need, eaten)
+                        },
+                        style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("review_energy"),
+                    )
                 }
                 s.micros?.let { MicroWeekCard(it, Modifier.padding(top = 8.dp)) }
             }
