@@ -140,7 +140,7 @@ fun MapScreen(
     LaunchedEffect(failure) {
         if (failure == null || failureText == null) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(failureText, failureFix, duration = SnackbarDuration.Long)
-        if (result == SnackbarResult.ActionPerformed) openLocateFix(context, failure)
+        if (result == SnackbarResult.ActionPerformed) locateMe.openFix(failure)
         locateFailure = null
     }
     LaunchedEffect(mapHandle, userPosition) {
