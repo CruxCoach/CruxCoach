@@ -76,6 +76,14 @@ fun RestBar(
                         }
                         state.sideSwitch -> state.next?.set?.side?.let { stringResource(R.string.trp_side_switch) + " → " + sideLabel(it) }
                             ?: stringResource(R.string.trp_side_switch)
+                        // A circuit: the short rest names the next exercise, the long one the round just done.
+                        done != null && next != null && done.set.circuit != null && next.set.circuit == done.set.circuit ->
+                            if (next.set.setIndex == done.set.setIndex) stringResource(R.string.trpg_next_member, next.def.name(language))
+                            else {
+                                val rounds = state.sets.filter { it.circuit == done.set.circuit && it.setType != SetType.WARMUP }
+                                    .map { it.setIndex }.distinct().sorted()
+                                stringResource(R.string.trpg_round_rest, rounds.indexOf(done.set.setIndex) + 1)
+                            }
                         else -> stringResource(R.string.trp_rest_title)
                     }
                     Text(headline, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2,

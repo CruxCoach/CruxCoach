@@ -1131,11 +1131,17 @@ private fun DailySuggestionCard(
                 )
                 // One set of each in turn instead of all sets of one exercise first – one tap, today only.
                 if (state.circuitPossible) {
+                    // Clearly on or off (render review 2026-10-17: the selected chip looked like the other one).
                     FilterChip(
                         selected = state.circuitToday,
                         onClick = { onChooseCircuit(!state.circuitToday) },
                         label = { Text(stringResource(R.string.trcirc_today_chip)) },
-                        leadingIcon = { Icon(Icons.Default.Repeat, null, Modifier.size(18.dp)) },
+                        leadingIcon = { Icon(if (state.circuitToday) Icons.Default.Check else Icons.Default.Repeat, null, Modifier.size(18.dp)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CruxCoachDesign.colors.brandAccent,
+                            selectedLabelColor = CruxCoachDesign.colors.onBrandAccent,
+                            selectedLeadingIconColor = CruxCoachDesign.colors.onBrandAccent,
+                        ),
                         modifier = Modifier.testTag("today_circuit"),
                     )
                 }

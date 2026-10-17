@@ -37,5 +37,8 @@
         <item quantity="other">%d Übungen</item>
     </plurals>
     <string name="trpg_minutes">%1$d min</string>
+    <string name="trpg_target">Ziel %1$s</string>
+    <string name="trpg_next_member">Als Nächstes: %1$s</string>
+    <string name="trpg_round_rest">Pause nach Runde %1$d</string>
     <string name="trpg_seconds_of">%1$d/%2$d s</string>
 </resources>
