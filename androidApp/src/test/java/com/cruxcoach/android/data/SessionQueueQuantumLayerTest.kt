@@ -294,9 +294,19 @@ class SessionQueueQuantumLayerTest {
             repository.getQuantumClimbByExternalRoute(sharedRoute, "m", true)
             repository.getQuantumClimbByExternalRoute(sharedRoute, "m", false)
         }
+        // The lookups finishing does not mean the projection has landed: wait
+        // for the state itself (the same race c496d3d4a fixed in the tests above).
+        val projected = runBlocking {
+            withTimeout(2_000) {
+                layers.state.first { state ->
+                    state.layers.singleOrNull()?.confirmedHolds?.isNotEmpty() == true &&
+                        state.externalLayers.size == 1
+                }
+            }
+        }
         assertEquals(listOf(BoardHold(19_100_001, 12), BoardHold(19_100_002, 14)),
-            layers.state.value.layers.single().confirmedHolds)
-        assertNull(layers.state.value.externalLayers.single().holds)
+            projected.layers.single().confirmedHolds)
+        assertNull(projected.externalLayers.single().holds)
         coVerify(exactly = 0) {
             ble.sendClimb(any(), any(), any(), any(), any(), any())
         }
