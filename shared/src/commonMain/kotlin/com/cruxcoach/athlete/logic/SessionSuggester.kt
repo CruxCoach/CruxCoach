@@ -187,6 +187,8 @@ data class SuggestionInput(
     val logbookSends: Int = 0,
     /** Working grade of a graded board logbook; sets the level while no grade is saved (owner question 2026-10-17). */
     val logbookDifficulty: Double? = null,
+    /** Exercises the athlete turned down recently: they rest while something else fits (see [PreferenceLearning.resting]). */
+    val resting: Set<String> = emptySet(),
     /** Weeks with any logged training or climbing. */
     val historyWeeks: Int = 0,
     /** This week's volume per area (see [WeeklyVolume]); empty keeps the day-by-day rules. */
@@ -1090,8 +1092,10 @@ object SessionSuggester {
                     // No easier/harder neighbour of a pick, and for main work nothing else from its chain.
                     taken.none { t -> def.easier == t || def.harder == t } && def.slug !in takenChains
             }
+            // Turned down lately: rests while something else fits the slot; never leaves a slot empty.
+            val fresh = base.filter { it.slug !in input.resting }.ifEmpty { base }
             // The preferred finger-training family, when the equipment allows it.
-            val preferred = if (slot == Slot.FINGER_MAIN) base.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { base } else base
+            val preferred = if (slot == Slot.FINGER_MAIN) fresh.filter { fitsPreference(it, input.coach.fingerPreference) }.ifEmpty { fresh } else fresh
             val withinLevel = preferred.filter { it.difficulty <= level }.ifEmpty { preferred }
                 // From level 3 on, main work is not two steps below the athlete (a 7a boulderer got assisted hangs);
                 // favourites stay welcome at any difficulty, and prehab, mobility and warm-ups keep their easy picks.

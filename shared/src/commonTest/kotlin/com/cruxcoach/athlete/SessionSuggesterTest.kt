@@ -75,6 +75,19 @@ class SessionSuggesterTest {
     private fun slugs(s: SessionSuggestion) = s.routine.items.map { it.slug }
 
     @Test
+    fun aRestingExerciseStaysOutWhileSomethingElseFits() {
+        // Owner 2026-10-17: what the athlete turned down does not come back at once – but no slot stays empty.
+        fun pulls(s: SessionSuggestion) = s.routine.items.filter { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.PULL }.map { it.slug }
+        val base = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.PULL_PUSH))
+        val first = pulls(base).first()
+        val rested = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.PULL_PUSH, resting = setOf(first)))
+        assertTrue(pulls(rested).isNotEmpty() && pulls(rested).first() != first, "${pulls(base)} → ${pulls(rested)}")
+        // The only push exercise there is stays in: resting never empties a slot.
+        val onlyPush = SessionSuggester.suggest(input().copy(wish = SuggestionFocus.PULL_PUSH, resting = setOf("push.push_up")))
+        assertTrue("push.push_up" in slugs(onlyPush), "${slugs(onlyPush)}")
+    }
+
+    @Test
     fun aSessionTakesOneExerciseFromAProgressionChain() {
         // Device test 2026-10-17: weighted pull-ups and, at 90 minutes, negative pull-ups two steps down the same chain.
         val chained = ExerciseCatalog(1, catalog.all.map {

@@ -79,6 +79,37 @@ class PreferenceLearningTest {
     }
 
     @Test
+    fun followingTheCoachDoesNotLockInItsOwnPicks() {
+        // Owner 2026-10-17: learn from changes, do not overfit – doing what was suggested is not a preference.
+        val events = (1..6).flatMap { i -> listOf(
+            event(SuggestionEventKind.STARTED, listOf("pull.pull_up"), daysAgo = i * 2).copy(workoutId = "w$i"),
+            event(SuggestionEventKind.COMPLETED, listOf("pull.pull_up"), daysAgo = i * 2, value = 1.0).copy(workoutId = "w$i")) }
+        val followed = (1..6).map { i -> ExerciseSet("s$i", "w$i", "pull.pull_up", 0, 0, reps = 6, completedAt = todayMs - i * 2 * dayMs) }
+        val own = (1..6).map { i -> ExerciseSet("o$i", "own$i", "core.dead_bug", 0, 0, reps = 10, completedAt = todayMs - i * 2 * dayMs) }
+        val a = PreferenceLearning.affinity(events, followed + own, today)
+        assertTrue((a["pull.pull_up"] ?: 0.0) < 1.0, "$a")
+        assertTrue((a["core.dead_bug"] ?: 0.0) >= 1.0, "$a")
+    }
+
+    @Test
+    fun aRejectedExerciseRestsAFewDaysAndRepeatedRejectionsLonger() {
+        val once = listOf(event(SuggestionEventKind.SWAPPED, listOf("pull.negative_pull_up", "pull.pull_up"), daysAgo = 1))
+        assertEquals(today.plus(DatePeriod(days = 2)), PreferenceLearning.resting(once, today)["pull.negative_pull_up"])
+        // Not the exercise swapped to.
+        assertTrue("pull.pull_up" !in PreferenceLearning.resting(once, today))
+        // After its rest it may come back: the coach stays a coach.
+        val earlier = listOf(event(SuggestionEventKind.SWAPPED, listOf("pull.negative_pull_up", "pull.pull_up"), daysAgo = 3))
+        assertTrue(PreferenceLearning.resting(earlier, today).isEmpty())
+        val twice = listOf(
+            event(SuggestionEventKind.NEXT, listOf("core.dead_bug"), daysAgo = 9, feedback = SuggestionFeedback.DISLIKE_EXERCISE),
+            event(SuggestionEventKind.SWAPPED, listOf("core.dead_bug", "core.hollow_hold"), daysAgo = 5))
+        assertEquals(today.plus(DatePeriod(days = 5)), PreferenceLearning.resting(twice, today)["core.dead_bug"])
+        // One skipped exercise alone does not rest it; forgetting starts fresh.
+        assertTrue(PreferenceLearning.resting(listOf(event(SuggestionEventKind.SKIPPED_SET, listOf("legs.air_squat"))), today).isEmpty())
+        assertTrue(PreferenceLearning.resting(once, today, mapOf(PreferenceLearning.exerciseKey("pull.negative_pull_up") to todayMs)).isEmpty())
+    }
+
+    @Test
     fun aSwapJustAfterLocalMidnightCountsFully() {
         // Device test 2026-10-17, 00:30 in Berlin = 22:30 UTC the day before: the swap aged a day and missed "gladly".
         val berlin = kotlinx.datetime.TimeZone.of("Europe/Berlin")
