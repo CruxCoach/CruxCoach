@@ -31,6 +31,7 @@
     <string name="trsg_reason_plan_filtered">Übungen, die deine Verletzung belasten, wurden aus dem geplanten Workout genommen.</string>
     <string name="trsg_reason_plan_replaced">Das geplante Training würde deine Verletzung zu stark belasten – hier eine Alternative.</string>
     <string name="trsg_reason_board_skipped">Das Board passt heute nicht – stattdessen eine Einheit ohne Wand.</string>
+    <string name="trsg_reason_board_light">Heute eine lockere Board-Session: Die Finger erholen sich noch, deshalb leichtes Volumen statt Limit-Züge.</string>
     <string name="trsg_reason_injury">Klettern ist pausiert: nur Übungen, die die Verletzung schonen, einseitige Übungen mit der gesunden Seite.</string>
     <string name="trsg_reason_fingers_loaded">Die Finger hatten in den letzten 48 Stunden Last – heute Zug, Druck, Beine oder Rumpf.</string>
     <string name="trsg_reason_fingers_tired">Deine Finger sind müde – heute keine maximale Fingerlast.</string>

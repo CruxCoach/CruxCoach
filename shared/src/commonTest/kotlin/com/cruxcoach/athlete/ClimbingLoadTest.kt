@@ -101,7 +101,8 @@ class ClimbingLoadTest {
     fun recoveryGrowsWithIntensityAndAge() {
         assertEquals(60, ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, null))
         assertEquals(48, ClimbingLoad.recoveryHours(ClimbIntensity.HARD, AgeBand.Y18_39))
-        assertEquals(36, ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, AgeBand.Y40_54))
+        assertEquals(36, ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, null))
+        assertEquals(48, ClimbingLoad.recoveryHours(ClimbIntensity.VOLUME, AgeBand.Y40_54))
         assertEquals(84, ClimbingLoad.recoveryHours(ClimbIntensity.LIMIT, AgeBand.Y55_PLUS))
     }
 }

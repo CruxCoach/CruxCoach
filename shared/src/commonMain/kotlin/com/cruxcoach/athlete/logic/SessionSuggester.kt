@@ -50,6 +50,8 @@ enum class SuggestionReason {
     PLAN_FILTERED_FOR_INJURY,
     PLAN_REPLACED_FOR_INJURY,
     BOARD_SKIPPED_TODAY,
+    /** A planned or chosen board day while the fingers recover: a light volume session instead of limit moves. */
+    BOARD_LIGHT,
     INJURY_CLIMBING_PAUSED,
     FINGERS_LOADED_RECENTLY,
     FINGERS_TIRED,
@@ -384,9 +386,16 @@ object SessionSuggester {
                 if (climbingPaused || readiness.avoidClimbing || fingersTired || trend.skinSpike) {
                     reasons += if (climbingPaused) SuggestionReason.PLAN_REPLACED_FOR_INJURY else SuggestionReason.BOARD_SKIPPED_TODAY
                     if (trend.skinSpike && !climbingPaused) reasons += SuggestionReason.SKIN_LOAD_RISING
+                } else if (fingerBlock != null) {
+                    // Audit W6: still recovering – the board day runs as a light session and says why (it ran
+                    // silently as a pyramid before, while a chosen board day was refused).
+                    reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
+                    reasons += SuggestionReason.BOARD_LIGHT
+                    reasons += fingerBlock
+                    return boardDay(ctx, planned, fresh = false, light = true)
                 } else {
                     reasons.add(0, if (planned == PLAN_BOARD) SuggestionReason.WEEK_PLAN_BOARD else SuggestionReason.CLIMBING_DAY)
-                    return boardDay(ctx, planned, fresh = fingerBlock == null && readiness.level == ReadinessLevel.GO)
+                    return boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
                 }
             }
             planned != null -> plannedRoutine(ctx, planned, climbingPaused, fingerBlock, guard, lowEnergy, budget)?.let { return it }
@@ -562,9 +571,16 @@ object SessionSuggester {
                 ctx.input.profile.equipmentConfigured && ctx.input.profile.equipment.none {
                     it == EquipmentV2.WALL || it == EquipmentV2.BOARD || it == EquipmentV2.CAMPUS_BOARD
                 } -> { reasons.add(0, SuggestionReason.NO_WALL_HERE); pullPush() }
-                readiness.avoidClimbing || fingerBlock != null || skinSpike -> {
+                readiness.avoidClimbing || skinSpike || fingerBlock == SuggestionReason.FINGERS_TIRED -> {
                     reasons.add(0, fingerBlock ?: if (skinSpike) SuggestionReason.SKIN_LOAD_RISING else SuggestionReason.BOARD_SKIPPED_TODAY)
                     pullPush()
+                }
+                // Chosen while the fingers recover from climbing: the board day as a light session, the same rule
+                // as a planned one (audit W6) – the wish counts, the recovery decides how hard.
+                fingerBlock != null -> {
+                    reasons.add(0, SuggestionReason.BOARD_LIGHT)
+                    reasons += fingerBlock
+                    boardDay(ctx, planned, fresh = false, light = true)
                 }
                 else -> boardDay(ctx, planned, fresh = readiness.level == ReadinessLevel.GO)
             }
@@ -792,7 +808,7 @@ object SessionSuggester {
         return null
     }
 
-    private fun boardDay(ctx: Ctx, planned: String?, fresh: Boolean): SessionSuggestion {
+    private fun boardDay(ctx: Ctx, planned: String?, fresh: Boolean, light: Boolean = false): SessionSuggestion {
         val input = ctx.input
         val addOn = input.coach.addOnAfterClimbing
         val warmup = BuiltinRoutines.byKey(BuiltinRoutines.WARMUP_BOARD)?.items.orEmpty().filter { it.slug !in input.excluded }
@@ -806,7 +822,7 @@ object SessionSuggester {
         if (addOn == true) ctx.reasons += SuggestionReason.CLIMBING_DAY_ADDON
         val items = warmup + after
         // A chosen duration goes to the board: what the warm-up and the block after it leave, in 5-minute steps.
-        val plan = boardPlan(input, fresh).let { plan ->
+        val plan = boardPlan(input, fresh, light).let { plan ->
             val chosen = input.minutesToday ?: return@let plan
             plan.copy(minutes = ((chosen - estimateMinutes(items, input.catalog)) / 5.0).roundToInt().times(5).coerceIn(20, 180))
         }
@@ -832,7 +848,8 @@ object SessionSuggester {
      * deload weeks, short and sharp in the taper, 4×4-style for a
      * power-endurance focus, a pyramid otherwise.
      */
-    private fun boardPlan(input: SuggestionInput, fresh: Boolean): BoardPlan {
+    private fun boardPlan(input: SuggestionInput, fresh: Boolean, light: Boolean = false): BoardPlan {
+        if (light) return BoardPlan(GeneratorType.VOLUME, 45)
         val phase = input.block?.phase
         val coach = input.coach
         val type = when {

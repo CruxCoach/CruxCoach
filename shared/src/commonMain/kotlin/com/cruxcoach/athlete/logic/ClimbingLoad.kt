@@ -242,7 +242,8 @@ object ClimbingLoad {
         val base = when (intensity) {
             ClimbIntensity.LIMIT -> 60
             ClimbIntensity.HARD -> 48
-            ClimbIntensity.VOLUME -> 24
+            // 36 h: the day after a volume session is no finger day either, as in the week-plan proposal (audit W5).
+            ClimbIntensity.VOLUME -> 36
             ClimbIntensity.LIGHT -> 12
         }
         val extra = when (ageBand) {
