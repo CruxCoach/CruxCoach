@@ -405,6 +405,21 @@ class TrainingScreensSmokeTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `a climbing day entered later updates today and nutrition at once`() {
+        // Audit W2: neither the hub nor nutrition watched climbing days, so the tile and the carbs stayed stale.
+        repo.saveMeasurement(com.cruxcoach.athlete.model.BodyMeasurement(service.today().toString(),
+            com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key, 70.0, "kg", 1))
+        val today = loaded(com.cruxcoach.android.ui.training.today.TodayViewModel(service))
+        val fuel = loaded(com.cruxcoach.android.ui.training.fuel.FuelViewModel(service))
+        compose.waitUntil(WAIT_MS) { today.state.value.activity?.climbingMinutes == null || today.state.value.activity?.climbingMinutes == 0 }
+        compose.waitUntil(WAIT_MS) { fuel.state.value.targets != null }
+        val restCarbs = fuel.state.value.targets!!.carbsG
+        service.saveClimbingDay(ClimbingDayEntry("cd3", service.today().toString(), ClimbingDayKind.GYM_BOULDER, 90, ClimbIntensity.HARD))
+        compose.waitUntil(WAIT_MS) { (today.state.value.activity?.climbingMinutes ?: 0) >= 90 }
+        compose.waitUntil(WAIT_MS) { (fuel.state.value.targets?.carbsG ?: 0) > restCarbs }
+    }
+
+    @Test
     fun `coach setup renders its first card`() {
         val vm = loaded(com.cruxcoach.android.ui.training.coach.CoachSetupViewModel(service, mockk(relaxed = true), mockk(relaxed = true)))
         render { com.cruxcoach.android.ui.training.coach.CoachSetupScreen({}, {}, {}, {}, viewModel = vm) }

@@ -10,6 +10,7 @@ import com.cruxcoach.data.repository.BodyStatRepository
 import com.cruxcoach.db.secure.SecureDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -108,6 +109,10 @@ class ClimbingDaysReader @Inject constructor(private val secureDb: SecureDatabas
             ClimbingDay(day, minutes[day] ?: 0, (sends[day] ?: 0) + (tries[day] ?: 0))
         }
     }
+
+    /** Emits whenever board sessions, sends or attempts since [fromDay] change, and once at the start. */
+    fun changes(fromDay: String): kotlinx.coroutines.flow.Flow<Unit> =
+        com.cruxcoach.data.repository.trainingDayChanges(secureDb, fromDay)
 }
 
 /**
@@ -139,6 +144,17 @@ class AthleteService @Inject constructor(
     }
 
     fun invalidateLogbook() { logbookCache = null }
+
+    /**
+     * Everything that changes a day's load (audit W2): climbing days entered or synced from Health Connect,
+     * board sessions and the logbook. Today and nutrition re-derive on it, so a climbing day entered on the
+     * tile or a board session just finished shows at once in the tile, the suggestion and the carbs.
+     */
+    fun observeActivityChanges(fromDay: String): kotlinx.coroutines.flow.Flow<Unit> =
+        kotlinx.coroutines.flow.combine(
+            repo.observeClimbingDaysSince(fromDay),
+            climbingDays.changes(fromDay).catch { emit(Unit) },
+        ) { _, _ -> invalidateLogbook() }
 
     /** Working grade, flash grade, rhythm — the coach setup's prefill and the load model's anchor. */
     fun logbookSummary(): LogbookSummary = LogbookSummaries.summarize(logbookRows(), today())
