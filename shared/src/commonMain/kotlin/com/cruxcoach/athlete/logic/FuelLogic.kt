@@ -297,7 +297,13 @@ data class EnergyReport(
     val avgIntakeKcal: Int? = null,
     val avgNeedKcal: Int? = null,
     val comparedDays: Int = 0,
+    /**
+     * Complete earlier training days with far too little logged carbohydrate,
+     * their mean in g per kg, and what those days' targets were.
+     */
     val lowCarbDays: Int = 0,
+    val lowCarbPerKg: Double? = null,
+    val lowCarbTargetPerKg: ClosedFloatingPointRange<Double>? = null,
     /** The weight-loss plan, while one is active. */
     val plan: WeightPlan.Plan? = null,
     /** The athlete's own calorie target against today's need, when one is set. */
@@ -326,6 +332,10 @@ object RedsGuard {
     const val HIGH_DEFICIT_SHARE = 0.25
     /** Complete days needed before logged intake is compared with the need. */
     const val MIN_COMPARED_DAYS = 3
+    /** Logged carbohydrate under this many g per kg on a training day is far too little. */
+    const val LOW_CARBS_PER_KG = 3.0
+    /** Such training days in a week before the guard names them. */
+    const val MIN_LOW_CARB_DAYS = 3
 
     fun bmi(weightKg: Double?, heightCm: Double?): Double? {
         val w = weightKg?.takeIf { it > 0 } ?: return null
@@ -364,11 +374,13 @@ object RedsGuard {
         val avgNeed = compared.takeIf { it.size >= MIN_COMPARED_DAYS }?.map { it.needKcal!!.toDouble() }?.average()
         if (avgIntake != null && avgNeed != null && avgIntake < avgNeed * (1 - HIGH_DEFICIT_SHARE)) signals += RedsSignal.HIGH_DEFICIT
 
-        var lowDays = 0
-        if (currentTrend != null) {
-            lowDays = week.count { d -> d.logged && d.dayLoad >= DayLoad.MODERATE && (d.carbsG ?: 0.0) / currentTrend < 3.0 }
-            if (lowDays >= 3) signals += RedsSignal.LOW_CARBS_ON_TRAINING_DAYS
-        }
+        // Only complete earlier days count, as for the deficit: a breakfast on today's training day is no low-carb day,
+        // and a day logged without carbohydrate values says nothing about them.
+        val lowCarb = if (currentTrend != null && currentTrend > 0) week.filter { d ->
+            d.complete && d.carbsG != null && d.dayLoad >= DayLoad.MODERATE && d.carbsG / currentTrend < LOW_CARBS_PER_KG
+        } else emptyList()
+        if (lowCarb.size >= MIN_LOW_CARB_DAYS) signals += RedsSignal.LOW_CARBS_ON_TRAINING_DAYS
+        val lowCarbTargets = lowCarb.map { FuelTargets.carbsPerKg(it.dayLoad) }
 
         // An own calorie target replaces the plan's: its deficit is weighed instead, with the same thresholds.
         plan?.let { p -> signals += if (ownTarget != null) p.warnings - RedsSignal.LARGE_DEFICIT else p.warnings }
@@ -380,7 +392,10 @@ object RedsGuard {
             weeklyRateKg = weekly, weeklyRateShare = weeklyShare, fourWeekShare = fourWeeks,
             avgIntakeKcal = avgIntake?.roundToInt(), avgNeedKcal = avgNeed?.roundToInt(),
             comparedDays = if (avgIntake != null) compared.size else 0,
-            lowCarbDays = lowDays, plan = plan, ownTarget = ownTarget,
+            lowCarbDays = lowCarb.size,
+            lowCarbPerKg = currentTrend?.let { w -> lowCarb.takeIf { it.isNotEmpty() }?.map { it.carbsG!! / w }?.average() },
+            lowCarbTargetPerKg = lowCarbTargets.takeIf { it.isNotEmpty() }?.let { it.min()..it.max() },
+            plan = plan, ownTarget = ownTarget,
         )
     }
 }

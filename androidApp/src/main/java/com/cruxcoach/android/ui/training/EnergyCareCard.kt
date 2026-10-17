@@ -103,7 +103,14 @@ fun energyWarningText(signal: RedsSignal, report: EnergyReport, profile: Athlete
                 stringResource(R.string.trn_w_high_deficit, report.comparedDays, intake, share, need)
             else stringResource(R.string.trn_w_high_deficit_plain, report.comparedDays, share)
         }
-        RedsSignal.LOW_CARBS_ON_TRAINING_DAYS -> stringResource(R.string.trt_reds_low_carbs)
+        RedsSignal.LOW_CARBS_ON_TRAINING_DAYS -> {
+            val perKg = report.lowCarbPerKg
+            val target = report.lowCarbTargetPerKg
+            if (perKg == null || target == null) stringResource(R.string.trt_reds_low_carbs)
+            else stringResource(R.string.trn_w_low_carbs, report.lowCarbDays, formatNumber(perKg),
+                if (target.start == target.endInclusive) formatNumber(target.start)
+                else formatNumber(target.start) + "–" + formatNumber(target.endInclusive))
+        }
         RedsSignal.FAST_PACE ->
             if (hide || plan == null) stringResource(R.string.trn_w_fast_pace_plain)
             else stringResource(R.string.trn_w_fast_pace, formatMass(plan.paceKgPerWeek, profile.units), formatNumber(plan.paceShare * 100))

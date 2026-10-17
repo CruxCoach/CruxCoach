@@ -378,10 +378,35 @@ class AthleteLogicTest {
     @Test
     fun lowCarbsOnTrainingDays() {
         val trend = TrendWeight.compute(listOf(d("2026-10-01") to 70.0))
-        val days = (1..3).map { FuelDay("2026-10-0$it", logged = true, carbsG = 120.0, dayLoad = DayLoad.HARD) }
+        val days = (1..3).map { FuelDay("2026-10-0$it", logged = true, carbsG = 120.0, dayLoad = DayLoad.HARD, complete = true) }
         val report = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, days)
         assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS in report.signals)
         assertEquals(3, report.lowCarbDays)
+        // The numbers behind it: 120 g at 70 kg is 1.7 g/kg against 6 g/kg on a hard day.
+        assertEquals(120.0 / 70, report.lowCarbPerKg!!, 1e-9)
+        assertEquals(6.0..6.0, report.lowCarbTargetPerKg)
+    }
+
+    @Test
+    fun lowCarbsCountOnlyCompleteEarlierTrainingDays() {
+        // Holistic audit 2026-10-17: a breakfast on today's training day is no low-carb day.
+        val trend = TrendWeight.compute(listOf(d("2026-10-01") to 70.0))
+        fun day(n: Int, carbs: Double?, load: DayLoad, complete: Boolean = true) =
+            FuelDay("2026-10-0$n", logged = true, carbsG = carbs, dayLoad = load, complete = complete)
+        val twoAndToday = listOf(day(1, 140.0, DayLoad.MODERATE), day(2, 150.0, DayLoad.HARD), day(3, 60.0, DayLoad.HARD, complete = false))
+        val fair = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, twoAndToday)
+        assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS !in fair.signals)
+        assertEquals(2, fair.lowCarbDays)
+        // A day logged without carbohydrate values, and a rest day, say nothing about training carbohydrate.
+        val unknown = RedsGuard.evaluate(AthleteProfile(), 175.0, trend,
+            twoAndToday.take(2) + day(4, null, DayLoad.HARD) + day(5, 50.0, DayLoad.REST))
+        assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS !in unknown.signals)
+        // A third complete training day names it, with the mean and the days' targets: 5–6 g/kg.
+        val three = RedsGuard.evaluate(AthleteProfile(), 175.0, trend, twoAndToday.take(2) + day(4, 151.0, DayLoad.HARD))
+        assertTrue(RedsSignal.LOW_CARBS_ON_TRAINING_DAYS in three.signals)
+        assertEquals(3, three.lowCarbDays)
+        assertEquals(2.1, three.lowCarbPerKg!!, 1e-9)
+        assertEquals(5.0..6.0, three.lowCarbTargetPerKg)
     }
 
     @Test

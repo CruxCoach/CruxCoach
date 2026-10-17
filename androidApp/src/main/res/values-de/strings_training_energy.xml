@@ -74,6 +74,7 @@
     <string name="trn_w_high_deficit_plain">An %1$d erfassten Tagen hast du etwa %2$d %% weniger gegessen als dein geschätzter Bedarf (falls alles eingetragen ist).</string>
     <string name="trn_w_fast_pace">Dein Tempo von %1$s pro Woche sind %2$s %% deines Gewichts – empfohlen sind höchstens 0,5–1 %%.</string>
     <string name="trn_w_fast_pace_plain" formatted="false">Dein Tempo liegt über 1 % deines Gewichts pro Woche – empfohlen sind höchstens 0,5–1 %.</string>
+    <string name="trn_w_low_carbs">An %1$d Trainingstagen hast du im Schnitt %2$s g/kg Kohlenhydrate eingetragen statt %3$s g/kg (falls alles eingetragen ist).</string>
     <string name="trn_w_large_deficit">Dein Kalorienziel liegt %1$d %% unter deinem geschätzten Bedarf – mehr als 25 %% sind ein großes Defizit.</string>
     <string name="trn_w_below_resting">Dein Kalorienziel von %1$d kcal liegt unter deinem Grundumsatz (%2$d kcal).</string>
     <string name="trn_w_low_target_bmi">Dein Zielgewicht entspricht einem BMI von %1$s – unter %2$s, ab dem Kletterverbände einen Gesundheitscheck empfehlen.</string>
