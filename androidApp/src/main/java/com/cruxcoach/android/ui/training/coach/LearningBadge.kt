@@ -45,6 +45,9 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
     /** The plan comes from the load the athlete lowered last time ([com.cruxcoach.athlete.logic.OwnLoads]). */
     private val _ownLoad = MutableStateFlow(false)
     val ownLoad: StateFlow<Boolean> = _ownLoad.asStateFlow()
+    /** A hold without load (front lever, L-sit, plank): learnt from the time held, no reserve question is asked. */
+    private val _hold = MutableStateFlow(false)
+    val hold: StateFlow<Boolean> = _hold.asStateFlow()
     private var loaded: String? = null
 
     fun load(slug: String) {
@@ -59,6 +62,7 @@ class LearningBadgeViewModel @Inject constructor(private val service: AthleteSer
                 def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.MOBILITY ||
                 def.category == com.cruxcoach.athlete.catalog.ExerciseCategoryV2.WARMUP
             if (noValue) { _state.value = LearningState.State.Known; return@launch }
+            _hold.value = def?.kind == com.cruxcoach.athlete.catalog.ExerciseKind.TIME
             val benchmarks = service.repo.benchmarks(slug)
             _ownLoad.value = benchmarks.maxByOrNull { it.measuredAt }
                 ?.let { it.source == com.cruxcoach.athlete.model.BenchmarkSource.AUTO && it.sets != null } == true
@@ -81,9 +85,13 @@ fun LearningBadge(slug: String, modifier: Modifier = Modifier) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val guessed by viewModel.guessed.collectAsStateWithLifecycle()
     val ownLoad by viewModel.ownLoad.collectAsStateWithLifecycle()
+    val hold by viewModel.hold.collectAsStateWithLifecycle()
     // One line on every work set, the explanation behind the info icon (device test 2026-10-10: five lines above each set).
     // The athlete's own load from last time says so first: it explains why the plan is lighter (UX review 2026-10-16).
+    // Holds are learnt from the time held: "say how many more" pointed to a question the page does not ask there.
     val (short, text) = if (ownLoad && state != null) stringResource(R.string.trc_learning_own_short) to stringResource(R.string.trc_learning_own)
+    else if (hold && state != null && state != LearningState.State.Known) stringResource(R.string.trc_learning_hold_short) to
+        stringResource(R.string.trc_learning_hold)
     else when (val s = state) {
         null, LearningState.State.Known -> return
         LearningState.State.None -> if (guessed) stringResource(R.string.trc_learning_guess_short) to stringResource(R.string.trc_learning_guess)

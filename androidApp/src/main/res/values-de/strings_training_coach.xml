@@ -223,6 +223,8 @@
         <item quantity="one">%1$d nie</item>
         <item quantity="other">%1$d nie</item>
     </plurals>
+    <string name="trc_learning_hold_short">Erste Durchgänge – halte, solange es sauber geht</string>
+    <string name="trc_learning_hold">Der Coach lernt diesen Wert aus deiner Haltezeit: Halte, solange es sauber geht – loslassen ist auch eine Antwort.</string>
     <string name="trc_learning_own_short">Deine Last vom letzten Mal</string>
     <string name="trc_learning_own">Beim letzten Mal hast du leichter trainiert als geplant, deshalb ist jetzt diese Last geplant – bis ein Satz mehr zeigt. Ändern oder löschen kannst du sie unter Leistungswerte.</string>
     <string name="trlr_minutes">Deine Trainingsdauer</string>
