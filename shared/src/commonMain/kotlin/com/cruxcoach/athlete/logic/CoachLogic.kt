@@ -109,7 +109,8 @@ object WeekPlanSuggester {
     ): Map<Int, String> {
         val active = injuries.filter { it.isActive }
         val climbingPaused = active.any { it.climbingPaused }
-        val usual = coach.climbingDays.ifEmpty { logbook.usualClimbingDays }.filter { it in 1..7 }.toSortedSet()
+        // Ascending, like the sorted set this was on the JVM (toSortedSet is JVM-only).
+        val usual = coach.climbingDays.ifEmpty { logbook.usualClimbingDays }.filter { it in 1..7 }.distinct().sorted().toSet()
         val climbing: Set<Int> = if (climbingPaused) emptySet() else usual
         val total = (coach.trainingDaysPerWeek ?: defaultTotal(usual.size)).coerceIn(1, 7)
         val offWallCount = if (climbingPaused) total.coerceAtMost(5)
@@ -146,7 +147,8 @@ object WeekPlanSuggester {
             plan[day] = MOBILITY
         }
         (1..7).filter { it !in plan }.forEach { plan[it] = PLAN_REST }
-        return plan.toSortedMap()
+        // Ordered by weekday, as toSortedMap (JVM-only) returned it.
+        return plan.entries.sortedBy { it.key }.associate { it.key to it.value }
     }
 
     private const val FINGER = "builtin:" + BuiltinRoutines.FINGER_BASICS

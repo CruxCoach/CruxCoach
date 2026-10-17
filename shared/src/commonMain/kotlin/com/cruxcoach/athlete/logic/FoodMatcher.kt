@@ -443,7 +443,7 @@ class FoodMatcher(foods: List<BlsFood>) {
             plural.length == word.length + 1 && plural.last() == 's' && plural.startsWith(word)
 
         /** Stems of the few thousand distinct words, shared by the BLS and USDA matchers. */
-        private val stems = java.util.concurrent.ConcurrentHashMap<String, String>()
+        private val stems = com.cruxcoach.util.ConcurrentMemo<String, String>()
         private fun cachedStem(word: String): String = stems.getOrPut(word) { stem(word) }
 
         /** Levenshtein distance ≤ 1, without a table. */

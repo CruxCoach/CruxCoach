@@ -6,6 +6,7 @@ import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseConfiguration
 import co.touchlab.sqliter.JournalMode
 import co.touchlab.sqliter.SynchronousFlag
+import com.cruxcoach.db.athlete.AthleteDatabase
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.secure.SecureDatabase
 
@@ -73,45 +74,65 @@ actual class BoardDriverFactory {
 actual class SecureDriverFactory(private val dbKey: ByteArray) {
     init { require(dbKey.size == KEY_BYTES) { "A $KEY_BYTES-byte encryption key is required" } }
 
-    actual fun createDriver(dbName: String): SqlDriver {
-        val rawKey = "x'" + dbKey.toHex() + "'"
-        val driver = NativeSqliteDriver(
-            schema = SecureDatabase.Schema,
-            name = dbName,
-            maxReaderConnections = 1,
-            onConfiguration = { config ->
-                config.copy(
-                    journalMode = JournalMode.WAL,
-                    extendedConfig = config.extendedConfig.copy(busyTimeout = 5000),
-                    encryptionConfig = DatabaseConfiguration.Encryption(key = rawKey),
-                    lifecycleConfig = DatabaseConfiguration.Lifecycle(
-                        onCreateConnection = { connection ->
-                            connection.rawExecSql("PRAGMA cache_size = -64000")
-                        },
-                    ),
-                )
-            },
-        )
-        val cipherVersion = driver.executeQuery(
-            identifier = null,
-            sql = "PRAGMA cipher_version",
-            mapper = { cursor ->
-                QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
-            },
-            parameters = 0,
-        ).value
-        if (cipherVersion.isNullOrBlank()) {
-            driver.close()
-            throw IllegalStateException(
-                "SQLCipher is not linked: refusing to open $dbName without encryption"
-            )
-        }
-        return driver
-    }
+    actual fun createDriver(dbName: String): SqlDriver =
+        openEncrypted(SecureDatabase.Schema, dbName, dbKey, cacheSizePragma = "PRAGMA cache_size = -64000")
 
     companion object {
         const val KEY_BYTES = 32
     }
+}
+
+/**
+ * iOS driver for the per-identity athlete database (training, body, fueling).
+ * Same rules as [SecureDriverFactory]: SQLCipher raw key, refuses to open when
+ * the linked SQLite is not SQLCipher. Android sets no cache size here either.
+ */
+actual class AthleteDriverFactory(private val dbKey: ByteArray) {
+    init { require(dbKey.size == SecureDriverFactory.KEY_BYTES) { "A 32-byte encryption key is required" } }
+
+    actual fun createDriver(dbName: String): SqlDriver =
+        openEncrypted(AthleteDatabase.Schema, dbName, dbKey, cacheSizePragma = null)
+}
+
+private fun openEncrypted(
+    schema: app.cash.sqldelight.db.SqlSchema<QueryResult.Value<Unit>>,
+    dbName: String,
+    dbKey: ByteArray,
+    cacheSizePragma: String?,
+): SqlDriver {
+    val rawKey = "x'" + dbKey.toHex() + "'"
+    val driver = NativeSqliteDriver(
+        schema = schema,
+        name = dbName,
+        maxReaderConnections = 1,
+        onConfiguration = { config ->
+            config.copy(
+                journalMode = JournalMode.WAL,
+                extendedConfig = config.extendedConfig.copy(busyTimeout = 5000),
+                encryptionConfig = DatabaseConfiguration.Encryption(key = rawKey),
+                lifecycleConfig = DatabaseConfiguration.Lifecycle(
+                    onCreateConnection = { connection ->
+                        if (cacheSizePragma != null) connection.rawExecSql(cacheSizePragma)
+                    },
+                ),
+            )
+        },
+    )
+    val cipherVersion = driver.executeQuery(
+        identifier = null,
+        sql = "PRAGMA cipher_version",
+        mapper = { cursor ->
+            QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
+        },
+        parameters = 0,
+    ).value
+    if (cipherVersion.isNullOrBlank()) {
+        driver.close()
+        throw IllegalStateException(
+            "SQLCipher is not linked: refusing to open $dbName without encryption"
+        )
+    }
+    return driver
 }
 
 private fun ByteArray.toHex(): String {
