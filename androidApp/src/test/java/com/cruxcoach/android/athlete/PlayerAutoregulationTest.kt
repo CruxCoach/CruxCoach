@@ -105,4 +105,17 @@ class PlayerAutoregulationTest {
         assertEquals(InjuryRegion.ELBOW, injury.region)
         assertTrue(injury.climbingPaused)
     }
+
+    @Test
+    fun `the pain swap spares what today's check-in says hurts too`() {
+        // Audit W9: card and player swap respected the check-in's sore regions, the pain swap did not.
+        repo.saveCheckin(com.cruxcoach.athlete.model.Checkin(service.today().toString(), 0, sore = setOf(InjuryRegion.SHOULDER)))
+        val id = service.startWorkout(Routine("r", "R", items = listOf(RoutineItem("pull.pull_up", sets = 3, repsMin = 5, repsMax = 8))), null)
+        val first = workSets(id, "pull.pull_up").first()
+        val outcome = service.painStop(id, first.blockIndex, InjuryRegion.ELBOW, null, 3, PainAction.SWAP)
+        outcome.newSlug?.let { slug ->
+            val verdict = com.cruxcoach.athlete.logic.InjuryAdvisor.assess(service.catalog.fallbackFor(slug), service.injuriesToday()).verdict
+            assertTrue(verdict == com.cruxcoach.athlete.logic.InjuryVerdict.OK || verdict == com.cruxcoach.athlete.logic.InjuryVerdict.ONE_SIDE_ONLY, "$slug $verdict")
+        }
+    }
 }

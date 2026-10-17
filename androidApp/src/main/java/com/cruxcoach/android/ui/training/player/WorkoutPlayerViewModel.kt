@@ -731,6 +731,9 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
 
     fun consumePainResult() = _state.update { it.copy(painResult = null, painNewDef = null) }
 
+    /** "Rückgängig" after a pain stop saved an injury: the exercise stays swapped, the injury goes. */
+    fun forgetInjury(id: String) = enqueue { service.repo.deleteInjury(id) }
+
     // ── Rest ─────────────────────────────────────────────────────────
 
     fun adjustRest(deltaSeconds: Int) = enqueue { service.adjustRest(deltaSeconds) }

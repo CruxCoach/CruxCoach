@@ -23,6 +23,7 @@
     <string name="trp2_action_lighter">Leichter weitermachen</string>
     <string name="trp2_action_end">Übung beenden</string>
     <string name="trp2_pain_remember">Als Verletzung merken – die Vorschläge schonen die Stelle</string>
+    <string name="trp2_pain_remember_pause">Als Verletzung merken – Vorschläge pausieren das Klettern, bis du sie beendest</string>
     <string name="trp2_pain_medical">Bei stechenden, starken oder anhaltenden Schmerzen: Training beenden und ärztlich oder physiotherapeutisch abklären lassen.</string>
     <string name="trp2_pain_confirm">Übernehmen</string>
     <string name="trp2_pain_done_swap">Getauscht gegen %1$s.</string>

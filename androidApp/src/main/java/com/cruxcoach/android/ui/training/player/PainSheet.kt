@@ -115,7 +115,9 @@ fun PainSheet(
                 modifier = Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { rememberIt = !remember }.testTag("player_pain_remember"),
             ) {
                 Checkbox(checked = remember, onCheckedChange = { rememberIt = it })
-                Text(stringResource(R.string.trp2_pain_remember), style = MaterialTheme.typography.bodyMedium)
+                // Strong pain pauses climbing in the suggestions: say so before it is saved (audit W9).
+                Text(stringResource(if (severity >= com.cruxcoach.android.athlete.AthleteService.PAIN_PAUSE_SEVERITY)
+                    R.string.trp2_pain_remember_pause else R.string.trp2_pain_remember), style = MaterialTheme.typography.bodyMedium)
             }
 
             Card(

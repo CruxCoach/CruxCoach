@@ -23,6 +23,7 @@
     <string name="trp2_action_lighter">Carry on lighter</string>
     <string name="trp2_action_end">End this exercise</string>
     <string name="trp2_pain_remember">Remember as an injury – suggestions will spare it</string>
+    <string name="trp2_pain_remember_pause">Remember as an injury – suggestions pause climbing until you end it</string>
     <string name="trp2_pain_medical">Sharp, strong or lasting pain: stop training and have it checked by a doctor or physiotherapist.</string>
     <string name="trp2_pain_confirm">Apply</string>
     <string name="trp2_pain_done_swap">Swapped to %1$s.</string>
