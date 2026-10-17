@@ -23,6 +23,7 @@ data class MapVenue(
     val city: String?,
     val countryCode: String,
     val boards: List<BoardLocation>,
+    val info: MapVenueInfo = MapVenueInfo(),
 ) {
     /** Distinct board families present at this venue. */
     val brands: Set<BoardBrand> get() = boards.mapTo(linkedSetOf()) { it.boardBrand }
@@ -30,30 +31,11 @@ data class MapVenue(
     val isMultiBoard: Boolean get() = boards.size > 1
 
     /**
-     * Single colouring axis for the marker: the venue's brand when it hosts
-     * exactly one family, or [VenueBrandKey.MULTI] when it mixes families.
-     * Brand-level (not layout-level) because a venue can hold several
-     * layouts; the detail sheet carries the per-board specifics.
+     * The families the marker shows, in one fixed order (the [BoardBrand]
+     * declaration order), so a Kilter + MoonBoard gym always gets the same
+     * two-colour marker no matter which row came first.
      */
-    val brandKey: VenueBrandKey
-        get() {
-            val b = brands
-            return when {
-                b.size > 1 -> VenueBrandKey.MULTI
-                b.singleOrNull() == BoardBrand.KILTER -> VenueBrandKey.KILTER
-                b.singleOrNull() == BoardBrand.MOONBOARD -> VenueBrandKey.MOONBOARD
-                else -> VenueBrandKey.OTHER
-            }
-        }
-}
-
-/** Marker colour buckets — kept as a typed key so the GL layer and any
- *  legend stay in lockstep. */
-enum class VenueBrandKey(val wire: String) {
-    KILTER("kilter"),
-    MOONBOARD("moonboard"),
-    MULTI("multi"),
-    OTHER("other"),
+    val markerBrands: List<BoardBrand> get() = brands.sortedBy { it.ordinal }
 }
 
 /**
@@ -90,7 +72,10 @@ private fun brandRank(brand: BoardBrand): Int =
  * rows, for instance, ship no country — `??` — so a co-located Kilter row
  * fills it in).
  */
-fun groupIntoVenues(locations: List<BoardLocation>): List<MapVenue> {
+fun groupIntoVenues(
+    locations: List<BoardLocation>,
+    venueInfo: Map<String, MapVenueInfo> = emptyMap(),
+): List<MapVenue> {
     if (locations.isEmpty()) return emptyList()
     return locations
         .groupBy { venueKey(it.lat, it.lng) }
@@ -109,6 +94,7 @@ fun groupIntoVenues(locations: List<BoardLocation>): List<MapVenue> {
                     .firstNotNullOfOrNull { it.countryCode.takeIf { c -> c.isNotBlank() && c != "??" } }
                     ?: rep.countryCode,
                 boards = ordered,
+                info = venueInfo[key] ?: MapVenueInfo(),
             )
         }
 }
