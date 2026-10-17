@@ -82,7 +82,15 @@ jobs:
           echo "Simulator: $DEVICE"
           cd iosApp && xcodebuild test -project CruxCoach.xcodeproj -scheme CruxCoach \
             -destination "platform=iOS Simulator,name=$DEVICE" \
+            -resultBundlePath "$RUNNER_TEMP/sim.xcresult" \
             -derivedDataPath build/sim 2>&1 | tee "$RUNNER_TEMP/ci-sim.log" | tail -200
+      # Public summary of every simulator test (logs need a login, annotations do not),
+      # and the UI tests' screenshots for the artifact.
+      - name: Simulator test summary and screenshots
+        if: always()
+        run: |
+          test -d "$RUNNER_TEMP/sim.xcresult" || exit 0
+          python3 scripts/ci_xcresult_summary.py "$RUNNER_TEMP/sim.xcresult" "$RUNNER_TEMP/screenshots"
       - name: Build for device, unsigned
         run: |
           set -o pipefail
@@ -105,6 +113,13 @@ jobs:
           zip -qry "$NAME" Payload
           shasum -a 256 "$NAME" | tee "$NAME.sha256"
           lipo -info "Payload/CruxCoach.app/CruxCoach"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: CruxCoach-iOS-simulator-screenshots-${{ github.sha }}
+          if-no-files-found: ignore
+          retention-days: 14
+          path: ${{ runner.temp }}/screenshots/*.png
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: CruxCoach-iOS-UNSIGNED-${{ github.sha }}
