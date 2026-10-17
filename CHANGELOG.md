@@ -352,6 +352,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   your country (from the timezone, without location permission) instead of
   the whole world. Rotating and tilting by accident is off, and the dark theme
   gets a dark map instead of a light grey one.
+- "My location" on the board map shows where you are, frames you with the
+  nearest boards and lists places by distance. The location permission is
+  asked for only when you tap it; the position stays on the phone.
+- Finding your board via your gym no longer needs the gym's name: "Gyms near
+  me" in the gym search (and "Find a gym near you" in the board dialog, in
+  onboarding, the board browser, settings and the sync card) lists the closest
+  gyms with their boards and distance. Before the gym data has synced, search
+  and "near me" use the board map's bundled gym list, so they work on the
+  first start too.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out

@@ -202,7 +202,11 @@ The map shows one marker per venue in the colour and letter of its board family 
 
 The bottom sheet lists the places in the visible part of the map, nearest to the map centre first (at most 50, with the true total), and shows a tapped place: name, place, boards, directions, website and phone in the collapsed sheet; per board size, angle range, setup and LEDs, the opening hours and the contact rows when pulled up. Only facts the data has are shown. Opening hours appear exactly as the venue published them (curated by cruxcoach.org); the app does not work out whether a venue is open now, because the venue's timezone and public holidays are not in the data.
 
-The map has no location permission. It reopens where it was left; on the first visit it frames the boards of the device's country, taken from the timezone ("Europe/Vienna" → Vienna in the bundled place index → Austria) or else the locale. Rotation and tilt are off; the dark theme uses a dark map style.
+The map reopens where it was left; on the first visit it frames the boards of the device's country, taken from the timezone ("Europe/Vienna" → Vienna in the bundled place index → Austria) or else the locale, without any permission. "My location" asks for the location permission only when tapped (precise or approximate, the user chooses), then shows a blue dot with its accuracy, frames the user with the three nearest boards that pass the filters, and sorts the list by distance from the user with the distance on each row. The position stays in memory on the device and is not stored or sent. Rotation and tilt are off; the dark theme uses a dark map style.
+
+## Finding a gym near you
+
+The gym search behind the board picker ("Don't know?") has "Gyms near me": the ten closest gyms within 100 km that have a board CruxCoach supports, nearest first, each with its boards and distance; tapping one offers its boards as usual. The board dialog itself has "Find a gym near you", which opens the search straight in this mode. Both ask for the location permission only on that tap; once it is granted, the search shows the nearby gyms as soon as it opens (without overriding anything typed). Until the synced gym data is on the device (a first start in onboarding), search and "near me" use the board map's bundled snapshot, so they work offline from the start.
 
 ## Board map statistics
 
