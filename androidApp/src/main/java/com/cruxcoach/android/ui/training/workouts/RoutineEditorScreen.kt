@@ -585,7 +585,11 @@ internal fun ExercisePickerSheet(
                 }
             }
         }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 520.dp)) {
+        // A new search starts at the top: the list kept its scroll position while typing, so the best matches
+        // (names starting with the query) sat above the visible rows (device test 2026-10-17).
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        LaunchedEffect(query, category) { listState.scrollToItem(0) }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 520.dp).testTag("routine_picker_list"), state = listState) {
             if (favDefs.isNotEmpty()) {
                 item { Text(stringResource(R.string.trwo_picker_favorites), style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }

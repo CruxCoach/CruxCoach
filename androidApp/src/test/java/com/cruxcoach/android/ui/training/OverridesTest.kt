@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training
 import android.app.Application
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onNodeWithTag
 import com.cruxcoach.android.ui.training.player.PlayerPhase
@@ -467,6 +468,24 @@ class OverridesTest : AthleteScreenTest() {
         waitForTag("coach_favorite_core.dead_bug")
         click("coach_favorite_core.dead_bug")
         until { "core.dead_bug" !in repo.favorites() }
+    }
+
+    @Test
+    fun `a new search in the exercise picker starts at the top`() {
+        // Device test 2026-10-17: the list kept its scroll position while typing, so "Handgelenk" showed five
+        // rows and the best matches ("Handgelenkbeugen …") sat above them, out of sight.
+        kotlinx.coroutines.runBlocking { service.catalogStore.ensureLoaded() }
+        val catalog = service.catalog
+        render {
+            com.cruxcoach.android.ui.training.workouts.ExercisePickerSheet(catalog, emptySet(), "de", {}, {}, {})
+        }
+        waitForTag("routine_picker_list")
+        compose.onNodeWithTag("routine_picker_list").performScrollToIndex(40)
+        compose.onNodeWithTag("routine_picker_search").performTextReplacement("Handgelenk")
+        val first = catalog.search("Handgelenk", "de").first()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithTag("routine_picker_row_${first.slug}").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test

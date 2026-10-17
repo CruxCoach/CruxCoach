@@ -74,6 +74,25 @@ class SessionSuggesterTest {
 
     private fun slugs(s: SessionSuggestion) = s.routine.items.map { it.slug }
 
+    @Test
+    fun aSessionTakesOneExerciseFromAProgressionChain() {
+        // Device test 2026-10-17: weighted pull-ups and, at 90 minutes, negative pull-ups two steps down the same chain.
+        val chained = ExerciseCatalog(1, catalog.all.map {
+            if (it.slug == "pull.pull_up") it.copy(easier = "pull.negative_pull_up", harder = "pull.weighted_pull_up") else it
+        } + listOf(
+            ex("pull.negative_pull_up", ExerciseCategoryV2.PULL, ExerciseKind.REPS, LoadMode.BODYWEIGHT, listOf(EquipmentV2.PULL_UP_BAR),
+                listOf(LoadDomain.ELBOW), difficulty = 2).copy(harder = "pull.pull_up"),
+            ex("pull.weighted_pull_up", ExerciseCategoryV2.PULL, ExerciseKind.LOAD_REPS, LoadMode.BODYWEIGHT_PLUS,
+                listOf(EquipmentV2.PULL_UP_BAR, EquipmentV2.PLATES), listOf(LoadDomain.ELBOW), difficulty = 3).copy(easier = "pull.pull_up"),
+        ))
+        val chain = setOf("pull.negative_pull_up", "pull.pull_up", "pull.weighted_pull_up")
+        for (variant in 0..5) {
+            val s = SessionSuggester.suggest(input(variant = variant).copy(catalog = chained, wish = SuggestionFocus.PULL_PUSH, minutesToday = 90))
+            val picked = s.routine.items.filter { !it.warmup && it.slug in chain }.map { it.slug }
+            assertTrue(picked.size <= 1, "variant $variant: $picked")
+        }
+    }
+
     // ── The athlete's choice for today (owner 2026-10-15) ──
 
     @Test
@@ -378,6 +397,10 @@ class SessionSuggesterTest {
         assertEquals(listOf("finger.assisted_hang"), finger("7a", ExperienceBand.UNDER_1), "7a in the first year: capped")
         assertEquals(listOf("finger.assisted_hang"), finger("6a", ExperienceBand.OVER_5), "6a: level 2")
         assertEquals(3, SessionSuggester.climbingLevel(CoachProfile(currentGrade = "7a", experience = null)))
+        // No saved grade: a graded logbook stands in (7a = 22); a saved grade still wins over it.
+        assertEquals(3, SessionSuggester.climbingLevel(CoachProfile(experience = ExperienceBand.Y3_5), logbookDifficulty = 22.0))
+        assertEquals(2, SessionSuggester.climbingLevel(CoachProfile(currentGrade = "6b", experience = ExperienceBand.Y3_5), logbookDifficulty = 22.0))
+        assertEquals(null, SessionSuggester.climbingLevel(CoachProfile(experience = ExperienceBand.Y3_5)))
     }
 
     @Test
