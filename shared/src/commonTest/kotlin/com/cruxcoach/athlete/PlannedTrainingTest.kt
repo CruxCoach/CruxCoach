@@ -63,9 +63,11 @@ class PlannedTrainingTest {
         assertEquals(Kind.OFF_WALL, planned.kind)
         assertEquals(50, planned.activity.workoutMinutes)
         assertEquals(300, planned.activity.workoutLoad)
-        // Chosen for today counts too.
+        // Chosen for today counts too – a kind, more time or less time.
         val chosen = suggestion(SuggestionFocus.PULL_PUSH, listOf(SuggestionReason.CHOSEN_TODAY), 40)
         assertEquals(Kind.OFF_WALL, PlannedTraining.summaryOf(chosen, day).kind)
+        val shorter = suggestion(SuggestionFocus.PULL_PUSH, listOf(SuggestionReason.PULL_LONGER_AGO, SuggestionReason.NO_TIME_TODAY), 20)
+        assertEquals(PlannedTraining.Summary(day.toString(), Kind.OFF_WALL, 20), PlannedTraining.summaryOf(shorter, day))
     }
 
     @Test
@@ -134,5 +136,8 @@ class PlannedTrainingTest {
         val rest = AthleteProfile(weekPlan = mapOf(weekday to PLAN_REST), coach = CoachProfile(climbingDays = setOf(weekday)))
         assertNull(PlannedTraining.fromWeekPlan(rest, day, emptyList(), catalog).kind)
         assertNull(PlannedTraining.fromWeekPlan(AthleteProfile(), day, emptyList(), catalog).kind)
+        // During a pause nothing is planned.
+        val ill = listOf(PausePeriod("p", PauseReason.ILLNESS, startDay = day.toString()))
+        assertNull(PlannedTraining.fromWeekPlan(board, day, emptyList(), catalog, ill).kind)
     }
 }

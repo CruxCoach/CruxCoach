@@ -1325,10 +1325,16 @@ class AthleteService @Inject constructor(
 
     // ── Planned training for today's targets (audit W4) ──────────────
 
-    /** Stores today's suggestion [s] as today's plan for nutrition ([PlannedTraining]); writes only on a change. */
-    fun rememberPlannedToday(s: SessionSuggestion) {
+    /**
+     * Stores today's suggestion [s] as today's plan for nutrition ([PlannedTraining]) and returns what it
+     * stands for. Writes only when it differs from what the same screen wrote before ([previous]): two Today
+     * screens alive at once (a reminder can open a second one) would otherwise overwrite each other in turn,
+     * each write making the other re-derive. The last change the athlete made wins.
+     */
+    fun rememberPlannedToday(s: SessionSuggestion, previous: String? = null): String {
         val value = PlannedTraining.encode(PlannedTraining.summaryOf(s, today()))
-        if (repo.setting(PlannedTraining.SETTING_KEY) != value) repo.putSetting(PlannedTraining.SETTING_KEY, value)
+        if (value != previous && repo.setting(PlannedTraining.SETTING_KEY) != value) repo.putSetting(PlannedTraining.SETTING_KEY, value)
+        return value
     }
 
     /**
@@ -1338,7 +1344,11 @@ class AthleteService @Inject constructor(
     fun plannedActivityToday(): PlannedTraining.Planned? = runCatching {
         val today = today()
         val stored = PlannedTraining.decode(repo.setting(PlannedTraining.SETTING_KEY))?.takeIf { it.day == today.toString() }
-        PlannedTraining.planned(stored ?: PlannedTraining.fromWeekPlan(repo.profile(), today, repo.routines(), catalog))
+        PlannedTraining.planned(stored ?: run {
+            // Sick or resting by the check-in: Today would suggest rest, so nothing is planned.
+            val resting = ReadinessEvaluator.evaluate(repo.checkin(today.toString()), repo.activeInjuries()).level == ReadinessLevel.REST
+            if (resting) null else PlannedTraining.fromWeekPlan(repo.profile(), today, repo.routines(), catalog, repo.pauses())
+        })
     }.getOrNull()
 
     /** Tomorrow is a planned board day or a usual climbing day (audit P1-5): today's carbohydrate info says so. */
@@ -1352,10 +1362,13 @@ class AthleteService @Inject constructor(
      * Today's weight-loss plan for [activity] as today's targets see it: the last six days stay real, so the
      * week's pace and the deficit fit the rings. The energy check ([energyReport]) keeps the real today.
      */
-    fun todayWeightPlan(profile: AthleteProfile, activity: DayActivity?, activities: Map<String, DayActivity>): WeightPlan.Plan? {
+    fun todayWeightPlan(profile: AthleteProfile, activity: DayActivity?, activities: Map<String, DayActivity>): WeightPlan.Plan? =
+        weightPlan(profile, activity, weekNeeds(profile, withToday(activities, activity)))
+
+    /** [activities] with today as today's targets see it ([activity]: the planned training while it counts). */
+    fun withToday(activities: Map<String, DayActivity>, activity: DayActivity?): Map<String, DayActivity> {
         val day = today().toString()
-        val withToday = if (activity == null) activities - day else activities + (day to activity)
-        return weightPlan(profile, activity, weekNeeds(profile, withToday))
+        return if (activity == null) activities - day else activities + (day to activity)
     }
 
     /** The estimated needs of the last seven days, today last; empty without weight or height. */

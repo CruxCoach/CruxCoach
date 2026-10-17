@@ -102,8 +102,11 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
                 val height = heights.lastOrNull()?.value
                 val trend = service.weightTrend()
                 val activities = service.activities(days = 7)
-                val todayActivity = activities[service.today().toString()]
-                val weekNeeds = service.weekNeeds(profile, activities)
+                val real = activities[service.today().toString()]
+                // Today's planned training counts here as on the nutrition tab (audit W4).
+                val planned = runCatching { service.plannedForTargets(real) }.getOrNull()
+                val todayActivity = planned?.activity ?: real
+                val weekNeeds = service.weekNeeds(profile, if (planned != null) service.withToday(activities, todayActivity) else activities)
                 AthleteSettingsState(
                     profile, height, loaded = true,
                     need = service.energyNeed(profile, todayActivity),

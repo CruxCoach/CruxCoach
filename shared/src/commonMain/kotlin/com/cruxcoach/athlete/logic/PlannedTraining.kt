@@ -49,6 +49,7 @@ object PlannedTraining {
     private val PLAN_REASONS = setOf(
         SuggestionReason.WEEK_PLAN, SuggestionReason.WEEK_PLAN_BOARD, SuggestionReason.CLIMBING_DAY,
         SuggestionReason.CHOSEN_TODAY, SuggestionReason.USUAL_KIND, SuggestionReason.MORE_TIME_TODAY,
+        SuggestionReason.NO_TIME_TODAY,
     )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
@@ -67,13 +68,19 @@ object PlannedTraining {
         }
     }
 
-    /** Today's plan from the week plan and the usual climbing days alone, before Today computed its suggestion. */
-    fun fromWeekPlan(profile: AthleteProfile, day: LocalDate, routines: List<Routine>, catalog: ExerciseCatalog): Summary {
+    /**
+     * Today's plan from the week plan and the usual climbing days alone, before Today computed its suggestion;
+     * nothing during a pause.
+     */
+    fun fromWeekPlan(
+        profile: AthleteProfile, day: LocalDate, routines: List<Routine>, catalog: ExerciseCatalog,
+        pauses: List<PausePeriod> = emptyList(),
+    ): Summary {
         val weekday = day.dayOfWeek.isoDayNumber
         val entry = profile.weekPlan[weekday]
         val none = Summary(day.toString())
         return when {
-            entry == PLAN_REST -> none
+            paused(pauses, day) || entry == PLAN_REST -> none
             entry == PLAN_BOARD || (entry == null && weekday in profile.coach.climbingDays) ->
                 Summary(day.toString(), Kind.BOARD, BOARD_DEFAULT_MINUTES)
             entry != null -> {
@@ -127,11 +134,16 @@ object PlannedTraining {
      */
     fun tomorrowHard(profile: AthleteProfile, today: LocalDate, pauses: List<PausePeriod> = emptyList()): Boolean {
         val tomorrow = today.plus(DatePeriod(days = 1))
-        val t = tomorrow.toString()
-        if (pauses.any { p -> p.startDay <= t && p.endDay.let { it == null || it >= t } }) return false
+        if (paused(pauses, tomorrow)) return false
         val weekday = tomorrow.dayOfWeek.isoDayNumber
         val entry = profile.weekPlan[weekday]
         return entry == PLAN_BOARD || (entry == null && weekday in profile.coach.climbingDays)
+    }
+
+    /** A pause (illness, injury, holiday) covers [day]. */
+    private fun paused(pauses: List<PausePeriod>, day: LocalDate): Boolean {
+        val d = day.toString()
+        return pauses.any { p -> p.startDay <= d && p.endDay.let { it == null || it >= d } }
     }
 
     fun encode(s: Summary): String = json.encodeToString(Summary.serializer(), s)
