@@ -309,13 +309,14 @@ class AthleteService @Inject constructor(
     /** Serialises structural edits so a double tap cannot open two trainings or reuse a block number. */
     private val structureLock = Any()
 
-    fun startWorkout(routine: Routine?, title: String?): String = synchronized(structureLock) {
+    /** [trimSets] false: today's form changes loads only (the suggestion is already shorter for fatigue). */
+    fun startWorkout(routine: Routine?, title: String?, trimSets: Boolean = true): String = synchronized(structureLock) {
         repo.openWorkout()?.let { return it.id }
         val now = System.currentTimeMillis()
         val id = repo.newId()
         repo.transaction {
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
-            val modifier = todaysModifier()
+            val modifier = todaysModifier().let { if (trimSets) it else it.copy(setsDelta = 0) }
             // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
             val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
             items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }

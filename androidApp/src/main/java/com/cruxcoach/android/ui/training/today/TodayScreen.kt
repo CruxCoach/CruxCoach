@@ -1201,7 +1201,9 @@ private fun DailySuggestionCard(
                             Spacer(Modifier.width(4.dp))
                             Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Text(com.cruxcoach.android.ui.training.workouts.routineItemSummary(item, def.kind, def.load, state.profile.units, short = true),
+                            // The sets the training will plan: today's form may take one off (audit W7: card ≠ player).
+                            val planned = state.dayForm?.let { com.cruxcoach.athlete.logic.ReadinessModifiers.applyToItem(item, def, it) } ?: item
+                            Text(com.cruxcoach.android.ui.training.workouts.routineItemSummary(planned, def.kind, def.load, state.profile.units, short = true),
                                 style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
                             Icon(Icons.Default.SwapHoriz, contentDescription = null, Modifier.padding(start = 6.dp).size(18.dp))
                         }

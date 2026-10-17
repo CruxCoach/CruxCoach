@@ -73,6 +73,8 @@ data class TodayState(
     val suggestionSaved: Boolean = false,
     /** For exercise names on the suggestion card. */
     val catalog: com.cruxcoach.athlete.catalog.ExerciseCatalog = com.cruxcoach.athlete.catalog.ExerciseCatalog.EMPTY,
+    /** How today's form will change the suggestion when it starts (sets, load): the card shows the same sets. */
+    val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
     /** Turned down for the third time: the card asks once whether to stop suggesting it (comparison review #8). */
     val neverOffer: String? = null,
     /** Position in the training cycle (FEAT-071), null without a block. */
@@ -260,11 +262,14 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         val openSteps = listOf(coachDone, i.profile.equipmentConfigured, trend.isNotEmpty()).count { !it }
         val justDone = (lastOpenSteps ?: 0) > 0 && openSteps == 0
         lastOpenSteps = openSteps
+        val dayForm = service.todaysModifier().let { m -> if (daily?.shortenedForFatigue == true) m.copy(setsDelta = 0) else m }
+            .takeIf { !it.isNeutral }
         _state.update {
             it.copy(
                 loading = false,
                 setupJustDone = it.setupJustDone || justDone,
                 suggestion = daily,
+                dayForm = dayForm,
                 plannedName = plannedName,
                 block = block,
                 durationHint = durationHint,
@@ -723,7 +728,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     }
 
     private fun startSuggestionNow(suggestion: SessionSuggestion, routine: Routine, title: String) {
-        val id = service.startWorkout(routine, title)
+        val id = service.startWorkout(routine, title, trimSets = !suggestion.shortenedForFatigue)
         // Planned work sets, so the summary can tell how much of the suggestion was done.
         val catalog = service.catalog
         val plannedSets = suggestion.routine.items.filter { !it.warmup }.sumOf { item ->
