@@ -159,6 +159,8 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
     private var shownPage: List<Int>? = null
     /** "+ set" on this block: its new set becomes the active one once it is in. */
     private var focusNewIn: Int? = null
+    /** The first rows after opening the training: go on after the set done last, not at a skipped one. */
+    private var resumed = false
     /** Sets after which the athlete changed the next load by hand: their reserve answer no longer moves it. */
     private val manualAfter = mutableSetOf<String>()
     /** What autoregulation already applied per completed set, so a changed reserve answer never stacks steps. */
@@ -243,6 +245,13 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),
                 current = null, upcoming = null, pages = emptyList(), profile = profile)
             val ordered = PlayerQueue.ordered(withPending(sets))
+            if (!resumed && ordered.isNotEmpty()) {
+                resumed = true
+                // Back in a training (app or screen reopened): where the athlete left off, after the set done last –
+                // not at an exercise skipped earlier (device test 2026-10-17). Skipped sets still come back at the end.
+                val last = ordered.filter { it.isCompleted }.maxByOrNull { it.completedAt ?: 0L }
+                last?.let { PlayerQueue.nextAfter(ordered, it) }?.takeIf { !it.isCompleted }?.let { focusId = it.id }
+            }
             focusNewIn?.let { block ->
                 ordered.filter { it.blockIndex == block && !it.isCompleted }.maxByOrNull { it.setIndex }?.let { focusId = it.id; focusNewIn = null }
             }

@@ -162,6 +162,21 @@ class ExercisePageTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `back in the training it goes on after the set done last`() {
+        // Device test 2026-10-17: after reopening, the page jumped to an exercise skipped earlier.
+        val (id, vm) = player(Routine("r", "Two", items = listOf(
+            RoutineItem("push.push_up", sets = 2, repsMin = 10, repsMax = 10),
+            RoutineItem("core.dead_bug", sets = 2, repsMin = 10, repsMax = 10, restS = 0))))
+        click("player_strip_1")
+        until { vm.state.value.current?.set?.exerciseSlug == "core.dead_bug" }
+        click("player_done")
+        until { work(id, "core.dead_bug").first().isCompleted }
+        val again = WorkoutPlayerViewModel(service).tracked()
+        until { again.state.value.phase == PlayerPhase.SET && again.state.value.current != null }
+        assertEquals(work(id, "core.dead_bug")[1].id, again.state.value.current?.set?.id)
+    }
+
+    @Test
     fun `the end page asks how hard it was and finishes in one tap`() {
         val (id, vm) = player(Routine("r", "One", items = listOf(RoutineItem("push.push_up", sets = 1, repsMin = 10, repsMax = 10))))
         click("player_done")
