@@ -70,6 +70,10 @@ object WorkoutPlanner {
         // A load the athlete wrote into the workout wins over both (owner
         // 2026-10-15: recommendations must be overridable).
         val targets = sides.associateWith { side -> LoadPrescriber.prescribe(def, item, capacityFor(side), bodyweightKg, incrementKg) }
+        // A circuit member's sets know their circuit; their rest is the short one to the next exercise.
+        val circuit = item.circuit?.takeIf { Circuits.eligible(def, item) }
+        val restS = if (circuit != null) item.circuitRestS ?: Circuits.DEFAULT_CIRCUIT_REST_S else item.restS
+        val roundRestS = circuit?.let { item.roundRestS ?: Circuits.defaultRoundRest(listOf(item), catalog) }
         val rows = (0 until item.sets.coerceIn(1, 20)).flatMap { setIndex ->
             sides.map { side ->
                 val ghost = GhostValues.forSet(ghosts, setIndex, side)
@@ -104,8 +108,10 @@ object WorkoutPlanner {
                     workS = item.workS?.toDouble().takeIf { def.kind == ExerciseKind.INTERVAL },
                     restBetweenS = item.restBetweenS?.toDouble().takeIf { def.kind == ExerciseKind.INTERVAL },
                     repsPerSet = item.repsPerSet.takeIf { def.kind == ExerciseKind.INTERVAL },
-                    restS = item.restS,
+                    restS = restS,
                     bodyweightKg = bodyweightKg,
+                    circuit = circuit,
+                    roundRestS = roundRestS,
                 )
             }
         }
@@ -113,13 +119,23 @@ object WorkoutPlanner {
             skippedForInjury = advice.verdict == InjuryVerdict.AVOID)
     }
 
-    /** A further set copying the last one of the block (the "+ Satz" button). */
+    /**
+     * A further set copying the last one of the block (the "+ Satz" button; in
+     * a circuit one more round for the exercise). It is prefilled with the
+     * target, not with what the last set missed, so the next set is planned
+     * like the others and autoregulation can still move it.
+     */
     fun extraSet(block: List<ExerciseSet>, newId: () -> String): List<ExerciseSet> {
         val last = block.maxByOrNull { it.setIndex } ?: return emptyList()
         val sides = block.filter { it.setIndex == last.setIndex }.map { it.side }
         return sides.map { side ->
             val template = block.last { it.setIndex == last.setIndex && it.side == side }
-            template.copy(id = newId(), setIndex = last.setIndex + 1, completedAt = null, rir = null, note = null)
+            template.copy(
+                id = newId(), setIndex = last.setIndex + 1, completedAt = null, rir = null, note = null,
+                reps = template.targetReps ?: template.reps,
+                // Only where a duration is logged at all (climbing keeps its target alone).
+                durationS = template.targetDurationS?.takeIf { template.durationS != null } ?: template.durationS,
+            )
         }
     }
 }

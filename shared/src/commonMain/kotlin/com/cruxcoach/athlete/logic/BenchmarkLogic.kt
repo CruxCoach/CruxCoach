@@ -305,14 +305,51 @@ object LoadPrescriber {
     }
 }
 
-/** Order and rests of the guided training mode. */
+/**
+ * Order and rests of the guided training mode.
+ *
+ * Without circuits a training is played block by block, set by set, the two
+ * hands of one set next to each other. A circuit ([ExerciseSet.circuit]) is
+ * played where its first member block stands: the members' warm-ups first,
+ * block by block, then round by round ([ExerciseSet.setIndex]), within a
+ * round in block order. Its position follows the lowest member block, not the
+ * key, so blocks moving down (an exercise inserted before or inside it) never
+ * tear it apart.
+ */
 object PlayerQueue {
 
     const val SIDE_SWITCH_MAX_S = 30
     const val DEFAULT_REST_S = 90
 
-    fun ordered(sets: List<ExerciseSet>): List<ExerciseSet> =
-        sets.sortedWith(compareBy({ it.blockIndex }, { it.setIndex }, { it.side?.ordinal ?: -1 }))
+    /**
+     * The circuit each block is played in. A block counts as a member when
+     * any of its sets carries a key, so a warm-up row without one still opens
+     * the circuit instead of trailing it.
+     */
+    private fun blockCircuits(sets: List<ExerciseSet>): Map<Int, Int> =
+        sets.filter { it.circuit != null }.groupBy { it.blockIndex }.mapValues { (_, rows) ->
+            rows.minWith(compareBy({ if (it.setType == SetType.WARMUP) 1 else 0 }, { it.setIndex })).circuit!!
+        }
+
+    private val straight: Comparator<ExerciseSet> = compareBy({ it.blockIndex }, { it.setIndex }, { it.side?.ordinal ?: -1 })
+
+    fun ordered(sets: List<ExerciseSet>): List<ExerciseSet> {
+        if (sets.none { it.circuit != null }) return sets.sortedWith(straight)
+        val byBlock = blockCircuits(sets)
+        fun circuitOf(s: ExerciseSet): Int? = s.circuit ?: byBlock[s.blockIndex]
+        val start = sets.mapNotNull { s -> circuitOf(s)?.let { it to s.blockIndex } }
+            .groupBy({ it.first }, { it.second }).mapValues { (_, blocks) -> blocks.min() }
+        // Before the rounds: sets outside circuits (sorting exactly as without circuits) and the members' warm-ups.
+        fun pre(s: ExerciseSet) = circuitOf(s) == null || s.setType == SetType.WARMUP
+        return sets.sortedWith(compareBy(
+            { s -> circuitOf(s)?.let { start.getValue(it) } ?: s.blockIndex },
+            { if (pre(it)) 0 else 1 },
+            { if (pre(it)) 0 else it.setIndex },
+            { it.blockIndex },
+            { it.setIndex },
+            { it.side?.ordinal ?: -1 },
+        ))
+    }
 
     fun current(sets: List<ExerciseSet>): ExerciseSet? = ordered(sets).firstOrNull { !it.isCompleted }
 
@@ -322,21 +359,96 @@ object PlayerQueue {
         return list.drop(index + 1).firstOrNull { !it.isCompleted } ?: list.firstOrNull { !it.isCompleted && it.id != done.id }
     }
 
-    /** Rest after [done]: a short side switch between the hands of one set, otherwise the set's rest. */
+    /**
+     * Rest after [done]: a short side switch between the hands of one set,
+     * otherwise the set's rest. In a circuit the set's rest is the short one
+     * to the next exercise of the same round (0 = straight on); at the end of
+     * a round, or when the training leaves the circuit, the round rest follows.
+     */
     fun restAfter(done: ExerciseSet, next: ExerciseSet?, def: ExerciseDefinition): Int {
         if (next == null) return 0
         val rest = done.restS ?: def.defaults.restS ?: DEFAULT_REST_S
         val sideSwitch = next.blockIndex == done.blockIndex && next.setIndex == done.setIndex &&
             next.side != null && next.side != done.side
-        return if (sideSwitch) minOf(SIDE_SWITCH_MAX_S, rest) else rest
+        if (sideSwitch) return minOf(SIDE_SWITCH_MAX_S, rest)
+        if (done.circuit != null && done.setType != SetType.WARMUP) {
+            val sameRound = next.circuit == done.circuit && next.setType != SetType.WARMUP && next.setIndex == done.setIndex
+            return if (sameRound) rest else done.roundRestS ?: rest
+        }
+        return rest
     }
 
-    data class Position(val step: Int, val total: Int, val setNumber: Int, val setsInBlock: Int)
+    /**
+     * Where a set stands. [setNumber] of [setsInBlock] counts warm-ups;
+     * [workNumber] of [workTotal] counts only the block's work (and test) sets
+     * and is null on a warm-up. [round] of [rounds] is set for circuit sets
+     * ([round] null on a circuit warm-up).
+     */
+    data class Position(
+        val step: Int,
+        val total: Int,
+        val setNumber: Int,
+        val setsInBlock: Int,
+        val round: Int? = null,
+        val rounds: Int? = null,
+        val workNumber: Int? = null,
+        val workTotal: Int? = null,
+    )
 
     fun position(sets: List<ExerciseSet>, set: ExerciseSet): Position {
         val list = ordered(sets)
         val block = list.filter { it.blockIndex == set.blockIndex }
         val setIndices = block.map { it.setIndex }.distinct()
-        return Position(list.indexOfFirst { it.id == set.id } + 1, list.size, setIndices.indexOf(set.setIndex) + 1, setIndices.size)
+        val work = block.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().sorted()
+        val warmup = set.setType == SetType.WARMUP
+        val circuit = set.circuit ?: blockCircuits(sets)[set.blockIndex]
+        val roundIndices = if (circuit == null) emptyList() else {
+            val byBlock = blockCircuits(sets)
+            list.filter { (it.circuit ?: byBlock[it.blockIndex]) == circuit && it.setType != SetType.WARMUP }
+                .map { it.setIndex }.distinct().sorted()
+        }
+        return Position(
+            step = list.indexOfFirst { it.id == set.id } + 1,
+            total = list.size,
+            setNumber = setIndices.indexOf(set.setIndex) + 1,
+            setsInBlock = setIndices.size,
+            round = if (circuit == null || warmup) null else (roundIndices.indexOf(set.setIndex) + 1).takeIf { it > 0 },
+            rounds = if (circuit == null) null else roundIndices.size.takeIf { it > 0 },
+            workNumber = if (warmup) null else (work.indexOf(set.setIndex) + 1).takeIf { it > 0 },
+            workTotal = work.size.takeIf { it > 0 },
+        )
+    }
+
+    /**
+     * One page of the training view: one exercise ([blockIndexes] of one
+     * block), or a whole circuit with all its member blocks and their warm-ups.
+     */
+    data class Page(val blockIndexes: List<Int>, val circuit: Int?)
+
+    /** The pages of a training in the order the player reaches them ([ordered]). */
+    fun pages(sets: List<ExerciseSet>): List<Page> {
+        val byBlock = blockCircuits(sets)
+        val pages = mutableListOf<Page>()
+        val seenCircuits = mutableSetOf<Int>()
+        val seenBlocks = mutableSetOf<Int>()
+        for (s in ordered(sets)) {
+            val circuit = byBlock[s.blockIndex]
+            if (circuit != null) {
+                if (seenCircuits.add(circuit)) {
+                    pages += Page(byBlock.filterValues { it == circuit }.keys.sorted(), circuit)
+                }
+            } else if (seenBlocks.add(s.blockIndex)) {
+                pages += Page(listOf(s.blockIndex), null)
+            }
+        }
+        return pages
+    }
+
+    /** Index of the page [set] is on in [pages]; -1 when its block is not in [sets]. */
+    fun pageOf(sets: List<ExerciseSet>, set: ExerciseSet): Int {
+        val circuit = blockCircuits(sets)[set.blockIndex]
+        return pages(sets).indexOfFirst { page ->
+            if (circuit != null) page.circuit == circuit else page.circuit == null && set.blockIndex in page.blockIndexes
+        }
     }
 }

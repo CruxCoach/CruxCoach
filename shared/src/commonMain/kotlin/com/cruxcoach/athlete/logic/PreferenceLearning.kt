@@ -45,6 +45,20 @@ object PreferenceLearning {
     const val CHOSEN_KIND = "chosen_kind:"
     /** Ledger [SuggestionEventKind.FEEDBACK] focus for a duration chosen today; value = minutes, null = back to the usual. */
     const val CHOSEN_MINUTES = "chosen_minutes"
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus for a training format chosen today:
+     * `chosen_format:<format>` (`chosen_format:circuit` for the circuit chip). Recorded only; it is
+     * neither a kind ([CHOSEN_KIND]) nor a duration, and no exercise preference.
+     */
+    const val CHOSEN_FORMAT = "chosen_format:"
+    /**
+     * Ledger [SuggestionEventKind.FEEDBACK] focus when the athlete ended an exercise after at least one
+     * set ("Übung beenden"); slugs = the exercise, value = share of its work sets done. Unlike a skipped
+     * set it costs the exercise nothing: stopping after two good sets is no dislike.
+     */
+    const val ENDED_EARLY = "ended_early"
+    /** Ledger [SuggestionEventKind.FEEDBACK] focus for "+ Satz"; slugs = the exercise, value = its work sets now. */
+    const val EXTRA_SET = "extra_set"
 
     /** What the athlete chose again and again on one weekday: a kind of training and/or a duration. */
     data class UsualChoice(val isoDay: Int, val focus: SuggestionFocus?, val minutes: Int?)

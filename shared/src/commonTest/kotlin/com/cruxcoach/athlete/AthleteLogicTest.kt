@@ -695,6 +695,7 @@ class BenchmarkLogicTest {
         assertEquals(30, PlayerQueue.restAfter(left, right, pickup))
         assertEquals(120, PlayerQueue.restAfter(right, next, pickup))
         assertEquals(0, PlayerQueue.restAfter(next, null, pickup))
-        assertEquals(PlayerQueue.Position(2, 3, 1, 2), PlayerQueue.position(sets, right))
+        // Work-set numbering (training view) counts the same here: no warm-ups in the block.
+        assertEquals(PlayerQueue.Position(2, 3, 1, 2, workNumber = 1, workTotal = 2), PlayerQueue.position(sets, right))
     }
 }
