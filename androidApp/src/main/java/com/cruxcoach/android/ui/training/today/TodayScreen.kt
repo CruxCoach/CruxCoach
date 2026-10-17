@@ -1019,6 +1019,7 @@ private fun suggestionReasonText(reason: SuggestionReason): String = stringResou
     SuggestionReason.PLAN_REPLACED_FOR_INJURY -> R.string.trsg_reason_plan_replaced
     SuggestionReason.BOARD_SKIPPED_TODAY -> R.string.trsg_reason_board_skipped
     SuggestionReason.BOARD_LIGHT -> R.string.trsg_reason_board_light
+    SuggestionReason.HARD_DAY_TOMORROW -> R.string.trsg_reason_hard_tomorrow
     SuggestionReason.INJURY_CLIMBING_PAUSED -> R.string.trsg_reason_injury
     SuggestionReason.FINGERS_LOADED_RECENTLY -> R.string.trsg_reason_fingers_loaded
     SuggestionReason.FINGERS_TIRED -> R.string.trsg_reason_fingers_tired

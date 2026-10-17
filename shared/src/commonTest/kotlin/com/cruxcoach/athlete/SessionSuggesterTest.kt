@@ -597,6 +597,20 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun noFingerFocusTheDayBeforeABoardDayButAChosenOneStillRuns() {
+        // Audit P1-5: max hangs the day before the planned board day.
+        val fresh = SessionSuggester.suggest(input())
+        val beforeBoard = SessionSuggester.suggest(input(profile = profile.copy(weekPlan = mapOf(2 to PLAN_BOARD))))
+        if (fresh.focus == SuggestionFocus.FINGER_STRENGTH) {
+            assertTrue(beforeBoard.focus != SuggestionFocus.FINGER_STRENGTH, "${beforeBoard.focus}")
+            assertTrue(SuggestionReason.HARD_DAY_TOMORROW in beforeBoard.reasons, "${beforeBoard.reasons}")
+        }
+        val chosen = SessionSuggester.suggest(input(profile = profile.copy(weekPlan = mapOf(2 to PLAN_BOARD))).copy(wish = SuggestionFocus.FINGER_STRENGTH))
+        assertEquals(SuggestionFocus.FINGER_STRENGTH, chosen.focus)
+        assertTrue(SuggestionReason.HARD_DAY_TOMORROW in chosen.reasons, "${chosen.reasons}")
+    }
+
+    @Test
     fun limitSessionYesterdayBlocksMaxFingerWork() {
         val s = SessionSuggester.suggest(input(activities = climbed(yesterday, ClimbIntensity.LIMIT)))
         assertTrue(s.focus == SuggestionFocus.PULL_PUSH || s.focus == SuggestionFocus.LEGS_CORE, "${s.focus}")

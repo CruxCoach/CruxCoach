@@ -59,6 +59,10 @@ object PreferenceLearning {
      * neither a kind ([CHOSEN_KIND]) nor a duration, and no exercise preference.
      */
     const val CHOSEN_FORMAT = "chosen_format:"
+    /** Today's circuit rounds and rests ("rounds,circuitRest,roundRest", empty = coach default), for a restart. */
+    const val CIRCUIT_SETUP = "circuit_setup:"
+    /** A DISLIKE_EXERCISE with this value is "leave it out today" (no replacement), not "not today, something else". */
+    const val LEFT_OUT = 1.0
     /**
      * Ledger [SuggestionEventKind.FEEDBACK] focus when the athlete ended an exercise after at least one
      * set ("Übung beenden"); slugs = the exercise, value = share of its work sets done. Unlike a skipped

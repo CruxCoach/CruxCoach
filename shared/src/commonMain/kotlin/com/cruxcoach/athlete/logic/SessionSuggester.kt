@@ -33,6 +33,7 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -52,6 +53,8 @@ enum class SuggestionReason {
     BOARD_SKIPPED_TODAY,
     /** A planned or chosen board day while the fingers recover: a light volume session instead of limit moves. */
     BOARD_LIGHT,
+    /** Tomorrow is a board day or a usual climbing day: no finger focus today (audit P1-5). */
+    HARD_DAY_TOMORROW,
     INJURY_CLIMBING_PAUSED,
     FINGERS_LOADED_RECENTLY,
     FINGERS_TIRED,
@@ -430,6 +433,8 @@ object SessionSuggester {
                 weeklyEvidence(ctx, VolumeArea.FINGER)
                 null
             }
+            // The fingers go into tomorrow's board or climbing day fresh (audit P1-5); chosen finger work still runs.
+            hardDayTomorrow(input) -> { reasons += SuggestionReason.HARD_DAY_TOMORROW; null }
             else -> { reasons += SuggestionReason.FINGERS_RESTED; SuggestionFocus.FINGER_STRENGTH }
         } ?: weeklyFocus(ctx, weekly) ?: run {
             val pullLast = lastDay(input, setOf(ExerciseCategoryV2.PULL, ExerciseCategoryV2.PUSH))
@@ -594,6 +599,8 @@ object SessionSuggester {
                 climbingPaused -> { reasons.add(0, SuggestionReason.INJURY_CLIMBING_PAUSED); safe() }
                 fingerBlock != null -> { reasons.add(0, fingerBlock); pullPush() }
                 else -> {
+                    // Chosen anyway: the wish counts, the card says what is coming tomorrow.
+                    if (hardDayTomorrow(ctx.input)) reasons += SuggestionReason.HARD_DAY_TOMORROW
                     val result = build(ctx, SuggestionFocus.FINGER_STRENGTH,
                         withFocusAreas(slotsFor(SuggestionFocus.FINGER_STRENGTH), SuggestionFocus.FINGER_STRENGTH, areas, ctx), budget, planned, weekly = false)
                     val hasFingerMain = result.routine.items.any { !it.warmup && ctx.input.catalog[it.slug]?.category == ExerciseCategoryV2.FINGER }
@@ -749,6 +756,12 @@ object SessionSuggester {
 
     // ── Focus helpers ────────────────────────────────────────────────
 
+    /** Tomorrow's week-plan entry is a board day, or tomorrow is one of the athlete's usual climbing days. */
+    private fun hardDayTomorrow(input: SuggestionInput): Boolean {
+        val tomorrow = input.today.plus(DatePeriod(days = 1)).dayOfWeek.isoDayNumber
+        return input.profile.weekPlan[tomorrow] == PLAN_BOARD || tomorrow in input.coach.climbingDays
+    }
+
     private fun resolve(entry: String, routines: List<Routine>): Routine? =
         if (entry.startsWith("builtin:")) BuiltinRoutines.byKey(entry.removePrefix("builtin:"))
         else routines.firstOrNull { it.id == entry }
@@ -795,7 +808,9 @@ object SessionSuggester {
             if (fingerRemoved > 0) reasons += fingerBlock!!
             // The preferred duration is for free days; a planned workout is only cut when tired or short of time,
             // and only grows when the athlete chose more time today — by exercises after theirs, never by changing them.
-            var items = if (input.minutesToday == null) kept
+            // A duration only learned from habit never reshapes the athlete's own plan (audit P2-13).
+            val chosenToday = input.minutesToday?.takeIf { !input.minutesLearned }
+            var items = if (chosenToday == null) kept
                 else growToBudget(ctx, SuggestionFocus.PLANNED, kept, budget, listOf(Slot.ANTAGONIST, Slot.CORE, Slot.MOBILITY), sets = false)
             items = applyBlock(ctx, items)
             // "Easier" / "harder" from the card works on the athlete's own plan too (audit W8): a set less or more
@@ -804,7 +819,7 @@ object SessionSuggester {
                 -1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = max(1, it.sets - 1)) }
                 1 -> items = items.map { if (it.warmup || it.test) it else it.copy(sets = it.sets + 1) }
             }
-            if (lowEnergy || input.budgetFactor < 1.0 || input.minutesToday != null) {
+            if (lowEnergy || input.budgetFactor < 1.0 || chosenToday != null) {
                 val fitted = fitToBudget(items, budget, input.catalog)
                 if (fitted != items) reasons += SuggestionReason.SHORTENED_TO_TIME
                 items = fitted
@@ -835,7 +850,7 @@ object SessionSuggester {
         val items = warmup + after
         // A chosen duration goes to the board: what the warm-up and the block after it leave, in 5-minute steps.
         val plan = boardPlan(input, fresh, light).let { plan ->
-            val chosen = input.minutesToday ?: return@let plan
+            val chosen = input.minutesToday?.takeIf { !input.minutesLearned } ?: return@let plan
             plan.copy(minutes = ((chosen - estimateMinutes(items, input.catalog)) / 5.0).roundToInt().times(5).coerceIn(20, 180))
         }
         return finish(ctx, SuggestionFocus.BOARD_DAY, routineOf(SuggestionFocus.BOARD_DAY, items), planned, boardPlan = plan)

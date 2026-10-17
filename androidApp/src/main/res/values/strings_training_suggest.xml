@@ -32,6 +32,7 @@
     <string name="trsg_reason_plan_replaced">The planned training would load your injury too much – here is an alternative.</string>
     <string name="trsg_reason_board_skipped">The board is not a good idea today – an off-wall session instead.</string>
     <string name="trsg_reason_board_light">A light board session today: the fingers are still recovering, so easy volume instead of limit moves.</string>
+    <string name="trsg_reason_hard_tomorrow">A hard climbing day tomorrow – the fingers stay fresh for it today.</string>
     <string name="trsg_reason_injury">Climbing is paused: only exercises that spare the injury, one-sided work on the healthy side.</string>
     <string name="trsg_reason_fingers_loaded">Your fingers were loaded in the last 48 hours – today pull, push, legs or core.</string>
     <string name="trsg_reason_fingers_tired">Your fingers feel tired – no max finger load today.</string>
