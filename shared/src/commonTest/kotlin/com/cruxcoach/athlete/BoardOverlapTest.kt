@@ -100,6 +100,14 @@ class BoardOverlapTest {
     }
 
     @Test
+    fun aSessionLeftRunningCoversAtMostSixHours() {
+        // Started at 08:00 and ended by the 12-hour auto-end: the evening gym session is not the board's.
+        val autoEnded = evidence(sessions = listOf(BoardOverlap.SessionTimes("${day}T08:00:00", "${day}T20:00:00", 12 * 3600)))
+        assertEquals(0, covered(window("18:00:00", "19:30:00"), ClimbingDayKind.GYM_BOULDER, autoEnded))
+        assertEquals(60, covered(window("13:00:00", "15:00:00"), ClimbingDayKind.GYM_BOULDER, autoEnded))
+    }
+
+    @Test
     fun timestampsWithoutAClockTimeNeverMakeAnOverlap() {
         assertNull(BoardOverlap.epochMillis("2026-10-17", zone))
         assertNull(BoardOverlap.epochMillis("2026-10-17T12:00:00Z", zone))
