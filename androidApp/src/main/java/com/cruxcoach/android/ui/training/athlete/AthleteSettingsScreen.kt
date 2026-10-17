@@ -75,6 +75,8 @@ data class Learned(
     val ownLoads: List<Pair<Benchmark, com.cruxcoach.athlete.catalog.ExerciseDefinition>> = emptyList(),
     /** The athlete's real training length when it differs clearly from the preferred one. */
     val minutes: Int? = null,
+    /** Turned down lately: the day each may be suggested again (see [com.cruxcoach.athlete.logic.PreferenceLearning.resting]). */
+    val resting: Map<String, kotlinx.datetime.LocalDate> = emptyMap(),
 ) {
     val isEmpty: Boolean get() = liked.isEmpty() && less.isEmpty() && weekdays.isEmpty() && ownLoads.isEmpty() && minutes == null
     val count: Int get() = liked.size + less.size + weekdays.size + ownLoads.size + (if (minutes != null) 1 else 0)
@@ -127,9 +129,14 @@ class AthleteSettingsViewModel @Inject constructor(private val service: AthleteS
         // The value that plans each exercise and side now, when it is one the athlete's lower loads left.
         val own = benchmarks.groupBy { it.exerciseSlug to it.side }.values.mapNotNull { list -> list.maxByOrNull { it.measuredAt } }
             .filter { it.source == BenchmarkSource.AUTO && it.sets != null }
+        val resting = com.cruxcoach.athlete.logic.PreferenceLearning.resting(events, today, resets)
+            .filterKeys { it !in profile.excludedExercises }
+        val less = defs { it <= -1.0 }
         return Learned(
             liked = defs { it >= 1.0 },
-            less = defs { it <= -1.0 },
+            // A resting exercise is listed even when its dislike already faded below one step.
+            less = less + resting.keys.filter { slug -> less.none { it.slug == slug } }.map { service.catalog.fallbackFor(it) },
+            resting = resting,
             weekdays = com.cruxcoach.athlete.logic.PreferenceLearning.usualChoices(events, today, resets).values.sortedBy { it.isoDay },
             ownLoads = own.map { it to service.catalog.fallbackFor(it.exerciseSlug) }.sortedBy { it.second.slug },
             minutes = com.cruxcoach.athlete.logic.PreferenceLearning.suggestedSessionMinutes(
@@ -589,7 +596,12 @@ private fun LearnedSection(state: AthleteSettingsState, viewModel: AthleteSettin
     }
     if (learned.less.isNotEmpty()) {
         SectionTitle(stringResource(R.string.trlr_less))
-        learned.less.forEach { def -> row(def.name(lang), null, "learned_less_${def.slug}") { viewModel.forgetExercise(def.slug) } }
+        learned.less.forEach { def ->
+            // "Resting until Fri, 24 Oct": out of the suggestions until then; "forget" lets it back at once.
+            val until = learned.resting[def.slug]?.let { stringResource(R.string.trlr_resting_until,
+                com.cruxcoach.android.ui.training.coach.formatIsoDay(it.toString())) }
+            row(def.name(lang), until, "learned_less_${def.slug}") { viewModel.forgetExercise(def.slug) }
+        }
     }
     if (learned.ownLoads.isNotEmpty()) {
         SectionTitle(stringResource(R.string.trlr_own_loads))

@@ -491,6 +491,21 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
+    fun `today's choices survive a restart of the app`() {
+        // Device test 2026-10-17: the 90 minutes chosen on the card were gone after a restart.
+        val vm = loaded(TodayViewModel(service))
+        vm.saveQuickCheckin(null, emptySet())
+        until { vm.state.value.suggestion != null && !vm.state.value.asksBeforeSuggestion }
+        vm.chooseMinutes(90)
+        vm.chooseCircuit(true)
+        until { vm.state.value.minutesToday == 90 }
+        val again = loaded(TodayViewModel(service))
+        until { again.state.value.suggestion != null }
+        assertEquals(90, again.state.value.minutesToday)
+        assertEquals(vm.state.value.circuitToday, again.state.value.circuitToday)
+    }
+
+    @Test
     fun `what hurts today spares the suggestion but never empties an own workout`() {
         // Device test 2026-10-16: a sore shoulder took pull-ups, bench press and plank out of the athlete's own workout.
         val day = service.today().toString()

@@ -190,9 +190,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false
             circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
             runCatching {
-                service.repo.suggestionEventsForDay(today.toString())
-                    .filter { it.kind == SuggestionEventKind.SHOWN }
-                    .forEach { shownToday += signature(it.focus, it.slugs) }
+                val todays = service.repo.suggestionEventsForDay(today.toString()).sortedBy { it.createdAt }
+                todays.filter { it.kind == SuggestionEventKind.SHOWN }.forEach { shownToday += signature(it.focus, it.slugs) }
+                // After a restart, today's suggestion is the one the athlete shaped (device test 2026-10-17: the
+                // chosen 90 min were gone after the app was restarted).
+                restoreToday(todays)
             }
         }
         val activities = service.activities(days = 7 * 26)
@@ -299,6 +301,45 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 usual = lastUsual,
             )
         }
+    }
+
+    /** Today's swaps, drops, level, kind, time and circuit from the ledger, in the order they were made. */
+    private fun restoreToday(events: List<com.cruxcoach.athlete.model.SuggestionEvent>) {
+        var chosenKinds = 0
+        for (e in events) when (e.kind) {
+            SuggestionEventKind.SWAPPED -> {
+                val from = e.slugs.getOrNull(0)
+                val to = e.slugs.getOrNull(1)
+                if (from != null && to != null) {
+                    val key = originalOf(from)
+                    if (key == to) swapsToday.remove(key) else swapsToday[key] = to
+                }
+            }
+            SuggestionEventKind.NEXT -> when (e.feedback) {
+                SuggestionFeedback.DISLIKE_EXERCISE -> e.slugs.singleOrNull()?.let { dislikedToday += it }
+                SuggestionFeedback.TOO_EASY -> levelShift = (levelShift + 1).coerceAtMost(1)
+                SuggestionFeedback.TOO_HARD -> levelShift = (levelShift - 1).coerceAtLeast(-1)
+                else -> Unit
+            }
+            SuggestionEventKind.FEEDBACK -> {
+                val focus = e.focus.orEmpty()
+                when {
+                    focus == PreferenceLearning.CHOSEN_MINUTES -> minutesToday = e.value?.toInt()
+                    focus.startsWith(PreferenceLearning.CHOSEN_KIND) -> {
+                        chosenKinds++
+                        val name = focus.removePrefix(PreferenceLearning.CHOSEN_KIND)
+                        wish = name.takeIf { it.isNotEmpty() }?.let { runCatching { com.cruxcoach.athlete.logic.SuggestionFocus.valueOf(it) }.getOrNull() }
+                        ignoreUsualKind = wish == null
+                    }
+                    focus.startsWith(PreferenceLearning.CHOSEN_FORMAT) ->
+                        circuitToday = focus.removePrefix(PreferenceLearning.CHOSEN_FORMAT) == "circuit"
+                }
+            }
+            else -> Unit
+        }
+        // "Another suggestion" taps: a kind choice also writes a NEXT, so it does not count as one.
+        variant = (events.count { it.kind == SuggestionEventKind.NEXT && it.feedback != SuggestionFeedback.DISLIKE_EXERCISE } - chosenKinds)
+            .coerceAtLeast(0)
     }
 
     private fun signature(focus: String?, slugs: List<String>) = (focus ?: "") + "|" + slugs.joinToString(",")

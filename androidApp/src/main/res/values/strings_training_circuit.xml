@@ -11,6 +11,7 @@
     <string name="trcirc_today_chip">Circuit</string>
     <string name="trcirc_group">Circuit · %1$s · %2$s / %3$s</string>
     <string name="trcirc_sheet_title">Train as a circuit</string>
+    <string name="trlr_resting_until">Resting until %1$s</string>
     <plurals name="trcirc_rounds">
         <item quantity="one">%d round</item>
         <item quantity="other">%d rounds</item>
