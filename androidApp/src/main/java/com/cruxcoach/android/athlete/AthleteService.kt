@@ -849,6 +849,28 @@ class AthleteService @Inject constructor(
             (PreferenceLearning.resting(events, today, resets).keys + PreferenceLearning.keptEffect(PreferenceLearning.kept(events, today, resets)).resting.keys)
     }.getOrDefault(emptyMap<String, Double>() to emptySet())
 
+    // ── Weekly volume as a hint (comparison review #13) ──
+
+    /** This week's volume per area as the weekly targets show it (the block without fatigue signals). */
+    fun weeklyProgress(profile: AthleteProfile = repo.profile(), injuries: List<Injury> = repo.activeInjuries()): List<AreaProgress> {
+        val today = today()
+        val weekStart = WeeklyVolume.weekStartOf(today)
+        val coach = profile.coach
+        fun day(iso: String?) = iso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val block = TrainingBlocks.state(day(coach.blockStartDay), day(coach.targetDate), today)
+        val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal)
+        val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
+        val startMs = java.time.LocalDate.parse(weekStart.toString()).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
+        return WeeklyVolume.progress(sets, activities(days = 8), catalog, weekStart, targets, today)
+    }
+
+    /** How far the week is for the area [slug] trains – a hint where it is left out or removed, never a lock; null without a target. */
+    fun weeklyFor(slug: String): AreaProgress? = runCatching {
+        val area = WeeklyVolume.areaOf(catalog.fallbackFor(slug)) ?: return null
+        weeklyProgress().firstOrNull { it.area == area }?.takeIf { !it.target.isOff && it.goal > 0 }
+    }.getOrNull()
+
     // ── "From now on like this?" after a training (comparison review #3) ──
 
     /**

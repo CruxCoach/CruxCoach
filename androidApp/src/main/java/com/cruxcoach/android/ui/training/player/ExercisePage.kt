@@ -74,6 +74,8 @@ class PageActions(
     val onAddWarmups: () -> Unit,
     val onRemoveExercise: () -> Unit,
     val onAsPlanned: () -> Unit = {},
+    /** Where the week stands for an exercise's area (comparison review #13); null without a target. */
+    val weeklyFor: suspend (String) -> com.cruxcoach.athlete.logic.AreaProgress? = { null },
 )
 
 /**
@@ -396,7 +398,18 @@ private fun ExerciseMenu(
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
             title = { Text(stringResource(R.string.trw_remove_exercise)) },
-            text = { Text(stringResource(R.string.trw_remove_exercise_confirm, def.name(language))) },
+            text = {
+                val weekly by androidx.compose.runtime.produceState<com.cruxcoach.athlete.logic.AreaProgress?>(null, def.slug) {
+                    value = actions.weeklyFor(def.slug)
+                }
+                Column {
+                    Text(stringResource(R.string.trw_remove_exercise_confirm, def.name(language)))
+                    weekly?.let { p ->
+                        Text(com.cruxcoach.android.ui.training.workouts.weeklyHintText(p), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp).testTag("player_remove_weekly"))
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = { confirmRemove = false; actions.onRemoveExercise() }, modifier = Modifier.testTag("player_remove_confirm")) {
                     Text(stringResource(R.string.tr_action_delete))

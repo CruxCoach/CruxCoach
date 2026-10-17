@@ -203,6 +203,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   move one step from there – with Undo, listed under "What the coach
   learned" with "Forget"; "No" is not asked again for three weeks. "Back to
   normal" on the chip now survives a restart too.
+- The weekly targets show where exercises are left out or edited, as a hint
+  and never a lock: "leave out today" on the card and removing or skipping
+  an exercise in the training say "Pulling this week: 4/6 sets", and the
+  workout editor shows per area where the week stands and what the workout
+  adds ("· this workout +6").
 - Today's form is visible and overridable: when the check-in or hard
   climbing earlier today takes a set off or lowers a load, the card shows
   the sets the training will plan and the training page says why ("day form

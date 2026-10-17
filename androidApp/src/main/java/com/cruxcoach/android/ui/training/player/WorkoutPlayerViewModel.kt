@@ -581,6 +581,10 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             ?: page.sets.firstOrNull { !it.isCompleted }
     }
 
+    /** Where the week stands for the area [slug] trains, for a hint when it is left out or removed (comparison review #13). */
+    suspend fun weeklyFor(slug: String): com.cruxcoach.athlete.logic.AreaProgress? =
+        withContext(Dispatchers.IO) { service.ensureReady(); service.weeklyFor(slug) }
+
     /** What could replace the page's exercise: the suggestion's filters with today's place and injuries. */
     suspend fun alternatives(): List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative> {
         val st = _state.value

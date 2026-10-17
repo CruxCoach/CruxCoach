@@ -31,7 +31,6 @@ import com.cruxcoach.android.ui.theme.CruxCoachDesign
 import com.cruxcoach.android.ui.training.formatNumber
 import com.cruxcoach.athlete.logic.AreaProgress
 import com.cruxcoach.athlete.logic.AreaStatus
-import com.cruxcoach.athlete.logic.TrainingBlocks
 import com.cruxcoach.athlete.logic.VolumeArea
 import com.cruxcoach.athlete.logic.WeeklyVolume
 import com.cruxcoach.athlete.model.AthleteProfile
@@ -43,7 +42,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.datetime.LocalDate
 import javax.inject.Inject
 import kotlin.math.max
 
@@ -92,33 +90,20 @@ class WeeklyVolumeViewModel @Inject constructor(private val service: AthleteServ
     }
 
     private fun compute(profile: AthleteProfile, injuries: List<Injury>) {
-        val today = service.today()
-        val weekStart = WeeklyVolume.weekStartOf(today)
-        val coach = profile.coach
         // Display only: the block without fatigue signals (Today may pull a deload forward).
-        val block = TrainingBlocks.state(
-            coach.blockStartDay?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
-            coach.targetDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
-            today,
-        )
-        val targets = WeeklyVolume.targets(profile, block, injuries, coach.trainingDaysPerWeek ?: profile.weeklyGoal)
-        val repo = service.repo
-        val workoutDays = repo.workoutsBetween(weekStart.toString(), today.toString()).associate { it.id to LocalDate.parse(it.day) }
-        val startMs = java.time.LocalDate.parse(weekStart.toString()).atStartOfDay(java.time.ZoneId.systemDefault())
-            .toInstant().toEpochMilli()
-        val sets = repo.completedSetsSince(startMs).mapNotNull { set -> workoutDays[set.workoutId]?.let { it to set } }
-        val activities = service.activities(days = 8)
         _state.value = WeeklyVolumeState(
             loading = false,
-            progress = WeeklyVolume.progress(sets, activities, service.catalog, weekStart, targets, today),
-            paused = repo.openPause() != null,
+            progress = service.weeklyProgress(profile, injuries),
+            paused = service.repo.openPause() != null,
             own = profile.ownWeeklyTargets,
         )
     }
 }
 
 @Composable
-internal fun volumeAreaLabel(area: VolumeArea): String = stringResource(when (area) {
+internal fun volumeAreaLabel(area: VolumeArea): String = stringResource(volumeAreaLabelRes(area))
+
+internal fun volumeAreaLabelRes(area: VolumeArea): Int = when (area) {
     VolumeArea.FINGER -> R.string.trv_area_finger
     VolumeArea.PULL -> R.string.trv_area_pull
     VolumeArea.PUSH -> R.string.trv_area_push
@@ -126,7 +111,22 @@ internal fun volumeAreaLabel(area: VolumeArea): String = stringResource(when (ar
     VolumeArea.CORE -> R.string.trv_area_core
     VolumeArea.ANTAGONIST -> R.string.trv_area_antagonist
     VolumeArea.MOBILITY -> R.string.trv_area_mobility
-})
+}
+
+/**
+ * "Pulling this week: 4/6 sets" (+ "this workout +6"): the weekly plan as a soft hint where exercises are left
+ * out, removed or edited (comparison review #13) – information, never a lock.
+ */
+internal fun weeklyHintText(res: android.content.res.Resources, p: AreaProgress, adds: Int? = null): String {
+    val area = res.getString(volumeAreaLabelRes(p.area))
+    val base = res.getString(if (p.area == VolumeArea.FINGER) R.string.trv_hint_sessions else R.string.trv_hint_sets,
+        area, formatNumber(p.effective), p.goal)
+    return if (adds != null && adds > 0) res.getString(R.string.trv_hint_plus, base, adds) else base
+}
+
+@Composable
+internal fun weeklyHintText(p: AreaProgress, adds: Int? = null): String =
+    weeklyHintText(androidx.compose.ui.platform.LocalResources.current, p, adds)
 
 /**
  * "Diese Woche": one compact bar per area — logged work in full colour,
