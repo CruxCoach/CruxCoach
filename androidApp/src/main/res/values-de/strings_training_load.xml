@@ -130,6 +130,10 @@
     <string name="trl_day_intensity">Wie hart</string>
     <string name="trl_day_note">Notiz (freiwillig)</string>
     <string name="trl_day_from_health">Aus Health Connect übernommen.</string>
+    <string name="trl_day_overlap">Überschneidet sich mit der Board-Session (%1$d von %2$d min) – nicht doppelt gezählt.</string>
+    <string name="trl_day_overlap_counted">Überschneidet sich mit der Board-Session (%1$d von %2$d min) – trotzdem gezählt.</string>
+    <string name="trl_day_count_anyway">Trotzdem zählen</string>
+    <string name="trl_day_count_anyway_hint">Nur wenn es zusätzliches Klettern war, das das Board-Logbuch nicht kennt.</string>
     <string name="trl_kind_gym_boulder">Halle Bouldern</string>
     <string name="trl_kind_gym_rope">Halle Seil</string>
     <string name="trl_kind_outdoor">Fels</string>

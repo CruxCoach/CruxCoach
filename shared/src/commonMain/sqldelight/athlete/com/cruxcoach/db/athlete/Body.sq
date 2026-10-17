@@ -55,5 +55,8 @@ INSERT OR REPLACE INTO athlete_setting(key, value, updated_at) VALUES (?, ?, ?);
 getSetting:
 SELECT value FROM athlete_setting WHERE key = ?;
 
+getSettingsInRange:
+SELECT key, value FROM athlete_setting WHERE key >= ? AND key < ?;
+
 getAllSettings:
 SELECT * FROM athlete_setting;

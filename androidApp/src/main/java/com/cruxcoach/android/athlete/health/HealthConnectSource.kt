@@ -13,6 +13,7 @@ import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.cruxcoach.android.athlete.AthleteService
+import com.cruxcoach.athlete.logic.BoardOverlap
 import com.cruxcoach.athlete.model.ClimbIntensity
 import com.cruxcoach.athlete.model.ClimbingDayEntry
 import com.cruxcoach.athlete.model.ClimbingDayKind
@@ -45,6 +46,8 @@ data class HealthSyncResult(
     val updated: Int = 0,
     /** Sessions left out because the athlete already logged that day by hand. */
     val skippedManual: Int = 0,
+    /** Sessions the board logbook already counts in part or in full (not counted twice). */
+    val boardOverlaps: Int = 0,
     val failed: Boolean = false,
 )
 
@@ -123,26 +126,42 @@ class HealthConnectSource @Inject constructor(
                 return@guarded null
             }
             service.ensureReady()
-            val repo = service.repo
             val zone = ZoneId.systemDefault()
-            val today = service.today()
-            val from = today.minus(DatePeriod(days = days - 1))
+            val from = service.today().minus(DatePeriod(days = days - 1))
             val start = from.toJavaLocalDate().atStartOfDay(zone).toInstant()
             val records = client.readRecords(
                 ReadRecordsRequest(ExerciseSessionRecord::class, TimeRangeFilter.between(start, Instant.now())),
             ).records
-            val existing = repo.climbingDaysSince(from.toString())
-            val manualDays = existing.filter { it.source == ClimbingDaySource.MANUAL }.map { it.day }.toSet()
-            var added = 0
-            var updated = 0
-            var skipped = 0
-            for (r in records) {
+            importSessions(records.map { r -> HealthSession(r.metadata.id, r.exerciseType, r.title, r.notes, r.startTime, r.endTime) }, from, zone)
+        }
+        _lastSync.value = result ?: HealthSyncResult(System.currentTimeMillis(), failed = true)
+        result?.added ?: 0
+    }
+
+    /**
+     * The import of [sessions] since [from], on plain session data so tests can feed it without Health
+     * Connect. Each session's minutes that a board session or logged attempts already cover are stored with
+     * the entry ([AthleteService.saveBoardOverlap]) and not counted twice (audit W3).
+     */
+    internal fun importSessions(sessions: List<HealthSession>, from: LocalDate, zone: ZoneId): HealthSyncResult {
+        val repo = service.repo
+        val existing = repo.climbingDaysSince(from.toString())
+        val manualDays = existing.filter { it.source == ClimbingDaySource.MANUAL }.map { it.day }.toSet()
+        // A board session may have ended a moment ago: read the logbook fresh.
+        service.invalidateLogbook()
+        val evidence = runCatching { service.boardEvidence(from.minus(DatePeriod(days = 1)).toString()) }.getOrDefault(BoardOverlap.Evidence())
+        var added = 0
+        var updated = 0
+        var skipped = 0
+        var overlapping = 0
+        // One transaction: the screens re-derive once, not per session.
+        repo.transaction {
+            for (r in sessions) {
                 val kind = HealthConnectMapping.kindFor(r.exerciseType, r.title, r.notes) ?: continue
-                val day = r.startTime.atZone(zone).toLocalDate().toString()
-                val minutes = Duration.between(r.startTime, r.endTime).toMinutes().toInt()
+                val day = r.start.atZone(zone).toLocalDate().toString()
+                val minutes = Duration.between(r.start, r.end).toMinutes().toInt()
                 if (minutes < HealthConnectMapping.MIN_MINUTES) continue
-                val externalId = r.metadata.id
-                val known = repo.climbingDayByExternalId(externalId)
+                val known = repo.climbingDayByExternalId(r.id)
                 if (known == null && day in manualDays) { skipped++; continue }
                 if (known != null && known.source != ClimbingDaySource.HEALTH_CONNECT) continue
                 val entry = ClimbingDayEntry(
@@ -152,7 +171,7 @@ class HealthConnectSource @Inject constructor(
                     minutes = minutes.coerceAtMost(HealthConnectMapping.MAX_MINUTES),
                     intensity = HealthConnectMapping.intensityFor(r.title, r.notes),
                     source = ClimbingDaySource.HEALTH_CONNECT,
-                    externalId = externalId,
+                    externalId = r.id,
                     note = r.title?.take(120),
                     updatedAt = System.currentTimeMillis(),
                 )
@@ -162,11 +181,15 @@ class HealthConnectSource @Inject constructor(
                     // Keep an intensity the athlete may have corrected in the app.
                     repo.saveClimbingDay(entry.copy(intensity = known.intensity)); updated++
                 }
+                val covered = BoardOverlap.coveredMinutes(
+                    BoardOverlap.Window(r.start.toEpochMilli(), r.end.toEpochMilli()), entry.minutes, day, kind, evidence,
+                )
+                // Every sync looks again: a board session saved after the watch's keeps the entry honest.
+                service.saveBoardOverlap(entry.id, coveredMinutes = covered)
+                if (covered > 0) overlapping++
             }
-            HealthSyncResult(System.currentTimeMillis(), added, updated, skipped)
         }
-        _lastSync.value = result ?: HealthSyncResult(System.currentTimeMillis(), failed = true)
-        result?.added ?: 0
+        return HealthSyncResult(System.currentTimeMillis(), added, updated, skipped, boardOverlaps = overlapping)
     }
 
     /** Opens Health Connect's own settings (manage or revoke access). */
@@ -222,6 +245,16 @@ class HealthConnectSource @Inject constructor(
         private val AWAKE_STAGES = setOf(SleepSessionRecord.STAGE_TYPE_AWAKE, SleepSessionRecord.STAGE_TYPE_OUT_OF_BED)
     }
 }
+
+/** A Health Connect exercise session as the import needs it. */
+data class HealthSession(
+    val id: String,
+    val exerciseType: Int,
+    val title: String?,
+    val notes: String?,
+    val start: Instant,
+    val end: Instant,
+)
 
 /** Merging of overlapping sleep sessions; pure for tests. */
 object SleepMath {
