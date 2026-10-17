@@ -47,11 +47,16 @@ object MapMarkerLayer {
 
     const val SOURCE_ID = "board-locations"
     const val SOURCE_SELECTED = "board-location-selected"
+    const val SOURCE_USER = "board-map-user"
 
     const val LAYER_CLUSTERS = "board-locations-clusters"
     const val LAYER_POINTS = "board-locations-points"
     const val LAYER_SELECTED_HALO = "board-locations-selected-halo"
     const val LAYER_SELECTED = "board-locations-selected"
+    const val LAYER_USER_ACCURACY = "board-map-user-accuracy"
+    const val LAYER_USER_DOT = "board-map-user-dot"
+
+    private val USER_BLUE = android.graphics.Color.parseColor("#1A73E8")
 
     private const val PROP_ID = "id"
     private const val PROP_ICON = "icon"
@@ -106,6 +111,38 @@ object MapMarkerLayer {
         if (style.getSource(SOURCE_SELECTED) == null) {
             style.addSource(
                 GeoJsonSource(SOURCE_SELECTED, FeatureCollection.fromFeatures(emptyList()), GeoJsonOptions().withMaxZoom(22))
+            )
+        }
+
+        // "You are here" sits below the venue markers, so a gym at the
+        // user's own position stays visible and tappable.
+        if (style.getSource(SOURCE_USER) == null) {
+            style.addSource(GeoJsonSource(SOURCE_USER, FeatureCollection.fromFeatures(emptyList())))
+        }
+        if (style.getLayer(LAYER_USER_ACCURACY) == null) {
+            style.addLayer(
+                CircleLayer(LAYER_USER_ACCURACY, SOURCE_USER).apply {
+                    setProperties(
+                        PropertyFactory.circleColor(USER_BLUE),
+                        PropertyFactory.circleOpacity(0.12f),
+                        PropertyFactory.circleStrokeColor(USER_BLUE),
+                        PropertyFactory.circleStrokeOpacity(0.35f),
+                        PropertyFactory.circleStrokeWidth(1f),
+                        PropertyFactory.circleRadius(0f),
+                    )
+                }
+            )
+        }
+        if (style.getLayer(LAYER_USER_DOT) == null) {
+            style.addLayer(
+                CircleLayer(LAYER_USER_DOT, SOURCE_USER).apply {
+                    setProperties(
+                        PropertyFactory.circleColor(USER_BLUE),
+                        PropertyFactory.circleRadius(7f),
+                        PropertyFactory.circleStrokeColor(0xFFFFFFFF.toInt()),
+                        PropertyFactory.circleStrokeWidth(3f),
+                    )
+                }
             )
         }
 
@@ -281,8 +318,35 @@ object MapMarkerLayer {
         }
     }
 
+    /**
+     * Show (or clear) the user's position: a blue dot and, around it, the
+     * accuracy as a circle of the right size in metres at every zoom.
+     */
+    fun setUserPosition(style: Style, position: UserPosition?) {
+        if (!style.isFullyLoaded) return
+        val source = style.getSourceAs<GeoJsonSource>(SOURCE_USER) ?: return
+        if (position == null) {
+            source.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+            return
+        }
+        source.setGeoJson(Feature.fromGeometry(Point.fromLngLat(position.lng, position.lat)))
+        // Metres per pixel at zoom 0 for MapLibre's 512-px world, at this latitude.
+        val metersPerPixelZ0 = 40_075_016.686 * kotlin.math.cos(Math.toRadians(position.lat)) / 512.0
+        val radiusZ0 = ((position.accuracyMeters ?: 0f) / metersPerPixelZ0).toFloat()
+        style.getLayer(LAYER_USER_ACCURACY)?.setProperties(
+            PropertyFactory.circleRadius(
+                Expression.interpolate(
+                    Expression.exponential(2f), Expression.zoom(),
+                    Expression.stop(0, radiusZ0),
+                    Expression.stop(22, radiusZ0 * (1 shl 22)),
+                )
+            )
+        )
+    }
+
     /** Update the selection highlight to a single venue, or clear it. */
     fun setSelected(style: Style, venue: MapVenue?, density: Float) {
+        if (!style.isFullyLoaded) return
         val collection = if (venue == null) {
             FeatureCollection.fromFeatures(emptyList())
         } else {
@@ -314,6 +378,7 @@ object MapMarkerLayer {
      * no cluster was tapped. Caller eases the camera there.
      */
     fun clusterExpansionAt(map: MapLibreMap, style: Style, screenX: Float, screenY: Float): ClusterTarget? {
+        if (!style.isFullyLoaded) return null
         val pixel = android.graphics.PointF(screenX, screenY)
         val feature = map.queryRenderedFeatures(pixel, LAYER_CLUSTERS).firstOrNull() ?: return null
         val geometry = feature.geometry()

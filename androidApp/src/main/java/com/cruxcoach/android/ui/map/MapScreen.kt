@@ -11,6 +11,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberStandardBottomSheetState
@@ -33,6 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.common.LocateResult
+import com.cruxcoach.android.ui.common.locateFailureText
+import com.cruxcoach.android.ui.common.locateFixLabel
+import com.cruxcoach.android.ui.common.openLocateFix
+import com.cruxcoach.android.ui.common.rememberLocateMe
 import com.cruxcoach.android.util.isNetworkAvailable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -99,6 +105,48 @@ fun MapScreen(
     var overlayPx by remember { mutableIntStateOf(0) }
     var peekPx by remember { mutableIntStateOf(0) }
     var peekVenueId by remember { mutableStateOf<String?>(null) }
+    // Where "My location" found the user: kept in memory for this screen only.
+    var userPosition by remember { mutableStateOf<UserPosition?>(null) }
+    var locateFailure by remember { mutableStateOf<LocateResult?>(null) }
+    val locateMe = rememberLocateMe { result ->
+        when (result) {
+            is LocateResult.Found -> {
+                val position = UserPosition(result.lat, result.lng, result.accuracyMeters)
+                userPosition = position
+                val (map, _) = mapHandle ?: return@rememberLocateMe
+                // Frame the user together with the closest boards that pass the filters.
+                val frame = nearestFrame(state.filteredVenues, position.lat, position.lng)
+                val margin = with(density) { 56.dp.roundToPx() }
+                runCatching {
+                    if (frame == null) {
+                        map.easeCamera(CameraUpdateFactory.newLatLngZoom(LatLng(position.lat, position.lng), 12.0), 700)
+                    } else {
+                        map.easeCamera(
+                            CameraUpdateFactory.newLatLngBounds(
+                                LatLngBounds.from(frame.north, frame.east, frame.south, frame.west),
+                                margin, overlayPx + margin, margin, peekPx + margin,
+                            ),
+                            700,
+                        )
+                    }
+                }
+            }
+            else -> locateFailure = result
+        }
+    }
+    val failure = locateFailure
+    val failureText = failure?.let { locateFailureText(it) }
+    val failureFix = failure?.let { locateFixLabel(it) }
+    LaunchedEffect(failure) {
+        if (failure == null || failureText == null) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(failureText, failureFix, duration = SnackbarDuration.Long)
+        if (result == SnackbarResult.ActionPerformed) openLocateFix(context, failure)
+        locateFailure = null
+    }
+    LaunchedEffect(mapHandle, userPosition) {
+        val (_, style) = mapHandle ?: return@LaunchedEffect
+        MapMarkerLayer.setUserPosition(style, userPosition)
+    }
 
     // Once a style has loaded, the areas viewed stay in MapLibre's cache.
     // The dialog says the map needs internet the first time, so it only
@@ -142,7 +190,7 @@ fun MapScreen(
 
     LaunchedEffect(styleUrl) {
         val (map, style) = mapHandle ?: return@LaunchedEffect
-        if (style.uri == styleUrl) return@LaunchedEffect
+        if (runCatching { style.uri }.getOrNull() == styleUrl) return@LaunchedEffect
         map.setStyle(Style.Builder().fromUri(styleUrl)) { newStyle ->
             MapMarkerLayer.install(newStyle, markerTheme, pixelDensity, clusterBrand)
             mapHandle = map to newStyle
@@ -154,13 +202,14 @@ fun MapScreen(
         if (style.isFullyLoaded) MapMarkerLayer.setClusterStyle(style, markerTheme, pixelDensity, clusterBrand)
     }
 
-    LaunchedEffect(mapHandle, state.filteredVenues, state.selectedVenueId) {
+    // A selected place the filters hide is added to the data; any other
+    // selection only moves the highlight and never re-pushes all venues.
+    val selectedOutsideFilter = state.selectedVenueId
+        ?.takeIf { id -> state.filteredVenues.none { it.id == id } }
+    LaunchedEffect(mapHandle, state.filteredVenues, selectedOutsideFilter) {
         val (_, style) = mapHandle ?: return@LaunchedEffect
-        val selected = state.unfilteredVenues.firstOrNull { it.id == state.selectedVenueId }
-        val displayed = if (selected != null && state.filteredVenues.none { it.id == selected.id }) {
-            state.filteredVenues + selected
-        } else state.filteredVenues
-        MapMarkerLayer.setData(style, displayed, pixelDensity)
+        val extra = selectedOutsideFilter?.let { id -> state.unfilteredVenues.firstOrNull { it.id == id } }
+        MapMarkerLayer.setData(style, if (extra != null) state.filteredVenues + extra else state.filteredVenues, pixelDensity)
     }
 
     val selectedVenue = remember(state.selectedVenueId, state.unfilteredVenues) {
@@ -326,8 +375,8 @@ fun MapScreen(
 
     MapScreenLayout(
         state = state,
-        inView = remember(state.filteredVenues, viewport) {
-            viewport?.let { venuesInView(state.filteredVenues, it) } ?: VenuesInView.Empty
+        inView = remember(state.filteredVenues, viewport, userPosition) {
+            viewport?.let { venuesInView(state.filteredVenues, it, origin = userPosition) } ?: VenuesInView.Empty
         },
         selectedVenue = selectedVenue,
         search = search,
@@ -380,6 +429,9 @@ fun MapScreen(
             peekPx = px
             peekVenueId = venueId
         },
+        userPosition = userPosition,
+        locating = locateMe.locating,
+        onLocateMe = locateMe::locate,
     ) {
         MapView(
             styleUrl = styleUrl,
@@ -405,6 +457,7 @@ fun MapScreen(
                 val id = MapMarkerLayer.venueIdAt(map, x, y, pixelDensity)
                 if (id != null) {
                     viewModel.selectVenue(id)
+                    scope.launch { scaffoldState.bottomSheetState.partialExpand() }
                     return@MapView true
                 }
                 // A tap on empty map closes the selected place, like other map apps.
@@ -416,7 +469,7 @@ fun MapScreen(
             },
             onCameraIdle = { map ->
                 refreshViewport(map)
-                if (startViewApplied) writeCamera(mapState, map.cameraPosition)
+                if (startViewApplied) writeCamera(mapState, map)
             },
         )
     }
@@ -456,13 +509,15 @@ private fun readCamera(prefs: SharedPreferences): MapStartView.Camera? {
     return MapStartView.Camera(lat, lng, zoom)
 }
 
-private fun writeCamera(prefs: SharedPreferences, camera: CameraPosition) {
-    val target = camera.target ?: return
-    val wrapped = target.wrap()
+/** Saves the centre of the whole map view (not of the padded area a
+ *  selection leaves behind), so the map reopens exactly where it was. */
+private fun writeCamera(prefs: SharedPreferences, map: MapLibreMap) {
+    if (map.width <= 0f || map.height <= 0f) return
+    val center = map.projection.fromScreenLocation(PointF(map.width / 2f, map.height / 2f)).wrap()
     prefs.edit()
-        .putFloat(KEY_CAMERA_LAT, wrapped.latitude.toFloat())
-        .putFloat(KEY_CAMERA_LNG, wrapped.longitude.toFloat())
-        .putFloat(KEY_CAMERA_ZOOM, camera.zoom.toFloat())
+        .putFloat(KEY_CAMERA_LAT, center.latitude.toFloat())
+        .putFloat(KEY_CAMERA_LNG, center.longitude.toFloat())
+        .putFloat(KEY_CAMERA_ZOOM, map.cameraPosition.zoom.toFloat())
         .apply()
 }
 

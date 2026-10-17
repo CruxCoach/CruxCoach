@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -107,6 +108,9 @@ internal fun BoardSelectionDialog(
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
+    /** "Find a gym near you": the gym search in near-me mode. The location
+     *  permission is asked for only after this tap. Null hides the row. */
+    onFindNearbyGym: (() -> Unit)? = null,
     onFindViaBluetooth: (() -> Unit)? = null,
     /** Set once the user came back from the Bluetooth search: the recognised family, or
      *  [BluetoothFamilyResult.None]. Null = no search happened in this picker session. */
@@ -297,6 +301,19 @@ internal fun BoardSelectionDialog(
             ) {
                 mismatch?.let {
                     BoardMismatchExplanation(it)
+                }
+                // The gyms around the user, each with the boards it has: the
+                // quickest way to the right board when you stand in your gym.
+                onFindNearbyGym?.let { find ->
+                    TextButton(
+                        onClick = find,
+                        modifier = Modifier.fillMaxWidth().testTag("board_find_nearby_gym"),
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) {
+                        Icon(Icons.Default.MyLocation, null, Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.board_find_nearby_gym), modifier = Modifier.weight(1f))
+                    }
                 }
                 onFindViaBluetooth?.let { find ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

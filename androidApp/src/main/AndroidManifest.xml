@@ -46,14 +46,15 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- Wi-Fi Direct requires fine location through Android 12; Android 12
-         additionally requires coarse+fine to be requested as a pair. BLE
-         uses these declarations on older releases too. Android 13+ uses the
-         nearby-device permissions above instead. -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="32" />
+    <!-- Location, asked for only when the user taps "My location" on the board
+         map or "Gyms near me" in the gym search (one position, used on the
+         device to sort the bundled gym list; nothing is stored or sent).
+         Requested as a pair so the user can choose approximate.
+         Also: Wi-Fi Direct requires fine location through Android 12 and BLE
+         scanning needs it through Android 11; Android 13+ uses the
+         nearby-device permissions above for those. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"

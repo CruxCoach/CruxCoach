@@ -44,7 +44,10 @@ class GymBoardPickerViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun createViewModel() = GymBoardPickerViewModel(repo).also { viewModel = it }
+    /** Rows of the bundled map snapshot the picker falls back to. */
+    private val bundled = mutableListOf<BoardLocation>()
+
+    private fun createViewModel() = GymBoardPickerViewModel(repo) { bundled.toList() }.also { viewModel = it }
 
     private fun loc(
         id: String,
@@ -221,6 +224,49 @@ class GymBoardPickerViewModelTest {
             while (seen.wallOptions.isEmpty()) seen = awaitItem()
             val ids = seen.wallOptions.map { it.productSizeId }
             assertEquals(listOf(10, 20), ids)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `near me falls back to the bundled snapshot and offers its Kilter walls`() = runTest {
+        // Nothing synced yet (first start): the bundled map rows stand in.
+        bundled += com.cruxcoach.android.ui.map.mapBoard(
+            "pages-k0", 48.14, 11.58, name = "City Boulder", productSizeId = 10, sizeLabel = "12x12",
+        )
+        bundled += com.cruxcoach.android.ui.map.mapBoard(
+            "pages-k1", 48.14, 11.58, name = "City Boulder", productSizeId = 26, sizeLabel = "10x12",
+        )
+        bundled += com.cruxcoach.android.ui.map.mapBoard("pages-far", 52.52, 13.40, name = "Berlin Gym")
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.showNearby(48.137, 11.575)
+            while (seen.searching || seen.results.isEmpty()) seen = awaitItem()
+            assertEquals(listOf("City Boulder"), seen.results.map { it.name })
+            assertTrue(seen.nearby)
+            assertTrue(seen.distanceById.getValue(seen.results.single().id) < 1_000.0)
+            assertEquals(listOf(com.cruxcoach.domain.board.BoardBrand.KILTER), seen.brandsById[seen.results.single().id])
+
+            vm.selectGym(seen.results.single())
+            while (seen.wallOptions.isEmpty()) seen = awaitItem()
+            assertEquals(setOf(10, 26), seen.wallOptions.map { it.productSizeId }.toSet())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `typing leaves near-me mode`() = runTest {
+        bundled += com.cruxcoach.android.ui.map.mapBoard("pages-k0", 48.14, 11.58, name = "City Boulder")
+        val vm = createViewModel()
+        vm.state.test(timeout = IO_WAIT) {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.showNearby(48.137, 11.575)
+            while (seen.searching || seen.results.isEmpty()) seen = awaitItem()
+            vm.onQueryChange("Ci")
+            while (seen.nearby || seen.distanceById.isNotEmpty()) seen = awaitItem()
             cancelAndIgnoreRemainingEvents()
         }
     }

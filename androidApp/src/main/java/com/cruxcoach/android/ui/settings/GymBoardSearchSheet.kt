@@ -8,12 +8,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,6 +24,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.board.ZoomableBoardPreview
+import com.cruxcoach.android.ui.common.LocateResult
+import com.cruxcoach.android.ui.common.distanceLabel
+import com.cruxcoach.android.ui.common.locateFailureText
+import com.cruxcoach.android.ui.common.locateFixLabel
+import com.cruxcoach.android.ui.common.openLocateFix
+import com.cruxcoach.android.ui.common.rememberLocateMe
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.domain.board.BoardBrand
@@ -34,6 +42,11 @@ import com.cruxcoach.domain.board.MoonBoardVariant
  * (FEAT-031): the pick is routed through the shared [BoardPickerViewModel]
  * — the single selection source for Kilter, MoonBoard and the Aurora
  * family — then [onClose] closes the sheet.
+ *
+ * "Gyms near me" lists the closest gyms with a supported board. The location
+ * permission is asked for only when that button is tapped (or the host opened
+ * the sheet from "Find a gym near you", [startNearby]); once it is granted,
+ * the sheet shows the nearby gyms right away on every later open.
  */
 @Composable
 internal fun GymBoardSearchSheet(
@@ -44,8 +57,27 @@ internal fun GymBoardSearchSheet(
     boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
     deferDownloads: Boolean = false,
     onBoardChosen: (BoardBrand) -> Unit = {},
+    startNearby: Boolean = false,
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var locateFailure by remember { mutableStateOf<LocateResult?>(null) }
+    // True once the user (or the host's "Find a gym near you") asked for it;
+    // a silent lookup on open never overrides typed text or shows errors.
+    var nearbyAsked by remember { mutableStateOf(startNearby) }
+    val locateMe = rememberLocateMe { result ->
+        locateFailure = null
+        when (result) {
+            is LocateResult.Found ->
+                if (nearbyAsked || vm.state.value.query.isBlank()) vm.showNearby(result.lat, result.lng)
+            else -> if (nearbyAsked) locateFailure = result
+        }
+    }
+    // Asked for explicitly by the host, or already allowed earlier: no prompt
+    // appears unless the user just chose "near me".
+    LaunchedEffect(Unit) {
+        if (startNearby || locateMe.hasPermission) locateMe.locate()
+    }
     BoardDownloadRequestHost(boardPickerViewModel, deferDownloads, onSelected = { brand ->
         vm.clearGymSelection()
         onBoardChosen(brand)
@@ -117,6 +149,18 @@ internal fun GymBoardSearchSheet(
                         .heightIn(max = 460.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    NearbyButton(
+                        locating = locateMe.locating,
+                        onClick = {
+                            nearbyAsked = true
+                            locateFailure = null
+                            locateMe.locate()
+                        },
+                    )
+                    locateFailure?.let { failure ->
+                        LocateFailureNote(failure) { openLocateFix(context, failure) }
+                    }
+                    Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = s.query,
                         onValueChange = vm::onQueryChange,
@@ -146,7 +190,7 @@ internal fun GymBoardSearchSheet(
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(gym.name, fontWeight = FontWeight.Bold)
-                                        gymSubtitle(gym).takeIf { it.isNotEmpty() }?.let {
+                                        gymSubtitle(gym, s.brandsById[gym.id].orEmpty(), s.distanceById[gym.id]?.let { distanceLabel(it) }).takeIf { it.isNotEmpty() }?.let {
                                             Text(
                                                 it,
                                                 style = MaterialTheme.typography.bodySmall,
@@ -209,11 +253,31 @@ internal fun GymBoardSearchSheet(
                         // it) still says false: a successful search proves the data
                         // is there, so it must never be masked by the no-data text.
                         s.results.isNotEmpty() -> {
+                            if (s.nearby) {
+                                Text(
+                                    stringResource(R.string.gym_nearby_title),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                            }
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 s.results.forEach { g ->
-                                    GymRow(g.name, gymSubtitle(g)) { vm.selectGym(g) }
+                                    val distance = s.distanceById[g.id]?.let { distanceLabel(it) }
+                                    GymRow(
+                                        g.name,
+                                        gymSubtitle(g, s.brandsById[g.id].orEmpty(), distance),
+                                        modifier = Modifier.testTag("gym_result_${g.id}"),
+                                    ) { vm.selectGym(g) }
                                 }
                             }
+                        }
+
+                        s.nearby -> {
+                            Text(
+                                stringResource(R.string.gym_nearby_none),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
                         }
 
                         // No gym/wall data on the device (fresh install before the
@@ -264,29 +328,70 @@ internal fun GymBoardSearchSheet(
     }
 }
 
-/** Result subtitle. Drops the placeholder "??" country (MoonBoard gyms have
- *  no country in the feed) and tags MoonBoard gyms with the brand so they're
- *  distinguishable from Kilter gyms in a mixed result list. */
-private fun gymSubtitle(g: BoardLocation): String {
-    val parts = buildList {
+/** Result subtitle: the gym's boards ("Kilter, MoonBoard"), its place and,
+ *  for near-me results, the distance. Drops the placeholder "??" country
+ *  (MoonBoard gyms have no country in the feed). Without the gym's brand list
+ *  a MoonBoard row still says so, to tell it from a Kilter gym. */
+private fun gymSubtitle(g: BoardLocation, brands: List<BoardBrand>, distance: String?): String {
+    val place = buildList {
         g.city?.takeIf { it.isNotBlank() }?.let { add(it) }
         g.countryCode.takeIf { it.isNotBlank() && it != "??" }?.let { add(it) }
+    }.joinToString(", ")
+    val boards = when {
+        brands.isNotEmpty() -> brands.joinToString(", ") { it.displayName }
+        g.boardBrand == BoardBrand.MOONBOARD -> "MoonBoard"
+        else -> ""
     }
-    return if (g.boardBrand == BoardBrand.MOONBOARD) {
-        (listOf("MoonBoard") + parts).joinToString(" · ")
-    } else {
-        parts.joinToString(", ")
+    return listOf(boards, place, distance.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+}
+
+/** "Gyms near me" — the location prompt appears only after this tap. */
+@Composable
+private fun NearbyButton(locating: Boolean, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        FilledTonalButton(
+            onClick = onClick,
+            enabled = !locating,
+            modifier = Modifier.fillMaxWidth().testTag("gym_nearby"),
+        ) {
+            if (locating) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(if (locating) R.string.locate_me_finding else R.string.gym_nearby_button))
+        }
+        Text(
+            stringResource(R.string.locate_me_private),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun LocateFailureNote(failure: LocateResult, onFix: () -> Unit) {
+    val text = locateFailureText(failure) ?: return
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        locateFixLabel(failure)?.let { label ->
+            TextButton(onClick = onFix, contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text(label, color = OrangeAccent)
+            }
+        }
     }
 }
 
 /** Tappable gym search result — clearly a row you can pick (chevron + ripple). */
 
 @Composable
-private fun GymRow(name: String, sub: String, onClick: () -> Unit) {
+private fun GymRow(name: String, sub: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     OutlinedCard(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
