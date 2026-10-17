@@ -495,6 +495,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Codeberg, matching the published source list. A device that cannot reach
   cruxcoach.org or its mirror still checks both forges every release is
   published on.
+- The board map is easier to read and to use. Every place shows the colour
+  and letter of its board family (Kilter "K", MoonBoard "M", Tension "T", …),
+  places with several families a pie of them, gym names appear from city zoom
+  on, and the count bubbles are readable in light and dark. A floating search
+  bar replaces the title bar; below it, "All boards" opens a list of all
+  families with marker and count (the map's legend) and "Filters" shows how
+  many filters are active.
+- A sheet at the bottom lists the places in the visible part of the map,
+  nearest to the centre first. Tapping a place shows name, place, its boards
+  and the buttons for directions, website and phone; pulling it up shows per
+  board size, angle range ("adjustable 0–70° in 5° steps"), setup and LEDs,
+  the opening hours as the venue published them, and address and contact.
+  Rows without data are left out instead of showing "—". The map stays usable
+  while a place is open; a tap on the empty map or Back closes it.
+- The map reopens where it was left; on the first visit it shows the boards of
+  your country (from the timezone, without location permission) instead of
+  the whole world. Rotating and tilting by accident is off, and the dark theme
+  gets a dark map instead of a light grey one.
+- "My location" on the board map shows where you are, frames you with the
+  nearest boards and lists places by distance. The location permission is
+  asked for only when you tap it; the position stays on the phone.
+- Finding your board via your gym no longer needs the gym's name: "Gyms near
+  me" in the gym search (and "Find a gym near you" in the board dialog, in
+  onboarding, the board browser, settings and the sync card) lists the closest
+  gyms with their boards and distance. Before the gym data has synced, search
+  and "near me" use the board map's bundled gym list, so they work on the
+  first start too.
+- A board the map cannot open directly — Tension, Grasshopper, Decoy, So iLL,
+  Touchstone, Quantum, a MoonBoard of unknown variant — now has "Choose this
+  board": it opens the gym search with that place already picked, and the
+  chosen board goes straight to the board browser. The gym search also offers
+  the Quantum models.
+- Performance values are harder to throw off: one set raises a value by at
+  most 10 % (a second set of the same training that shows as much confirms
+  more), so a typo such as "50 reps" no longer jumps the next plan; a quick
+  self-estimate is replaced by the best set of the first training with the
+  exercise, also when that is lower; and on holds the seconds answered as
+  "how many more?" count as time held. Loads planned from an existing value
+  do not change.
 
 ### Fixed
 - A board session no longer stays "paused" after a rest timer runs out
