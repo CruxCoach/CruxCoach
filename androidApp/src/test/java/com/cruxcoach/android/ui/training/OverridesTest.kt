@@ -186,43 +186,42 @@ class OverridesTest : AthleteScreenTest() {
     }
 
     @Test
-    fun `a load changed in the list carries over to the next sets too`() {
-        // Device test 2026-10-17: in a free training only the touched set changed.
-        val id = service.startWorkout(Routine("r", "Free", items = listOf(RoutineItem("antagonist.wrist_curl", sets = 3, loadKg = 6.0))), null)
-        val vm = loaded(com.cruxcoach.android.ui.training.workout.WorkoutViewModel(service))
-        until { vm.state.value.blocks.flatMap { it.sets }.count { it.setType == SetType.WORK } == 3 }
-        val first = vm.state.value.blocks.flatMap { it.sets }.filter { it.setType == SetType.WORK }.minBy { it.setIndex }
-        vm.update(first.copy(loadKg = 4.0))
-        until { work(id).all { it.loadKg == 4.0 } }
-        assertTrue(work(id).drop(1).all { it.targetLoadKg == 4.0 })
+    fun `a free training opens in the training view with add and type`() {
+        // Owner 2026-10-17: one training view; the old list became its overview.
+        service.startWorkout(null, null)
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.EMPTY }
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        waitForTag("player_add_exercise")
+        click("player_type")
+        waitForTag("workout_text_sheet")
     }
 
     @Test
-    fun `back shows a done set to correct, and it can be opened again`() {
+    fun `a done set is corrected from its row, and it can be opened again`() {
         val (id, vm) = player(Routine("r", "Push", items = listOf(RoutineItem("push.push_up", sets = 3, repsMin = 10, repsMax = 10, restS = 60))))
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
         click("player_done")
         until { vm.state.value.phase == PlayerPhase.REST && work(id).first().isCompleted }
-        // The rest offers the correction without losing the timer.
-        click("player_correct_done")
-        waitForTag("player_correct_dialog")
+        // The done row says what was done against the target and opens for a correction – the rest goes on.
+        val first = work(id).first().id
+        scrollTo("player_set_view", "player_row_$first")
+        waitForTag("player_outcome_$first")
+        click("player_row_$first")
+        waitForTag("player_row_editing")
+        scrollTo("player_set_view", "player_reps_minus")
         click("player_reps_minus")
         until { work(id).first().reps == 9 }
-        click("player_correct_ok")
-        vm.endRest()
-        until { vm.state.value.phase == PlayerPhase.SET && vm.state.value.current?.set?.id == work(id)[1].id }
-        // Back to the first set: done, its values editable.
-        click("player_prev")
-        waitForTag("player_done_label")
-        assertEquals(work(id).first().id, vm.state.value.current?.set?.id)
-        click("player_reps_minus")
-        until { work(id).first().reps == 8 }
-        // Not done after all: open again, and the training goes on from it.
+        scrollTo("player_set_view", "player_edit_ok")
+        click("player_edit_ok")
+        assertEquals(PlayerPhase.REST, vm.state.value.phase)
+        // Not done after all: open again, and it is the set that is due.
+        scrollTo("player_set_view", "player_row_$first")
+        click("player_row_$first")
+        scrollTo("player_set_view", "player_reopen")
         click("player_reopen")
         until { !work(id).first().isCompleted }
-        waitForTag("player_done")
-        // "Next" from a done set and "Continue" bring the athlete back to the open sets.
-        assertEquals(work(id).first().id, vm.state.value.current?.set?.id)
+        until { vm.state.value.current?.set?.id == first }
     }
 
     @Test
@@ -231,10 +230,13 @@ class OverridesTest : AthleteScreenTest() {
         render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
         click("player_done")
         until { vm.state.value.phase == PlayerPhase.REST && vm.state.value.restArmed }
-        click("player_next_load_minus")
+        // During the rest the next set is already the active row: its load is changed right there.
+        scrollTo("player_set_view", "player_load_minus")
+        click("player_load_minus")
         until { work(id).drop(1).all { (it.loadKg ?: 20.0) < 20.0 } }
         val manual = work(id)[1].loadKg
         // "No reserve" would take a step off – the athlete already decided.
+        scrollTo("player_set_view", "player_rir_0")
         click("player_rir_0")
         until { work(id).first().rir == 0 }
         Thread.sleep(300)
@@ -295,10 +297,10 @@ class OverridesTest : AthleteScreenTest() {
     @Test
     fun `exercises typed into a free training are planned with their numbers`() {
         val id = service.startWorkout(null, null)
-        val vm = loaded(com.cruxcoach.android.ui.training.workout.WorkoutViewModel(service))
-        render { com.cruxcoach.android.ui.training.workout.WorkoutScreen({}, {}, {}, {}, viewModel = vm) }
-        scrollTo("workout_list", hasTestTag("workout_type"))
-        click("workout_type")
+        val vm = WorkoutPlayerViewModel(service).tracked()
+        until { vm.state.value.phase == PlayerPhase.EMPTY }
+        render { WorkoutPlayerScreen({}, {}, {}, {}, viewModel = vm, learningBadge = { _, _ -> }) }
+        click("player_type")
         waitForTag("workout_text_input")
         compose.onNodeWithTag("workout_text_input").performTextReplacement("Kniebeuge 5x5 60kg\nLiegestütze 3x12")
         waitForTag("workout_text_line_1")
@@ -509,9 +511,9 @@ class OverridesTest : AthleteScreenTest() {
         until { work(id).first().rir == 0 }
         vm.endRest()
         until { vm.state.value.phase == PlayerPhase.SET }
-        vm.back()
-        until { vm.state.value.current?.set?.isCompleted == true }
-        vm.update(vm.state.value.current!!.set.copy(reps = 3))
+        vm.edit(work(id).first().id)
+        until { vm.state.value.editingId == work(id).first().id }
+        vm.update(work(id).first().copy(reps = 3))
         until { work(id).first().reps == 3 }
         vm.reopen()
         // Open again at the plan: 5 reps, no reserve answer.

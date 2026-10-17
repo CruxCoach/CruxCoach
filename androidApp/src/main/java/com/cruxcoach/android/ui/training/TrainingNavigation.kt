@@ -22,7 +22,6 @@ import com.cruxcoach.android.ui.training.fuel.FuelScreen
 import com.cruxcoach.android.ui.training.today.TodayScreen
 import com.cruxcoach.android.ui.training.workout.RoutinesScreen
 import com.cruxcoach.android.ui.training.workout.TrainingHistoryScreen
-import com.cruxcoach.android.ui.training.workout.WorkoutScreen
 import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
 
 /**
@@ -33,6 +32,16 @@ import com.cruxcoach.android.ui.training.workout.WorkoutSummaryScreen
 fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
     val back: () -> Unit = { nav.popBackStack() }
     fun go(route: String) = nav.navigate(route) { launchSingleTop = true }
+    /** The training view, for a guided routine and a free training alike. */
+    @androidx.compose.runtime.Composable
+    fun TrainingPlayer(route: String) = com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen(
+        onBack = back,
+        onAddExercise = { workoutId -> go(TrainingRoutes.exercises(pickForWorkout = workoutId)) },
+        onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
+        onFinished = { workoutId ->
+            nav.navigate(TrainingRoutes.workoutSummary(workoutId)) { popUpTo(route) { inclusive = true } }
+        },
+    )
     /** Tabs share one back stack entry each and keep their state, like any bottom navigation. */
     fun goTab(tab: TrainingTab) = nav.navigate(tab.route) {
         popUpTo(TrainingRoutes.TODAY) { saveState = true }
@@ -203,42 +212,9 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             go(TrainingRoutes.exerciseDetail(slug))
         })
     }
-    screen(TrainingRoutes.WORKOUT, "Workout", back) {
-        WorkoutScreen(
-            onBack = back,
-            onAddExercise = { workoutId -> go(TrainingRoutes.exercises(pickForWorkout = workoutId)) },
-            onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
-            onFinished = { workoutId ->
-                nav.navigate(TrainingRoutes.workoutSummary(workoutId)) {
-                    popUpTo(TrainingRoutes.WORKOUT) { inclusive = true }
-                }
-            },
-            onOpenPlayer = {
-                nav.navigate(TrainingRoutes.WORKOUT_PLAYER) {
-                    popUpTo(TrainingRoutes.WORKOUT) { inclusive = true }
-                    launchSingleTop = true
-                }
-            },
-        )
-    }
-    // Guided mode (default for routines): own set and rest screens.
-    screen(TrainingRoutes.WORKOUT_PLAYER, "WorkoutPlayer", back) {
-        com.cruxcoach.android.ui.training.player.WorkoutPlayerScreen(
-            onBack = back,
-            onOverview = {
-                nav.navigate(TrainingRoutes.WORKOUT) {
-                    popUpTo(TrainingRoutes.WORKOUT_PLAYER) { inclusive = true }
-                    launchSingleTop = true
-                }
-            },
-            onOpenExercise = { go(TrainingRoutes.exerciseDetail(it)) },
-            onFinished = { workoutId ->
-                nav.navigate(TrainingRoutes.workoutSummary(workoutId)) {
-                    popUpTo(TrainingRoutes.WORKOUT_PLAYER) { inclusive = true }
-                }
-            },
-        )
-    }
+    // One training view for guided and free trainings (owner 2026-10-17): the old list became its overview.
+    screen(TrainingRoutes.WORKOUT, "Workout", back) { TrainingPlayer(TrainingRoutes.WORKOUT) }
+    screen(TrainingRoutes.WORKOUT_PLAYER, "WorkoutPlayer", back) { TrainingPlayer(TrainingRoutes.WORKOUT_PLAYER) }
     screen(TrainingRoutes.BENCHMARKS, "Benchmarks", back) {
         com.cruxcoach.android.ui.training.benchmarks.BenchmarksScreen(
             onBack = back,
