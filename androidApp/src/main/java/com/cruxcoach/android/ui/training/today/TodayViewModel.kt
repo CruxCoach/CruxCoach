@@ -129,7 +129,9 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 repo.observeActiveInjuries(),
                 repo.observeOpenWorkout(),
                 combine(
-                    repo.observeRecentWorkouts(30),
+                    // A climbing day entered on the tile, a Health Connect sync or a board session re-derive the hub.
+                    combine(repo.observeRecentWorkouts(30),
+                        service.observeActivityChanges(LocalDate.parse(today).minus(DatePeriod(days = 60)).toString())) { w, _ -> w },
                     // Weight and height feed the targets and the energy estimate.
                     // Favourites only re-trigger the suggestion; it reads them itself.
                     combine(repo.observeSeries(BodyMetric.WEIGHT.key), repo.observeSeries(BodyMetric.HEIGHT.key), repo.observeFavorites()) { w, h, f -> Triple(w.size, h.size, f.size) },

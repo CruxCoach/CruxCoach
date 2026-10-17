@@ -81,8 +81,12 @@ class FuelViewModel @Inject constructor(private val service: AthleteService) : V
                     repo.observeHydration(d),
                     repo.observeFoodItems(),
                     // A weight or height entered right here (targets need them) updates the targets at once.
+                    // So do a finished training, a climbing day and a board session: the day type sets the carbs (audit W2).
                     combine(repo.observeSeries(com.cruxcoach.athlete.model.BodyMetric.WEIGHT.key),
-                        repo.observeSeries(com.cruxcoach.athlete.model.BodyMetric.HEIGHT.key)) { w, h -> w.size to h.lastOrNull()?.value },
+                        repo.observeSeries(com.cruxcoach.athlete.model.BodyMetric.HEIGHT.key),
+                        repo.observeRecentWorkouts(10),
+                        service.observeActivityChanges(LocalDate.parse(d).minus(kotlinx.datetime.DatePeriod(days = 7)).toString()),
+                    ) { w, h, _, _ -> w.size to h.lastOrNull()?.value },
                 ) { profile, entries, water, foods, _ -> Snapshot(day ?: service.today(), profile, entries, water, foods) }
             }.collect { refresh(it) }
         }
