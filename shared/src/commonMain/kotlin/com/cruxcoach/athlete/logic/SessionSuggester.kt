@@ -257,6 +257,8 @@ object SessionSuggester {
     private const val SETUP_SECONDS_PER_EXERCISE = 60
     /** Main-work slots whose picks follow the athlete's level from below too. */
     private val LEVELLED_SLOTS = setOf(Slot.FINGER_MAIN, Slot.PULL, Slot.PUSH, Slot.POWER, Slot.LEGS)
+    /** Learned affinity below which an exercise counts as turned down: no novelty bonus for it. */
+    const val DISLIKED = -0.5
     /** A session within this many minutes of its time counts as fitting. */
     private const val GROW_TOLERANCE_MIN = 4
     /**
@@ -1164,11 +1166,14 @@ object SessionSuggester {
         // Favourites (owner 2026-10-16): almost always with a routine, regularly with variety.
         if (def.slug in input.favorites) s += 3.0 + 5.0 * (100 - variety) / 100.0
         if (def.slug in input.benchmarkSlugs) s += 2.0
-        s += input.affinity[def.slug] ?: 0.0
+        val affinity = input.affinity[def.slug] ?: 0.0
+        s += affinity
         val last = input.lastTrained[def.slug]
         // Variety 50 keeps the classic novelty bonus; lower favours the familiar routine, higher the new.
+        // Not for what the athlete turned down: "not done for a while" was exactly why a rejected exercise came
+        // back right after its rest (simulation 2026-10-17). It returns once the dislike has faded.
         val novelty = if (last == null) 2.0 else min(14L, (input.today.toEpochDays() - last.toEpochDays()).toLong().coerceAtLeast(0L)) / 3.5
-        s += novelty * (0.5 + variety / 100.0)
+        if (affinity >= DISLIKED) s += novelty * (0.5 + variety / 100.0)
         if (variety < 50 && last != null && (input.today.toEpochDays() - last.toEpochDays()).toLong() <= 14) s += (50 - variety) / 50.0 * 1.5
         if ((input.profile.goal == AthleteGoal.BUILD_STRENGTH || coach.goal == CoachGoal.BUILD_STRENGTH) && "strength" in def.tags) s += 1.5
         if (input.profile.goal == AthleteGoal.PERFORM && def.category in setOf(ExerciseCategoryV2.FINGER, ExerciseCategoryV2.PULL, ExerciseCategoryV2.ANTAGONIST)) s += 0.5

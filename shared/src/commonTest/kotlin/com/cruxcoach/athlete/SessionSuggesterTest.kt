@@ -88,6 +88,20 @@ class SessionSuggesterTest {
     }
 
     @Test
+    fun aTurnedDownExerciseGetsNoNoveltyBonus() {
+        // Simulation 2026-10-17: "not trained for long" pushed a rejected exercise straight back after its rest.
+        fun pulls(s: SessionSuggestion) = s.routine.items.filter { !it.warmup && catalog[it.slug]?.category == ExerciseCategoryV2.PULL }.map { it.slug }
+        val longAgo = monday.minus(DatePeriod(days = 30))
+        val recent = monday.minus(DatePeriod(days = 1))
+        // The pull-up was not done for a month (full novelty), the row yesterday: the pull-up leads …
+        val fresh = input().copy(wish = SuggestionFocus.PULL_PUSH, lastTrained = mapOf("pull.pull_up" to longAgo, "pull.dumbbell_row" to recent))
+        assertEquals("pull.pull_up", pulls(SessionSuggester.suggest(fresh)).first())
+        // … unless the athlete turned it down: then its old age is no reason to bring it back.
+        val disliked = fresh.copy(affinity = mapOf("pull.pull_up" to -1.0))
+        assertEquals("pull.dumbbell_row", pulls(SessionSuggester.suggest(disliked)).first())
+    }
+
+    @Test
     fun aSessionTakesOneExerciseFromAProgressionChain() {
         // Device test 2026-10-17: weighted pull-ups and, at 90 minutes, negative pull-ups two steps down the same chain.
         val chained = ExerciseCatalog(1, catalog.all.map {

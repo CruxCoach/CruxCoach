@@ -11,6 +11,7 @@
     <string name="trcirc_today_chip">Zirkel</string>
     <string name="trcirc_group">Zirkel · %1$s · %2$s / %3$s</string>
     <string name="trcirc_sheet_title">Als Zirkel trainieren</string>
+    <string name="trlr_resting_until">Pausiert bis %1$s</string>
     <plurals name="trcirc_rounds">
         <item quantity="one">%d Runde</item>
         <item quantity="other">%d Runden</item>
