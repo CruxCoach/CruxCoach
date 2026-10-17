@@ -93,6 +93,10 @@ data class TodayState(
     val levelShift: Int = 0,
     /** What the athlete usually chooses on today's weekday (kind, duration), learned from earlier choices. */
     val usual: PreferenceLearning.UsualChoice? = null,
+    /** Today's suggestion as a circuit (owner 2026-10-17): one set of each in turn, round after round. */
+    val circuitToday: Boolean = false,
+    /** At least two of today's exercises can go into a circuit (pull, push, prehab, core, legs). */
+    val circuitPossible: Boolean = false,
 ) {
     /** The two questions come before today's suggestion until answered or skipped (owner 2026-10-15). */
     val asksBeforeSuggestion: Boolean get() = profile.checkinEnabled && checkin == null && openWorkout == null
@@ -153,6 +157,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     private var levelShift = 0
     private var wish: com.cruxcoach.athlete.logic.SuggestionFocus? = null
     private var minutesToday: Int? = null
+    /** "Als Zirkel" for today, with the athlete's rounds and rests if changed in the sheet. */
+    private var circuitToday = false
+    private var circuitRounds: Int? = null
+    private var circuitRestS: Int? = null
+    private var circuitRoundRestS: Int? = null
     private val dislikedToday = mutableSetOf<String>()
     /** Exercises the athlete swapped on the card today: suggested slug → own pick ("" = left out). */
     private val swapsToday = mutableMapOf<String, String>()
@@ -179,6 +188,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
         if (variantDay != today) {
             variant = 0; variantDay = today
             budgetFactor = 1.0; levelShift = 0; wish = null; minutesToday = null; dislikedToday.clear(); shownToday.clear(); swapsToday.clear(); ignoreUsualKind = false
+            circuitToday = false; circuitRounds = null; circuitRestS = null; circuitRoundRestS = null
             runCatching {
                 service.repo.suggestionEventsForDay(today.toString())
                     .filter { it.kind == SuggestionEventKind.SHOWN }
@@ -282,6 +292,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 suggestions = suggestions,
                 wish = wish,
                 minutesToday = minutesToday,
+                circuitToday = circuitToday && daily?.routine?.items?.any { it.circuit != null } == true,
+                circuitPossible = daily?.let { circuitCandidates(it) } ?: false,
                 favorites = runCatching { repo.favorites() }.getOrDefault(emptySet()),
                 levelShift = levelShift,
                 usual = lastUsual,
@@ -413,7 +425,8 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             )
             lastInput = input
             // The athlete's swaps on the card stay for the day, whatever else changes.
-            val suggestion = SessionSuggester.withSwaps(SessionSuggester.suggest(input), swapsToday.toMap(), service.catalog)
+            val swapped = SessionSuggester.withSwaps(SessionSuggester.suggest(input), swapsToday.toMap(), service.catalog)
+            val suggestion = if (circuitToday) asCircuit(swapped) else swapped
             val plannedName = suggestion.plannedEntry
                 ?.takeIf { !it.startsWith("builtin:") && it != PLAN_BOARD && it != PLAN_REST }
                 ?.let { id -> routines.firstOrNull { it.id == id }?.name }
@@ -480,6 +493,45 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
     /** Today's "easier" (−1) or "harder" (+1), 0 back to the coach's level; the coach learns nothing from it beyond today. */
     fun chooseLevel(shift: Int) = io {
         synchronized(refreshLock) {
+    /**
+     * "Als Zirkel" on the card (owner 2026-10-17): today's pull, push, prehab, core and leg work in one
+     * circuit – one set of each in turn; finger and power work stay before it. Only for today; the choice
+     * goes into the ledger, so a weekday habit can be learned later.
+     */
+    fun chooseCircuit(on: Boolean) = io {
+        synchronized(refreshLock) {
+            service.logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.CHOSEN_FORMAT + (if (on) "circuit" else ""), emptyList())
+            circuitToday = on
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    /** Rounds and rests of today's circuit, from its sheet; null keeps the coach's value. */
+    fun setCircuit(rounds: Int?, circuitRestS: Int?, roundRestS: Int?) = io {
+        synchronized(refreshLock) {
+            circuitRounds = rounds
+            this.circuitRestS = circuitRestS
+            circuitRoundRestS = roundRestS
+            lastInputs?.let { refreshUnlocked(it) }
+        }
+    }
+
+    private fun circuitCandidates(s: com.cruxcoach.athlete.logic.SessionSuggestion): Boolean =
+        s.routine.items.count { !it.warmup && com.cruxcoach.athlete.logic.Circuits.eligibleToday(service.catalog[it.slug], it) } >= 2
+
+    /** Today's suggestion with its suitable exercises in one circuit, the time estimated for that. */
+    private fun asCircuit(s: com.cruxcoach.athlete.logic.SessionSuggestion): com.cruxcoach.athlete.logic.SessionSuggestion {
+        val catalog = service.catalog
+        var items = com.cruxcoach.athlete.logic.Circuits.asCircuitToday(s.routine.items, catalog)
+        val key = items.firstOrNull { it.circuit != null }?.circuit ?: return s
+        circuitRounds?.let { items = com.cruxcoach.athlete.logic.Circuits.setRounds(items, key, it) }
+        if (circuitRestS != null || circuitRoundRestS != null) {
+            val first = items.first { it.circuit == key }
+            items = com.cruxcoach.athlete.logic.Circuits.setRests(items, key, circuitRestS ?: first.circuitRestS, circuitRoundRestS ?: first.roundRestS)
+        }
+        return s.copy(routine = s.routine.copy(items = items), estimatedMinutes = SessionSuggester.estimateMinutes(items, catalog))
+    }
+
             val s = _state.value.suggestion
             val feedback = when { shift > 0 -> SuggestionFeedback.TOO_EASY; shift < 0 -> SuggestionFeedback.TOO_HARD; else -> null }
             if (feedback != null) service.logSuggestion(SuggestionEventKind.NEXT, s?.focus?.name, s?.routine?.items?.map { it.slug }.orEmpty(), feedback)

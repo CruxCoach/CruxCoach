@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training.workouts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -135,10 +138,46 @@ class RoutineEditorViewModel @Inject constructor(private val service: AthleteSer
         val list = s.items.toMutableList()
         val moved = list.removeAt(index)
         list.add(target, moved)
-        s.copy(items = list, dirty = true)
+        s.copy(items = circuits(list, s), dirty = true)
     }
 
-    fun remove(key: Long) = _state.update { s -> s.copy(items = s.items.filterNot { it.key == key }, dirty = true) }
+    fun remove(key: Long) = _state.update { s -> s.copy(items = circuits(s.items.filterNot { it.key == key }, s), dirty = true) }
+
+    // ── Circuits (owner 2026-10-17: one set of each in turn, round after round) ──
+
+    /** Applies a circuit change to the routine items, keeping each row's key. */
+    private fun circuits(rows: List<EditorItem>, s: RoutineEditorState,
+                         change: (List<com.cruxcoach.athlete.model.RoutineItem>) -> List<com.cruxcoach.athlete.model.RoutineItem> = {
+                             com.cruxcoach.athlete.logic.Circuits.normalize(it, s.catalog) }): List<EditorItem> {
+        val items = change(rows.map { it.item })
+        return if (items.size == rows.size) rows.mapIndexed { i, row -> row.copy(item = items[i]) } else rows
+    }
+
+    /** Joins the row with the next one (or the next one's circuit). */
+    fun link(key: Long) = _state.update { s ->
+        val index = s.items.indexOfFirst { it.key == key }
+        if (index < 0 || index >= s.items.lastIndex) return@update s
+        s.copy(items = circuits(s.items, s) { com.cruxcoach.athlete.logic.Circuits.link(it, index, s.catalog) }, dirty = true)
+    }
+
+    /** Splits the circuit after the row. */
+    fun unlink(key: Long) = _state.update { s ->
+        val index = s.items.indexOfFirst { it.key == key }
+        if (index < 0) return@update s
+        s.copy(items = circuits(s.items, s) { com.cruxcoach.athlete.logic.Circuits.unlink(it, index, s.catalog) }, dirty = true)
+    }
+
+    fun dissolve(circuit: Int) = _state.update { s ->
+        s.copy(items = circuits(s.items, s) { com.cruxcoach.athlete.logic.Circuits.dissolve(it, circuit, s.catalog) }, dirty = true)
+    }
+
+    fun setCircuitRounds(circuit: Int, rounds: Int) = _state.update { s ->
+        s.copy(items = circuits(s.items, s) { com.cruxcoach.athlete.logic.Circuits.setRounds(it, circuit, rounds) }, dirty = true)
+    }
+
+    fun setCircuitRests(circuit: Int, circuitRestS: Int?, roundRestS: Int?) = _state.update { s ->
+        s.copy(items = circuits(s.items, s) { com.cruxcoach.athlete.logic.Circuits.setRests(it, circuit, circuitRestS, roundRestS) }, dirty = true)
+    }
 
     fun addSlugs(slugs: List<String>) = _state.update { s ->
         val added = slugs.mapNotNull { slug -> s.catalog[slug]?.let { EditorItem(nextKey++, WorkoutPlanner.itemFor(it)) } }
@@ -258,9 +297,17 @@ fun RoutineEditorScreen(
             if (state.items.isEmpty()) item { EmptyHint(stringResource(R.string.trwo_editor_empty)) }
             items(state.items, key = { it.key }) { row ->
                 val index = state.items.indexOf(row)
+                val circuit = row.item.circuit
+                val previous = state.items.getOrNull(index - 1)?.item
+                val next = state.items.getOrNull(index + 1)
+                // A circuit's rounds and rests are set once, above its first exercise.
+                if (circuit != null && previous?.circuit != circuit) {
+                    CircuitCard(circuit, state.items.map { it.item }, viewModel)
+                }
+                val def = state.catalog.fallbackFor(row.item.slug)
                 ItemCard(
                     row = row,
-                    def = state.catalog.fallbackFor(row.item.slug),
+                    def = def,
                     lang = lang,
                     units = state.units,
                     incrementKg = state.incrementKg,
@@ -269,6 +316,12 @@ fun RoutineEditorScreen(
                     onChange = { t -> viewModel.updateItem(row.key, t) },
                     onMove = { d -> viewModel.move(row.key, d) },
                     onRemove = { viewModel.remove(row.key) },
+                    inCircuit = circuit != null,
+                    linkedToNext = circuit != null && next?.item?.circuit == circuit,
+                    canLink = next != null && com.cruxcoach.athlete.logic.Circuits.eligible(def, row.item) &&
+                        com.cruxcoach.athlete.logic.Circuits.eligible(state.catalog[next.item.slug], next.item),
+                    onLink = { viewModel.link(row.key) },
+                    onUnlink = { viewModel.unlink(row.key) },
                 )
             }
             item {
@@ -340,9 +393,17 @@ private fun ItemCard(
     onChange: ((RoutineItem) -> RoutineItem) -> Unit,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
+    /** Member of a circuit: sets and rest come from the circuit card above. */
+    inCircuit: Boolean = false,
+    linkedToNext: Boolean = false,
+    canLink: Boolean = false,
+    onLink: () -> Unit = {},
+    onUnlink: () -> Unit = {},
 ) {
     val item = row.item
     Card(Modifier.fillMaxWidth().testTag("routine_item_${row.key}")) {
+      Row(Modifier.height(IntrinsicSize.Min)) {
+        if (inCircuit) Box(Modifier.width(4.dp).fillMaxHeight().background(com.cruxcoach.android.ui.theme.CruxCoachDesign.colors.brandAccent))
         Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -361,8 +422,10 @@ private fun ItemCard(
                 }
             }
             Column(Modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                EditorStepper(stringResource(R.string.trwo_field_sets), item.sets, 1, 1, 20, "sets_${row.key}") { v ->
-                    onChange { it.copy(sets = v) }
+                if (!inCircuit) {
+                    EditorStepper(stringResource(R.string.trwo_field_sets), item.sets, 1, 1, 20, "sets_${row.key}") { v ->
+                        onChange { it.copy(sets = v) }
+                    }
                 }
                 when (def.kind) {
                     ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> {
@@ -399,8 +462,10 @@ private fun ItemCard(
                 if ((def.load == LoadMode.BODYWEIGHT_PLUS || def.load == LoadMode.EXTERNAL) && def.kind != ExerciseKind.CLIMB && !item.test) {
                     LoadField(item.loadKg, def.load, units, incrementKg, "load_${row.key}") { v -> onChange { it.copy(loadKg = v) } }
                 }
-                EditorStepper(stringResource(R.string.trwo_field_rest), item.restS ?: def.defaults.restS ?: 90, 15, 0, 1800, "rest_${row.key}",
-                    format = { formatClock(it) }) { v -> onChange { it.copy(restS = v) } }
+                if (!inCircuit) {
+                    EditorStepper(stringResource(R.string.trwo_field_rest), item.restS ?: def.defaults.restS ?: 90, 15, 0, 1800, "rest_${row.key}",
+                        format = { formatClock(it) }) { v -> onChange { it.copy(restS = v) } }
+                }
                 if ((def.kind == ExerciseKind.HANG || def.kind == ExerciseKind.INTERVAL) && (item.edgeMm != null || def.defaults.edgeMm != null)) {
                     EditorStepper(stringResource(R.string.trwo_field_edge), item.edgeMm ?: def.defaults.edgeMm ?: 20, 1, 3, 80, "edge_${row.key}") { v ->
                         onChange { it.copy(edgeMm = v) }
@@ -427,6 +492,46 @@ private fun ItemCard(
                     Switch(checked = item.warmup, onCheckedChange = { w -> onChange { it.copy(warmup = w) } },
                         modifier = Modifier.testTag("warmup_${row.key}"))
                 }
+                // Join with the next exercise into a circuit – or split it here (two taps make A–B–C a circuit).
+                when {
+                    linkedToNext -> TextButton(onClick = onUnlink, modifier = Modifier.heightIn(min = 48.dp).testTag("routine_item_unlink_${row.key}")) {
+                        Icon(Icons.Default.LinkOff, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trcirc_unlink))
+                    }
+                    canLink -> TextButton(onClick = onLink, modifier = Modifier.heightIn(min = 48.dp).testTag("routine_item_link_${row.key}")) {
+                        Icon(Icons.Default.Link, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.trcirc_link))
+                    }
+                }
+            }
+        }
+      }
+    }
+}
+
+/** A circuit's rounds and rests, above its first exercise; "dissolve" turns it back into straight sets. */
+@Composable
+private fun CircuitCard(circuit: Int, items: List<com.cruxcoach.athlete.model.RoutineItem>, viewModel: RoutineEditorViewModel) {
+    val members = items.filter { it.circuit == circuit }
+    val first = members.firstOrNull() ?: return
+    val rounds = com.cruxcoach.athlete.logic.Circuits.rounds(items, circuit)
+    OutlinedCard(Modifier.fillMaxWidth().padding(top = 4.dp).testTag("routine_circuit_$circuit")) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.trcirc_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.trcirc_explain), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            EditorStepper(stringResource(R.string.trwo_field_rounds), rounds, 1, 1, 20, "circuit_rounds_$circuit") { v ->
+                viewModel.setCircuitRounds(circuit, v)
+            }
+            EditorStepper(stringResource(R.string.trcirc_rest_between), first.circuitRestS ?: com.cruxcoach.athlete.logic.Circuits.DEFAULT_CIRCUIT_REST_S,
+                5, 0, 120, "circuit_rest_$circuit", format = { formatClock(it) }) { v ->
+                viewModel.setCircuitRests(circuit, v, first.roundRestS)
+            }
+            EditorStepper(stringResource(R.string.trcirc_rest_round), first.roundRestS ?: 120, 15, 0, 600, "circuit_round_rest_$circuit",
+                format = { formatClock(it) }) { v ->
+                viewModel.setCircuitRests(circuit, first.circuitRestS, v)
+            }
+            TextButton(onClick = { viewModel.dissolve(circuit) }, modifier = Modifier.heightIn(min = 48.dp).testTag("routine_circuit_dissolve_$circuit")) {
+                Text(stringResource(R.string.trcirc_dissolve))
             }
         }
     }
@@ -501,9 +606,9 @@ private fun LoadField(
     }
 }
 
-/** ± stepper with a fixed-width value; tapping the value lets the athlete type it. */
+/** ± stepper with a fixed-width value; tapping the value lets the athlete type it. Also used by today's circuit sheet. */
 @Composable
-private fun EditorStepper(
+internal fun EditorStepper(
     label: String,
     value: Int,
     step: Int,
