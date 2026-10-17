@@ -95,6 +95,8 @@
     <string name="trn_tile_kcal">%1$d of %2$d kcal</string>
     <string name="trn_review_energy">Energy on logged days: %1$d kcal (estimated need about %2$d kcal)</string>
     <string name="trn_review_energy_no_need">Energy on logged days: %1$d kcal</string>
+    <string name="trn_review_energy_target">Energy on logged days: %1$d kcal (target about %2$d kcal, estimated need about %3$d kcal)</string>
+    <string name="trn_review_energy_target_only">Energy on logged days: %1$d kcal (target about %2$d kcal)</string>
     <string name="trn_set_everyday">Everyday life (for the energy need)</string>
     <string name="trn_height_label">Height (%1$s)</string>
     <string name="trn_birth_year_label">Birth year</string>

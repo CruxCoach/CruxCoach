@@ -95,6 +95,8 @@
     <string name="trn_tile_kcal">%1$d von %2$d kcal</string>
     <string name="trn_review_energy">Energie an erfassten Tagen: %1$d kcal (geschätzter Bedarf etwa %2$d kcal)</string>
     <string name="trn_review_energy_no_need">Energie an erfassten Tagen: %1$d kcal</string>
+    <string name="trn_review_energy_target">Energie an erfassten Tagen: %1$d kcal (Ziel etwa %2$d kcal, geschätzter Bedarf etwa %3$d kcal)</string>
+    <string name="trn_review_energy_target_only">Energie an erfassten Tagen: %1$d kcal (Ziel etwa %2$d kcal)</string>
     <string name="trn_set_everyday">Alltag (für den Energiebedarf)</string>
     <string name="trn_height_label">Größe (%1$s)</string>
     <string name="trn_birth_year_label">Geburtsjahr</string>
