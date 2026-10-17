@@ -123,6 +123,8 @@ class PlaylistPlayerPresenter(
     private val gradeLabel: (Double?) -> String = { "" },
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val random: Random = Random.Default,
+    /** Records the run as a board session (Android: PlaylistPlaybackCoordinator → BoardSessionManager). */
+    private val sessions: BoardSessionRecorder? = null,
 ) {
     private val _state = MutableStateFlow(PlaylistPlayerState())
     val state: StateFlow<PlaylistPlayerState> = _state.asStateFlow()
@@ -151,11 +153,13 @@ class PlaylistPlayerPresenter(
             defaultRestSeconds = defaultRestSeconds,
             boardConnected = transport.isBoardConnected,
         )
+        sessions?.start()
         moveTo(0, armRest = false)
     }
 
     fun stop() {
         cancelRest()
+        sessions?.end()
         _state.value = PlaylistPlayerState()
     }
 
@@ -219,6 +223,7 @@ class PlaylistPlayerPresenter(
     fun onClimbLogged(isSend: Boolean) {
         val s = _state.value
         if (!s.isActive) return
+        if (isSend) sessions?.recordAscent() else sessions?.recordBid()
         if (isSend) skipRemainingAttemptsOfCurrentClimb()
         val shouldAdvance = when (s.advance) {
             ListPlaybackAdvance.MANUAL -> false
@@ -263,6 +268,8 @@ class PlaylistPlayerPresenter(
     private fun startRest(seconds: Int) {
         restJob?.cancel()
         if (seconds <= 0) return
+        // The planned rest stops the session clock; only its end restarts it.
+        sessions?.pause(SessionPauseReason.PLANNED_REST)
         val endsAt = clock.epochSeconds() + seconds
         _state.update {
             it.copy(
@@ -283,6 +290,7 @@ class PlaylistPlayerPresenter(
                 if (phase !is PlaybackPhase.Resting || phase.endsAtEpochSeconds != endsAt) return@launch
                 if (remaining <= 0 || ticksLeft <= 0) {
                     _state.update { it.copy(phase = PlaybackPhase.Climbing, restFinished = true) }
+                    sessions?.resume(SessionPauseReason.PLANNED_REST)
                     return@launch
                 }
                 _state.update {
@@ -301,10 +309,12 @@ class PlaylistPlayerPresenter(
         restJob?.cancel()
         restJob = null
         _state.update { if (it.isResting) it.copy(phase = PlaybackPhase.Climbing) else it }
+        sessions?.resume(SessionPauseReason.PLANNED_REST)
     }
 
     fun close() {
         restJob?.cancel()
+        sessions?.end()
         scope.cancel()
     }
 

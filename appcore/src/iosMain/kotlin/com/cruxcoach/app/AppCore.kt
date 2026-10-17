@@ -92,6 +92,7 @@ import com.cruxcoach.app.ui.SyncScreenModel
 import com.cruxcoach.app.ui.createBackupScreenModel
 import platform.Foundation.NSBundle
 import com.cruxcoach.app.athlete.AthleteService
+import com.cruxcoach.app.playlist.BoardSessionRecorder
 import com.cruxcoach.app.athlete.ClimbingDaysReader
 import com.cruxcoach.app.athlete.ExerciseCatalogStore
 import com.cruxcoach.app.athlete.TrainingRestTimer
@@ -415,6 +416,9 @@ class AppCore private constructor(
         BoardPlaybackTransport(boardRepository, boardConnection, platform.keyValues)
     }
 
+    /** One session recorder for the app, like Android's singleton BoardSessionManager. */
+    private val boardSessions: BoardSessionRecorder by lazy { BoardSessionRecorder(personalRepository) }
+
     fun makePlayerScreen(): PlayerScreenModel {
         val grades = settings.gradeFormatter()
         return PlayerScreenModel(
@@ -429,6 +433,7 @@ class AppCore private constructor(
                     }
                 },
                 gradeLabel = { grades.label(it) },
+                sessions = boardSessions,
             ),
             restNotifier = { restTimer },
         )
