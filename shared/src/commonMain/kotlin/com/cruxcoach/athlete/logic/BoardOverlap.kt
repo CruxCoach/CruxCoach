@@ -25,6 +25,11 @@ object BoardOverlap {
     const val ATTEMPT_GAP_MINUTES = 30
     /** A rest of a covered session shorter than this is clock noise, not extra climbing. */
     const val MIN_EXTRA_MINUTES = 10
+    /**
+     * A board session covers at most this long from its start: one still running, or ended only by the
+     * 12-hour auto-end, must not cover the rest of the day's climbing.
+     */
+    const val MAX_SESSION_HOURS = 6
 
     const val SETTING_PREFIX = "hc.overlap."
 
@@ -81,7 +86,7 @@ object BoardOverlap {
             val start = epochMillis(s.startedAt, zone) ?: return@mapNotNull null
             val end = s.endedAt?.takeIf { it.isNotBlank() }?.let { epochMillis(it, zone) }
                 ?: if (s.endedAt.isNullOrBlank()) nowMs else start + s.totalSeconds * 1000
-            Window(start, end)
+            Window(start, minOf(end, start + MAX_SESSION_HOURS * 3_600_000L))
         }
         return Evidence(
             sessions = windows,
