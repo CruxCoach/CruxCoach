@@ -263,6 +263,7 @@ fun TodayScreen(
             onDismiss = { showGoal = false },
             onSave = viewModel::saveWeightGoal,
             onLogWeight = viewModel::logWeight, onLogHeight = viewModel::logHeight,
+            weekNeeds = state.weekNeeds,
         )
     }
     if (showEquipment) {

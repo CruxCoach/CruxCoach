@@ -59,6 +59,8 @@ data class TodayState(
     val kcalToday: Double? = null,
     /** Today's estimated need and, while losing weight, the plan behind the calorie target. */
     val need: com.cruxcoach.athlete.logic.EnergyBalance.Need? = null,
+    /** The last seven days' needs: the goal sheet says what the chosen pace really adds up to. */
+    val weekNeeds: List<com.cruxcoach.athlete.logic.EnergyBalance.Need> = emptyList(),
     val heightCm: Double? = null,
     val energy: com.cruxcoach.athlete.logic.EnergyReport = com.cruxcoach.athlete.logic.EnergyReport(),
     val loadSpikes: List<LoadDomain> = emptyList(),
@@ -297,6 +299,7 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
                 waterTodayMl = i.water.sumOf { w -> w.ml },
                 kcalToday = i.food.mapNotNull { e -> com.cruxcoach.athlete.logic.MacroTotals.energy(e)?.kcal }.takeIf { it.isNotEmpty() }?.sum(),
                 need = service.energyNeed(i.profile, activity),
+                weekNeeds = runCatching { service.weekNeeds(i.profile, activities) }.getOrDefault(emptyList()),
                 heightCm = service.heightCm(),
                 energy = service.energyReport(i.profile, activities),
                 loadSpikes = spikes,
