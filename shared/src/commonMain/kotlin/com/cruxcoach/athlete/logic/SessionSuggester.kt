@@ -1324,9 +1324,12 @@ object SessionSuggester {
             if (to == null) { items += item; continue }
             val def = catalog[to] ?: continue
             if (suggestion.routine.items.any { it.slug == to } || items.any { it.slug == to }) continue
-            items += WorkoutPlanner.itemFor(def).copy(sets = item.sets, warmup = item.warmup)
+            items += WorkoutPlanner.itemFor(def).copy(sets = item.sets, warmup = item.warmup,
+                circuit = item.circuit, circuitRestS = item.circuitRestS, roundRestS = item.roundRestS)
         }
-        return suggestion.copy(routine = suggestion.routine.copy(items = items), estimatedMinutes = estimateMinutes(items, catalog))
+        // A pick that cannot be in a circuit, or one left out, may leave a circuit of one.
+        val normalized = Circuits.normalize(items, catalog)
+        return suggestion.copy(routine = suggestion.routine.copy(items = normalized), estimatedMinutes = estimateMinutes(normalized, catalog))
     }
 
     private fun slotOf(def: ExerciseDefinition, warmup: Boolean): Slot = when {
@@ -1346,18 +1349,43 @@ object SessionSuggester {
 
     // ── Time budget ──────────────────────────────────────────────────
 
-    fun estimateMinutes(items: List<RoutineItem>, catalog: ExerciseCatalog): Int =
-        (items.sumOf { itemSeconds(it, catalog.fallbackFor(it.slug)) } / 60.0).roundToInt().coerceAtLeast(1)
+    /**
+     * Minutes [items] take. Straight items: sets × (work × sides + rest) plus
+     * setup per exercise. A circuit G with members i (sᵢ sets, wᵢ work seconds,
+     * kᵢ sides), R = max sᵢ rounds, nᵣ members in round r, short rest t and
+     * round rest q: Σ sᵢ·wᵢ·kᵢ + t·Σᵣ(nᵣ − 1) + R·q + |G|·setup – the long
+     * rests come once per round instead of once per set.
+     */
+    fun estimateMinutes(items: List<RoutineItem>, catalog: ExerciseCatalog): Int {
+        // Items without circuits come back unchanged, so their estimate is exactly the straight one.
+        val norm = Circuits.normalize(items, catalog)
+        val groups = Circuits.groups(norm)
+        val inCircuit = groups.flatMap { it.toList() }.toSet()
+        val straight = norm.indices.filter { it !in inCircuit }.sumOf { itemSeconds(norm[it], catalog.fallbackFor(norm[it].slug)) }
+        val circuits = groups.sumOf { range -> circuitSeconds(range.map { norm[it] }, catalog) }
+        return ((straight + circuits) / 60.0).roundToInt().coerceAtLeast(1)
+    }
+
+    private fun circuitSeconds(members: List<RoutineItem>, catalog: ExerciseCatalog): Int {
+        val rounds = members.maxOf { it.sets }
+        val between = members.firstNotNullOfOrNull { it.circuitRestS } ?: Circuits.DEFAULT_CIRCUIT_REST_S
+        val afterRound = members.firstNotNullOfOrNull { it.roundRestS } ?: Circuits.defaultRoundRest(members, catalog)
+        val work = members.sumOf { m -> val def = catalog.fallbackFor(m.slug); m.sets * workSeconds(m, def) * sides(def) }
+        val shortRests = (0 until rounds).sumOf { r -> (members.count { it.sets > r } - 1).coerceAtLeast(0) }
+        return work + between * shortRests + rounds * afterRound + members.size * SETUP_SECONDS_PER_EXERCISE
+    }
+
+    private fun workSeconds(item: RoutineItem, def: ExerciseDefinition): Int = when (def.kind) {
+        ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> (item.repsMax ?: item.repsMin ?: 8) * 3
+        ExerciseKind.TIME, ExerciseKind.HANG -> item.durationS ?: 20
+        ExerciseKind.INTERVAL -> (item.repsPerSet ?: 6) * ((item.workS ?: 7) + (item.restBetweenS ?: 3))
+        ExerciseKind.CLIMB -> 60
+    }
+
+    private fun sides(def: ExerciseDefinition): Int = if (def.unilateral) 2 else 1
 
     private fun itemSeconds(item: RoutineItem, def: ExerciseDefinition): Int {
-        val work = when (def.kind) {
-            ExerciseKind.REPS, ExerciseKind.LOAD_REPS -> (item.repsMax ?: item.repsMin ?: 8) * 3
-            ExerciseKind.TIME, ExerciseKind.HANG -> item.durationS ?: 20
-            ExerciseKind.INTERVAL -> (item.repsPerSet ?: 6) * ((item.workS ?: 7) + (item.restBetweenS ?: 3))
-            ExerciseKind.CLIMB -> 60
-        }
-        val sides = if (def.unilateral) 2 else 1
-        val perSet = work * sides + (item.restS ?: def.defaults.restS ?: 60)
+        val perSet = workSeconds(item, def) * sides(def) + (item.restS ?: def.defaults.restS ?: 60)
         return item.sets * perSet + SETUP_SECONDS_PER_EXERCISE
     }
 
