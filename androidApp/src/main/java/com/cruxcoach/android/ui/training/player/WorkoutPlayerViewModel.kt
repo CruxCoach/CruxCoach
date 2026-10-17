@@ -638,12 +638,15 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         val page = st.page ?: return
         val workoutId = st.workout?.id ?: return
         val circuit = page.circuit
+        // The new set becomes the one due only when the exercise was done; with sets still open the order stays
+        // (device test 2026-10-17: "+ set" during set 2 of 3 jumped to the new set 4).
+        val wasDone = page.sets.none { !it.isCompleted }
         if (circuit != null) {
-            focusNewIn = page.blockIndexes.first()
+            if (wasDone) focusNewIn = page.blockIndexes.first()
             enqueue { service.addRound(workoutId, circuit) }
         } else {
             val block = page.blockIndexes.first()
-            focusNewIn = block
+            if (wasDone) focusNewIn = block
             enqueue { service.addSet(workoutId, block) }
         }
         shownPage = page.key
