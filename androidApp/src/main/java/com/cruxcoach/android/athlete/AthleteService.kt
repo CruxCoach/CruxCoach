@@ -300,8 +300,10 @@ class AthleteService @Inject constructor(
         repo.transaction {
             repo.saveWorkout(Workout(id, now, null, today().toString(), title ?: routine?.name, routine?.id, updatedAt = now))
             val modifier = todaysModifier()
-            routine?.items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
-            if (routine?.items?.any { it.warmup } == true) addSpecificWarmups(id)
+            // Circuits in their canonical form, every member with the circuit's rests (the round rest needs all members).
+            val items = routine?.items?.let { Circuits.resolveRests(Circuits.normalize(it, catalog), catalog) }
+            items?.forEachIndexed { index, item -> addItem(id, index, item, modifier) }
+            if (items?.any { it.warmup } == true) addSpecificWarmups(id)
         }
         id
     }
@@ -340,6 +342,8 @@ class AthleteService @Inject constructor(
      * Lighter sets of [firstWork]'s exercise before it, for every side: the
      * 50/70/85 % ramp for loaded work, else one set at half the reps or time
      * (body-weight work, or a load still unknown). Negative set indices sort first.
+     * The rows are copies of [firstWork], so a circuit member's warm-ups carry
+     * its circuit and are played before the circuit's first round.
      */
     fun addWarmupRamp(firstWork: ExerciseSet) {
         val def = catalog.fallbackFor(firstWork.exerciseSlug)
@@ -388,7 +392,14 @@ class AthleteService @Inject constructor(
         ReadinessModifiers.of(readiness, climbed)
     }.getOrDefault(ReadinessModifier.NONE)
 
-    private fun addItem(workoutId: String, blockIndex: Int, item: RoutineItem, modifier: ReadinessModifier = ReadinessModifier.NONE): Boolean {
+    /** [setIndexOf] renumbers the planned sets (0..n-1), e.g. so an exercise taking over in a circuit plays the remaining rounds. */
+    private fun addItem(
+        workoutId: String,
+        blockIndex: Int,
+        item: RoutineItem,
+        modifier: ReadinessModifier = ReadinessModifier.NONE,
+        setIndexOf: (Int) -> Int = { it },
+    ): Boolean {
         val def = catalog.fallbackFor(item.slug)
         val bodyweight = currentBodyweight()
         val increment = repo.profile().smallestIncrementKg
@@ -408,7 +419,8 @@ class AthleteService @Inject constructor(
             newId = repo::newId,
         )
         val factor = if (item.warmup || item.test) 1.0 else ReadinessModifiers.loadFactorFor(def, modifier)
-        planned.sets.forEach { set ->
+        planned.sets.forEach { row ->
+            val set = setIndexOf(row.setIndex).let { if (it == row.setIndex) row else row.copy(setIndex = it) }
             val scaled = if (factor == 1.0 || set.setType != SetType.WORK) set else set.copy(
                 targetLoadKg = ReadinessModifiers.scaleLoad(def, set.targetLoadKg, set.bodyweightKg ?: bodyweight, factor, increment),
                 loadKg = ReadinessModifiers.scaleLoad(def, set.loadKg, set.bodyweightKg ?: bodyweight, factor, increment),
@@ -579,7 +591,58 @@ class AthleteService @Inject constructor(
     }
     fun addSet(workoutId: String, blockIndex: Int) {
         val block = repo.setsFor(workoutId).filter { it.blockIndex == blockIndex }
-        WorkoutPlanner.extraSet(block, repo::newId).forEach(repo::saveSet)
+        val extra = WorkoutPlanner.extraSet(block, repo::newId)
+        extra.forEach(repo::saveSet)
+        val slug = extra.firstOrNull()?.exerciseSlug ?: return
+        val workSets = (block + extra).filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().size
+        logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.EXTRA_SET, listOf(slug), workoutId = workoutId, value = workSets.toDouble())
+    }
+
+    /**
+     * "Übung beenden" / "Zirkel beenden": removes the open sets of [blockIndexes] in one go and returns
+     * them for "Rückgängig" ([restoreSets]); done sets stay. A block that had at least one done set is
+     * logged as ended early ([PreferenceLearning.ENDED_EARLY], value = share of its work sets done) –
+     * not as skipped sets, so stopping after two good sets costs the exercise nothing.
+     */
+    suspend fun endBlocks(workoutId: String, blockIndexes: Collection<Int>): List<ExerciseSet> = withContext(Dispatchers.IO) {
+        val blocks = blockIndexes.toSet()
+        val (removed, ended) = synchronized(structureLock) {
+            val sets = repo.setsFor(workoutId).filter { it.blockIndex in blocks }
+            val open = sets.filter { !it.isCompleted }
+            repo.transaction { open.forEach { repo.deleteSet(it.id) } }
+            open to sets.groupBy { it.blockIndex }.toSortedMap().values.filter { rows -> rows.any { it.isCompleted } && rows.any { !it.isCompleted } }
+        }
+        ended.forEach { rows ->
+            val work = rows.filter { it.setType != SetType.WARMUP }
+            val share = if (work.isEmpty()) null else work.count { it.isCompleted }.toDouble() / work.size
+            logSuggestion(SuggestionEventKind.FEEDBACK, PreferenceLearning.ENDED_EARLY, listOf(rows.first().exerciseSlug),
+                workoutId = workoutId, value = share)
+        }
+        removed
+    }
+
+    /** Puts sets back as they were, e.g. the open sets [endBlocks] removed ("Rückgängig"). */
+    suspend fun restoreSets(sets: List<ExerciseSet>): Unit = withContext(Dispatchers.IO) {
+        if (sets.isEmpty()) return@withContext
+        synchronized(structureLock) { repo.transaction { sets.forEach(repo::saveSet) } }
+    }
+
+    /**
+     * "+ Runde": one more set for every member exercise of [circuit], all in a new round after the
+     * circuit's last one, each copying its exercise's last set with the target prefilled
+     * ([WorkoutPlanner.extraSet]). Returns the new sets.
+     */
+    suspend fun addRound(workoutId: String, circuit: Int): List<ExerciseSet> = withContext(Dispatchers.IO) {
+        synchronized(structureLock) {
+            val sets = repo.setsFor(workoutId)
+            val members = sets.filter { it.circuit == circuit }.map { it.blockIndex }.toSet()
+            val round = (sets.filter { it.blockIndex in members && it.setType != SetType.WARMUP }.maxOfOrNull { it.setIndex } ?: -1) + 1
+            val added = members.sorted().flatMap { block ->
+                WorkoutPlanner.extraSet(sets.filter { it.blockIndex == block }, repo::newId).map { it.copy(setIndex = round, circuit = circuit) }
+            }
+            if (added.isNotEmpty()) repo.transaction { added.forEach(repo::saveSet) }
+            added
+        }
     }
     fun removeSet(id: String) = repo.deleteSet(id)
     fun removeBlock(workoutId: String, blockIndex: Int) = repo.deleteBlock(workoutId, blockIndex)
@@ -608,16 +671,21 @@ class AthleteService @Inject constructor(
             // The new exercise keeps the replaced one's number of sets and its warm-up role (device test
             // 2026-10-17: a swap in an intro week came with 5 fresh sets where the plan had 2).
             val old = repo.setsFor(workoutId).filter { it.blockIndex == blockIndex }
-            val work = old.filter { it.setType == SetType.WORK }.map { it.setIndex }.distinct().size
+            val workIndices = old.filter { it.setType == SetType.WORK }.map { it.setIndex }.distinct().sorted()
+            val work = workIndices.size
             val warm = old.filter { it.setType == SetType.WARMUP }.map { it.setIndex }.distinct().size
             val planned = WorkoutPlanner.itemFor(def)
-            val item = when {
+            val base = when {
                 work > 0 -> planned.copy(sets = work)
                 warm > 0 -> planned.copy(sets = warm, warmup = true)
                 else -> planned
             }
+            // In a circuit the new exercise takes the old one's place in the same rounds, with the circuit's rests.
+            val member = old.firstOrNull { it.circuit != null && it.setType != SetType.WARMUP }
+            val item = if (member == null || base.warmup) base
+                else base.copy(circuit = member.circuit, circuitRestS = member.restS, roundRestS = member.roundRestS)
             repo.deleteBlock(workoutId, blockIndex)
-            addItem(workoutId, blockIndex, item)
+            addItem(workoutId, blockIndex, item, setIndexOf = { i -> if (item.circuit == null) i else roundAt(workIndices, i) })
         }
     }
 
@@ -707,8 +775,17 @@ class AthleteService @Inject constructor(
                     open.forEach { repo.deleteSet(it.id) }
                     // The alternative comes right after this block: later blocks move one place down.
                     sets.filter { it.blockIndex > blockIndex }.forEach { repo.saveSet(it.copy(blockIndex = it.blockIndex + 1)) }
-                    val remaining = open.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().size.coerceAtLeast(1)
-                    addItem(workoutId, blockIndex + 1, WorkoutPlanner.itemFor(alternative).copy(sets = remaining))
+                    val openRounds = open.filter { it.setType != SetType.WARMUP }.map { it.setIndex }.distinct().sorted()
+                    val remaining = openRounds.size.coerceAtLeast(1)
+                    // In a circuit the alternative joins it and takes over the hurt exercise's remaining rounds.
+                    val member = block.firstOrNull { it.circuit != null && it.setType != SetType.WARMUP }
+                    val item = WorkoutPlanner.itemFor(alternative).copy(sets = remaining).let { item ->
+                        if (member == null) item else item.copy(circuit = member.circuit, circuitRestS = member.restS, roundRestS = member.roundRestS)
+                    }
+                    val rounds = openRounds.ifEmpty {
+                        listOf((block.filter { it.setType != SetType.WARMUP }.maxOfOrNull { it.setIndex } ?: -1) + 1)
+                    }
+                    addItem(workoutId, blockIndex + 1, item, setIndexOf = { i -> if (member == null) i else roundAt(rounds, i) })
                     PainOutcome(PainAction.SWAP, alternative.slug, injury.id.takeIf { remember })
                 }
                 PainAction.LIGHTER -> { lighten(def, open); PainOutcome(PainAction.LIGHTER, injuryId = injury.id.takeIf { remember }) }
@@ -902,6 +979,10 @@ class AthleteService @Inject constructor(
         repo.importLegacyBodyStats(rows.map { AthleteRepository.LegacyBodyStat(it.date, it.statName, it.value, it.unit) })
 
     companion object {
+        /** The [i]-th of [rounds] (set indices in order), counting on past the last one. */
+        private fun roundAt(rounds: List<Int>, i: Int): Int =
+            rounds.getOrNull(i) ?: ((rounds.lastOrNull() ?: -1) + 1 + (i - rounds.size))
+
         const val LEDGER_KEEP_DAYS = 180L
         /** Pain from this level on pauses climbing when it is remembered as an injury. */
         const val PAIN_PAUSE_SEVERITY = 5
@@ -1006,19 +1087,23 @@ class AthleteService @Inject constructor(
             val work = block.filter { it.setType != SetType.WARMUP }.ifEmpty { block }
             val first = work.first()
             val rows = work.map { it.setIndex }.distinct().size
+            // A circuit member: its set rest is the short one to the next exercise; the item keeps no own rest.
+            val circuit = first.circuit.takeIf { first.setType != SetType.WARMUP }
             RoutineItem(
                 slug = first.exerciseSlug, sets = rows,
                 repsMin = first.targetReps ?: first.reps, repsMax = first.targetReps ?: first.reps,
                 // No fixed load: a load in a workout wins over the prescription, and a saved
                 // training should keep progressing from the performance value and last time.
                 durationS = (first.targetDurationS ?: first.durationS)?.toInt(), loadKg = null,
-                restS = first.restS, edgeMm = first.edgeMm?.toInt(), grip = first.grip,
+                restS = if (circuit != null) null else first.restS, edgeMm = first.edgeMm?.toInt(), grip = first.grip,
                 workS = first.workS?.toInt(), restBetweenS = first.restBetweenS?.toInt(), repsPerSet = first.repsPerSet,
                 warmup = first.setType == SetType.WARMUP, test = first.setType == SetType.TEST,
+                circuit = circuit, circuitRestS = circuit?.let { first.restS }, roundRestS = circuit?.let { first.roundRestS },
             )
         }
         val now = System.currentTimeMillis()
-        return Routine(repo.newId(), name, items = items, createdAt = now, updatedAt = now).also(repo::saveRoutine)
+        return Routine(repo.newId(), name, items = Circuits.normalize(items, catalog), createdAt = now, updatedAt = now)
+            .also(repo::saveRoutine)
     }
 
     // ── Places ───────────────────────────────────────────────────────
