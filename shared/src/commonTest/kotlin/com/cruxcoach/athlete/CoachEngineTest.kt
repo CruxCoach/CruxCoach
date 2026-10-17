@@ -107,6 +107,10 @@ class PreferenceLearningTest {
         // One skipped exercise alone does not rest it; forgetting starts fresh.
         assertTrue(PreferenceLearning.resting(listOf(event(SuggestionEventKind.SKIPPED_SET, listOf("legs.air_squat"))), today).isEmpty())
         assertTrue(PreferenceLearning.resting(once, today, mapOf(PreferenceLearning.exerciseKey("pull.negative_pull_up") to todayMs)).isEmpty())
+        // Many rejections on one day count once (device test 2026-10-17: a skip per set moved past rested it for 21 days).
+        val storm = (1..8).map { i -> event(SuggestionEventKind.SKIPPED_SET, listOf("finger.max_hang"), daysAgo = 1).copy(id = "s$i") } +
+            (1..3).map { i -> event(SuggestionEventKind.SWAPPED, listOf("finger.max_hang", "finger.half_crimp"), daysAgo = 1).copy(id = "w$i") }
+        assertEquals(today.plus(DatePeriod(days = 2)), PreferenceLearning.resting(storm, today)["finger.max_hang"])
     }
 
     @Test
