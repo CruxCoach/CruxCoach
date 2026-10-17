@@ -126,6 +126,8 @@ data class PlayerState(
     val dayForm: com.cruxcoach.athlete.logic.ReadinessModifier? = null,
     /** "Wie geplant" was just chosen: the snackbar offers to take it back. */
     val asPlannedUndo: AthleteService.AsPlannedUndo? = null,
+    /** This week's volume per area, for the hint when an exercise is left out or removed (comparison review #13). */
+    val weekly: List<com.cruxcoach.athlete.logic.AreaProgress> = emptyList(),
 ) {
     val page: PlayerPage? get() = pages.getOrNull(pageIndex)
     fun def(slug: String): ExerciseDefinition? = defs[slug]
@@ -248,7 +250,17 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
         return pages.indexOfLast { p -> p.sets.any { it.isCompleted } }.coerceAtLeast(0)
     }
 
+    /** Workout and done sets the weekly volume in the state was read for. */
+    private var weeklyKey: String? = null
+
     private fun onData(workout: Workout?, sets: List<ExerciseSet>, profile: AthleteProfile, bodyweight: Double?) {
+        // Read here on the IO thread, again only when a set was done or taken back; the screen only looks it up.
+        val weeklyNow = workout?.let { w -> w.id + ":" + sets.count { it.isCompleted } }
+        val weekly = when {
+            workout == null -> emptyList()
+            weeklyNow == weeklyKey -> _state.value.weekly
+            else -> runCatching { service.weeklyProgress(profile) }.getOrDefault(emptyList()).also { weeklyKey = weeklyNow }
+        }
         _state.update { st ->
             if (st.closing) return@update st.copy(profile = profile)
             if (workout == null) return@update st.copy(phase = PlayerPhase.NO_WORKOUT, workout = null, sets = emptyList(),
@@ -295,6 +307,7 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
                 editingId = editing,
                 defs = ordered.map { it.exerciseSlug }.distinct().associateWith { def(it) },
                 dayForm = service.dayForm(workout.id),
+                weekly = weekly,
             )
         }
     }
@@ -581,9 +594,14 @@ class WorkoutPlayerViewModel @Inject constructor(private val service: AthleteSer
             ?: page.sets.firstOrNull { !it.isCompleted }
     }
 
-    /** Where the week stands for the area [slug] trains, for a hint when it is left out or removed (comparison review #13). */
-    suspend fun weeklyFor(slug: String): com.cruxcoach.athlete.logic.AreaProgress? =
-        withContext(Dispatchers.IO) { service.ensureReady(); service.weeklyFor(slug) }
+    /**
+     * Where the week stands for the area [slug] trains, for a hint when it is left out or removed (comparison review
+     * #13): from the state, so the screen never waits on the database for it.
+     */
+    fun weeklyFor(slug: String): com.cruxcoach.athlete.logic.AreaProgress? {
+        val area = com.cruxcoach.athlete.logic.WeeklyVolume.areaOf(service.catalog.fallbackFor(slug)) ?: return null
+        return _state.value.weekly.firstOrNull { it.area == area && !it.target.isOff && it.goal > 0 }
+    }
 
     /** What could replace the page's exercise: the suggestion's filters with today's place and injuries. */
     suspend fun alternatives(): List<com.cruxcoach.athlete.logic.SessionSuggester.Alternative> {
