@@ -120,9 +120,10 @@ fun WorkoutPlayerScreen(
     LaunchedEffect(ended) {
         val e = ended ?: return@LaunchedEffect
         val names = e.slugs.joinToString(", ") { state.def(it)?.name(language) ?: viewModel.catalog().fallbackFor(it).name(language) }
+        // A circuit: "Circuit ended" (the list of four names filled three lines on the Nokia).
+        val text = if (e.circuit) resources.getString(R.string.trpg_circuit_ended) else resources.getString(R.string.trpg_ended, names)
         snackScope.launch {
-            val result = snackbar.showSnackbar(resources.getString(R.string.trpg_ended, names), resources.getString(R.string.trpg_undo),
-                duration = SnackbarDuration.Long)
+            val result = snackbar.showSnackbar(text, resources.getString(R.string.trpg_undo), duration = SnackbarDuration.Long)
             if (result == SnackbarResult.ActionPerformed) viewModel.undoEnd() else viewModel.consumeEnded()
         }
     }
@@ -518,10 +519,12 @@ private fun CompletePage(state: PlayerState, onFinish: (Int?, String?) -> Unit, 
             Text(stringResource(R.string.trw_rpe_label), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             InfoButton(stringResource(R.string.trw_rpe_info_title), stringResource(R.string.trw_rpe_info_text))
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-            (1..10).forEach { v ->
-                FilterChip(selected = rpe == v, onClick = { rpe = if (rpe == v) null else v },
-                    label = { Text(v.toString()) }, modifier = Modifier.heightIn(min = 48.dp).testTag("player_rpe_$v"))
+        // Two even rows of five (a wrapping row left 6 + 4).
+        listOf(1..5, 6..10).forEach { range ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                range.forEach { v ->
+                    NumberChip(v.toString(), "player_rpe_$v", Modifier.weight(1f), selected = rpe == v) { rpe = if (rpe == v) null else v }
+                }
             }
         }
         OutlinedTextField(

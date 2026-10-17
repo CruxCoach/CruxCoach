@@ -8,6 +8,7 @@
     <string name="trpg_end_exercise">Übung beenden</string>
     <string name="trpg_end_circuit">Zirkel beenden</string>
     <string name="trpg_ended">%1$s beendet</string>
+    <string name="trpg_circuit_ended">Zirkel beendet</string>
     <string name="trpg_undo">Rückgängig</string>
     <string name="trpg_warmup_row">Aufwärmen · %1$d von %2$d</string>
     <string name="trpg_round_header">Zirkel · Runde %1$d von %2$d</string>

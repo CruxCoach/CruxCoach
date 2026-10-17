@@ -68,7 +68,7 @@ class ExercisePageTest : AthleteScreenTest() {
         until { work(id).first().isCompleted }
         assertEquals(10, work(id).first().reps)
         until { vm.state.value.current?.set?.id == work(id)[1].id }
-        waitForTag("player_row_active")
+        scrollTo("player_set_view", "player_row_active")
         scrollTo("player_set_view", "player_row_${work(id).first().id}")
         waitForTag("player_outcome_${work(id).first().id}")
     }
@@ -89,8 +89,8 @@ class ExercisePageTest : AthleteScreenTest() {
         tap("player_result_3")
         until { work(id).first().isCompleted && work(id).first().reps == 3 }
         until { work(id).drop(1).all { (it.loadKg ?: 20.0) < 20.0 } }
-        waitForTag("player_adjustment")
-        waitForTag("player_moved_${work(id)[1].id}")
+        scrollTo("player_set_view", "player_adjustment")
+        scrollTo("player_set_view", "player_moved_${work(id)[1].id}")
     }
 
     @Test

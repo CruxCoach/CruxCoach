@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.training.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -100,9 +101,17 @@ fun ExercisePage(
         val index = rowIndexOf(page, active?.id)
         if (index < 2) return@LaunchedEffect
         val info = listState.layoutInfo
+        // The sticky header covers the top of the list: rows must sit below it.
+        val header = info.visibleItemsInfo.firstOrNull { it.key == "header" }?.size ?: 0
+        val before = info.visibleItemsInfo.firstOrNull { it.index == index - 1 }
         val item = info.visibleItemsInfo.firstOrNull { it.index == index }
-        val shown = item != null && item.offset + minOf(item.size, info.viewportEndOffset / 2) <= info.viewportEndOffset
-        if (!shown) listState.animateScrollToItem(index - 1)
+        val shown = before != null && before.offset >= header && item != null &&
+            item.offset + minOf(item.size, info.viewportEndOffset / 2) <= info.viewportEndOffset
+        if (!shown) {
+            listState.animateScrollToItem(index - 1)
+            val covered = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "header" }?.size ?: 0
+            if (covered > 0) listState.animateScrollBy(-covered.toFloat())
+        }
     }
     LazyColumn(modifier.fillMaxSize().testTag("player_set_view"), state = listState,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
@@ -630,9 +639,9 @@ private fun ActiveRow(set: ExerciseSet, def: ExerciseDefinition, page: PlayerPag
     }
 }
 
-/** A big, equal-width choice: result numbers, reserve answers. */
+/** A big, equal-width choice: result numbers, reserve answers, how hard it was. */
 @Composable
-private fun NumberChip(
+internal fun NumberChip(
     text: String,
     tag: String,
     modifier: Modifier = Modifier,

@@ -8,6 +8,7 @@
     <string name="trpg_end_exercise">End exercise</string>
     <string name="trpg_end_circuit">End circuit</string>
     <string name="trpg_ended">%1$s ended</string>
+    <string name="trpg_circuit_ended">Circuit ended</string>
     <string name="trpg_undo">Undo</string>
     <string name="trpg_warmup_row">Warm-up · %1$d of %2$d</string>
     <string name="trpg_round_header">Circuit · round %1$d of %2$d</string>
