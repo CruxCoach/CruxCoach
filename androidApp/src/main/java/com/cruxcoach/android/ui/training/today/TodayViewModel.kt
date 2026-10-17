@@ -447,7 +447,11 @@ class TodayViewModel @Inject constructor(private val service: AthleteService) : 
             val events = repo.suggestionEventsSince(sinceMs)
             // Today's swaps are learned for the days to come; today's card keeps the rest of its picks
             // (device test 2026-10-17: one swap moved the other exercises around).
-            val stable = events.filterNot { it.day == today.toString() && it.kind == SuggestionEventKind.SWAPPED }
+            // "Leave it out today" likewise (device test 2026-10-17: the dropped press made the slot pick push-ups instead).
+            val stable = events.filterNot { e ->
+                e.day == today.toString() && (e.kind == SuggestionEventKind.SWAPPED ||
+                    (e.kind == SuggestionEventKind.NEXT && e.feedback == SuggestionFeedback.DISLIKE_EXERCISE && e.value == PreferenceLearning.LEFT_OUT))
+            }
             val learned = PreferenceLearning.affinity(stable, repo.completedSetsSince(sinceMs), today, resets)
             val affinity = learned + dislikedToday.associateWith { -10.0 }
             // Turned down on earlier days: rests a few days (today's own swaps keep the card stable instead).
