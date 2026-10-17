@@ -82,6 +82,10 @@ fun TodayScreen(
     onOpenEstimate: () -> Unit = {},
     /** "Klettertag eintragen": climbing outside the board app. */
     onLogClimbing: () -> Unit = {},
+    /** The filled climbing tile: today's one climbing day to edit (device test D30) … */
+    onEditClimbing: (entryId: String) -> Unit = {},
+    /** … or the list of climbing days when today has several. */
+    onOpenClimbingDays: () -> Unit = {},
     /** What the coach learned from the athlete's choices (settings page, forgettable). */
     onOpenLearned: () -> Unit = {},
 ) {
@@ -210,7 +214,15 @@ fun TodayScreen(
             item(key = "day") {
                 DayGrid(
                     state = state,
-                    onLogClimbing = onLogClimbing,
+                    // Today's entry rather than a new one that would log the day twice (device test D30).
+                    onLogClimbing = {
+                        val entries = state.climbingEntriesToday
+                        when (entries.size) {
+                            0 -> onLogClimbing()
+                            1 -> onEditClimbing(entries.single())
+                            else -> onOpenClimbingDays()
+                        }
+                    },
                     onLogWeight = { showWeight = true },
                     onOpenBody = onOpenBody,
                     onOpenFuel = onOpenFuel,

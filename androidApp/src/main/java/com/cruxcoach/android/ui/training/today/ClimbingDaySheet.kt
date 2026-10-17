@@ -168,6 +168,8 @@ fun ClimbingDaySheet(
     onDismiss: () -> Unit,
     editId: String? = null,
     viewModel: ClimbingDayViewModel = hiltViewModel(key = "climbing-day-${editId ?: "new"}"),
+    /** While editing: log another climbing session instead (today's entry opened from Today's tile, device test D30). */
+    onAddAnother: (() -> Unit)? = null,
 ) {
     LaunchedEffect(editId) { viewModel.load(editId) }
     LaunchedEffect(Unit) { viewModel.done.collect { onDismiss() } }
@@ -263,6 +265,13 @@ fun ClimbingDaySheet(
                 }
                 Button(onClick = viewModel::save, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("climbing_day_save")) {
                     Text(stringResource(R.string.action_save))
+                }
+            }
+            if (s.existing != null && onAddAnother != null) {
+                TextButton(onClick = onAddAnother, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("climbing_day_add_another")) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.trl_day_add_another))
                 }
             }
         }

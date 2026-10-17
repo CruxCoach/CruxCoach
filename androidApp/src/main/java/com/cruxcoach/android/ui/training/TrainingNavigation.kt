@@ -60,7 +60,8 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
 
     screen(TrainingRoutes.TODAY, "Today", back) {
         var showEstimate by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-        var showClimbingDay by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+        /** The climbing-day sheet: "" logs a new day, an id edits today's entry (device test D30); null = closed. */
+        var climbingSheet by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf<String?>(null) }
         val context = androidx.compose.ui.platform.LocalContext.current
         // The first visit asks the basics (owner 2026-10-09); the longer coach setup stays a checklist step.
         BasicsGate { go(TrainingRoutes.BASICS) }
@@ -88,11 +89,22 @@ fun NavGraphBuilder.trainingGraph(nav: NavHostController) {
             },
             onOpenCoachSetup = { go(TrainingRoutes.COACH_SETUP) },
             onOpenEstimate = { showEstimate = true },
-            onLogClimbing = { showClimbingDay = true },
+            onLogClimbing = { climbingSheet = "" },
+            onEditClimbing = { climbingSheet = it },
+            onOpenClimbingDays = { go(TrainingRoutes.CLIMBING_DAYS) },
             onOpenLearned = { go(TrainingRoutes.athleteSettings(com.cruxcoach.android.ui.training.athlete.SettingsSection.EXCLUDED.key)) },
         )
         if (showEstimate) com.cruxcoach.android.ui.training.coach.QuickEstimateSheet(onDismiss = { showEstimate = false })
-        if (showClimbingDay) com.cruxcoach.android.ui.training.today.ClimbingDaySheet(onDismiss = { showClimbingDay = false })
+        climbingSheet?.let { id ->
+            // Keyed: "another session" opens a fresh sheet with its own view model and "done" listener.
+            androidx.compose.runtime.key(id) {
+                com.cruxcoach.android.ui.training.today.ClimbingDaySheet(
+                    onDismiss = { climbingSheet = null }, editId = id.ifEmpty { null },
+                    // A second session today stays one tap away from today's entry.
+                    onAddAnother = if (id.isNotEmpty()) ({ climbingSheet = "" }) else null,
+                )
+            }
+        }
     }
     screen(TrainingRoutes.WORKOUTS, "Workouts", back) {
         com.cruxcoach.android.ui.training.workouts.WorkoutsScreen(
